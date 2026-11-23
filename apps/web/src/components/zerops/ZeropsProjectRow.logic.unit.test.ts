@@ -46,7 +46,7 @@ const row = (
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | remove: offers?.held === true && offers.edit.kind === "allowed", → remove: true,
-it("MN+13: Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work", () => {
+it("MN39: Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work", () => {
   const allowed = { kind: "allowed" } as const;
   const refused = { kind: "refused", reason: "not yours" } as const;
   const unknown = { kind: "unknown" } as const;
@@ -148,7 +148,7 @@ it("MN22: A Mate whose project holds no container says so on its menu row in the
 });
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (moveLine !== undefined && !moveEnded) return moveLine; → if (moveLine !== undefined) return moveLine;
-it("MN+1: A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces \"needs your answer\" on the row and card indefinitely", () => {
+it("MN27: A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces \"needs your answer\" on the row and card indefinitely", () => {
   const line = (state: "idle" | "needs", kind: "going" | "renamed-since") => {
     const view = { state, reply: undefined, slot: { kind: "age" } } as const;
     const standing =
@@ -180,7 +180,7 @@ it("MN+1: A move HQ still runs outranks its Mate's own line, and one that ended 
 });
 
 // witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | !project.result?.startsWith(REFUSED) → project.result?.startsWith(REFUSED)
-it("MN+2: A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix", () => {
+it("MN28: A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix", () => {
   const nameOf = () => "Old - web";
   const renamesLeft = {
     step: "rename_projects",
@@ -218,7 +218,7 @@ it("MN+2: A failed application rename permits a different name only when its pro
 });
 
 // witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | held?.name === name && held.after === after → held?.name === name
-it("MN+5: Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start", () => {
+it("MN31: Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start", () => {
   const first = renameAttemptFor(null, "Shop", "failed-1", () => "retry-1");
   expect(renameAttemptFor(first, "Shop", "failed-1", () => "unused").id).toBe("retry-1");
   const next = renameAttemptFor(first, "Shop", "failed-2", () => "retry-2");
@@ -227,7 +227,7 @@ it("MN+5: Rename again starts a new application operation after a failure but ke
 });
 
 // witness: apps/web/src/zerops/useDialogState.ts | if (isCurrent()) action(); → action();
-it("MN+6: A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog", () => {
+it("MN32: A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog", () => {
   let visible: string | null = null;
   let destinations: "unread" | "reading" = "unread";
   const replies = createDialogReplies<string>((next) => {
@@ -256,7 +256,7 @@ it("MN+6: A move refusal reads destinations again only while the dialog that sen
 });
 
 // witness: apps/web/src/components/zerops/mateActions/moveAttempt.ts | return held?.body === body ? held : { body, id: newId() }; → return held ?? { body, id: newId() };
-it("MN+3: A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything", () => {
+it("MN29: A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything", () => {
   const first = moveAttemptFor(undefined, "A to B", () => "id-1");
   expect(moveAttemptFor(first, "A to B", () => "id-2").id).toBe("id-1");
   const back = moveAttemptFor(first, "B to A", () => "id-2");
@@ -265,7 +265,7 @@ it("MN+3: A project's move sends its id again only for the same body, and any ot
 });
 
 // witness: apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts | return now === undefined || (now.appId === refused.appId && now.kind === refused.kind); → return now === undefined;
-it("MN+4: After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed", () => {
+it("MN30: After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed", () => {
   const refused = { appId: "app-a", kind: "stage" } as const;
   const cases = [
     ["no refusal", undefined, { appId: "app-a", kind: "stage" }, false],
@@ -280,7 +280,7 @@ it("MN+4: After HQ refuses a move because the placement changed, a press waits u
 });
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | mateRestartLine(input.restart) ?? mateMoveLine → mateMoveLine
-it("MN+7: A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks", () => {
+it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks", () => {
   const line = (state: "idle" | "needs", restart: Parameters<typeof mateRowSecond>[0]["restart"]) =>
     mateRowSecond({
       view: { state, reply: undefined, slot: { kind: "age" } },

@@ -47,7 +47,7 @@ function hqSays(store: AccountStore, apps: readonly App[]) {
 
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | if (app?.operation?.id === intent.id) return [intent.id]; → if (app?.operation?.id === intent.id) return [intent.appId];
 it.effect(
-  "OP+1: A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current",
+  "OP60: A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current",
   () =>
     Effect.gen(function* () {
       const previous = {
@@ -277,7 +277,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/projections/hqLink.ts | || hqAwaySaidAt(link) === null) return null; → ) return null;
 it.effect(
-  "OP+2: A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable",
+  "OP61: A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable",
   () =>
     Effect.gen(function* () {
       const remove = {

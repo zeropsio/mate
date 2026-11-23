@@ -126,7 +126,7 @@ it("MN23: A project deleted with its last Mate starts only once HQ's structure h
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | ? "Its production. Delete it in Zerops if you no longer need it." → ? `Production ${String(name)}. Delete it in Zerops if you no longer need it.`
-it("MN+12: A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown", () => {
+it("MN38: A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown", () => {
   expect(productionStaysWords("bakery-live")).toBe(
     "Production bakery-live. Delete it in Zerops if you no longer need it.",
   );

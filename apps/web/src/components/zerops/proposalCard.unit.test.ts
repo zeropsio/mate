@@ -4,7 +4,7 @@ import { proposalCardStage } from "./proposal/proposal.logic.ts";
 const at = "2026-11-23T10:00:00.000Z";
 
 // witness: apps/web/src/components/zerops/proposal/proposal.logic.ts | input.runningHere || hqCarriesApproval(input.kind) → input.runningHere
-it("MN+8: An approval HQ carries out reads running in every tab from the press until HQ records its end, and only a value's approval another tab writes reads unseen; breaks: a second tab says the end of a restart HQ runs was not seen, or a press sent twice", () => {
+it("MN34: An approval HQ carries out reads running in every tab from the press until HQ records its end, and only a value's approval another tab writes reads unseen; breaks: a second tab says the end of a restart HQ runs was not seen, or a press sent twice", () => {
   const running = { state: "running", at } as const;
   const cases = [
     ["sent, not answered", "service.restart", undefined, false, true, "running"],

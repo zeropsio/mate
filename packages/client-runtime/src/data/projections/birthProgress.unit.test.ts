@@ -28,7 +28,7 @@ const initial: BirthEvidence = {
 const failedAt = "2026-11-05T10:00:00.000Z";
 const acceptedAt = "2026-11-19T10:00:00.000Z";
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.operation.failure === undefined → birth.operation.continueBy === undefined
-it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or adopted, and its project while a bound birth is not running (ended with a failure, waiting for its maker, or without an operation), and nothing while a bound birth runs; breaks: a Mate whose setup failed or whose maker never continues it can never be removed, or a running birth's project is deleted under it", () => {
+it("PJ133: Delete of an open birth removes the birth alone while it is unbound or adopted, and its project while a bound birth is not running (ended with a failure, waiting for its maker, or without an operation), and nothing while a bound birth runs; breaks: a Mate whose setup failed or whose maker never continues it can never be removed, or a running birth's project is deleted under it", () => {
   const accepted = { kind: "birth", phase: "accepted", acceptedAt, at: acceptedAt } as const;
   const failed = {
     ...accepted,
@@ -68,7 +68,7 @@ it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer.edit.kind === "allowed" → offer.edit.kind !== "unknown"
-it("PJ+3: A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses", () => {
+it("PJ134: A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({

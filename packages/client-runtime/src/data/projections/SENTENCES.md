@@ -1,4 +1,4 @@
-next: PJ132
+next: PJ135
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -122,6 +122,6 @@ next: PJ132
 - PJ129 — Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered
 - PJ130 — An access change's row says its failure by who stopped it and holds Zerops' answer only for a refusal by Zerops; breaks: a person reads a machine code although Zerops said what to do first, or support gets no answer to look at
 - PJ131 — An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting
-- PJ+1 — A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed
-- PJ+2 — Delete of an open birth removes the birth alone while it is unbound or adopted, and its project while a bound birth is not running (ended with a failure, waiting for its maker, or without an operation), and nothing while a bound birth runs; breaks: a Mate whose setup failed or whose maker never continues it can never be removed, or a running birth's project is deleted under it
-- PJ+3 — A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses
+- PJ132 — A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed
+- PJ133 — Delete of an open birth removes the birth alone while it is unbound or adopted, and its project while a bound birth is not running (ended with a failure, waiting for its maker, or without an operation), and nothing while a bound birth runs; breaks: a Mate whose setup failed or whose maker never continues it can never be removed, or a running birth's project is deleted under it
+- PJ134 — A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses

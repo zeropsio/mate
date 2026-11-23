@@ -1,4 +1,4 @@
-next: MN27
+next: MN41
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -26,16 +26,17 @@ next: MN27
 - MN24 — A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why
 - MN25 — A stage or a production this page asked for offers Start again at its own tier once HQ's environment operation of it ended failed, and never while it runs, for a deploy key, or for an operation started elsewhere; breaks: a failed stage's card offers only Dismiss, or a running one offers a second start
 - MN26 — A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added
-- MN+1 — A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces "needs your answer" on the row and card indefinitely
-- MN+2 — A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix
-- MN+3 — A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything
-- MN+4 — After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed
-- MN+5 — Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start
-- MN+6 — A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog
-- MN+7 — A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks
-- MN+8 — An approval HQ carries out reads running in every tab from the press until HQ records its end, and only a value's approval another tab writes reads unseen; breaks: a second tab says the end of a restart HQ runs was not seen, or a press sent twice
-- MN+9 — A production-services proposal HQ is carrying out reads as being created in every tab and for every viewer; breaks: the approver's second tab says Zerops did not create it while HQ imports, and a colleague reads it as someone else's to answer
-- MN+10 — A creation waiting for its approver's Zerops sign-in offers Continue to that person only; breaks: a colleague presses Continue and HQ refuses it
-- MN+11 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists
-- MN+12 — A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown
-- MN+13 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work
+- MN27 — A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces "needs your answer" on the row and card indefinitely
+- MN28 — A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix
+- MN29 — A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything
+- MN30 — After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed
+- MN31 — Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start
+- MN32 — A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog
+- MN33 — A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks
+- MN34 — An approval HQ carries out reads running in every tab from the press until HQ records its end, and only a value's approval another tab writes reads unseen; breaks: a second tab says the end of a restart HQ runs was not seen, or a press sent twice
+- MN35 — A production-services proposal HQ is carrying out reads as being created in every tab and for every viewer; breaks: the approver's second tab says Zerops did not create it while HQ imports, and a colleague reads it as someone else's to answer
+- MN36 — A creation waiting for its approver's Zerops sign-in offers Continue to that person only; breaks: a colleague presses Continue and HQ refuses it
+- MN37 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists
+- MN38 — A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown
+- MN39 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work
+- MN40 — A Mate's deletion takes its coming page while it runs, waits or failed, offering Continue only to the maker it waits for and Delete again after a failure only to a person HQ offers the record; breaks: the page of a Mate being deleted connects and hands over into a project that is going, or offers a press HQ refuses

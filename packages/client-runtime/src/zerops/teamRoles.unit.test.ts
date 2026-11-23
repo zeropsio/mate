@@ -177,7 +177,7 @@ it("ZV78: Choosing another role starts its flags again from what that role holds
 });
 
 // witness: packages/client-runtime/src/zerops/teamRoles.ts | teamRoleOf(held) !== null → teamRoleOf(held) === null
-it("ZV+1: A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back", () => {
+it("ZV165: A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back", () => {
   const presets = ["owner", "admin", "developer", "guest"];
   const basic = membership("BASIC_USER", true);
   const readOnly = membership("READ_ONLY");

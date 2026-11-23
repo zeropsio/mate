@@ -1,4 +1,4 @@
-next: OP60
+next: OP62
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -16,7 +16,7 @@ next: OP60
 - OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
 - OP27 — Recording where a secret lives sends HQ its place and name, never its value
 - OP59 — After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there
-- OP+1 — A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current
+- OP60 — A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again
 - OP34 — Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself
@@ -33,4 +33,4 @@ next: OP60
 - OP52 — An answer's record keeps only its summary, never the words it carries
 - OP53 — Closing the account fences an agent command answer already in flight
 - OP58 — Each of the viewer's access changes that stops running — its key gone, or stopped on a failure, even one first seen stopped — reads the changed person's grants again once, whatever screen is open; one for an address with no account reads none; breaks: the team shows a person's old project access after HQ changed it
-- OP+2 — A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable
+- OP61 — A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable

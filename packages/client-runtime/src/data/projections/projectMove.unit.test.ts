@@ -19,7 +19,7 @@ const move = (rest: Partial<HqOperation>) => ({
 const failure = (code: string, origin: string) => ({ step: "rename_project", code, at, origin });
 
 // witness: packages/client-runtime/src/data/projections/projectMove.ts | return move.kind === "failed" && move.failure.code === RENAMED_SINCE → return move.kind === "failed" && move.failure.code === "never"
-it("PJ+1: A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed", () => {
+it("PJ132: A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed", () => {
   expect(projectMoveOf(move({ failure: failure("renamed_since", "hq") }), "ada")).toEqual({
     kind: "renamed-since",
   });
