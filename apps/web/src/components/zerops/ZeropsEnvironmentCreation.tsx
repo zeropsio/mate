@@ -161,8 +161,9 @@ export function ZeropsEnvironmentCreation({
             <AlertDialogTitle>End setting up {name}?</AlertDialogTitle>
             <AlertDialogDescription>
               Its maker can no longer continue it. Ending it frees the application for new work and
-              deletes nothing in Zerops: a stage it already made stays, and you can delete it like
-              any stage.
+              deletes nothing in Zerops: a stage it already made stays and can be deleted like any
+              stage, and a half-made project may remain in Zerops outside the application; remove it
+              there.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
