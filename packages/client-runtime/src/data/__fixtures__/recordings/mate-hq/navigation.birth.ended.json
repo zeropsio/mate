@@ -1,0 +1,91 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
+    "steps": [
+      "On a prepared test environment run the manual journey: journey run --manual birth-continue-by-maker --env \u003cenv\u003e --out \u003cjourney receipts\u003e. It makes what it needs and removes it.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads birth-continue-by-maker/test-rw-hq-frames.json and takes the navigation delivery showing the run's first birth operation birth.ended.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
+    ],
+    "recordedAt": "2026-11-23T23:03:12Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "bb1eae38-9c9c-4bc7-8578-92fbc585f10c:1",
+    "revision": 14,
+    "values": [
+      {
+        "key": "app:v1",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v2",
+          "environments": [],
+          "id": "v1",
+          "intake": null,
+          "name": "v3",
+          "problems": [],
+          "projectIds": [
+            "v4"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v5",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v6"
+            },
+            "inFlight": null
+          },
+          "rollouts": []
+        }
+      },
+      {
+        "key": "project:v4",
+        "value": {
+          "appId": "v1",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v7",
+            "face": "",
+            "madeBy": "v8",
+            "standupRequestedBy": null,
+            "serviceId": "v9",
+            "bornAt": "v2",
+            "state": "v10"
+          },
+          "name": "v11",
+          "person": {
+            "chiefProjectId": null,
+            "entry": "operates",
+            "mine": true,
+            "ownerUserId": "v8",
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v4",
+          "signedInNow": {}
+        }
+      }
+    ],
+    "removals": []
+  }
+}
