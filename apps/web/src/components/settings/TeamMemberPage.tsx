@@ -46,7 +46,12 @@ import {
   type AccessDraft,
   type AccessProject,
 } from "./teamMember.logic";
-import { NO_ACCOUNT_LINE, type TeamPerson } from "./teamSettings.logic";
+import {
+  NO_ACCOUNT_LINE,
+  teamMemberChange,
+  type TeamMemberPress,
+  type TeamPerson,
+} from "./teamSettings.logic";
 import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
@@ -399,18 +404,17 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   // HQ names the person by their Zerops account (ZEROPS-067); without one the presses are disabled.
   const userId = person?.userId;
   const { continueAccessChange, deleteAccessChange } = team;
-  const start = (change: (userId: string) => Parameters<typeof startAccessChange>[0]) =>
-    userId === undefined
-      ? Promise.reject(new Error(NO_ACCOUNT_LINE))
-      : startAccessChange(change(userId));
+  const start = (press: TeamMemberPress) => {
+    const change = person == null ? null : teamMemberChange(person, press);
+    return change === null ? Promise.reject(new Error(NO_ACCOUNT_LINE)) : startAccessChange(change);
+  };
   const actions: TeamMemberActions | undefined =
     !team.writable || clientId === null
       ? undefined
       : {
-          updateMembership: (membership) =>
-            start((id) => ({ kind: "role", userId: id, membership })),
-          saveAccess: (changes) => start((id) => ({ kind: "projects", userId: id, set: changes })),
-          remove: () => start((id) => ({ kind: "remove", userId: id })),
+          updateMembership: (membership) => start({ kind: "role", membership }),
+          saveAccess: (changes) => start({ kind: "projects", set: changes }),
+          remove: () => start({ kind: "remove" }),
           continueChange: continueAccessChange,
           deleteChange: deleteAccessChange,
         };
