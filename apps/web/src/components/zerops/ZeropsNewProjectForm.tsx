@@ -1,49 +1,33 @@
 /**
- * The New project dialog: New Mate with the project's name on top (board D1, the owner,
- * 2026-09-30), hosted over whatever the person is looking at (`ZeropsNewProjectHost`).
+ * New project, as a page in the main column beside the menu (`/zerops/new`, `ZeropsNewProjectRoute`):
+ * one question — what the person wants to build, its name — and *Start a project* (the owner,
+ * 2026-11-23: "make the UI minimal"). The rest is folded under *Advanced options*: its first
+ * Mate's name and look, who can open it, and the region it runs in, as tiles with this browser's
+ * latency to each, only where the account has more than one. Every one of them has its default
+ * already, so the name alone starts a project.
  *
- * It asks the project's name — and where it lives, only where the account has more than one
- * place — then who its first Mate is: a name beside the face it makes, the colour and the shape
- * behind *Change look*, with the picker and the rules New Mate uses. Who can open the project is
- * one line, the people opened only to change it. The dialog stands in the window's middle, sized
- * to what it asks; only its body scrolls where the window is too short. Until its person picks, the face follows the name
- * as it is typed or rolled (the tint the account would give it, and that tint's shape); a pick
- * sticks. A name that will not do is said beside the button once it is pressed; while the
- * account's Mates' names are still being read, the button waits and says so.
- *
- * It ends, as New Mate does, with what happens next (`newProjectNext`): HQ where the
- * organization has none, then the project and its Mate, then the person signs it in and tells it what
- * to build. Create hands over at once; the person lands on the first Mate's own view.
+ * A name that will not do, or what Create waits on, is said under the button once it is pressed;
+ * the credit forecast under that. Create hands over at once; the person lands on the first
+ * Mate's own view.
  */
 import type { LocationChoice } from "@t3tools/client-runtime/data";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { GaugeIcon } from "lucide-react";
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { ChevronDownIcon, GaugeIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
 
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
-import { WhatHappensNext } from "./WhatHappensNext";
-import { newProjectNext } from "./whatHappensNext.logic";
 import {
   faceName,
   newMateFace,
@@ -89,12 +73,6 @@ export interface NewProjectFormInput {
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
-}
-
-interface ZeropsNewProjectFormProps extends NewProjectFormInput {
-  readonly onCancel: () => void;
-  /** The project's name field, where its dialog puts the focus as it opens. */
-  readonly nameField?: RefObject<HTMLInputElement | null>;
 }
 
 /** What a Create pressed with no project name says, at the name. */
@@ -364,77 +342,45 @@ export function FirstMateField({
 }
 
 /**
- * Where it lives: a quiet choice, only where the account has more than one place (board D1) — in
- * the dialog's footer, or as tiles among the fields (`tiles`, the first run's card), each with this
- * browser's latency to it.
+ * Where it lives, as tiles, each with this browser's latency to it — only where the account has
+ * more than one place.
  */
-export function NewProjectLocation({
-  form,
-  className,
-  tiles = false,
-}: {
-  readonly form: NewProjectForm;
-  readonly className?: string;
-  readonly tiles?: boolean;
-}) {
+export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) {
   const { locations, locationId, onLocation, creating, retry, closed } = form.input;
   if (closed !== undefined || locations.length <= 1) return null;
   const held = creating || retry !== undefined;
-  if (tiles)
-    return (
-      <div className="flex flex-col gap-1.5">
-        <Label id={REGION_LABEL} render={<h3 />}>
-          Region
-        </Label>
-        <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
-          {locations.map((location) => (
-            <button
-              aria-checked={location.id === locationId}
-              className="region-tile"
-              disabled={held}
-              key={location.id}
-              onClick={() => {
-                onLocation(location.id);
-              }}
-              role="radio"
-              type="button"
-            >
-              <span className="region-tile-name">{location.name}</span>
-              {/* Holds its line while unmeasured, so a sample coming in moves nothing. */}
-              <span className="region-tile-latency">
-                {location.latencyMs === undefined ? null : (
-                  <>
-                    <GaugeIcon aria-hidden />
-                    {location.latencyMs} ms
-                  </>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
   return (
-    <Select
-      disabled={held}
-      onValueChange={(value) => {
-        if (value !== null) onLocation(value);
-      }}
-      value={locationId}
-    >
-      <SelectTrigger aria-label="Region" className={cn("w-auto", className)}>
-        <SelectValue placeholder="Region">
-          {locations.find((location) => location.id === locationId)?.name ?? "Region"}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectPopup>
+    <div className="flex flex-col gap-1.5">
+      <Label id={REGION_LABEL} render={<h3 />}>
+        Region
+      </Label>
+      <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
         {locations.map((location) => (
-          <SelectItem key={location.id} value={location.id}>
-            {location.name}
-          </SelectItem>
+          <button
+            aria-checked={location.id === locationId}
+            className="region-tile"
+            disabled={held}
+            key={location.id}
+            onClick={() => {
+              onLocation(location.id);
+            }}
+            role="radio"
+            type="button"
+          >
+            <span className="region-tile-name">{location.name}</span>
+            {/* Holds its line while unmeasured, so a sample coming in moves nothing. */}
+            <span className="region-tile-latency">
+              {location.latencyMs === undefined ? null : (
+                <>
+                  <GaugeIcon aria-hidden />
+                  {location.latencyMs} ms
+                </>
+              )}
+            </span>
+          </button>
         ))}
-      </SelectPopup>
-    </Select>
+      </div>
+    </div>
   );
 }
 
@@ -471,14 +417,20 @@ export function NewProjectLine({
 export function CreateProjectButton({
   form,
   size = "md",
+  label,
+  className,
 }: {
   readonly form: NewProjectForm;
   readonly size?: "md" | "lg";
+  /** Its words where they never change as the names are typed; by default what it makes. */
+  readonly label?: string;
+  readonly className?: string;
 }) {
   const { creating, retry } = form.input;
   return (
     <Button
       aria-busy={creating || undefined}
+      className={className}
       data-zerops-new-project="create"
       disabled={form.held}
       size={size}
@@ -486,100 +438,81 @@ export function CreateProjectButton({
     >
       {creating ? <Spinner size="md" /> : null}
       {retry === undefined
-        ? newProjectButton({ projectName: form.name, botName: form.botName })
+        ? (label ?? newProjectButton({ projectName: form.name, botName: form.botName }))
         : "Try again"}
     </Button>
   );
 }
 
-export function ZeropsNewProjectForm({
-  onCancel,
-  nameField: givenNameField,
-  ...input
-}: ZeropsNewProjectFormProps) {
-  const ownNameField = useRef<HTMLInputElement>(null);
-  const nameField = givenNameField ?? ownNameField;
-  const form = useNewProjectForm(input, nameField);
-  const { closed, creating, access, forecast } = input;
+/** The page's one field: the project's name, its placeholder the label it needs. */
+function NewProjectNameInput({
+  form,
+  inputRef,
+}: {
+  readonly form: NewProjectForm;
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+}) {
   return (
-    <NewProjectFormFrame className="flex min-h-0 flex-col" form={form}>
-      <DialogHeader>
-        <DialogTitle>New project</DialogTitle>
-        {closed === undefined ? null : <DialogDescription>{closed}</DialogDescription>}
-      </DialogHeader>
-      {closed === undefined ? (
-        <DialogPanel>
-          <NewProjectFields className="flex flex-col gap-5" form={form}>
-            <ProjectNameField form={form} inputRef={nameField} />
-            <FirstMateField form={form} label="Its first Mate" look="folded" />
-            <WhatHappensNext
-              versions={[
-                {
-                  key: "next",
-                  next: newProjectNext({ projectName: form.name, botName: form.botName }),
-                  shown: true,
-                },
-              ]}
-            />
-            {access === undefined ? null : access(form.setUserRoles)}
-            {forecast}
-          </NewProjectFields>
-        </DialogPanel>
-      ) : null}
-      <DialogFooter>
-        {/* At the footer's start; on a phone the footer stacks from its foot: the place leads
-            it, over the line. */}
-        <NewProjectLocation className="max-sm:order-2" form={form} />
-        <NewProjectLine className="me-auto self-center max-sm:order-1 max-sm:me-0" form={form} />
-        {closed === undefined ? (
-          <>
-            <Button disabled={creating} onClick={onCancel} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <CreateProjectButton form={form} />
-          </>
-        ) : (
-          <Button onClick={onCancel} type="button" variant="ghost">
-            Close
-          </Button>
-        )}
-      </DialogFooter>
-    </NewProjectFormFrame>
+    <Input
+      aria-describedby={form.unnamed ? LINE : undefined}
+      aria-invalid={form.unnamed || undefined}
+      aria-label="Project name"
+      autoComplete="off"
+      id={PROJECT_FIELD}
+      onChange={(event) => {
+        form.setName(event.target.value);
+      }}
+      placeholder="Project name…"
+      readOnly={form.input.creating}
+      ref={inputRef}
+      size="xl"
+      spellCheck={false}
+      value={form.name}
+    />
   );
 }
 
-/** The form in its dialog, New Mate's size: what the host opens, and what the harness draws. */
-export function ZeropsNewProjectDialog({
-  onOpenChange,
-  open = true,
-  ...form
-}: ZeropsNewProjectFormProps & {
-  readonly onOpenChange: (open: boolean) => void;
-  /** Held shut until what it says is read, so it opens whole (`ZeropsNewProjectHost`). */
-  readonly open?: boolean;
-}) {
-  // Create closes it onto the first Mate's page, which takes the focus: never back to what opened
-  // it, where a second Enter would open it again over that page.
-  const created = useRef(false);
-  // It opens on the project's name, ready to type.
+/** The page: the question, the name, *Start a project*, and the rest folded under it. */
+export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const nameField = useRef<HTMLInputElement>(null);
+  const form = useNewProjectForm(input, nameField);
+  const { closed, access, forecast } = input;
+  // It opens on the project's name, ready to type, where a keyboard is at hand.
+  useEffect(() => {
+    if (window.matchMedia("(pointer: fine)").matches) nameField.current?.focus();
+  }, []);
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup
-        className="max-w-lg"
-        finalFocus={() => !created.current}
-        initialFocus={nameField}
-        placement="center"
-      >
-        <ZeropsNewProjectForm
-          {...form}
-          nameField={nameField}
-          onCreate={(choice) => {
-            created.current = true;
-            form.onCreate(choice);
-          }}
-        />
-      </DialogPopup>
-    </Dialog>
+    <section className="new-project-page" data-zerops-surface="new-project">
+      <div className="new-project-stage">
+        <h1 className="new-project-heading">What do you want to build?</h1>
+        {closed === undefined ? (
+          <NewProjectFormFrame className="new-project-form" form={form}>
+            <NewProjectFields className="flex flex-col gap-3" form={form}>
+              <NewProjectNameInput form={form} inputRef={nameField} />
+            </NewProjectFields>
+            <CreateProjectButton className="w-full" form={form} label="Start a project" size="lg" />
+            <NewProjectLine className="text-center" form={form} />
+            {forecast}
+            <div className="new-project-advanced">
+              <Collapsible>
+                <CollapsibleTrigger>
+                  Advanced options
+                  <ChevronDownIcon aria-hidden />
+                </CollapsibleTrigger>
+                <CollapsiblePanel>
+                  <NewProjectFields className="new-project-advanced-fields" form={form}>
+                    <FirstMateField form={form} label="Its first Mate" look="folded" />
+                    {access === undefined ? null : access(form.setUserRoles)}
+                    <NewProjectLocation form={form} />
+                  </NewProjectFields>
+                </CollapsiblePanel>
+              </Collapsible>
+            </div>
+          </NewProjectFormFrame>
+        ) : (
+          <p className="new-project-closed">{closed}</p>
+        )}
+      </div>
+    </section>
   );
 }

@@ -363,8 +363,7 @@ function SignedInRootRouteView() {
             </ConversationOpeningProvider>
           </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
-            new Mate's hand-over to its conversation; the New project dialog, of its family, the
-            same way for every "New project"; a place's addresses, wherever a door opens them; a
+            new Mate's hand-over to its conversation; every "New project", taken to its page; a place's addresses, wherever a door opens them; a
             project's Delete; Put it live, its sheet and its runs. */}
           <ZeropsNewMateHost />
           <ZeropsNewProjectHost />

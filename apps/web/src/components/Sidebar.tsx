@@ -716,7 +716,7 @@ export default function Sidebar() {
   );
 
   // Every *New project* in the menu — its header's button, its pinned row, its empty state — asks
-  // for the New project dialog over whatever is on screen (`ZeropsNewProjectHost`).
+  // for the New project page beside the menu (`ZeropsNewProjectHost`).
   const askNewProject = useAskNewProject();
   // What the viewer's role makes here (`roleOffers`): a role that may not create projects is
   // offered neither New project nor a Chief, which would be a project of their own.

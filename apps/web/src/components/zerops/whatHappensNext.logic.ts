@@ -1,5 +1,5 @@
 /**
- * What happens after the press, as the New Mate and New project dialogs end (board D1, the
+ * What happens after the press, as the New Mate dialog and an account's first run end (board D1, the
  * owner, 2026-09-30): the steps in order, the person's own among them, each with an honest time
  * where one is worth saying, and one quiet line that they can leave: HQ runs the birth from the
  * press on (`TAB_MAY_CLOSE_LINE`). In the person's words: never the machinery's — no container, no zcp, no recipe deployed.

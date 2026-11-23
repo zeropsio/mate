@@ -1,5 +1,5 @@
 /**
- * What the New project dialog says — decided without React. The rest it shares with New Mate:
+ * What the New project page says — decided without React. The rest it shares with New Mate:
  * the Mate's name and face (`newMateSubmit`, `newMateFace`) and what happens next
  * (`newProjectNext`).
  */

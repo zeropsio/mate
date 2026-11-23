@@ -25,7 +25,7 @@ import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUp
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
  * candidate to connect to or wait on, and a way to New project (also where an
  * exhausted pool falls back to, since that phase has nothing ready-made to
- * pick). Creating a project happens in its dialog over this page
+ * pick). Creating a project happens on its own page
  * (`ZeropsNewProjectHost`), not here.
  */
 

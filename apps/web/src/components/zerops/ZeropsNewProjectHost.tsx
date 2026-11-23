@@ -1,9 +1,8 @@
 /**
- * *New project* — a group, and its first Mate (guide 4.1, 4.2) — as a dialog over whatever the
- * person is looking at (`newProjectAsk.ts`), of the family New Mate belongs to (board D1, the
- * owner, 2026-09-30): every door asks here, and nothing navigates until Create. An account's first
- * run draws the same form as its whole page instead (`FirstRunScreen`), on the same reads and
- * Create (`useNewProjectAnswer`).
+ * *New project* — a group, and its first Mate (guide 4.1, 4.2) — as a page in the main column
+ * beside the menu (`/zerops/new`, the owner, 2026-11-23): every door asks (`newProjectAsk.ts`), and
+ * the host takes the person there. An account's first run draws the same form as its whole window
+ * instead (`FirstRunScreen`), on the same reads and Create (`useNewProjectAnswer`).
  *
  * ## A project is an application in HQ
  *
@@ -33,7 +32,7 @@
  * ## One step
  *
  * HQ accepts one Create and finishes the birth. Its pushed navigation follows the same birth id
- * even when this dialog missed the answer.
+ * even when this page missed the answer.
  */
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -78,11 +77,12 @@ import {
 } from "~/zerops/ZeropsAccountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import { PageStandIn } from "../RoutePending";
+import { SidebarInset } from "../ui/sidebar";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { CreditForecastLine } from "./ZeropsCreditForecast";
 import {
-  ZeropsNewProjectDialog,
+  ZeropsNewProjectPage,
   type NewProjectChoice,
   type NewProjectFormInput,
 } from "./ZeropsNewProjectForm";
@@ -91,7 +91,6 @@ import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 /** How long New project waits for its reads before it opens with whatever is still out. */
 export const NEW_PROJECT_OPEN_WAIT_MS = 600;
 
-/** Mounted once, above every view: the dialog while New project is asked for. */
 const NO_RECOMMENDATION = Atom.make<string | null>(null);
 const NO_CHOICES = Atom.make<ReadonlyArray<LocationChoice>>([]);
 const UNREAD_LOCATIONS = Atom.make<LocationsRead>({
@@ -105,50 +104,49 @@ const UNREAD_LOCATIONS = Atom.make<LocationsRead>({
   locations: [],
 });
 
+/** Mounted once, above every view: an ask for New project takes the person to its page. */
 export function ZeropsNewProjectHost() {
   const asked = useNewProjectAsk((state) => state.asked);
-  const { status, activeOrganization } = useZeropsSession();
+  const dismiss = useNewProjectAsk((state) => state.dismiss);
+  const navigate = useNavigate();
   const births = useSharedBirths();
   useEffect(() => {
     for (const birth of births) dismissSharedCreation(birth);
   }, [births]);
-  return status === "signed-in" && asked !== null ? (
-    <NewProjectDialog key={`${activeOrganization?.id}/${asked}`} />
-  ) : null;
+  useEffect(() => {
+    if (asked === null) return;
+    dismiss();
+    void navigate({ to: "/zerops/new" });
+  }, [asked, dismiss, navigate]);
+  return null;
 }
 
-function NewProjectDialog() {
-  const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const answer = useNewProjectAnswer({ onLanded: dismiss });
-  const onOpenChange = (open: boolean) => {
-    if (!open) dismiss();
-  };
-  // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
-  if (answer.kind === "organization-wait") {
-    return (
-      <Dialog onOpenChange={onOpenChange} open>
-        <DialogPopup className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New project</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            <ZeropsOrganizationWait />
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
-    );
-  }
-  // The dialog leaves in the very render that draws the first Mate's view, so the Mate's face
-  // goes from the one to the other (the router's `mate-birth` transition); the ask ends after.
-  if (answer.landed) return null;
+/** `/zerops/new`: the page, one per organization, once the person is signed in. */
+export function ZeropsNewProjectRoute() {
+  const { status, activeOrganization } = useZeropsSession();
   return (
-    <ZeropsNewProjectDialog
-      {...answer.form}
-      onCancel={dismiss}
-      onOpenChange={onOpenChange}
-      open={answer.opens}
-    />
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden">
+      {status === "signed-in" ? <NewProjectPage key={activeOrganization?.id ?? ""} /> : null}
+    </SidebarInset>
   );
+}
+
+function NewProjectPage() {
+  const answer = useNewProjectAnswer();
+  // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
+  if (answer.kind === "organization-wait")
+    return (
+      <div className="new-project-page">
+        <div className="new-project-stage">
+          <ZeropsOrganizationWait />
+        </div>
+      </div>
+    );
+  // The page leaves in the very render that draws the first Mate's view.
+  if (answer.landed) return null;
+  // Held until what it says is read, so it opens whole.
+  if (!answer.opens) return <PageStandIn />;
+  return <ZeropsNewProjectPage {...answer.form} />;
 }
 
 /** What New project answers with, wherever its form is drawn. */
@@ -167,13 +165,9 @@ type NewProjectAnswer =
  * New project's reads and its Create, for a form drawn anywhere — the dialog over the view on
  * screen, or an account's first run (`FirstRunScreen`), whose page is the form. One birth id per
  * form, a repeat after HQ's answer was lost included; once HQ accepts it the person lands on the
- * first Mate's view, and `onLanded` runs after.
+ * first Mate's view.
  */
-export function useNewProjectAnswer({
-  onLanded,
-}: {
-  readonly onLanded?: () => void;
-}): NewProjectAnswer {
+export function useNewProjectAnswer(): NewProjectAnswer {
   const births = useSharedBirths();
   const createBirth = useCreateBirth();
   const { activeOrganization, organizationStatus } = useZeropsSession();
@@ -201,8 +195,8 @@ export function useNewProjectAnswer({
   });
   useEffect(() => {
     if (!accepted) return;
-    void navigate(newProjectView(birthId)).finally(onLanded);
-  }, [accepted, birthId, onLanded, navigate]);
+    void navigate(newProjectView(birthId));
+  }, [accepted, birthId, navigate]);
 
   // HQ offers application creation to the people Zerops allows to create projects.
   const addProject = resolveAddProjectVerb({ offer: useOrgOffers()("create_app") });

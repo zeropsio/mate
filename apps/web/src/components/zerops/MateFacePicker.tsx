@@ -3,7 +3,7 @@
  * eight colours and a row of the eight shapes, under whatever else the form asks first (a new
  * Mate's name) — or, folded, a small face, the name and *Change look* — or, apart, the rows alone,
  * the face standing elsewhere as its page's hero (`MateFacePreview`). The one picker wherever a
- * face is picked: *New Mate*, the New project dialog's first Mate, an account's first run, and
+ * face is picked: *New Mate*, the New project page's first Mate, an account's first run, and
  * *Change face…* in a Mate's menus.
  *
  * The face beside what makes it; on a phone, over it. Each row is a radio group of real buttons,
@@ -65,7 +65,7 @@ export function MateFacePicker({
   readonly onPickShape: (shape: MateShapeId) => void;
   /**
    * One row — the face small, the name, *Change look* — with the colours and the shapes in a
-   * panel over what follows, so opening them moves nothing: the New project dialog, where the
+   * panel over what follows, so opening them moves nothing: the New project page, where the
    * first Mate is one of several things asked.
    */
   readonly folded?: boolean;

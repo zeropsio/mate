@@ -1,21 +1,20 @@
 /**
- * The New project dialog (board D1): New Mate with the project's name on top — the project's
- * name, then its first Mate's name, colour and shape beside the face they make, then what
- * happens next — over the page it was asked from.
+ * The New project page (the owner, 2026-11-23): "What do you want to build?", the project's name
+ * and *Start a project*, in the main column beside the left menu — and folded under *Advanced
+ * options*, its first Mate's name and look, who can open it, and the region it runs in, as tiles
+ * with this browser's latency to each.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
- * it opens, the Mate's name proposed; `picked` — a project named, the Mate called Mira, Rose and
- * Seal picked; `refused` — the Mate named as another already is, Create pressed; `checking` — the
- * account's Mates' names still being read; `creating` — Create pressed, the first Mate's view on
- * its way; `closed` — the person may not add projects here, the reason in the form's place;
- * `pressing` — Create pressed: the dialog gives way to the first Mate's page at once, the steps
- * this tab runs advancing under the project's row (`pressPage.tsx`, `&fail=` stops one);
- * `&locations=2` offers two locations, at the footer's start; `&git=none` is the account's first
- * project, Git hosting coming along, its step first in what happens next). Its *Project access*
- * holds eighteen people of nineteen, one line until *Change who can open it*. The die at the name's
- * end rolls another name. The dialog stands over the page beside the left menu at the owner's
- * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
- * holds what Create handed over.
+ * it opens; `advanced` — *Advanced options* open; `picked` — a project named, the options open,
+ * the Mate called Mira, Rose and Seal picked; `refused` — the Mate named as another already is,
+ * Start pressed; `checking` — the account's Mates' names still being read; `creating` — Start
+ * pressed, the first Mate's view on its way; `closed` — the person may not add projects here, the
+ * reason in the form's place; `pressing` — Start pressed: the page gives way to the first Mate's
+ * page at once, the steps this tab runs advancing under the project's row (`pressPage.tsx`,
+ * `&fail=` stops one); `&locations=1` offers one region, which is then no choice). Its *Project
+ * access* holds eighteen people of nineteen, one line until *Change who can open it*. The die at
+ * the name's end rolls another name. The menu beside it is the owner's 435 px, as in the app.
+ * Open it at 1786 × 1000. `window.__newProjectHarness.created` holds what Create handed over.
  *
  * Fixtures only. Nothing here ships — `design-newproject.html` is not `index.html`, and no route
  * imports this module.
@@ -33,7 +32,7 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
-  ZeropsNewProjectDialog,
+  ZeropsNewProjectPage,
   type NewProjectChoice,
 } from "~/components/zerops/ZeropsNewProjectForm";
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -76,12 +75,13 @@ function mate(bot: string): ZeropsCandidate {
 /** The account's Mates: the proposed face walks past the tints they wear. */
 const MATES = [mate("Fen"), mate("Ada"), mate("Nova")];
 const LOCATIONS =
-  params.get("locations") === "2"
-    ? [
-        { id: "prg1", name: "Prague" },
-        { id: "fra1", name: "Frankfurt" },
-      ]
-    : [{ id: "prg1", name: "Prague" }];
+  params.get("locations") === "1"
+    ? [{ id: "prg1", name: "EU Central (prg1)" }]
+    : [
+        { id: "prg1", name: "EU Central (prg1)", latencyMs: 54 },
+        { id: "ny1", name: "US East (ny1)", latencyMs: 145 },
+        { id: "sea1", name: "US West (sea1)", latencyMs: 214 },
+      ];
 /** What the die rolls, in turn: never the name it was rolled from. */
 const ROLLS = ["Vera", "Wren", "Milo"];
 
@@ -185,13 +185,21 @@ function click(selector: string): void {
 }
 
 function Harness() {
-  const [open, setOpen] = useState(true);
-  // Create pressed: the dialog gives way to the first Mate's page, at once.
+  const [locationId, setLocationId] = useState("prg1");
+  // Create pressed: the page gives way to the first Mate's page, at once.
   const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newProjectHarness = { created };
     if (STATE === "idle" || STATE === "checking" || STATE === "closed") return;
-    // Reached the way a person reaches them: the project named, the Mate named and picked.
+    // Reached the way a person reaches them: the options opened, the project named, the Mate
+    // named and picked.
+    const opening =
+      STATE === "advanced" || STATE === "picked" || STATE === "refused"
+        ? window.setTimeout(() => {
+            click('.new-project-advanced [data-slot="collapsible-trigger"]');
+          }, 100)
+        : undefined;
+    if (STATE === "advanced") return () => window.clearTimeout(opening);
     const filling = window.setTimeout(() => {
       typeInto("zerops-new-project", "Acme CRM");
       if (STATE === "picked") {
@@ -208,6 +216,7 @@ function Harness() {
           }, 450)
         : undefined;
     return () => {
+      if (opening !== undefined) window.clearTimeout(opening);
       window.clearTimeout(filling);
       if (pressing !== undefined) window.clearTimeout(pressing);
     };
@@ -221,47 +230,45 @@ function Harness() {
           data-sidebar="sidebar"
           style={{ width: MENU_WIDTH }}
         />
-        <main className="min-w-0 flex-1">
-          {landed === null ? null : <HarnessPressPage birthId={landed} />}
+        <main className="h-screen min-w-0 flex-1">
+          {landed === null ? (
+            <ZeropsNewProjectPage
+              access={(onChange) => <HarnessAccess onChange={onChange} />}
+              closed={
+                STATE === "closed"
+                  ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
+                  : undefined
+              }
+              creating={STATE === "creating"}
+              defaultBotName="Quinn"
+              defaultTintFor={(name) => newMateTint(MATES, name)}
+              locationError={null}
+              locationId={locationId}
+              loading={false}
+              locations={LOCATIONS}
+              onCreate={(choice) => {
+                created.push(choice);
+                setLanded(
+                  beginHarnessPress({
+                    flow: "new-project",
+                    project: choice.name,
+                    botName: choice.botName,
+                    face: choice.face,
+                  }),
+                );
+              }}
+              onLocation={setLocationId}
+              proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
+              takenBotNames={{
+                names: ["Fen", "Ada", "Nova"],
+                complete: STATE !== "checking",
+              }}
+            />
+          ) : (
+            <HarnessPressPage birthId={landed} />
+          )}
         </main>
       </SidebarProvider>
-      {landed !== null || !open ? null : (
-        <ZeropsNewProjectDialog
-          access={(onChange) => <HarnessAccess onChange={onChange} />}
-          closed={
-            STATE === "closed"
-              ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
-              : undefined
-          }
-          creating={STATE === "creating"}
-          defaultBotName="Quinn"
-          defaultTintFor={(name) => newMateTint(MATES, name)}
-          locationError={null}
-          locationId="prg1"
-          loading={false}
-          locations={LOCATIONS}
-          onCancel={() => setOpen(false)}
-          onCreate={(choice) => {
-            created.push(choice);
-            setLanded(
-              beginHarnessPress({
-                flow: "new-project",
-                project: choice.name,
-                botName: choice.botName,
-                face: choice.face,
-              }),
-            );
-          }}
-          onLocation={() => {}}
-          onOpenChange={setOpen}
-
-          proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
-          takenBotNames={{
-            names: ["Fen", "Ada", "Nova"],
-            complete: STATE !== "checking",
-          }}
-        />
-      )}
     </div>
   );
 }
