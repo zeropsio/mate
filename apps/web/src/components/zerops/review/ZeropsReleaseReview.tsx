@@ -87,7 +87,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { ReleaseVaultGap } from "@t3tools/shared/hqRelease";
 import { vaultOutcome } from "../vault/vaultOutcome.logic";
-import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { keyRenewPress, NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
 import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useDeployKeyRenewal } from "~/zerops/useEnvironmentOperation";
@@ -1630,7 +1630,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         : onRenew === undefined
           ? undefined
           : {
-              label: renewal.kind === "working" ? "Renewing" : "Renew the key",
+              label: renewal.kind === "working" ? "Renewing" : keyRenewPress(renewal),
               enabled: true,
               safe: false,
               busy: renewal.kind === "working",
@@ -1895,6 +1895,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               onCreate={stopped ? undefined : onCreate}
               onRenew={onRenew}
               renewing={renewal.kind === "working"}
+              renewWord={keyRenewPress(renewal)}
               steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
               unread={!unread ? undefined : planState?.kind === "reading" ? "reading" : "unsaid"}
               values={

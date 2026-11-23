@@ -34,6 +34,8 @@ export const HqProposalDecision = Schema.Struct({
   words: Schema.NullOr(Schema.String),
   by: Schema.String,
   at: Schema.String,
+  /** The operation carrying out this approval, on a read: what its card's Continue and End act on. */
+  operation: Schema.optional(Schema.NullOr(Schema.Struct({ id: Schema.NonEmptyString }))),
 });
 export type HqProposalDecision = typeof HqProposalDecision.Type;
 

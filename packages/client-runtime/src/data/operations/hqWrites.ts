@@ -40,14 +40,16 @@ declare module "../model.ts" {
       readonly appId?: string;
     };
     /**
-     * An Owner's or an Admin's end of operation `id` on the application `appId` or its production,
-     * which waits for a maker who cannot continue it.
+     * The end of the waiting operation `id` HQ offers this reader, shown on the application `appId`,
+     * its production included, or on the project `projectId`.
      */
     readonly "end-operation": {
       readonly orgId: string;
       readonly id: string;
-      readonly appId: string;
-    };
+    } & (
+      | { readonly appId: string; readonly projectId?: undefined }
+      | { readonly projectId: string; readonly appId?: undefined }
+    );
     /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
      * keeps its application's Git once its last Mate is gone.
@@ -239,20 +241,29 @@ const continueOperation = shown(
   },
 );
 
+/** Whether what a holder shows says its operation `id` ended: gone from it, or failed `ended`. */
+const endedOn = (
+  operation: { readonly id: string; readonly failure?: { readonly code: string } } | undefined,
+  id: string,
+) => operation?.id !== id || operation.failure?.code === "ended";
+
 /**
- * HQ's answer is its end. The application or its production showing the operation ended (its
- * failure `ended`), or no longer showing it, or the application no longer there, adopts a lost
- * answer. One shown running or still waiting is not ended: its maker's Continue may have won.
+ * HQ's answer is its end. The application, its production or the project showing the operation
+ * ended (its failure `ended`), or no longer showing it, or no longer there, adopts a lost answer.
+ * One shown running or still waiting is not ended: its maker's Continue may have won.
  */
 const endOperation = shown(
   "end-operation",
   (intent) => intent.id,
   (read, intent) => {
-    const app = read.fact("hqApp", intent.appId);
-    if (removedForViewer(app)) return true;
-    if (app.kind !== "known") return false;
-    const operation = appOperation(app.value, intent.id);
-    return operation === undefined || operation.failure?.code === "ended";
+    if (intent.appId !== undefined) {
+      const app = read.fact("hqApp", intent.appId);
+      if (removedForViewer(app)) return true;
+      return app.kind === "known" && endedOn(appOperation(app.value, intent.id), intent.id);
+    }
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    return placement.kind === "known" && endedOn(placement.value.operation, intent.id);
   },
 );
 

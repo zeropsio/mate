@@ -1,3 +1,4 @@
+import { waitingWords } from "@t3tools/client-runtime/data";
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
@@ -330,7 +331,13 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     [
       "waiting on its maker",
       "needs",
-      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false, press: "Continue" },
+      {
+        kind: "waiting",
+        id: "op-1",
+        continueBy: "eva",
+        yours: false,
+        ...waitingWords("token_expired"),
+      },
       "restarting",
     ],
     ["failed, the Mate asks", "needs", failed, "ask"],

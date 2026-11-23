@@ -9,7 +9,7 @@
  */
 import type { HqOperation } from "../../zerops/hq/client.ts";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
-import { waitingPress, type WaitingPress } from "./operationFailure.ts";
+import { waitingWords, type WaitingWords } from "./operationFailure.ts";
 
 /** HQ's offer of an operation's Continue to the person reading (spec "Operation offers"). */
 const CONTINUE = "continue";
@@ -28,17 +28,16 @@ export type HqOperationStanding =
   /**
    * It stopped open and HQ names its maker: it waits for their Continue of `id`
    * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
-   * `endable` where HQ offers them its end, its maker being unable to continue it; `press` the
-   * word on that Continue's button, by what it waits on.
+   * `endable` where HQ offers them its end, beside that Continue at an unknown outcome; its
+   * `WaitingWords` say that Continue's button and why it waits.
    */
-  | {
+  | (WaitingWords & {
       readonly kind: "waiting";
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
-      readonly press: WaitingPress;
       readonly endable?: true;
-    }
+    })
   /**
    * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
    * including who stopped it and Zerops' answer where it refused.
@@ -69,7 +68,7 @@ export function hqOperationOf(
       id: operation.id,
       continueBy: operation.continueBy,
       yours: operation.offers?.includes(CONTINUE) === true,
-      press: waitingPress(operation.failure.code),
+      ...waitingWords(operation.failure.code),
       ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
   return { kind: "failed", failure: operation.failure };

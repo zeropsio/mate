@@ -1,3 +1,4 @@
+import { waitingWords } from "@t3tools/client-runtime/data";
 import { expect, it } from "vite-plus/test";
 import type { SharedBirth } from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -49,7 +50,12 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
     at: "2026-11-23T10:00:00Z",
     origin: "zerops",
   };
-  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", press: "Continue" } as const;
+  const waiting = {
+    kind: "waiting",
+    id: "op-1",
+    continueBy: "ada",
+    ...waitingWords("token_expired"),
+  } as const;
   const deletions = [
     undefined,
     { kind: "none" },
