@@ -40,9 +40,9 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { creationStepId } from "@t3tools/client-runtime/data";
 import { useCallback } from "react";
 
-import { accountHqApi, configuredHq } from "./accountHq";
 import { captureAccountLifetime } from "./accountLifetime";
 import { useReadGroupAgents } from "./groupAgents";
+import { useEnvironmentStarts } from "./useEnvironmentOperation";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export interface EnvironmentCreationChoice {
@@ -224,8 +224,9 @@ export function environmentProjectName(
 }
 
 export function useEnvironmentCreation(): EnvironmentCreate {
-  const { activeOrganization, client } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
+  const starts = useEnvironmentStarts();
 
   const readGroupAgents = useReadGroupAgents();
 
@@ -242,8 +243,7 @@ export function useEnvironmentCreation(): EnvironmentCreate {
         const recipe = kind === "stage" ? stageRecipe({ name, recipe: choice.recipe }) : null;
         if (recipe !== null && !recipe.ok) return { kind: "refused", reason: recipe.reason };
         if (name.length === 0) return { kind: "refused", reason: "An environment needs a name." };
-        const start: HqEnvironmentStart = {
-          id: randomUUID(),
+        const start: Omit<HqEnvironmentStart, "id"> = {
           tier: kind,
           create: {
             name,
@@ -254,17 +254,13 @@ export function useEnvironmentCreation(): EnvironmentCreate {
             ...(recipe === null ? {} : { recipe: recipe.yaml }),
           },
         };
+        let operationId: string;
         try {
-          await accountHqApi(client, organization.id, configuredHq()).startEnvironment(
-            group.groupId,
-            start,
-          );
+          operationId = await starts.startEnvironment(group.groupId, start);
         } catch (cause) {
           return { kind: "refused", reason: isCurrent() ? zeropsErrorMessage(cause) : null };
         }
-        return isCurrent()
-          ? { kind: "started", operationId: start.id }
-          : { kind: "refused", reason: null };
+        return isCurrent() ? { kind: "started", operationId } : { kind: "refused", reason: null };
       }
 
       // A Mate: one Create, which HQ runs whether this tab stays or not. Its steps are not run here.
@@ -312,7 +308,7 @@ export function useEnvironmentCreation(): EnvironmentCreate {
       }
       return { kind: "born", birthId };
     },
-    [activeOrganization, client, readGroupAgents, operations],
+    [activeOrganization, readGroupAgents, operations, starts],
   );
   // A production takes no Mate (`addedEnvironmentKind`): it is never born at HQ.
   return create as EnvironmentCreate;

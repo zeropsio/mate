@@ -7,7 +7,7 @@
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
-import { operationFailureWords, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { operationFailureWords } from "@t3tools/client-runtime/data";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -40,6 +40,7 @@ import { useReleasePlanWait, useReleaseServicePlan } from "~/zerops/useReleaseSe
 import { useReleaseVault } from "~/zerops/useReleaseVault";
 import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import { useEnvironmentOperation } from "~/zerops/useEnvironmentOperation";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -301,9 +302,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
   const sent = useRef<string | null>(null);
   // Production's `environment` operation, once HQ took its start, and the application's operation.
   const started = useRef<string | null>(null);
-  const operation = useAtomValue(shownHqListNavigationAtom).structure?.apps.find(
-    (app) => app.id === run.groupId,
-  )?.operation;
+  const { operation } = useEnvironmentOperation(run.groupId);
   const key = `${run.phase}:${run.productionId ?? ""}:${run.tag ?? ""}`;
 
   useEffect(() => {

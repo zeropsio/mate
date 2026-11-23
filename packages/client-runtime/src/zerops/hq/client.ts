@@ -643,6 +643,16 @@ export interface HqApi {
   /** Starts a stage's or a production's addition to the application (`HqEnvironmentStart`). */
   readonly startEnvironment: (appId: string, start: HqEnvironmentStart) => Promise<void>;
   /**
+   * Starts setting up or renewing an attached environment's deploy key (`POST
+   * /api/apps/:appId/environments/:name/deploy-key`, S13d), which HQ runs as its `deploy_key`
+   * operation on the person's token; `id` as {@link HqEnvironmentStart}'s.
+   */
+  readonly startDeployKey: (
+    appId: string,
+    name: string,
+    start: { readonly id: string },
+  ) => Promise<void>;
+  /**
    * Starts access changes, one operation per person, on the current access token (`POST
    * /api/access-changes`); the same ids with the same changes answer the operations again.
    */
@@ -1879,6 +1889,15 @@ export function makeHqApi(input: {
         signIn: "Sign in with your Zerops account to set this up.",
         inFlight: ENVIRONMENT_IN_FLIGHT,
       }),
+    startDeployKey: (appId, name, start) =>
+      startOperation(
+        `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(name)}/deploy-key`,
+        start,
+        {
+          signIn: "Sign in with your Zerops account to set up its deploy key.",
+          inFlight: ENVIRONMENT_IN_FLIGHT,
+        },
+      ),
     startAccessChanges: async (changes) =>
       readStartedAccessChanges(
         await authorized(

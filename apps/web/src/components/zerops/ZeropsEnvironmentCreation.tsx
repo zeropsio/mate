@@ -1,5 +1,6 @@
 /**
- * A stage's or a production's setup as HQ runs it: its application's `environment` operation, as
+ * A stage's or a production's setup as HQ runs it: its application's `environment` operation, or
+ * the `deploy_key` operation that finishes an attached one, as
  * navigation shows it on every device (`hqOperationOf`) — how far it got, where it stopped and in
  * whose words, and while its maker's sign-in ran out, their Continue. Nothing of it runs in this
  * tab: a closed tab changes nothing, and another device shows the same card.
@@ -44,11 +45,15 @@ export function environmentSetupStep(phase: string): string {
   return STEPS[PHASE_STEP[phase] ?? 0]!;
 }
 
+/** A deploy key's setup: its one step. */
+const KEY_STEPS = ["Setting up its deploy key"] as const;
+
 /** A first import as measured end to end (about two minutes): what the row promises. */
 const ENVIRONMENT_CREATION_ESTIMATE_MS = 2 * 60_000;
 
 export function ZeropsEnvironmentCreation({
   name,
+  kind,
   standing,
   phase,
   startedAtMs,
@@ -60,6 +65,8 @@ export function ZeropsEnvironmentCreation({
 }: {
   /** What is being set up, e.g. "Beviro CRM - production", or its application where unknown. */
   readonly name: string;
+  /** The operation's kind: `environment`, or `deploy_key` for a key alone. */
+  readonly kind: string;
   /** How HQ's `environment` operation on the application stands (`hqOperationOf`). */
   readonly standing: Exclude<HqOperationStanding, { readonly kind: "none" }>;
   /** The phase HQ recorded last. */
@@ -76,7 +83,8 @@ export function ZeropsEnvironmentCreation({
   readonly onStartAgain?: (() => void) | undefined;
   readonly onDismiss: () => void;
 }) {
-  const at = PHASE_STEP[phase] ?? 0;
+  const keyOnly = kind === "deploy_key";
+  const at = keyOnly ? 0 : (PHASE_STEP[phase] ?? 0);
   return (
     <section
       className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4"
@@ -93,7 +101,7 @@ export function ZeropsEnvironmentCreation({
         label={`Setting up ${name}`}
         nowMs={nowMs}
         startedAtMs={startedAtMs}
-        steps={STEPS}
+        steps={keyOnly ? KEY_STEPS : STEPS}
         view={
           standing.kind === "failed"
             ? {

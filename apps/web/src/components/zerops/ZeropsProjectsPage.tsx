@@ -15,7 +15,7 @@ import { useProjectsPageRows } from "./projects/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff, hqOperationOf } from "@t3tools/client-runtime/data";
-import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
@@ -271,6 +271,9 @@ interface EnvironmentCreationView {
   readonly seen?: true;
 }
 
+/** The operations a setup card shows: an environment added, or its deploy key set up. */
+const ENVIRONMENT_CARD_KINDS: ReadonlySet<string> = new Set(["environment", "deploy_key"]);
+
 /** Whom a stopped setup waits for, by the member list's name of them; mounted only for one. */
 function EnvironmentWaitingWords({
   orgId,
@@ -515,6 +518,8 @@ export function projectsGroupLine(input: {
   readonly finishing: GroupEnvironmentTier | undefined;
   /** Its environment whose setup is not finished. */
   readonly halfMade: GroupEnvironmentTier | undefined;
+  /** Why HQ refused the finish asked here, in its words. */
+  readonly refused?: string | undefined;
   /**
    * Its environment this page is setting up now: not finished because it is under way, which its
    * place on the card says (the onboarding run flashed "isn't finished" for 0.7 s at the press).
@@ -522,6 +527,7 @@ export function projectsGroupLine(input: {
   readonly creating?: GroupEnvironmentTier | undefined;
 }): string | undefined {
   if (input.placeholder) return "Couldn't read this project's name";
+  if (input.refused !== undefined) return input.refused;
   if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
   if (input.halfMade !== undefined && input.halfMade !== input.creating)
@@ -1758,16 +1764,18 @@ export function ZeropsProjectsContent({
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
-  // Each application's `environment` operation, as HQ's navigation shows it to every device.
-  const environmentOperations = useMemo(() => {
-    const operations = new Map<string, HqOperation>();
-    const structure = hqStructure.structure;
-    // Unread, HQ's structure shows no operation yet: none is drawn until it does.
-    if (structure == null) return operations;
-    for (const app of structure.apps)
-      if (app.operation?.kind === "environment") operations.set(app.id, app.operation);
-    return operations;
-  }, [hqStructure.structure]);
+  // Each application's environment operation, as HQ's navigation shows it to every device: a
+  // stage or a production added (`environment`), or its deploy key set up (`deploy_key`).
+  const applicationOperations = useAtomValue(applicationOperationsAtom);
+  const environmentOperations = useMemo(
+    () =>
+      new Map(
+        [...applicationOperations].filter(([, operation]) =>
+          ENVIRONMENT_CARD_KINDS.has(operation.kind),
+        ),
+      ),
+    [applicationOperations],
+  );
   // A creation this page asked for ends with its operation: seen on its application, then gone
   // from it or ended. A production's first release is the person's next step (P7).
   useEffect(() => {
@@ -1797,7 +1805,7 @@ export function ZeropsProjectsContent({
       groupTree.groups.flatMap(({ group }) => {
         const operation = environmentOperations.get(group.groupId);
         if (operation === undefined || dismissedOperations.has(operation.id)) return [];
-        const standing = hqOperationOf(operation, "environment", user?.id);
+        const standing = hqOperationOf(operation, operation.kind, user?.id);
         return standing.kind === "none" ? [] : [{ group, operation, standing }];
       }),
     [dismissedOperations, environmentOperations, groupTree.groups, user?.id],
@@ -1855,12 +1863,21 @@ export function ZeropsProjectsContent({
             placeholder: groupNameUnread(group),
             unfinished: finishing.unfinished.get(group.groupId),
             finishing: finishing.finishing.get(group.groupId),
+            refused: finishing.refused.get(group.groupId),
             halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
             creating: creationCovers(creation, settled, group.groupId),
           }),
         ]),
       ),
-    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade, creation, settled],
+    [
+      groupTree.groups,
+      finishing.unfinished,
+      finishing.finishing,
+      finishing.refused,
+      halfMade,
+      creation,
+      settled,
+    ],
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
@@ -2835,10 +2852,13 @@ export function ZeropsProjectsContent({
         creation.operationId === operation.id ? null : (
           <ZeropsEnvironmentCreation
             key={operation.id}
+            kind={operation.kind}
             name={
               creation?.operationId === operation.id
                 ? creation.name
-                : `an environment of ${group.name}`
+                : operation.kind === "deploy_key"
+                  ? `the deploy key of ${group.name}`
+                  : `an environment of ${group.name}`
             }
             nowMs={creationNowMs}
             onDismiss={() => {

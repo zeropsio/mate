@@ -384,7 +384,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     family: "HQ structure/apps",
     reason:
       "the whole structure is read back after an action; the action's result updates the store",
-    paths: ["apps/web/src/zerops/addGroupEnvironment.ts"],
   },
   {
     token: "useMatesSettled()",
