@@ -14,6 +14,7 @@ import {
   mateCardHoldsMenu,
   mateLineHoldsVerb,
   mateRowCan,
+  mateCardPress,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic.ts";
@@ -385,4 +386,18 @@ it("MN+3: The Add a Mate door is not drawn while Set up Mate stands in for it, a
   expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: false }).kind).toBe(
     "offered",
   );
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return mateLineHoldsVerb(action) ? undefined : open; → return open;
+it("MN+5: A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears", () => {
+  const open = () => undefined;
+  for (const [action, opens] of [
+    [{ kind: "set-up-mate", label: "Set up Mate" }, false],
+    [{ kind: "enable", label: "Enable Zerops Mate" }, false],
+    [{ kind: "retry-probe", label: "Try again" }, false],
+    [{ kind: "open", label: "Open" }, true],
+    [{ kind: "none" }, true],
+  ] as const) {
+    expect([action.kind, mateCardPress(action, open) === open]).toEqual([action.kind, opens]);
+  }
 });
