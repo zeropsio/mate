@@ -121,7 +121,8 @@ import {
 import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useAddMateDoor } from "../zerops/addMateDoor";
-import { useOpenPutLive, usePutLive } from "../zerops/putLive";
+import { useOpenPutLive } from "../zerops/putLive";
+import { applicationOperationsAtom } from "../zerops/useEnvironmentOperation";
 import { releaseOffered } from "~/zerops/waiting.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
@@ -296,7 +297,7 @@ export default function Sidebar() {
   const zeropsProjectFlows = useProjectFlows("every").flows;
   // Production being made by Put it live is released by it: no row or header asks for a release
   // meanwhile (the onboarding run's "Release 2" beside "Making production").
-  const putLiveRuns = usePutLive((state) => state.runs);
+  const applicationOperations = useAtomValue(applicationOperationsAtom);
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlows.get(groupId);
@@ -313,7 +314,7 @@ export default function Sidebar() {
         releaseOffered: releaseOffered({
           allowed: flow.release.gate.allowed,
           recheck: flow.release.git?.delivery?.recheck,
-          putLive: putLiveRuns.get(groupId),
+          putLive: applicationOperations.get(groupId),
         }),
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
@@ -341,7 +342,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [putLiveRuns, zeropsProjectFlows],
+    [applicationOperations, zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpen, setOpenMobile } = useSidebar();

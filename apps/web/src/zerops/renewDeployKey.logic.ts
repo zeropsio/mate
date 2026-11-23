@@ -52,5 +52,8 @@ export function keyRenewalOf(
       return { kind: "failed", words: keyRenewFailureWords(standing.failure) };
     case "none":
       return asked === "ended" ? { kind: "renewed" } : NOT_RENEWING;
+    // A renewal ends at no decision of the person's.
+    case "needs":
+      return NOT_RENEWING;
   }
 }

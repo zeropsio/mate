@@ -13,7 +13,9 @@ const PREPROCESSOR = "#zeropsPreprocessor=on\n";
  * services only, each as the plan settles it, with the preprocessor line when a value is generated.
  * `undefined` when the plan creates nothing.
  */
-export function servicePlanImportYaml(plan: ReleaseServicePlan): string | undefined {
+export function servicePlanImportYaml(
+  plan: Pick<ReleaseServicePlan, "operations">,
+): string | undefined {
   const services = plan.operations.flatMap((operation) =>
     operation.kind === "create" ? [operation.settings] : [],
   );

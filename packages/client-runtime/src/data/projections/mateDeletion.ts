@@ -57,7 +57,8 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   if (deletion.kind === "waiting") return deletion;
   // Zerops deletes its project, whoever asked: nothing HQ says of it can open it again.
   if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
-  if (deletion.kind === "none") return NONE;
+  // A Mate's deletion ends at no decision of the person's.
+  if (deletion.kind === "none" || deletion.kind === "needs") return NONE;
   if (deletion.kind === "going") return DELETING;
   return deletion;
 }

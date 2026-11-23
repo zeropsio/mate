@@ -9,7 +9,7 @@
  */
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqAttach, HqCreateBirth } from "../../zerops/hq/client.ts";
+import type { HqAttach, HqCreateBirth, HqPutLiveStart } from "../../zerops/hq/client.ts";
 import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -69,6 +69,15 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
+    };
+    /**
+     * The application's *Put it live*, which HQ runs as its `put_live` operation `start.id` on the
+     * person's token: its production made, then released to.
+     */
+    readonly "start-put-live": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly start: HqPutLiveStart;
     };
     readonly "delete-birth": {
       readonly orgId: string;
@@ -264,6 +273,17 @@ const startAppDeletion = shown(
   },
 );
 
+/**
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing the operation
+ * under its id on the application, open or ended, adopts a lost answer; the same id sent again is
+ * answered as taken.
+ */
+const startPutLive = shown(
+  "start-put-live",
+  (intent) => intent.appId,
+  (read, intent) => appOf(read, intent.appId)?.operation?.id === intent.start.id,
+);
+
 /** Absence is evidence only in the live, complete birth list of the known application. */
 const deleteBirth: OperationKind<"delete-birth"> = {
   kind: "delete-birth",
@@ -380,6 +400,7 @@ export const HQ_WRITE_KINDS = [
   startMateDeletion,
   startProductionRemoval,
   startAppDeletion,
+  startPutLive,
   deleteBirth,
   attachProject,
   handOverMate,

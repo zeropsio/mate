@@ -22,7 +22,7 @@ import { writeTrouble } from "./zeropsWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** The operation HQ's navigation shows on an application; absent where it shows none. */
-const applicationOperationAtom = Atom.family((appId: string) =>
+export const applicationOperationAtom = Atom.family((appId: string) =>
   Atom.make(
     (get) => get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.operation,
   ).pipe(Atom.withLabel(`zerops:environment-operation:${appId}`)),

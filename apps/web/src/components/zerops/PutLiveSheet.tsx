@@ -3,8 +3,8 @@
  * The change by its title and what it brings by name (the review reads it whole), with the way to
  * its code; production, what it gets, and the way to set it up yourself; stage left for later, and
  * one button. It asks nothing it already knows: production's name, its recipe and its first
- * version are decided, and the release follows production by itself (`putLive.logic.ts`). The
- * press approves the services it names: HQ refuses a release that creates services nobody saw.
+ * version are decided, and HQ releases to production once it made it (`putLive.logic.ts`). The
+ * press approves the services it names: HQ stops at the release's review for anything else.
  * What it cannot know it asks, once: who production is for — nothing picked for the person, the
  * button waiting for the answer.
  */
@@ -166,9 +166,9 @@ export function PutLiveSheet({
         <p className="text-muted-foreground text-xs">{model.later}</p>
       </DialogPanel>
       <DialogFooter>
-        {model.hold === undefined ? null : (
+        {model.hold === undefined && model.refused === undefined ? null : (
           <p className="me-auto self-center text-muted-foreground text-sm" role="status">
-            {model.hold}
+            {model.hold ?? model.refused}
           </p>
         )}
         <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>

@@ -842,11 +842,13 @@ const CREATE_DB: Extract<ReleasePlan["operations"][number], { kind: "create" }> 
 };
 const CREATION_PLAN: ReleasePlan = {
   hash: "a".repeat(64),
+  vault: { state: "known", gaps: [] },
   operations: [CREATE_DB, { kind: "deploy", service: "app", sha: SEVEN_E }],
 };
 /** The same plan read again once the database stands: it only deploys. */
 const DEPLOY_PLAN: ReleasePlan = {
   hash: "b".repeat(64),
+  vault: { state: "known", gaps: [] },
   operations: [{ kind: "deploy", service: "app", sha: SEVEN_E }],
 };
 /** A release that moves the app alone: the api stays as it is. */
@@ -888,6 +890,7 @@ const THREE = {
 } satisfies Partial<ReleaseProps>;
 const THREE_PLAN: ReleasePlan = {
   hash: "d".repeat(64),
+  vault: { state: "known", gaps: [] },
   operations: THREE.services.map((service) => ({ kind: "deploy", service, sha: SEVEN_E })),
 };
 
@@ -900,6 +903,7 @@ const KEY_ENVIRONMENT = "acme-production";
 const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; a person with admin access to its project renews it in Zerops Mate`;
 const KEY_PLAN: ReleasePlan = {
   hash: "c".repeat(64),
+  vault: { state: "known", gaps: [] },
   operations: [
     {
       kind: "create",

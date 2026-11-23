@@ -174,6 +174,7 @@ const HQ_CLIENT_VERBS = [
   "deleteApp",
   "createApp",
   "deleteBirth",
+  "startPutLive",
   "holdPress",
   "endPress",
   "attachProject",

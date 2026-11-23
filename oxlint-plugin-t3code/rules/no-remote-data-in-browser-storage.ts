@@ -100,8 +100,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // What each conversation's agent was told its production and stage answer on, as digests: what
   // this browser said, never the addresses a source answered.
   "apps/web/src/zerops/addressTurnNotes.ts",
-  // The production the person's own Put it live made, until it went live or was put away.
-  "apps/web/src/zerops/putLiveMemory.ts",
   // The names an inviter typed for invitations not joined yet, and whether a welcome was said.
   "apps/web/src/zerops/invitationMemory.ts",
   "apps/web/src/zerops/diagnostics.ts",

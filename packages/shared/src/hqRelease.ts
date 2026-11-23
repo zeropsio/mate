@@ -199,8 +199,32 @@ const Entries = Schema.Array(GitReleaseEntry).check(
   ),
 );
 
+/**
+ * A value the release reads that production's vault lacks, as HQ derives it from the vault's keys
+ * alone: `scope` is `"shared"` (Shared's, `holder` `null`) or the runtime's service id (`holder` its
+ * hostname), `readers` the release's runtimes that read it.
+ */
+export const ReleaseVaultGap = Schema.Struct({
+  id: Schema.String,
+  key: Schema.String,
+  scope: Schema.String,
+  holder: Schema.NullOr(Schema.String),
+  readers: Schema.Array(Schema.String),
+});
+export type ReleaseVaultGap = typeof ReleaseVaultGap.Type;
+
+/**
+ * What the release reads that production's vault lacks (HQ `spec/protocol.md`, the review's
+ * `vault`): `unknown`, with no gap, where HQ could not tell.
+ */
+export const ReleaseVault = Schema.Struct({
+  state: Schema.Literals(["known", "unknown"]),
+  gaps: Schema.Array(ReleaseVaultGap),
+});
+
 /** HQ's persisted exact production effects, reviewed before service creation. */
 export const ReleaseServicePlan = Schema.Struct({
+  vault: ReleaseVault,
   hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   operations: Schema.Array(
     Schema.Union([

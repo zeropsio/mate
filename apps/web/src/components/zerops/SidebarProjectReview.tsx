@@ -29,7 +29,7 @@ import {
   standingWaits,
   VIEW_CHANGE,
 } from "@t3tools/client-runtime/zerops";
-import { usePutLiveRun } from "~/zerops/putLive";
+import { usePutLiveStanding } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview, useReviewShown } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
@@ -230,14 +230,14 @@ export function ProjectReviewMarks({
   withRun = false,
 }: Parameters<typeof ProjectReviewTags>[0] & {
   /**
-   * The project's own row: a release or Put it live run of this tab stands on it in the release
-   * mark's place, wherever the person is — under way with its step on hover, stopped with why.
+   * The project's own row: HQ's Put it live of it stands on it in the release mark's place,
+   * wherever the person is — under way with its step on hover, stopped with why.
    */
   readonly withRun?: boolean;
 }): ReactNode {
   const openReview = useOpenReview();
-  const stored = usePutLiveRun(withRun ? groupId : undefined);
-  const run = putLiveMark(stored);
+  const standing = usePutLiveStanding(groupId);
+  const run = withRun ? putLiveMark(projectName, standing) : undefined;
   if (items.length === 0 && release === undefined && run === undefined) return null;
   const mark = items.length === 0 ? undefined : reviewMarkOf(items, projectName);
   return (

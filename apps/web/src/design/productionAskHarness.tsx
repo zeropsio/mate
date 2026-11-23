@@ -65,7 +65,11 @@ const DEPLOY = { kind: "deploy" as const, service: "app", sha: "1a".repeat(20) }
 
 const planOf = (...creations: ReadonlyArray<typeof DB | typeof CACHE>): ServiceCreatePlan => ({
   kind: "ready",
-  plan: { hash: "0".repeat(64), operations: [...creations, DEPLOY] } satisfies ReleaseServicePlan,
+  plan: {
+    hash: "0".repeat(64),
+    operations: [...creations, DEPLOY],
+    vault: { state: "known", gaps: [] },
+  } satisfies ReleaseServicePlan,
 });
 
 const MAY = { allowed: true } as const;

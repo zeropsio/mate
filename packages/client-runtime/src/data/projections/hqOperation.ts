@@ -32,7 +32,12 @@ export type HqOperationStanding =
    * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
    * including who stopped it and Zerops' answer where it refused.
    */
-  | { readonly kind: "failed"; readonly failure: HqOperationFailure };
+  | { readonly kind: "failed"; readonly failure: HqOperationFailure }
+  /**
+   * It ended at a decision its target's person has not made (`needs`: a Put it live's
+   * `release_review`): nothing runs, and the decision is offered.
+   */
+  | { readonly kind: "needs"; readonly needs: string };
 
 const NONE: HqOperationStanding = { kind: "none" };
 const GOING: HqOperationStanding = { kind: "going" };
@@ -44,7 +49,8 @@ export function hqOperationOf(
   viewer: string | undefined,
 ): HqOperationStanding {
   if (operation?.kind !== kind) return NONE;
-  if (operation.failure === undefined) return GOING;
+  if (operation.failure === undefined)
+    return operation.needs === undefined ? GOING : { kind: "needs", needs: operation.needs };
   // HQ names its maker only while it stands open waiting for their fresh token.
   if (operation.failure.code === TOKEN_EXPIRED && operation.continueBy !== undefined)
     return {
