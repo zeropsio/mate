@@ -426,10 +426,10 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
       aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
-        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
-        // The panel topbar sits above this container; matching bottom padding
-        // keeps the cards centered against the full panel, not the leftover.
-        "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
+        "flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
+        // The panel topbar sits above this container; a matching room under the
+        // cards keeps them centered against the full panel, not the leftover.
+        "after:h-[calc(var(--workspace-topbar-height)+--spacing(6))] after:shrink-0",
       )}
     >
       {/* m-auto, not justify-center: a launcher taller than the panel scrolls
@@ -788,7 +788,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
-          ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
+          // Where Windows draws its own controls over the bar, the bar stops short of them.
+          ownsDesktopTitleBar &&
+            "wco:me-[calc(var(--workspace-native-controls-inset)+6rem)] wco:pr-0",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
         data-right-panel-tabbar
