@@ -38,6 +38,8 @@ const buttonVariants = cva(
         sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         lg: "h-fit min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",
+        /** A glyph press in dense chrome (a tab's close, a table's toggle); a coarse pointer still gets 44 px. */
+        "icon-2xs": "size-5 [&_svg:not([class*='size-'])]:size-3",
         "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-md": "size-8",
@@ -108,6 +110,8 @@ const inlineButtonVariants = cva(
         /** An action word in a line of text: blue acts. */
         default: "text-primary",
         muted: "text-muted-foreground hover:text-foreground",
+        /** A name that opens what it names (a file, a release, a run): the text's own ink. */
+        plain: "text-foreground",
         destructive: "text-destructive/80 hover:text-destructive",
         /** Opens a menu from inside a sentence; the dotted underline marks it as a choice. */
         picker:

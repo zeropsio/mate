@@ -23,6 +23,7 @@ const SIZES = variantsOf<ButtonSize>({
   sm: true,
   md: true,
   lg: true,
+  "icon-2xs": true,
   "icon-xs": true,
   "icon-sm": true,
   "icon-md": true,
@@ -31,7 +32,7 @@ const SIZES = variantsOf<ButtonSize>({
 const TEXT_SIZES = SIZES.filter((size) => !size.startsWith("icon"));
 const ICON_SIZES = SIZES.filter((size) => size.startsWith("icon"));
 
-const INLINE_TONES = ["default", "muted", "destructive", "picker"] as const;
+const INLINE_TONES = ["default", "muted", "plain", "destructive", "picker"] as const;
 
 function ButtonSpecimens() {
   return (

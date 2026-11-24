@@ -150,7 +150,8 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   quiet tools, `sidebar` for the menu's own presses on its ground, `destructive` only for what deletes, stops or acts on Production, `link` inside
   text. Buttons are rectangles, except `shape="round"`: the round icon press (the composer's send)
   and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
-  is `InlineButton`.
+  is `InlineButton`; a name that opens what it names is its `plain` tone. A list's row is `Row`,
+  `xs` for a tree or a dense list.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.

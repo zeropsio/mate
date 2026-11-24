@@ -14,6 +14,7 @@ import { cn } from "~/lib/utils";
  * only once none is left. Meta is one line and never wraps.
  *
  * Sizes follow what the row leads with:
+ * - `xs` — a tree's or a dense list's row: no mark or a 16 px one, caption words, 24 px tall;
  * - `sm` — a setting, an address: no mark or a 20 px one, 14 px words;
  * - `md` — a person, a service: a 32 px mark;
  * - `lg` — the menu's Mates and projects: a 36 px face, 15 px names and 14 px lines;
@@ -23,6 +24,7 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
   defaultVariants: { size: "md", pressable: false },
   variants: {
     size: {
+      xs: "min-h-6 gap-2 rounded-control px-1.5 py-0.5",
       sm: "min-h-11 rounded-lg px-3 py-2.5",
       md: "min-h-12 rounded-xl px-2.5 py-2",
       lg: "min-h-15.75 rounded-xl px-2.5 py-2.75",
@@ -43,6 +45,7 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
 type RowSize = NonNullable<VariantProps<typeof rowVariants>["size"]>;
 
 const LEAD_CLASS: Record<RowSize, string> = {
+  xs: "size-4",
   sm: "size-5",
   md: "size-8",
   lg: "size-9",
@@ -50,6 +53,7 @@ const LEAD_CLASS: Record<RowSize, string> = {
 };
 
 const HEAD_CLASS: Record<RowSize, string> = {
+  xs: "h-5 text-caption leading-5",
   sm: "h-5 text-body leading-5",
   md: "h-5 text-body leading-5",
   lg: "h-5.5 text-[15px] leading-5.25",
@@ -57,6 +61,7 @@ const HEAD_CLASS: Record<RowSize, string> = {
 };
 
 const BADGES_CLASS: Record<RowSize, string> = {
+  xs: "h-5",
   sm: "h-5",
   md: "h-5",
   lg: "h-5.5",
@@ -64,6 +69,7 @@ const BADGES_CLASS: Record<RowSize, string> = {
 };
 
 const LINE_CLASS: Record<RowSize, string> = {
+  xs: "text-caption leading-4",
   sm: "text-caption leading-4",
   md: "text-line leading-5",
   lg: "text-prose leading-5.5",

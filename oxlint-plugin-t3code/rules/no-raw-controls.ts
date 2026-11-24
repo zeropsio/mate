@@ -37,6 +37,20 @@ const coveredPath = (filename: string): string | undefined => {
   return OWNS_ITS_CONTROLS.test(path) || TEST_FILE_PATTERN.test(path) ? undefined : path;
 };
 
+/**
+ * An element handed to a kit component's `render` (`<Button render={<a href=… />}>`): the kit
+ * draws it, the element only names what it renders as.
+ */
+const renderedByTheKit = (node: ESTree.JSXOpeningElement): boolean => {
+  const container = node.parent?.parent;
+  const holder = container?.type === "JSXExpressionContainer" ? container.parent : undefined;
+  return (
+    holder?.type === "JSXAttribute" &&
+    holder.name.type === "JSXIdentifier" &&
+    holder.name.name === "render"
+  );
+};
+
 const attribute = (node: ESTree.JSXOpeningElement, name: string) =>
   node.attributes.find(
     (candidate): candidate is ESTree.JSXAttribute =>
@@ -65,7 +79,7 @@ export default defineRule({
         if (node.name.type !== "JSXIdentifier") return;
         const element = node.name.name;
         const kit = KIT_CONTROL.get(element);
-        if (kit === undefined) return;
+        if (kit === undefined || renderedByTheKit(node)) return;
         const type = attribute(node, "type");
         if (
           element === "input" &&
