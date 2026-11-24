@@ -128,11 +128,12 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
       )}
       data-composer-tasks-badge="true"
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost-muted"
+        size="xs"
+        className="min-w-0 flex-1 justify-start"
         aria-expanded={expanded}
         aria-label={label}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-muted-foreground hover:text-foreground"
         onClick={onToggle}
         onPointerDown={(event) => event.preventDefault()}
       >
@@ -153,7 +154,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           {progress.completedSteps}/{progress.totalSteps}
         </span>
         <TaskSegments className="w-20" steps={steps} />
-      </button>
+      </Button>
       <Button
         size="icon-sm"
         variant="ghost"
@@ -182,10 +183,11 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
   return (
     <div className="chat-composer-top-drawer" data-chat-composer-tasks-drawer="true">
       <div className="flex items-center gap-1 px-3 py-1.5 sm:px-4">
-        <button
-          type="button"
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="min-w-0 flex-1 justify-start"
           aria-expanded="true"
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-left text-caption text-muted-foreground hover:text-foreground"
           onClick={onCollapse}
           onPointerDown={(event) => event.preventDefault()}
         >
@@ -194,7 +196,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           <span className="tabular-nums">
             {progress.completedSteps}/{progress.totalSteps}
           </span>
-        </button>
+        </Button>
         <Button
           size="icon-sm"
           variant="ghost"

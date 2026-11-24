@@ -11823,7 +11823,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   --picture-crop-edge: rgb(255 255 255 / 95%);
   --picture-crop-handle: #ffffff;
   --picture-tag-surface: rgb(0 0 0 / 66%);
-  --picture-remove-shadow: 0 2px 6px -2px rgb(0 0 0 / 25%);
 }
 
 /*
@@ -11900,17 +11899,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .composer-picture-retry {
   position: absolute;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: 50%;
-  background: var(--color-popover);
-  color: var(--color-muted-foreground);
-  box-shadow: var(--picture-remove-shadow);
-  cursor: pointer;
 }
 
 .composer-picture-remove {
@@ -11923,24 +11911,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .composer-picture-retry {
   right: 6px;
   bottom: 6px;
-  color: var(--color-warning-foreground);
-}
-
-.composer-picture-remove svg,
-.composer-picture-retry svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 2.5;
 }
 
 .composer-picture:hover .composer-picture-remove,
-.composer-picture:focus-within .composer-picture-remove,
-.composer-picture-remove:focus-visible {
+.composer-picture:focus-within .composer-picture-remove {
   opacity: 1;
-}
-
-.composer-picture-remove:hover {
-  color: var(--color-foreground);
 }
 
 @media (pointer: coarse) {
@@ -12265,25 +12240,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   text-align: center;
 }
 
-.picture-note-text {
-  display: block;
-  width: 100%;
-  min-height: 40px;
-  max-height: 120px;
-  padding: 0;
-  border: 0;
-  outline: none;
-  background: none;
-  color: var(--color-popover-foreground);
-  font: 400 14px/20px var(--font-sans);
-  field-sizing: content;
-  resize: none;
-}
-
-.picture-note-text::placeholder {
-  color: var(--color-placeholder);
-}
-
 .picture-note-foot {
   display: flex;
   align-items: center;
@@ -12292,35 +12248,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   margin-top: 6px;
   color: var(--color-muted-foreground);
   font: 500 12px/16px var(--font-sans);
-}
-
-.picture-note-remove {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 7px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--color-muted-foreground);
-  font: 500 12px/16px var(--font-sans);
-  cursor: pointer;
-}
-
-.picture-note-remove svg {
-  width: 13px;
-  height: 13px;
-}
-
-.picture-note-remove:hover {
-  background: var(--color-accent);
-  color: var(--color-destructive);
-}
-
-.picture-note-remove:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: -2px;
 }
 
 .picture-view-bar {
@@ -12369,31 +12296,9 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   background: var(--color-accent);
 }
 
-.picture-tool[aria-pressed="true"] {
-  background: var(--color-foreground);
-  color: var(--color-popover);
-}
-
-.picture-tool:focus-visible,
-.picture-done:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 1px;
-}
-
 .picture-keep {
   gap: 8px;
   padding: 0 8px;
-}
-
-.picture-tool-small {
-  height: 26px;
-  padding: 0 8px;
-  color: var(--color-muted-foreground);
-  font-size: 12px;
-}
-
-.picture-tool-small:hover {
-  color: var(--color-foreground);
 }
 
 .picture-tools-rule {
@@ -12433,34 +12338,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .picture-tools-plus {
   color: var(--color-popover-foreground);
   font-weight: 500;
-}
-
-.picture-done {
-  height: 32px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--color-message-action);
-  color: var(--color-message-action-foreground);
-  font: 500 13px/1 var(--font-sans);
-  cursor: pointer;
-  transition: background-color 120ms ease;
-}
-
-.picture-done:hover {
-  background: var(--color-message-action-hover);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .picture-done {
-    transition:
-      background-color 120ms ease,
-      transform 100ms ease;
-  }
-
-  .picture-done:active {
-    transform: scale(0.97);
-  }
 }
 
 @media (max-width: 760px) {
@@ -12614,23 +12491,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .composer-file-action {
   position: absolute;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: 50%;
-  background: var(--color-popover);
-  color: var(--color-muted-foreground);
-  box-shadow: var(--picture-remove-shadow);
-  cursor: pointer;
-}
-
-.composer-file-action svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 2.5;
 }
 
 .composer-file-remove {
@@ -12641,19 +12501,13 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 }
 
 .composer-file:hover .composer-file-remove,
-.composer-file:focus-within .composer-file-remove,
-.composer-file-remove:focus-visible {
+.composer-file:focus-within .composer-file-remove {
   opacity: 1;
-}
-
-.composer-file-remove:hover {
-  color: var(--color-foreground);
 }
 
 .composer-file-retry {
   right: 8px;
   bottom: 8px;
-  color: var(--color-warning-foreground);
 }
 
 @media (pointer: coarse) {

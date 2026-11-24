@@ -32,7 +32,9 @@ import {
 import { pictureFitSize } from "~/lib/imageCompression";
 import { drawPictureMarks, pictureMarkMetrics } from "~/lib/pictureDrawing";
 import { randomUUID } from "~/lib/utils";
+import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
 
 type Mode = "mark" | "crop";
@@ -670,9 +672,10 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               <span className="picture-note-number">{noteFor + 1}</span>
               <span>Note</span>
             </div>
-            <textarea
+            <Textarea
               ref={noteTextRef}
-              className="picture-note-text"
+              unstyled
+              size="sm"
               rows={2}
               value={noteDraft}
               placeholder="What should change here?"
@@ -689,15 +692,15 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
             <div className="picture-note-foot">
               <span>↵ to save, empty is fine</span>
               {editable ? (
-                <button
-                  type="button"
-                  className="picture-note-remove"
+                <Button
+                  variant="destructive-ghost"
+                  size="xs"
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => removeMark(noteFor)}
                 >
                   <Trash2Icon aria-hidden="true" />
-                  <span>Remove</span>
-                </button>
+                  Remove
+                </Button>
               ) : null}
             </div>
           </div>
@@ -707,28 +710,28 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
         <div className="picture-tools">
           {editable ? (
             <>
-              <button
-                type="button"
-                className="picture-tool"
+              <Button
+                variant="ghost"
                 aria-pressed={cropping}
+                data-pressed={cropping || undefined}
                 onClick={() => (cropping ? leaveCrop(true) : enterCrop())}
               >
                 <CropIcon aria-hidden="true" />
-                <span>Crop</span>
-              </button>
+                Crop
+              </Button>
               <span className="picture-tools-rule" />
             </>
           ) : null}
           {cropping ? (
             <span className="picture-tools-info">
               <span>{pictureDims(cropDraft.w, cropDraft.h)}</span>
-              <button
-                type="button"
-                className="picture-tool picture-tool-small"
+              <Button
+                variant="ghost-muted"
+                size="xs"
                 onClick={() => setCropDraft(fullPictureCrop(sourceSize.w, sourceSize.h))}
               >
                 Reset
-              </button>
+              </Button>
             </span>
           ) : (
             <span className="picture-tools-hint">
@@ -761,9 +764,9 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               </span>
             </label>
           ) : null}
-          <button ref={doneRef} type="button" className="picture-done" onClick={close}>
+          <Button ref={doneRef} onClick={close}>
             Done
-          </button>
+          </Button>
         </div>
       </div>
     </div>,

@@ -9,6 +9,7 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Row } from "../ui/row";
 
 import { NOT_NOW } from "../ask/ask.logic";
 import { AskDock } from "../ask/AskCard";
@@ -401,59 +402,67 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   isOptimisticallySelected ||
                   (!customAnswerActive && progress.selectedOptionValues.includes(optionValue));
                 const isHighlighted = index === highlightedIndex;
+                const description =
+                  option.description && option.description !== option.label
+                    ? option.description
+                    : undefined;
                 if (answer === null) {
                   return (
                     <div
                       key={`${activeQuestion.id}:${optionValue}`}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left",
-                        isSelected ? "bg-muted/55 text-foreground" : "text-foreground/85",
-                      )}
+                      className={cn("rounded-control", isSelected && "bg-muted/55")}
                     >
-                      <PendingUserInputOptionLabel option={option} />
-                      {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
+                      <Row
+                        size="sm"
+                        title={option.label}
+                        line={description}
+                        lineWraps
+                        meta={
+                          isSelected ? <CheckIcon className="size-3.5 text-primary" /> : undefined
+                        }
+                      />
                     </div>
                   );
                 }
                 const shortcutKey = index < 9 ? index + 1 : null;
-                const className = cn(
-                  "group flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
-                  isSelected
-                    ? "bg-muted/55 text-foreground"
-                    : "bg-transparent text-foreground/85 hover:bg-muted/30",
-                  isHighlighted && "ring-1 ring-primary/40",
-                  isResponding && "opacity-50 cursor-not-allowed",
-                  !isResponding && "cursor-pointer",
-                );
-                const content = (
-                  <>
-                    <PendingUserInputOptionLabel option={option} />
-                    {isSelected ? (
-                      <CheckIcon className="size-3.5 shrink-0 text-primary" />
-                    ) : shortcutKey !== null ? (
-                      <kbd
-                        className={cn(
-                          "flex size-5 shrink-0 items-center justify-center text-caption font-medium text-muted-foreground tabular-nums",
-                        )}
-                      >
-                        {shortcutKey}
-                      </kbd>
-                    ) : null}
-                  </>
-                );
                 return (
-                  <button
+                  <div
                     key={`${activeQuestion.id}:${optionValue}`}
-                    type="button"
-                    aria-current={isHighlighted ? "true" : undefined}
-                    disabled={isResponding}
-                    onClick={() => {
-                      handleOptionSelection(activeQuestion.id, optionValue);
-                    }}
-                    className={className}
+                    className={cn(
+                      "rounded-control transition-colors duration-150",
+                      isSelected ? "bg-muted/55" : "hover:bg-muted/30",
+                      isHighlighted && "ring-1 ring-primary/40",
+                      isResponding && "opacity-50",
+                    )}
                   >
-                    {content}
-                  </button>
+                    <Row
+                      size="sm"
+                      pressable="band"
+                      aria-disabled={isResponding || undefined}
+                      render={
+                        <button
+                          type="button"
+                          aria-current={isHighlighted ? "true" : undefined}
+                          disabled={isResponding}
+                          onClick={() => {
+                            handleOptionSelection(activeQuestion.id, optionValue);
+                          }}
+                        />
+                      }
+                      title={option.label}
+                      line={description}
+                      lineWraps
+                      meta={
+                        isSelected ? (
+                          <CheckIcon className="size-3.5 text-primary" />
+                        ) : shortcutKey !== null ? (
+                          <kbd className="flex size-5 items-center justify-center font-medium">
+                            {shortcutKey}
+                          </kbd>
+                        ) : undefined
+                      }
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -490,18 +499,3 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     </Collapsible>
   );
 });
-
-function PendingUserInputOptionLabel({
-  option,
-}: {
-  option: PendingUserInput["questions"][number]["options"][number];
-}) {
-  return (
-    <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-      <span className="text-body font-medium">{option.label}</span>
-      {option.description && option.description !== option.label ? (
-        <span className="text-secondary-label text-line">{option.description}</span>
-      ) : null}
-    </div>
-  );
-}

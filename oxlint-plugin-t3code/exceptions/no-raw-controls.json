@@ -112,22 +112,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerFile.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"composer-file-action composer-file-remove\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerFile.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"composer-file-action composer-file-retry\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body\", customAnswer ? \"text-foreground\" : \"text-placeholder\", !multiSelect && \"px-3 py-2\", )}",
@@ -152,51 +136,11 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerModelControl.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-control px-2 py-1 pointer-coarse:min-h-10 text-start text-foreground text-line outline-none hover:bg-foreground/6 focus-visible:bg-foreground/6 disabled:cursor-default disabled:opacity-64 aria-checked:font-medium\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingReviewComments.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={className}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerPicture.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"composer-picture-open\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"composer-picture-remove\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"composer-picture-retry\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -204,55 +148,15 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"picture-chip\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-done\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-note-remove\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-tool picture-tool-small\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-tool\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a note pinned on the picture at its mark, drawn as the note it opens",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"picture-view-close\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<textarea> className=\"picture-note-text\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"stage\" — a ghost in the picture stage's light ink on its always-dark ground (the expanded image's arrows restyle ghost for the same)",
     "expires": "surface:kit"
   },
   {
@@ -283,30 +187,6 @@
     "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-9 sm:h-8\", compact ? \"px-3\" : \"px-4\")}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"chat-composer-shoulder-tab absolute -top-7 right-4 z-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-t-xl border border-b-0 px-3 pb-1 text-caption leading-none\", \"transition-[color,border-color] duration-200\", props.menuOpen && \"pointer-events-none\", props.menuOpen || props.pulsing ? \"text-foreground\" : \"text-muted-foreground hover:text-foreground\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-left text-caption text-muted-foreground hover:text-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-muted-foreground hover:text-foreground\"",
     "owner": "kit pass",
     "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
     "expires": "surface:kit"

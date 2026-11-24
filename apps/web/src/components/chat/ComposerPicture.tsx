@@ -9,6 +9,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { CircleAlertIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { createContext, use, type KeyboardEvent } from "react";
 
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** What the text shows of a picture: everything but the file. */
@@ -116,26 +117,32 @@ export function ComposerPicture({ id }: { readonly id: string }) {
         </Tooltip>
       ) : null}
       {picture.failed ? (
-        <button
-          type="button"
-          className="composer-picture-retry"
-          aria-label={`Upload picture ${picture.number} again`}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onRetryPicture(id)}
-        >
-          <RotateCcwIcon aria-hidden="true" />
-        </button>
+        <span className="composer-picture-retry">
+          <Button
+            variant="secondary"
+            size="icon-2xs"
+            shape="round"
+            aria-label={`Upload picture ${picture.number} again`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onRetryPicture(id)}
+          >
+            <RotateCcwIcon aria-hidden="true" className="text-warning-foreground" />
+          </Button>
+        </span>
       ) : null}
-      <button
-        type="button"
-        className="composer-picture-remove"
-        tabIndex={-1}
-        aria-label={`Remove picture ${picture.number}`}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onRemovePicture(id)}
-      >
-        <XIcon aria-hidden="true" />
-      </button>
+      <span className="composer-picture-remove">
+        <Button
+          variant="secondary"
+          size="icon-2xs"
+          shape="round"
+          tabIndex={-1}
+          aria-label={`Remove picture ${picture.number}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onRemovePicture(id)}
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      </span>
     </span>
   );
 }

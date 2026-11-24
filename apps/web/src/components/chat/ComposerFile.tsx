@@ -13,6 +13,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { formatAttachmentUploadProgress } from "~/lib/attachmentUploadState";
 import { fileChipName } from "~/lib/composerFiles";
 import { inferEntryKindFromPath } from "../../pierre-icons";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatPictureBytes } from "./ComposerPictureView";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -116,26 +117,32 @@ export function ComposerFile({ id }: { readonly id: string }) {
         nameChars={CARD_NAME_CHARS}
       />
       {file.status === "failed" ? (
-        <button
-          type="button"
-          className="composer-file-action composer-file-retry"
-          aria-label={`Upload file ${file.number} again`}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onRetryFile(id)}
-        >
-          <RotateCcwIcon aria-hidden="true" />
-        </button>
+        <span className="composer-file-action composer-file-retry">
+          <Button
+            variant="secondary"
+            size="icon-2xs"
+            shape="round"
+            aria-label={`Upload file ${file.number} again`}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onRetryFile(id)}
+          >
+            <RotateCcwIcon aria-hidden="true" className="text-warning-foreground" />
+          </Button>
+        </span>
       ) : null}
-      <button
-        type="button"
-        className="composer-file-action composer-file-remove"
-        tabIndex={-1}
-        aria-label={`Remove file ${file.number}`}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onRemoveFile(id)}
-      >
-        <XIcon aria-hidden="true" />
-      </button>
+      <span className="composer-file-action composer-file-remove">
+        <Button
+          variant="secondary"
+          size="icon-2xs"
+          shape="round"
+          tabIndex={-1}
+          aria-label={`Remove file ${file.number}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onRemoveFile(id)}
+        >
+          <XIcon aria-hidden="true" />
+        </Button>
+      </span>
     </span>
   );
 }
