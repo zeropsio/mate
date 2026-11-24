@@ -98,14 +98,17 @@ function ServiceBrowserPanel({
         data-site-address-row
       >
         <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <a
-          className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-caption hover:text-foreground"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
-        </a>
+        <span className="flex min-w-0 flex-1 px-1 text-caption">
+          <InlineButton
+            tone="muted"
+            className="max-w-full"
+            render={<a href={url} target="_blank" rel="noreferrer" />}
+          >
+            <span className="truncate font-normal">
+              {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
+            </span>
+          </InlineButton>
+        </span>
         <Button
           variant="ghost"
           size="icon-sm"

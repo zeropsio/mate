@@ -12,6 +12,7 @@ import { useProjectContentSearch } from "~/state/queries";
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
 import { Badge } from "../ui/badge";
+import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -269,29 +270,36 @@ function OpenContentSearchDialog(props: {
                     <Badge className="ml-auto">{group.matches.length}</Badge>
                   </div>
                   {group.matches.map((match) => (
-                    <button
-                      type="button"
+                    <div
                       key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
-                      data-content-search-result={match.resultIndex}
                       className={cn(
-                        "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-caption hover:bg-accent/60 disabled:pointer-events-none",
+                        "rounded-control",
                         match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
                       )}
-                      disabled={!canOpenMatches}
-                      onMouseEnter={() => setSelectedIndex(match.resultIndex)}
-                      onClick={() => openMatch(match)}
                     >
-                      <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
-                        {match.lineNumber}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate whitespace-pre">
-                        <HighlightedSearchLine
-                          match={match}
-                          path={group.path}
-                          theme={resolvedTheme}
-                        />
-                      </span>
-                    </button>
+                      <Row
+                        size="xs"
+                        pressable="band"
+                        data-content-search-result={match.resultIndex}
+                        onMouseEnter={() => setSelectedIndex(match.resultIndex)}
+                        onClick={() => openMatch(match)}
+                        render={<button type="button" disabled={!canOpenMatches} />}
+                        title={
+                          <span className="flex min-w-0 gap-3 font-mono">
+                            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
+                              {match.lineNumber}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
+                              <HighlightedSearchLine
+                                match={match}
+                                path={group.path}
+                                theme={resolvedTheme}
+                              />
+                            </span>
+                          </span>
+                        }
+                      />
+                    </div>
                   ))}
                 </section>
               );

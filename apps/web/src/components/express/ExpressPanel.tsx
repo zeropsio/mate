@@ -14,7 +14,10 @@ import {
   pictureAnswerWords,
   pictureAskSource,
 } from "../ask/pictureAsk.logic";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Failure } from "../ui/failure";
+import { Row } from "../ui/row";
 import type { ExpressHistoryEntry } from "./expressHistory.logic";
 import { ExpressMark } from "./ExpressMark";
 import { type ExpressOpenRequest, useExpressOpen } from "./expressOpen";
@@ -405,19 +408,22 @@ function ExpressTile(props: {
   readonly onClick: () => void;
 }) {
   return (
-    <button
-      className="group/tile flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-xs/5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring @lg:flex-col"
-      onClick={props.onClick}
-      type="button"
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground [&_svg]:size-4.5">
-        {props.icon}
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-body font-medium leading-5">{props.title}</span>
-        <span className="text-muted-foreground text-caption leading-4">{props.line}</span>
-      </span>
-    </button>
+    <Card>
+      <Row
+        className="@lg:flex-col"
+        lead={
+          <span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground [&_svg]:size-4">
+            {props.icon}
+          </span>
+        }
+        line={props.line}
+        lineWraps
+        onClick={props.onClick}
+        pressable
+        render={<button type="button" />}
+        title={props.title}
+      />
+    </Card>
   );
 }
 
@@ -442,16 +448,21 @@ function SavedDesign({
       {url === undefined ? null : (
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
-      <button
-        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-control bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
+      <span
+        className="absolute inset-x-2 bottom-2 flex opacity-0 transition-opacity group-hover/saved:opacity-100 focus-within:opacity-100 data-reopening:opacity-100"
         data-reopening={reopening || undefined}
-        disabled={reopening}
-        onClick={onEdit}
-        type="button"
       >
-        <PencilIcon aria-hidden="true" className="size-3" />
-        {reopening ? "Opening…" : "Edit again"}
-      </button>
+        <Button
+          className="w-full"
+          disabled={reopening}
+          onClick={onEdit}
+          size="xs"
+          variant="secondary"
+        >
+          <PencilIcon aria-hidden="true" />
+          {reopening ? "Opening…" : "Edit again"}
+        </Button>
+      </span>
     </figure>
   );
 }

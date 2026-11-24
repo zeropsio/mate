@@ -44,6 +44,7 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
+import { Row } from "~/components/ui/row";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
@@ -1906,21 +1907,22 @@ export default function ThreadTerminalDrawer({
                   return (
                     <div key={terminalGroup.id} className="pb-0.5">
                       {showGroupHeaders && (
-                        <button
-                          type="button"
-                          className={`flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1.5 text-2xs ${
-                            isGroupActive
-                              ? "bg-accent/50 text-foreground"
-                              : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-                          }`}
-                          onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                        <div
+                          className={cn(
+                            "rounded-control",
+                            isGroupActive ? "bg-accent/50" : "hover:bg-accent/40",
+                          )}
                         >
-                          <GroupIcon className="size-3 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate text-left">{groupLabel}</span>
-                          <span className="text-muted-foreground/70 text-3xs tabular-nums">
-                            {terminalCount}
-                          </span>
-                        </button>
+                          <Row
+                            size="xs"
+                            pressable="band"
+                            render={<button type="button" />}
+                            onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                            lead={<GroupIcon className="size-3 text-muted-foreground" />}
+                            title={groupLabel}
+                            meta={terminalCount}
+                          />
+                        </div>
                       )}
 
                       <div className="flex flex-col gap-0.5">

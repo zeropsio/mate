@@ -8,6 +8,7 @@ import { useContext, type ReactNode } from "react";
 
 import { useMateImage } from "~/assets/MateImages";
 import { AppLinkContext } from "../ServiceBrowserLink";
+import { Row } from "../ui/row";
 import { ExpressMark } from "./ExpressMark";
 import { expressDesignId } from "./expressOpen";
 import { ExpressHistoryContext } from "./useExpressHistory";
@@ -57,49 +58,61 @@ function ExpressDesignCard({
   // The design's own id, its last characters: two unnamed designs never read the same.
   const shortId = documentId.slice(-7);
   return (
-    <a
-      className="group/express my-1 flex w-fit max-w-full items-center gap-3 rounded-xl border border-border bg-card py-2 ps-2 pe-3 no-underline shadow-xs/5 transition-colors hover:bg-accent/60"
-      data-express-design-chip
-      href={href}
-      onClick={(event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-          return;
-        event.preventDefault();
-        open();
-      }}
-      rel="noopener noreferrer"
-      target="_blank"
-    >
-      {preview === undefined ? (
-        <ExpressMark className="size-9 shrink-0 rounded-lg" />
-      ) : (
-        <span className="relative size-9 shrink-0">
-          <img
-            alt=""
-            className="size-9 rounded-lg border border-border object-cover"
-            src={preview}
-          />
-          <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-sm ring-2 ring-card" />
-        </span>
-      )}
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-body font-medium leading-5 text-foreground">
-          {words ?? "Adobe Express design"}
-        </span>
-        <span className="text-caption leading-4 text-muted-foreground">
-          {words === undefined ? (
+    <span className="my-1 flex w-fit max-w-full rounded-xl border border-border bg-card shadow-xs/5">
+      <Row
+        className="group/express"
+        data-express-design-chip
+        lead={
+          preview === undefined ? (
+            <ExpressMark className="size-8 rounded-lg" />
+          ) : (
+            <>
+              <img
+                alt=""
+                className="size-8 rounded-lg border border-border object-cover"
+                src={preview}
+              />
+              <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-sm ring-2 ring-card" />
+            </>
+          )
+        }
+        line={
+          words === undefined ? (
             <>
               Open in the side panel · <span className="font-mono">{shortId}</span>
             </>
           ) : (
             "Open in the side panel"
-          )}
-        </span>
-      </span>
-      <PanelRightIcon
-        aria-hidden="true"
-        className="ms-3 size-4 shrink-0 text-muted-foreground transition-colors group-hover/express:text-foreground"
+          )
+        }
+        meta={
+          <PanelRightIcon
+            aria-hidden="true"
+            className="ms-3 size-4 transition-colors group-hover/express:text-foreground"
+          />
+        }
+        pressable
+        render={
+          <a
+            href={href}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              )
+                return;
+              event.preventDefault();
+              open();
+            }}
+            rel="noopener noreferrer"
+            target="_blank"
+          />
+        }
+        title={words ?? "Adobe Express design"}
       />
-    </a>
+    </span>
   );
 }

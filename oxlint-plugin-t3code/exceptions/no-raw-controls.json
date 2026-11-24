@@ -92,15 +92,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"flex min-w-0 cursor-pointer items-center gap-1\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: a Tab's press — the activate target inside a TabStrip Tab, drawn bare because the Tab draws the look (the pointer branch hands TooltipTrigger the same press)",
     "expires": "surface:kit"
   },
   {
@@ -108,7 +100,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"cursor-pointer transition hover:border-border hover:bg-accent/60\", cardShellClass, isHighlighted(action) && highlightedCardClass, )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Card's pressable form — a card that opens what it names, lit under the pointer or by the keyboard's highlight",
     "expires": "surface:kit"
   },
   {
@@ -120,27 +112,11 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/ServiceBrowserPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"min-w-0 flex-1 truncate px-1 text-muted-foreground text-caption hover:text-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={`flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1.5 text-2xs ${ isGroupActive ? \"bg-accent/50 text-foreground\" : \"text-muted-foreground hover:bg-accent/40 hover:text-foreground\" }`}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: a Tab's press — the activate target inside a TabStrip Tab, drawn bare because the Tab draws the look (the pointer branch hands TooltipTrigger the same press)",
     "expires": "surface:kit"
   },
   {
@@ -536,51 +512,11 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/express/ExpressDesignLinkChip.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"group/express my-1 flex w-fit max-w-full items-center gap-3 rounded-xl border border-border bg-card py-2 ps-2 pe-3 no-underline shadow-xs/5 transition-colors hover:bg-accent/60\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/express/ExpressPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-control bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/express/ExpressPanel.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"flex aspect-square flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/express/ExpressPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"group/tile flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-xs/5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring @lg:flex-col\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/projectScriptEditor.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${ isSelected ? \"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\" : \"border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]\" }`}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-caption hover:bg-accent/60 disabled:pointer-events-none\", match.resultIndex === selectedIndex && \"bg-accent text-accent-foreground\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {

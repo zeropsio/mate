@@ -607,14 +607,14 @@ function SurfaceTabFace(props: {
           <span className="truncate">{props.title}</span>
         </button>
         {props.active ? (
-          <button
+          <Button
             aria-label={`Close ${props.title}`}
-            className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm"
             onClick={props.onClose}
-            type="button"
+            size="icon-2xs"
+            variant="ghost"
           >
-            <X className="size-3" />
-          </button>
+            <X />
+          </Button>
         ) : null}
       </>
     );
