@@ -900,7 +900,7 @@ const THREE_PLAN: ReleasePlan = {
  * deploy key it keeps for it reaches more than its project.
  */
 const KEY_ENVIRONMENT = "acme-production";
-const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; a person with admin access to its project renews it in Zerops Mate`;
+const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; renew it in Zerops Mate`;
 const KEY_PLAN: ReleasePlan = {
   hash: "c".repeat(64),
   vault: { state: "known", gaps: [] },
@@ -1820,7 +1820,7 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
           creation: undefined,
           deploys: [
             deployOf("app", "refused", {
-              reason: `${KEY_ENVIRONMENT}'s deploy token no longer answers; a person with admin access to its project renews it in Zerops Mate`,
+              reason: `${KEY_ENVIRONMENT}'s deploy token no longer answers; renew it in Zerops Mate`,
               endedAt: secondsAgo(40),
             }),
             deployOf("api", "failed", {

@@ -147,3 +147,4 @@ next: ZV179
 - ZV173 — A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project
 - ZV174 — An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project
 - ZV175 — Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer
+- ZV+1 — HQ's sentences that an environment has no deploy token, that it no longer answers and that it reaches more than its project are told apart as missing, dead and widened wherever they stand in a reason, and any other reason as none; breaks: a release stopped on production's key shows a failed deploy with no renewal.
