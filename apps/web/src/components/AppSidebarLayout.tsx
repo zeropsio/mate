@@ -41,6 +41,7 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
+import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
@@ -136,20 +137,20 @@ function SidebarControl({ rail }: { readonly rail: boolean }) {
     <>
       <SidebarCornerMark />
       <div
-        className="fixed bottom-[var(--sidebar-content-inset)] left-[var(--sidebar-content-inset)] z-50"
+        className="fixed bottom-[var(--sidebar-content-inset)] left-[var(--sidebar-content-inset)] z-50 [-webkit-app-region:no-drag]"
         data-sidebar-open-control=""
       >
         <Tooltip>
           <TooltipTrigger
             render={
-              <button
+              <Button
                 aria-label="Open main sidebar"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]"
                 onClick={toggleSidebar}
-                type="button"
+                size="icon-md"
+                variant="sidebar"
               >
                 <PanelLeftIcon className="size-4" />
-              </button>
+              </Button>
             }
           />
           <TooltipPopup side="right">

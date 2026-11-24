@@ -34,6 +34,7 @@ import { shellEnvironment } from "../../state/shell";
 import { useEnvironment } from "../../state/environments";
 import { useLastRouteEnvironmentId } from "../../zerops/accountEnvironments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -323,7 +324,7 @@ function ProcessNameCell({
 
   return (
     <div
-      className="grid min-w-0 grid-cols-[1.25rem_0.375rem_minmax(0,1fr)] items-center gap-2"
+      className="grid min-w-0 grid-cols-[1.25rem_0.5rem_minmax(0,1fr)] items-center gap-2"
       style={{ paddingLeft: `${Math.min(process.depth, 6) * 10}px` }}
     >
       {hasChildren ? (
@@ -338,7 +339,7 @@ function ProcessNameCell({
       ) : (
         <span className="size-5 shrink-0" aria-hidden="true" />
       )}
-      <span className="size-1.5 shrink-0 rounded-full bg-success/80" />
+      <Badge aria-label="Running" dot tone="success" />
       <Tooltip>
         <TooltipTrigger
           render={<span className="min-w-0 truncate font-medium text-foreground">{name}</span>}

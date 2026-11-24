@@ -1,21 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/AppSidebarLayout.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--control-radius)] in \"flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/AppSidebarLayout.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--sidebar-icon-color)] in \"flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/BranchToolbar.tsx",
     "kind": "Literal",
     "fingerprint": "<> px-[calc(--spacing(2)-1px)] in \"inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden\"",
@@ -523,14 +507,6 @@
     "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"text-[13px] leading-5 text-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

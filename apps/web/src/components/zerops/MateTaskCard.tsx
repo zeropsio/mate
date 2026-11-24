@@ -27,12 +27,13 @@ import { useCallback, useState } from "react";
 
 import { pullRequestName, taskAskBeyondTitle } from "~/zerops/automatedMate.logic";
 import { spentWords, taskPillStatus, type TaskSession } from "~/zerops/taskSession.logic";
-import { TASK_STATUS_WORDS, taskStatusDot, workedWords } from "~/zerops/taskStatus";
+import { TASK_STATUS_WORDS, type TaskTone, taskStatusTone, workedWords } from "~/zerops/taskStatus";
 import { useTaskSession } from "~/zerops/useTaskSession";
 
 import { cn } from "~/lib/utils";
 
 import { GitHubIcon } from "../Icons";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { HeaderReviewDoor } from "./SidebarProjectReview";
 import { taskReviewItems } from "./SidebarProjectReview.logic";
@@ -43,6 +44,16 @@ function mateTaskCardSource(task: MateTaskSource): string {
   const author = mateTaskSourceAuthor(task);
   return author === null ? where : `${where} · opened by ${author}`;
 }
+
+/** A status's dot: finished and quiet are both neutral, the words beside it tell them apart. */
+const TASK_DOT: Readonly<Record<TaskTone, BadgeTone>> = {
+  working: "success",
+  needs: "warning",
+  review: "info",
+  finished: "neutral",
+  failed: "danger",
+  quiet: "neutral",
+};
 
 const NOT_KNOWN: TaskSession = {
   status: null,
@@ -131,22 +142,21 @@ export function MateTaskStatusView({
         data-zerops-surface="mate-task-session"
       >
         {status === undefined ? null : (
+          // Until its status is read, the label keeps its room unseen: nothing moves when it comes.
           <span
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-2 py-px font-medium text-foreground",
-              status === null && "invisible",
-            )}
+            className={cn("flex shrink-0", status === null && "invisible")}
             data-zerops-surface="mate-task-status"
           >
-            {status === null ? null : (
-              <span
-                aria-hidden="true"
-                className={`size-1.5 shrink-0 rounded-full ${taskStatusDot(status)}`}
-              />
-            )}
-            <span data-zerops-surface="mate-task-status-words">
-              {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
-            </span>
+            {/* Its blue is a change to look at, not work under way: it does not breathe. */}
+            <Badge
+              dot
+              pulse={false}
+              tone={status === null ? "neutral" : TASK_DOT[taskStatusTone(status)]}
+            >
+              <span data-zerops-surface="mate-task-status-words">
+                {status === null ? "\u00a0" : TASK_STATUS_WORDS[status]}
+              </span>
+            </Badge>
           </span>
         )}
         {confirming ? (

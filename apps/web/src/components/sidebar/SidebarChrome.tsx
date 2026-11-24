@@ -37,6 +37,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
@@ -159,12 +160,12 @@ export function SidebarCreateButton({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-disabled="true"
               aria-label={`New Mate: ${why}`}
-              className="menu-round-button opacity-50"
               data-zerops-surface="sidebar-create"
-              type="button"
+              size="icon-md"
+              variant="sidebar"
             />
           }
         >
@@ -181,13 +182,13 @@ export function SidebarCreateButton({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-label={label}
-              className="menu-round-button"
               data-zerops-create="project"
               data-zerops-surface="sidebar-create"
               onClick={onNewProject}
-              type="button"
+              size="icon-md"
+              variant="sidebar"
             />
           }
         >
@@ -203,11 +204,11 @@ export function SidebarCreateButton({
           render={
             <MenuTrigger
               render={
-                <button
+                <Button
                   aria-label={label}
-                  className="menu-round-button"
                   data-zerops-surface="sidebar-create"
-                  type="button"
+                  size="icon-md"
+                  variant="sidebar"
                 />
               }
             />

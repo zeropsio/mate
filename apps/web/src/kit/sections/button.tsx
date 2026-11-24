@@ -1,4 +1,4 @@
-import { ArrowRightIcon, ArrowUpIcon, PlusIcon, ShuffleIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, PlusIcon, SearchIcon, ShuffleIcon } from "lucide-react";
 
 import { Button, InlineButton, type ButtonSize, type ButtonVariant } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -15,6 +15,7 @@ const VARIANTS = variantsOf<ButtonVariant>({
   destructive: true,
   link: true,
   "destructive-ghost": true,
+  sidebar: true,
 });
 
 const SIZES = variantsOf<ButtonSize>({
@@ -64,6 +65,16 @@ function ButtonSpecimens() {
               <Button shape="round" size="sm" variant="secondary">
                 <ShuffleIcon />
                 Shuffle
+              </Button>
+            </div>
+          </Specimen>
+          <Specimen label="the menu's top row: sidebar, on the menu's ground">
+            <div className="flex items-center gap-1 rounded-card bg-sidebar p-2">
+              <Button aria-label="Search" size="icon-md" variant="sidebar">
+                <SearchIcon />
+              </Button>
+              <Button aria-label="New Mate" size="icon-md" variant="sidebar">
+                <PlusIcon />
               </Button>
             </div>
           </Specimen>

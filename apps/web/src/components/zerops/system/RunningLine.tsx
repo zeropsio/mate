@@ -9,6 +9,8 @@ import { formatRunClock } from "@t3tools/client-runtime/zerops";
 import { CheckIcon } from "lucide-react";
 
 import { useSecondsNowMs } from "~/zerops/useNowMs";
+
+import { Badge } from "../../ui/badge";
 import { GrowsInPlace } from "./GrowsInPlace";
 import { SectionLabel } from "./SectionLabel";
 
@@ -54,15 +56,11 @@ function RunningTrail({ trail }: { readonly trail: NonNullable<Line["trail"]> })
               strokeWidth={2.5}
             />
           ) : part.state === "busy" ? (
-            <span
-              aria-label="Under way"
-              className="size-1.5 shrink-0 rounded-full bg-primary"
-              role="img"
-            />
+            <Badge aria-label="Under way" dot tone="info" />
           ) : (
             <span
               aria-label="To come"
-              className="size-1.5 shrink-0 rounded-full border border-muted-foreground/60"
+              className="size-2 shrink-0 rounded-full border border-muted-foreground/60"
               role="img"
             />
           )}

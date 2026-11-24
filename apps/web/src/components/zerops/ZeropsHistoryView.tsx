@@ -193,13 +193,9 @@ function HistoryRow({
               tag, as the stop's release rows draw it; the green chip elsewhere. */}
           {entry.tags.map((tag) =>
             here === undefined ? (
-              <span
-                className="shrink-0 rounded-full bg-status-ok-surface px-1.5 text-2xs leading-4.5 font-medium text-status-ok-text"
-                data-zerops-surface="zerops-history-release"
-                key={tag}
-              >
+              <Badge data-zerops-surface="zerops-history-release" key={tag} tone="success">
                 {tag}
-              </span>
+              </Badge>
             ) : (
               <span
                 className="flex shrink-0 items-center gap-1.5 self-center"

@@ -40,6 +40,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
@@ -118,49 +119,51 @@ function MateChatsMenu({
   const open = chats.chats.find((chat) => chat.open)?.threadId ?? "";
   const { close } = chats;
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <button
-            aria-label={`${mateName}'s chats`}
-            className="me-1.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:text-foreground"
-            data-chat-header-ghost
-            data-conversation-chats
-            type="button"
-          />
-        }
-      >
-        <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-      </MenuTrigger>
-      <MenuPopup align="start" className="w-72">
-        <MenuRadioGroup
-          onValueChange={(value: string) => {
-            const chat = chats.chats.find((each) => each.threadId === value);
-            if (chat !== undefined && !chat.open) onOpen(chat.threadId);
-          }}
-          value={open}
+    <span className="me-1.5 flex shrink-0">
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              aria-label={`${mateName}'s chats`}
+              data-chat-header-ghost
+              data-conversation-chats
+              size="icon-xs"
+              variant="ghost-muted"
+            />
+          }
         >
-          {chats.chats.map((chat) => (
-            <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
-              <span className="flex min-w-0 items-baseline gap-2">
-                <span className="min-w-0 truncate">{chat.title}</span>
-                {chat.main ? (
-                  <span className="shrink-0 text-caption text-muted-foreground">main</span>
-                ) : null}
-              </span>
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        {close === null ? null : (
-          <>
-            <MenuSeparator />
-            <MenuItem disabled={close.busy} onClick={() => onClose(close)}>
-              Close this chat
-            </MenuItem>
-          </>
-        )}
-      </MenuPopup>
-    </Menu>
+          <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+        </MenuTrigger>
+        <MenuPopup align="start" className="w-72">
+          <MenuRadioGroup
+            onValueChange={(value: string) => {
+              const chat = chats.chats.find((each) => each.threadId === value);
+              if (chat !== undefined && !chat.open) onOpen(chat.threadId);
+            }}
+            value={open}
+          >
+            {chats.chats.map((chat) => (
+              <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="min-w-0 truncate">{chat.title}</span>
+                  {chat.main ? (
+                    <span className="shrink-0 text-caption text-muted-foreground">main</span>
+                  ) : null}
+                </span>
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+          {close === null ? null : (
+            <>
+              <MenuSeparator />
+              <MenuItem disabled={close.busy} onClick={() => onClose(close)}>
+                Close this chat
+              </MenuItem>
+            </>
+          )}
+        </MenuPopup>
+      </Menu>
+    </span>
   );
 }
 

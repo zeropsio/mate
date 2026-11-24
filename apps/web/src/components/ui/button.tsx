@@ -10,7 +10,7 @@ import { cn } from "~/lib/utils";
 /**
  * The one action. `primary` is the single next step on a surface (blue acts), `secondary` sits
  * beside it, `ghost` is a quiet tool, `destructive` only deletes, stops or acts on Production,
- * `link` reads as a word.
+ * `link` reads as a word, `sidebar` is a ghost on the menu's own ground.
  * Sizes: `md` by default, `sm` in dense rows, `xs` for a row's verb within its line (a change's
  * Review, everywhere it stands), `lg` only for a page's one hero action; `icon-sm` and
  * `icon-md` are the square forms of `sm` and `md`, `icon-xs` a 24 px one in a card's head. A button is a rectangle on the control radius;
@@ -56,6 +56,9 @@ const buttonVariants = cva(
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
+        /** A ghost on the menu's own ground: the menu's row hover under the pointer or while its popup is open. */
+        sidebar:
+          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-row-hover [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
         /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
         "destructive-ghost":
           "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",

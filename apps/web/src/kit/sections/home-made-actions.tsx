@@ -1,9 +1,6 @@
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
 import { ProviderAccentColorPicker } from "~/components/settings/ProviderAccentColorPicker";
-import { SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { DrillButton } from "~/components/usage/UsageDimensionViews";
-import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
-import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 
 import { CensusComponent, CensusCount, CensusLook, CensusLooks } from "../census";
 import { defineKitSection } from "../kitSection";
@@ -35,10 +32,10 @@ function ActionSpecimens() {
   return (
     <CensusLooks>
       <CensusCount
-        components={6}
-        files={7}
-        kit="286 raw <button> in 161 files remain, most of them rows and toggles; the kit has Button with 5 variants and 5 sizes, rendered in 183 files"
-        looks={4}
+        components={3}
+        files={3}
+        kit="258 raw <button> in 144 files remain outside the kit and the harnesses, most of them rows, toggles and glyph presses under 24 px; the kit has Button with 8 variants and 7 sizes, rendered in 291 files"
+        looks={3}
       />
 
       <CensusLook
@@ -60,49 +57,11 @@ function ActionSpecimens() {
       </CensusLook>
 
       <CensusLook
-        files={4}
-        name="Menu round buttons"
-        note="menu-round-button: the left menu's top row"
-        uses={5}
-      >
-        <CensusComponent
-          name="SidebarScopeButton"
-          source="apps/web/src/components/zerops/SidebarScopeButton.tsx"
-        >
-          {(["mine", "everyone"] as const).map((scope) => (
-            <Specimen key={scope} label={specimenLabel({ scope })}>
-              <SidebarScopeButton onScope={noop} scope={scope} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent
-          name="SidebarJumpButton"
-          source="apps/web/src/components/zerops/SidebarJumpButton.tsx"
-        >
-          <Specimen label={specimenLabel({ shortcut: "⌘K" })}>
-            <SidebarJumpButton onJump={noop} shortcut="⌘K" />
-          </Specimen>
-        </CensusComponent>
-        <CensusComponent
-          name="SidebarCreateButton"
-          source="apps/web/src/components/sidebar/SidebarChrome.tsx"
-        >
-          <Specimen label="projects={[storefront]}">
-            <SidebarCreateButton
-              onNewMate={noop}
-              onNewProject={noop}
-              projects={[{ id: "storefront", name: "storefront" }]}
-            />
-          </Specimen>
-        </CensusComponent>
-      </CensusLook>
-
-      <CensusLook
         files={1}
         name="ComposerPrimaryActions (send)"
-        note="a round message-action button of its own"
+        note="the send: a round press in the message-action ink, which no Button variant carries; the stop beside it is a kit Button"
         source="apps/web/src/components/chat/ComposerPrimaryActions.tsx"
-        uses={3}
+        uses={1}
       >
         <Specimen label="a prompt typed">
           <ComposerPrimaryActions {...SEND_AT_REST} />

@@ -8,6 +8,7 @@ import { CircleAlertIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import type { ProviderAvailability } from "./providerAvailability.logic";
@@ -26,16 +27,23 @@ export function AvailabilityDot({
   /** On an icon's top-right corner, rather than in the line. */
   readonly corner?: boolean;
 }) {
+  if (!corner)
+    return (
+      <Badge
+        aria-label={availability.title}
+        className="me-2 align-middle"
+        dot
+        tone={availability.tone === "error" ? "danger" : "warning"}
+      />
+    );
+  // Ringed on an icon's corner, the size of the icon's own badges: a mark on a thing, not a label.
   return (
     <span
       role="img"
       aria-label={availability.title}
       data-tone={availability.tone}
       className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        corner
-          ? "absolute -top-0.5 -right-0.5 ring-2 ring-(--contrast-input)"
-          : "me-2 inline-block align-middle",
+        "absolute -top-0.5 -right-0.5 size-1.5 shrink-0 rounded-full ring-2 ring-(--contrast-input)",
         availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
       )}
     />

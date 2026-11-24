@@ -156,6 +156,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -2765,16 +2766,16 @@ export function SidebarHqStatus({
           render={
             onAgain === undefined ? (
               <span
-                className="menu-round-button"
+                className="grid size-8 flex-none place-items-center text-muted-foreground"
                 data-zerops-surface="sidebar-hq-outage"
                 role="status"
               />
             ) : (
-              <button
-                className="menu-round-button"
+              <Button
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={onAgain}
-                type="button"
+                size="icon-md"
+                variant="sidebar"
               />
             )
           }

@@ -5192,29 +5192,13 @@ code {
 
 /* ==== Pass 16 · the menu's projects and production ==== */
 
-/* A stop's dot: its state's colour, hollow for a stop on purpose, a small
+/* A stop's dot where no status dot draws it (`EnvDot`): hollow for a stop on purpose, a small
    stepped spinner while something is on its way. */
 .zerops-envdot {
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 9999px;
-}
-
-.zerops-envdot[data-dot="ok"] {
-  background-color: var(--zerops-status-ok);
-}
-
-.zerops-envdot[data-dot="attention"] {
-  background-color: var(--zerops-status-attention);
-}
-
-.zerops-envdot[data-dot="failed"] {
-  background-color: var(--zerops-status-failed);
-}
-
-.zerops-envdot[data-dot="off"] {
-  background-color: var(--zerops-status-off);
 }
 
 .zerops-envdot[data-dot="hollow"] {
@@ -5306,7 +5290,7 @@ code {
   text-align: start;
 }
 
-.zerops-envpop-stop > .zerops-envdot {
+.zerops-envpop-stop > :is(.zerops-envdot, [data-slot="badge"]) {
   justify-self: center;
 }
 
@@ -5841,7 +5825,7 @@ code {
   grid-template-columns: 16px minmax(0, 1fr);
 }
 
-.zerops-sites-place > .zerops-envdot {
+.zerops-sites-place > :is(.zerops-envdot, [data-slot="badge"]) {
   justify-self: center;
 }
 
@@ -6146,37 +6130,6 @@ code {
 
 /* ==== Pass 41 · the menu's chrome: the top row, Overview, Waiting on you, the foot, the rail ==== */
 @layer components {
-  /* The top row's round buttons (search, +): 34 px, a hairline ring, the glyph muted until the
-     pointer or the open menu wakes it. */
-  /* The top row's controls are the menu's own (the owner, 2026-10-11: "straight up stolen from
-     grok bot"): Search a field that fills the row and says its key, New beside it a square of the
-     same surface — 34 px, 10 px corners, no outlined circles. */
-  /* The logo row's two verbs, search and New: quiet 32 px squares on the row's end — not a
-     field across the row, not round outlined buttons (the owner, 2026-10-11: "the huge add search
-     is a waste of space"). */
-  .menu-round-button {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    background-color: transparent;
-    color: var(--muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong),
-      scale 160ms var(--ease-out-strong);
-  }
-
-  .menu-round-button:hover,
-  .menu-round-button[data-popup-open] {
-    background: var(--sidebar-row-hover);
-    color: var(--sidebar-foreground);
-  }
-
   /* The search key, said in its tooltip: drawn modifiers and the key in the tip's own ink. */
   .menu-search-key {
     display: inline-flex;
@@ -6185,16 +6138,6 @@ code {
     margin-left: 8px;
     opacity: 0.7;
     font-variant-numeric: tabular-nums;
-  }
-
-  .menu-round-button:active {
-    scale: 0.96;
-  }
-
-  .menu-round-button:focus-visible {
-    box-shadow:
-      inset 0 0 0 1px var(--sidebar-border),
-      0 0 0 2px var(--ring);
   }
 }
 
@@ -7245,10 +7188,6 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu-round-button:active {
-    scale: none;
-  }
-
   .menu-wait-list[data-starting-style],
   .menu-wait-list[data-ending-style] {
     scale: none;
@@ -9404,42 +9343,14 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--zerops-status-busy-text);
 }
 
-/* A place's door: its address, opened beside the page; in sight, never only on hover. */
+/* A place with nothing there yet (`PlaceDot`): a hollow dot, which no status dot draws. */
 .ov-dot {
   display: inline-block;
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-}
-
-/* Running wears its services' green: a grey beside green service dots read as stopped. */
-.ov-dot[data-dot="running"] {
-  background: var(--zerops-status-ok);
-}
-
-.ov-dot[data-dot="failed"] {
-  background: var(--zerops-status-attention);
-}
-
-.ov-dot[data-dot="down"] {
-  background: var(--zerops-status-failed);
-}
-
-.ov-dot[data-dot="releasing"] {
-  background: var(--zerops-status-busy);
-}
-
-.ov-dot[data-dot="none"] {
-  background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .ov-dot[data-dot="releasing"] {
-    animation: menu-clock-breathe 2.4s steps(8, jump-none) infinite alternate;
-  }
 }
 
 .ov-reads {

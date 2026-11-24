@@ -138,29 +138,22 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       onClick: onInterrupt,
     },
   ) => (
-    <button
-      type="button"
-      disabled={stop.disabled}
-      className={cn(
-        // The run's own ink, not the alarm's: red is what a failure wears, and
-        // a run the person may stop has not failed. Beside the blue send it
-        // can never be mistaken for it.
-        "flex cursor-pointer items-center justify-center rounded-full bg-foreground text-background shadow-xs shadow-foreground/16 inset-shadow-2xs inset-shadow-white/16 transition-[scale,background-color,box-shadow] duration-150 ease-out hover:scale-105 hover:bg-foreground/88 active:scale-95 active:inset-shadow-black/8 active:shadow-none disabled:pointer-events-none disabled:opacity-64",
-        insidePendingAction
-          ? "size-8 sm:size-7"
-          : hasSendableContent
-            ? "size-9 sm:size-8"
-            : "size-8 sm:h-8 sm:w-8",
-      )}
-      {...pointerFocusProps}
-      data-composer-primary=""
-      onClick={stop.onClick}
+    // The run's own ink, not the alarm's: red is what a failure wears, and a run the person may
+    // stop has not failed. Beside the blue send it can never be mistaken for it.
+    <Button
       aria-label={stop.label}
+      data-composer-primary=""
+      disabled={stop.disabled}
+      onClick={stop.onClick}
+      shape="round"
+      size={insidePendingAction ? "icon-sm" : "icon-md"}
+      variant="primary"
+      {...pointerFocusProps}
     >
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+      <svg aria-hidden="true" className="size-3" fill="currentColor" viewBox="0 0 12 12">
         <rect x="2" y="2" width="8" height="8" rx="1.5" />
       </svg>
-    </button>
+    </Button>
   );
 
   if (primary === "answer" && pendingAction) {

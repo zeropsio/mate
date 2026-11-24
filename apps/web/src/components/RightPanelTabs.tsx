@@ -44,6 +44,7 @@ import {
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
@@ -396,12 +397,9 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
         <Icon className="size-4 shrink-0" />
         <span className="truncate font-medium text-body">{action.label}</span>
         {action.badgeCount > 0 ? (
-          <span
-            aria-hidden
-            className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-3xs font-semibold tabular-nums text-primary-foreground"
-          >
+          <Badge aria-hidden tone="info">
             {action.badgeCount}
-          </span>
+          </Badge>
         ) : null}
         {action.shortcut === null ? null : (
           // A key's letter says nothing to a finger.

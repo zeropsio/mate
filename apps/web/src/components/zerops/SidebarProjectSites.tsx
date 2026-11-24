@@ -268,7 +268,7 @@ export function ProjectSites(
             />
           }
         >
-          <EnvDot dot={shown.dot} />
+          <EnvDot dot={shown.dot} label={shown.word} />
           {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the rest. */}
           <span className="menu-tag-word">{shown.word}</span>
         </TooltipTrigger>
@@ -743,7 +743,7 @@ function PlaceSection({
   const [running] = useRunningNow(projectId);
   const row = (
     <>
-      <EnvDot dot={stop?.dot ?? "off"} />
+      <EnvDot dot={stop?.dot ?? "off"} label={stop?.word ?? "Reading…"} />
       <span className="min-w-0 truncate">
         <b className="font-medium">{title}</b>
         {stop?.version === undefined || running !== undefined ? null : (
