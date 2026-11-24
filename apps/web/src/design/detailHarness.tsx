@@ -1802,7 +1802,7 @@ function HarnessStates() {
         <State
           key={words}
           label={`A production whose deploy key no longer works, ${words}`}
-          note="The verdict offers the renewal the release sheet offers, to one with admin access to the project: its button, busy while it runs, its failure under it, and Key renewed until HQ reports the key works."
+          note="The verdict offers the renewal the release sheet offers, to one HQ permits to keep the key: its button, busy while it runs, its failure under it, and Key renewed until HQ reports the key works."
         >
           <StopState
             fixture={{

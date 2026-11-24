@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
-import { keyRenewOffer } from "../../../zerops/renewDeployKey.logic.ts";
-import type { HqOperationStanding } from "@t3tools/client-runtime/data";
+import { keyRenewFailureWords, keyRenewOffer } from "../../../zerops/renewDeployKey.logic.ts";
+import { operationFailureWords, type HqOperationStanding } from "@t3tools/client-runtime/data";
 import {
   changeFixOptions,
   crewLandCommand,
@@ -110,4 +110,15 @@ it("RV+2: The renewal's press is a start for whoever HQ's keep rule admits or ha
   ];
   for (const [standing, mayKeep, answer] of rows)
     expect(keyRenewOffer(standing, mayKeep)).toBe(answer);
+});
+
+// witness: apps/web/src/zerops/renewDeployKey.logic.ts | if (failure.step !== "retire") return operationFailureWords(failure); → if (failure.step === "retire") return operationFailureWords(failure);
+it("RV+3: A renewal HQ ended at its retire step is told as a kept key whose previous token stays, with who deletes it by Zerops' code, and a stop at any other step in the operation's own words; breaks: a person whose renewal worked reads that it failed.", () => {
+  const owner = { step: "retire", code: "ownerRoleRequired", at: "now", origin: "zerops" };
+  const other = { ...owner, code: "other" };
+  const key = { ...other, step: "key" };
+  expect(keyRenewFailureWords(owner)).not.toBe(keyRenewFailureWords(other));
+  expect(keyRenewFailureWords(owner)).not.toBe(operationFailureWords(owner));
+  expect(keyRenewFailureWords(other)).not.toBe(operationFailureWords(other));
+  expect(keyRenewFailureWords(key)).toBe(operationFailureWords(key));
 });

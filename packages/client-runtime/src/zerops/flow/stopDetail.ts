@@ -147,6 +147,11 @@ export function stopKeyGap(input: {
   return undefined;
 }
 
+/** Who sets up or renews an environment's deploy key in Zerops Mate. */
+export function keyRenewedBy(where: string, kind: "missing" | "invalid"): string {
+  return `Someone with more than Read access to ${where} in Zerops ${kind === "missing" ? "sets one up" : "renews it"}.`;
+}
+
 /** Where a stage HQ holds for a deploy key is finished, by one who may keep its key. */
 const FINISH_HELD_STAGE = "Finish setting it up from its project's menu on the Projects page.";
 
@@ -182,7 +187,7 @@ export function stopVerdict(input: {
   readonly atMainHead: boolean;
   /**
    * The deploy key HQ deploys the stop with, where it keeps HQ from deploying — missing, or no
-   * longer working — and the Zerops project whose Full access mints one; `undefined` while it
+   * longer working — and the Zerops project whose members can keep one; `undefined` while it
    * works.
    */
   readonly keyGap:
@@ -232,7 +237,7 @@ export function stopVerdict(input: {
       : {
           tone: "failed",
           text,
-          detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"}.`,
+          detail: keyRenewedBy(`the ${project} project`, kind),
           verb: null,
         };
   }

@@ -31,17 +31,14 @@ export function keyRenewOffer(
 export const keyRenewPress = (renewal: KeyRenewal | undefined): string =>
   (renewal?.kind === "failed" ? renewal.press : undefined) ?? "Renew the key";
 
-/**
- * The new key is kept, but Zerops keeps the deleting of a token an Owner made to an Owner: HQ ends
- * the operation at its retire step with Zerops' `ownerRoleRequired`.
- */
-const OLD_KEY_LEFT = "The previous deploy token still works: the organisation's Owner deletes it.";
-
 /** What the person is told of a renewal HQ stopped. */
 export function keyRenewFailureWords(failure: HqOperationFailure): string {
-  return failure.step === "retire" && failure.code === "ownerRoleRequired"
-    ? OLD_KEY_LEFT
-    : operationFailureWords(failure);
+  if (failure.step !== "retire") return operationFailureWords(failure);
+  const who =
+    failure.code === "ownerRoleRequired"
+      ? "the organisation's Owner"
+      : "an owner or admin of the organization";
+  return `The new deploy key is kept. The previous deploy token stays in Zerops; ${who} deletes it.`;
 }
 
 /**
