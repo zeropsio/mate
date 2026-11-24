@@ -1,5 +1,5 @@
 /** Recovery actions and optional collapsed diagnostics, aligned below the Mate's state line. */
-import { mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
+import { mateLinkVerbs, mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
 import { useMateEnable } from "~/components/zerops/useMateEnable";
 import { useMateRecoveryAction } from "~/components/zerops/useMateRecoveryAction";
 import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
@@ -84,13 +84,18 @@ export function MateLinkLine({
   readonly onTryNow: (() => void) | undefined;
 }) {
   const recovery = useMateRecoveryAction(projectId);
-  // Its Start and Restart are its state's verbs (`mateState`), as its menu offers them.
+  // Its Start and Restart are its state's verbs (`mateState`), as its menu offers them, and its
+  // Restart where HQ offers it (`mateLinkVerbs`).
   const stateOf = useMateStates(useZeropsContainers().levels);
   const candidate = useHeldZeropsDetailCandidates().find((row) => row.project.id === projectId);
-  const verbs = candidate === undefined ? undefined : stateOf(candidate).verbs;
+  const verbs = mateLinkVerbs({
+    actions: voice.actions,
+    verbs: candidate === undefined ? undefined : stateOf(candidate).verbs,
+    restartOffered: candidate?.project.hq?.restartOffered === true,
+  });
   const act = recovery.feedback === null ? recovery.act : undefined;
   const containerActions: ContainerActions | undefined =
-    act === undefined || verbs === undefined
+    act === undefined
       ? undefined
       : {
           ...(verbs.start ? { start: () => void act("start") } : {}),
@@ -114,7 +119,7 @@ export function MateLinkLine({
         }
         projects={<Link to="/zerops" />}
         projectUrl={projectUrl}
-        voice={voice}
+        voice={{ ...voice, actions: verbs.actions }}
       />
     </>
   );
