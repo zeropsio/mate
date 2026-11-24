@@ -328,30 +328,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/TeamInvitePage.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"tm-role-card\"",
-    "owner": "kit pass",
-    "reason": "needs kit: RadioGroup's card form — a choice drawn as a card, its name and its line, the chosen one outlined in blue",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/TeamRoleEditor.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"tm-role-card\"",
-    "owner": "kit pass",
-    "reason": "needs kit: RadioGroup's card form — a choice drawn as a card, its name and its line, the chosen one outlined in blue",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/MateFacePicker.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"mate-face-option focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "needs kit: RadioGroup `swatch` — a radio drawn as its own mark (a Mate's face on the picker's ring, placed per option); the kit's Radio is a dot beside a label",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/MateNameText.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<input> className=\"mate-name-text\"",
@@ -373,14 +349,6 @@
     "fingerprint": "<button> className={className}",
     "owner": "kit pass",
     "reason": "needs kit: a count press — Badge's warning pill that opens what it counts (the menu's and the Chief's Waiting count, drawn by its caller's seat); a Badge is never a press and no Button draws a count",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"region-tile\"",
-    "owner": "kit pass",
-    "reason": "needs kit: RadioGroup `tile` — a choice drawn as a card (a region's name, city and latency); the kit's Radio is a dot beside a label",
     "expires": "surface:kit"
   },
   {

@@ -20,6 +20,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PageHeader } from "../ui/page-header";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { ACCESS_LEVEL_LINES } from "../zerops/projects/projectPeople.logic";
 import { noteInvitationSent } from "./invitationSent";
 import { SettingsPageContainer } from "./settingsLayout";
@@ -251,23 +252,27 @@ export function TeamInviteView({
                 <h2 className="tm-block-title" id={`${id}-level`}>
                   Access
                 </h2>
-                <div aria-labelledby={`${id}-level`} className="tm-role-cards" role="radiogroup">
+                <RadioGroup
+                  aria-labelledby={`${id}-level`}
+                  layout="columns"
+                  disabled={sending}
+                  onValueChange={(picked) => {
+                    const option = offered.levels.find((candidate) => candidate === picked);
+                    if (option !== undefined) setChosenLevel(option);
+                  }}
+                  value={level}
+                >
                   {offered.levels.map((option) => (
-                    <button
-                      aria-checked={level === option}
-                      className="tm-role-card"
-                      data-selected={level === option || undefined}
-                      disabled={sending}
+                    <RadioCard
+                      className="min-h-24 max-sm:min-h-0"
                       key={option}
-                      onClick={() => setChosenLevel(option)}
-                      role="radio"
-                      type="button"
+                      title={LEVEL_WORDS[option]}
+                      value={option}
                     >
-                      <span className="tm-role-card-name">{LEVEL_WORDS[option]}</span>
-                      <span className="tm-role-card-text">{ACCESS_LEVEL_LINES[option]}</span>
-                    </button>
+                      {ACCESS_LEVEL_LINES[option]}
+                    </RadioCard>
                   ))}
-                </div>
+                </RadioGroup>
               </div>
             ) : (
               <span className="tm-block-desc">

@@ -7,7 +7,7 @@
  * picker wherever a face is picked: *New Mate*, New project's first Mate, an account's first run,
  * and *Change face…* in a Mate's menus.
  *
- * The face beside what makes it; on a phone, over it. Each row is a radio group of real buttons,
+ * The face beside what makes it; on a phone, over it. Each row is a radio group of swatches,
  * one Tab stop per row (the picked one), the arrow keys walking the row and picking as they go.
  * The picked one wears a ring of its tint a gap out, so nothing changes size.
  */
@@ -22,6 +22,7 @@ import {
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
+import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { MateFace } from "./primitives";
 
 /** The colours and the shapes by the words a screen reader says for them. */
@@ -56,7 +57,7 @@ function tintStyle(tint: MateTintId): CSSProperties {
 function tintMark() {
   return (
     <>
-      <circle className="mate-face-ring" cx="18" cy="18" r="15.5" />
+      <circle className="mate-face-ring" cx="18" cy="18" data-slot="radio-swatch-ring" r="15.5" />
       <circle className="mate-face-mark" cx="18" cy="18" r="12" />
     </>
   );
@@ -69,6 +70,7 @@ function shapeMark(shape: MateShapeId) {
       <path
         className="mate-face-ring"
         d={MATE_SHAPES[shape].d}
+        data-slot="radio-swatch-ring"
         transform="translate(1 1) scale(0.34)"
       />
       <path
@@ -280,11 +282,9 @@ function LookBehindButton({
 }
 
 /**
- * One row of a face's pickers: a radio group of real buttons. One stop for Tab — the one picked —
- * and the arrow keys walk the row, picking as they go, as a radio group does. Kept by hand rather
- * than a kit's roving focus, whose stop stays where it started when the pick changes from outside
- * the row: in *New Mate* the shape follows the colour until one is picked, and the colour follows
- * the name.
+ * One row of a face's pickers: a radio group of swatches, one Tab stop for the one picked, the
+ * arrow keys walking the row and picking as they go. On a ring each swatch fills a seat placed
+ * around the face (`place`).
  */
 function PickerRow<T extends string>({
   label,
@@ -310,55 +310,39 @@ function PickerRow<T extends string>({
   /** An option's mark and its ring, in a 36 px box. */
   readonly children: (option: T) => ReactNode;
 }) {
-  const buttons = useRef(new Map<T, HTMLButtonElement>());
-  const step = (from: T, by: number) => {
-    const next = options[(options.indexOf(from) + by + options.length) % options.length];
-    if (next === undefined) return;
-    onPick(next);
-    buttons.current.get(next)?.focus();
-  };
   return (
-    <div aria-label={label} className={className} role="radiogroup">
-      {options.map((option, index) => (
-        <button
-          aria-checked={option === value}
-          aria-label={words[option]}
-          className="mate-face-option focus-visible:ring-2 focus-visible:ring-ring"
-          data-checked={option === value ? "" : undefined}
-          key={option}
-          onClick={() => {
-            onPick(option);
-          }}
-          onKeyDown={(event) => {
-            const by = ARROW_STEPS[event.key];
-            if (by === undefined) return;
-            event.preventDefault();
-            step(option, by);
-          }}
-          ref={(node) => {
-            if (node === null) buttons.current.delete(option);
-            else buttons.current.set(option, node);
-          }}
-          role="radio"
-          style={{ ...optionStyle(option), ...place?.(index) }}
-          tabIndex={option === value ? 0 : -1}
-          type="button"
-        >
-          <svg aria-hidden="true" className="size-9" viewBox="0 0 36 36">
-            {children(option)}
-          </svg>
-        </button>
-      ))}
-    </div>
+    <RadioSwatchGroup
+      aria-label={label}
+      className={className}
+      onValueChange={onPick}
+      options={options}
+      value={value}
+    >
+      {options.map((option, index) => {
+        const swatch = (
+          <RadioSwatch
+            aria-label={words[option]}
+            key={option}
+            size={place === undefined ? "default" : "fill"}
+            style={optionStyle(option)}
+            value={option}
+          >
+            <svg aria-hidden="true" viewBox="0 0 36 36">
+              {children(option)}
+            </svg>
+          </RadioSwatch>
+        );
+        return place === undefined ? (
+          swatch
+        ) : (
+          <span className="mate-face-ring-seat" key={option} style={place(index)}>
+            {swatch}
+          </span>
+        );
+      })}
+    </RadioSwatchGroup>
   );
 }
-
-const ARROW_STEPS: Readonly<Record<string, number>> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
-};
 
 /**
  * The face being picked, as its hero. A change crossfades: the face before fades out under the

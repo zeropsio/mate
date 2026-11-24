@@ -35,6 +35,7 @@ import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
@@ -381,38 +382,41 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
       <Label id={REGION_LABEL} render={<h3 />}>
         Where the services should run
       </Label>
-      <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
+      <RadioGroup
+        aria-labelledby={REGION_LABEL}
+        disabled={held}
+        layout="row"
+        onValueChange={(picked) => {
+          const location = locations.find((candidate) => candidate.id === picked);
+          if (location !== undefined) onLocation(location.id);
+        }}
+        value={locationId}
+      >
         {locations.map((location) => {
           const place = regionPlace(location.name);
           // Holds its line while unmeasured, so a sample coming in moves nothing.
           const latency = location.latencyMs === undefined ? null : `${location.latencyMs} ms`;
           return (
-            <button
-              aria-checked={location.id === locationId}
+            <RadioCard
+              align="center"
               aria-label={location.name}
-              className="region-tile"
-              disabled={held}
               key={location.id}
-              onClick={() => {
-                onLocation(location.id);
-              }}
-              role="radio"
-              type="button"
+              title={<span className="truncate">{place.name}</span>}
+              value={location.id}
             >
-              <span className="region-tile-name">{place.name}</span>
               {place.city === undefined ? null : (
-                <span className="region-tile-city">
-                  <MapPinIcon aria-hidden />
-                  {place.city}
+                <span className="flex max-w-full items-center gap-1">
+                  <MapPinIcon aria-hidden className="size-3.5 shrink-0" />
+                  <span className="truncate">{place.city}</span>
                 </span>
               )}
-              <span className="region-tile-latency">
+              <span className="mt-2 block min-h-4.5 max-w-full truncate tabular-nums">
                 {latency === null ? null : `Latency: ${latency}`}
               </span>
-            </button>
+            </RadioCard>
           );
         })}
-      </div>
+      </RadioGroup>
       <ul className="region-notes">
         <li>
           <InfoIcon aria-hidden />
