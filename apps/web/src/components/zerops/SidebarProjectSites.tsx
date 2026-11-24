@@ -42,6 +42,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
@@ -60,6 +61,9 @@ import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 import { usePutLiveStanding } from "~/zerops/putLive";
 import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
+import { Button } from "../ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -571,21 +575,27 @@ export function SitesPanel({
         )}
       </div>
       {total < FILTER_FROM ? null : (
-        <label className="zerops-sites-filter">
-          <SearchIcon aria-hidden="true" className="size-3.5 shrink-0" />
-          <input
-            aria-label="Filter addresses"
-            data-sites-filter=""
-            onChange={(event) => {
-              onQuery(event.target.value);
-            }}
-            placeholder="Filter addresses"
-            ref={filter}
-            spellCheck={false}
-            type="text"
-            value={query}
-          />
-        </label>
+        <div className="mx-2 mb-1.5 flex-none">
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              aria-label="Filter addresses"
+              data-sites-filter=""
+              nativeInput
+              onChange={(event) => {
+                onQuery(event.target.value);
+              }}
+              placeholder="Filter addresses"
+              ref={filter}
+              size="sm"
+              spellCheck={false}
+              type="text"
+              value={query}
+            />
+          </InputGroup>
+        </div>
       )}
       <div className="zerops-sites-scroll" ref={scroll}>
         {sections.length === 0 ? (
@@ -741,49 +751,57 @@ function PlaceSection({
   // The furthest of what its platform runs now, after its word: ` · shop building 2m`. The row
   // stays one line, so what it runs gives its room to what is happening to it.
   const [running] = useRunningNow(projectId);
-  const row = (
-    <>
-      <EnvDot dot={stop?.dot ?? "off"} label={stop?.word ?? "Reading…"} />
-      <span className="min-w-0 truncate">
-        <b className="font-medium">{title}</b>
+  const head = {
+    lead: <EnvDot dot={stop?.dot ?? "off"} label={stop?.word ?? "Reading…"} />,
+    title: (
+      <>
+        {title}
         {stop?.version === undefined || running !== undefined ? null : (
           <span className="zerops-envpop-version">{stop.version}</span>
         )}
-      </span>
-      <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
-        <span>
+      </>
+    ),
+    // What it says, under its name: its word, what it runs now, and that run's clock.
+    line:
+      stop?.git !== undefined && running === undefined ? undefined : (
+        <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
           {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
           {running === undefined ? null : (
             <span data-zerops-surface="sidebar-project-sites-running">
-              {" · "}
+              {stop?.git === undefined ? " · " : null}
               {runningShort(running)}
             </span>
           )}
+          {running === undefined || running.waiting ? null : (
+            <>
+              {" "}
+              <RunningClock short since={running.since} />
+            </>
+          )}
         </span>
-        {/* Its clock stands at the end while the line has the room, and gives it up first. */}
-        {running === undefined || running.waiting ? null : (
-          <RunningClock short since={running.since} />
-        )}
-      </span>
-    </>
-  );
+      ),
+  };
   return (
     <>
       <div className="zerops-sites-sectionhead">
         {opens === undefined ? (
-          <div className="zerops-sites-place" data-zerops-surface="sidebar-project-sites-place">
-            {row}
-          </div>
+          <Row
+            {...head}
+            className="flex-1"
+            data-zerops-surface="sidebar-project-sites-place"
+            size="xs"
+          />
         ) : (
-          <button
-            className="zerops-sites-place zerops-envpop-press"
+          <Row
+            {...head}
+            className="flex-1"
             data-sites-nav=""
             data-zerops-surface="sidebar-project-sites-place"
             onClick={opens}
-            type="button"
-          >
-            {row}
-          </button>
+            pressable
+            render={<button type="button" />}
+            size="xs"
+          />
         )}
         {projectId === undefined ? null : <ZeropsDoor name={title} projectId={projectId} />}
       </div>
@@ -894,19 +912,19 @@ function ManageRow({
 }) {
   if (!useProjectRoleOffers(projectId).manageAddresses) return null;
   return (
-    <button
+    <Row
       aria-label={`Manage the addresses of ${name}`}
-      className="zerops-sites-link zerops-sites-door"
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-manage"
+      lead={<SlidersHorizontalIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
       onClick={() => {
         manage(projectId);
       }}
-      type="button"
-    >
-      <SlidersHorizontalIcon aria-hidden="true" />
-      Manage addresses
-    </button>
+      pressable
+      render={<button type="button" />}
+      size="xs"
+      title="Manage addresses"
+    />
   );
 }
 
@@ -921,19 +939,18 @@ function AddYourDomain({
   const lacks = useLacksOwnDomain(projectId);
   if (!useProjectRoleOffers(projectId).manageAddresses || !lacks) return null;
   return (
-    <button
-      className="zerops-sites-link zerops-sites-door"
-      data-acts=""
+    <Row
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-add-domain"
+      lead={<PlusIcon aria-hidden="true" className="size-3.5 text-primary" />}
       onClick={() => {
         manage(projectId, "add-domain");
       }}
-      type="button"
-    >
-      <PlusIcon aria-hidden="true" />
-      Put it on your domain
-    </button>
+      pressable
+      render={<button type="button" />}
+      size="xs"
+      title={<span className="text-primary">Put it on your domain</span>}
+    />
   );
 }
 
@@ -978,26 +995,33 @@ function MateHead({
   const mark = mate?.owner === undefined || mate.owner.isViewer ? undefined : ownerMark(mate.owner);
   return (
     <div className="zerops-sites-sectionhead">
-      <div className="zerops-sites-mate" data-zerops-surface="sidebar-project-sites-mate">
-        <span className="zerops-sites-face">
-          <MateFace shape={mate?.shape} size={16} state="idle" tint={mate?.tint ?? "slate"} />
-          {mark === undefined ? null : (
-            <span
-              aria-hidden="true"
-              className="zerops-sites-owner"
-              style={{ "--person-hue": mark.hue } as CSSProperties}
-            >
-              {mark.initial}
-            </span>
-          )}
-        </span>
-        <span className="min-w-0 truncate">
-          <b className="font-medium">{title}</b>
-          {owner === undefined ? null : (
-            <span className="zerops-sites-whose">{` · ${owner}'s`}</span>
-          )}
-        </span>
-      </div>
+      <Row
+        className="flex-1"
+        data-zerops-surface="sidebar-project-sites-mate"
+        lead={
+          <span className="zerops-sites-face">
+            <MateFace shape={mate?.shape} size={16} state="idle" tint={mate?.tint ?? "slate"} />
+            {mark === undefined ? null : (
+              <span
+                aria-hidden="true"
+                className="zerops-sites-owner"
+                style={{ "--person-hue": mark.hue } as CSSProperties}
+              >
+                {mark.initial}
+              </span>
+            )}
+          </span>
+        }
+        size="xs"
+        title={
+          <>
+            {title}
+            {owner === undefined ? null : (
+              <span className="zerops-sites-whose">{` · ${owner}'s`}</span>
+            )}
+          </>
+        }
+      />
       <ZeropsDoor name={title} projectId={projectId} />
     </div>
   );
@@ -1030,7 +1054,7 @@ function ZeropsDoor({ projectId, name }: { readonly projectId: string; readonly 
 type CopiedLink = Pick<SitesLink, "key" | "url">;
 
 /** `c` on a focused row, or ⌘C with nothing selected, copies its address. */
-function copyOnKey(event: KeyboardEvent<HTMLAnchorElement>, onCopy: () => void) {
+function copyOnKey(event: KeyboardEvent<HTMLElement>, onCopy: () => void) {
   const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
   const selected = window.getSelection?.()?.toString() ?? "";
   const copyKey =
@@ -1039,6 +1063,38 @@ function copyOnKey(event: KeyboardEvent<HTMLAnchorElement>, onCopy: () => void) 
   if (!copyKey) return;
   event.preventDefault();
   onCopy();
+}
+
+/**
+ * An address's row: ↗ in the place mark's column, its service and host, opening in a new tab and
+ * copying on `c` or ⌘C; its end keeps the room its copy button shows in.
+ */
+function SitesLinkRow({
+  href,
+  title,
+  onCopyKey,
+  ...trigger
+}: Omit<ComponentProps<typeof Row>, "title"> & {
+  readonly href: string;
+  readonly title: ReactNode;
+  readonly onCopyKey: () => void;
+}) {
+  return (
+    <Row
+      {...trigger}
+      data-sites-nav=""
+      data-zerops-surface="sidebar-project-sites-link"
+      lead={<ArrowUpRightIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
+      meta={<span aria-hidden="true" className="block w-6" />}
+      onKeyDown={(event) => {
+        copyOnKey(event, onCopyKey);
+      }}
+      pressable
+      render={<a href={href} rel="noreferrer" target="_blank" />}
+      size="xs"
+      title={title}
+    />
+  );
 }
 
 /** A row's copy button, which its hover or focus shows and which says so once copied. */
@@ -1052,23 +1108,25 @@ function CopyButton({
   readonly onCopy: () => void;
 }) {
   return (
-    <button
-      aria-label={`Copy ${host}`}
-      className="zerops-sites-copy"
-      data-zerops-surface="sidebar-project-sites-copy"
-      onClick={onCopy}
-      tabIndex={-1}
-      type="button"
-    >
-      {done ? (
-        <>
-          <CheckIcon aria-hidden="true" className="size-3.5" />
-          Copied
-        </>
-      ) : (
-        <CopyIcon aria-hidden="true" className="size-3.5" />
-      )}
-    </button>
+    <span className="zerops-sites-copy">
+      <Button
+        aria-label={`Copy ${host}`}
+        data-zerops-surface="sidebar-project-sites-copy"
+        onClick={onCopy}
+        size={done ? "xs" : "icon-xs"}
+        tabIndex={-1}
+        variant="ghost-muted"
+      >
+        {done ? (
+          <>
+            <CheckIcon aria-hidden="true" />
+            Copied
+          </>
+        ) : (
+          <CopyIcon aria-hidden="true" />
+        )}
+      </Button>
+    </span>
   );
 }
 
@@ -1098,38 +1156,41 @@ function SitesServices({
         >
           {/* The whole reason on a hover too, where a narrow popover cuts it. */}
           <Tooltip>
-            <TooltipTrigger render={<span className="zerops-sites-link zerops-sites-off" />}>
-              {name}
-              <span className="zerops-sites-host" data-sites-why="">
-                {row.why?.replace(/\.$/u, "")}
-              </span>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Row
+                  data-sites-off=""
+                  lead={<span aria-hidden="true" />}
+                  size="xs"
+                  title={
+                    <>
+                      {name}
+                      <span className="zerops-sites-host" data-sites-why="">
+                        {row.why?.replace(/\.$/u, "")}
+                      </span>
+                    </>
+                  }
+                />
+              }
+            />
             <TooltipPopup side="top">{row.why}</TooltipPopup>
           </Tooltip>
         </div>
       );
     const done = copied === row.key;
     const host = row.host ?? url;
-    const anchor = {
-      className: "zerops-sites-link",
-      "data-sites-nav": "",
-      "data-zerops-surface": "sidebar-project-sites-link",
+    const link = {
       href: url,
-      onKeyDown: (event: KeyboardEvent<HTMLAnchorElement>) => {
-        copyOnKey(event, () => {
-          onCopy({ key: row.key, url });
-        });
+      onCopyKey: () => {
+        onCopy({ key: row.key, url });
       },
-      rel: "noreferrer",
-      target: "_blank",
+      title: (
+        <>
+          {name}
+          <span className="zerops-sites-host">{host}</span>
+        </>
+      ),
     };
-    const content = (
-      <>
-        {name}
-        <span className="zerops-sites-host">{host}</span>
-        <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
-      </>
-    );
     return (
       <div
         className="zerops-sites-linkrow"
@@ -1138,10 +1199,10 @@ function SitesServices({
         key={row.key}
       >
         {row.more.length === 0 ? (
-          <a {...anchor}>{content}</a>
+          <SitesLinkRow {...link} />
         ) : (
           <Tooltip>
-            <TooltipTrigger render={<a {...anchor} />}>{content}</TooltipTrigger>
+            <TooltipTrigger render={<SitesLinkRow {...link} />} />
             <TooltipPopup side="top">
               {[host, ...row.more].map((each) => (
                 <div key={each}>{each}</div>
@@ -1189,28 +1250,23 @@ function SitesLinks({
     const done = copied === link.key;
     return (
       <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined} key={link.key}>
-        <a
-          className="zerops-sites-link"
-          data-sites-nav=""
-          data-zerops-surface="sidebar-project-sites-link"
+        <SitesLinkRow
           href={link.url}
-          onKeyDown={(event) => {
-            copyOnKey(event, () => {
-              onCopy(link);
-            });
+          onCopyKey={() => {
+            onCopy(link);
           }}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="zerops-sites-service">
-            {link.service}
-            {link.port === undefined ? null : (
-              <span className="zerops-envpop-port">:{link.port}</span>
-            )}
-          </span>
-          <span className="zerops-sites-host">{link.host}</span>
-          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
-        </a>
+          title={
+            <>
+              <span className="zerops-sites-service">
+                {link.service}
+                {link.port === undefined ? null : (
+                  <span className="zerops-envpop-port">:{link.port}</span>
+                )}
+              </span>
+              <span className="zerops-sites-host">{link.host}</span>
+            </>
+          }
+        />
         <CopyButton
           done={done}
           host={link.host}

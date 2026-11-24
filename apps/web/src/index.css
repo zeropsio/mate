@@ -5282,16 +5282,6 @@ code {
   color: var(--zerops-status-failed-text);
 }
 
-.zerops-envpop-press {
-  cursor: pointer;
-  outline: none;
-  transition: background-color 150ms ease;
-}
-
-.zerops-envpop-press:is(:hover, :focus-visible) {
-  background-color: var(--accent);
-}
-
 .zerops-envpop-note {
   padding: 0 10px 6px 36px;
   color: var(--muted-foreground);
@@ -5334,15 +5324,6 @@ code {
   background-color: var(--border);
 }
 
-.zerops-envpop-act {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 6px 6px 10px;
-  border-radius: 9px;
-}
-
 .zerops-envpop-review {
   padding: 3px 8px;
   border-radius: 7px;
@@ -5357,7 +5338,7 @@ code {
   background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
 }
 
-/* "Ask <your Mate> to fix it" (S6): a soft blue button, the Mate's face in it,
+/* "Ask <your Mate> to fix it" (S6): a button with the Mate's face in it,
    and under it — once pressed — what goes into the Mate's composer. */
 .zerops-envpop-ask {
   display: flex;
@@ -5366,55 +5347,10 @@ code {
   margin: 4px 6px 8px 32px;
 }
 
-.zerops-envpop-askbutton,
-.zerops-envpop-askmore,
-.zerops-envpop-other {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 10px 0 6px;
-  border-radius: 9px;
-  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-  color: var(--info-foreground);
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms ease,
-    scale 120ms var(--ease-out-strong);
-}
-
-.zerops-envpop-askbutton {
-  align-self: flex-start;
-}
-
-.zerops-envpop-askmore {
-  justify-content: center;
-  width: 30px;
-  padding: 0;
-}
-
-.zerops-envpop-other {
-  background-color: transparent;
-  color: var(--card-foreground);
-  font-weight: 400;
-}
-
 .zerops-envpop-others {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.zerops-envpop-askbutton:is(:hover, :focus-visible),
-.zerops-envpop-askmore:is(:hover, :focus-visible),
-.zerops-envpop-other:is(:hover, :focus-visible) {
-  background-color: color-mix(in oklab, var(--info-foreground) 16%, transparent);
-}
-
-.zerops-envpop-askbutton:active {
-  scale: 0.98;
 }
 
 .zerops-envpop-draft {
@@ -5702,38 +5638,6 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-.zerops-sites-filter {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  height: 32px;
-  margin: 0 8px 6px;
-  padding: 0 10px;
-  border-radius: 9px;
-  background-color: color-mix(in oklab, var(--card-foreground) 5%, transparent);
-  color: var(--muted-foreground);
-  transition: box-shadow 150ms var(--ease-out-strong);
-}
-
-.zerops-sites-filter:focus-within {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.zerops-sites-filter input {
-  flex: 1 1 auto;
-  min-width: 0;
-  border: 0;
-  background: none;
-  color: var(--card-foreground);
-  font: inherit;
-  outline: none;
-}
-
-.zerops-sites-filter input::placeholder {
-  color: var(--muted-foreground);
-}
-
 .zerops-sites-scroll {
   position: relative;
   flex: 1 1 auto;
@@ -5772,55 +5676,6 @@ code {
   align-items: center;
   gap: 2px;
   background-color: var(--card);
-}
-
-.zerops-sites-place,
-.zerops-sites-mate {
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  min-width: 0;
-  padding: 7px 10px;
-  border-radius: 9px;
-  text-align: start;
-  scroll-margin-top: 0;
-}
-
-.zerops-sites-mate {
-  grid-template-columns: 16px minmax(0, 1fr);
-}
-
-.zerops-sites-place > :is(.zerops-envdot, [data-slot="badge"]) {
-  justify-self: center;
-}
-
-/* With what runs there after its word, a place's row stays one line: the word takes what the name
-   leaves and is cut there. */
-.zerops-sites-place:has([data-zerops-surface="sidebar-project-sites-running"]) {
-  grid-template-columns: 16px auto minmax(0, 1fr);
-}
-
-.zerops-sites-place > .zerops-envpop-word {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  column-gap: 4px;
-  min-width: 0;
-  height: 1lh;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-/* What does not fit beside the words goes to a line that is not shown: the clock of what runs
-   there is said only where the row has the room, and the words are cut only where they alone
-   are longer than the row. */
-.zerops-sites-place > .zerops-envpop-word > span:first-child {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .zerops-sites-face {
@@ -5889,14 +5744,14 @@ code {
 }
 
 .zerops-sites-note {
-  padding: 0 10px 6px 36px;
+  padding: 0 10px 6px 30px;
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 17px;
 }
 
 .zerops-sites-access {
-  padding: 0 10px 0 36px;
+  padding: 0 10px 0 30px;
 }
 
 .zerops-sites-access:empty {
@@ -5904,147 +5759,58 @@ code {
 }
 
 .zerops-sites-quiet {
-  padding: 2px 10px 8px 36px;
+  padding: 2px 10px 8px 30px;
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 16px;
 }
 
-/* An address: its service (and its role), its host cut short, ↗ — and, at its end, in room kept
+/* An address: ↗, its service (and its role), its host cut short — and, at its end, in room kept
    for it, the copy its hover or focus shows. */
 .zerops-sites-linkrow {
   position: relative;
 }
 
-.zerops-sites-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 6px 38px 6px 36px;
-  border-radius: 9px;
-  color: var(--muted-foreground);
-  outline: none;
-  scroll-margin-top: 36px;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.zerops-sites-linkrow:hover > a.zerops-sites-link,
-.zerops-sites-link:focus-visible {
-  background-color: var(--accent);
-  color: var(--foreground);
-}
-
-/* A place's doors under its addresses: rows like them, their words on the names' edge and their
-   icon in the place mark's column. */
-.zerops-sites-door {
-  position: relative;
-  width: 100%;
-  text-align: start;
-}
-
-/* Centred on the heads' mark column: 10px in, 16px wide. */
-.zerops-sites-door > svg {
-  position: absolute;
-  inset-inline-start: 11px;
-  width: 14px;
-  height: 14px;
-}
-
-.zerops-sites-door:is(:hover, :focus-visible) {
-  background-color: var(--accent);
-  color: var(--foreground);
-}
-
-/* Adding its own domain acts: the action blue. */
-.zerops-sites-door[data-acts] {
-  color: var(--primary);
-  font-weight: 500;
-}
-
-.zerops-sites-door[data-acts]:is(:hover, :focus-visible) {
-  background-color: color-mix(in srgb, var(--primary) 8%, transparent);
-  color: var(--primary);
-}
-
 /* A service is named by its hostname, a real thing's own name: in the mono face (`.real-name`'s
    rule), never the label face its section's title wears. */
 .zerops-sites-service {
-  flex: none;
+  display: inline-block;
   max-width: 45%;
+  margin-inline-end: 8px;
   overflow: hidden;
   color: var(--foreground);
   font-family: var(--font-mono);
   font-size: 0.966em;
   font-weight: 500;
   text-overflow: ellipsis;
+  vertical-align: top;
   white-space: nowrap;
 }
 
 /* A Mate's service with nothing to open: its hostname, muted, with why in its host's place and no
    ↗; its tooltip says the whole reason where the popover cuts it. */
-.zerops-sites-off {
-  cursor: default;
-}
-
-.zerops-sites-off > .zerops-sites-service {
+[data-sites-off] .zerops-sites-service {
   color: var(--muted-foreground);
 }
 
 .zerops-sites-host {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.zerops-sites-arrow {
-  flex: none;
-  width: 13px;
-  height: 13px;
+  color: var(--muted-foreground);
+  font-weight: 400;
 }
 
 .zerops-sites-copy {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: 8px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-width: 26px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 7px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
   opacity: 0;
   translate: 0 -50%;
-  transition:
-    opacity 120ms var(--ease-out-strong),
-    background-color 120ms var(--ease-out-strong),
-    color 120ms var(--ease-out-strong);
+  transition: opacity 120ms var(--ease-out-strong);
 }
 
 .zerops-sites-linkrow:is(:hover, :focus-within) > .zerops-sites-copy,
 .zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
   opacity: 1;
-}
-
-.zerops-sites-copy:hover {
-  background-color: color-mix(in oklab, var(--card-foreground) 8%, transparent);
-  color: var(--foreground);
-}
-
-.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
-  background-color: var(--card);
-  box-shadow: 0 0 0 1px var(--border);
-  color: var(--zerops-status-ok-text);
 }
 
 @media (pointer: coarse) {
@@ -6071,11 +5837,8 @@ code {
   font-weight: 500;
 }
 
-.zerops-sites-empty > .zerops-envpop-act {
-  align-self: stretch;
+.zerops-sites-empty > [data-slot="row"] {
   margin-top: 8px;
-  color: var(--card-foreground);
-  text-align: start;
 }
 
 /* The section the tag spoke of, lit for a moment as the popover opens on it. */
