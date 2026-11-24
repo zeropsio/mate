@@ -182,24 +182,21 @@ function ProviderCustomColorPicker(props: {
     <Popover>
       <PopoverTrigger
         render={
-          <button
-            type="button"
-            className={cn(
-              "flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90",
-              "hover:scale-105",
-            )}
-            style={{
-              backgroundColor: normalized,
-              ...(props.selected
-                ? {
-                    boxShadow: `inset 0 0 0 2px var(--card), 0 0 0 2px ${normalized}`,
-                  }
-                : {}),
-            }}
-            aria-label={`Choose custom accent color for ${props.displayName}`}
-          >
-            <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
-          </button>
+          <Button aria-label={`Choose custom accent color for ${props.displayName}`} variant="bare">
+            <span
+              className="flex size-6 items-center justify-center rounded-full transition-transform duration-200 hover:scale-105 active:scale-90"
+              style={{
+                backgroundColor: normalized,
+                ...(props.selected
+                  ? {
+                      boxShadow: `inset 0 0 0 2px var(--card), 0 0 0 2px ${normalized}`,
+                    }
+                  : {}),
+              }}
+            >
+              <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
+            </span>
+          </Button>
         }
       />
       <PopoverPopup side="bottom" align="start" sideOffset={6} padding="none">

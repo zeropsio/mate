@@ -1866,14 +1866,6 @@
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
-    "fingerprint": "\"flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
     "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
     "owner": "karel",
     "reason": "picker chrome / derived foreground",

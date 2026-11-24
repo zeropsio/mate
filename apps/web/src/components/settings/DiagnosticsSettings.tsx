@@ -106,13 +106,9 @@ function StatBlock({
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
-                  className="cursor-pointer inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground"
-                  aria-label={`${label} details`}
-                >
+                <InlineButton aria-label={`${label} details`} tone="muted">
                   <InfoIcon className="size-3" />
-                </button>
+                </InlineButton>
               }
             />
             <TooltipPopup side="top">{tooltip}</TooltipPopup>

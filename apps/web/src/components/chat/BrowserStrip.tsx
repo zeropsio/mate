@@ -63,16 +63,23 @@ const DEVICE_WORD: Record<BrowserDevice, string> = {
  * the device. A narrow column gives the frame the width left under the
  * caption; a wide one keeps it beside the takes.
  */
-const FRAME_CLASS: Record<BrowserDevice, string> = {
-  desktop: "w-full rounded-lg @xl/strip:w-96",
-  tablet: "w-36 rounded-2xl p-1.5 @xl/strip:w-50",
-  phone: "w-24 rounded-3xl p-1 @xl/strip:w-32",
+const FRAME_WIDTH: Record<BrowserDevice, string> = {
+  desktop: "w-full @xl/strip:w-96",
+  tablet: "w-36 @xl/strip:w-50",
+  phone: "w-24 @xl/strip:w-32",
+};
+
+/** The frame's corner and bezel; its screen's corner runs parallel inside the bezel. */
+const FRAME_SHAPE: Record<BrowserDevice, string> = {
+  desktop: "rounded-card",
+  tablet: "rounded-sheet p-1.5",
+  phone: "rounded-sheet p-1",
 };
 
 const SCREEN_CLASS: Record<BrowserDevice, string> = {
-  desktop: "rounded-b-lg",
-  tablet: "rounded-lg",
-  phone: "rounded-2xl",
+  desktop: "rounded-b-card",
+  tablet: "rounded-control",
+  phone: "rounded-card",
 };
 
 /**
@@ -90,9 +97,9 @@ const TAKE_FRAME: Record<BrowserTakeState, string> = {
 
 /** A take's thumbnail in the list of takes, in its device's shape. */
 const TAKE_CLASS: Record<BrowserDevice, string> = {
-  desktop: "w-13 rounded-sm",
-  tablet: "w-6 rounded-sm",
-  phone: "w-4 rounded-sm",
+  desktop: "w-13 rounded-mark",
+  tablet: "w-6 rounded-mark",
+  phone: "w-4 rounded-mark",
 };
 
 function checkDuration(check: ZeropsOperation): string | null {
@@ -280,9 +287,9 @@ export function BrowserStrip({
     .filter(Boolean)
     .join(" · ");
 
-  const frameClass = cn(
-    "relative flex min-h-0 flex-1 shrink-0 flex-col self-center overflow-hidden border border-border bg-card @xl/strip:h-66 @xl/strip:flex-none",
-    FRAME_CLASS[device],
+  const frameLook = cn(
+    "relative flex min-h-0 flex-1 flex-col overflow-hidden border border-border bg-card",
+    FRAME_SHAPE[device],
     stageState === "failed" && "border-status-failed",
     stageState === "retried" && "border-status-attention",
   );
@@ -353,44 +360,49 @@ export function BrowserStrip({
     >
       <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
         {staged ? (
-          readOnStage ? (
-            // What it read has nothing to open: a frame, not a button.
-            <div
-              aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
-              className={frameClass}
-              data-browser-strip-stage="read"
-              role="img"
-            >
-              {frameBody}
-            </div>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    aria-label={
-                      stageSrc
-                        ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
-                        : "Open the Browser panel"
-                    }
-                    className={cn(
-                      frameClass,
-                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                    )}
-                    data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
-                    {...intent}
-                    onClick={onStageClick}
-                    type="button"
-                  />
-                }
+          // The frame's room on the stage, in its device's width; the frame fills it.
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 shrink-0 flex-col self-center @xl/strip:h-66 @xl/strip:flex-none",
+              FRAME_WIDTH[device],
+            )}
+          >
+            {readOnStage ? (
+              // What it read has nothing to open: a frame, not a button.
+              <div
+                aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
+                className={frameLook}
+                data-browser-strip-stage="read"
+                role="img"
               >
                 {frameBody}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
-              </TooltipPopup>
-            </Tooltip>
-          )
+              </div>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={
+                        stageSrc
+                          ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
+                          : "Open the Browser panel"
+                      }
+                      className="flex min-h-0 flex-1 flex-col"
+                      data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                      {...intent}
+                      onClick={onStageClick}
+                      variant="bare"
+                    />
+                  }
+                >
+                  <span className={frameLook}>{frameBody}</span>
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
+                </TooltipPopup>
+              </Tooltip>
+            )}
+          </div>
         ) : null}
         <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
           <p

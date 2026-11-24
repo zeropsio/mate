@@ -53,6 +53,7 @@ import {
   resolveThreadPr,
 } from "./ThreadStatusIndicators";
 import { ComposerControl } from "./chat/ComposerControl";
+import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { getVirtualizedScrollFadeClassName } from "./ui/scroll-area";
 import {
@@ -751,19 +752,23 @@ export function BranchToolbarBranchSelector({
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
+                <Button
                   aria-label={branchPrTooltip}
                   onClick={(event) => openPrLink(event, branchPrStatus.url)}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium tabular-nums transition-colors hover:bg-muted/60",
-                    branchPrStatus.colorClass,
-                  )}
+                  size="2xs"
+                  variant="ghost"
                 />
               }
             >
-              <ChangeRequestStatusIcon className="size-3" />
-              <span>#{branchPr.number}</span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 tabular-nums",
+                  branchPrStatus.colorClass,
+                )}
+              >
+                <ChangeRequestStatusIcon className="size-3 text-current" />
+                <span>#{branchPr.number}</span>
+              </span>
             </TooltipTrigger>
             <TooltipPopup side="top">{branchPrTooltip}</TooltipPopup>
           </Tooltip>

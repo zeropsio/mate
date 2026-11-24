@@ -40,7 +40,7 @@ import {
 import { createPortal } from "react-dom";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Input } from "../ui/input";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
@@ -603,15 +603,15 @@ export const ChatHeader = memo(function ChatHeader({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <InlineButton
               ref={titleButtonRef}
-              type="button"
               aria-label={`Thread actions for ${headline}`}
               aria-haspopup="menu"
               onClick={openMenuFromTitle}
               onDoubleClick={handleTitleDoubleClick}
               onBlur={cancelPendingTitleMenu}
-              className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="group/thread-title min-w-0 max-w-full shrink text-left"
+              tone="plain"
             />
           }
         >
@@ -781,11 +781,11 @@ export const ChatHeader = memo(function ChatHeader({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <button
-                          type="button"
+                        <InlineButton
                           aria-label={`New thread in ${activeProjectName}`}
                           onClick={onNewThreadInProject}
-                          className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                          className="min-w-0 shrink"
+                          tone="muted"
                         />
                       }
                     >

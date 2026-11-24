@@ -19,6 +19,7 @@ import {
 } from "../desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -310,35 +311,39 @@ function SidebarUpdateControl() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              type="button"
+            <Button
               aria-label={tooltip}
               aria-disabled={isInteractionDisabled || undefined}
-              className={cn(
-                "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
-                isInteractionDisabled ? "cursor-not-allowed" : "cursor-pointer",
-                showUpdateIconState
-                  ? cn(
-                      "bg-update-surface text-update-foreground",
-                      !isInteractionDisabled && "hover:bg-update/12",
-                    )
-                  : cn(
-                      "text-(--sidebar-icon-color)",
-                      !isInteractionDisabled &&
-                        "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-                    ),
-                disabled && !showUpdateIconState && "opacity-60",
-              )}
+              className={isInteractionDisabled ? "group/update cursor-not-allowed" : "group/update"}
               onClick={handleAction}
+              variant="bare"
             >
-              <DesktopUpdateStatusIcon
-                key={showCheckIcon ? checkAnimationKey : iconStatus}
-                downloadPercent={state?.downloadPercent ?? null}
-                isCheckAnimating={showCheckIcon && !prefersReducedMotion}
-                onCheckAnimationIteration={handleCheckAnimationIteration}
-                status={iconStatus}
-              />
-            </button>
+              {/* The press is its disc: the update's tint while one waits, the menu's icon ink otherwise. */}
+              <span
+                className={cn(
+                  "inline-flex size-8 items-center justify-center rounded-full transition-colors",
+                  showUpdateIconState
+                    ? cn(
+                        "bg-update-surface text-update-foreground",
+                        !isInteractionDisabled && "group-hover/update:bg-update/12",
+                      )
+                    : cn(
+                        "text-(--sidebar-icon-color)",
+                        !isInteractionDisabled &&
+                          "group-hover/update:bg-sidebar-row-hover group-hover/update:text-sidebar-foreground",
+                      ),
+                  disabled && !showUpdateIconState && "opacity-60",
+                )}
+              >
+                <DesktopUpdateStatusIcon
+                  key={showCheckIcon ? checkAnimationKey : iconStatus}
+                  downloadPercent={state?.downloadPercent ?? null}
+                  isCheckAnimating={showCheckIcon && !prefersReducedMotion}
+                  onCheckAnimationIteration={handleCheckAnimationIteration}
+                  status={iconStatus}
+                />
+              </span>
+            </Button>
           }
         />
         <TooltipPopup

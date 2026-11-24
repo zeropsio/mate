@@ -69,6 +69,7 @@ import { Input } from "./ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Kbd } from "./ui/kbd";
+import { Row } from "./ui/row";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -777,54 +778,52 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              id={props.resultId}
-              type="button"
-              role="option"
-              // aria-activedescendant options: focus stays on the search input,
-              // which owns all keyboard interaction for the listbox.
-              tabIndex={-1}
-              aria-selected={props.isHighlighted}
-              aria-current={props.isRouteActive ? "page" : undefined}
-              aria-label={
-                props.projectTitle ? `${thread.title}, ${props.projectTitle}` : thread.title
+            <Row
+              lead={
+                <ProjectFavicon
+                  environmentId={thread.environmentId}
+                  cwd={props.projectCwd ?? ""}
+                  faviconPath={props.projectFaviconPath}
+                  className="size-4 shrink-0"
+                  fallbackIcon={MessageSquareIcon}
+                />
               }
-              onMouseMove={props.onHighlight}
-              onClick={props.onSelect}
-              className={cn(
-                "flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1 text-left text-body outline-none",
-                props.isHighlighted || props.isRouteActive
-                  ? "bg-sidebar-row-active text-sidebar-foreground"
-                  : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-              )}
+              line={
+                props.searchMatch ? (
+                  <ThreadSearchMatchExcerpt
+                    match={{
+                      source: props.searchMatch.source,
+                      snippet: props.searchMatch.snippet,
+                      query: props.searchQuery,
+                    }}
+                  />
+                ) : null
+              }
+              meta={threadTimeLabel(thread)}
+              picked={props.isHighlighted || props.isRouteActive}
+              pressable
+              render={
+                <button
+                  id={props.resultId}
+                  type="button"
+                  role="option"
+                  // aria-activedescendant options: focus stays on the search input,
+                  // which owns all keyboard interaction for the listbox.
+                  tabIndex={-1}
+                  aria-selected={props.isHighlighted}
+                  aria-current={props.isRouteActive ? "page" : undefined}
+                  aria-label={
+                    props.projectTitle ? `${thread.title}, ${props.projectTitle}` : thread.title
+                  }
+                  onMouseMove={props.onHighlight}
+                  onClick={props.onSelect}
+                />
+              }
+              size="sm"
+              title={thread.title}
             />
           }
-        >
-          <ProjectFavicon
-            environmentId={thread.environmentId}
-            cwd={props.projectCwd ?? ""}
-            faviconPath={props.projectFaviconPath}
-            className="size-4 shrink-0"
-            fallbackIcon={MessageSquareIcon}
-          />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-              <span className="shrink-0 text-caption text-muted-foreground/55 tabular-nums">
-                {threadTimeLabel(thread)}
-              </span>
-            </span>
-            {props.searchMatch ? (
-              <ThreadSearchMatchExcerpt
-                match={{
-                  source: props.searchMatch.source,
-                  snippet: props.searchMatch.snippet,
-                  query: props.searchQuery,
-                }}
-              />
-            ) : null}
-          </span>
-        </TooltipTrigger>
+        />
         <SidebarThreadTooltip
           thread={thread}
           projectTitle={props.projectTitle}

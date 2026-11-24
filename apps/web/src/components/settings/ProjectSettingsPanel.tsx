@@ -567,25 +567,26 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           }
         >
           <div className="px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center rounded-lg bg-muted/30 p-1 text-base text-muted-foreground sm:text-body">
+            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-base text-muted-foreground sm:text-body">
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    <Button
                       aria-label="Copy checkout path"
-                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      type="button"
+                      className="group min-w-0 flex-1 justify-start"
                       onClick={() =>
                         copyPathToClipboard(selectedCheckout.workspaceRoot, {
                           path: selectedCheckout.workspaceRoot,
                         })
                       }
+                      size="sm"
+                      variant="ghost-muted"
                     >
-                      <code className="min-w-0 flex-1 truncate font-mono">
+                      <code className="min-w-0 flex-1 truncate text-left font-mono">
                         {selectedCheckout.workspaceRoot}
                       </code>
                       <CopyIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipPopup side="top">Copy path</TooltipPopup>

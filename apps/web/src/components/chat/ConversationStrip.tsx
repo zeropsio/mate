@@ -339,7 +339,7 @@ function PillPress({
           <button
             aria-current="page"
             aria-label={crewmateAccessibleName(crewmate)}
-            className="conversation-crewmate absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+            className="conversation-crewmate absolute inset-0 cursor-pointer rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
             data-conversation-crewmate={crewmate.handle}
             data-current="true"
             type="button"
@@ -456,7 +456,7 @@ function CrewSeat({
   return (
     <span
       className={cn(
-        "relative flex h-7 items-center rounded-lg",
+        "relative flex h-7 items-center rounded-control",
         open ? "ps-1 pe-2" : "px-1",
         open && squeezed ? "min-w-15.5" : "shrink-0",
         folded && "invisible absolute start-0 top-0",
@@ -495,20 +495,18 @@ function MoreCrew({
     <Menu>
       <MenuTrigger
         render={
-          <button
-            className={cn(
-              "flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 text-line font-medium text-muted-foreground tabular-nums outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground",
-              !shown && "invisible absolute start-0 top-0",
-            )}
+          <Button
+            className={cn("h-7", !shown && "invisible absolute start-0 top-0")}
             data-chat-header-ghost
             data-conversation-more
+            size="xs"
             tabIndex={shown ? undefined : -1}
-            type="button"
+            variant="sidebar"
           />
         }
       >
         {/* Unseen while nothing folds, it holds a count's room. */}
-        {folded.length === 0 ? 9 : folded.length} more
+        <span className="tabular-nums">{folded.length === 0 ? 9 : folded.length} more</span>
         <ChevronDownIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>
       <MenuPopup align="end">
