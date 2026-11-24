@@ -96,14 +96,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/ChatHeader.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className={cn( \"min-w-0 flex-1 text-body font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring\", over ? \"h-8 rounded-lg bg-background px-2\" : \"rounded-sm bg-transparent\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5\"",
@@ -224,14 +216,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"absolute inset-0 z-0 cursor-zoom-out\"",
@@ -256,14 +240,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/RunBackgroundLine.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-control px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/RunCallBubbles.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"block h-20 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
@@ -276,24 +252,8 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"group/disclose block w-full min-w-0 cursor-pointer text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset\", className, )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( META, \"mt-1 block cursor-pointer rounded-sm not-italic text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "an invisible press over capped words, so a press anywhere on them opens the whole; its look is the \"more\" word",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/RunNowLine.tsx",
@@ -307,14 +267,6 @@
     "path": "apps/web/src/components/chat/RunPersonMark.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"block h-16 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/TimelineLoadEarlierHeader.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"w-full py-1.5 text-caption text-muted-foreground/60 hover:text-foreground disabled:cursor-default\"",
     "owner": "kit pass",
     "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
     "expires": "surface:kit"

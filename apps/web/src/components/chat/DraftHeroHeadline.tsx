@@ -32,6 +32,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
+import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
@@ -211,13 +212,11 @@ export function DraftHeroHeadline({
   ) : !noProject.offersNewProject ? (
     <span>{projectName ?? "No project yet"}</span>
   ) : (
-    <button
-      type="button"
-      onClick={openAddProject}
-      className="pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {projectName ?? "Add a project"}
-    </button>
+    <span className="pointer-events-auto">
+      <InlineButton tone="picker" onClick={openAddProject}>
+        {projectName ?? "Add a project"}
+      </InlineButton>
+    </span>
   );
 
   // The composer hero is a sentence, so the heading's accessible name must be

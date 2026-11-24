@@ -39,6 +39,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
+import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -580,13 +581,11 @@ export const ChatHeader = memo(function ChatHeader({
   // upstream's header, in place of the title.
   const renameInput = (over: boolean) =>
     renamingTitle === null ? null : (
-      <input
+      <Input
         autoFocus
         aria-label="Thread title"
-        className={cn(
-          "min-w-0 flex-1 text-body font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring",
-          over ? "h-8 rounded-lg bg-background px-2" : "rounded-sm bg-transparent",
-        )}
+        className="min-w-0 flex-1"
+        unstyled={!over}
         defaultValue={renamingTitle}
         onBlur={(event) => {
           if (renameCommittedRef.current) return;
