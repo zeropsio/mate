@@ -99,6 +99,8 @@ function RadioCard({ className, title, children, align = "start", ...props }: Ra
 
 interface SwatchRow {
   readonly value: string;
+  /** The option Tab lands on: the picked one, else the first while none of them is. */
+  readonly tabStop: string | undefined;
   /** Picks the option at `from`'s place stepped `by` (0 picks `from` itself), and focuses it. */
   readonly step: (from: string, by: number) => void;
   readonly seat: (option: string, node: HTMLButtonElement | null) => void;
@@ -138,6 +140,7 @@ function RadioSwatchGroup<T extends string>({
   const row = useMemo<SwatchRow>(
     () => ({
       value,
+      tabStop: options.includes(value) ? value : options[0],
       step: (from, by) => {
         const at = options.findIndex((option) => option === from);
         if (at === -1) return;
@@ -210,7 +213,7 @@ function RadioSwatch({ value, size = "default", className, children, ...props }:
         row.seat(value, node);
       }}
       role="radio"
-      tabIndex={checked ? 0 : -1}
+      tabIndex={row.tabStop === value ? 0 : -1}
       type="button"
     >
       {children}
