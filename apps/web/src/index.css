@@ -3479,8 +3479,8 @@ code {
 
   /* ==== a project's Review and Release tags, and its changes popover ==== */
 
-  /* The tags at a project row's end: 22 px, 12/16 · 500, 7 px corners, 6 px apart; one metric for
-     every tag on the row (the environment tag wears `.menu-tag` too). */
+  /* A project's Review and Release tags: 22 px, 12/16 · 500, a control's corner, 6 px apart; the
+     conversation header's door (`.chat-header-review`) joins them into one pill. */
   .menu-tags {
     display: inline-flex;
     flex: none;
@@ -4374,43 +4374,6 @@ code {
     justify-content: flex-end;
   }
 
-  .menu-row-tags .menu-tag {
-    height: 20px;
-    padding: 0 3px;
-    margin-inline: -3px;
-    border-radius: var(--radius-mark);
-    font-size: 14px;
-    line-height: 20px;
-    background: none;
-    box-shadow: none;
-    color: var(--info-foreground);
-  }
-
-  .menu-row-tags .menu-tag-release {
-    font-weight: 600;
-  }
-
-  .menu-row-tags .menu-tag[data-quiet] {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  .menu-row-tags .menu-tag-count {
-    height: 20px;
-  }
-
-  .menu-row-tags .menu-tag[data-popup-open] {
-    background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-    box-shadow: none;
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .menu-row-tags .menu-tag-review:hover,
-    .menu-row-tags .menu-tag-release:hover {
-      background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
-      box-shadow: none;
-    }
-  }
-
   /* A group's faces in the face's column: two at 24 px on the diagonal, three at 21 px as a
      triangle, the lead in front; each ringed in the ground where they overlap, and travelling to
      its new place when the lead changes. */
@@ -4539,23 +4502,8 @@ code {
   }
 
   @container menu-row (max-width: 400px) {
-    .zerops-sites-tag .menu-tag-word,
-    .menu-tag-release .menu-tag-word {
+    .zerops-sites-tag .menu-tag-word {
       display: none;
-    }
-
-    .menu-tag-release .menu-tag-icon {
-      display: block;
-    }
-  }
-
-  @container menu-row (max-width: 340px) {
-    .menu-tag-review .menu-tag-word {
-      display: none;
-    }
-
-    .menu-tag-review .menu-tag-icon {
-      display: block;
     }
   }
 
