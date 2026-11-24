@@ -1,5 +1,7 @@
 import { PlusIcon } from "lucide-react";
 
+import { Button } from "./ui/button";
+
 export function SidebarThreadListEmpty({
   projectGroups,
   roleOffered,
@@ -17,14 +19,10 @@ export function SidebarThreadListEmpty({
         <>
           <span>No projects yet</span>
           {roleOffered.newProject ? (
-            <button
-              type="button"
-              onClick={openNewZeropsProject}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-control border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            >
-              <PlusIcon className="-mx-0.5 size-3" />
+            <Button variant="sidebar" size="xs" onClick={openNewZeropsProject}>
+              <PlusIcon />
               New project
-            </button>
+            </Button>
           ) : null}
         </>
       ) : scopedProjectGroup ? (

@@ -57,13 +57,15 @@ export function ConnectionStatusDot({
   }
 
   const dot = (
-    <button
-      type="button"
+    // Not a press: a focusable mark, so a keyboard reaches the words its tooltip holds.
+    <span
+      role="img"
+      tabIndex={0}
       aria-label={tooltipText}
-      className="relative flex size-3 shrink-0 cursor-help items-center justify-center rounded-full outline-hidden"
+      className="relative flex size-3 shrink-0 cursor-help items-center justify-center rounded-full outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       {dotContent}
-    </button>
+    </span>
   );
 
   return (

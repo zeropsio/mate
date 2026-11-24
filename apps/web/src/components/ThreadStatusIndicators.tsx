@@ -23,6 +23,7 @@ import { threadStatusPill, type ThreadStatusPill } from "~/zerops/statusPill";
 import { THREAD_STATUS_TONE_CLASSES } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
+import { InlineButton } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface PrStatusIndicator {
@@ -61,24 +62,26 @@ export function linkedPullRequestIndicator(
 export function LinkedPullRequestLink(props: {
   readonly indicator: LinkedPullRequestIndicator;
   readonly children?: ReactNode;
-  readonly className?: string;
   readonly onClick?: MouseEventHandler<HTMLAnchorElement>;
 }) {
   return (
-    <a
-      href={props.indicator.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={props.onClick}
-      className={
-        props.className ??
-        "shrink-0 text-muted-foreground text-caption tabular-nums hover:underline"
-      }
-      aria-label={props.indicator.tooltip}
-    >
-      {props.children ?? props.indicator.label}
-    </a>
+    <span className="shrink-0 text-caption tabular-nums">
+      <InlineButton
+        tone="muted"
+        render={
+          <a
+            href={props.indicator.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={props.onClick}
+            aria-label={props.indicator.tooltip}
+          />
+        }
+      >
+        {props.children ?? props.indicator.label}
+      </InlineButton>
+    </span>
   );
 }
 

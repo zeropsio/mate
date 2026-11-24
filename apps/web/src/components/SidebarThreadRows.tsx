@@ -64,6 +64,8 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../provider
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 
 import { conversationCodeFolder } from "@t3tools/client-runtime/zerops";
+import { InlineButton } from "./ui/button";
+import { Input } from "./ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Kbd } from "./ui/kbd";
@@ -480,7 +482,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const rowLayout = resolveThreadRowLayoutPresentation("card");
 
   const title = isRenaming ? (
-    <input
+    <Input
+      size="compact"
+      className="min-w-0 flex-1"
       autoFocus
       value={renamingTitle}
       aria-label="Thread title"
@@ -490,7 +494,6 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onBlur={handleRenameBlur}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
-      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-body font-medium text-card-foreground outline-none focus:border-foreground"
     />
   ) : (
     <span
@@ -518,22 +521,25 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const prBadge = linkedPullRequest ? (
     <LinkedPullRequestLink indicator={linkedPullRequest} onClick={handlePrClick} />
   ) : prStatus && pr ? (
-    <a
-      href={pr.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={handlePrClick}
-      className={cn(
-        // Sidebar chrome follows the interface font; tabular digits keep the
-        // number from reflowing as PR states stream in.
-        "shrink-0 text-caption tabular-nums hover:underline",
-        prStatus.colorClass,
-      )}
-      aria-label={prStatus.tooltip}
-    >
-      #{pr.number}
-    </a>
+    // Sidebar chrome follows the interface font; tabular digits keep the
+    // number from reflowing as PR states stream in.
+    <span className="shrink-0 text-caption tabular-nums">
+      <InlineButton
+        tone="plain"
+        render={
+          <a
+            href={pr.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={handlePrClick}
+            aria-label={prStatus.tooltip}
+          />
+        }
+      >
+        <span className={prStatus.colorClass}>#{pr.number}</span>
+      </InlineButton>
+    </span>
   ) : null;
   const terminalStatusIcon = terminalStatus ? (
     <span

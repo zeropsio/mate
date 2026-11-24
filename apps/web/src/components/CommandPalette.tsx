@@ -119,6 +119,7 @@ import { slashKeyOpensJumpBox } from "./zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
+import { Button } from "./ui/button";
 import { CommandDialog, CommandDialogPopup } from "./ui/command";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
@@ -1204,14 +1205,9 @@ export function OpenCommandPaletteDialog(props: {
         ...(isSubmenu
           ? {
               startAddon: (
-                <button
-                  type="button"
-                  className="flex cursor-pointer items-center"
-                  aria-label="Back"
-                  onClick={popView}
-                >
+                <Button variant="ghost-muted" size="icon-xs" aria-label="Back" onClick={popView}>
                   <ArrowLeftIcon />
-                </button>
+                </Button>
               ),
             }
           : {}),

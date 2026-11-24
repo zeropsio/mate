@@ -8,6 +8,7 @@ import type {
   SidebarProjectThreadMember,
 } from "../../sidebarProjectGrouping";
 import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { Button } from "../ui/button";
 
 interface SidebarProjectTreeThread {
   readonly environmentId: EnvironmentId;
@@ -179,12 +180,12 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
 
   return (
     <li className="list-none">
-      <button
-        type="button"
+      <Button
+        variant="sidebar"
+        className="group w-full justify-start"
         aria-expanded={projectExpanded}
         aria-label={`${projectExpanded ? "Collapse" : "Expand"} project ${projectDisplayName}`}
         onClick={() => treeProps.onToggleProject(project.key)}
-        className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-control px-2 text-left text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronDownIcon
           aria-hidden
@@ -193,13 +194,13 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
           }`}
         />
         <FolderIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-body font-semibold">
+        <span className="min-w-0 flex-1 truncate text-start text-body font-semibold text-sidebar-foreground">
           {projectDisplayName}
         </span>
         <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
           {project.members.length} {project.members.length === 1 ? "workspace" : "workspaces"}
         </span>
-      </button>
+      </Button>
 
       {projectExpanded ? (
         <ul role="list" className="ml-3 border-l border-sidebar-border/70 pl-2">
@@ -231,13 +232,13 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
 
             return (
               <li key={member.key} className="list-none">
-                <div className="group flex min-h-8 w-full items-center rounded-control text-sidebar-foreground hover:bg-sidebar-row-hover">
-                  <button
-                    type="button"
+                <div className="group flex min-h-8 w-full items-center rounded-control text-sidebar-foreground">
+                  <Button
+                    variant="sidebar"
+                    className="min-w-0 flex-1 justify-start"
                     aria-expanded={memberExpanded}
                     aria-label={`${memberExpanded ? "Collapse" : "Expand"} workspace ${memberDisplayName}`}
                     onClick={() => treeProps.onToggleMember(member.key)}
-                    className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ChevronDownIcon
                       aria-hidden
@@ -249,8 +250,8 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                       aria-hidden
                       className="size-3.5 shrink-0 text-sidebar-muted-foreground"
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body font-medium">
+                    <span className="min-w-0 flex-1 text-start">
+                      <span className="block truncate text-body font-medium text-sidebar-foreground">
                         {memberDisplayName}
                       </span>
                       {workspaceIsDistinct ? (
@@ -262,7 +263,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                     <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
                       {meta}
                     </span>
-                  </button>
+                  </Button>
                   {treeProps.renderWorkspaceThreadAction?.({
                     compactThread,
                     member,
