@@ -27,10 +27,7 @@ export function MateUpdateLine({
       <span>
         {base}
         {suffix !== null ? (
-          <span
-            className="text-[var(--zerops-update-role,var(--foreground))]"
-            data-zerops-surface="mate-update-role"
-          >
+          <span className="text-update-role" data-zerops-surface="mate-update-role">
             {" "}
             · {suffix}
           </span>

@@ -603,7 +603,7 @@ function BrowserCard({
           </p>
         ) : null}
         {summary === undefined && !isRunningPhase(operation) && operation.closing !== undefined ? (
-          <p className="text-[13px] text-muted-foreground" data-zerops-card-outcome="true">
+          <p className="text-line text-muted-foreground" data-zerops-card-outcome="true">
             {operation.closing}
           </p>
         ) : null}
@@ -871,7 +871,7 @@ export function ZeropsOperationCard(props: {
             >
               {closing !== undefined ? (
                 <p
-                  className="min-w-0 text-[13px] text-muted-foreground"
+                  className="min-w-0 text-line text-muted-foreground"
                   data-zerops-card-outcome="true"
                 >
                   {closing}

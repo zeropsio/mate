@@ -149,7 +149,7 @@ function ProcessSteps({
             <span
               aria-hidden="true"
               className={cn(
-                "inline-flex size-[var(--zerops-process-step-glyph-size)] items-center justify-center rounded-full border-[length:var(--zerops-process-step-border-width)]",
+                "inline-flex size-[var(--zerops-process-step-glyph-size)] items-center justify-center rounded-full border-2",
                 glyphClassName,
                 step.state === "running" && "animate-status-pulse motion-reduce:animate-none",
               )}
@@ -167,7 +167,7 @@ function ProcessSteps({
                 {showStateLabel ? <MicroLabel>{step.stateLabel}</MicroLabel> : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="shrink-0 pt-0.5 font-mono text-2xs text-muted-foreground tabular-nums">
                   {formatStepDuration(step.durationMs)}
                 </span>
               ) : null}

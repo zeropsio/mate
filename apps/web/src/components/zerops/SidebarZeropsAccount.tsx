@@ -442,7 +442,7 @@ export function SidebarZeropsAccountMenu({
           {destinationIcon(entry.id)}
           <span className="min-w-0 flex-1 truncate">{entry.label}</span>
           {destination === entry.id ? (
-            <span className="text-[11px] text-muted-foreground">Open</span>
+            <span className="text-2xs text-muted-foreground">Open</span>
           ) : null}
         </MenuItem>
       ))}

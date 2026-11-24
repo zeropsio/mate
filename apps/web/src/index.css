@@ -448,6 +448,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-invalid: var(--zerops-field-invalid);
   --color-well: var(--zerops-well);
   --color-well-edge: var(--zerops-well-edge);
+  /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
+     draws its eyes and mouth in. */
+  --color-update-role: var(--zerops-update-role);
+  --color-rail: var(--zerops-rail);
+  --color-mate-face-ink: var(--zerops-mate-face-ink);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1635,10 +1640,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-rail: #c3c7cc;
   --zerops-status-off: #bdbdbd;
   --zerops-status-off-surface: #f3f5f7;
-  --zerops-micro-label-font-size: 10px;
-  --zerops-micro-label-font-weight: 600;
-  --zerops-micro-label-tracking: 0.06em;
-  --zerops-micro-label-opacity: 0.45;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A popup's lift; a raised surface's edge: a hairline under it, in dark a highlight on its top. */
@@ -1672,7 +1673,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-update-role: #0f8f83;
   --zerops-process-step-column: 30px;
   --zerops-process-step-glyph-size: 17px;
-  --zerops-process-step-border-width: 2px;
   --warning: var(--color-amber-500);
   --warning-foreground: var(--color-amber-700);
   --warning-surface: color-mix(in srgb, var(--warning) 8%, transparent);
@@ -1738,10 +1738,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-rail: #3f4650;
     --zerops-status-off: #5e6e69;
     --zerops-status-off-surface: #1c2221;
-    --zerops-micro-label-font-size: 10px;
-    --zerops-micro-label-font-weight: 600;
-    --zerops-micro-label-tracking: 0.06em;
-    --zerops-micro-label-opacity: 0.45;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
     --zerops-shadow-popup: 0 18px 44px -18px rgb(0 0 0 / 80%);
@@ -1765,7 +1761,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-update-role: #5cd6cb;
     --zerops-process-step-column: 30px;
     --zerops-process-step-glyph-size: 17px;
-    --zerops-process-step-border-width: 2px;
     --warning-foreground: var(--color-amber-400);
     --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
     --update-foreground: var(--color-blue-400);

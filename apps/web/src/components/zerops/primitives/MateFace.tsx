@@ -361,7 +361,7 @@ function MateShapeFace({
           <span data-mate-face-look="">
             <span data-mate-face-glance="">
               <svg data-mate-face-layer="" viewBox={MATE_FACE.viewBox}>
-                <g className="fill-[var(--zerops-mate-face-ink)]">
+                <g className="fill-mate-face-ink">
                   {pills.map((eye, index) => (
                     <rect
                       data-mate-face-eye={index === 0 ? "left" : "right"}
@@ -376,7 +376,7 @@ function MateShapeFace({
                   ))}
                 </g>
                 <g
-                  className="stroke-[var(--zerops-mate-face-ink)]"
+                  className="stroke-mate-face-ink"
                   fill="none"
                   strokeLinecap="round"
                   strokeWidth={strokeWidth}
@@ -408,7 +408,7 @@ function MateShapeFace({
             </span>
             <svg data-mate-face-layer="" viewBox={MATE_FACE.viewBox}>
               <g
-                className="stroke-[var(--zerops-mate-face-ink)]"
+                className="stroke-mate-face-ink"
                 fill="none"
                 strokeLinecap="round"
                 strokeWidth={strokeWidth}

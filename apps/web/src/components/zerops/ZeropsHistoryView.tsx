@@ -149,10 +149,7 @@ function HistoryRow({
       <span className="relative flex w-5 shrink-0 flex-col items-center self-stretch">
         {/* Pinned to the row's first line, never centred in it: a centred node
             slides down the rail as a two-line row grows. */}
-        <span
-          aria-hidden="true"
-          className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-[var(--zerops-rail)]"}
-        />
+        <span aria-hidden="true" className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-rail"} />
         {/* A commit something is running is a stop on this line, so it is the
             same filled node the menu gives one; the rest are open. */}
         <span
@@ -160,7 +157,7 @@ function HistoryRow({
           className={
             live
               ? "size-2 shrink-0 rounded-full bg-status-ok"
-              : "size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]"
+              : "size-2 shrink-0 rounded-full border border-rail"
           }
         />
         <span aria-hidden="true" className={last ? RAIL_BLANK : RAIL_LINE} />
@@ -203,12 +200,12 @@ function HistoryRow({
                 data-zerops-surface="zerops-history-release"
                 key={tag}
               >
-                <span className="text-[13px] leading-5 text-foreground tabular-nums">{tag}</span>
+                <span className="text-line leading-5 text-foreground tabular-nums">{tag}</span>
                 <ZeropsRoleTag label="release" />
               </span>
             ),
           )}
-          <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
+          <span className="shrink-0 font-mono text-2xs leading-5 text-muted-foreground tabular-nums">
             <GitBrowserLink to={gitCommitLink(at, entry.sha)} tone="muted">
               {entry.shortSha}
             </GitBrowserLink>

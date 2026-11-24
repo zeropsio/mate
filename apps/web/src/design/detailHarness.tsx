@@ -1433,7 +1433,7 @@ function State({
   return (
     <section className="flex flex-col gap-2" data-detail-harness-state={label} id={id}>
       <div className="px-2">
-        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
         </span>
         <p className="text-caption text-muted-foreground/78">{note}</p>

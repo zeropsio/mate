@@ -231,7 +231,7 @@ export function ZeropsMateCard({
           {time === undefined || time.length === 0 ? null : (
             <span
               className={cn(
-                "shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums",
+                "shrink-0 text-2xs leading-5 text-muted-foreground tabular-nums",
                 LAYOUT[layout].time,
               )}
               data-zerops-surface="mate-time"
