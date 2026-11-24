@@ -1,21 +1,19 @@
 /**
- * The messages a person's other Mates send this Mate through HQ (`MateMessage`): HQ hands one over
- * the link (a `message` frame), the Mate works it as a run of its one conversation, the way a
- * person's message is worked, and says how that run ended (`message-ended`), which HQ makes the
- * answer to the asker from.
+ * Messages another Mate or HQ sends this Mate (`MateMessage`): HQ hands one over the link, the
+ * Mate works it as a conversation run, and says how it ended (`message-ended`). HQ answers an ask
+ * from that end; an answer or notice only closes.
  *
  * - **Taken:** a message is kept in the ledger (`ZeropsMateMessageLedger`) before the Mate says
  *   `message-taken`, so a restart never loses one it said it took. One the ledger already holds is
  *   answered `message-taken` again and nothing more: HQ keeps the first.
  * - **Worked:** where its person's message goes, as its own run: the main conversation, as every
  *   surface opens it (`resolvePrimaryConversation`); an answer, in the conversation whose call sent
- *   its ask, found once and kept. One archived, gone, or a crewmate's (the crew is a crewmate's
- *   only door, and it has none for a Mate's message) gives way to the main one. The conversation is
+ *   its ask; a notice, in its change's branch conversation. Each choice is kept. One archived,
+ *   gone, or a crewmate's (the crew is a crewmate's only door) gives way to the main one. It is
  *   kept before the message is sent, under its id (`mate-message:<id>`, and a count where an
  *   earlier send was taken back), so a restart sends it once, to the same place. The agent hears
- *   the framing the shared contract words (`toldOf`); the person item keeps the sending Mate's
- *   words and carries `mateMessage`, so every client draws it as that Mate's row, never as the
- *   person's, and the engine never counts it as the person writing. A run on takes nothing of it:
+ *   the message's words (`toldOf`); the person item carries `mateMessage`, so every client draws
+ *   it as the sender's row or a notice, never as the person's. A run on takes nothing of it:
  *   the engine queues the message behind it, so it starts the next run and every driver gets it as
  *   a turn of its own, whether or not it queues words behind a turn itself.
  * - **Admitted for the owner:** the run is for the principal `mate`, with the owner HQ named when
@@ -56,7 +54,11 @@ import {
   mateMessageSenderName,
 } from "@t3tools/contracts";
 import type { KeyLinkUp } from "@t3tools/shared/mateLink";
-import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
+import { leaseMayBeOf } from "@t3tools/shared/hqChanges";
+import {
+  conversationOfBranch,
+  resolvePrimaryConversation,
+} from "@t3tools/shared/primaryConversation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -102,10 +104,9 @@ export class ZeropsMateMessages extends Context.Service<
 >()("t3/zerops/ZeropsMateMessages") {}
 
 /**
- * What the asked Mate's agent hears of a message: the shared contract's words. Its sender's
- * project is named only where both it and the Mate are named, HQ's one name split into the two
- * where it gives no project's; with one of them empty the other is the sender's name, "Another
- * Mate" with neither.
+ * What the agent hears: HQ's words alone for a notice; a peer's words with their sender and the
+ * message's context otherwise. HQ's one name is split into a Mate and project where it gives no
+ * project's; either can name the sender, "Another Mate" with neither.
  */
 export const toldOf = (message: MateMessage): string => {
   if (message.kind === "notice") return message.words;
@@ -330,9 +331,9 @@ export const make = Effect.gen(function* () {
 
   /**
    * Where a message's run goes, with that conversation's view: the conversation it was given
-   * before (a restart sends it there again); an answer, to the one whose call sent its ask, found
-   * once and kept; else the main one. One archived, gone, or a crewmate's (the crew is a crewmate's
-   * only door) gives way to the main one.
+   * before (a restart sends it there again); an answer, to the one whose call sent its ask; a notice,
+   * to its change's branch conversation; else the main one. One archived, gone, or a crewmate's
+   * (the crew is a crewmate's only door) gives way to the main one.
    */
   const placeOf = (id: string, entry: MessageEntry, message: MateMessage) =>
     Effect.gen(function* () {
@@ -351,6 +352,17 @@ export const make = Effect.gen(function* () {
         )
           return undefined;
       }
+      if (place === undefined && message.kind === "notice") {
+        const list = yield* engine.conversations;
+        if (!list.complete) return undefined;
+        const chats = list.views.map(engineShellOf);
+        place =
+          conversationOfBranch(chats, message.about.branch, (repo) =>
+            leaseMayBeOf(repo, message.about),
+          )?.id ?? resolvePrimaryConversation(chats).primary?.id;
+        if (place === undefined || !(yield* keep(id, (kept) => ({ ...kept, target: place! }))))
+          return undefined;
+      }
       const usable = (view: ConversationView | undefined) =>
         view !== undefined && !view.archived && view.agent?.profile.kind !== "crewmate";
       if (place !== undefined) {
@@ -361,7 +373,10 @@ export const make = Effect.gen(function* () {
       if (main === undefined) return undefined;
       const view = yield* engine.conversation(ConversationId.make(main));
       if (!usable(view)) return undefined;
-      if (entry.target !== undefined && entry.target !== main) {
+      if (
+        (entry.target !== undefined && entry.target !== main) ||
+        (message.kind === "notice" && place !== main)
+      ) {
         if (!(yield* keep(id, (kept) => ({ ...kept, target: main })))) return undefined;
       }
       return { place: main, view: view!, askedFrom };
@@ -576,7 +591,7 @@ export const make = Effect.gen(function* () {
             : Effect.void;
         // HQ names another owner while it waits: not theirs to run.
         if (now !== undefined && now !== ownerUserId) return settle(id, "declined");
-        const place = entry.target ?? mainSeen;
+        const place = entry.target ?? (message.kind === "notice" ? undefined : mainSeen);
         const placeMoved = place === undefined ? conversations.size > 0 : conversations.has(place);
         return admissionDue || placeMoved
           ? start(id, entry, message, ownerUserId, admitted)

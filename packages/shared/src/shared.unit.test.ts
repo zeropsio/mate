@@ -41,7 +41,7 @@ import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
 const AT = "2026-10-03T10:00:00.000Z";
 
 // witness: packages/shared/src/primaryConversation.ts | lease.branch === branch → true
-it("SH+1: Among a Mate's conversations a change's own is the chat bound to a lease of its branch in its repository, the more primary of two; a lease of another repository at the same HQ, another branch or no branch is not it", () => {
+it("SH10: Among a Mate's conversations a change's own is the chat bound to a lease of its branch in its repository, the more primary of two; a lease of another repository at the same HQ, another branch or no branch is not it", () => {
   const chat = { id: "chat", archivedAt: null, createdAt: AT, updatedAt: AT };
   const own = { appId: "app-a", repo: "repo" };
   const lease = { branch: "b", repo: "https://hq.example/git/org/app-a/repo.git" };

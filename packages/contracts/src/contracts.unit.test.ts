@@ -25,7 +25,7 @@ const conversation = ConversationId.make("mate");
 const run = runId(conversation, 3);
 
 // witness: packages/contracts/src/mateMessage.ts | about: MateMessageAbout, → about: Schema.optionalKey(MateMessageAbout),
-it("CT+1: A message of kind notice decodes with the change it is about and no sender; an ask or an answer without its sender, and a notice without its change, are refused", () => {
+it("CT7: A message of kind notice decodes with the change it is about and no sender; an ask or an answer without its sender, and a notice without its change, are refused", () => {
   const decode = Schema.decodeUnknownExit(MateMessage);
   const message = {
     id: "message-1",
