@@ -1019,6 +1019,21 @@ export function repoOfUrl(address: string): HqRepoAddress | null {
   }
 }
 
+/** Whether a lease may name this repository, excluding a different repository at the same HQ. */
+export function leaseMayBeOf(
+  repo: string | undefined,
+  own:
+    | (Pick<HqRepoAddress, "appId" | "repo"> & Partial<Pick<HqRepoAddress, "hq">>)
+    | null
+    | undefined,
+): boolean {
+  if (repo === undefined || own == null) return true;
+  const leased = repoOfUrl(repo);
+  const sameText = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
+  if (leased === null || (own.hq !== undefined && !sameText(leased.hq, own.hq))) return true;
+  return sameText(leased.appId, own.appId) && sameText(leased.repo, own.repo);
+}
+
 /** The client's route of a change, where HQ's change address leads. */
 export function changeRoutePath(appId: string, repo: string, number: number): string {
   return `/change/${appId}/${repo}/${String(number)}`;

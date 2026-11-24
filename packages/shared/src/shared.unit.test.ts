@@ -4,7 +4,9 @@ import { expect, it } from "vite-plus/test";
 
 import { projectThreadAwareness } from "./agentAwareness.ts";
 import { hqOffer } from "./hqOffers.ts";
+import { leaseMayBeOf } from "./hqChanges.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
+import { conversationOfBranch, type ZeropsConversationCandidate } from "./primaryConversation.ts";
 import { THEME_COLOR_ROLES, ZEROPS_THEME, type ThemeColorRole } from "./themePalettes.ts";
 import { contrastRatio, parseThemeColor } from "./themePreview.ts";
 import { kindForAwarenessPhase, resolveThreadStatus, toneIdForKind } from "./threadStatus.ts";
@@ -37,6 +39,51 @@ import { organizationOffers, placementOffers } from "./zeropsOffers.ts";
 import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
+
+// witness: packages/shared/src/primaryConversation.ts | lease.branch === branch → true
+it("SH+1: Among a Mate's conversations a change's own is the chat bound to a lease of its branch in its repository, the more primary of two; a lease of another repository at the same HQ, another branch or no branch is not it", () => {
+  const chat = { id: "chat", archivedAt: null, createdAt: AT, updatedAt: AT };
+  const own = { appId: "app-a", repo: "repo" };
+  const lease = { branch: "b", repo: "https://hq.example/git/org/app-a/repo.git" };
+  const primary = { ...chat, id: "primary", pinnedAt: AT, lease };
+  const table: ReadonlyArray<
+    readonly [
+      ReadonlyArray<
+        ZeropsConversationCandidate & {
+          readonly lease?: { readonly branch: string | null; readonly repo?: string } | null;
+        }
+      >,
+      string | undefined,
+    ]
+  > = [
+    [[{ ...chat, lease }], "chat"],
+    [[{ ...chat, lease }, primary], "primary"],
+    [[{ ...chat, lease: { branch: "b" } }], "chat"],
+    [[{ ...chat, lease: { branch: "b", repo: "https://other.example/project.git" } }], "chat"],
+    [
+      [{ ...chat, lease: { branch: "b", repo: "https://hq.example/git/org/app-b/repo.git" } }],
+      undefined,
+    ],
+    [
+      [
+        { ...chat, lease: { ...lease, branch: "other" } },
+        { ...chat, id: "no-branch", lease: { ...lease, branch: null } },
+      ],
+      undefined,
+    ],
+    [
+      [
+        { ...chat, lease, crew: { crew: "crew", crewmate: "worker", stint: 1 } },
+        { ...chat, id: "archived", archivedAt: AT, lease },
+      ],
+      undefined,
+    ],
+  ];
+  for (const [threads, expected] of table)
+    expect(conversationOfBranch(threads, "b", (repo) => leaseMayBeOf(repo, own))?.id).toBe(
+      expected,
+    );
+});
 
 /** A Mate's whole overview, every section in it: its main chat waits on a question. */
 const overview = {

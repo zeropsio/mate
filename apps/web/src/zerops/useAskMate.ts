@@ -37,6 +37,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { findCandidate, type CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { conversationOfBranch } from "@t3tools/shared/primaryConversation";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -114,9 +115,7 @@ export function askMateThread<
   const bound =
     branch === undefined
       ? undefined
-      : chats.find(
-          ({ lease }) => lease?.branch === branch && leaseOfRepository(lease.repo, repositoryUrl),
-        );
+      : conversationOfBranch(threads, branch, (repo) => leaseOfRepository(repo, repositoryUrl));
   return named ?? bound ?? primary;
 }
 
