@@ -7,7 +7,7 @@
  *    latency to each, only where the account has more than one.
  * 2. Its first Mate: its face large, its name under it, *Shuffle* for another name, and *Change
  *    style*, which opens the face's colours and shapes as a ring around it (`MateFaceRing`).
- *    *Add mate to your project* creates both; *Back to project options* returns to the first step,
+ *    *Add <name> to your project* creates both; *Back to project options* returns to the first step,
  *    which keeps what was typed and chosen.
  *
  * Every choice has its default, so a name and two presses start a project. A name that will not do,
@@ -598,7 +598,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             rolling={shuffle.rolling}
             className="w-full"
             form={form}
-            label="Add mate to your project"
+            // By the name as typed; with none yet, the Mate it will be.
+            label={`Add ${form.botName.replace(/\s+/g, " ").trim() || "mate"} to your project`}
             size="lg"
           />
           <NewProjectLine className="text-center" form={form} />

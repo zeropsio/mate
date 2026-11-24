@@ -3,7 +3,7 @@
  * steps: "What do you want to build?", the project's name and *Start a project*, with its region
  * and who can open it folded under *Project access & region setup*; then its first Mate, its face large over its
  * name, *Shuffle*, *Change style* opening the colours and shapes as a ring around the face, and
- * *Add mate to your project*.
+ * *Add <name> to your project*.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
  * it opens; `advanced` — *Project access & region setup* open; `adding` — its *Add people* card
