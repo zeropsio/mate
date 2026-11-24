@@ -154,14 +154,6 @@
   {
     "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
     "kind": "Literal",
-    "fingerprint": "<> focus-visible:ring-[3px] in \"group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
     "fingerprint": "<> focus-visible:ring-[3px] in \"inline-flex size-4.5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -290,14 +282,6 @@
   {
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"mt-0.5 block truncate text-[10px] text-muted-foreground/70\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[10px] in \"truncate rounded bg-muted/60 px-1 py-0.5 text-[10px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -307,14 +291,6 @@
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-[11px] text-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

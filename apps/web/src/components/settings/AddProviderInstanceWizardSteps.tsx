@@ -1,6 +1,7 @@
 import { CheckIcon } from "lucide-react";
 
 import { cn } from "../../lib/utils";
+import { Toggle } from "../ui/toggle";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
   resolveWizardNavigation,
@@ -27,13 +28,11 @@ export function AddProviderInstanceWizardSteps({
     >
       {ADD_PROVIDER_WIZARD_STEPS.map((step, index) => (
         <li key={step} className="min-w-0">
-          <button
-            type="button"
-            className={cn(
-              "flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-card focus-visible:ring-2 focus-visible:ring-ring max-sm:justify-center max-sm:px-2",
-              index === currentStep &&
-                "bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5",
-            )}
+          <Toggle
+            variant="segmented"
+            size="default"
+            className="w-full min-w-0 justify-start max-sm:justify-center"
+            pressed={index === currentStep}
             aria-current={index === currentStep ? "step" : undefined}
             aria-label={`${step}, step ${index + 1}${index < currentStep && summaries[index] ? `, ${summaries[index]}` : ""}`}
             onClick={() =>
@@ -65,7 +64,7 @@ export function AddProviderInstanceWizardSteps({
             >
               {step}
             </span>
-          </button>
+          </Toggle>
         </li>
       ))}
     </ol>

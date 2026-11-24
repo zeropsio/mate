@@ -46,6 +46,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { DraftInput } from "../ui/draft-input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
 import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -679,40 +680,36 @@ export function ProviderInstanceCard({
     return (
       <div
         className={cn(
-          "group relative flex min-h-16 items-center gap-3 border-b border-border/60 px-3 py-2.5 transition-colors last:border-b-0",
-          selected ? "bg-muted/50" : "hover:bg-muted/25",
+          "group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 transition-colors last:border-b-0",
+          selected && "bg-muted/50",
         )}
       >
         {selected ? <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" /> : null}
-        <button
-          type="button"
+        <div
           className={cn(
-            "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring",
+            "min-w-0 flex-1 transition-opacity",
             !enabled && !selected && "opacity-60 group-hover:opacity-100",
           )}
-          onClick={onSelect}
-          aria-pressed={selected}
         >
-          {titleIconNode}
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-body font-medium text-foreground">{displayName}</span>
-              {versionCodeNode}
-            </span>
-            <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
-              <span className="truncate">
-                {summary.headline}
-                {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
+          <Row
+            size="sm"
+            pressable
+            render={<button type="button" onClick={onSelect} aria-pressed={selected} />}
+            lead={titleIconNode}
+            title={displayName}
+            badges={versionCodeNode}
+            line={
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
+                <span className="truncate">
+                  {summary.headline}
+                  {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
+                  {String(instanceId) !== String(instance.driver) ? ` · ${instanceId}` : null}
+                </span>
               </span>
-            </span>
-            {String(instanceId) !== String(instance.driver) ? (
-              <code className="mt-0.5 block truncate text-[10px] text-muted-foreground/70">
-                {instanceId}
-              </code>
-            ) : null}
-          </span>
-        </button>
+            }
+          />
+        </div>
         <Switch
           checked={enabled}
           disabled={readOnly}

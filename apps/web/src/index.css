@@ -8912,40 +8912,6 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
 }
 
-/* Advanced opens under the cards, at their left edge: its chevron sits where a card's text starts. */
-.tm-advanced-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 6px;
-  margin-top: 2px;
-  margin-inline-start: -8px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  font-weight: 500;
-  transition: color 150ms var(--ease-out-strong);
-}
-
-.tm-advanced-toggle:hover,
-.tm-advanced-toggle[aria-expanded="true"] {
-  color: var(--foreground);
-}
-
-.tm-advanced-toggle:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.tm-advanced-toggle > svg {
-  transition: transform 180ms var(--ease-out-strong);
-}
-
-.tm-advanced-toggle > svg[data-open] {
-  transform: rotate(180deg);
-}
-
 .tm-advanced-custom {
   font-weight: 400;
 }

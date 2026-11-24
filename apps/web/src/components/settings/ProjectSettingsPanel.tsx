@@ -66,7 +66,7 @@ import {
   type NewProjectScriptInput,
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -188,19 +188,19 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
       <WorkspaceBreadcrumbSeparator />
       <WorkspaceBreadcrumbItem current>
         {selected ? (
-          <button
-            type="button"
+          <InlineButton
+            tone="plain"
             aria-haspopup="menu"
             aria-label="Switch project"
             onClick={openProjectMenu}
-            className="group/project-title inline-flex min-w-0 max-w-64 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/project-title min-w-0 max-w-64"
           >
             <span className="min-w-0 truncate">{selected.displayName}</span>
             <ChevronDownIcon
               aria-hidden
               className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
             />
-          </button>
+          </InlineButton>
         ) : projectsRead ? (
           <span className="truncate text-muted-foreground">Unavailable project</span>
         ) : null}

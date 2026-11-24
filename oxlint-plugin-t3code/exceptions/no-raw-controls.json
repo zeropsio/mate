@@ -634,58 +634,10 @@
   {
     "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"size-6 cursor-pointer rounded-full border transition\", selected ? \"scale-110 border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background\" : \"border-black/10 hover:scale-105 dark:border-white/20\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "JSXOpeningElement",
     "fingerprint": "<input> className=\"h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-card focus-visible:ring-2 focus-visible:ring-ring max-sm:justify-center max-sm:px-2\", index === currentStep && \"bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"group/project-title inline-flex min-w-0 max-w-64 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"h-8 rounded-control border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring\", !enabled && !selected && \"opacity-60 group-hover:opacity-100\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a colour input: the kit has no colour field",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
@@ -714,17 +666,9 @@
   {
     "path": "apps/web/src/components/settings/TeamRoleEditor.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"tm-advanced-toggle\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/settings/TeamRoleEditor.tsx",
-    "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"tm-role-card\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: RadioGroup's card form — a choice drawn as a card, its name and its line, the chosen one outlined in blue",
     "expires": "surface:kit"
   },
   {

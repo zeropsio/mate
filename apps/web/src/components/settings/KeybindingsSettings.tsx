@@ -789,17 +789,18 @@ function KeybindingTableRow({
       </div>
       <div className="flex min-w-0 items-center gap-2 pr-4">
         {showPill ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="group"
             onClick={() => setDraft({ isRecording: true })}
             aria-label={`Edit shortcut for ${commandLabel(row.command)}`}
-            className="group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24"
           >
             <KeybindingPill value={row.key} />
             <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70">
               Edit
             </span>
-          </button>
+          </Button>
         ) : (
           <Input
             font="mono"

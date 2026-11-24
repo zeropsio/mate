@@ -17,6 +17,8 @@ import {
 import { BanIcon, ChevronDownIcon, LockIcon } from "lucide-react";
 import { useId, useState } from "react";
 
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { advancedChoices, roleCards } from "./teamMember.logic";
@@ -71,19 +73,23 @@ export function TeamRoleEditor({
           </button>
         ))}
       </div>
-      <button
+      <Button
         aria-controls={`${id}-advanced`}
         aria-expanded={shown}
-        className="tm-advanced-toggle"
+        className="-ms-2 justify-self-start"
         onClick={() => setOpen(!shown)}
-        type="button"
+        size="sm"
+        variant="ghost-muted"
       >
-        <ChevronDownIcon aria-hidden="true" className="size-4" data-open={shown || undefined} />
+        <ChevronDownIcon
+          aria-hidden="true"
+          className={cn("size-4 transition-transform duration-200", shown && "rotate-180")}
+        />
         <span>Fine-tune permissions</span>
         {advanced.custom === null ? null : (
           <span className="tm-advanced-custom">· {advanced.custom}</span>
         )}
-      </button>
+      </Button>
       {shown ? (
         <div className="tm-advanced" id={`${id}-advanced`}>
           <div className="tm-advanced-row">

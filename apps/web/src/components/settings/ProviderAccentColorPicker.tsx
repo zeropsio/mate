@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } 
 
 import { ColorSelector } from "../color-selector";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
@@ -151,7 +152,9 @@ function ProviderCustomColorPanel(props: {
             style={{ left: `${(hsv.h / 360) * 100}%`, backgroundColor: currentColor }}
           />
         </div>
-        <input
+        <Input
+          size="compact"
+          font="mono"
           value={currentColor}
           onChange={(event) => {
             const nextColor = event.currentTarget.value;
@@ -159,7 +162,6 @@ function ProviderCustomColorPanel(props: {
             setHsv(hexToHsv(nextColor));
             props.onCommit(nextColor);
           }}
-          className="h-8 rounded-control border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption"
           aria-label="Custom hex accent color"
           spellCheck={false}
         />

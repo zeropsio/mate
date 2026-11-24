@@ -348,19 +348,26 @@ export function AddProviderInstanceDialog({
                   {PROVIDER_ACCENT_SWATCHES.map((swatch) => {
                     const selected = accentColor.toLowerCase() === swatch;
                     return (
-                      <button
+                      <Button
                         key={swatch}
-                        type="button"
-                        className={cn(
-                          "size-6 cursor-pointer rounded-full border transition",
-                          selected
-                            ? "scale-110 border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background"
-                            : "border-black/10 hover:scale-105 dark:border-white/20",
-                        )}
-                        style={{ backgroundColor: swatch }}
+                        variant="ghost"
+                        size="icon-xs"
+                        shape="round"
+                        aria-pressed={selected}
                         onClick={() => setAccentColor(swatch)}
                         aria-label={`Use ${swatch} accent`}
-                      />
+                      >
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "size-5 rounded-full border",
+                            selected
+                              ? "border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background"
+                              : "border-border",
+                          )}
+                          style={{ backgroundColor: swatch }}
+                        />
+                      </Button>
                     );
                   })}
                 </div>

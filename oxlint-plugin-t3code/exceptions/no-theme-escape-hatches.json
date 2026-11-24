@@ -1850,14 +1850,6 @@
   {
     "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
     "kind": "Literal",
-    "fingerprint": "\"border-black/10 hover:scale-105 dark:border-white/20\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
     "fingerprint": "\"relative flex cursor-not-allowed items-center gap-3 rounded-lg bg-card/60 px-3 py-3 text-left opacity-64 outline-none ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
     "owner": "karel",
     "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
@@ -1877,14 +1869,6 @@
     "fingerprint": "\"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
     "owner": "karel",
     "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AddProviderInstanceWizardSteps awaiting semantic roles",
     "expires": "F4"
   },
   {
