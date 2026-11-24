@@ -97,7 +97,10 @@ const mateServiceIds = (
   return ids.length > 0 || mate.service === undefined ? ids : [mate.service.id];
 };
 
-/** A Mate's Start: a STOPPED project starts whole; in a running one, every stopped service of it. */
+/**
+ * A Mate's Start: a STOPPED project starts whole; in a running one, every stopped service of it.
+ * Like its Stop, it ends once Zerops ended the last start it took (`untilWriteEnds`).
+ */
 export async function startMate(
   operations: AccountOperations,
   orgId: string | null,
@@ -105,22 +108,20 @@ export async function startMate(
   services: ProjectServiceList,
 ): Promise<void> {
   const projectId = mate.project.id;
-  if (mate.project.status === "STOPPED")
-    await submitZeropsWrite(operations, orgId, { kind: "start-project", projectId });
-  else
-    await submitServiceWrites(
-      operations,
-      orgId,
-      "start-service",
-      projectId,
-      mateServiceIds("start", mate, services),
-    );
+  const last =
+    mate.project.status === "STOPPED"
+      ? (await submitZeropsWrite(operations, orgId, { kind: "start-project", projectId })).requestId
+      : await submitServiceWrites(
+          operations,
+          orgId,
+          "start-service",
+          projectId,
+          mateServiceIds("start", mate, services),
+        );
+  await untilWriteEnds(operations, orgId, last);
 }
 
-/**
- * A Mate's Stop: every running service of its project, its container last. It ends once Zerops
- * stopped that container: until then its row still reads it running, so its press says Stopping….
- */
+/** A Mate's Stop: every running service of its project, its container last (`untilWriteEnds`). */
 export async function stopMate(
   operations: AccountOperations,
   orgId: string | null,
@@ -134,8 +135,20 @@ export async function stopMate(
     mate.project.id,
     mateServiceIds("stop", mate, services),
   );
-  if (last === undefined || orgId === null) return;
-  const end = await operations.untilEnd(last, orgId);
+  await untilWriteEnds(operations, orgId, last);
+}
+
+/**
+ * A Stop or Start ends once Zerops ended its last write, its Mate container's: before, its row
+ * still reads the status the press changes, so the press itself says Stopping… or Starting….
+ */
+async function untilWriteEnds(
+  operations: AccountOperations,
+  orgId: string | null,
+  requestId: string | undefined,
+): Promise<void> {
+  if (requestId === undefined || orgId === null) return;
+  const end = await operations.untilEnd(requestId, orgId);
   const trouble = end.stage === "unobserved" ? null : writeTrouble(end, null);
   if (trouble !== null) throw new Error(trouble);
 }
