@@ -54,6 +54,8 @@ import { orchestrationEnvironment } from "~/state/orchestration";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
+import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { Row } from "~/components/ui/row";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -179,34 +181,52 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
       data-open={open ? "" : undefined}
       style={{ "--helper-depth": depth } as CSSProperties}
     >
-      <button
-        aria-expanded={threadRef === null ? undefined : open}
-        className="helper-row-head"
-        disabled={threadRef === null}
-        onClick={() => onToggle(agent.id)}
-        type="button"
-      >
-        <span className="helper-row-mark">
-          <HelperMark status={agent.status} />
-        </span>
-        <span className="helper-row-name">{agent.title}</span>
-        <span className="helper-row-clock">
-          <HelperClock helper={agent} />
-        </span>
-        {line !== null ? (
-          <span
-            className={cn(
-              "helper-row-line",
-              agent.status === "failed" && "text-status-failed-text",
-              agent.status === "waiting" && "text-status-attention-text",
-            )}
-          >
-            {line}
-          </span>
-        ) : null}
-        {cost !== null ? <span className="helper-row-cost">{cost}</span> : null}
-        <span className="sr-only">{STATE_WORDS[agent.status]}</span>
-      </button>
+      <div className={cn("rounded-lg", open && "bg-foreground/4")}>
+        <Row
+          size="sm"
+          pressable
+          render={
+            <button
+              aria-expanded={threadRef === null ? undefined : open}
+              aria-disabled={threadRef === null || undefined}
+              disabled={threadRef === null}
+              onClick={() => onToggle(agent.id)}
+              type="button"
+            />
+          }
+          lead={<HelperMark status={agent.status} />}
+          title={
+            <>
+              {agent.title}
+              <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+            </>
+          }
+          meta={open ? undefined : <HelperClock helper={agent} />}
+          lineWraps
+          line={
+            (open || line === null) && cost === null ? undefined : (
+              <>
+                {open || line === null ? null : (
+                  <span
+                    className={cn(
+                      "line-clamp-2",
+                      agent.status === "failed" && "text-status-failed-text",
+                      agent.status === "waiting" && "text-status-attention-text",
+                    )}
+                  >
+                    {line}
+                  </span>
+                )}
+                {cost === null ? null : (
+                  <span className="block text-2xs text-muted-foreground/75 tabular-nums">
+                    {cost}
+                  </span>
+                )}
+              </>
+            )
+          }
+        />
+      </div>
       {open && threadRef !== null ? (
         <div className="helper-row-card">
           <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
@@ -362,15 +382,15 @@ function PhaseSection({
   }, [phase.state]);
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => {
-          // Folding it folds the helper opened in it too.
-          if (open && holds && openId !== null) onToggle(openId);
-          setOpen(!open);
-        }}
-        aria-expanded={open}
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => {
+        // Folding it folds the helper opened in it too.
+        if (!next && holds && openId !== null) onToggle(openId);
+        setOpen(next);
+      }}
+    >
+      <CollapsibleTrigger
         className={cn(
           "mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
           phase.state === "done"
@@ -401,7 +421,7 @@ function PhaseSection({
             ))}
           </span>
         ) : null}
-      </button>
+      </CollapsibleTrigger>
       {open ? (
         <ul className="helper-map">
           {phase.members.map((member) => (
@@ -409,7 +429,7 @@ function PhaseSection({
           ))}
         </ul>
       ) : null}
-    </div>
+    </Collapsible>
   );
 }
 
@@ -444,17 +464,15 @@ function ExpandedWorkflowSection({
           {group.workflow.workflowName ?? group.workflow.title}
         </span>
         {canShowScript ? (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={() => setScriptOpen((value) => !value)}
-            className={cn(
-              "rounded-sm border border-border/60 px-1 font-mono normal-case hover:text-foreground",
-              scriptOpen && "text-foreground",
-            )}
             aria-expanded={scriptOpen}
+            data-pressed={scriptOpen || undefined}
           >
-            {"{}"} script
-          </button>
+            <span className="font-mono normal-case">{"{}"} script</span>
+          </Button>
         ) : null}
         <span className="ml-auto font-mono normal-case text-muted-foreground/80">
           {settled}/{members.length} settled
@@ -515,24 +533,24 @@ function CollapsedWorkflowSection({
       : null;
   return (
     <section>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex w-full items-center gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent/40"
-        aria-expanded={false}
-      >
-        <StatusDot status={failed > 0 ? "failed" : group.workflow.status} />
-        <span className="truncate text-body">
-          {group.workflow.workflowName ?? group.workflow.title}
-        </span>
-        <span className="ml-auto flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
-          {failed > 0 ? <span className="text-destructive-foreground">{failed} failed</span> : null}
-          <span>{members.length} agents</span>
-          <span className="tabular-nums">· {formatSubagentTokenCount(totalTokens)} tok</span>
-          {elapsed ? <span className="tabular-nums">· {elapsed}</span> : null}
-          <ChevronRight aria-hidden className="size-3" />
-        </span>
-      </button>
+      <Row
+        size="xs"
+        pressable
+        render={<button type="button" onClick={onExpand} aria-expanded={false} />}
+        lead={<StatusDot status={failed > 0 ? "failed" : group.workflow.status} />}
+        title={group.workflow.workflowName ?? group.workflow.title}
+        meta={
+          <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
+            {failed > 0 ? (
+              <span className="text-destructive-foreground">{failed} failed</span>
+            ) : null}
+            <span>{members.length} agents</span>
+            <span className="tabular-nums">· {formatSubagentTokenCount(totalTokens)} tok</span>
+            {elapsed ? <span className="tabular-nums">· {elapsed}</span> : null}
+            <ChevronRight aria-hidden className="size-3" />
+          </span>
+        }
+      />
     </section>
   );
 }
@@ -660,15 +678,16 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
   return (
     <>
       {earlier.length > 0 ? (
-        <button
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="justify-self-start"
           aria-expanded={showEarlier}
-          className="helper-map-earlier"
           onClick={() => {
             // Folding them folds the helper opened among them too.
             if (showEarlier && heldEarlier && openId !== null) onToggle(openId);
             setShowEarlier(!showEarlier);
           }}
-          type="button"
         >
           {showEarlier ? (
             <ChevronDown aria-hidden className="size-3.5" />
@@ -676,7 +695,7 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
             <ChevronRight aria-hidden className="size-3.5" />
           )}
           {`${earlier.length} earlier, done`}
-        </button>
+        </Button>
       ) : null}
       <ul className="helper-map">
         {rows.map((row) =>

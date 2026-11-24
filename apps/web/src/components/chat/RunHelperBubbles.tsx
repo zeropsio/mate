@@ -3,7 +3,8 @@ import { type RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRunt
 import { BotIcon, ListTodoIcon, SquareTerminalIcon } from "lucide-react";
 import { use } from "react";
 import { cn } from "~/lib/utils";
-import { META, rises } from "./RunBubble";
+import { Row } from "../ui/row";
+import { rises } from "./RunBubble";
 import { DidMark, type Failure, FailedMark } from "./RunMarks";
 import { PlanSteps } from "./RunPlanSteps";
 import { DisclosureButton, Headline, OutputBlock, useDisclosure } from "./RunDisclosure";
@@ -50,25 +51,27 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   const line = helperRowLine(agent);
   return (
     <li className="grid min-w-0">
-      <button
+      <Row
+        size="xs"
+        pressable
         aria-label={`${agent.title}: ${word}. Open its work`}
-        className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
         onClick={() => {
           if (ctx.threadRef !== null) showHelper(scopedThreadKey(ctx.threadRef), agent.id);
           ctx.onOpenAgents();
         }}
-        type="button"
-      >
-        <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
+        render={<button type="button" />}
+        title={
           <span
             className={cn(
-              "min-w-0 flex-1",
+              "font-normal",
               agent.status === "failed" ? "text-status-failed-text" : "text-foreground/90",
             )}
           >
             {agent.title}
           </span>
-          <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>
+        }
+        meta={
+          <>
             {word}
             {since !== null ? (
               <>
@@ -78,12 +81,11 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
             ) : ranMs !== null && ranMs >= 1000 ? (
               ` · ${formatWorkDuration(ranMs)}`
             ) : null}
-          </span>
-        </span>
-        {line === null ? null : (
-          <span className={cn("line-clamp-2 text-muted-foreground", META)}>{line}</span>
-        )}
-      </button>
+          </>
+        }
+        line={line === null ? undefined : <span className="line-clamp-2">{line}</span>}
+        lineWraps
+      />
     </li>
   );
 }

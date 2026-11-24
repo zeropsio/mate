@@ -8,46 +8,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/AgentsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex w-full items-center gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent/40\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/AgentsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"helper-map-earlier\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/AgentsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"helper-row-head\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/AgentsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40\", phase.state === \"done\" ? \"text-success-foreground\" : phase.state === \"running\" ? \"text-info-foreground\" : \"text-muted-foreground/70\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/AgentsPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"rounded-sm border border-border/60 px-1 font-mono normal-case hover:text-foreground\", scriptOpen && \"text-foreground\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className={cn( CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, className, )}",
@@ -451,14 +411,6 @@
     "path": "apps/web/src/components/chat/RunDisclosure.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( META, \"mt-1 block cursor-pointer rounded-sm not-italic text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", )}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/RunHelperBubbles.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
     "owner": "kit pass",
     "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
     "expires": "surface:kit"
