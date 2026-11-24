@@ -443,6 +443,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-mint-panel: var(--zerops-mint-panel);
   --shadow-popup: var(--zerops-shadow-popup);
   --shadow-edge: var(--zerops-shadow-edge);
+  /* A handle dragged over a colour plane: a white ring with a dark hairline, alike in both
+     appearances, since what lies under it is the colour itself. */
+  --shadow-handle: inset 0 0 0 2px #fff, 0 0 0 1px rgb(0 0 0 / 35%);
   --color-field: var(--zerops-field);
   --color-field-autofill: var(--zerops-field-autofill);
   --color-field-invalid: var(--zerops-field-invalid);

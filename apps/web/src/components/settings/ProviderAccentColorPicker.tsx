@@ -130,7 +130,7 @@ function ProviderCustomColorPanel(props: {
         }}
       >
         <span
-          className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]"
+          className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-handle"
           style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
         />
       </div>
@@ -148,7 +148,7 @@ function ProviderCustomColorPanel(props: {
           }}
         >
           <span
-            className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]"
+            className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-handle"
             style={{ left: `${(hsv.h / 360) * 100}%`, backgroundColor: currentColor }}
           />
         </div>
@@ -297,21 +297,25 @@ export function ProviderAccentColorPicker(props: {
           onColorSelect={commitAccentColor}
           className="flex-wrap gap-1.5"
         />
-        <Button
-          type="button"
-          size="icon-md"
-          variant="ghost"
+        {/* Holds its room while there is no colour to clear, so the swatches never move. */}
+        <span
           className={cn(
-            "size-7 shrink-0 text-muted-foreground transition-opacity",
-            normalized ? "opacity-100" : "pointer-events-none opacity-0",
+            "flex shrink-0 transition-opacity duration-150 ease-out-strong",
+            !normalized && "pointer-events-none opacity-0",
           )}
-          onClick={() => commitAccentColor("")}
-          aria-label={`Clear accent color for ${displayName}`}
-          aria-hidden={!normalized}
-          tabIndex={normalized ? 0 : -1}
         >
-          <XIcon className="size-3.5" aria-hidden />
-        </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost-muted"
+            onClick={() => commitAccentColor("")}
+            aria-label={`Clear accent color for ${displayName}`}
+            aria-hidden={!normalized}
+            tabIndex={normalized ? 0 : -1}
+          >
+            <XIcon className="size-3.5" aria-hidden />
+          </Button>
+        </span>
       </div>
       {description ? (
         <span className="text-caption text-muted-foreground">{description}</span>

@@ -664,38 +664,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> opacity-0 in \"pointer-events-none opacity-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> opacity-100 in \"opacity-100\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground in \"size-7 shrink-0 text-muted-foreground transition-opacity\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> transition-opacity in \"size-7 shrink-0 text-muted-foreground transition-opacity\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> hover:text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",

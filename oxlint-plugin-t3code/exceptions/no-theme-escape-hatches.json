@@ -1825,22 +1825,6 @@
   },
   {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "TemplateElement",
     "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
     "owner": "karel",
