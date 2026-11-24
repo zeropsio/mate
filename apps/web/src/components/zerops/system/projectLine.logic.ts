@@ -26,6 +26,7 @@ import {
   OUTSIDE_MATE,
   PRODUCTION_OUTSIDE_MATE,
   ASK_TO_MERGE,
+  READY_TO_MERGE,
   REVIEW_LABEL,
   type FlowPullRequest,
   type GroupFlow,
@@ -140,8 +141,10 @@ export interface ProjectLineInput {
 export const lineChangeKey = (pull: Pick<FlowPullRequest, "repository" | "number">) =>
   `${pull.repository}#${String(pull.number)}`;
 
-/** A change that waits for the viewer's review, as its row and its bead say it. */
-export const READY_FOR_REVIEW = "Ready for your review";
+/** A waiting change's words on its row and bead, preserving anything that stops it. */
+export function waitingWords(word: string | undefined, setup: boolean): string {
+  return word === READY_TO_MERGE || setup ? "Ready for your review" : (word ?? "Open");
+}
 
 /**
  * A change's mark, on the line and on its row under it: the ring of one that waits on the person
@@ -226,8 +229,9 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     title: change.pull.title,
     line: changeRowLine(
       mateName(change.pull.mateProjectId),
-      // Its standing where it has one — "Ready", "Dana L. asks to merge" — is its words already.
-      mark === "waits" && change.standing === undefined ? READY_FOR_REVIEW : change.words,
+      mark === "waits"
+        ? waitingWords(change.words, change.setup === true && change.standing === undefined)
+        : change.words,
     ),
     pull: change.pull,
     ...(change.standing === "to-ask" ? { asks: true as const } : {}),

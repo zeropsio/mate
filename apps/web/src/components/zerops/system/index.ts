@@ -24,7 +24,7 @@ export {
   lineMarkOf,
   projectLine,
   projectLineFull,
-  READY_FOR_REVIEW,
+  waitingWords,
   type LineCopy,
   type LineGroup,
   type LineWork,
