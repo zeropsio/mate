@@ -163,9 +163,7 @@ import { useDatabaseCatalog, useDatabaseMentionRead } from "../../zerops/useData
 import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
 import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConversationEffort";
 import { getProviderModelCapabilities } from "../../providerModels";
-import type { VaultChange } from "@t3tools/client-runtime/data";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
-import { ComposerPendingVaultChanges } from "./ComposerPendingVaultChanges";
 import { shouldUseCompactComposerPrimaryActions } from "../composerFooterLayout";
 import type { ComposerEditorSnapshot, ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import {
@@ -273,7 +271,6 @@ const extendReplacementRangeForTrailingSpace = (
 
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
 const NO_FILES: ReadonlyArray<ComposerFileView> = [];
-const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 export const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
@@ -380,9 +377,6 @@ interface ChatComposerProps {
    * edges and corners, over what they write.
    */
   top?: ReactNode;
-  /** The vault changes the next message tells the Mate: chips above the text, each set aside with ×. */
-  vaultChanges?: ReadonlyArray<VaultChange> | undefined;
-  onDismissVaultChange?: ((change: VaultChange) => void) | undefined;
 
   // Session phase
   phase: SessionPhase;
@@ -548,8 +542,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     mentionMates,
     crewRunsOn,
     top,
-    vaultChanges = NO_VAULT_CHANGES,
-    onDismissVaultChange,
     phase,
     isConnecting,
     isSendBusy,
@@ -1238,7 +1230,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     hasWords: promptHasSendableWords,
     imageCount: composerImages.length + composerFiles.length,
     sendableTerminalContextCount,
-    elementContextCount: composerReviewComments.length + vaultChanges.length,
+    elementContextCount: composerReviewComments.length,
   });
   // ------------------------------------------------------------------
   // Derived: composer trigger / menu
@@ -3312,18 +3304,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onRemove={(commentId) =>
                         removeComposerDraftReviewComment(composerDraftTarget, commentId)
                       }
-                      className="mb-3"
-                    />
-                  )}
-
-                {!isComposerCollapsedMobile &&
-                  !isComposerApprovalState &&
-                  pendingUserInputs.length === 0 &&
-                  vaultChanges.length > 0 &&
-                  onDismissVaultChange !== undefined && (
-                    <ComposerPendingVaultChanges
-                      changes={vaultChanges}
-                      onRemove={onDismissVaultChange}
                       className="mb-3"
                     />
                   )}

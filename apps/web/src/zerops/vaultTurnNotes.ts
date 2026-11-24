@@ -1,10 +1,10 @@
 /**
- * What a Mate hears of its vault with the next message, and the chips its composer shows for it.
+ * What a Mate hears of its vault with the next message, unseen as its other notes are.
  *
  * The person's own writes from this client are kept here until a message carries them; changes
- * made elsewhere come from the vault itself, since the agent last spoke. A chip set aside, or a
- * change already sent, is not told again in that conversation. Memory only: keys are the
- * platform's facts and are never kept in browser storage.
+ * made elsewhere come from the vault itself, since the agent last spoke. A change already sent is
+ * not told again in that conversation. Memory only: keys are the platform's facts and are never
+ * kept in browser storage.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -35,7 +35,7 @@ import {
 interface VaultTurnState {
   /** This client's writes not yet told, by project. */
   readonly own: Readonly<Record<string, ReadonlyArray<VaultChange>>>;
-  /** The changes set aside or sent, by conversation (`vaultChangeIdOf`). */
+  /** The changes sent, by conversation (`vaultChangeIdOf`). */
   readonly hidden: Readonly<Record<string, ReadonlyArray<string>>>;
 }
 
@@ -57,7 +57,7 @@ export function recordVaultWrite(projectId: string, change: VaultChange): void {
   }));
 }
 
-/** Changes no longer to tell in a conversation: sent with a message, or set aside. */
+/** Changes no longer to tell in a conversation: sent with a message. */
 function hide(threadKey: string, projectId: string, changes: ReadonlyArray<VaultChange>): void {
   const values = new Set(changes.map(vaultValueIdOf));
   useVaultTurnStore.setState((state) => ({
@@ -75,12 +75,10 @@ function hide(threadKey: string, projectId: string, changes: ReadonlyArray<Vault
 }
 
 interface VaultTurnNotes {
-  /** What the next message tells, oldest first: the composer's chips. */
+  /** What the next message tells, oldest first. */
   readonly changes: ReadonlyArray<VaultChange>;
   /** The note that rides with it, or `null` with nothing to tell. */
   readonly note: string | null;
-  /** The person sets a chip aside: it is not told. */
-  readonly dismiss: (change: VaultChange) => void;
   /** A message carried these: they are told. */
   readonly told: (changes: ReadonlyArray<VaultChange>) => void;
 }
@@ -139,12 +137,6 @@ export function useVaultTurnNotes(
     [answered, hidden, own, projectId, since, threadKey],
   );
   const note = useMemo(() => vaultNote(changes), [changes]);
-  const dismiss = useCallback(
-    (change: VaultChange) => {
-      if (threadKey !== null && projectId !== null) hide(threadKey, projectId, [change]);
-    },
-    [projectId, threadKey],
-  );
   const told = useCallback(
     (sent: ReadonlyArray<VaultChange>) => {
       if (threadKey !== null && projectId !== null && sent.length > 0)
@@ -152,5 +144,5 @@ export function useVaultTurnNotes(
     },
     [projectId, threadKey],
   );
-  return { changes, note, dismiss, told };
+  return { changes, note, told };
 }
