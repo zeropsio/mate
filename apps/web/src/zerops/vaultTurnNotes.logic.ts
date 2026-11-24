@@ -2,7 +2,7 @@
  * What a Mate is told of its vault with the next message: the person's own writes from this client
  * not yet told — whenever they were made, a write during the agent's turn included — and the
  * changes the platform shows since the agent last spoke, from anywhere else. One per value, minus
- * the ones the person set aside or already sent. Never a value: the note names keys and what each
+ * the ones already sent. Never a value: the note names keys and what each
  * change needs.
  *
  * Pure: no network, no clock.
@@ -26,14 +26,14 @@ export const vaultChangeIdOf = (change: Pick<VaultChange, "scope" | "key" | "kin
 
 /**
  * The changes to tell, oldest first: per value the platform's word where it has one (its times are
- * the platform's), else the person's own write; none the person set aside or already sent.
+ * the platform's), else the person's own write; none already sent.
  */
 export function vaultTurnChanges(input: {
   /** This client's writes not yet told. */
   readonly own: ReadonlyArray<VaultChange>;
   /** What the platform shows changed since the agent last spoke; none before it has. */
   readonly since: ReadonlyArray<VaultChange>;
-  /** Changes set aside or sent, by `vaultChangeIdOf`. */
+  /** Changes sent, by `vaultChangeIdOf`. */
   readonly hidden: ReadonlySet<string>;
   /** Values the engine told the Mate of as it answered their ask. */
   readonly answered: ReadonlyArray<VaultAskAnswered>;
@@ -99,20 +99,4 @@ export function heldWrites(
   if (before?.kind === "added" && change.kind === "changed")
     return [...rest, { ...change, kind: "added" }];
   return [...rest, change];
-}
-
-const VERB: Readonly<Record<VaultChange["kind"], string>> = {
-  added: "added",
-  changed: "changed",
-  removed: "removed",
-};
-
-/** A chip's words: the key and what happened to it. */
-export const vaultChipLabel = (change: Pick<VaultChange, "key" | "kind">): string =>
-  `${change.key} ${VERB[change.kind]}`;
-
-/** The message a send of the chips alone carries: the keys, never a value. */
-export function vaultChipsOnlyText(changes: ReadonlyArray<Pick<VaultChange, "key">>): string {
-  const keys = [...new Set(changes.map((change) => change.key))];
-  return `I updated the vault: ${keys.join(", ")}.`;
 }

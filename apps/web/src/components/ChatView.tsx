@@ -269,7 +269,6 @@ import {
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
 import { useAddressTurnNotes } from "../zerops/addressTurnNotes";
-import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import {
   conversationCodeFolder,
   agentLastSpokeAt,
@@ -5279,9 +5278,7 @@ function ConversationView(props: ChatViewProps) {
       prompt: promptForSend,
       imageCount: composerImages.length + composerFiles.length,
       terminalContexts: composerTerminalContexts,
-      // The vault's chips ride with a message typed now, never with one queued before them.
-      elementContextCount:
-        composerReviewComments.length + (queuedMessage ? 0 : vaultTurn.changes.length),
+      elementContextCount: composerReviewComments.length,
     });
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
@@ -5511,13 +5508,7 @@ function ConversationView(props: ChatViewProps) {
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text:
-        messageTextForSend ||
-        (!queuedMessage &&
-        composerImagesSnapshot.length + composerFilesSnapshot.length === 0 &&
-        vaultTurn.changes.length > 0
-          ? vaultChipsOnlyText(vaultTurn.changes)
-          : IMAGE_ONLY_BOOTSTRAP_PROMPT),
+      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
     });
     const inputRefused = composerRef.current?.validateProviderInput(outgoingMessageText);
     if (inputRefused) {
@@ -7651,8 +7642,6 @@ function ConversationView(props: ChatViewProps) {
                               mentionCrewmates={crewMentions}
                               mentionMates={mentionableMates}
                               top={threadDetailLoading ? null : composerTop}
-                              vaultChanges={vaultTurn.changes}
-                              onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {

@@ -12,10 +12,8 @@
  * Then what is being done to a change, as the same rule says it (`changeActOf`): its merge on its
  * way, merged, refused, ended unconfirmed, and its Mate fixing it while it works.
  *
- * Then the vault changes the next message tells the Mate: one, and the many a recipe's values make.
- *
  * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2`, `?ask=question`,
- * `?standing=to-ask`, `?act=merging` or `?vault=24` shows one state alone). Fixtures only: nothing here ships, and no route
+ * `?standing=to-ask` or `?act=merging` shows one state alone). Fixtures only: nothing here ships, and no route
  * imports this module.
  */
 import {
@@ -24,14 +22,12 @@ import {
   type ChangeAct,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import type { VaultChange } from "@t3tools/client-runtime/data";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { ApprovalRequestId, type ConversationWorkingOn } from "@t3tools/contracts";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ComposerPendingApprovalActions } from "~/components/chat/ComposerPendingApprovalActions";
-import { ComposerPendingVaultChanges } from "~/components/chat/ComposerPendingVaultChanges";
 import { ComposerPendingApprovalPanel } from "~/components/chat/ComposerPendingApprovalPanel";
 import {
   ComposerPendingUserInputPanel,
@@ -61,48 +57,6 @@ const ONLY = params.get("n");
 const ONLY_ASK = params.get("ask");
 const ONLY_STANDING = params.get("standing");
 const ONLY_ACT = params.get("act");
-const ONLY_VAULT = params.get("vault");
-
-const VAULT_KEYS = [
-  ["api", "MEDUSA_HOST"],
-  ["storefront", "NEXT_STORE_URL"],
-  ["storefront", "NEXTSTORE_HOST"],
-  ["api", "SEARCH_URL"],
-  ["api", "SMTP_FROM"],
-  ["api", "SMTP_HOST"],
-  ["api", "SMTP_PORT"],
-  ["api", "SMTP_SECURE"],
-  ["storefront", "STRIPE_PUBLISHABLE_KEY"],
-  ["api", "ANALOG_STORE_URL"],
-  ["api", "MEDUSA_INSTANCE_URL"],
-  ["storefront", "POSTHOG_HOST"],
-  ["api", "COOKIE_SECRET"],
-  ["api", "GITHUB_CLIENT_ID"],
-  ["api", "GITHUB_CLIENT_SECRET"],
-  ["api", "GOOGLE_CLIENT_ID"],
-  ["api", "GOOGLE_CLIENT_SECRET"],
-  ["api", "JWT_SECRET"],
-  ["storefront", "POSTHOG_EVENTS_API_KEY"],
-  ["api", "SMTP_PASS"],
-  ["api", "SMTP_USER"],
-  ["api", "STRIPE_API_KEY"],
-  ["api", "CHANNEL_PUBLISHABLE_KEY"],
-  ["storefront", "CHANNEL_PUBLISHABLE_KEY"],
-] as const;
-
-const VAULT_CHANGES: ReadonlyArray<VaultChange> = VAULT_KEYS.map(([hostname, key], index) => ({
-  scope: { kind: "service", serviceId: hostname },
-  hostname,
-  key,
-  kind: "added",
-  sensitive: /SECRET|KEY|PASS/u.test(key),
-  at: new Date(Date.UTC(2026, 10, 24, 10, 0, index)).toISOString(),
-  impact: { restart: [{ serviceId: hostname, hostname }], unread: false, literal: [] },
-}));
-
-const VAULTS = [1, VAULT_CHANGES.length].filter((count) =>
-  ONLY_VAULT === null ? true : count === Number(ONLY_VAULT),
-);
 
 const FACE = <MateFace size={24} state="needs" tint="sky" />;
 const nothing = async () => undefined;
@@ -484,12 +438,7 @@ function Composer({
 }
 
 function Harness() {
-  const one =
-    ONLY !== null ||
-    ONLY_ASK !== null ||
-    ONLY_STANDING !== null ||
-    ONLY_ACT !== null ||
-    ONLY_VAULT !== null;
+  const one = ONLY !== null || ONLY_ASK !== null || ONLY_STANDING !== null || ONLY_ACT !== null;
   const counts = ONLY !== null ? [Number(ONLY)] : one ? [] : [1, 2, 3, 5];
   const asks = ASKS.filter(({ name }) => (one ? name === ONLY_ASK : true));
   const standings = STANDINGS.filter(({ state }) => (one ? state === ONLY_STANDING : true));
@@ -525,21 +474,6 @@ function Harness() {
         ))}
         {asks.map(({ name, top }) => (
           <Composer key={name} name={`Asks: ${name}`} state={name} top={top} />
-        ))}
-        {(ONLY_VAULT !== null || !one ? VAULTS : []).map((count) => (
-          <Composer
-            key={`vault-${String(count)}`}
-            name={count === 1 ? "Vault: one change" : `Vault: ${String(count)} changes`}
-            state={`vault-${String(count)}`}
-            top={
-              <div className="px-4 pt-3">
-                <ComposerPendingVaultChanges
-                  changes={VAULT_CHANGES.slice(0, count)}
-                  onRemove={() => {}}
-                />
-              </div>
-            }
-          />
         ))}
       </div>
     </TooltipProvider>
