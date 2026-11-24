@@ -180,6 +180,7 @@ export default defineConfig({
       "t3code/no-legacy-vocabulary": "error",
       "t3code/no-manual-effect-runtime-in-tests": "error",
       "t3code/no-native-title-tooltip": "error",
+      "t3code/no-raw-controls": "error",
       "t3code/no-test-in-loop": "error",
       "t3code/no-platform-globals": "error",
       "t3code/no-remote-data-in-browser-storage": "error",

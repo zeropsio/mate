@@ -1,0 +1,3066 @@
+[
+  {
+    "path": "apps/web/src/assets/AssetDownloadLink.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/AgentsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex w-full items-center gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent/40\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/AgentsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"helper-map-earlier\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/AgentsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"helper-row-head\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/AgentsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40\", phase.state === \"done\" ? \"text-success-foreground\" : phase.state === \"running\" ? \"text-info-foreground\" : \"text-muted-foreground/70\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/AgentsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"rounded-sm border border-border/60 px-1 font-mono normal-case hover:text-foreground\", scriptOpen && \"text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium tabular-nums transition-colors hover:bg-muted/60\", branchPrStatus.colorClass, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={cn( CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", block ? \"block\" : \"inline-block\", className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, \"select-text\", className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/CommandPalette.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex cursor-pointer items-center\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ConnectionStatusDot.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"relative flex size-3 shrink-0 cursor-help items-center justify-center rounded-full outline-hidden\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"cursor-pointer flex min-w-0 items-center\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 cursor-pointer items-center gap-1\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"relative flex size-4 cursor-pointer items-center justify-center\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/RightPanelTabs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"cursor-pointer transition hover:border-border hover:bg-accent/60\", cardShellClass, isHighlighted(action) && highlightedCardClass, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ServiceBrowserLink.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ServiceBrowserPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ServiceBrowserPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ServiceBrowserPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"min-w-0 flex-1 truncate px-1 text-muted-foreground text-caption hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/SidebarDraftRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"pointer-events-none inline-flex cursor-pointer items-center rounded-control bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadListEmpty.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex cursor-pointer items-center gap-1.5 rounded-control border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={cn( // Sidebar chrome follows the interface font; tabular digits keep the // number from reflowing as PR states stream in. \"shrink-0 text-caption tabular-nums hover:underline\", prStatus.colorClass, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1 text-left text-body outline-none\", props.isHighlighted || props.isRouteActive ? \"bg-sidebar-row-active text-sidebar-foreground\" : \"text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-body font-medium text-card-foreground outline-none focus:border-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={ props.className ?? \"shrink-0 text-muted-foreground text-caption tabular-nums hover:underline\" }",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={`flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1.5 text-2xs ${ isGroupActive ? \"bg-accent/50 text-foreground\" : \"text-muted-foreground hover:bg-accent/40 hover:text-foreground\" }`}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={className}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-control px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", check === onStage ? \"bg-accent/70 text-foreground\" : \"text-muted-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", TAKE_PICTURE_CLASS[device], state === \"failed\" ? \"border-status-failed ring-1 ring-status-failed\" : state === \"retried\" ? \"border-status-attention\" : \"border-border\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( frameClass, \"cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatHeader.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatHeader.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatHeader.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className={cn( \"min-w-0 flex-1 text-body font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring\", over ? \"h-8 rounded-lg bg-background px-2\" : \"rounded-sm bg-transparent\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFile.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-file-action composer-file-remove\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFile.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-file-action composer-file-retry\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body\", customAnswer ? \"text-foreground\" : \"text-placeholder\", !multiSelect && \"px-3 py-2\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFoldedPromptRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFoldedPromptRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none\", COMPOSER_PROMPT_TYPE_CLASS_NAME, words ? \"text-foreground\" : \"text-placeholder\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerFullScreenToggle.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-full-toggle\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerModelControl.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-control px-2 py-1 pointer-coarse:min-h-10 text-start text-foreground text-line outline-none hover:bg-foreground/6 focus-visible:bg-foreground/6 disabled:cursor-default disabled:opacity-64 aria-checked:font-medium\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingReviewComments.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={className}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-picture-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-picture-remove\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"composer-picture-retry\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-chip\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-done\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-note-remove\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-tool picture-tool-small\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-tool\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"picture-view-close\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<textarea> className=\"picture-note-text\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( messageActionPillClassName, \"h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-8 sm:h-7\", compact ? \"px-3\" : \"px-4\")}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-9 rounded-r-none px-4 sm:h-8\")}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-9 sm:h-8\", compact ? \"px-3\" : \"px-4\")}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerStashBadge.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"chat-composer-shoulder-tab absolute -top-7 right-4 z-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-t-xl border border-b-0 px-3 pb-1 text-caption leading-none\", \"transition-[color,border-color] duration-200\", props.menuOpen && \"pointer-events-none\", props.menuOpen || props.pulsing ? \"text-foreground\" : \"text-muted-foreground hover:text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-left text-caption text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerTasksBadge.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"conversation-crewmate absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"conversation-crewface absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring\", threadId === null ? \"cursor-default\" : \"cursor-pointer\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring\", chats === null ? \"pe-3\" : \"pe-1\", opens ? \"cursor-pointer\" : \"cursor-default\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 text-line font-medium text-muted-foreground tabular-nums outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground\", !shown && \"invisible absolute start-0 top-0\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-bar group/bar\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-bar group/bar\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/DetailRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-bar cursor-pointer transition-colors hover:bg-foreground/4\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"pointer-events-auto inline cursor-pointer border-muted-foreground/35 border-b border-dotted text-muted-foreground/60 transition-colors hover:border-muted-foreground/60 hover:text-muted-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"absolute inset-0 z-0 cursor-zoom-out\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/MateHealthBanner.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/MatePersonaPress.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex h-6 min-w-0 max-w-36 shrink cursor-pointer items-center gap-1 rounded-sm px-1.5 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/MermaidDiagram.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( fit, \"cursor-zoom-in rounded-control focus-visible:outline-2 focus-visible:outline-ring\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagePictures.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"message-picture-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunBackgroundLine.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-control px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunCallBubbles.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"block h-20 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"group/disclose block w-full min-w-0 cursor-pointer text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset\", className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( META, \"mt-1 block cursor-pointer rounded-sm not-italic text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunHelperBubbles.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunNowLine.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-now-fold\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunPersonMark.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"block h-16 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/TimelineLoadEarlierHeader.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"w-full py-1.5 text-caption text-muted-foreground/60 hover:text-foreground disabled:cursor-default\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/TimelineMessageRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"h-full w-full cursor-zoom-in\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/TimelineMinimap.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/chat/TurnReport.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-result-tile\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/express/ExpressDesignLinkChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"group/express my-1 flex w-fit max-w-full items-center gap-3 rounded-xl border border-border bg-card py-2 ps-2 pe-3 no-underline shadow-xs/5 transition-colors hover:bg-accent/60\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/express/ExpressPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-control bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/express/ExpressPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex aspect-square flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/express/ExpressPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group/tile flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-xs/5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring @lg:flex-col\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/persona/PersonaPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${ isSelected ? \"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\" : \"border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]\" }`}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-caption hover:bg-accent/60 disabled:pointer-events-none\", match.resultIndex === selectedIndex && \"bg-accent text-accent-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"size-6 cursor-pointer rounded-full border transition\", selected ? \"scale-110 border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background\" : \"border-black/10 hover:scale-105 dark:border-white/20\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-left outline-none hover:bg-card focus-visible:ring-2 focus-visible:ring-ring max-sm:justify-center max-sm:px-2\", index === currentStep && \"bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/BillingSettings.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ConnectFlow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/DesktopDownloadRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"cursor-pointer inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/GithubAppSettings.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group/project-title inline-flex min-w-0 max-w-64 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90\", \"hover:scale-105\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"h-8 rounded-control border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm text-left outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring\", !enabled && !selected && \"opacity-60 group-hover:opacity-100\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/RedactedSensitiveText.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"min-w-0 cursor-pointer rounded-sm font-mono text-2xs leading-normal transition hover:text-foreground\", revealed ? \"text-muted-foreground\" : \"select-none text-muted-foreground blur-xs\", props.className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/TeamInvitePage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"tm-role-card\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/TeamRoleEditor.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"tm-advanced-toggle\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/TeamRoleEditor.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"tm-role-card\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/settings/automationParts.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group flex h-8 w-full cursor-pointer items-center gap-2 rounded-control px-2 text-left text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"relative z-[1] flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"relative z-[1] mr-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-control opacity-70 outline-none hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2\", isInteractionDisabled ? \"cursor-not-allowed\" : \"cursor-pointer\", showUpdateIconState ? cn( \"bg-update-surface text-update-foreground\", !isInteractionDisabled && \"hover:bg-update/12\", ) : cn( \"text-(--sidebar-icon-color)\", !isInteractionDisabled && \"hover:bg-sidebar-row-hover hover:text-sidebar-foreground\", ), disabled && !showUpdateIconState && \"opacity-60\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageAutomated.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsageDimensionViews.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex max-w-full cursor-pointer items-center gap-2 text-left focus-visible:outline-2 focus-visible:outline-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/AddAutomatedMatesForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitDeliveryStatus.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitDeliveryStatus.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitEnvironmentForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitEnvironmentForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitMirrorDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitStopDetail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/GitTokenGuide.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/JumpBox.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex h-6.5 max-w-1/2 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-accent ps-0.75 pe-2.5 text-line font-medium text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/JumpBox.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-body\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateAddresses.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={cn( \"relative inline-flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:size-10\", className, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateFacePicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"mate-face-option focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateLinkLine.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateNameText.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"mate-name-text\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateStatusMarker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateTaskCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/MateTaskCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/RecordedStageHistory.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"min-w-0 flex-1 text-left\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarComingEnds.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ROW_ACTION_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarListingNotice.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ROW_ACTION_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ROW_ACTION_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-body leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarPlatformProjectRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"zerops-envpop-act zerops-envpop-press\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-envpop-askbutton\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-envpop-askbutton\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-envpop-askmore\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-envpop-other\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-tag menu-tag-release\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-tag menu-tag-review\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-tagpop-item\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"zerops-sites-link\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"zerops-sites-zerops\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-row-action\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-copy\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-globe\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-link zerops-sites-door\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-link zerops-sites-door\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-place zerops-envpop-press\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"zerops-sites-tag\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarRail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarRail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-rail-count\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarWaiting.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={className}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarWaiting.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-foot-photo\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-foot-who\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"shrink-0 cursor-pointer rounded-control px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={armed ? ROW_STOP_ARMED_CLASS : ROW_ACTION_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn(\"inline-flex cursor-pointer items-center gap-1.5\", fit)}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/StopPublicAccess.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"arrival-card\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"arrival-card\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"arrival-more\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"arrival-open-fold\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"arrival-input\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<select> className=\"h-9 w-full rounded-control border border-border bg-background px-3 text-body text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBrowserSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-1.5 ps-2 text-left pointer-coarse:py-3\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"group/log inline-flex h-5 items-center gap-0.5 text-muted-foreground text-caption transition-colors hover:text-foreground\", !openable && \"invisible\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"inline-flex items-baseline gap-1 rounded-control border border-border bg-muted px-1.5 align-baseline text-body no-underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsCreditForecast.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataBlob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataBreadcrumbs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"truncate text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataCell.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<select> className={CHIP_SELECT_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<select> className={CHIP_SELECT_CLASS}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex w-full flex-col items-start gap-0.5 rounded-card px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"h-7 rounded-control border border-border bg-transparent px-2 text-xs\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"w-full rounded border border-border bg-transparent px-2 py-1 text-caption\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"text-caption\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex w-full flex-col items-start gap-0.5 rounded px-2 py-1 text-left text-caption hover:bg-accent\", selected && \"bg-accent font-semibold text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"flex w-full items-start justify-between gap-3 rounded px-1 py-1 text-left text-caption hover:bg-accent\", selected && \"bg-accent font-semibold text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"-mx-1.5 flex w-fit cursor-pointer items-center gap-1 rounded-control px-1.5 py-1 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"min-w-0 truncate rounded-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 items-center gap-3 text-left\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3 rounded-control px-2 py-2 text-left transition-colors hover:bg-muted\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"py-2 text-body font-medium\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-body leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"-ms-1 inline-flex items-center gap-1 rounded-control px-1 font-medium\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMacPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"relative z-[1] inline-flex w-fit items-center gap-1 text-caption text-status-busy-text underline-offset-2 hover:underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate rounded-sm text-left text-body leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring\", LAYOUT[layout].hit, LAYOUT[layout].name, )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-control border px-1.5 text-caption leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60\", tone === undefined ? \"border-input bg-popover text-foreground hover:bg-accent/50\" : VERB_TONE_CLASS[tone], )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"region-tile\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ className === undefined ? \"composer-top-dismiss\" : `composer-top-dismiss ${className}` }",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-foreground/5 p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"group flex w-full cursor-pointer items-center gap-3.5 rounded-2xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsProjectLink.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsReleaseCarried.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex max-w-full min-w-0 cursor-pointer items-start gap-1 rounded-sm text-start text-body text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground group-hover/release:text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"group flex min-w-0 max-w-full items-baseline gap-1 text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/addresses/AddressesDomains.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/addresses/AddressesDomains.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/addresses/AddressesSheet.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/addresses/AddressesZerops.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"inline-flex min-w-0 max-w-full items-center gap-1 hover:underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-chief-row\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"menu-rail-head\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewGoal.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"crew-field\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewHead.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-menu-btn -me-1.5 @max-md:-me-2\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewHead.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"min-w-0 cursor-pointer truncate text-start font-semibold text-base leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring\", goal.placeholder ? \"text-muted-foreground\" : \"text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewInFensCode.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-code-row\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-tray-out\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-menu-btn crew-row-menu crew-row-above\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-row-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-send\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-nolimit\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-menu-btn -me-1.5\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-option\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-option\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-row text-start\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex h-9 cursor-pointer items-center gap-3 rounded-lg ps-2.5 pe-3 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"mx-2 grid h-9 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-2 text-start font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-pick\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-send\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<textarea> className=\"crew-composer-input\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"-ms-1.5 flex h-7 cursor-pointer items-center gap-0.5 self-start rounded-lg ps-0.5 pe-2 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<textarea> className=\"crew-field\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex w-full cursor-pointer items-baseline gap-3 rounded-lg px-2 py-1 text-left text-line outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"crew-option mt-6\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rounded-full p-0.5 ring-offset-2 ring-offset-background aria-checked:ring-2 aria-checked:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"crew-field font-mono\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"crew-field font-mono\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"crew-field font-mono\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"crew-field\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitBrowserLink.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitCommitView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={className ?? \"text-foreground underline-offset-2 hover:underline\"}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitCommitsView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitCommitsView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitDiffFiles.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-caption hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitDirectoryList.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"flex min-w-0 items-center gap-3 rounded-sm text-body text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitFileFinder.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={className}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitPathCrumbs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"flex min-w-0 font-mono text-caption underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/GitRepoFrame.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"inline-flex h-8 items-center rounded-full border border-dashed border-input px-3 text-body text-primary outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 border-t px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out first:border-t-0 focus-visible:bg-accent\", disabled ? \"cursor-default\" : \"hover:bg-accent/60\", row.fresh && \"animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={cn( \"inline-flex h-8 items-center gap-2 rounded-full border bg-background ps-1.5 pe-3 text-body outline-none transition-[background-color,box-shadow] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\", each.account === account?.account ? \"border-primary ring-1 ring-primary\" : \"border-border\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"-ms-0.5 h-5 min-w-0 flex-1 rounded-sm bg-background px-0.5 leading-5 ring-1 ring-ring outline-none aria-invalid:ring-destructive\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubRepoRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/github/GithubRepoRows.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={cn( // In a phone's column it is as wide as its words unless held to the row. \"real-name min-w-0 truncate hover:underline max-sm:max-w-full\", state.tone === \"busy\" ? \"text-muted-foreground\" : \"text-foreground\", )}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/mirror/MirrorAskCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/pipeline/PipelineDialog.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/place/PlaceServices.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"group flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-3 py-2.5 outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/place/PlaceServices.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/place/PlaceVaultCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ROW}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/place/PlaceVaultCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className={ROW}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/project/OutsideProduction.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"inline-flex max-w-full items-center gap-0.5 rounded-sm align-bottom text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/project/ProjectPageBody.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"pp-brought-more\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"ov-change\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"pa-pr\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"pa-state pa-from\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex size-6 items-center justify-center rounded-full hover:bg-accent/60\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-change\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projectMerging/ProjectMerging.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/NewProjectAccess.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/OverviewFilters.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectAccessTable.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-acc-cell\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectAccessTable.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-acc-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-add\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-nav ov-nav-left\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-nav ov-nav-right\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<input> className=\"ov-reply-in\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectCreditLine.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectHistory.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"pp-hist-head\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/proposal/ProposalCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex min-w-0 items-center gap-1 text-start text-caption text-muted-foreground hover:text-foreground\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-say-ask\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-say-comment\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<textarea> className=\"rv-say-box\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"rv-link\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className={file.className}",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-pic-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-viewer-step\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-viewer-step\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReleasePlan.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReleaseReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewProvider.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"rv-relrow\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"rv-try\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-back\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-file\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-fold-row\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-relrow\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x disabled:pointer-events-none disabled:opacity-40\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x disabled:pointer-events-none disabled:opacity-40\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"rv-x\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/ChangeRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"ov-change-pr\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/ChangeRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-change\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/Crumbs.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"min-w-0 cursor-pointer truncate rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"tm-card mc-add\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a> className=\"ov-mate-preview\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-mate-name ov-mate-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ov-mate-name ov-mate-open\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/PlaceLine.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/ProjectLineFull.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ln-name rounded-sm\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/ProjectLineParts.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"ln-bead\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/SectionLabel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/ServiceRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<textarea> className=\"vault-textarea block w-full resize-none overflow-x-auto bg-transparent py-2 pr-2.5 pl-1 font-mono text-caption leading-5 whitespace-pre text-foreground outline-none\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/vault/VaultLines.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"text-left outline-none hover:underline focus-visible:underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/vault/VaultLines.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"text-left outline-none hover:underline focus-visible:underline\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/vault/VaultPanel.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/components/zerops/vault/VaultRow.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2\"",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  },
+  {
+    "path": "apps/web/src/routes/-routeGate.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<a>",
+    "owner": "kit pass",
+    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "expires": "surface:kit"
+  }
+]

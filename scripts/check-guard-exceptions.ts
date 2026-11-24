@@ -161,6 +161,7 @@ export const RATCHET_RULES = [
   "no-failure-to-empty",
   "no-frame-per-tick",
   "no-remote-data-in-browser-storage",
+  "no-raw-controls",
   "no-infinite-motion",
   "no-legacy-vocabulary",
   "require-static-classes",
@@ -182,6 +183,7 @@ export const RATCHET_RULES = [
  */
 const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
   "no-frame-per-tick",
+  "no-raw-controls",
   "reduced-motion-home",
   "protected-roots-render-only",
   "web-never-derives",

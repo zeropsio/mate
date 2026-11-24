@@ -24,6 +24,7 @@ import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noTestInLoop from "./rules/no-test-in-loop.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
 import noHqSessionCode from "./rules/no-hq-session-code.ts";
+import noRawControls from "./rules/no-raw-controls.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
 import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
@@ -73,6 +74,7 @@ export default definePlugin({
     "no-test-in-loop": noTestInLoop,
     "no-platform-globals": noPlatformGlobals,
     "no-hq-session-code": noHqSessionCode,
+    "no-raw-controls": noRawControls,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
     "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
     "no-restyle": noRestyle,

@@ -147,7 +147,7 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
-  quiet tools, `destructive` only for what deletes, stops or acts on Production, `link` inside
+  quiet tools, `sidebar` for the menu's own presses on its ground, `destructive` only for what deletes, stops or acts on Production, `link` inside
   text. Buttons are rectangles, except `shape="round"`: the round icon press (the composer's send)
   and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
   is `InlineButton`.
@@ -227,6 +227,11 @@ numbered steps of these. Every ask is the same card, in two densities.
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); its ledger is reconciled the same
     way; hand-written CSS sizes, corners and transition lengths between the scale's steps are held
     to a budget that only shrinks (`scripts/check-css-tokens.ts`)
+
+- **R12** — Presses, links and fields are the kit's
+  - _Enforced by:_ `t3code/no-raw-controls` (a `<button>`, `<a>`, `<input>`, `<textarea>` or `<select>`
+    in the web client outside `components/ui`, the kit and the design harness); its ledger, seeded with
+    the hand-made ones the kit pass found, only shrinks
 
 ## 6. Exceptions
 
