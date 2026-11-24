@@ -1,4 +1,6 @@
 import { expect, it } from "vite-plus/test";
+import { keyRenewOffer } from "../../../zerops/renewDeployKey.logic.ts";
+import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import {
   changeFixOptions,
   crewLandCommand,
@@ -78,4 +80,34 @@ it("RV4: Land now is pressed only for a crew task still working or sent back for
   expect(tagOf("review")).toBe("land");
   expect(tagOf("waiting-on-you")).toBe("land");
   expect(crewLandCommand({ id: "task-7", state: "rework" }).taskId).toBe("task-7");
+});
+
+// witness: apps/web/src/zerops/renewDeployKey.logic.ts | return mayKeep === false ? "none" : "start"; → return mayKeep !== true ? "none" : "start";
+it("RV+2: The renewal's press is a start for whoever HQ's keep rule admits or has not answered yet, Continue only for the maker of a renewal that waits, and none for a person the rule refuses or while another person's renewal waits; breaks: a Basic user who may renew gets no press, or a person HQ refuses gets one that fails.", () => {
+  const failure = { step: "key", code: "refused", at: "now", origin: "zerops" };
+  const waiting = {
+    kind: "waiting",
+    id: "op",
+    continueBy: "maker",
+    press: "Continue",
+    why: "wait",
+    line: "wait",
+  } as const;
+  const rows: ReadonlyArray<
+    readonly [HqOperationStanding, boolean | undefined, "start" | "continue" | "none"]
+  > = [
+    [{ kind: "none" }, true, "start"],
+    [{ kind: "none" }, undefined, "start"],
+    [{ kind: "none" }, false, "none"],
+    [{ kind: "failed", failure }, true, "start"],
+    [{ kind: "failed", failure }, false, "none"],
+    [{ kind: "going" }, true, "start"],
+    [{ kind: "needs", needs: "decision" }, true, "start"],
+    [{ ...waiting, yours: true }, true, "continue"],
+    [{ ...waiting, yours: true }, false, "continue"],
+    [{ ...waiting, yours: true }, undefined, "continue"],
+    [{ ...waiting, yours: false }, true, "none"],
+  ];
+  for (const [standing, mayKeep, answer] of rows)
+    expect(keyRenewOffer(standing, mayKeep)).toBe(answer);
 });

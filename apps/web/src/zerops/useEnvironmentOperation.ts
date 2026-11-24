@@ -15,8 +15,8 @@ import { randomUUID } from "~/lib/utils";
 import { hqNavigationAtom } from "~/state/zerops";
 
 import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
-import { keyRenewalOf, type KeyRenewal } from "./renewDeployKey.logic";
-import { useProjectCapabilities } from "./usePlatformCapabilities";
+import { keyRenewalOf, keyRenewOffer, type KeyRenewal } from "./renewDeployKey.logic";
+import { useKeepDeployKeyOffer } from "./useChangeOffers";
 import { writeTrouble } from "./zeropsWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -121,7 +121,7 @@ export interface DeployKeyRenewal {
   readonly run: KeyRenewal;
   /**
    * Renews the key, or continues the renewal waiting for this person's fresh sign-in; absent for a
-   * person without admin access to the project, while another person's renewal waits for them,
+   * person HQ refuses, while another person's renewal waits for them,
    * and while the environment is not known.
    */
   readonly onRenew: (() => void) | undefined;
@@ -139,7 +139,7 @@ export function useDeployKeyRenewal(
     | {
         /** The application whose environment it is. */
         readonly appId: string;
-        /** The environment's Zerops project, whose admins may renew its key. */
+        /** The environment's Zerops project, whose keep offer decides renewal. */
         readonly projectId: string;
         /** Its name, as HQ names it. */
         readonly name: string;
@@ -149,8 +149,12 @@ export function useDeployKeyRenewal(
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperationsOptional();
   const { startDeployKey, operation } = useEnvironmentOperation(environment?.appId);
-  const access = useProjectCapabilities(environment?.projectId);
+  const mayKeepKey = useKeepDeployKeyOffer();
   const standing = hqOperationOf(operation, "deploy_key");
+  const offer = keyRenewOffer(
+    standing,
+    environment === undefined ? undefined : mayKeepKey(environment.projectId),
+  );
   // The start this surface made: refused, its id once HQ answered it, and whether HQ showed it.
   const [asked, setAsked] = useState<
     | { readonly refused: string }
@@ -179,8 +183,8 @@ export function useDeployKeyRenewal(
   );
   const orgId = activeOrganization?.id;
   const continueRenewal =
+    offer === "continue" &&
     standing.kind === "waiting" &&
-    standing.yours &&
     environment !== undefined &&
     operations !== null &&
     orgId !== undefined
@@ -199,9 +203,7 @@ export function useDeployKeyRenewal(
         }
       : undefined;
   const renew =
-    environment === undefined ||
-    standing.kind === "waiting" ||
-    (access.projectAccessKnown && !access.administer)
+    environment === undefined || offer !== "start"
       ? undefined
       : () => {
           if (run.kind === "working") return;

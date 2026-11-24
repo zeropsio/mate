@@ -572,8 +572,7 @@ function ZeropsProjectStopDetailPage({
         ? undefined
         : withRenewal(
             stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
-            // By the viewer's role on the project, and never where HQ's own rule refuses the key.
-            renewKey.onRenew !== undefined && mayKeepKey(projectId) !== false,
+            renewKey.onRenew !== undefined,
           ),
     firstDeploy,
     notCreated,

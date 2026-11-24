@@ -18,6 +18,15 @@ export type KeyRenewal =
 
 export const NOT_RENEWING: KeyRenewal = { kind: "none" };
 
+/** The press HQ's keep decision and the renewal's standing offer this person. */
+export function keyRenewOffer(
+  standing: HqOperationStanding,
+  mayKeep: boolean | undefined,
+): "continue" | "start" | "none" {
+  if (standing.kind === "waiting") return standing.yours ? "continue" : "none";
+  return mayKeep === false ? "none" : "start";
+}
+
 /** The renewal's button: the word of the wait it would continue, else a new renewal's. */
 export const keyRenewPress = (renewal: KeyRenewal | undefined): string =>
   (renewal?.kind === "failed" ? renewal.press : undefined) ?? "Renew the key";
