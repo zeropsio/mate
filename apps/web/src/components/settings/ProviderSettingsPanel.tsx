@@ -148,11 +148,11 @@ function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }
   }
 
   if (lastCheckedRelative.status === "invalid") {
-    return <span className="text-[11px] text-muted-foreground/50">Checked unavailable</span>;
+    return <span className="text-2xs text-muted-foreground/50">Checked unavailable</span>;
   }
 
   return (
-    <span className="text-[11px] text-muted-foreground/60">
+    <span className="text-2xs text-muted-foreground/60">
       {lastCheckedRelative.suffix ? (
         <>
           Checked <span className="font-mono tabular-nums">{lastCheckedRelative.value}</span>{" "}
@@ -975,7 +975,7 @@ export function EnvironmentProviderSettings({
         <div className="space-y-1">
           <div className="overflow-hidden rounded-card border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
             <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
-              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-[11px] font-medium text-muted-foreground">
+              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-2xs font-medium text-muted-foreground">
                 <span>Provider</span>
                 <span>On</span>
               </div>
@@ -1040,13 +1040,13 @@ export function EnvironmentProviderSettings({
           <div
             inert={readOnly}
             aria-disabled={readOnly || undefined}
-            className={readOnly ? "opacity-50 select-none" : undefined}
+            className={
+              readOnly
+                ? "mt-2 border-t border-border/70 opacity-50 select-none"
+                : "mt-2 border-t border-border/70"
+            }
           >
-            <Collapsible
-              open={advancedVisible}
-              onOpenChange={setAdvancedOpen}
-              className="mt-2 border-t border-border/70"
-            >
+            <Collapsible open={advancedVisible} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-caption text-muted-foreground hover:text-foreground sm:px-4">
                 <ChevronDownIcon
                   className={cn("size-3 transition-transform", advancedVisible && "rotate-180")}

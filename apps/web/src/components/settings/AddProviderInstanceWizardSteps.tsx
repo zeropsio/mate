@@ -47,7 +47,7 @@ export function AddProviderInstanceWizardSteps({
                   ? "bg-primary text-primary-foreground ring-primary"
                   : index === currentStep
                     ? "bg-primary/10 text-primary ring-primary/30"
-                    : "bg-card text-muted-foreground ring-black/10 dark:bg-white/5 dark:ring-white/10",
+                    : "bg-card text-muted-foreground ring-border",
               )}
               aria-hidden
             >

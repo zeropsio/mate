@@ -283,8 +283,8 @@ function ProviderEnvironmentSection(props: {
       ) : (
         <div className="overflow-hidden rounded-control border border-border/70">
           <Table>
-            <TableHeader className="bg-muted/25 text-[11px] text-muted-foreground">
-              <TableRow className="hover:bg-transparent">
+            <TableHeader>
+              <TableRow>
                 <TableHead>Variable</TableHead>
                 <TableHead>Value</TableHead>
                 <TableHead className="w-20">Sensitive</TableHead>
@@ -295,10 +295,7 @@ function ProviderEnvironmentSection(props: {
             </TableHeader>
             <TableBody>
               {rows.map((variable, index) => (
-                <TableRow
-                  key={variable.id}
-                  className="border-border/60 odd:bg-muted/20 even:bg-background/20"
-                >
+                <TableRow key={variable.id}>
                   <TableCell>
                     <DraftInput
                       value={variable.name}
@@ -604,9 +601,7 @@ export function ProviderInstanceCard({
   const titleHeadNode = (
     <>
       {titleIconNode}
-      <h3 className="truncate text-sm font-medium tracking-[-0.005em] text-foreground">
-        {displayName}
-      </h3>
+      <h3 className="truncate text-body font-medium text-foreground">{displayName}</h3>
       {String(instanceId) !== String(instance.driver) ? (
         <code className="truncate rounded-mark bg-muted/60 px-1 py-0.5 text-caption text-muted-foreground">
           {instanceId}
@@ -742,14 +737,15 @@ export function ProviderInstanceCard({
                       type="button"
                       size="icon-sm"
                       variant="ghost"
-                      className={cn(
-                        versionAdvisory.emphasis === "strong"
-                          ? "text-warning hover:text-warning"
-                          : "text-update-foreground hover:text-update-foreground",
-                      )}
                       aria-label={`${versionAdvisory.title} — view details`}
                     >
-                      <VersionAdvisoryIcon className="size-3.5" />
+                      <VersionAdvisoryIcon
+                        className={
+                          versionAdvisory.emphasis === "strong"
+                            ? "size-3.5 text-warning"
+                            : "size-3.5 text-update-foreground"
+                        }
+                      />
                     </Button>
                   }
                 />
@@ -793,7 +789,7 @@ export function ProviderInstanceCard({
                     {updateCommand ? (
                       <div className="flex min-w-0 items-center gap-1 rounded-control border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
                         <ScrollArea radius="none" scrollFade className="h-8 min-w-0 flex-1">
-                          <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-[11px] text-foreground">
+                          <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-2xs text-foreground">
                             {updateCommand}
                           </code>
                         </ScrollArea>

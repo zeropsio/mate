@@ -72,14 +72,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> hover:text-sidebar-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
@@ -91,14 +83,6 @@
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> hover:text-sidebar-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:text-sidebar-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -123,6 +107,62 @@
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> text-sidebar-muted-foreground in \"mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> gap-1 in \"z-[1] gap-1\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pb-1 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> ps-[calc(var(--sidebar-content-inset)+1px)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "Literal",
+    "fingerprint": "<SidebarGroup> pt-0 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
+    "owner": "web-intake",
+    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
+    "kind": "Literal",
+    "fingerprint": "<Button> hover:text-sidebar-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -195,46 +235,6 @@
     "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> text-sm in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> gap-1 in \"z-[1] gap-1\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> pb-1 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> ps-[calc(var(--sidebar-content-inset)+1px)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> pt-0 in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
@@ -552,230 +552,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> bg-zinc-25/80 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> dark:bg-white/2 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> dark:ring-white/5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> px-6 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> py-5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> ring-1 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> ring-black/5 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> space-y-4 in \"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> group-focus-within:opacity-100 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> group-hover:opacity-100 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> opacity-0 in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground in \"shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> bg-background in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> text-foreground in \"h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> hover:text-warning in \"text-warning hover:text-warning\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-update-foreground in \"text-update-foreground hover:text-update-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-warning in \"text-warning hover:text-warning\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableHeader> bg-muted/25 in \"bg-muted/25 text-[11px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableHeader> text-[11px] in \"bg-muted/25 text-[11px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableHeader> text-muted-foreground in \"bg-muted/25 text-[11px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableRow> border-border/60 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableRow> even:bg-background/20 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableRow> hover:bg-transparent in \"hover:bg-transparent\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<TableRow> odd:bg-muted/20 in \"border-border/60 odd:bg-muted/20 even:bg-background/20\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Collapsible> border-border/70 in \"mt-2 border-t border-border/70\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Collapsible> border-t in \"mt-2 border-t border-border/70\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/SettingsSidebarNav.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarHeader> drag-region in \"drag-region\"",
@@ -819,38 +595,6 @@
     "path": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
     "kind": "Literal",
     "fingerprint": "<TooltipPopup> text-balance in \"pointer-events-auto text-balance\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> bg-background in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> text-foreground in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.draft.$draftId.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> bg-background in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.draft.$draftId.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarInset> text-foreground in \"h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

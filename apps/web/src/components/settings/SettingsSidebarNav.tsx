@@ -287,7 +287,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       </SidebarContent>
       {/* The account's one line, as at the menu's foot: settings replace the menu, not the lapse. */}
       <AccountVoiceLine />
-      <SidebarFooter className="p-[var(--sidebar-content-inset)]">
+      <SidebarFooter>
         <SidebarUtilityMenu />
       </SidebarFooter>
     </>

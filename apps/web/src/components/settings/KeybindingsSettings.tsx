@@ -775,10 +775,7 @@ function KeybindingTableRow({
           <Tooltip>
             <TooltipTrigger
               render={
-                <div
-                  aria-label={row.command}
-                  className="truncate text-[13px] font-medium text-foreground"
-                />
+                <div aria-label={row.command} className="truncate font-medium text-foreground" />
               }
             >
               {commandLabel(row.command)}
@@ -797,7 +794,7 @@ function KeybindingTableRow({
             aria-label={`Edit shortcut for ${commandLabel(row.command)}`}
           >
             <KeybindingPill value={row.key} />
-            <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70">
+            <span className="text-3xs uppercase tracking-wider text-muted-foreground/70 opacity-0 transition-opacity duration-150 ease-out-strong group-hover:opacity-100 group-focus-visible:opacity-100">
               Edit
             </span>
           </Button>
@@ -1237,7 +1234,7 @@ export function KeybindingsSettingsPanel() {
         }
       >
         {!isElectron ? (
-          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-4">
+          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-caption leading-relaxed text-muted-foreground sm:px-4">
             <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
             <p>
               Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
@@ -1253,7 +1250,7 @@ export function KeybindingsSettingsPanel() {
           hideScrollbars
           className="w-full max-w-full"
         >
-          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
             <div>Command</div>
             <div>Keybinding</div>
             <div>When</div>

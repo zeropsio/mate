@@ -1800,22 +1800,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-card text-muted-foreground ring-black/10 dark:bg-white/5 dark:ring-white/10\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in AddProviderInstanceWizardSteps awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",

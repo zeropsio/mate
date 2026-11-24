@@ -144,7 +144,7 @@ export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
   }, [navigateToMainApp]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron}>
           <ProjectSettingsBreadcrumb projectKey={projectKey} />
@@ -731,18 +731,20 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       {shortcutLabel ? (
                         <span className="text-caption text-muted-foreground">{shortcutLabel}</span>
                       ) : null}
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                        aria-label={`Edit ${script.name}`}
-                        disabled={isSavingScripts}
-                        onClick={() =>
-                          setEditorRequest(editorRequestForScript(script, keybindings))
-                        }
-                      >
-                        <SettingsIcon className="size-3.5" />
-                      </Button>
+                      {/* Shown while the row is hovered or holds focus. */}
+                      <span className="flex shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost-muted"
+                          aria-label={`Edit ${script.name}`}
+                          disabled={isSavingScripts}
+                          onClick={() =>
+                            setEditorRequest(editorRequestForScript(script, keybindings))
+                          }
+                        >
+                          <SettingsIcon className="size-3.5" />
+                        </Button>
+                      </span>
                     </>
                   }
                 />
