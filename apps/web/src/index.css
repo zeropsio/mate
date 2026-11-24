@@ -6302,8 +6302,9 @@ code {
     padding-top: 8px;
   }
 
+  /* `!important` over the list's own top padding utility. */
   .menu-list-chief + [data-zerops-surface="sidebar-environments"] {
-    padding-top: 0;
+    padding-top: 0 !important;
   }
 
   .menu-chief-row:hover {
