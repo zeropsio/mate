@@ -392,7 +392,7 @@ function PhaseSection({
     >
       <CollapsibleTrigger
         className={cn(
-          "mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
+          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
           phase.state === "done"
             ? "text-success-foreground"
             : phase.state === "running"

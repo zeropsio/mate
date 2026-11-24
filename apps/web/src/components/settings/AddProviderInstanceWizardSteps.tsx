@@ -22,10 +22,7 @@ export function AddProviderInstanceWizardSteps({
   onNavigation,
 }: AddProviderInstanceWizardStepsProps) {
   return (
-    <ol
-      className="grid grid-cols-3 gap-1 rounded-xl bg-zinc-25 p-1 ring-1 ring-black/5 dark:bg-white/4 dark:ring-white/5"
-      role="list"
-    >
+    <ol className="grid grid-cols-3 gap-0.5 rounded-control bg-input/40 p-0.5" role="list">
       {ADD_PROVIDER_WIZARD_STEPS.map((step, index) => (
         <li key={step} className="min-w-0">
           <Toggle

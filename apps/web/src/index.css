@@ -446,6 +446,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field: var(--zerops-field);
   --color-field-autofill: var(--zerops-field-autofill);
   --color-field-invalid: var(--zerops-field-invalid);
+  --color-well: var(--zerops-well);
+  --color-well-edge: var(--zerops-well-edge);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1648,6 +1650,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-field-autofill: color-mix(in oklab, var(--color-foreground) 4%, transparent);
   --zerops-field-invalid: color-mix(in oklab, var(--color-destructive) 16%, transparent);
   --zerops-ground-clip: padding-box;
+  /* A block set into a surface (a setting's row): a grey ground and a hairline in light; in dark
+     the ground alone sets it apart. */
+  --zerops-well: var(--color-secondary);
+  --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
   /* A Mate's colour: one of eight per agent, none of them the brand teal
      (brand.ts MATE_TINT_IDS); the eyes are ink on these light discs. */
   --zerops-mate-tint-coral: #ef8f78;
@@ -1744,6 +1750,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-field-autofill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
     --zerops-field-invalid: color-mix(in oklab, var(--color-destructive) 24%, transparent);
     --zerops-ground-clip: border-box;
+    --zerops-well: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-well-edge: transparent;
     --zerops-mate-tint-coral: #b85f4b;
     --zerops-mate-tint-amber: #9c7420;
     --zerops-mate-tint-olive: #6f8436;
@@ -1965,15 +1973,6 @@ html[data-theme-id] [data-chat-header] [data-toolbar-control][data-pressed] {
 
 html[data-theme-id] [data-chat-header] [data-slot="separator"] {
   background-color: var(--contrast-toolbar-border);
-}
-
-/* Chat code blocks join the other code surfaces on the code tokens. The
-   default look keeps its secondary/input tints; themed palettes tint those
-   surfaces with the accent, which fights syntax highlighting. */
-html[data-theme-id] .chat-markdown .chat-markdown-codeblock {
-  background-color: var(--code-background);
-  border-color: var(--contrast-border);
-  color: var(--code-foreground);
 }
 
 html[data-theme-id] .chat-markdown pre {

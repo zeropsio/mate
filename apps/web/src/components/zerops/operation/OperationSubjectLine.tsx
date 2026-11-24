@@ -40,7 +40,7 @@ export function OperationSubjectLine({
       ) : running ? (
         <span
           aria-hidden="true"
-          className="inline-block h-3 w-28 rounded-sm bg-muted align-middle"
+          className="inline-block h-3 w-28 rounded-mark bg-muted align-middle"
           data-zerops-subject-placeholder
         />
       ) : (

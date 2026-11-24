@@ -112,14 +112,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"h-8 w-10 cursor-pointer rounded-xl border border-input bg-background p-0.5\"",
-    "owner": "kit pass",
-    "reason": "a colour input: the kit has no colour field",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",

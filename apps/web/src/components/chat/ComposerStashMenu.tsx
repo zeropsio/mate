@@ -2,7 +2,6 @@ import { XIcon } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { cn } from "~/lib/utils";
 import { stripInlinePicturePlaceholders } from "../../lib/composerPictures";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
@@ -136,10 +135,8 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                 <CommandItem
                   key={entry.id}
                   value={entry.id}
-                  className={cn(
-                    "group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit",
-                    highlightedId === entry.id && "bg-accent! text-accent-foreground!",
-                  )}
+                  active={highlightedId === entry.id}
+                  className="group/stash relative select-none"
                   onMouseMove={() => {
                     if (highlightedId !== entry.id) setHighlightedId(entry.id);
                   }}

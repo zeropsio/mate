@@ -347,7 +347,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 : "Hide the question and its options"
             }
             data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
-            className="group inline-flex max-w-full items-center gap-1.5 rounded-sm align-bottom outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            className="group inline-flex max-w-full items-center gap-1.5 rounded-mark align-bottom outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
           >
             <span className="min-w-0 truncate">
               <span data-pending-request-kind="question">{`${who} asks`}</span>

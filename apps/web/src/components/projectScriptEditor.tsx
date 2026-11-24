@@ -312,7 +312,7 @@ export function ProjectScriptEditorDialog({
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </div>
-              <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
+              <label className="flex items-center justify-between gap-3 rounded-control border border-well-edge bg-well px-3 py-2 text-body">
                 <span>Run automatically on worktree creation</span>
                 <Switch
                   checked={runOnWorktreeCreate}
