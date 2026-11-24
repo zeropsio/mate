@@ -4,29 +4,33 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-const alertVariants = cva(
-  "relative rounded-card border px-3.5 py-3 text-card-foreground text-body",
-  {
-    defaultVariants: {
-      surface: "default",
-      variant: "default",
+/**
+ * A notice. `surface`: `default` is its own card, `glass` floats it over content (alert-glass tints
+ * from data-variant), `bare` draws no card at all (no edge, fill, padding or type size of its own)
+ * for a notice set inside a surface its parent draws, such as the composer's notice drawer; the
+ * variant still tints its icon.
+ */
+const alertVariants = cva("relative text-card-foreground", {
+  compoundVariants: [{ surface: "bare", className: "bg-transparent" }],
+  defaultVariants: {
+    surface: "default",
+    variant: "default",
+  },
+  variants: {
+    surface: {
+      default: "rounded-card border px-3.5 py-3 text-body",
+      glass: "alert-glass rounded-card border px-3.5 py-3 text-body",
+      bare: "",
     },
-    variants: {
-      // "glass" floats the alert over content; alert-glass tints from data-variant.
-      surface: {
-        default: "",
-        glass: "alert-glass",
-      },
-      variant: {
-        default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
-        error: "border-border bg-muted/35 [&_svg]:text-error",
-        info: "border-info/32 bg-info/4 [&_svg]:text-info",
-        success: "border-success/32 bg-success/4 [&_svg]:text-success",
-        warning: "border-border bg-muted/35 [&_svg]:text-warning",
-      },
+    variant: {
+      default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
+      error: "border-border bg-muted/35 [&_svg]:text-error",
+      info: "border-info/32 bg-info/4 [&_svg]:text-info",
+      success: "border-success/32 bg-success/4 [&_svg]:text-success",
+      warning: "border-border bg-muted/35 [&_svg]:text-warning",
     },
   },
-);
+});
 
 function alertChildSlot(child: React.ReactElement): string | undefined {
   const propsSlot = (child.props as Record<string, string | undefined>)["data-slot"];

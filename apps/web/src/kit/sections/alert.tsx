@@ -18,7 +18,7 @@ const VARIANTS = variantsOf<AlertVariant>({
   success: true,
   warning: true,
 });
-const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true });
+const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true });
 
 function AlertSpecimens() {
   return (
