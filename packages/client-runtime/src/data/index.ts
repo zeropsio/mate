@@ -32,7 +32,12 @@ export {
   type MenuTreeState,
 } from "./projections/menuTree.ts";
 export { HQ_AWAY_BUDGET_MS, hqAwaySaidAt } from "./projections/hqLink.ts";
-export { hqMateOverview, hqIndexWord, type HqIndexWord } from "./projections/hqMates.ts";
+export {
+  hqMateOverview,
+  hqIndexWord,
+  type HqIndexWord,
+  type HqMateState,
+} from "./projections/hqMates.ts";
 export {
   mateAttention,
   matesAttention,
@@ -250,6 +255,7 @@ export {
   hqMateAnsweredAtom,
   hqMateLinkAtom,
   hqMateLinkRefusalAtom,
+  hqMateStateAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,

@@ -3,9 +3,9 @@ import { expect, it } from "vite-plus/test";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
-import { hqAppFamily } from "../families/hqNavigation.ts";
+import { hqAppFamily, placementFamily, placementsScope } from "../families/hqNavigation.ts";
 import { makeAccountStore } from "../store.ts";
-import { hqMateLinkRefusal, hqMateRefusal } from "./hqMates.ts";
+import { hqMateLinkRefusal, hqMateRefusal, hqMateState } from "./hqMates.ts";
 
 const key = (projectId: string) => ({ orgId: "org", projectId });
 
@@ -91,6 +91,57 @@ it("PJ154: A new Mate's refused link is what HQ put on its own project's open bi
   expect([refused.projectId!, "quiet", "other"].map(refusalOf)).toEqual([
     { code: "key_refused", at: "v14" },
     null,
+    null,
+  ]);
+  registry.dispose();
+});
+
+// witness: packages/client-runtime/src/data/projections/hqMates.ts | : { state: mate.state, since: mate.stateSince, why: mate.stateWhy }; → : { state: mate.state, since: mate.bornAt, why: mate.stateWhy };
+it("PJ+1: A Mate's state is the one HQ's navigation names for it, with its since and why, a state this build does not know answering itself, and nothing where HQ names none; breaks: a Mate that cannot work reads as one that can, or a state a later HQ names takes the Mate's row away", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  seedHqNavigation(store, "org", {
+    structure: { apps: [], ungrouped: [{ projectId: "plain", name: "Plain", mate: { face: "" } }] },
+  });
+  const frame = recorded("scope-values", "mate-hq/navigation.mate.cannot-run");
+  const project = frame.values.find((v) => v.key.startsWith("project:"))!;
+  const recordedId = project.key.slice("project:".length);
+  const placed = placementFamily.hq!.decode(project.value, project.key)!;
+  const later = placementFamily.hq!.decode(
+    {
+      ...placed,
+      projectId: "later",
+      mate: { ...placed.mate, state: "resting", stateWhy: "a_new_why" },
+    },
+    "project:later",
+  )!;
+  const scope = placementsScope("org");
+  store.dispatch({
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
+    reset: false,
+    rows: [
+      {
+        family: "placement",
+        id: recordedId,
+        revision: { kind: "hq", incarnation: "rec", revision: 1 },
+        value: placed,
+      },
+      {
+        family: "placement",
+        id: "later",
+        revision: { kind: "hq", incarnation: "rec", revision: 1 },
+        value: later,
+      },
+    ],
+    removals: [],
+  });
+  const stateOf = (projectId: string) =>
+    registry.get(store.data.project(hqMateState, key(projectId)));
+  expect([recordedId, "later", "plain"].map(stateOf)).toEqual([
+    { state: "cannot_run", since: "2026-11-24T08:00:00.000Z", why: "signed_out" },
+    { state: "resting", since: "2026-11-24T08:00:00.000Z", why: "a_new_why" },
     null,
   ]);
   registry.dispose();

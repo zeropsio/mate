@@ -236,3 +236,29 @@ export const hqMateReady: Projection<MateProjectKey, boolean | undefined> = {
   derive: (read, key) => overviewOf(read, key)?.identity?.runsWithoutSignIn,
   equals: Object.is,
 };
+
+/**
+ * HQ's one verdict on whether a Mate can work, as its navigation names it (`HqNavigationMate.state`),
+ * with since when and why: a state this build does not know answers itself. Null where HQ names
+ * none — a reader who may not operate the Mate, or an HQ that sends no state.
+ */
+export interface HqMateState {
+  readonly state: string;
+  readonly since: string | undefined;
+  readonly why: string | undefined;
+}
+
+export const hqMateState: Projection<MateProjectKey, HqMateState | null> = {
+  name: "hqMateState",
+  keyOf: hqMateOverview.keyOf,
+  derive: (read, { projectId }) => {
+    // A placement not read yet holds no state either: the row reads as it did before HQ named one.
+    const placement = read.fact("placement", projectId);
+    if (placement.kind !== "known") return null;
+    const mate = placement.value.mate;
+    return mate?.state === undefined
+      ? null
+      : { state: mate.state, since: mate.stateSince, why: mate.stateWhy };
+  },
+  equals: sameValue,
+};

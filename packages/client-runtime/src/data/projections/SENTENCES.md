@@ -139,3 +139,4 @@ next: PJ155
 - PJ148 — A new Mate's container is not read while HQ holds its birth open with no link, and is read once as HQ says it linked; breaks: the page fills with failed requests for the minutes its container starts
 - PJ150 — A waiting access change offers another reader End and its maker Delete, a running one neither, and a reader not yet known no press; breaks: an Owner cannot free a person held by a maker who left
 - PJ154 — A new Mate's refused link is what HQ put on its own project's open birth, and nothing where its birth carries none or only another project's does; breaks: a refused Mate's page waits as coming forever, or a Mate that is coming reads another Mate's refusal
+- PJ+1 — A Mate's state is the one HQ's navigation names for it, with its since and why, a state this build does not know answering itself, and nothing where HQ names none; breaks: a Mate that cannot work reads as one that can, or a state a later HQ names takes the Mate's row away
