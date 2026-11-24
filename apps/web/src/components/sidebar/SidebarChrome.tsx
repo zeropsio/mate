@@ -73,10 +73,9 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     // faces' column. Beside a desktop's traffic lights the bar is the title bar's height, centred
     // on them.
     <SidebarHeader
-      className={cn(
-        "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
-        isElectron && "drag-region",
-      )}
+      variant="bar"
+      dragRegion={isElectron}
+      className="@container/sidebar-header"
       // The phone's 12 px gutter held the sheet's close button once; `[data-menu-head]` takes it
       // back, so the mark, the Chief's row and the squares stand on their own inset at every width.
       data-menu-head=""

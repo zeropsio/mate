@@ -197,7 +197,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
         <span className="min-w-0 flex-1 truncate text-start text-body font-semibold text-sidebar-foreground">
           {projectDisplayName}
         </span>
-        <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
+        <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground">
           {project.members.length} {project.members.length === 1 ? "workspace" : "workspaces"}
         </span>
       </Button>
@@ -255,12 +255,12 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                         {memberDisplayName}
                       </span>
                       {workspaceIsDistinct ? (
-                        <span className="block truncate text-[10px] text-sidebar-muted-foreground">
+                        <span className="block truncate text-3xs text-sidebar-muted-foreground">
                           {member.workspaceLabel}
                         </span>
                       ) : null}
                     </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
+                    <span className="shrink-0 text-2xs tabular-nums text-sidebar-muted-foreground">
                       {meta}
                     </span>
                   </Button>

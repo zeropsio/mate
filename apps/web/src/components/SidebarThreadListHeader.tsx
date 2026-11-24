@@ -86,8 +86,8 @@ export function SidebarThreadSearchField({
         <Button
           type="button"
           size="icon-sm"
-          variant="ghost"
-          className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
+          variant="sidebar"
+          className="shrink-0"
           aria-label="Clear thread search"
           onClick={() => {
             clearThreadSearch();
@@ -122,7 +122,7 @@ export function SidebarNewThreadButton({
             <SidebarMenuButton
               size="icon"
               type="button"
-              className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+              className="relative"
               onClick={handleNewThreadClick}
               disabled={projects.length === 0}
               aria-label="New thread"
@@ -188,10 +188,7 @@ export function SidebarProjectScopeRow({
       <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
         <MenuTrigger
           render={
-            <SidebarMenuButton
-              aria-label="Filter threads by project"
-              className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-            />
+            <SidebarMenuButton aria-label="Filter threads by project" className="min-w-0 flex-1" />
           }
         >
           {scopedProjectGroup ? (
@@ -216,57 +213,52 @@ export function SidebarProjectScopeRow({
               setProjectScopeKey(value === "all" ? null : (value as string))
             }
           >
-            <MenuRadioItem
-              value="all"
-              closeOnClick
-              className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-            >
-              <FolderIcon className="size-4 shrink-0" />
-              <span className="min-w-0 truncate text-body">All projects</span>
+            <MenuRadioItem value="all" closeOnClick className="h-8">
+              <span className="flex min-w-0 items-center gap-2 font-medium">
+                <FolderIcon className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">All projects</span>
+              </span>
             </MenuRadioItem>
             {projectGroups.map((project) => {
               const scopeKey = project.projectKey;
               return (
-                <MenuRadioItem
-                  key={scopeKey}
-                  value={scopeKey}
-                  closeOnClick
-                  className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                >
-                  <ProjectFavicon
-                    environmentId={project.environmentId}
-                    cwd={project.workspaceRoot}
-                    faviconPath={project.faviconPath}
-                    className="size-4 shrink-0"
-                  />
-                  <span className="min-w-0 truncate text-body">{project.displayName}</span>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Add source to ${project.displayName}`}
-                    title={`Add source to ${project.displayName}`}
-                    className="ml-auto"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      openAddProjectSourcePicker(project.environmentId);
-                    }}
-                  >
-                    <GitBranchIcon className="size-3.5" />
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Project settings for ${project.displayName}`}
-                    title={`Project settings for ${project.displayName}`}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      void handleProjectSettings(event, project);
-                    }}
-                  >
-                    <SettingsIcon className="size-3.5" />
-                  </Button>
+                <MenuRadioItem key={scopeKey} value={scopeKey} closeOnClick className="h-8">
+                  <span className="flex min-w-0 items-center gap-2 font-medium">
+                    <ProjectFavicon
+                      environmentId={project.environmentId}
+                      cwd={project.workspaceRoot}
+                      faviconPath={project.faviconPath}
+                      className="size-4 shrink-0"
+                    />
+                    <span className="min-w-0 truncate">{project.displayName}</span>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Add source to ${project.displayName}`}
+                      title={`Add source to ${project.displayName}`}
+                      className="ml-auto"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openAddProjectSourcePicker(project.environmentId);
+                      }}
+                    >
+                      <GitBranchIcon className="size-3.5" />
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Project settings for ${project.displayName}`}
+                      title={`Project settings for ${project.displayName}`}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        void handleProjectSettings(event, project);
+                      }}
+                    >
+                      <SettingsIcon className="size-3.5" />
+                    </Button>
+                  </span>
                 </MenuRadioItem>
               );
             })}
@@ -279,7 +271,7 @@ export function SidebarProjectScopeRow({
             render={
               <SidebarMenuButton
                 size="icon"
-                className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                className="relative shrink-0"
                 onClick={openNewZeropsProject}
                 type="button"
                 aria-label="New project"

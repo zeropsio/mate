@@ -62,53 +62,5 @@
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarGroup> ps-[calc(var(--sidebar-content-inset)+1px)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"block truncate text-[10px] text-sidebar-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
   }
 ]

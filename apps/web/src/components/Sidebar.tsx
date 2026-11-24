@@ -82,7 +82,6 @@ import {
   resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
-import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
   buildBulkTitleRegenerationContextMenuItem,
@@ -1853,47 +1852,49 @@ export default function Sidebar() {
           rosterOnly ? undefined : (
             // Lifted above the stage backdrop, whose fade bleeds below the
             // header and would otherwise paint across the search row's outline.
-            <SidebarGroup className="z-[1] gap-1">
-              <div className="flex items-center gap-1">
-                <SidebarThreadSearchField
-                  threadSearchInputRef={threadSearchInputRef}
-                  threadSearchQuery={threadSearchQuery}
-                  setThreadSearchQuery={setThreadSearchQuery}
-                  setActiveSearchResultIndex={setActiveSearchResultIndex}
-                  handleThreadSearchKeyDown={handleThreadSearchKeyDown}
-                  isSearchingThreads={isSearchingThreads}
-                  threadSearchResults={threadSearchResults}
-                  activeSearchResultIndex={activeSearchResultIndex}
-                  threadSearch={threadSearch}
-                  clearThreadSearch={clearThreadSearch}
-                />
-                <SidebarNewThreadButton
-                  handleNewThreadClick={handleNewThreadClick}
-                  projects={projects}
-                  projectGroups={projectGroups}
-                  newThreadShortcutLabel={newThreadShortcutLabel}
-                  newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
-                />
+            <SidebarGroup className="z-[1]">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1">
+                  <SidebarThreadSearchField
+                    threadSearchInputRef={threadSearchInputRef}
+                    threadSearchQuery={threadSearchQuery}
+                    setThreadSearchQuery={setThreadSearchQuery}
+                    setActiveSearchResultIndex={setActiveSearchResultIndex}
+                    handleThreadSearchKeyDown={handleThreadSearchKeyDown}
+                    isSearchingThreads={isSearchingThreads}
+                    threadSearchResults={threadSearchResults}
+                    activeSearchResultIndex={activeSearchResultIndex}
+                    threadSearch={threadSearch}
+                    clearThreadSearch={clearThreadSearch}
+                  />
+                  <SidebarNewThreadButton
+                    handleNewThreadClick={handleNewThreadClick}
+                    projects={projects}
+                    projectGroups={projectGroups}
+                    newThreadShortcutLabel={newThreadShortcutLabel}
+                    newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
+                  />
+                </div>
+                {projectGroups.length > 0 ? (
+                  <SidebarProjectScopeRow
+                    projectGroups={projectGroups}
+                    projectScopeMenuOpen={projectScopeMenuOpen}
+                    setProjectScopeMenuOpen={setProjectScopeMenuOpen}
+                    scopedProjectGroup={scopedProjectGroup}
+                    projectScopeKey={projectScopeKey}
+                    setProjectScopeKey={setProjectScopeKey}
+                    openAddProjectSourcePicker={openAddProjectSourcePicker}
+                    handleProjectSettings={handleProjectSettings}
+                    roleOffered={roleOffered}
+                    openNewZeropsProject={openNewZeropsProject}
+                  />
+                ) : null}
               </div>
-              {projectGroups.length > 0 ? (
-                <SidebarProjectScopeRow
-                  projectGroups={projectGroups}
-                  projectScopeMenuOpen={projectScopeMenuOpen}
-                  setProjectScopeMenuOpen={setProjectScopeMenuOpen}
-                  scopedProjectGroup={scopedProjectGroup}
-                  projectScopeKey={projectScopeKey}
-                  setProjectScopeKey={setProjectScopeKey}
-                  openAddProjectSourcePicker={openAddProjectSourcePicker}
-                  handleProjectSettings={handleProjectSettings}
-                  roleOffered={roleOffered}
-                  openNewZeropsProject={openNewZeropsProject}
-                />
-              ) : null}
             </SidebarGroup>
           )
         }
       >
-        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
+        <SidebarGroup variant="list">
           {/* At the first run the tree holds nothing of Mate's: only Platform's projects, hidden. */}
           {zeropsSignedIn && !isSearchingThreads && !zeropsFirstRun ? (
             <SidebarZeropsTree
@@ -2108,9 +2109,9 @@ export default function Sidebar() {
                                   <Button
                                     type="button"
                                     size="icon-sm"
-                                    variant="ghost"
+                                    variant="sidebar"
                                     aria-label={label}
-                                    className="mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
+                                    className="mr-1 shrink-0"
                                     onClick={() => {
                                       if (isMobile) setOpenMobile(false);
                                       void newThreadContext.handleNewThread(
@@ -2138,14 +2139,10 @@ export default function Sidebar() {
                                 <Button
                                   type="button"
                                   size="icon-sm"
-                                  variant="ghost"
+                                  variant="sidebar"
                                   aria-label={label}
                                   aria-current={routeThreadKey === threadKey ? "page" : undefined}
-                                  className={cn(
-                                    "mr-1 shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground",
-                                    routeThreadKey === threadKey &&
-                                      "bg-sidebar-row-active text-sidebar-foreground",
-                                  )}
+                                  className="mr-1 shrink-0"
                                   onClick={(event) => handleThreadClick(event, threadRef)}
                                   onDoubleClick={(event) => {
                                     if (

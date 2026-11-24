@@ -319,7 +319,6 @@ export function AppSidebarLayout({
             data-app-sidebar=""
             role="navigation"
             aria-label={isOnSettings ? "Settings" : "Mates"}
-            className={rail ? undefined : "border-r border-sidebar-border"}
             resizable={{
               maxWidth: sidebarMaximumWidth,
               minWidth: THREAD_SIDEBAR_MIN_WIDTH,
