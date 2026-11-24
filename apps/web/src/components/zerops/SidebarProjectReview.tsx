@@ -161,12 +161,16 @@ export function ProjectReviewTags({
     <span className="menu-tags-room">
       {tags}
       <span aria-hidden="true" className="menu-tags invisible" inert>
-        <span className="menu-tag menu-tag-review">
-          <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
+        <span data-menu-tag="">
+          <span className="menu-tag menu-tag-review">
+            <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
+          </span>
         </span>
         {offer.shown === undefined ? null : (
-          <span className="menu-tag menu-tag-release">
-            <ReleaseFace count={releaseCount(offer.shown).count} />
+          <span data-menu-tag="">
+            <span className="menu-tag menu-tag-release">
+              <ReleaseFace count={releaseCount(offer.shown).count} />
+            </span>
           </span>
         )}
       </span>
@@ -324,9 +328,9 @@ function ReleaseTag({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={`Release: ${tip}`}
-            className="menu-tag menu-tag-release"
+            data-menu-tag=""
             data-phase={phase}
             // Somebody else's to make: a door still, asking the person nothing.
             data-quiet={release.quiet === true ? "" : undefined}
@@ -335,11 +339,13 @@ function ReleaseTag({
             onClick={(event) => {
               openReview({ kind: "release", groupId }, { from: event.currentTarget });
             }}
-            type="button"
+            variant="bare"
           />
         }
       >
-        <ReleaseFace count={count} />
+        <span className="menu-tag menu-tag-release">
+          <ReleaseFace count={count} />
+        </span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
@@ -422,9 +428,9 @@ function ReviewTag({
           render={
             <PopoverPrimitive.Trigger
               render={
-                <button
+                <Button
                   aria-label={read.label}
-                  className="menu-tag menu-tag-review"
+                  data-menu-tag=""
                   // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
                   data-zerops-changes={listed.map((item) => item.key).join(" ")}
                   data-phase={phase}
@@ -433,13 +439,15 @@ function ReviewTag({
                   data-zerops-surface="sidebar-project-review"
                   inert={leaving}
                   ref={tag}
-                  type="button"
+                  variant="bare"
                 />
               }
             />
           }
         >
-          <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
+          <span className="menu-tag menu-tag-review">
+            <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
+          </span>
         </TooltipTrigger>
         {only === undefined ? null : (
           <TooltipPopup side="bottom">

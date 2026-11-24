@@ -3499,17 +3499,17 @@ code {
     font-weight: 500;
     line-height: 16px;
     white-space: nowrap;
-    cursor: pointer;
-    outline: none;
     transition:
       box-shadow 150ms var(--ease-out-strong),
       background-color 150ms var(--ease-out-strong),
       scale 150ms var(--ease-out-strong);
   }
 
-  .menu-tag:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 1px;
+  /* A tag's press (the kit's bare Button), or its unseen stand-in's seat: it holds the tag and
+     carries its states (hover, an open popover, quiet, entering and leaving). */
+  [data-menu-tag] {
+    display: flex;
+    flex: none;
   }
 
   /* Review: quiet, the card's ground in a hairline that firms under the pointer and while its
@@ -3520,19 +3520,19 @@ code {
     color: var(--sidebar-foreground);
   }
 
-  .menu-tag-review[data-popup-open] {
+  [data-popup-open] > .menu-tag-review {
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
   }
 
   /* Every change in it waits on the people who merge (`reviewTagOf`): it asks the person nothing,
      and says so in the quiet ink its mark wears while a Mate still works. */
-  .menu-tag-review[data-quiet] {
+  [data-quiet] > .menu-tag-review {
     color: var(--sidebar-muted-foreground);
   }
 
   /* A release that is somebody else's to make (`releaseWaitsOnViewer`): a door still, on the
      Review tag's quiet ground, never the row's one loud word. */
-  .menu-tag-release[data-quiet] {
+  [data-quiet] > .menu-tag-release {
     background-color: var(--card);
     box-shadow: inset 0 0 0 1px var(--border);
     color: var(--sidebar-muted-foreground);
@@ -3545,20 +3545,20 @@ code {
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .menu-tag-review:hover {
+    :hover > .menu-tag-review {
       box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
 
-    .menu-tag-release:not([data-quiet]):hover {
+    :not([data-quiet]):hover > .menu-tag-release {
       background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
     }
 
-    .menu-tag-release[data-quiet]:hover {
+    [data-quiet]:hover > .menu-tag-release {
       box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
     }
   }
 
-  .menu-tag[data-phase="exit"] {
+  [data-menu-tag][data-phase="exit"] {
     pointer-events: none;
   }
 
@@ -3959,6 +3959,10 @@ code {
     justify-self: start;
   }
 
+  .chat-header-review [data-menu-tag] {
+    height: 100%;
+  }
+
   .chat-header-review .menu-tag {
     position: relative;
     gap: 6px;
@@ -3972,12 +3976,12 @@ code {
     font-weight: 600;
   }
 
-  .chat-header-review .menu-tag:last-child {
+  .chat-header-review [data-menu-tag]:last-child > .menu-tag {
     padding-inline-end: 11px;
   }
 
   /* The seam between the doors: a short light rule, so each half reads as its own. */
-  .chat-header-review .menu-tag + .menu-tag::before {
+  .chat-header-review [data-menu-tag] + [data-menu-tag] > .menu-tag::before {
     position: absolute;
     inset-inline-start: 0;
     top: 7px;
@@ -4004,24 +4008,24 @@ code {
     font-size: 11px;
   }
 
-  .chat-header-review .menu-tag[data-popup-open] {
+  .chat-header-review [data-popup-open] > .menu-tag {
     background: color-mix(in oklab, var(--color-black) 14%, transparent);
   }
 
   /* Only changes that wait on the people who merge stand behind it: the door asks nothing, so it
      drops the blue for the Review tag's own quiet ground — the card's, in a hairline. */
-  .chat-header-review .menu-tags:has(> .menu-tag[data-quiet]:only-child) {
+  .chat-header-review .menu-tags:has(> [data-menu-tag][data-quiet]:only-child) {
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--border);
     color: var(--muted-foreground);
   }
 
-  .chat-header-review .menu-tag[data-quiet]:only-child .menu-tag-count {
+  .chat-header-review [data-menu-tag][data-quiet]:only-child .menu-tag-count {
     background: color-mix(in oklab, currentColor 12%, transparent);
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .chat-header-review .menu-tag:hover {
+    .chat-header-review [data-menu-tag]:hover > .menu-tag {
       background: color-mix(in oklab, var(--color-black) 14%, transparent);
       box-shadow: none;
     }
@@ -4174,16 +4178,16 @@ code {
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .menu-tag:active,
+    [data-menu-tag]:active > .menu-tag,
     [data-zerops-surface="sidebar-project-change"]:active [data-menu-tagpop-verb] {
       scale: 0.96;
     }
 
-    .menu-tag[data-phase="enter"] {
+    [data-menu-tag][data-phase="enter"] > .menu-tag {
       animation: menu-tag-in 160ms var(--ease-out-strong);
     }
 
-    .menu-tag[data-phase="exit"] {
+    [data-menu-tag][data-phase="exit"] > .menu-tag {
       animation: menu-tag-out 120ms var(--ease-out-strong) forwards;
     }
 
@@ -4209,7 +4213,7 @@ code {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .menu-tag[data-phase="exit"],
+    [data-menu-tag][data-phase="exit"],
     .menu-tag-digit[data-out] {
       display: none;
     }
