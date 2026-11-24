@@ -105,10 +105,9 @@ function FailureCensus() {
     >
       <CensusLook
         name="Whole page: mark, title, reason, Try again"
-        uses="3 components in 3 files"
+        uses="2 components in 2 files"
         places={[
           "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx ZeropsAppFailed",
-          "apps/web/src/routes/__root.tsx RootRouteErrorView",
           "apps/web/src/routes/_chat.index.tsx DraftStartError",
         ]}
       >

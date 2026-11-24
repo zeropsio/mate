@@ -55,6 +55,7 @@ import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
 import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
 import { Button } from "../components/ui/button";
+import { Failure } from "../components/ui/failure";
 import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
@@ -516,40 +517,22 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const details = errorDetails(error);
 
   return (
-    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
-      <div className="pointer-events-none absolute inset-0 opacity-80">
-        <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />
-      </div>
-
-      <section className="relative w-full max-w-xl rounded-sheet border border-border/80 bg-card/90 p-6 shadow-popup backdrop-blur-md sm:p-8">
-        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
-          {APP_DISPLAY_NAME}
-        </p>
-        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Something went wrong.
-        </h1>
-        <p className="mt-2 text-body leading-relaxed text-muted-foreground">{message}</p>
-
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => void router.invalidate()}>
-            Try again
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
-            Reload app
-          </Button>
-        </div>
-
-        <details className="group mt-5 overflow-hidden rounded-card border border-border/70 bg-background/55">
-          <summary className="cursor-pointer list-none px-3 py-2 text-caption font-medium text-muted-foreground">
-            <span className="group-open:hidden">Show error details</span>
-            <span className="hidden group-open:inline">Hide error details</span>
-          </summary>
-          <pre className="max-h-56 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-caption text-foreground/85">
-            {details}
-          </pre>
-        </details>
-      </section>
+    <div className="flex min-h-svh flex-col bg-background">
+      <Failure
+        size="page"
+        cause="Something went wrong."
+        details={details}
+        action={
+          <>
+            <Button onClick={() => void router.invalidate()}>Try again</Button>
+            <Button variant="ghost" onClick={() => window.location.reload()}>
+              Reload app
+            </Button>
+          </>
+        }
+      >
+        {message}
+      </Failure>
     </div>
   );
 }

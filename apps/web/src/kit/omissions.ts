@@ -105,11 +105,11 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "They read the Mate, its account and its crew from the data layer; the stage they draw is MateEmptyStateView, shown.",
   },
   {
-    name: "Failure: RootRouteErrorView, DraftStartError, DiffFailure, FailedTake",
+    name: "Failure: DraftStartError, DiffFailure, FailedTake",
     source:
-      "apps/web/src/routes/__root.tsx, routes/_chat.index.tsx, components/chat/ReviewCommentDiff.tsx, components/chat/BrowserStrip.tsx",
+      "apps/web/src/routes/_chat.index.tsx, components/chat/ReviewCommentDiff.tsx, components/chat/BrowserStrip.tsx",
     reason:
-      "The router's error for a route, a draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
+      "A draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
   },
   // Home-made looks the census sections cannot render without an account, a thread or a project.
   {
