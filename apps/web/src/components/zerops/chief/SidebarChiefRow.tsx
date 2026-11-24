@@ -16,6 +16,7 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
 import { Row } from "../../ui/row";
+import { Button } from "../../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
@@ -159,27 +160,28 @@ export function SidebarChiefTile({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-current={current ? "page" : undefined}
               aria-label={name}
-              className="menu-rail-head"
               data-current={current ? "" : undefined}
               data-zerops-surface="sidebar-chief-row"
               onClick={onOpen}
-              type="button"
+              variant="bare"
             />
           }
         >
-          <span className="relative flex">
-            <MateMark
-              awake
-              playful
-              className="h-8.25 w-7"
-              {...(face === undefined ? {} : { state: face })}
-            />
-            {unseen ? (
-              <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
-            ) : null}
+          <span className="menu-rail-head">
+            <span className="relative flex">
+              <MateMark
+                awake
+                playful
+                className="h-8.25 w-7"
+                {...(face === undefined ? {} : { state: face })}
+              />
+              {unseen ? (
+                <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
+              ) : null}
+            </span>
           </span>
         </TooltipTrigger>
         <TooltipPopup side="right">

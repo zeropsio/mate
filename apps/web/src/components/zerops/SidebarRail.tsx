@@ -641,17 +641,27 @@ export function SidebarRail({
   const head = chief ?? (
     // Without a Chief the mark leads to the overview, what waits on the viewer on its corner.
     <div className="menu-rail-chief">
-      <RailControl
-        aria-current={overviewCurrent ? "page" : undefined}
-        aria-label="Overview"
-        className="menu-rail-head"
-        data-current={overviewCurrent ? "" : undefined}
-        data-zerops-surface="sidebar-rail-overview"
-        onClick={onOverview}
-        tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
-      >
-        <MateMark awake playful className="h-8.25 w-7" />
-      </RailControl>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-current={overviewCurrent ? "page" : undefined}
+              aria-label="Overview"
+              data-current={overviewCurrent ? "" : undefined}
+              data-zerops-surface="sidebar-rail-overview"
+              onClick={onOverview}
+              variant="bare"
+            />
+          }
+        >
+          <span className="menu-rail-head">
+            <MateMark awake playful className="h-8.25 w-7" />
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="right">
+          <RailTip line={headline} name="Overview" shortcut="⌥0" />
+        </TooltipPopup>
+      </Tooltip>
       {waiting.length === 0 ? null : (
         // The count's seat on the tile's corner, cut out of the tile by the menu's ground.
         <span className="menu-rail-count">

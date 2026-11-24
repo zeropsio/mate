@@ -6158,16 +6158,15 @@ code {
     height: 48px;
     border-radius: var(--radius-card);
     color: var(--sidebar-foreground);
-    cursor: pointer;
-    outline: none;
     transition: background-color 150ms var(--ease-out-strong);
   }
 
-  .menu-rail-head:hover {
+  /* Its press is the kit's bare Button around it, carrying its states. */
+  :hover > .menu-rail-head {
     background: var(--sidebar-row-hover);
   }
 
-  .menu-rail-head[data-current] {
+  [data-current] > .menu-rail-head {
     background: var(--sidebar-row-active);
   }
 
@@ -6269,7 +6268,6 @@ code {
     background: var(--sidebar-row-active);
   }
 
-  .menu-rail-head:focus-visible,
   .menu-rail-tile:focus-visible,
   .menu-rail-kid:focus-visible,
   .menu-rail-open:focus-visible {
