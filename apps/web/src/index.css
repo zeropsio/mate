@@ -6196,40 +6196,80 @@ code {
 }
 
 @layer components {
-  /* The bar with the Chief in it (`SidebarChromeHeader`'s brand): one grid the bar's height, the
-     Chief's row across both its columns and the squares in the second, floating over the row's
-     end. The row's words keep to the first column; its band runs on under the squares. */
-  .menu-top {
-    display: grid;
-    flex: 1 1 auto;
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* The menu's headline (`SidebarOverviewLink`): Overview, its grid on the Mates' faces' column
+     and its word just before their names, quiet until pointed at or open. */
+  .menu-overview {
+    display: inline-flex;
+    flex: none;
     align-items: center;
-    align-self: stretch;
-    min-width: 0;
+    gap: 12px;
+    height: 32px;
+    margin-inline-start: calc(var(--sidebar-content-inset) + 1px);
+    padding-inline: 20px 12px;
+    border-radius: 10px;
+    color: var(--muted-foreground);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
   }
 
-  .menu-top > *,
-  .menu-top-chief > * {
-    grid-row: 1;
+  .menu-overview:hover {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
   }
 
-  /* Over the Chief's row, whose lit layer makes it a positioned box of its own, and on its middle:
-     the same room above as the row has. */
-  .menu-top-squares {
-    position: relative;
-    z-index: 1;
-    grid-column: 2;
-    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
+  .menu-overview[data-current] {
+    background: var(--sidebar-row-active);
+    color: var(--sidebar-foreground);
   }
 
-  .menu-top-chief {
-    display: contents;
+  .menu-overview:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
   }
 
-  /* The bar grows to hold the Chief's card at a Mate card's height, past the page header's line;
-     `!important` over the header's top-bar height utility. */
-  [data-slot="sidebar-header"]:has(.menu-top) {
-    height: auto !important;
+  /* What waits on the person, counted before the headline's squares: the error's red, so it reads
+     from across the screen. */
+  .menu-top-count {
+    display: grid;
+    flex: none;
+    place-items: center;
+    min-width: 32px;
+    height: 24px;
+    margin-inline-end: 4px;
+    padding: 0 9px;
+    border-radius: 9999px;
+    background: var(--destructive);
+    color: var(--destructive-foreground);
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-top-count:hover,
+    .menu-top-count[data-popup-open] {
+      background: color-mix(in oklab, var(--destructive) 88%, black);
+    }
+  }
+
+  .menu-top-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-top-count:active {
+      scale: 0.96;
+    }
   }
 
   /* The menu's top bar keeps no gutter of its own (`SidebarChromeHeader`); `!important` over the
@@ -6238,37 +6278,26 @@ code {
     padding-inline: 0 !important;
   }
 
-  /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
-     its name on the row's middle, its band from the list's inset to the divider's. */
+  /* The Chief (`SidebarChiefRow`): the list's first row, a Mate row's measure on the sidebar's own
+     ground — its mark on the faces' column, its name where every project's starts. */
   .menu-chief-row {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
+    --chief-ground: var(--sidebar);
+    position: relative;
+    isolation: isolate;
+    display: flex;
     align-items: center;
-    /* As tall as a Mate's card under it, the row's two lines in its 11 px padding (the owner,
-       2026-10-13: "it doesn't look good that this upper card is actually smaller"). */
+    width: 100%;
     height: var(--sidebar-chief-row-height);
-    /* Its room above it the same as on its left. */
-    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
-    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
     border-radius: 12px;
+    background: var(--chief-ground);
     text-align: left;
     cursor: pointer;
     outline: none;
-    position: relative;
-    isolation: isolate;
     transition: background-color 150ms var(--ease-out-strong);
   }
 
-  /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
-     project's row (the owner, 2026-10-12: "this should look different"). */
-  .menu-chief-row {
-    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, var(--sidebar));
-    background: var(--chief-ground);
-  }
-
   .menu-chief-row:hover {
-    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, var(--sidebar));
+    --chief-ground: var(--sidebar-row-hover);
   }
 
   .menu-chief-row:is([data-current], [data-pressed]) {
@@ -6306,16 +6335,11 @@ code {
 
   .menu-chief-body {
     display: flex;
-    grid-column: 1;
+    flex: 1 1 auto;
     align-items: center;
     gap: 12px;
     min-width: 0;
     padding-inline: 10px 12px;
-  }
-
-  /* The count stands at the first column's end, 4 px before the squares as they stand apart. */
-  .menu-chief-row[data-waits] .menu-chief-body {
-    padding-inline-end: 44px;
   }
 
   .menu-chief-mark {
@@ -6363,16 +6387,14 @@ code {
     }
   }
 
-  /* The org's own Mate, set apart from every project's: its title in the menu's heaviest weight,
-     tracked tight, "Mate" in the mark's teal. */
+  /* The org's own Mate, a size over every project's name. */
   .menu-chief-name {
     display: flex;
     column-gap: 0.25em;
     min-width: 0;
     font-size: 16px;
     line-height: 21px;
-    font-weight: 650;
-    letter-spacing: -0.01em;
+    font-weight: 500;
     color: var(--sidebar-foreground);
     white-space: nowrap;
   }
@@ -6410,72 +6432,6 @@ code {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  /* The Chief's place while there is none (`SidebarChiefPlace`): the Chief's row's box, bare, the
-     mark where the Chief's stands, so the bar keeps the height the boot frame draws. */
-  .menu-chief-place {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-    align-items: center;
-    height: var(--sidebar-chief-row-height);
-    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
-    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
-    border-radius: 12px;
-    outline: none;
-  }
-
-  .menu-chief-place:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .menu-chief-count {
-    /* Over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle. */
-    position: relative;
-    z-index: 1;
-    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
-    display: grid;
-    grid-column: 1;
-    justify-self: end;
-    place-items: center;
-    min-width: 28px;
-    height: 28px;
-    margin-inline-end: 4px;
-    padding: 0 9px;
-    border-radius: 9999px;
-    background: var(--zerops-status-attention-surface);
-    color: var(--zerops-status-attention-text);
-    font-size: 13px;
-    line-height: 16px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 150ms var(--ease-out-strong);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .menu-chief-count:hover,
-    .menu-chief-count[data-popup-open] {
-      background: color-mix(
-        in oklab,
-        var(--zerops-status-attention-text) 16%,
-        var(--zerops-status-attention-surface)
-      );
-    }
-  }
-
-  .menu-chief-count:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .menu-chief-count:active {
-      scale: 0.96;
-    }
   }
 }
 

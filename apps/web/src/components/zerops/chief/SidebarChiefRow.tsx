@@ -1,12 +1,11 @@
 /**
- * The Chief, the menu's top row (`SidebarChromeHeader`'s brand): the bar's whole width, the
- * squares floating over its end. Its mark wears the Chief's state as a Mate's face does; "Chief";
- * and a second line only while it has something to say (`chiefRowLine`), the name centred in the
- * row otherwise. What waits on the person counts just left of the squares, its own door to the
- * list. While its setup runs the same row opens the Chief page; before that there is no row.
+ * The Chief, the open menu's first row, over every project's: its mark on the faces' column,
+ * wearing the Chief's state as a Mate's face does; "Chief"; and a second line only while it has
+ * something to say (`chiefRowLine`), the name centred in the row otherwise. While its setup runs
+ * the same row opens the Chief page; before that there is no row. What waits on the person counts
+ * in the menu's headline, and on the rail's tile (`SidebarChiefTile`).
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { Link } from "@tanstack/react-router";
 import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -62,22 +61,19 @@ export function SidebarChiefRow({
   line,
   current,
   onOpen,
-  waiting,
 }: SidebarChiefRowProps) {
-  const items = waiting?.items ?? [];
   // The person's own Chief, by their name and with their picture on its mark (the owner,
   // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
   // its setup has one to say.
   const account = useSignedInAccount();
   const shown = line ?? null;
   return (
-    <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
+    <div data-zerops-surface="sidebar-chief">
       <button
         aria-current={current ? "page" : undefined}
         className="menu-chief-row"
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
-        data-waits={items.length === 0 ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
           // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
@@ -123,9 +119,6 @@ export function SidebarChiefRow({
           </span>
         </span>
       </button>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
-      )}
     </div>
   );
 }
@@ -184,34 +177,6 @@ export function SidebarChiefTile({
       </Tooltip>
       {waiting === undefined || items.length === 0 ? null : (
         <SidebarWaitingCount className="menu-rail-count" items={items} verbs={waiting.verbs} />
-      )}
-    </div>
-  );
-}
-
-/**
- * The Chief's place at the menu's top while the person has none: the Chief's row's box, bare, the
- * product's mark where the Chief's stands, leading to the overview, and what waits on the person
- * counted where the Chief's row counts it. The bar keeps the height the boot frame draws, so the
- * rows under it never move when a Chief comes, or on a reload.
- */
-export function SidebarChiefPlace({
-  waiting,
-}: {
-  readonly waiting: SidebarChiefRowProps["waiting"];
-}) {
-  const items = waiting?.items ?? [];
-  return (
-    <div className="menu-top-chief" data-zerops-surface="sidebar-chief-place">
-      <Link aria-label="Overview" className="menu-chief-place" to="/zerops">
-        <span className="menu-chief-body">
-          <span aria-hidden="true" className="menu-chief-mark">
-            <MateMark awake playful className="h-9 w-7.5" />
-          </span>
-        </span>
-      </Link>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );

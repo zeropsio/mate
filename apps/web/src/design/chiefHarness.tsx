@@ -25,14 +25,15 @@ import { SidebarProvider } from "~/components/ui/sidebar";
 import { ChiefStage } from "~/components/zerops/chief/ChiefPage";
 import { CHIEF_SETUP_IDLE, chiefSetupAfter, type ChiefSetup } from "~/zerops/chiefSetup.logic";
 import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
-import {
-  ChiefSetupRowLine,
-  SidebarChiefPlace,
-  SidebarChiefRow,
-} from "~/components/zerops/chief/SidebarChiefRow";
+import { ChiefSetupRowLine, SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import { MateFaceAsMark } from "~/components/zerops/primitives";
 import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
-import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
+import {
+  SidebarChromeHeader,
+  SidebarCreateButton,
+  SidebarOverviewLink,
+} from "~/components/sidebar/SidebarChrome";
+import { SidebarWaitingCount } from "~/components/zerops/SidebarWaiting";
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { MateComingHeader } from "~/components/zerops/ZeropsMateComingPage";
@@ -112,6 +113,8 @@ function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading"
   };
 }
 
+const VERBS = { onOpenMate: () => {}, onAskToFix: () => {} };
+
 function Harness() {
   const [setup, setSetup] = useState<ChiefSetup>(() => setupOf(PAGE));
   const [current, setCurrent] = useState(true);
@@ -135,37 +138,28 @@ function Harness() {
       >
         <SidebarChromeHeader
           isElectron={false}
-          brand={
-            TOP === "none" ? (
-              <SidebarChiefPlace
-                waiting={
-                  WAITING
-                    ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
-                    : undefined
-                }
-              />
-            ) : (
-              <SidebarChiefRow
-                current={current}
-                face={top.face}
-                line={top.line}
-                onOpen={() => setCurrent(true)}
-                waiting={
-                  WAITING
-                    ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
-                    : undefined
-                }
-              />
-            )
-          }
+          brand={<SidebarOverviewLink current={false} />}
           actions={
             <>
+              {WAITING ? (
+                <SidebarWaitingCount className="menu-top-count" items={ITEMS} verbs={VERBS} />
+              ) : null}
               <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
               <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />
             </>
           }
         />
+        {TOP === "none" ? null : (
+          <div className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)]">
+            <SidebarChiefRow
+              current={current}
+              face={top.face}
+              line={top.line}
+              onOpen={() => setCurrent(true)}
+            />
+          </div>
+        )}
       </aside>
       <MateFaceAsMark.Provider value>
         <main className="flex min-w-0 flex-1 flex-col" data-harness-state={`page:${PAGE}`}>

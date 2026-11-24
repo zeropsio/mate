@@ -4,6 +4,7 @@ import {
   ChartNoAxesColumnIcon,
   GitPullRequestIcon,
   LayersIcon,
+  LayoutGridIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   PlusIcon,
@@ -50,9 +51,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 }: {
   isElectron: boolean;
   /**
-   * What stands in the mark's place: the Chief's row, the bar's whole width, the squares floating
-   * over its end (`.menu-top`). Its own pieces take the bar's grid: whatever spans both columns
-   * runs under the squares, whatever keeps to the first stops short of them.
+   * What stands in the mark's place: Overview, on the menu's faces' column (`SidebarOverviewLink`).
    */
   brand?: ReactNode;
   /**
@@ -77,41 +76,43 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         isElectron && "drag-region",
       )}
       // The phone's 12 px gutter held the sheet's close button once; `[data-menu-head]` takes it
-      // back, so the mark, the Chief's row and the squares stand on their own inset at every width.
+      // back, so the mark, Overview and the squares stand on their own inset at every width.
       data-menu-head=""
     >
-      {/* The phone's sheet has no toggle of its own up here: the bar is the Chief's and the
+      {/* The phone's sheet has no toggle of its own up here: the bar is Overview's and the
           squares', whole. A tap beside the sheet, a swipe, or the foot's toggle closes it. */}
-      {brand === undefined ? (
-        <>
-          <SidebarBrand />
-          {status === undefined && actions === undefined ? null : (
-            <div
-              className="flex min-w-0 flex-1 items-center justify-end gap-1 ps-3 pe-4"
-              data-zerops-surface="sidebar-top-actions"
-            >
-              {status}
-              {actions}
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="menu-top">
-          {brand}
-          {status === undefined && actions === undefined ? null : (
-            <div
-              className="menu-top-squares flex items-center justify-end gap-1 pe-4"
-              data-zerops-surface="sidebar-top-actions"
-            >
-              {status}
-              {actions}
-            </div>
-          )}
+      {brand ?? <SidebarBrand />}
+      {status === undefined && actions === undefined ? null : (
+        <div
+          className="flex min-w-0 flex-1 items-center justify-end gap-1 ps-3 pe-4"
+          data-zerops-surface="sidebar-top-actions"
+        >
+          {status}
+          {actions}
         </div>
       )}
     </SidebarHeader>
   );
 });
+
+/**
+ * The menu's headline: Overview, its grid on the Mates' faces' column, lit while it is the page
+ * open.
+ */
+export function SidebarOverviewLink({ current }: { readonly current: boolean }) {
+  return (
+    <Link
+      aria-current={current ? "page" : undefined}
+      className="menu-overview"
+      data-current={current ? "" : undefined}
+      data-zerops-surface="sidebar-overview"
+      to="/zerops"
+    >
+      <LayoutGridIcon aria-hidden="true" className="size-4" />
+      Overview
+    </Link>
+  );
+}
 
 /** A project New Mate may be asked in: its id (the group) and its name. */
 export interface SidebarCreateProject {
