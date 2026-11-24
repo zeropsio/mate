@@ -12,7 +12,7 @@ export const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
 
 export type ThemePreferenceMode = ThemeAppearance | "system";
 
-const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
+export const APP_THEME_VARIABLES: Readonly<Record<ThemeColorRole, string>> = {
   canvas: "--app-theme-canvas",
   chrome: "--app-theme-chrome",
   toolbar: "--app-theme-toolbar",
