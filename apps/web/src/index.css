@@ -15928,7 +15928,7 @@ a.message-file:focus-visible {
 }
 
 [data-zerops-surface="new-mate-form"] [data-slot="dialog-header"] {
-  padding: 20px 24px 12px;
+  padding: 20px 16px 12px;
 }
 
 [data-zerops-surface="new-mate-form"] [data-slot="dialog-title"] {
@@ -15973,7 +15973,7 @@ a.message-file:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  padding: 0 24px 32px;
+  padding: 0 16px 32px;
 }
 
 .new-mate-creator .mate-face-ring-stage {
@@ -16041,7 +16041,7 @@ a.message-file:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 32px;
-  padding: 20px 24px 24px;
+  padding: 20px 16px 24px;
 }
 
 .new-mate-options [data-zerops-surface="new-mate-persona"] h3 {
@@ -16054,7 +16054,7 @@ a.message-file:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0 24px 20px;
+  padding: 0 16px 20px;
 }
 
 [data-zerops-surface="new-mate-form"][data-options] .new-mate-foot {
