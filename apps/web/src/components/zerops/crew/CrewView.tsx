@@ -12,6 +12,9 @@ import type { CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 import { ChevronLeftIcon } from "lucide-react";
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 
+import { Button } from "../../ui/button";
+import { Textarea } from "../../ui/textarea";
+
 export function CrewView({
   onBack,
   children,
@@ -24,15 +27,16 @@ export function CrewView({
   return (
     <div className="flex flex-1 flex-col px-4 pt-3" data-crew-view>
       {onBack === null ? null : (
-        <button
-          className="-ms-1.5 flex h-7 cursor-pointer items-center gap-0.5 self-start rounded-lg ps-0.5 pe-2 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        <Button
+          className="-ms-2.5 self-start"
           data-crew-view-back
           onClick={onBack}
-          type="button"
+          size="sm"
+          variant="ghost-muted"
         >
           <ChevronLeftIcon aria-hidden="true" className="size-4" />
           {CREW_VIEW_WORDS.back}
-        </button>
+        </Button>
       )}
       {children}
     </div>
@@ -96,7 +100,13 @@ export function CrewTextArea({
   /** Its height while nearly empty: four lines, or six. */
   readonly lines?: 4 | 6;
 }) {
-  return <textarea {...props} className="crew-field" data-lines={lines} rows={1} />;
+  return (
+    <Textarea
+      {...props}
+      className={lines === 6 ? "min-h-39" : lines === 4 ? "min-h-28" : undefined}
+      data-lines={lines}
+    />
+  );
 }
 
 /** The crew home's issues, each in the format's own words. */

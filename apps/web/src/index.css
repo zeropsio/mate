@@ -16684,33 +16684,6 @@ a.message-file:focus-visible {
     }
   }
 
-  /* The row opens its crewmate's conversation: one press under the whole
-     row, its name its words; the row's own presses stand over it. */
-  .crew-row-open {
-    min-width: 0;
-    overflow: hidden;
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 20px;
-    text-align: start;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--foreground);
-    cursor: pointer;
-    outline: none;
-  }
-
-  .crew-row-open::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-  }
-
-  .crew-row-open:focus-visible::after {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
   .crew-row-above {
     position: relative;
     z-index: 1;
@@ -16776,14 +16749,14 @@ a.message-file:focus-visible {
   /* The ··· stands in the time's place on hover, and for the keyboard once
      it reaches the row — never while an answer is typed in it. */
   .crew-row:hover .crew-row-menu,
-  .crew-row:has(.crew-row-open:focus-visible) .crew-row-menu,
+  .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-menu,
   .crew-row-menu:focus-visible,
   .crew-row-menu[data-popup-open] {
     display: flex;
   }
 
   .crew-row:hover .crew-row-time,
-  .crew-row:has(.crew-row-open:focus-visible) .crew-row-time,
+  .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-time,
   .crew-row:has(.crew-row-menu:focus-visible) .crew-row-time,
   .crew-row:has(.crew-row-menu[data-popup-open]) .crew-row-time {
     display: none;
@@ -16866,30 +16839,6 @@ a.message-file:focus-visible {
     color: var(--muted-foreground);
   }
 
-  /* Without a lead: the faces a message goes to, each a press. */
-  .crew-pick {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 9999px;
-    cursor: pointer;
-    opacity: 0.45;
-    outline: none;
-    transition: opacity 150ms ease;
-  }
-
-  .crew-pick[aria-pressed="true"] {
-    opacity: 1;
-  }
-
-  /* A face whose crewmate the viewer may not run (D6): there, and not a press. */
-  .crew-pick:disabled {
-    cursor: default;
-    opacity: 0.2;
-  }
-
   /* The composer's place for a viewer who may not run the crew (D6): the
      pill's own 48 px and radius, quiet rather than white — nothing is
      written here — the lock in the conversation's amber, its words on at
@@ -16918,36 +16867,6 @@ a.message-file:focus-visible {
     color: color-mix(in oklab, var(--foreground) 85%, transparent);
   }
 
-  .crew-pick:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .crew-send {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 16px;
-    background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
-    color: var(--muted-foreground);
-    outline: none;
-    transition:
-      background-color 150ms ease,
-      color 150ms ease;
-  }
-
-  .crew-send[data-ready] {
-    background: var(--message-action);
-    color: var(--message-action-foreground);
-    cursor: pointer;
-  }
-
-  .crew-send:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
   /* An answer, right in the row that asked. */
   .crew-answer {
     display: flex;
@@ -16961,23 +16880,6 @@ a.message-file:focus-visible {
       0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
       0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
       0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
-  }
-
-  .crew-answer input {
-    flex: 1 1 auto;
-    min-width: 0;
-    border: 0;
-    background: transparent;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--foreground);
-    outline: none;
-  }
-
-  .crew-answer .crew-send {
-    width: 28px;
-    height: 28px;
-    border-radius: 14px;
   }
 
   /* The lead's plan: one line per task in a quiet tray. */
@@ -17014,119 +16916,22 @@ a.message-file:focus-visible {
     border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
   }
 
+  /* A line's ×: under the pointer, and for the keyboard once it reaches it. */
   .crew-tray-out {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    color: var(--muted-foreground);
-    cursor: pointer;
     opacity: 0;
-    outline: none;
     transition: opacity 150ms ease;
   }
 
   .crew-tray-row:hover .crew-tray-out,
-  .crew-tray-out:focus-visible {
+  .crew-tray-out:focus-within {
     opacity: 1;
-  }
-
-  .crew-tray-out:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   @media (hover: none) {
     .crew-tray-out {
       opacity: 1;
     }
-  }
-
-  /* "In Fen's code": a 32 px line per piece of work, the face at 20. */
-  .crew-code-row {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    column-gap: 12px;
-    align-items: center;
-    height: 32px;
-    margin: 0 8px;
-    padding: 0 8px;
-    border-radius: 10px;
-    text-align: start;
-    cursor: pointer;
-    outline: none;
-    transition: background-color 150ms ease;
-  }
-
-  /* At a phone's width, a line a finger can take: 36. */
-  @container (width < 28rem) {
-    .crew-code-row {
-      height: 36px;
-    }
-  }
-
-  @media (hover: hover) {
-    .crew-code-row:hover {
-      background: var(--sidebar-row-hover);
-    }
-  }
-
-  .crew-code-row:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  /* A view over the column — setup, the goal, a job: its fields and its
-     choices, over a footer that stays in reach. */
-  .crew-field {
-    display: block;
-    width: 100%;
-    padding: 12px 14px;
-    border: 0;
-    border-radius: 14px;
-    background: var(--card);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
-      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
-    font-size: 14px;
-    line-height: 22px;
-    color: var(--foreground);
-    resize: none;
-    outline: none;
-  }
-
-  .crew-field[data-line] {
-    height: 42px;
-    padding: 0 14px;
-    border-radius: 12px;
-    line-height: 20px;
-  }
-
-  .crew-field:focus {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--ring) 55%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
-      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
-  }
-
-  .crew-field::placeholder {
-    color: var(--muted-foreground);
-  }
-
-  /* A text box that grows with what is written, as the kit's own does; it
-     reserves no scrollbar (and, a block, no line's descent under it). */
-  textarea.crew-field {
-    field-sizing: content;
-    overflow: hidden;
-  }
-
-  textarea.crew-field[data-lines="4"] {
-    min-height: 112px;
-  }
-
-  textarea.crew-field[data-lines="6"] {
-    min-height: 156px;
   }
 
   .crew-view-foot {
@@ -17140,118 +16945,16 @@ a.message-file:focus-visible {
     background: var(--background);
   }
 
-  /* A choice in a view — Start with a lead and two builders — a quiet card: its
-     edge at rest, the fill only under the pointer. One that waits sits back,
-     its reason under its title. */
+  /* A row standing in for a choice while it runs, or saying why it failed: a
+     choice's quiet edge, its press at the end. */
   .crew-option {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
     column-gap: 12px;
     align-items: center;
     padding: 12px 12px 12px 10px;
-    border-radius: 14px;
+    border-radius: 12px;
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
-    text-align: start;
-    cursor: pointer;
-    outline: none;
-    transition: background-color 150ms ease;
-  }
-
-  .crew-option[data-more] {
-    grid-template-columns: minmax(0, 1fr) 16px;
-    padding-left: 14px;
-  }
-
-  /* A row standing in for a choice while it runs, or saying why it failed: its press at the end. */
-  .crew-option[data-live] {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    cursor: default;
-  }
-
-  .crew-option:disabled {
-    cursor: default;
-    opacity: 0.55;
-  }
-
-  @media (hover: hover) {
-    .crew-option:enabled:hover {
-      background: var(--sidebar-row-hover);
-    }
-  }
-
-  .crew-option:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  /* A limit in the run dialog: an amount beside its unit, and No limit after it. */
-  .crew-limit {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 4px;
-    width: 96px;
-    height: 34px;
-    padding: 0 12px;
-    border-radius: 9px;
-    box-shadow: inset 0 0 0 1px var(--input);
-    font-size: 14px;
-    line-height: 20px;
-    font-variant-numeric: tabular-nums;
-    cursor: text;
-    transition: opacity 150ms ease;
-  }
-
-  .crew-limit[data-narrow] {
-    width: 56px;
-    height: 28px;
-    padding: 0 8px;
-    border-radius: 8px;
-  }
-
-  .crew-limit:focus-within {
-    box-shadow: inset 0 0 0 1px var(--ring);
-  }
-
-  .crew-limit[data-off] {
-    opacity: 0.5;
-  }
-
-  .crew-limit input {
-    flex: none;
-    min-width: 0;
-    border: 0;
-    background: transparent;
-    color: var(--foreground);
-    outline: none;
-  }
-
-  .crew-nolimit {
-    flex: none;
-    height: 34px;
-    padding: 0 10px;
-    border-radius: 9px;
-    font-size: var(--text-body);
-    font-weight: 500;
-    line-height: 18px;
-    color: var(--muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms ease,
-      color 150ms ease;
-  }
-
-  .crew-nolimit:hover {
-    background: var(--sidebar-row-hover);
-  }
-
-  .crew-nolimit[aria-pressed="true"] {
-    background: var(--sidebar-row-active);
-    color: var(--foreground);
-  }
-
-  .crew-nolimit:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   /* No crew yet: the Mate, and three seats waiting. */

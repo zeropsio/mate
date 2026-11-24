@@ -54,7 +54,7 @@ import {
   crewFromTemplate,
   type CrewTemplateId,
 } from "@t3tools/shared/crewTemplates";
-import { ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
+import { PlusIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { withBrief } from "../../../zerops/crew/crewHome";
@@ -62,10 +62,12 @@ import { useCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import type { CrewFailureCause, UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
+import { Button } from "../../ui/button";
 import { FailureDetails } from "../../ui/failure";
+import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
-import { CrewPress, CrewTextButton } from "./CrewParts";
+import { CrewChoice, CrewPress, CrewTextButton } from "./CrewParts";
 import {
   crewProposalFailure,
   crewStartState,
@@ -262,14 +264,15 @@ export function CrewSetup(props: CrewSetupProps) {
       <div className="mt-1 flex h-7 items-center gap-2" data-crew-setup>
         <h2 className="font-semibold text-base leading-6">{crewSetUpTitle(mate.name)}</h2>
         <span className="grow" />
-        <button
+        <Button
           aria-label={CREW_SETUP_WORDS.close}
-          className="crew-menu-btn -me-1.5"
+          className="-me-1.5"
           onClick={props.onClose}
-          type="button"
+          size="icon-sm"
+          variant="ghost-muted"
         >
           <XIcon aria-hidden="true" className="size-4" />
-        </button>
+        </Button>
       </div>
       <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_SETUP_WORDS.line}</p>
 
@@ -299,7 +302,7 @@ export function CrewSetup(props: CrewSetupProps) {
       {members === null ? null : members.length === 0 ? (
         <div className="mt-2 flex flex-col gap-2" data-crew-setup-start>
           {proposal.state.kind === "proposing" ? (
-            <div className="crew-option" data-crew-proposing data-live="" role="status">
+            <div className="crew-option" data-crew-proposing role="status">
               <MateFace shape={mate.shape} size={24} state="working" tint={mate.tint ?? "amber"} />
               <span className="font-medium text-body leading-5">
                 {crewProposingWord(mate.name)}
@@ -307,7 +310,7 @@ export function CrewSetup(props: CrewSetupProps) {
               <CrewTextButton label={CREW_SETUP_WORDS.stopProposing} onPress={proposal.cancel} />
             </div>
           ) : proposal.state.kind === "failed" ? (
-            <div className="crew-option" data-crew-proposal-failed data-live="" role="alert">
+            <div className="crew-option" data-crew-proposal-failed role="alert">
               <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
               <span className="text-line leading-4.5 text-status-failed-text">
                 {crewProposalFailure(proposal.state.cause, mate.name)}
@@ -322,58 +325,56 @@ export function CrewSetup(props: CrewSetupProps) {
               )}
             </div>
           ) : (
-            <button
-              className="crew-option"
-              data-crew-suggest
+            <CrewChoice
               disabled={suggestPress.disabled}
-              onClick={() => void suggest()}
-              type="button"
-            >
-              <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
-              <span className="flex min-w-0 flex-col">
-                <span className="font-medium text-body leading-5">
-                  {crewSuggestWord(mate.name)}
-                </span>
-                <span className="text-line leading-4.5 text-muted-foreground">
-                  {suggestPress.reason ?? crewSuggestLine(mate.name)}
-                </span>
-              </span>
-              <ChevronRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
-            </button>
+              lead={
+                <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
+              }
+              line={suggestPress.reason ?? crewSuggestLine(mate.name)}
+              render={
+                <button
+                  data-crew-suggest=""
+                  disabled={suggestPress.disabled}
+                  onClick={() => void suggest()}
+                  type="button"
+                />
+              }
+              title={crewSuggestWord(mate.name)}
+            />
           )}
-          <button
-            className="crew-option"
+          <CrewChoice
             disabled={busy}
-            onClick={() => void startFrom("lead-and-builders")}
-            type="button"
-          >
-            <TrioFaces mateTint={mate.tint} />
-            <span className="flex min-w-0 flex-col">
-              <span className="font-medium text-body leading-5">{CREW_SETUP_WORDS.leadAndTwo}</span>
-              <span className="text-line leading-4.5 text-muted-foreground">
-                {CREW_SETUP_WORDS.leadAndTwoLine}
-              </span>
-            </span>
-            <ChevronRightIcon aria-hidden="true" className="size-4 text-muted-foreground" />
-          </button>
-          <button
-            className="flex h-9 cursor-pointer items-center gap-3 rounded-lg ps-2.5 pe-3 font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
-            disabled={busy}
-            onClick={() => void startFrom("empty", () => props.onEditCrewmate(null))}
-            type="button"
-          >
-            <span className="flex w-7 justify-center">
-              <PlusIcon aria-hidden="true" className="size-4" />
-            </span>
-            {CREW_SETUP_WORDS.addYourself}
-          </button>
+            lead={<TrioFaces mateTint={mate.tint} />}
+            line={CREW_SETUP_WORDS.leadAndTwoLine}
+            render={
+              <button
+                disabled={busy}
+                onClick={() => void startFrom("lead-and-builders")}
+                type="button"
+              />
+            }
+            title={CREW_SETUP_WORDS.leadAndTwo}
+          />
+          <Row
+            aria-disabled={busy || undefined}
+            lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+            pressable
+            render={
+              <button
+                disabled={busy}
+                onClick={() => void startFrom("empty", () => props.onEditCrewmate(null))}
+                type="button"
+              />
+            }
+            title={CREW_SETUP_WORDS.addYourself}
+          />
         </div>
       ) : (
         <>
           <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
             {crewSuggestedLine(mate.name, asked)}
           </span>
-          <div className="-mx-4 mt-2 flex flex-col gap-0.5" data-crew-setup-rows>
+          <div className="-mx-2 mt-2 flex flex-col gap-0.5" data-crew-setup-rows>
             {members.map((member) => (
               <SetupRow
                 applied={props.applied}
@@ -387,18 +388,19 @@ export function CrewSetup(props: CrewSetupProps) {
               />
             ))}
             {props.applied ? null : (
-              <button
-                className="mx-2 grid h-9 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-2 text-start font-medium text-line leading-4.5 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => {
-                  void saveGoal().then(() => props.onEditCrewmate(null));
-                }}
-                type="button"
-              >
-                <span className="flex justify-center">
-                  <PlusIcon aria-hidden="true" className="size-4" />
-                </span>
-                {CREW_MENU.addCrewmate}
-              </button>
+              <Row
+                lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+                pressable
+                render={
+                  <button
+                    onClick={() => {
+                      void saveGoal().then(() => props.onEditCrewmate(null));
+                    }}
+                    type="button"
+                  />
+                }
+                title={CREW_MENU.addCrewmate}
+              />
             )}
           </div>
         </>
@@ -522,29 +524,30 @@ function SetupRow({
   const sentence = crewJobLine(member.job.split("\n")[0] ?? "", member.displayName);
   const tag = crewRoleTag(member.kind, member.displayName, sentence);
   return (
-    <button
-      className="crew-row text-start"
+    <Row
+      aria-disabled={applied || undefined}
       data-crew-setup-row={member.handle}
-      disabled={applied}
-      onClick={onOpen}
-      type="button"
-    >
-      <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-body leading-5">
+      lead={
+        <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
+      }
+      line={
+        <>
+          <span className="block">{sentence}</span>
+          {readying ? <span className="block">{CREW_COPY_READYING}</span> : null}
+          {broken === null ? null : <span className="block text-status-failed-text">{broken}</span>}
+        </>
+      }
+      lineWraps
+      pressable
+      render={<button disabled={applied} onClick={onOpen} type="button" />}
+      title={
+        <>
           {member.displayName}
           {tag === null ? null : (
             <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>
           )}
-        </span>
-        <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">{sentence}</span>
-        {readying ? (
-          <span className="text-line leading-4.5 text-muted-foreground">{CREW_COPY_READYING}</span>
-        ) : null}
-        {broken === null ? null : (
-          <span className="text-line leading-4.5 text-status-failed-text">{broken}</span>
-        )}
-      </span>
-    </button>
+        </>
+      }
+    />
   );
 }

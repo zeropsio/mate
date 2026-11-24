@@ -33,6 +33,7 @@ import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
+import { Button } from "../../ui/button";
 import { MateFace } from "../primitives";
 import {
   crewPlanCard,
@@ -209,17 +210,20 @@ function LeaveOut({
 }) {
   if (onPress === null) return <span aria-hidden="true" />;
   return (
-    <CrewTip tip={CREW_PLAN_VERBS.leaveOut}>
-      <button
-        aria-label={`${CREW_PLAN_VERBS.leaveOut}: ${title}`}
-        className="crew-tray-out"
-        disabled={busy}
-        onClick={onPress}
-        type="button"
-      >
-        <XIcon aria-hidden="true" className="size-3.5" />
-      </button>
-    </CrewTip>
+    // Shown under the pointer and for the keyboard once it reaches the line.
+    <span className="crew-tray-out">
+      <CrewTip tip={CREW_PLAN_VERBS.leaveOut}>
+        <Button
+          aria-label={`${CREW_PLAN_VERBS.leaveOut}: ${title}`}
+          disabled={busy}
+          onClick={onPress}
+          size="icon-2xs"
+          variant="ghost-muted"
+        >
+          <XIcon aria-hidden="true" className="size-3.5" />
+        </Button>
+      </CrewTip>
+    </span>
   );
 }
 

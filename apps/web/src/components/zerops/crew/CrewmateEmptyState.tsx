@@ -38,6 +38,7 @@ import { mateFaceFor } from "../../../zerops/agentActivity";
 import type { ZeropsMateIdentity } from "../../../zerops/mateIdentities";
 import { useOpenReview } from "../../../zerops/review";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
 import { CrewTextButton, CrewTip } from "./CrewParts";
@@ -232,42 +233,40 @@ function CrewmateWork({
   return (
     <div className={cn("flex flex-col", !first && "mt-5")} data-crewmate-work>
       <h2 className="font-medium text-line text-muted-foreground">{CREWMATE_EMPTY_WORDS.work}</h2>
-      {/* Each line's words on the heading's edge, a pressed line's hover 8 px past it. */}
-      <ul className="-mx-2 mt-1 flex flex-col">
+      {/* Each line's words on the heading's edge, a pressed line's hover past it. */}
+      <ul className="-mx-1.5 mt-1 flex flex-col">
         {shown.map((row) => {
           const when =
             row.at === null ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(row.at));
-          // Its title in ink, what became of it after it quieter — whole, wrapping
-          // before it is ever cut — and when, on its first line's right.
-          const words = (
-            <>
-              <span className="min-w-0 flex-1">
-                <span className="crew-ink-2">{row.title}</span>{" "}
-                <span className="text-muted-foreground">{row.outcome}</span>
-              </span>
-              <span className="shrink-0 text-muted-foreground tabular-nums">{when}</span>
-            </>
-          );
+          // Its title, what became of it under it — whole, wrapping before it is ever cut —
+          // and when, on its first line's right.
           return (
             <li key={row.taskId}>
               {row.wentIn ? (
                 <CrewTip tip={CREW_WHAT_CHANGED}>
-                  <button
-                    className="flex w-full cursor-pointer items-baseline gap-3 rounded-lg px-2 py-1 text-left text-line outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring"
+                  <Row
                     data-crewmate-work-task={row.taskId}
-                    onClick={(event) =>
-                      openReview(
-                        { kind: "crew-task", environmentId, taskId: row.taskId },
-                        { from: event.currentTarget },
-                      )
+                    line={row.outcome}
+                    lineWraps
+                    meta={when}
+                    pressable
+                    render={
+                      <button
+                        onClick={(event) =>
+                          openReview(
+                            { kind: "crew-task", environmentId, taskId: row.taskId },
+                            { from: event.currentTarget },
+                          )
+                        }
+                        type="button"
+                      />
                     }
-                    type="button"
-                  >
-                    {words}
-                  </button>
+                    size="xs"
+                    title={row.title}
+                  />
                 </CrewTip>
               ) : (
-                <div className="flex items-baseline gap-3 px-2 py-1 text-line">{words}</div>
+                <Row line={row.outcome} lineWraps meta={when} size="xs" title={row.title} />
               )}
             </li>
           );
