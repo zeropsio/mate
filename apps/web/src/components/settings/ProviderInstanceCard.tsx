@@ -5,7 +5,6 @@ import {
   ArrowUpCircleIcon,
   CopyIcon,
   DownloadIcon,
-  LoaderIcon,
   PlusIcon,
   Trash2Icon,
   XIcon,
@@ -41,6 +40,7 @@ import {
   AlertDialogPopup,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
+import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -767,7 +767,7 @@ export function ProviderInstanceCard({
                         disabled={isUpdating}
                         onClick={onRunVersionAction}
                       >
-                        {isUpdating ? <LoaderIcon className="animate-spin" /> : <DownloadIcon />}
+                        {isUpdating ? <Spinner /> : <DownloadIcon />}
                         {isUpdating ? "Updating" : "Update now"}
                       </Button>
                     ) : null}

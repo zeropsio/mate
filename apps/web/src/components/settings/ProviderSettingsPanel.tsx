@@ -34,7 +34,6 @@ import * as Result from "effect/Result";
 import {
   ChevronDownIcon,
   CloudIcon,
-  LoaderIcon,
   MonitorIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -62,6 +61,7 @@ import {
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { Spinner } from "../ui/spinner";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
@@ -1009,7 +1009,7 @@ export function EnvironmentProviderSettings({
                           aria-label="Refresh provider status"
                         >
                           {isRefreshingProviders ? (
-                            <LoaderIcon className="size-3 animate-spin" />
+                            <Spinner size="xs" />
                           ) : (
                             <RefreshCwIcon className="size-3" />
                           )}

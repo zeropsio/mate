@@ -34,6 +34,7 @@ import { shellEnvironment } from "../../state/shell";
 import { useEnvironment } from "../../state/environments";
 import { useLastRouteEnvironmentId } from "../../zerops/accountEnvironments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
@@ -750,7 +751,7 @@ function DiagnosticsRefreshButton({
             onClick={onClick}
             aria-label={label}
           >
-            <RefreshCwIcon className={cn("size-3", isPending && "animate-spin")} />
+            {isPending ? <Spinner size="xs" /> : <RefreshCwIcon className="size-3" />}
           </Button>
         }
       />

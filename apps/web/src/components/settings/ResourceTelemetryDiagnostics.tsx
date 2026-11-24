@@ -47,6 +47,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTime } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
+import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -949,9 +950,11 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
                     onClick={telemetry.refresh}
                     aria-label="Refresh resource telemetry"
                   >
-                    <RefreshCwIcon
-                      className={cn("size-3", telemetry.isPending && "animate-spin")}
-                    />
+                    {telemetry.isPending ? (
+                      <Spinner size="xs" />
+                    ) : (
+                      <RefreshCwIcon className="size-3" />
+                    )}
                   </Button>
                 }
               />
@@ -1063,7 +1066,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         headerAction={
           collectorNeedsRetry ? (
             <Button size="sm" variant="secondary" disabled={isRetrying} onClick={retryCollector}>
-              <RotateCcwIcon className={cn("size-3", isRetrying && "animate-spin")} />
+              {isRetrying ? <Spinner size="xs" /> : <RotateCcwIcon className="size-3" />}
               Retry monitor
             </Button>
           ) : null
@@ -1201,7 +1204,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               onClick={history.refresh}
               aria-label="Refresh resource history"
             >
-              <RefreshCwIcon className={cn("size-3", history.isPending && "animate-spin")} />
+              {history.isPending ? <Spinner size="xs" /> : <RefreshCwIcon className="size-3" />}
             </Button>
           </div>
         }

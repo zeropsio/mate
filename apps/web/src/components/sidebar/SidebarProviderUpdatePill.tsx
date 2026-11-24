@@ -1,7 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
 import type { ServerProvider } from "@t3tools/contracts";
-import { CircleCheckIcon, DownloadIcon, LoaderIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { CircleCheckIcon, DownloadIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 
 import { primaryEnvironmentIsZeropsAtom, primaryServerProvidersAtom } from "../../state/server";
@@ -9,6 +9,7 @@ import {
   getProviderUpdateSidebarPillView,
   type ProviderUpdateSidebarPillView,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -180,7 +181,7 @@ export function SidebarProviderUpdatePill() {
             >
               <span className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
                 {displayedView.tone === "loading" ? (
-                  <LoaderIcon className="size-3.5 shrink-0 animate-spin" />
+                  <Spinner className="shrink-0" size="sm" />
                 ) : displayedView.tone === "success" ? (
                   <CircleCheckIcon className="size-3.5 shrink-0" />
                 ) : displayedView.tone === "error" ? (
