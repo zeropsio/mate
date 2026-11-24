@@ -275,6 +275,15 @@ export function mateNoticeVoice(
         : "Send it a message to try again.",
       "idle",
     );
+  // HQ's verdict that the Mate is not answering, with its since; Restart joins Open in Zerops on
+  // the link line where HQ offers it (`mateLinkVerbs`).
+  if (decision.phase === "offline")
+    return say(
+      mateUnreachableWords(name, input.mateState?.since, input.timestampFormat),
+      input.lastKnown ?? "",
+      "sleep",
+      decision.actions,
+    );
   if (decision.phase === "hq-key" && input.hqKey !== undefined) {
     const words = hqKeyWords(input.hqKey, name);
     return say(words.headline, words.secondary, "idle");

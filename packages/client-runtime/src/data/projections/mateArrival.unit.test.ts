@@ -4,6 +4,7 @@ import {
   initialEnvironment,
   selectReachability,
   type MateLink,
+  type Reachability,
 } from "../../zerops/environments/index.ts";
 import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { deriveZeropsCandidates } from "../../zerops/candidates.ts";
@@ -201,4 +202,27 @@ it("PJ+2: A connected Mate HQ says cannot work speaks one notice over its conver
     phase({ mateState: verdict("offline") }),
     phase({ mateState: null }),
   ]).toEqual(["none", "none", "none"]);
+});
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | input.mateState?.state === "offline" && → false &&
+it("PJ+3: A Mate HQ says is offline, its link not live, says HQ's verdict with Open in Zerops on whatever its link would say, opening, reconnecting or not answering, and a live link, a recovery or a restart keeps its own; breaks: its page flips between opening the conversation and not answering, without HQ's since", () => {
+  const offline = { state: "offline", since: "2026-11-24T09:43:46.130Z", why: "link_closed" };
+  const on = { mateName: "Ada", conversationShown: false, nowMs: 0, mateState: offline };
+  const decide = (reachability: Reachability | null) => {
+    const { phase, actions, surface } = mateNoticeDecision({ ...on, reachability });
+    return { phase, actions, surface };
+  };
+  const said = { phase: "offline", actions: ["open-in-zerops"], surface: "stage" };
+  // The link's verdict while HQ says offline: the decision.
+  const table: ReadonlyArray<readonly [Reachability | null, string]> = [
+    [null, "offline"],
+    [{ kind: "connecting", waitingOn: "exchange" }, "offline"],
+    [{ kind: "reconnecting" }, "offline"],
+    [{ kind: "not-answering", overdue: false }, "offline"],
+    [{ kind: "ready", notice: null }, "none"],
+    [{ kind: "gone", because: "direct-not-found" }, "reachability"],
+  ];
+  for (const [reachability, phase] of table)
+    expect({ reachability, phase: decide(reachability).phase }).toEqual({ reachability, phase });
+  expect(decide({ kind: "reconnecting" })).toEqual(said);
 });

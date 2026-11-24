@@ -798,7 +798,10 @@ export function mateNoticeDecision(input: {
    * while their access is unread.
    */
   readonly operates?: boolean | undefined;
-  /** HQ's verdict on the Mate (`hqMateState`): one that cannot work speaks over its conversation. */
+  /**
+   * HQ's verdict on the Mate (`hqMateState`): one that cannot work speaks over its conversation,
+   * and one HQ says is offline speaks, its link not live, in place of whatever the link says.
+   */
   readonly mateState?: HqMateState | null | undefined;
 }) {
   const { reachability } = input;
@@ -835,35 +838,41 @@ export function mateNoticeDecision(input: {
           ? "recovery"
           : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
             ? notice.level
-            : reachability === null || opensQuietly(reachability)
-              ? input.conversationShown
-                ? "none"
-                : "opening"
-              : reachability.kind === "ready" && reachability.notice === null
-                ? // Only a connected Mate's config and HQ's verdict on it are its word now; each
-                  // speaks over the conversation, HQ's verdict that it cannot work first.
-                  !input.conversationShown
+            : input.mateState?.state === "offline" &&
+                reachability?.kind !== "ready" &&
+                (reachability === null || !isTerminalReachability(reachability))
+              ? "offline"
+              : reachability === null || opensQuietly(reachability)
+                ? input.conversationShown
                   ? "none"
-                  : input.mateState?.state === "cannot_run"
-                    ? "cannot-run"
-                    : input.hqKey === undefined
-                      ? "none"
-                      : "hq-key"
-                : "reachability";
+                  : "opening"
+                : reachability.kind === "ready" && reachability.notice === null
+                  ? // Only a connected Mate's config and HQ's verdict on it are its word now; each
+                    // speaks over the conversation, HQ's verdict that it cannot work first.
+                    !input.conversationShown
+                    ? "none"
+                    : input.mateState?.state === "cannot_run"
+                      ? "cannot-run"
+                      : input.hqKey === undefined
+                        ? "none"
+                        : "hq-key"
+                  : "reachability";
   const actions: ReadonlyArray<ReachabilityAction> =
     phase === "access"
       ? ["go-to-projects"]
-      : phase === "recovery"
-        ? recovery!.actions
-        : phase !== "reachability" || reachability === null
-          ? []
-          : reachability.kind === "reconnecting" && reachability.retryAtMs === undefined
-            ? ["open-in-zerops"]
-            : reachability.kind === "reconnecting" ||
-                reachability.kind === "retrying" ||
-                reachability.kind === "not-answering"
-              ? [...reachabilityPhrase(reachability, input).actions, "open-in-zerops"]
-              : reachabilityPhrase(reachability, input).actions;
+      : phase === "offline"
+        ? ["open-in-zerops"]
+        : phase === "recovery"
+          ? recovery!.actions
+          : phase !== "reachability" || reachability === null
+            ? []
+            : reachability.kind === "reconnecting" && reachability.retryAtMs === undefined
+              ? ["open-in-zerops"]
+              : reachability.kind === "reconnecting" ||
+                  reachability.kind === "retrying" ||
+                  reachability.kind === "not-answering"
+                ? [...reachabilityPhrase(reachability, input).actions, "open-in-zerops"]
+                : reachabilityPhrase(reachability, input).actions;
   const severity =
     phase === "limit" ||
     phase === "access" ||
@@ -876,7 +885,8 @@ export function mateNoticeDecision(input: {
           : recovery!.tone === "warning"
             ? ("attention" as const)
             : ("info" as const)
-        : reachability?.kind === "refused-configuration" ||
+        : phase === "offline" ||
+            reachability?.kind === "refused-configuration" ||
             reachability?.kind === "not-answering" ||
             reachability?.kind === "no-address"
           ? ("danger" as const)
