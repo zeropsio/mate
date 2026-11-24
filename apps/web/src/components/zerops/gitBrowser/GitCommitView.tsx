@@ -5,12 +5,12 @@
  */
 import type { GitBrowseView } from "@t3tools/client-runtime/data";
 import type { GitCommit } from "@t3tools/shared/hqGitBrowse/commit";
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useState, type MouseEvent } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
@@ -22,30 +22,19 @@ const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
-function PageLink({
-  to,
-  navigate,
-  hrefOf,
-  children,
-  className,
-}: Pick<GitRepoPageProps, "navigate" | "hrefOf"> & {
-  readonly to: GitBrowseSearch;
-  readonly children: ReactNode;
-  readonly className?: string;
-}) {
-  return (
-    <a
-      className={className ?? "text-foreground underline-offset-2 hover:underline"}
-      href={hrefOf(to)}
-      onClick={(event) => {
-        if (!plainClick(event)) return;
-        event.preventDefault();
-        navigate(to);
-      }}
-    >
-      {children}
-    </a>
-  );
+/** A link to another page of the repository: a plain click opens it here, any other as a link. */
+function pageAnchor(
+  to: GitBrowseSearch,
+  { navigate, hrefOf }: Pick<GitRepoPageProps, "navigate" | "hrefOf">,
+) {
+  return {
+    href: hrefOf(to),
+    onClick: (event: MouseEvent) => {
+      if (!plainClick(event)) return;
+      event.preventDefault();
+      navigate(to);
+    },
+  };
 }
 
 /** The commit's message and people, and the files it changed, each a jump to its diff. */
@@ -97,24 +86,26 @@ export function GitCommitSummary({
                 ? "Parent"
                 : "Parents"}
             {commit.parents.map((parent) => (
-              <PageLink
-                className="font-mono text-foreground underline-offset-2 hover:underline"
-                hrefOf={hrefOf}
+              <InlineButton
                 key={parent}
-                navigate={navigate}
-                to={{ rev: parent, view: "commit" }}
+                render={
+                  <a {...pageAnchor({ rev: parent, view: "commit" }, { hrefOf, navigate })} />
+                }
+                tone="plain"
               >
-                {parent.slice(0, 7)}
-              </PageLink>
+                <span className="font-mono">{parent.slice(0, 7)}</span>
+              </InlineButton>
             ))}
           </span>
           <span className="font-mono text-foreground">{commit.sha.slice(0, 7)}</span>
           <Button onClick={() => copyToClipboard(commit.sha)} size="sm" variant="ghost">
             {isCopied ? "Copied" : "Copy commit id"}
           </Button>
-          <PageLink hrefOf={hrefOf} navigate={navigate} to={{ rev: commit.sha, view: "code" }}>
+          <InlineButton
+            render={<a {...pageAnchor({ rev: commit.sha, view: "code" }, { hrefOf, navigate })} />}
+          >
             Browse files
-          </PageLink>
+          </InlineButton>
           {commit.change === undefined || onOpenChange === undefined ? null : (
             <Button onClick={() => onOpenChange(commit.change!.number)} size="sm" variant="link">
               Merged from change #{commit.change.number}

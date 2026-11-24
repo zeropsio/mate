@@ -31,7 +31,7 @@ import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { GitAtCommit, GitNotRead } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
-import { GitPageLink } from "./GitFileFinder";
+import { gitPageAnchor } from "./GitFileFinder";
 import { GitPathCrumbs } from "./GitPathCrumbs";
 import { GitTreeSidebar } from "./GitTreeSidebar";
 import { GitWhen } from "./GitWhen";
@@ -99,14 +99,17 @@ function BlameRangeRow({
           <span className="w-16 shrink-0 truncate text-muted-foreground">
             <GitWhen at={commit.authoredAt}>{formatRelativeTimeLabel(commit.authoredAt)}</GitWhen>
           </span>
-          <GitPageLink
-            to={{ rev: commit.sha, view: "commit" }}
-            hrefOf={hrefOf}
-            navigate={navigate}
-            className="min-w-0 flex-1 truncate text-foreground hover:underline"
-          >
-            {commit.subject}
-          </GitPageLink>
+          <span className="flex min-w-0 flex-1">
+            <InlineButton
+              className="min-w-0"
+              render={
+                <a {...gitPageAnchor({ rev: commit.sha, view: "commit" }, hrefOf, navigate)} />
+              }
+              tone="plain"
+            >
+              <span className="truncate font-normal">{commit.subject}</span>
+            </InlineButton>
+          </span>
           {commit.change === undefined ? null : (
             <InlineButton
               tone="muted"
@@ -125,14 +128,22 @@ function BlameRangeRow({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <GitPageLink
-                    to={{ rev: previous.sha, view: "blame", path: previous.path }}
-                    hrefOf={hrefOf}
-                    navigate={navigate}
-                    className="flex h-5 shrink-0 items-center text-muted-foreground hover:text-foreground"
+                  <Button
+                    aria-label="Blame before this commit"
+                    render={
+                      <a
+                        {...gitPageAnchor(
+                          { rev: previous.sha, view: "blame", path: previous.path },
+                          hrefOf,
+                          navigate,
+                        )}
+                      />
+                    }
+                    size="icon-2xs"
+                    variant="ghost-muted"
                   >
-                    <HistoryIcon className="size-3.5" aria-label="Blame before this commit" />
-                  </GitPageLink>
+                    <HistoryIcon aria-hidden="true" />
+                  </Button>
                 }
               />
               <TooltipPopup>Blame before this commit</TooltipPopup>

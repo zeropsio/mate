@@ -17,6 +17,7 @@ import { PierreEntryIcon } from "~/components/chat/PierreEntryIcon";
 import { HighlightedSearchLine } from "~/components/search/HighlightedSearchLine";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import { Toggle } from "~/components/ui/toggle";
 import { Toggle as GroupToggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { useTheme } from "~/hooks/useTheme";
@@ -24,7 +25,7 @@ import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
 import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
-import { GitFileFinder, GitPageLink } from "./GitFileFinder";
+import { GitFileFinder, gitPageAnchor } from "./GitFileFinder";
 
 /** Lines mounted at first and added on each "Show more": each is highlighted. */
 const RESULTS_PAGE = 100;
@@ -114,45 +115,52 @@ function ContentResults({
           const { name, folder: inFolder } = splitPath(file.path);
           return (
             <section key={file.path} aria-label={file.path} className="flex min-w-0 flex-col">
-              <GitPageLink
-                to={fileAt(sha, file.path)}
-                hrefOf={hrefOf}
-                navigate={navigate}
-                className="flex min-w-0 items-center gap-2 rounded-control px-2 py-1 text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <PierreEntryIcon
-                  pathValue={file.path}
-                  kind="file"
-                  theme={resolvedTheme}
-                  className="size-3.5 shrink-0"
-                />
-                <span className="shrink-0 font-medium text-foreground">{name}</span>
-                <span className="min-w-0 truncate text-muted-foreground">{inFolder}</span>
-              </GitPageLink>
+              <Row
+                lead={
+                  <PierreEntryIcon
+                    pathValue={file.path}
+                    kind="file"
+                    theme={resolvedTheme}
+                    className="size-3.5 shrink-0"
+                  />
+                }
+                pressable
+                render={<a {...gitPageAnchor(fileAt(sha, file.path), hrefOf, navigate)} />}
+                size="xs"
+                title={
+                  <>
+                    {name} <span className="font-normal text-muted-foreground">{inFolder}</span>
+                  </>
+                }
+              />
               {file.matches.map((match: GitGrepMatch) => (
-                <GitPageLink
+                <Row
                   key={`${match.path}:${match.line}`}
-                  to={fileAt(sha, match.path, match.line)}
-                  hrefOf={hrefOf}
-                  navigate={navigate}
-                  className="flex h-7 min-w-0 items-center gap-3 rounded-control px-2 font-mono text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
-                    {match.line}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate whitespace-pre">
-                    <HighlightedSearchLine
-                      match={{
-                        path: match.path,
-                        lineNumber: match.line,
-                        lineContent: match.text,
-                        matchRanges: match.ranges,
-                      }}
-                      path={match.path}
-                      theme={resolvedTheme}
-                    />
-                  </span>
-                </GitPageLink>
+                  pressable
+                  render={
+                    <a {...gitPageAnchor(fileAt(sha, match.path, match.line), hrefOf, navigate)} />
+                  }
+                  size="xs"
+                  title={
+                    <span className="flex min-w-0 gap-3 font-mono font-normal">
+                      <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
+                        {match.line}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate whitespace-pre">
+                        <HighlightedSearchLine
+                          match={{
+                            path: match.path,
+                            lineNumber: match.line,
+                            lineContent: match.text,
+                            matchRanges: match.ranges,
+                          }}
+                          path={match.path}
+                          theme={resolvedTheme}
+                        />
+                      </span>
+                    </span>
+                  }
+                />
               ))}
             </section>
           );

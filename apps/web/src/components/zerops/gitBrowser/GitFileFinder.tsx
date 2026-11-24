@@ -9,6 +9,7 @@ import { PierreEntryIcon } from "~/components/chat/PierreEntryIcon";
 import type { ProjectFilePickerMatch } from "~/components/files/ProjectFilePicker.logic";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
@@ -19,33 +20,23 @@ import { FINDER_PAGE, finderMatches } from "./GitFileFinder.logic";
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 
-/** A link to another page of the repository: a plain click opens it here, any other as a link. */
-export function GitPageLink({
-  to,
-  hrefOf,
-  navigate,
-  className,
-  children,
-}: {
-  readonly to: GitBrowseSearch;
-  readonly hrefOf: (search: GitBrowseSearch) => string;
-  readonly navigate: (search: GitBrowseSearch) => void;
-  readonly className: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <a
-      className={className}
-      href={hrefOf(to)}
-      onClick={(event) => {
-        if (!plainClick(event)) return;
-        event.preventDefault();
-        navigate(to);
-      }}
-    >
-      {children}
-    </a>
-  );
+/**
+ * A link to another page of the repository, for a kit press's `render={<a … />}`: a plain click
+ * opens it here, any other as a link.
+ */
+export function gitPageAnchor(
+  to: GitBrowseSearch,
+  hrefOf: (search: GitBrowseSearch) => string,
+  navigate: (search: GitBrowseSearch) => void,
+) {
+  return {
+    href: hrefOf(to),
+    onClick: (event: MouseEvent) => {
+      if (!plainClick(event)) return;
+      event.preventDefault();
+      navigate(to);
+    },
+  };
 }
 
 /** Where a typed query falls in a name or path, its letters marked. */
@@ -149,27 +140,25 @@ export function GitFileFinder({
           <ul aria-label="Files" className="flex min-w-0 flex-col">
             {found.rows.map((row) => (
               <li key={row.path}>
-                <GitPageLink
-                  to={open(row)}
-                  hrefOf={hrefOf}
-                  navigate={navigate}
-                  className="flex min-w-0 items-center gap-2 rounded-control px-2 py-1.5 text-body hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <PierreEntryIcon
-                    pathValue={row.path}
-                    kind="file"
-                    theme={resolvedTheme}
-                    className="size-3.5 shrink-0"
-                  />
-                  <span className="shrink-0 text-muted-foreground">
-                    <Marked value={row.name} indices={row.nameMatchIndices} />
-                  </span>
-                  {row.path === row.name ? null : (
-                    <span className="min-w-0 truncate text-caption text-muted-foreground">
+                <Row
+                  lead={
+                    <PierreEntryIcon
+                      pathValue={row.path}
+                      kind="file"
+                      theme={resolvedTheme}
+                      className="size-3.5 shrink-0"
+                    />
+                  }
+                  line={
+                    row.path === row.name ? null : (
                       <Marked value={row.path} indices={row.pathMatchIndices} />
-                    </span>
-                  )}
-                </GitPageLink>
+                    )
+                  }
+                  pressable
+                  render={<a {...gitPageAnchor(open(row), hrefOf, navigate)} />}
+                  size="xs"
+                  title={<Marked value={row.name} indices={row.nameMatchIndices} />}
+                />
               </li>
             ))}
           </ul>

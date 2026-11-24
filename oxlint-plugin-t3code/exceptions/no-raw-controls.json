@@ -920,76 +920,36 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/gitBrowser/GitCommitView.tsx",
+    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className={className ?? \"text-foreground underline-offset-2 hover:underline\"}",
+    "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/gitBrowser/GitDiffFiles.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-caption hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/gitBrowser/GitDirectoryList.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"flex min-w-0 items-center gap-3 rounded-sm text-body text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/gitBrowser/GitFileFinder.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className={className}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/gitBrowser/GitPathCrumbs.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"flex min-w-0 font-mono text-caption underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a link inside a repository's rendered markdown: a plain anchor the markdown's prose styles, as every rendered text's links are",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a link inside a repository's rendered markdown: a plain anchor the markdown's prose styles, as every rendered text's links are",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a link inside a repository's rendered markdown: a plain anchor the markdown's prose styles, as every rendered text's links are",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a>",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a link inside a repository's rendered markdown: a plain anchor the markdown's prose styles, as every rendered text's links are",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
