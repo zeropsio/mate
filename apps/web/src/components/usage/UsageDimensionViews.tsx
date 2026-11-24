@@ -19,6 +19,7 @@ import type {
   UsagePersonRow,
   UsageScope,
 } from "./usageDimensions";
+import { Button, InlineButton } from "../ui/button";
 
 /**
  * Person series, in legend order: the Mate identity tints, so a person reads
@@ -122,18 +123,18 @@ function Disclosure({
   readonly onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost-muted"
+      size="icon-2xs"
       aria-expanded={open}
       aria-label={label}
-      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
       onClick={onToggle}
     >
       <ChevronRightIcon
         aria-hidden
         className={cn("size-3.5 transition-transform", open && "rotate-90")}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -205,14 +206,9 @@ export function DrillButton({
 }) {
   if (onDrill === null) return <span className="flex min-w-0 items-center gap-2">{children}</span>;
   return (
-    <button
-      type="button"
-      aria-label={label}
-      className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={onDrill}
-    >
-      {children}
-    </button>
+    <InlineButton tone="plain" aria-label={label} className="min-w-0" onClick={onDrill}>
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+    </InlineButton>
   );
 }
 

@@ -818,15 +818,20 @@ export function UsagePage({
                                 className="border-b border-border/50 transition-colors hover:bg-muted/50"
                               >
                                 <td className="py-2 text-foreground">
-                                  <button
-                                    type="button"
-                                    className="flex max-w-full cursor-pointer items-center gap-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+                                  <InlineButton
+                                    tone="plain"
+                                    className="max-w-full"
                                     aria-label={`Open ${model.model}`}
                                     onClick={() => setOpenModel(model)}
                                   >
-                                    <ProviderMark provider={model.provider} className="size-3.5" />
-                                    <span className="truncate">{model.model}</span>
-                                  </button>
+                                    <span className="flex min-w-0 items-center gap-2">
+                                      <ProviderMark
+                                        provider={model.provider}
+                                        className="size-3.5"
+                                      />
+                                      <span className="truncate">{model.model}</span>
+                                    </span>
+                                  </InlineButton>
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
@@ -1071,14 +1076,14 @@ function UsageScopeChips({
             <PersonAvatar name={chip.owner.name} picture={chip.owner.avatarUrl} size={16} />
           )}
           <span className="truncate">{chip.label}</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost-muted"
+            size="icon-2xs"
             aria-label={`Clear ${chip.dimension} filter`}
-            className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
           >
             <XIcon className="size-3" aria-hidden />
-          </button>
+          </Button>
         </span>
       </WorkspaceBreadcrumbItem>
     </span>

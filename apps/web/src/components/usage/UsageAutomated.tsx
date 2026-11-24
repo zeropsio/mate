@@ -38,13 +38,21 @@ const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
 function TaskTitle({ row }: { readonly row: UsageTaskRow }) {
   const target = row.target;
   if (target === null) return <span className="min-w-0 truncate">{row.title}</span>;
+  const label = <span className="truncate">{row.title}</span>;
+  if (target.kind === "external")
+    return (
+      <InlineButton
+        className="min-w-0 shrink"
+        render={<a href={target.href} rel="noreferrer" target="_blank" />}
+      >
+        {label}
+      </InlineButton>
+    );
   return (
     <InlineButton
       className="min-w-0 shrink"
       render={
-        target.kind === "external" ? (
-          <a href={target.href} rel="noreferrer" target="_blank" />
-        ) : target.kind === "mate" ? (
+        target.kind === "mate" ? (
           <Link params={{ projectId: target.projectId }} to="/mate/$projectId" />
         ) : (
           <Link
@@ -54,7 +62,7 @@ function TaskTitle({ row }: { readonly row: UsageTaskRow }) {
         )
       }
     >
-      <span className="truncate">{row.title}</span>
+      {label}
     </InlineButton>
   );
 }
