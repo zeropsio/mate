@@ -439,7 +439,8 @@ function KitPageView({
           onStateChange={onFlowStateChange}
           state={flowState}
           viewport={search.viewport ?? Math.max(width - 32, 320)}
-          zoom={search.zoom ?? 100}
+          // The toolbar's zoom is a percentage; the flow scales its frame by a fraction.
+          zoom={(search.zoom ?? 100) / 100}
         />
       );
     case "census":
