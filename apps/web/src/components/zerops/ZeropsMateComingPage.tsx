@@ -21,7 +21,6 @@ import {
   hqMateAnsweredAtom,
   hqMateLinkAtom,
   hqMateLinkRefusalAtom,
-  restartWay,
   shownHqProjectPeopleAtom,
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
@@ -808,8 +807,7 @@ function ExistingMateComingPage({
   const linkRefusal = useAtomValue(hqMateLinkRefusalAtom(projectId));
   const linkWord = arrivalLink(mate, {
     link: hqLink,
-    containerFailed:
-      candidate?.service !== undefined && restartWay(candidate.service.status) === "hq",
+    containerStatus: candidate?.service?.status,
     refusal: linkRefusal,
     nowMs: Date.now(),
   });
@@ -942,19 +940,13 @@ function ExistingMateComingPage({
       : mateActions
           .actionsFor(candidate, readZeropsMembership(candidate.project))
           .entries.find((entry) => entry.id === "delete");
-  // HQ refused its link: its way out is its birth's Delete, as HQ offers it.
-  const birthDelete =
-    linkWord.refused === null || birthId === undefined
-      ? undefined
-      : mateActions.birthActionsFor(birthId).find((entry) => entry.id === "delete");
-  const removeEntry =
-    linkWord.refused !== null
-      ? birthDelete === undefined || "separator" in birthDelete
+  const exitEntry =
+    linkWord.exit === "entry"
+      ? deleteEntry
+      : birthId === undefined
         ? undefined
-        : birthDelete
-      : deleteEntry === undefined || "separator" in deleteEntry
-        ? undefined
-        : deleteEntry;
+        : mateActions.birthActionsFor(birthId).find((entry) => entry.id === "delete");
+  const removeEntry = exitEntry === undefined || "separator" in exitEntry ? undefined : exitEntry;
 
   const restartSetup = useRestartMate();
   const [retryingSetup, setRetryingSetup] = useState(false);
@@ -1001,15 +993,7 @@ function ExistingMateComingPage({
           details: mateActions.trouble,
         });
 
-  const shown: MateComing | undefined =
-    linkWord.refused === null
-      ? arrival
-      : {
-          kind: "failed",
-          line: linkWord.refused.sentence,
-          verb: "remove",
-          details: linkWord.refused.details,
-        };
+  const shown: MateComing | undefined = linkWord.refused ?? arrival;
   // The hand-over: the words turn into the conversation's own, and the header with them — its way
   // into Zerops and its actions arrive here, in place, so the route changes under an unchanged frame.
   const handingArrival = handing && cameUp;
@@ -1072,7 +1056,7 @@ function ExistingMateComingPage({
                   nowMs={progress?.nowMs}
                   onRemove={deletion?.kind === "failed" ? undefined : removeEntry?.onSelect}
                   removeDisabled={removeEntry?.disabled}
-                  removeLabel={linkWord.refused === null ? undefined : removeEntry?.label}
+                  removeLabel={linkWord.exit === "birth" ? removeEntry?.label : undefined}
                   onRedeploy={redeploy}
                   {...(setupOrigin === undefined
                     ? {}

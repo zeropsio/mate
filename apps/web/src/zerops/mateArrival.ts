@@ -20,7 +20,7 @@
  */
 import type { BirthLineStep, BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { type MateSetup, type MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
-import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
+import { TAKING_LONGER_LINE, restartWay, type MateComing } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import type { HqPresence } from "@t3tools/client-runtime/zerops/environments";
 import type { HqLinkRefusal } from "@t3tools/client-runtime/zerops/hq";
@@ -478,10 +478,12 @@ export const LINK_REFUSAL_WORDS: Readonly<Record<string, (name: string) => strin
 
 /** What a Mate's page says of HQ's link to it, where that differs from its arrival's own words. */
 export interface ArrivalLink {
-  /** HQ refused its hello: the failed arrival, with HQ's reason and when; `null` where not. */
-  readonly refused: { readonly sentence: string; readonly details?: string } | null;
+  /** HQ refused its hello: the failed arrival it shows, with HQ's reason and when; `null` where not. */
+  readonly refused: Extract<MateComing, { kind: "failed" }> | null;
   /** Its *Try now* is offered: a press that does something. */
   readonly tryNow: boolean;
+  /** Its way out: its birth's *Delete* as HQ offers it while HQ refuses its link, else its entry's. */
+  readonly exit: "birth" | "entry";
 }
 
 /**
@@ -489,33 +491,40 @@ export interface ArrivalLink {
  * there to ask, so *Try now* is not offered — except for a container that failed at Zerops, whose
  * stop and start it is, and whose failure the page says in its own words. A refused hello turns
  * the arrival to failed, saying HQ's reason (a code this build does not know in the details) and
- * how long ago HQ refused it.
+ * how long ago HQ refused it, with its birth's *Delete* as its way out.
  */
 export function arrivalLink(
   mate: Named,
   input: {
     /** HQ's word on its link (`hqMateLink`). */
     readonly link: HqPresence | null;
-    /** Its container failed at Zerops. */
-    readonly containerFailed: boolean;
+    /** Its container's status at Zerops, where the listing read one. */
+    readonly containerStatus: string | undefined;
     /** HQ's refusal on its open birth (`hqMateLinkRefusal`). */
     readonly refusal: HqLinkRefusal | null;
     readonly nowMs: number;
   },
 ): ArrivalLink {
-  if (input.link !== "coming" || input.containerFailed) return { refused: null, tryNow: true };
+  const containerFailed = restartWay(input.containerStatus) === "hq";
+  if (input.link !== "coming" || containerFailed)
+    return { refused: null, tryNow: true, exit: "entry" };
   const { refusal } = input;
-  if (refusal === null) return { refused: null, tryNow: false };
-  const words = Object.hasOwn(LINK_REFUSAL_WORDS, refusal.code)
+  if (refusal === null) return { refused: null, tryNow: false, exit: "entry" };
+  const known = Object.hasOwn(LINK_REFUSAL_WORDS, refusal.code);
+  const words = known
     ? LINK_REFUSAL_WORDS[refusal.code]!(mate.name)
     : `HQ could not link ${mate.name}.`;
   const ago = formatRelativeTimeLabel(refusal.at, input.nowMs);
-  const sentence = ago === "" ? words : `${words} ${ago[0]!.toUpperCase()}${ago.slice(1)}.`;
+  const line = ago === "" ? words : `${words} ${ago[0]!.toUpperCase()}${ago.slice(1)}.`;
   return {
-    refused: Object.hasOwn(LINK_REFUSAL_WORDS, refusal.code)
-      ? { sentence }
-      : { sentence, details: refusal.code },
+    refused: {
+      kind: "failed",
+      line,
+      verb: "remove",
+      ...(known ? {} : { details: refusal.code }),
+    },
     tryNow: false,
+    exit: "birth",
   };
 }
 
