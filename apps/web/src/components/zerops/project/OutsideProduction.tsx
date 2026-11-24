@@ -13,7 +13,7 @@ import { useId, useState, type ReactNode } from "react";
 
 import type { AppOutsideProduction } from "~/zerops/useAppOutsideProduction";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import {
@@ -191,17 +191,16 @@ export function ProductionOutside({ address }: { readonly address: string | null
           {address === null ? null : (
             <>
               {" "}
-              <a
+              <InlineButton
                 aria-label={`Open production at ${outsideAddressShown(address)}`}
-                className="inline-flex max-w-full items-center gap-0.5 rounded-sm align-bottom text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                className="max-w-full align-bottom"
                 data-zerops-place-address=""
-                href={address}
-                rel="noreferrer"
-                target="_blank"
+                render={<a href={address} rel="noreferrer" target="_blank" />}
+                tone="plain"
               >
                 <span className="truncate">{outsideAddressShown(address)}</span>
                 <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
-              </a>
+              </InlineButton>
             </>
           )}
         </p>

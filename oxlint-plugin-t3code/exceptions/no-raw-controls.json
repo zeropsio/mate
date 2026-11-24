@@ -1072,124 +1072,20 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/zerops/project/OutsideProduction.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"inline-flex max-w-full items-center gap-0.5 rounded-sm align-bottom text-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/project/ProjectPageBody.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"pp-brought-more\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className=\"ov-change\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"pa-pr\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"pa-state pa-from\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex size-6 items-center justify-center rounded-full hover:bg-accent/60\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"ov-change\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/NewProjectAccess.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectAccessTable.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-acc-open\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-add\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-nav ov-nav-left\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-nav ov-nav-right\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"ov-reply-in\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectHistory.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"pp-hist-head\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/proposal/ProposalCard.tsx",

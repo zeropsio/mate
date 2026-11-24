@@ -60,7 +60,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
 import { GitHubIcon } from "../../Icons";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { WaitLine } from "../WaitLine";
 import {
   Dialog,
@@ -645,14 +645,15 @@ function PoolFaceView({
   readonly size?: 20 | 24 | undefined;
 }) {
   return (
-    <button
+    <Button
       aria-label={`${mate.name}: ${poolMateLine(mate.automation, working)}`}
-      className="flex size-6 items-center justify-center rounded-full hover:bg-accent/60"
       data-zerops-surface="project-automation-mate"
       onClick={() => {
         onOpen(mate.projectId);
       }}
-      type="button"
+      shape="round"
+      size="icon-xs"
+      variant="ghost"
     >
       <MateFace
         shape={mate.shape}
@@ -660,7 +661,7 @@ function PoolFaceView({
         state={poolMateFace(mate, working)}
         tint={mate.tint}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -1189,15 +1190,16 @@ function TaskBoardView({
                       ) : row.url === null ? (
                         <span className="pa-state">{row.source}</span>
                       ) : (
-                        <a
-                          className="pa-state pa-from"
-                          href={row.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <span className="real-name">{row.source}</span>
-                          <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
-                        </a>
+                        <span className="pa-state">
+                          <InlineButton
+                            className="max-w-full"
+                            render={<a href={row.url} rel="noreferrer" target="_blank" />}
+                            tone="muted"
+                          >
+                            <span className="real-name">{row.source}</span>
+                            <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                          </InlineButton>
+                        </span>
                       )}
                       <span className="pa-who">
                         <span className="sr-only">Waited </span>
@@ -1263,10 +1265,15 @@ function TaskBoardView({
                   </RowPress>
                   {/* Its pull request on GitHub, where it has one. */}
                   {row.change?.external === true ? (
-                    <a className="pa-pr" href={row.change.href} rel="noreferrer" target="_blank">
-                      {row.change.label}
-                      <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
-                    </a>
+                    <span className="pa-pr">
+                      <InlineButton
+                        render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
+                        tone="muted"
+                      >
+                        {row.change.label}
+                        <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                      </InlineButton>
+                    </span>
                   ) : null}
                   {/* The Changes card's Review: it opens the change, the row its conversation. */}
                   {review === null ? null : (

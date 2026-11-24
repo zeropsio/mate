@@ -30,6 +30,7 @@ import {
 } from "../../ui/alert-dialog";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import {
   Menu,
   MenuGroup,
@@ -552,17 +553,18 @@ function StackedRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <li
+    <Collapsible
       className="ov-acc-stack-row"
       data-open={open || undefined}
       data-pending={row.pending || undefined}
+      onOpenChange={setOpen}
+      open={open}
+      render={<li />}
     >
       <span className="ov-acc-person">
-        <button
-          aria-expanded={open}
-          className="ov-acc-open"
-          onClick={() => setOpen(!open)}
-          type="button"
+        <CollapsibleTrigger
+          className="grid min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_14px] items-center gap-x-2.5 py-1.5 text-start"
+          data-acc-open=""
         >
           <PersonAvatar name={row.name} picture={row.avatarUrl} size={24} />
           <span className="ov-acc-name">
@@ -572,7 +574,7 @@ function StackedRow({
             </span>
           </span>
           <ChevronDownIcon aria-hidden="true" className="ov-acc-caret" />
-        </button>
+        </CollapsibleTrigger>
         <RowMenu busy={saving?.has(row.key) === true} handlers={handlers} row={row} />
       </span>
       {open ? (
@@ -612,7 +614,7 @@ function StackedRow({
           })}
         </dl>
       ) : null}
-    </li>
+    </Collapsible>
   );
 }
 

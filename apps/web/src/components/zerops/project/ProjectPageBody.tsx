@@ -27,7 +27,7 @@ import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../../ui/dialog";
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
@@ -902,15 +902,13 @@ function Brought({
       {more > 0 ? (
         <>
           {" · "}
-          <button
-            className="pp-brought-more"
+          <InlineButton
             onClick={() => {
               setAll(true);
             }}
-            type="button"
           >
             + {more}
-          </button>
+          </InlineButton>
         </>
       ) : null}
     </p>

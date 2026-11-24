@@ -68,6 +68,8 @@ import type {
 } from "./ZeropsProjectsFlow";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import { spendProjectIds } from "./projectSpend.logic";
 import { ProjectCreditLine } from "./ProjectCreditLine";
 
@@ -242,24 +244,30 @@ function CardRow({
           <CardRowFill value={rowFill}>{children}</CardRowFill>
         </CardRowRoot>
       </div>
-      <button
-        aria-label="Back"
-        className="ov-nav ov-nav-left"
-        onClick={() => step(-1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
-      </button>
-      <button
-        aria-label="More projects"
-        className="ov-nav ov-nav-right"
-        onClick={() => step(1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
-      </button>
+      <span className="ov-nav ov-nav-left">
+        <Button
+          aria-label="Back"
+          onClick={() => step(-1)}
+          shape="round"
+          size="icon-md"
+          tabIndex={-1}
+          variant="secondary"
+        >
+          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+        </Button>
+      </span>
+      <span className="ov-nav ov-nav-right">
+        <Button
+          aria-label="More projects"
+          onClick={() => step(1)}
+          shape="round"
+          size="icon-md"
+          tabIndex={-1}
+          variant="secondary"
+        >
+          <ChevronRightIcon aria-hidden="true" className="size-4" />
+        </Button>
+      </span>
     </div>
   );
 }
@@ -544,23 +552,28 @@ function CardMates<T>({
       ))}
       {/* Standing off, Add a Mate says why under its words, where the label has no room. */}
       {onAdd === undefined || addWhy === null ? null : (
-        <button
-          aria-describedby={`${entry.group.groupId}-add-why`}
-          className="ov-add"
-          data-zerops-surface="add-mate"
-          disabled
-          type="button"
-        >
-          <span aria-hidden="true" className="ov-add-face">
-            <PlusIcon className="size-4" />
-          </span>
-          <span className="ov-add-words">
-            <span>Add a Mate</span>
-            <span className="ov-add-why" data-part="why" id={`${entry.group.groupId}-add-why`}>
-              {addWhy}
-            </span>
-          </span>
-        </button>
+        <div className="opacity-64">
+          <Row
+            aria-disabled
+            data-zerops-surface="add-mate"
+            lead={
+              <span aria-hidden="true" className="ov-add-face">
+                <PlusIcon className="size-4" />
+              </span>
+            }
+            line={
+              <span data-part="why" id={`${entry.group.groupId}-add-why`}>
+                {addWhy}
+              </span>
+            }
+            lineWraps
+            pressable
+            render={
+              <button aria-describedby={`${entry.group.groupId}-add-why`} disabled type="button" />
+            }
+            title="Add a Mate"
+          />
+        </div>
       )}
     </section>
   );
@@ -1100,10 +1113,10 @@ export function CardMateLiftActions({
             setText("");
           }}
         >
-          <input
+          <Input
             aria-label={label}
             autoFocus
-            className="ov-reply-in"
+            className="min-w-0 flex-1"
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;

@@ -5,6 +5,7 @@
  */
 
 import { Card } from "../../ui/card";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { ChevronRightIcon } from "lucide-react";
 import { Fragment, useState } from "react";
 
@@ -97,14 +98,15 @@ export function OtherContainers<T>({
   const others = rows.filter((row) => !props.isMate(row.item));
   return (
     <Card variant="flat">
-      <section className="flex flex-col" data-zerops-surface="other-containers">
+      <Collapsible
+        className="flex flex-col"
+        data-zerops-surface="other-containers"
+        onOpenChange={setOpen}
+        open={open}
+        render={<section />}
+      >
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
-          <button
-            aria-expanded={open}
-            className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setOpen((current) => !current)}
-            type="button"
-          >
+          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-md ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronRightIcon
               aria-hidden="true"
               className={cn(
@@ -118,7 +120,7 @@ export function OtherContainers<T>({
                 : "Containers · placement unknown"}{" "}
               <span className="font-normal text-muted-foreground">{rows.length}</span>
             </span>
-          </button>
+          </CollapsibleTrigger>
           {/* A narrow container has room for a cut "Not in a…" only: the summary waits for width. */}
           <span className="hidden min-w-0 flex-1 truncate text-caption text-muted-foreground @2xl/flow:block">
             {summary.line}
@@ -159,7 +161,7 @@ export function OtherContainers<T>({
             ) : null}
           </div>
         ) : null}
-      </section>
+      </Collapsible>
     </Card>
   );
 }

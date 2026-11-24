@@ -134,17 +134,6 @@
   text-wrap: pretty;
 }
 
-.pp-brought-more {
-  color: var(--primary);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.pp-brought-more:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .pp-place-note,
 .pp-empty {
   color: var(--muted-foreground);
@@ -428,30 +417,13 @@
   background: var(--ov-lift);
 }
 
-.pp-hist-head {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 18px auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  text-align: left;
+/* A release that opens lights under the pointer while it is shut. */
+.pp-hist-release {
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-button.pp-hist-head:hover {
+.pp-hist-release:not([data-open]):has(> [data-hist-head]:hover) {
   background: var(--ov-hover);
-}
-
-.pp-hist-release[data-open] > button.pp-hist-head:hover {
-  background: none;
-}
-
-.pp-hist-head:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 
 .pp-hist-chevron {
@@ -771,18 +743,6 @@ button.pp-hist-head:hover {
    too narrow for columns, and they go under the title as one line. */
 .pa-facts {
   display: contents;
-}
-
-/* Where a queued task came from, linked where it has an address. */
-.pa-from {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.pa-from:hover,
-.pa-pr:hover {
-  color: var(--foreground);
 }
 
 .pa-out {

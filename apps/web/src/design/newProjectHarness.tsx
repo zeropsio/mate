@@ -110,7 +110,7 @@ function Harness() {
     if (["adding", "found", "ticked"].includes(STATE))
       steps.push(() => click('[data-zerops-surface="add-access"]'));
     if (["found", "ticked"].includes(STATE))
-      steps.push(() => typeInto(".np-add-search input", "ka"));
+      steps.push(() => typeInto('input[aria-label="Search people"]', "ka"));
     if (STATE === "ticked")
       steps.push(() => click('.np-add-row [data-slot="toggle-group"] > :last-child'));
     if (STATE === "unnamed") steps.push(() => click('[data-zerops-new-project="start"]'));

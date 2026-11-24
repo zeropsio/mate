@@ -9,6 +9,7 @@ import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "../../ui/button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { PersonAvatar } from "../primitives";
 import {
@@ -141,9 +142,11 @@ function AddPeopleCard({
           <XIcon aria-hidden="true" />
         </Button>
       </div>
-      <label className="np-add-search">
-        <SearchIcon aria-hidden="true" />
-        <input
+      <InputGroup>
+        <InputGroupAddon>
+          <SearchIcon aria-hidden="true" />
+        </InputGroupAddon>
+        <InputGroupInput
           aria-label="Search people"
           autoFocus
           onChange={(event) => setQuery(event.currentTarget.value)}
@@ -151,7 +154,7 @@ function AddPeopleCard({
           type="search"
           value={query}
         />
-      </label>
+      </InputGroup>
       {typed === "" ? null : shown.length === 0 ? (
         <p className="np-add-empty">Nobody matches “{typed}”.</p>
       ) : (
