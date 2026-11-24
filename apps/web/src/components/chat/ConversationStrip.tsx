@@ -366,18 +366,16 @@ function FacePress({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={crewmateAccessibleName(crewmate)}
-            className={cn(
-              "conversation-crewface absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              threadId === null ? "cursor-default" : "cursor-pointer",
-            )}
+            className="absolute inset-0 size-auto min-h-0"
             data-conversation-crewmate={crewmate.handle}
             onClick={() => {
               if (threadId !== null) onOpen(threadId);
             }}
+            size="icon-md"
             tabIndex={folded ? -1 : undefined}
-            type="button"
+            variant="sidebar"
           />
         }
       />

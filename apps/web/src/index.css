@@ -10753,8 +10753,7 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 
 @media (hover: hover) {
-  .conversation-mate[data-opens]:hover,
-  .conversation-crewface:hover {
+  .conversation-mate[data-opens]:hover {
     background-color: var(--sidebar-row-hover);
   }
 }
