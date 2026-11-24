@@ -23,7 +23,7 @@ export function OperationSubjectLine({
       {subject.kind === "named" ? (
         <>
           <span
-            className="me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-muted px-1.5 font-medium text-foreground"
+            className="me-1.5 inline-flex rounded-control bg-muted px-1.5 font-medium text-foreground"
             data-zerops-subject-chip
           >
             {subject.host}

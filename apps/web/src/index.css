@@ -1628,7 +1628,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-micro-label-font-weight: 600;
   --zerops-micro-label-tracking: 0.06em;
   --zerops-micro-label-opacity: 0.45;
-  --zerops-chip-radius: 10px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A popup's lift; a raised surface's edge: a hairline under it, in dark a highlight on its top. */
@@ -1728,7 +1727,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-micro-label-font-weight: 600;
     --zerops-micro-label-tracking: 0.06em;
     --zerops-micro-label-opacity: 0.45;
-    --zerops-chip-radius: 10px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
     --zerops-shadow-popup: 0 18px 44px -18px rgb(0 0 0 / 80%);
