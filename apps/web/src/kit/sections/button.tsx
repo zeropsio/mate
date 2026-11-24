@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PlusIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpIcon, PlusIcon, ShuffleIcon } from "lucide-react";
 
 import { Button, InlineButton, type ButtonSize, type ButtonVariant } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -55,6 +55,17 @@ function ButtonSpecimens() {
           </Specimen>
           <Specimen label="a page's one hero action: lg">
             <Button size="lg">Set up HQ</Button>
+          </Specimen>
+          <Specimen label="round: the composer's send, a pill under a name">
+            <div className="flex items-center gap-2">
+              <Button aria-label="Send" shape="round" size="icon-md">
+                <ArrowUpIcon />
+              </Button>
+              <Button shape="round" size="sm" variant="secondary">
+                <ShuffleIcon />
+                Shuffle
+              </Button>
+            </div>
           </Specimen>
           <Specimen label="what deletes: destructive, beside its way out">
             <div className="flex items-center gap-2">

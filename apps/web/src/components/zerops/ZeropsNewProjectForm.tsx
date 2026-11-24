@@ -494,13 +494,6 @@ export function CreateProjectButton({
 }
 
 /** The page's one field: the project's name, its placeholder the label it needs. */
-/**
- * The Mate step's quiet presses under its name (Shuffle, Change style): pills, so they read as
- * tools on the Mate rather than the page's next step, which the create button is.
- */
-const MATE_ACT_CLASS =
-  "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface-raised px-2.75 py-1.25 font-medium text-body text-muted-foreground leading-4.5 outline-none transition-colors hover:not-disabled:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:size-4 [&_svg]:shrink-0";
-
 function NewProjectNameInput({
   form,
   inputRef,
@@ -575,28 +568,31 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             />
           </h1>
           <div className="new-project-mate-acts">
-            <button
+            {/* Pills, so they read as tools on the Mate rather than the page's next step. */}
+            <Button
               aria-busy={shuffle.rolling || undefined}
-              className={MATE_ACT_CLASS}
               disabled={creating}
               onClick={shuffle.roll}
-              type="button"
+              shape="round"
+              size="sm"
+              variant="secondary"
             >
               <ShuffleIcon aria-hidden />
               Shuffle
-            </button>
-            <button
+            </Button>
+            <Button
               aria-expanded={styling}
-              className={MATE_ACT_CLASS}
               disabled={creating}
+              shape="round"
+              size="sm"
+              variant="secondary"
               onClick={() => {
                 setStyling(!styling);
               }}
-              type="button"
             >
               {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
               {styling ? "Confirm style" : "Change style"}
-            </button>
+            </Button>
           </div>
           <CreateProjectButton
             buttonRef={addMate}

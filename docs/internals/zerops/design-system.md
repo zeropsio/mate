@@ -148,7 +148,9 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
   quiet tools, `destructive` only for what deletes, stops or acts on Production, `link` inside
-  text. Buttons are rectangles; a word that acts inside a sentence is `InlineButton`.
+  text. Buttons are rectangles, except `shape="round"`: the round icon press (the composer's send)
+  and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
+  is `InlineButton`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
