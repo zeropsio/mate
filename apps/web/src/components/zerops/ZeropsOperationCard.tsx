@@ -404,17 +404,16 @@ function DeployPipeline({
 
 export function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
-    <ServiceBrowserLink
+    <Button
       aria-label={`Open ${url}`}
-      className="inline-flex items-center gap-1.5 rounded-control bg-accent px-2 py-1 font-medium text-info-foreground text-caption hover:underline"
       data-zerops-chip-kind="url"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
+      render={<ServiceBrowserLink href={url} rel="noreferrer" target="_blank" />}
+      size="xs"
+      variant="secondary"
     >
-      <GlobeIcon aria-hidden="true" className="size-3 text-success-foreground" />
+      <GlobeIcon aria-hidden="true" />
       <span>{label}</span>
-    </ServiceBrowserLink>
+    </Button>
   );
 }
 
