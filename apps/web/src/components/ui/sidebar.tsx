@@ -811,9 +811,8 @@ const sidebarMenuButtonVariants = cva(
     },
     variants: {
       size: {
-        default:
-          "h-8 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-1.5 text-body",
-        icon: "size-8 justify-center rounded-[var(--control-radius)] p-0",
+        default: "h-8 rounded-control px-[var(--sidebar-row-content-inset)] py-1.5 text-body",
+        icon: "size-8 justify-center rounded-control p-0",
         lg: "h-12 rounded-control p-2 text-body group-data-[collapsible=icon]:p-0!",
         sm: "h-7 rounded-control p-2 text-caption",
       },

@@ -143,7 +143,8 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 
 - One scale, from `packages/shared/src/brand.ts` and projected into the web theme: five type steps
   (`text-caption`, `text-body`, `text-emphasis`, `text-title`, `text-display`), spacing on a 4 px
-  grid, three nested radii (`rounded-control` inside `rounded-card` inside `rounded-sheet`), three
+  grid, four nested radii (`rounded-mark` for a key, a checkbox or a swatch, inside `rounded-control`
+  inside `rounded-card` inside `rounded-sheet`; `rounded-full` only for a pill or a circle), three
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for

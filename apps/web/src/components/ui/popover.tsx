@@ -32,7 +32,7 @@ const popoverViewportPaddingClassName = {
   default: "py-4 [--viewport-inline-padding:--spacing(4)]",
   compact: "py-2 [--viewport-inline-padding:--spacing(3)]",
   // Rounded to the popup so edge-to-edge content clips to its corners.
-  none: "rounded-[calc(var(--radius-lg)-1px)] py-0 [--viewport-inline-padding:0px]",
+  none: "rounded-[calc(var(--radius-card)-1px)] py-0 [--viewport-inline-padding:0px]",
 } as const;
 
 function PopoverPopup({
@@ -79,11 +79,11 @@ function PopoverPopup({
       >
         <PopoverPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex origin-(--transform-origin) rounded-card text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-edge has-data-[slot=calendar]:rounded-card has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 before:shadow-edge-highlight",
+            "dropdown-glass relative flex origin-(--transform-origin) rounded-card text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge data-starting-style:scale-98 data-starting-style:opacity-0",
             // Leaves as it enters, so a closing popover stops covering the page and taking clicks.
             "data-ending-style:scale-98 data-ending-style:opacity-0",
             tooltipStyle &&
-              "w-fit text-balance rounded-control text-caption shadow-md/5 before:rounded-[calc(var(--radius-md)-1px)]",
+              "w-fit text-balance rounded-control text-caption shadow-md/5 before:rounded-[calc(var(--radius-control)-1px)]",
             !tooltipStyle &&
               "shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
             width !== "auto" && ["max-w-[calc(100vw-2rem)]", popoverPopupWidthClassName[width]],

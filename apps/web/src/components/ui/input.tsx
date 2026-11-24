@@ -101,13 +101,11 @@ function Input({
           size === "inline" && "inline-flex max-w-full min-w-0",
           !unstyled &&
             size === "inline" &&
-            "rounded-sm bg-background px-0.5 ring-1 ring-ring has-aria-invalid:ring-destructive",
+            "rounded-mark bg-background px-0.5 ring-1 ring-ring has-aria-invalid:ring-destructive",
           !unstyled &&
             size !== "inline" &&
-            "relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]",
-          !unstyled &&
-            size === "compact" &&
-            "rounded-control before:rounded-[calc(var(--radius-md)-1px)]",
+            "relative inline-flex w-full rounded-control border border-input bg-field bg-clip-ground text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-edge has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-field-invalid has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-field-autofill has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm",
+          !unstyled && size === "compact" && "rounded-control",
           font === "mono" && "font-mono tabular-nums",
           className,
         ) || undefined

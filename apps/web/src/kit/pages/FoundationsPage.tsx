@@ -291,37 +291,45 @@ function SpacingPage() {
 function RadiusPage() {
   return (
     <KitDocument
-      line="Three radii that nest and run parallel: each outer edge is the inner one plus the 4 px between them."
+      line="Four radii that nest and run parallel: each outer edge is the inner one plus the 4 px between them."
       title="Radius"
     >
-      <div className="flex flex-wrap items-start gap-12">
-        <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-10">
+        <div className="flex flex-col items-start gap-3">
           <div className="rounded-sheet border bg-muted p-1">
             <div className="rounded-card border bg-card p-1">
-              <div className="flex h-10 w-48 items-center justify-center rounded-control bg-foreground text-background text-body">
+              <div className="flex h-10 w-56 items-center justify-between rounded-control bg-foreground ps-3 pe-1 text-background text-body">
                 Control
+                <span className="flex h-8 items-center rounded-mark bg-background/20 px-2 text-caption">
+                  Mark
+                </span>
               </div>
             </div>
           </div>
-          <span className="text-caption text-muted-foreground">Nested, 4 px apart</span>
+          <span className="text-caption text-muted-foreground">
+            Mark inside control inside card inside sheet, 4 px apart
+          </span>
         </div>
-        {(
-          [
-            ["control", "rounded-control", "A press, a field, a toggle"],
-            ["card", "rounded-card", "A card, a menu's popup"],
-            ["sheet", "rounded-sheet", "A sheet, a dialog"],
-          ] as const
-        ).map(([name, utility, use]) => (
-          <div className="flex w-40 flex-col gap-3" key={name}>
-            <div className={`size-24 border bg-card ${utility}`} />
-            <span className="flex flex-col">
-              <code className="font-mono font-medium text-caption">
-                {utility} · {RADII[name]} px
-              </code>
-              <span className="text-caption text-muted-foreground">{use}</span>
-            </span>
-          </div>
-        ))}
+        <div className="flex flex-wrap items-start gap-8">
+          {(
+            [
+              ["mark", "rounded-mark", "A key, a checkbox, a swatch, inline code"],
+              ["control", "rounded-control", "A press, a field, a toggle, a row"],
+              ["card", "rounded-card", "A card, a menu's popup"],
+              ["sheet", "rounded-sheet", "A sheet, a dialog"],
+            ] as const
+          ).map(([name, utility, use]) => (
+            <div className="flex w-40 flex-col gap-3" key={name}>
+              <div className={`size-24 border bg-card ${utility}`} />
+              <span className="flex flex-col">
+                <code className="font-mono font-medium text-caption">
+                  {utility} · {RADII[name]} px
+                </code>
+                <span className="text-caption text-muted-foreground">{use}</span>
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </KitDocument>
   );

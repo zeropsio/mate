@@ -29,11 +29,11 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
   variants: {
     size: {
       xs: "min-h-6 gap-2 rounded-control px-1.5 py-0.5",
-      sm: "min-h-11 rounded-lg px-3 py-2.5",
-      md: "min-h-12 rounded-xl px-2.5 py-2",
-      lg: "min-h-15.75 rounded-xl px-2.5 py-2.75",
-      "lg-line": "min-h-12 rounded-xl px-2.5 py-1.5",
-      bar: "min-h-8 w-full gap-2 rounded-lg pe-3.5",
+      sm: "min-h-11 rounded-control px-3 py-2.5",
+      md: "min-h-12 rounded-card px-2.5 py-2",
+      lg: "min-h-15.75 rounded-card px-2.5 py-2.75",
+      "lg-line": "min-h-12 rounded-card px-2.5 py-1.5",
+      bar: "min-h-8 w-full gap-2 rounded-control pe-3.5",
     },
     /**
      * The whole row opens something: `true` lights its own ground under the pointer; `band` leaves
@@ -264,7 +264,7 @@ const rowColumnsVariants = cva(
        * menu's top. Its ground is `--row-ground`, for a mark ringed in it.
        */
       ground: {
-        none: "rounded-lg px-(--row-pad-x) py-(--row-pad-y)",
+        none: "rounded-control px-(--row-pad-x) py-(--row-pad-y)",
         tint: "relative isolate rounded-card bg-(--row-ground) transition-colors duration-150 ease-out-strong [--row-ground:color-mix(in_oklab,var(--zerops-mate-mark-side)_8%,var(--sidebar))] hover:[--row-ground:color-mix(in_oklab,var(--zerops-mate-mark-side)_13%,var(--sidebar))] aria-[current=page]:[--row-ground:var(--sidebar-row-active)] data-pressed:[--row-ground:var(--sidebar-row-active)] motion-reduce:transition-none",
       },
     },

@@ -585,10 +585,12 @@ export const ICON_MAP = {
 export const SPACING_UNIT = 4;
 
 /**
- * Three nested radii that run parallel: a control, the card it sits in, the sheet the card sits
- * in. Each outer edge is the inner one plus the 4 px between them. Pixels.
+ * Four nested radii that run parallel: a mark smaller than a control (a key, a checkbox, a swatch,
+ * inline code), a control, the card it sits in, the sheet the card sits in. Each outer edge is the
+ * inner one plus the 4 px between them. Pixels.
  */
 export const RADII = {
+  mark: 4,
   control: 8,
   card: 12,
   sheet: 16,
