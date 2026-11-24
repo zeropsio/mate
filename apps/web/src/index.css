@@ -6218,7 +6218,8 @@ code {
     margin-inline-end: 4px;
     padding: 0 9px;
     border-radius: 9999px;
-    background: var(--destructive);
+    /* The theme's red darkened until white figures read at WCAG AA (at least 4.5:1). */
+    background: color-mix(in oklab, var(--destructive) 80%, black);
     color: var(--color-white);
     font-size: 13px;
     line-height: 16px;
@@ -6234,7 +6235,7 @@ code {
   @media (hover: hover) and (pointer: fine) {
     .menu-top-count:hover,
     .menu-top-count[data-popup-open] {
-      background: color-mix(in oklab, var(--destructive) 88%, black);
+      background: color-mix(in oklab, var(--destructive) 70%, black);
     }
   }
 
