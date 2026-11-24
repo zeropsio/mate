@@ -336,13 +336,13 @@ function PillPress({
       <MenuTrigger
         disabled={menu === null}
         render={
-          <button
+          <Button
             aria-current="page"
             aria-label={crewmateAccessibleName(crewmate)}
-            className="conversation-crewmate absolute inset-0 cursor-pointer rounded-control outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+            className="absolute inset-0"
             data-conversation-crewmate={crewmate.handle}
             data-current="true"
-            type="button"
+            variant="bare"
           />
         }
       />

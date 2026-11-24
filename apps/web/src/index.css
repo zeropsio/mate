@@ -10572,11 +10572,12 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 
 /* The crewmate's pill is its menu's trigger, which the header fills like any
    other; it is clear instead, pressed or not: the band under it is its
-   ground. */
-.conversation-crewmate,
-html[data-theme-id] [data-chat-header] .conversation-crewmate,
-html[data-theme-id] [data-chat-header] .conversation-crewmate:hover,
-html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
+   ground. A face's press wears `data-conversation-crewmate` too; only the
+   pill's is current. */
+[data-conversation-crewmate][data-current],
+html[data-theme-id] [data-chat-header] [data-conversation-crewmate][data-current],
+html[data-theme-id] [data-chat-header] [data-conversation-crewmate][data-current]:hover,
+html[data-theme-id] [data-chat-header] [data-conversation-crewmate][data-current][data-popup-open] {
   background-color: transparent;
 }
 
