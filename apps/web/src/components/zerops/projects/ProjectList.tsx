@@ -106,7 +106,7 @@ export function OtherContainers<T>({
         render={<section />}
       >
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
-          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-md ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronRightIcon
               aria-hidden="true"
               className={cn(

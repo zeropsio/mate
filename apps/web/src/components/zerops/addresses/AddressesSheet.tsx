@@ -186,7 +186,7 @@ function MoreAddresses({
       {/* A press, not a title: it says what it shows or hides, on the edge the sections' titles
           share, so the sections it opens keep their own names without saying one twice. */}
       <CollapsibleTrigger
-        className="group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-lg text-left text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-control text-left text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         data-addresses-more=""
       >
         <span className="shrink-0 font-medium text-body">
