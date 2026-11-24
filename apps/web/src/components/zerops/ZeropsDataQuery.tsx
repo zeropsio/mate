@@ -33,7 +33,7 @@ export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryPr
 
   return (
     <div
-      className="shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2"
+      className="shrink-0 space-y-1 rounded-card border border-border p-2"
       data-zerops-data-query
     >
       <p className="text-caption text-muted-foreground">

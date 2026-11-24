@@ -562,7 +562,7 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
       <p className="text-2xs text-muted-foreground/75">Showing the raw patch.</p>
       <pre
         className={cn(
-          "max-h-[72vh] rounded-md border border-border/70 bg-background/70 p-3 font-mono text-2xs leading-relaxed text-muted-foreground/90",
+          "max-h-[72vh] rounded-control border border-border/70 bg-background/70 p-3 font-mono text-2xs leading-relaxed text-muted-foreground/90",
           wordWrap ? "overflow-auto whitespace-pre-wrap wrap-break-word" : "overflow-auto",
         )}
       >
@@ -591,7 +591,7 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
   const notices = (
     <>
       {isTruncated && files.length > 0 ? (
-        <p className="rounded-md bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
+        <p className="rounded-control bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
           This diff was truncated because it exceeded the preview limit. The changes shown are
           incomplete.
         </p>

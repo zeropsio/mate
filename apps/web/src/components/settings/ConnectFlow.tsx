@@ -177,7 +177,7 @@ export function AddressField({
     <div className="grid gap-1.5">
       <p className="text-body font-medium text-foreground">{label}</p>
       <div className="flex min-w-0 items-center gap-2">
-        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-md border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
+        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-control border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
           {value}
         </code>
         <Button
@@ -214,7 +214,7 @@ export function PendingAddress({
   return (
     <div className="grid gap-1.5">
       <p className="text-body font-medium text-foreground">{label}</p>
-      <p className="flex h-7.5 items-center rounded-md border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
+      <p className="flex h-7.5 items-center rounded-control border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
         {words}
       </p>
       {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}

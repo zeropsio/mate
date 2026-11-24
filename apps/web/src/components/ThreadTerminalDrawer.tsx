@@ -1695,7 +1695,7 @@ export default function ThreadTerminalDrawer({
                 "pointer-events-none absolute right-2 top-2 z-20 max-sm:static max-sm:flex max-sm:justify-end max-sm:bg-(--terminal-background) max-sm:px-2 max-sm:pt-2 max-sm:pb-1"
           }
         >
-          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
+          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-control border border-border/80 bg-background shadow-xs">
             {/* Half a phone's width is no terminal: the splits stay off it. */}
             <span className="contents max-sm:hidden">
               <TerminalActionButton
@@ -1934,7 +1934,7 @@ export default function ThreadTerminalDrawer({
                             <div
                               key={terminalId}
                               className={cn(
-                                "group/tab flex h-6 w-full items-center gap-0.5 rounded-md pr-2 pl-1.5 text-caption",
+                                "group/tab flex h-6 w-full items-center gap-0.5 rounded-control pr-2 pl-1.5 text-caption",
                                 isActive
                                   ? "bg-accent text-foreground"
                                   : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",

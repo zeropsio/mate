@@ -480,49 +480,9 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"h-7 rounded-[var(--zerops-card-radius)] border border-border bg-transparent px-2 text-xs\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex shrink-0 flex-wrap gap-2 rounded-[var(--zerops-card-radius)] border border-border p-2\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsDataTree.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 disabled:opacity-50\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
@@ -587,14 +547,6 @@
     "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text,var(--foreground))] in \"text-[var(--zerops-status-failed-text,var(--foreground))]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"flex cursor-pointer items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 text-sm transition-colors\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
@@ -699,22 +651,6 @@
     "path": "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
     "kind": "Literal",
     "fingerprint": "<> tracking-[var(--zerops-micro-label-tracking)] in \"text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/MintPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> bg-[var(--zerops-mint-panel)] in \"rounded-[var(--zerops-card-radius)] bg-[var(--zerops-mint-panel)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/primitives/MintPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> rounded-[var(--zerops-card-radius)] in \"rounded-[var(--zerops-card-radius)] bg-[var(--zerops-mint-panel)]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

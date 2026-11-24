@@ -124,7 +124,7 @@ export function ZeropsMateVerb({
       // verb read as a link out, and the one that mattered (Release) was
       // quieter than the amber chip counting what it would ship.
       className={cn(
-        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-caption leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
+        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-control border px-1.5 text-caption leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
         tone === undefined
           ? "border-input bg-popover text-foreground hover:bg-accent/50"
           : VERB_TONE_CLASS[tone],
@@ -157,7 +157,7 @@ export function ZeropsMateVerb({
  * down the page.
  */
 const CARD_SURFACE_CLASS =
-  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
+  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-card border border-border/60 bg-card py-2.5 ps-3 pe-2";
 
 /**
  * The row: the Mate as one entry of a list inside another surface (a project
@@ -165,14 +165,14 @@ const CARD_SURFACE_CLASS =
  * reserved height.
  */
 const ROW_SURFACE_CLASS =
-  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
+  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-control px-1.5 py-1";
 
 const LAYOUT = {
   card: {
     surface: CARD_SURFACE_CLASS,
     opens:
       "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
-    hit: "after:rounded-[var(--zerops-card-radius)]",
+    hit: "after:rounded-card",
     lineOne: "",
     name: "",
     time: "",
@@ -180,7 +180,7 @@ const LAYOUT = {
   row: {
     surface: ROW_SURFACE_CLASS,
     opens: "hover:bg-accent/60",
-    hit: "after:rounded-md",
+    hit: "after:rounded-control",
     // A row sits in a narrow step: the name never gives way, and its time and
     // Preview follow it — wrapping under it rather than cutting it to an
     // initial — with or without a Preview, at every width.

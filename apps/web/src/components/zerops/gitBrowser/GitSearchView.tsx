@@ -118,7 +118,7 @@ function ContentResults({
                 to={fileAt(sha, file.path)}
                 hrefOf={hrefOf}
                 navigate={navigate}
-                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 items-center gap-2 rounded-control px-2 py-1 text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <PierreEntryIcon
                   pathValue={file.path}
@@ -135,7 +135,7 @@ function ContentResults({
                   to={fileAt(sha, match.path, match.line)}
                   hrefOf={hrefOf}
                   navigate={navigate}
-                  className="flex h-7 min-w-0 items-center gap-3 rounded-md px-2 font-mono text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-7 min-w-0 items-center gap-3 rounded-control px-2 font-mono text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
                     {match.line}

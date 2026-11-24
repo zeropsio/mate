@@ -79,7 +79,7 @@ export function GitCommitsFold({
     <section className="flex min-w-0 flex-col" data-zerops-surface="git-commits">
       <button
         aria-expanded={open}
-        className="-mx-1.5 flex w-fit cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="-mx-1.5 flex w-fit cursor-pointer items-center gap-1 rounded-control px-1.5 py-1 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         onClick={onToggle}
         type="button"
       >
@@ -122,7 +122,7 @@ export function GitCommitsFold({
                   <div className="flex min-w-0 flex-1 items-baseline gap-2 py-1">{line}</div>
                 ) : (
                   <button
-                    className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                    className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
                     onClick={() => onOpenCommit(commit)}
                     type="button"
                   >

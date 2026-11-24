@@ -21,9 +21,8 @@ const cardVariants = cva("", {
     variant: {
       default:
         "relative flex flex-col rounded-2xl border bg-card not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
-      flat: "relative flex flex-col rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
-      inset:
-        "relative flex flex-col rounded-[calc(var(--zerops-card-radius)-4px)] bg-muted/60 text-card-foreground",
+      flat: "relative flex flex-col rounded-card border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
+      inset: "relative flex flex-col rounded-control bg-muted/60 text-card-foreground",
     },
     size: {
       none: "",

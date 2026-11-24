@@ -290,7 +290,7 @@ function SidebarBrand() {
     // where the traffic lights push the whole titlebar's content right.
     <Link
       aria-label={APP_BASE_NAME}
-      className="ml-[max(var(--workspace-controls-left),22px)] flex h-9 w-7.5 min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+      className="ml-[max(var(--workspace-controls-left),22px)] flex h-9 w-7.5 min-w-0 shrink-0 items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2"
       to="/zerops"
     >
       {/* The live mark alone, 30 x 36 centred in the row (the owner, 2026-10-12: "logo is too
@@ -316,7 +316,7 @@ export function SidebarCornerMark() {
     >
       <Link
         aria-label={APP_BASE_NAME}
-        className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
+        className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
         to="/"
       >
         {/* Live, as the open panel's lockup is: the same mark in the same

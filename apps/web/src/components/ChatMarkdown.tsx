@@ -640,7 +640,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
           shows while the table is under the pointer or holds the focus (always
           on a touch screen). On a line of its own under every table it cost
           the answer a row of air for one icon. */}
-      <div className="absolute end-0 top-1 flex items-center rounded-md bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+      <div className="absolute end-0 top-1 flex items-center rounded-control bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
         <Menu>
           <Tooltip>
             <TooltipTrigger
@@ -1394,7 +1394,7 @@ function ChatMarkdownImageFallback(props: {
   readonly reason?: string | undefined;
 }) {
   return (
-    <span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground">
+    <span className="my-1 inline-flex items-center gap-1.5 rounded-control border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
       {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
       {props.reason ? ` · ${props.reason}` : null}

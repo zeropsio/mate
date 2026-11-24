@@ -349,7 +349,7 @@ function WhenExpressionNodeEditor({
       : [condition.identifier];
 
     return (
-      <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/60 px-2 py-2">
+      <div className="flex items-center gap-2 rounded-control border border-border/70 bg-background/60 px-2 py-2">
         <Toggle
           pressed={condition.negated}
           onPressedChange={(pressed) => onChange(setConditionNegated(node, pressed))}
@@ -660,7 +660,7 @@ function WhenExpressionBuilder({
             onRemove={() => updateExpressionValue(undefined)}
           />
         ) : (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/15 p-3">
+          <div className="rounded-control border border-dashed border-border/80 bg-muted/15 p-3">
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" onClick={addRootCondition}>
                 <PlusIcon className="size-3.5" />

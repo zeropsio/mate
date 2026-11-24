@@ -276,7 +276,7 @@ function proposalBody({
     if (access === undefined) return null;
     return (
       <div className="grid min-w-0 gap-1.5 text-caption">
-        <ul className="grid min-w-0 gap-1 rounded-md bg-muted px-3 py-2" data-proposal-access>
+        <ul className="grid min-w-0 gap-1 rounded-control bg-muted px-3 py-2" data-proposal-access>
           {access.lines.map((line) => (
             <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
               {line}
@@ -299,7 +299,7 @@ function proposalBody({
     const { key, value, secret } = proposal.params;
     return (
       <div
-        className="flex min-w-0 items-baseline gap-2 rounded-md bg-muted px-3 py-2 font-mono text-caption"
+        className="flex min-w-0 items-baseline gap-2 rounded-control bg-muted px-3 py-2 font-mono text-caption"
         data-proposal-value
       >
         <span className="shrink-0 font-medium text-foreground">{key}</span>
@@ -366,7 +366,7 @@ function proposalBody({
 function Words({ words }: { readonly words: string }) {
   return (
     <p
-      className="min-w-0 rounded-md bg-muted px-3 py-2 text-body whitespace-pre-wrap wrap-anywhere text-foreground"
+      className="min-w-0 rounded-control bg-muted px-3 py-2 text-body whitespace-pre-wrap wrap-anywhere text-foreground"
       data-proposal-words
     >
       {words}
@@ -392,7 +392,7 @@ export function Attachment({ title, text }: { readonly title: string; readonly t
         <span className="min-w-0 truncate">{title}</span>
       </button>
       {open ? (
-        <pre className="max-h-60 min-w-0 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
+        <pre className="max-h-60 min-w-0 overflow-auto rounded-control bg-muted px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
           {text}
         </pre>
       ) : null}

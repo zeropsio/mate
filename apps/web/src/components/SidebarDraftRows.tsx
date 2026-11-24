@@ -103,7 +103,7 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                     type="button"
                     aria-label="Discard draft"
                     onClick={handleDiscard}
-                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-control bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
                   >
                     <XIcon className="size-3" />
                   </button>

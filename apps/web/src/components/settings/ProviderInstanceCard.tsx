@@ -280,7 +280,7 @@ function ProviderEnvironmentSection(props: {
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-md border border-border/70">
+        <div className="overflow-hidden rounded-control border border-border/70">
           <Table>
             <TableHeader className="bg-muted/25 text-[11px] text-muted-foreground">
               <TableRow className="hover:bg-transparent">
@@ -794,7 +794,7 @@ export function ProviderInstanceCard({
                       </div>
                     ) : null}
                     {updateCommand ? (
-                      <div className="flex min-w-0 items-center gap-1 rounded-md border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
+                      <div className="flex min-w-0 items-center gap-1 rounded-control border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
                         <ScrollArea radius="none" scrollFade className="h-8 min-w-0 flex-1">
                           <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-[11px] text-foreground">
                             {updateCommand}

@@ -406,7 +406,7 @@ export function UrlChip({ label, url }: { readonly label: string; readonly url: 
   return (
     <ServiceBrowserLink
       aria-label={`Open ${url}`}
-      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-1 font-medium text-info-foreground text-caption hover:underline"
+      className="inline-flex items-center gap-1.5 rounded-control bg-accent px-2 py-1 font-medium text-info-foreground text-caption hover:underline"
       data-zerops-chip-kind="url"
       href={url}
       rel="noreferrer"

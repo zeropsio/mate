@@ -970,7 +970,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="appearance-contrast"
               >
                 {settings.appearanceContrast}%
@@ -1016,7 +1016,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="glass-opacity"
               >
                 {settings.glassOpacity}%

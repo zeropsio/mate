@@ -97,7 +97,7 @@ export function ZeropsHqCardView({
         {view.opens ? (
           <button
             aria-expanded={open}
-            className="-ms-1 inline-flex items-center gap-1 rounded-md px-1 font-medium"
+            className="-ms-1 inline-flex items-center gap-1 rounded-control px-1 font-medium"
             onClick={() => onOpenChange(!open)}
             type="button"
           >

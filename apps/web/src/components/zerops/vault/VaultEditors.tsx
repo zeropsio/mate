@@ -217,7 +217,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           {which === "sensitive" ? <LockIcon aria-hidden="true" className="size-3" /> : null}
           {label}
         </div>
-        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-md bg-muted focus-within:ring-1 focus-within:ring-ring">
+        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
           <div
             aria-hidden="true"
             className="vault-gutter py-2 text-center font-mono font-medium text-caption leading-5"
@@ -320,7 +320,7 @@ export function VaultReview(props: VaultReviewProps) {
         <div
           className={
             line.guarded && !forced.has(write.key)
-              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-md bg-warning-surface px-2 pt-2.25 pb-2.5"
+              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
               : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5"
           }
           data-vault-review-line={write.key}

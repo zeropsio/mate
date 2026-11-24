@@ -95,7 +95,7 @@ function CopyErrorButton({ text }: { text: string }) {
             size="icon-sm"
             variant="ghost"
             aria-label={label}
-            className="[--control-icon-color:currentColor] rounded-md text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground"
+            className="[--control-icon-color:currentColor] rounded-control text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground"
             onClick={() => copyToClipboard(text)}
           />
         }
@@ -126,7 +126,7 @@ function ToastExpandableSection({
     <div className="min-w-0">
       <button
         aria-expanded={open}
-        className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 text-left text-caption font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex cursor-pointer items-center gap-1 rounded-control py-0.5 text-left text-caption font-medium text-muted-foreground transition-colors hover:text-foreground"
         onClick={() => setOpen((prev) => !prev)}
         type="button"
       >
@@ -707,7 +707,7 @@ function AnchoredToasts() {
                 <Toast.Root
                   className={cn(
                     "dropdown-glass relative overflow-visible text-balance text-popover-foreground text-xs shadow-xl shadow-black/25 transition-[scale,opacity] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0",
-                    tooltipStyle ? "rounded-md" : "rounded-lg",
+                    tooltipStyle ? "rounded-control" : "rounded-lg",
                   )}
                   data-slot="toast-popup"
                   toast={toast}

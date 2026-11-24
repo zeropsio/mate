@@ -1255,7 +1255,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       >
         <span className="text-caption text-sidebar-muted-foreground">No Mate yet</span>
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
           type="button"
         >
@@ -2684,7 +2684,7 @@ export function SidebarAccountLine({
       </span>
       {actions.map(({ label, run, busy = false }) => (
         <button
-          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent"
+          className="shrink-0 cursor-pointer rounded-control px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent"
           disabled={busy}
           key={label}
           onClick={run}

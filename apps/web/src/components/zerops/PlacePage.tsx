@@ -1364,7 +1364,7 @@ export function ZeropsStopPane({
                       onRollBack: (from: HTMLElement) => onRollBack(rollBackTo, from),
                     },
                   })}
-              triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
           )}
         </>

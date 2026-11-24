@@ -440,6 +440,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-failed-text: var(--zerops-status-failed-text);
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
+  --color-mint-panel: var(--zerops-mint-panel);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1618,7 +1619,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-micro-label-tracking: 0.06em;
   --zerops-micro-label-opacity: 0.45;
   --zerops-chip-radius: 10px;
-  --zerops-card-radius: 10px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A Mate's colour: one of eight per agent, none of them the brand teal
@@ -1710,7 +1710,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-micro-label-tracking: 0.06em;
     --zerops-micro-label-opacity: 0.45;
     --zerops-chip-radius: 10px;
-    --zerops-card-radius: 10px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
     --zerops-mate-tint-coral: #b85f4b;
@@ -3703,7 +3702,7 @@ code {
     position: relative;
     overflow: hidden;
     border: 1px solid var(--zerops-flat-card-border);
-    border-radius: var(--zerops-card-radius);
+    border-radius: var(--radius-card);
   }
 
   .mac-command {
@@ -14571,7 +14570,7 @@ a.message-file:focus-visible {
   gap: 10px;
   padding: 9px 12px;
   border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
-  border-radius: var(--zerops-card-radius);
+  border-radius: var(--radius-card);
   cursor: pointer;
   transition:
     background-color 150ms var(--ease-out-strong),
@@ -14591,7 +14590,7 @@ a.message-file:focus-visible {
 .put-live-shape-held {
   display: block;
   height: 76px;
-  border-radius: var(--zerops-card-radius);
+  border-radius: var(--radius-card);
   background: var(--muted);
 }
 .put-live-shape-held + .put-live-shape-held {

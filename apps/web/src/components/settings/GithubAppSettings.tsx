@@ -354,7 +354,7 @@ function AccountFace({
   readonly account: string | null;
   readonly type: "Organization" | "User" | null;
 }) {
-  const shape = type === "User" ? "rounded-full" : "rounded-md";
+  const shape = type === "User" ? "rounded-full" : "rounded-control";
   return account === null ? (
     <span aria-hidden className={`size-5 shrink-0 bg-muted ${shape}`} />
   ) : (
@@ -575,7 +575,7 @@ function BotGroup({
       )}
       {removing ? (
         <div
-          className="grid gap-2 rounded-md bg-muted/40 p-3"
+          className="grid gap-2 rounded-control bg-muted/40 p-3"
           data-zerops-surface="settings-github-remove"
           role="group"
         >

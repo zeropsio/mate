@@ -825,7 +825,7 @@ function ToolNames({ tools }: { readonly tools: ReadonlyArray<McpServerRow["tool
     <span className="flex flex-wrap items-center gap-1" data-mcp-tools>
       {shown.map((tool) => {
         const chip = (
-          <span className="rounded-md border border-border px-1.5 font-mono text-caption leading-5">
+          <span className="rounded-control border border-border px-1.5 font-mono text-caption leading-5">
             {tool.name}
           </span>
         );

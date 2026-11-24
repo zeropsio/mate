@@ -78,7 +78,7 @@ export function OpenCodeAgentLine({
       <span className="flex min-w-0 items-center gap-2.5">
         <span
           aria-hidden="true"
-          className="flex size-5.5 shrink-0 items-center justify-center rounded-md bg-accent"
+          className="flex size-5.5 shrink-0 items-center justify-center rounded-control bg-accent"
         >
           <OpenCodeIcon className="size-3.5" />
         </span>

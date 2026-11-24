@@ -235,7 +235,7 @@ export function ZeropsDataTable({
 
       {columnsOpen && onToggleColumn !== undefined ? (
         <div
-          className="flex shrink-0 flex-wrap gap-2 rounded-[var(--zerops-card-radius)] border border-border p-2"
+          className="flex shrink-0 flex-wrap gap-2 rounded-card border border-border p-2"
           data-zerops-data-table-column-picker
         >
           {model.columns.map((column) => (

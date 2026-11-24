@@ -153,7 +153,7 @@ export function GitFileFinder({
                   to={open(row)}
                   hrefOf={hrefOf}
                   navigate={navigate}
-                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 items-center gap-2 rounded-control px-2 py-1.5 text-body hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <PierreEntryIcon
                     pathValue={row.path}

@@ -4,7 +4,7 @@ export function ReviewCommentDiffLoading({ patch }: { patch: string }) {
       <div role="status" className="text-caption text-muted-foreground">
         Loading diff...
       </div>
-      <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-caption">{patch}</pre>
+      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">{patch}</pre>
     </div>
   );
 }

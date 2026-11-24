@@ -139,14 +139,14 @@ function DiscoverBody({ readResult }: { readonly readResult: ReadResultOf<"disco
     >
       {readResult.pending
         ? placeholderKeys(2).map((key) => (
-            <li className="space-y-1.5 rounded-md bg-muted/60 px-2 py-1.5" key={key}>
+            <li className="space-y-1.5 rounded-control bg-muted/60 px-2 py-1.5" key={key}>
               <Placeholder className="w-1/2" />
               <Placeholder className="w-1/3" />
             </li>
           ))
         : readResult.rows.map((row) => (
             <li
-              className="min-w-0 space-y-0.5 rounded-md bg-muted/60 px-2 py-1.5"
+              className="min-w-0 space-y-0.5 rounded-control bg-muted/60 px-2 py-1.5"
               data-zerops-read-cell
               key={row.hostname}
             >

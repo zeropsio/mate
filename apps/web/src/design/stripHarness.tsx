@@ -717,7 +717,7 @@ function Frame({
     <section className="flex flex-col gap-2" data-head-state={state.id}>
       <p className="text-caption text-muted-foreground">{state.title}</p>
       <div
-        className="flex flex-col overflow-hidden rounded-md border border-border bg-background"
+        className="flex flex-col overflow-hidden rounded-control border border-border bg-background"
         data-head-frame={state.id}
         style={{ width: state.width ?? WIDTH }}
       >

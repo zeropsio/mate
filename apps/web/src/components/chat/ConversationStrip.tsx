@@ -123,7 +123,7 @@ function MateChatsMenu({
         render={
           <button
             aria-label={`${mateName}'s chats`}
-            className="me-1.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:text-foreground"
+            className="me-1.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-control text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:text-foreground"
             data-chat-header-ghost
             data-conversation-chats
             type="button"

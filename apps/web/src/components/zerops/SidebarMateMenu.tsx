@@ -459,7 +459,7 @@ export function MateRenameField({
       />
       {tried && error !== undefined ? (
         <span
-          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-md border border-border bg-popover px-2 py-1 text-caption text-destructive-foreground shadow-md"
+          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-control border border-border bg-popover px-2 py-1 text-caption text-destructive-foreground shadow-md"
           data-zerops-surface="sidebar-mate-rename-error"
           role="alert"
         >

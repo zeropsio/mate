@@ -96,7 +96,7 @@ export function PipelineSegments({
           <li
             aria-current={step.state === "running" ? "step" : undefined}
             className={cn(
-              "grid min-w-0 content-start gap-px rounded-md px-2 py-1",
+              "grid min-w-0 content-start gap-px rounded-control px-2 py-1",
               SEGMENT_BOX[step.state],
             )}
             data-zerops-process-state={step.state}
@@ -135,7 +135,7 @@ export function CheckChips({
         const { Icon, className } = STEP_GLYPH[step.state];
         return (
           <li
-            className="inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-foreground text-caption"
+            className="inline-flex min-w-0 items-center gap-1 rounded-control bg-muted/60 px-1.5 py-0.5 text-foreground text-caption"
             data-zerops-process-state={step.state}
             key={step.id}
           >

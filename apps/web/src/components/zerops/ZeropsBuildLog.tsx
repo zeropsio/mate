@@ -166,7 +166,7 @@ export function BuildLogLines({
       ref={scrollerRef}
       aria-label="Build log"
       aria-live={live ? "polite" : undefined}
-      className="h-120 overflow-y-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-caption leading-5"
+      className="h-120 overflow-y-auto rounded-control bg-muted/60 px-3 py-2 font-mono text-caption leading-5"
       data-zerops-build-log-body
       onScroll={(event) => {
         const scroller = event.currentTarget;

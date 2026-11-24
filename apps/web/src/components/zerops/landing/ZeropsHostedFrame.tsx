@@ -95,7 +95,7 @@ export function ZeropsHostedFrame({
               {standalone ? (
                 <Link
                   aria-label={APP_BASE_NAME}
-                  className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+                  className="flex h-7 shrink-0 items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2"
                   to="/"
                 >
                   <MateLockup decorative className="h-6 w-auto" />

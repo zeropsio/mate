@@ -942,7 +942,7 @@ function pickStep(
       <>
         {returnedNote}
         {freshHere === 0 || account === null ? null : (
-          <p className="rounded-md bg-status-ok-surface px-3 py-2 text-body text-status-ok-text">
+          <p className="rounded-control bg-status-ok-surface px-3 py-2 text-body text-status-ok-text">
             {account.account} is added ·{" "}
             {freshHere === 1 ? "1 new repository" : `${String(freshHere)} new repositories`}
           </p>
@@ -1064,7 +1064,7 @@ function pickStep(
 /** What GitHub said on the way back from its page, where the account is not usable yet. */
 function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting" | null }) {
   return returned === null ? null : (
-    <p className="rounded-md bg-status-busy-surface px-3 py-2 text-body text-status-busy-text">
+    <p className="rounded-control bg-status-busy-surface px-3 py-2 text-body text-status-busy-text">
       {returned === "requested"
         ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
         : "What you added on GitHub waits for an Owner or Admin's OK in Settings › Automation."}

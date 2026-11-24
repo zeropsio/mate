@@ -406,7 +406,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     <div
                       key={`${activeQuestion.id}:${optionValue}`}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                        "flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left",
                         isSelected ? "bg-muted/55 text-foreground" : "text-foreground/85",
                       )}
                     >
@@ -417,7 +417,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 }
                 const shortcutKey = index < 9 ? index + 1 : null;
                 const className = cn(
-                  "group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
+                  "group flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
                   isSelected
                     ? "bg-muted/55 text-foreground"
                     : "bg-transparent text-foreground/85 hover:bg-muted/30",
@@ -466,7 +466,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           */
               <div
                 className={cn(
-                  "mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                  "mt-1 flex items-center gap-2 rounded-control px-2.5 py-2 text-left",
                   customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
                 )}
                 data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}

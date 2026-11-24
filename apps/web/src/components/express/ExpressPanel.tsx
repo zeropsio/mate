@@ -443,7 +443,7 @@ function SavedDesign({
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
       <button
-        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
+        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-control bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
         data-reopening={reopening || undefined}
         disabled={reopening}
         onClick={onEdit}

@@ -388,7 +388,7 @@ function EnvironmentForm({
                 {options.map((option) => (
                   <label
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 px-3 py-2.5 text-sm transition-colors",
+                      "flex cursor-pointer items-start gap-3 rounded-card border border-border/55 px-3 py-2.5 text-sm transition-colors",
                       option.id === recipeId
                         ? "border-primary/40 bg-primary/5"
                         : "hover:bg-accent/50",

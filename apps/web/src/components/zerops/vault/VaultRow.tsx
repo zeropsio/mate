@@ -467,7 +467,7 @@ function RowBody(props: VaultRowProps) {
       {locking ? (
         <div
           aria-label={`Hide ${props.label}`}
-          className="grid gap-2.5 rounded-md bg-muted/60 px-3 py-2.5 text-line leading-4.75"
+          className="grid gap-2.5 rounded-control bg-muted/60 px-3 py-2.5 text-line leading-4.75"
           role="alertdialog"
         >
           <p>
@@ -501,7 +501,7 @@ function RowBody(props: VaultRowProps) {
       {guard ? (
         <div
           aria-label={`Remove ${value.key}`}
-          className="grid gap-2.5 rounded-md bg-warning-surface px-3 py-2.5 text-line leading-4.75"
+          className="grid gap-2.5 rounded-control bg-warning-surface px-3 py-2.5 text-line leading-4.75"
           role="alertdialog"
         >
           <p>

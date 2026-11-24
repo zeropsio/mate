@@ -84,7 +84,7 @@ export function ZeropsAssignMateForm({
           <select
             aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-body text-foreground"
+            className="h-9 w-full rounded-control border border-border bg-background px-3 text-body text-foreground"
             disabled={pending || readingOrganization !== undefined || readFailed !== undefined}
             id={`${id}-member`}
             onChange={(event) => {

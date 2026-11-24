@@ -263,7 +263,7 @@ function Choice({
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/55 text-sm transition-colors",
+        "flex cursor-pointer items-center gap-3 rounded-card border border-border/55 text-sm transition-colors",
         compact ? "px-3 py-2" : "px-3 py-2.5",
         selected ? "border-primary/40 bg-primary/5" : "hover:bg-accent/50",
       )}

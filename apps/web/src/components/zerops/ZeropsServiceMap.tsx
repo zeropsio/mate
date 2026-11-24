@@ -682,7 +682,7 @@ function stageRow(row: ZeropsServiceRow, stage: ZeropsTopologyService): ZeropsSe
 }
 
 const TRIGGER_CLASS =
-  "flex min-w-0 flex-1 cursor-default items-center gap-2.5 text-left outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-ring";
+  "flex min-w-0 flex-1 cursor-default items-center gap-2.5 text-left outline-none focus-visible:rounded-control focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The control plane's card: the mint panel, the Mate's home. Its head — the Mate's face wearing the

@@ -950,7 +950,7 @@ function AgentLogo({
       aria-hidden="true"
       className={
         size === "sm"
-          ? "flex size-5.5 shrink-0 items-center justify-center rounded-md bg-accent"
+          ? "flex size-5.5 shrink-0 items-center justify-center rounded-control bg-accent"
           : "flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
       }
       data-zerops-agent-logo={agentId}

@@ -275,7 +275,7 @@ function AggregateCard({
         <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/75">
           {label}
         </div>
-        <div className="rounded-md bg-muted/55 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground/70">
+        <div className="rounded-control bg-muted/55 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground/70">
           {aggregate.processCount} {aggregate.processCount === 1 ? "process" : "processes"}
         </div>
       </div>
@@ -1071,7 +1071,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         <div className="grid overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
           <div className="px-4 py-4 sm:px-5">
             <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-md bg-muted/60">
+              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
                 <BatteryIcon className="size-3.5" />
               </span>
               Host state
@@ -1139,7 +1139,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
           <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
             <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-md bg-muted/60">
+              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
                 <GaugeIcon className="size-3.5" />
               </span>
               Collection health

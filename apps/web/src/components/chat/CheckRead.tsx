@@ -43,19 +43,19 @@ function Block({ block }: { readonly block: PageBlock }) {
       );
     case "button":
       return (
-        <p className="w-fit max-w-full truncate rounded-md border border-border px-3 py-1 text-foreground text-body">
+        <p className="w-fit max-w-full truncate rounded-control border border-border px-3 py-1 text-foreground text-body">
           {block.text}
         </p>
       );
     case "field":
       return (
-        <p className="h-8 w-56 max-w-full truncate rounded-md border border-border px-2 text-muted-foreground text-body leading-8">
+        <p className="h-8 w-56 max-w-full truncate rounded-control border border-border px-2 text-muted-foreground text-body leading-8">
           {block.text}
         </p>
       );
     case "image":
       return (
-        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-md bg-foreground/8 px-2 text-center text-muted-foreground text-caption">
+        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption">
           {block.text}
         </p>
       );

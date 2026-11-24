@@ -312,7 +312,7 @@ function WorkflowScriptView({
     orchestrationEnvironment.workflowScript({ environmentId, input: { threadId, scriptPath } }),
   );
   return (
-    <div className="mx-1.5 mb-1 rounded-md border border-border/60 bg-background/60">
+    <div className="mx-1.5 mb-1 rounded-control border border-border/60 bg-background/60">
       <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1">
         <Braces aria-hidden className="size-3 text-muted-foreground" />
         <span className="truncate font-mono text-3xs text-muted-foreground">
@@ -527,7 +527,7 @@ function CollapsedWorkflowSection({
       <button
         type="button"
         onClick={onExpand}
-        className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent/40"
+        className="flex w-full items-center gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent/40"
         aria-expanded={false}
       >
         <StatusDot status={failed > 0 ? "failed" : group.workflow.status} />

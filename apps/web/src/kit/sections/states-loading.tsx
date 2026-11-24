@@ -206,7 +206,7 @@ function LoadingCensus() {
           label="<ContextWindowMeterPlaceholder />"
           source="apps/web/src/components/chat/ContextWindowMeter.tsx"
         >
-          <span className="inline-flex rounded-md border border-dashed">
+          <span className="inline-flex rounded-control border border-dashed">
             <ContextWindowMeterPlaceholder />
           </span>
         </Specimen>

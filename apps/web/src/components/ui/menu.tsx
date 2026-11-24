@@ -226,7 +226,7 @@ const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
   segment:
     // Half the track, two to a row (`MenuSwitch`): four choices keep their
     // words whole within the menu's width, "Creation date" never cut.
-    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-caption pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-control px-2 font-medium text-muted-foreground text-caption pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({

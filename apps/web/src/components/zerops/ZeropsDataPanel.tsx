@@ -734,7 +734,7 @@ export function ZeropsDataPanel({
     <div className="space-y-1" data-zerops-data-services>
       {rows.map((row) => (
         <button
-          className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+          className="flex w-full flex-col items-start gap-0.5 rounded-card px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
           data-zerops-data-service={row.hostname}
           disabled={!row.canBrowse}
           key={row.hostname}
@@ -1044,7 +1044,7 @@ export function ZeropsDataPanel({
           ? {
               toolbarLeading: (
                 <input
-                  className="h-7 rounded-[var(--zerops-card-radius)] border border-border bg-transparent px-2 text-xs"
+                  className="h-7 rounded-control border border-border bg-transparent px-2 text-xs"
                   data-zerops-data-document-search
                   onChange={(event) => setDocumentSearchQuery(event.target.value)}
                   onKeyDown={(event) => {

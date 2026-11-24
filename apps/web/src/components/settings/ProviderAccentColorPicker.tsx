@@ -159,7 +159,7 @@ function ProviderCustomColorPanel(props: {
             setHsv(hexToHsv(nextColor));
             props.onCommit(nextColor);
           }}
-          className="h-8 rounded-md border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption"
+          className="h-8 rounded-control border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption"
           aria-label="Custom hex accent color"
           spellCheck={false}
         />

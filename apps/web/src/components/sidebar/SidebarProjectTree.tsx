@@ -184,7 +184,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
         aria-expanded={projectExpanded}
         aria-label={`${projectExpanded ? "Collapse" : "Expand"} project ${projectDisplayName}`}
         onClick={() => treeProps.onToggleProject(project.key)}
-        className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
+        className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-control px-2 text-left text-sidebar-foreground outline-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronDownIcon
           aria-hidden
@@ -231,13 +231,13 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
 
             return (
               <li key={member.key} className="list-none">
-                <div className="group flex min-h-8 w-full items-center rounded-md text-sidebar-foreground hover:bg-sidebar-row-hover">
+                <div className="group flex min-h-8 w-full items-center rounded-control text-sidebar-foreground hover:bg-sidebar-row-hover">
                   <button
                     type="button"
                     aria-expanded={memberExpanded}
                     aria-label={`${memberExpanded ? "Collapse" : "Expand"} workspace ${memberDisplayName}`}
                     onClick={() => treeProps.onToggleMember(member.key)}
-                    className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex min-h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ChevronDownIcon
                       aria-hidden

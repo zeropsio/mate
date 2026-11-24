@@ -235,7 +235,7 @@ export function MermaidSvg({
       aria-label="Open the diagram"
       className={cn(
         fit,
-        "cursor-zoom-in rounded-md focus-visible:outline-2 focus-visible:outline-ring",
+        "cursor-zoom-in rounded-control focus-visible:outline-2 focus-visible:outline-ring",
       )}
       onClick={() => onExpand(mermaidImageUrl(svg))}
       dangerouslySetInnerHTML={{ __html: fitted }}

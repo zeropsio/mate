@@ -573,7 +573,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   render={
                     <button
                       aria-label="Copy checkout path"
-                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                       type="button"
                       onClick={() =>
                         copyPathToClipboard(selectedCheckout.workspaceRoot, {

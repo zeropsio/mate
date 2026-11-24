@@ -447,7 +447,7 @@ export function BrowserStrip({
                   aria-label={label}
                   aria-pressed={check === onStage}
                   className={cn(
-                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-control px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
                     check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
                   )}
                   data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}

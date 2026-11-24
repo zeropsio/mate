@@ -172,7 +172,7 @@ export function ZeropsChangeLinkChip({
         : GitPullRequestArrow;
   const chip = (
     <a
-      className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-body no-underline"
+      className="inline-flex items-baseline gap-1 rounded-control border border-border bg-muted px-1.5 align-baseline text-body no-underline"
       data-zerops-change-state={state === undefined ? "reading" : state.kind}
       data-zerops-change-since={landedSince ? "landed" : undefined}
       data-zerops-change-chip={`${pull?.repository ?? link?.repo ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}

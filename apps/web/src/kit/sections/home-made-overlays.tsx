@@ -202,7 +202,7 @@ const FEN = KIT_MENU_MATES[0]!;
 function MateMenuOpener() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex w-64 items-center justify-between rounded-md border border-border bg-sidebar px-3 py-2 text-sidebar-foreground text-body">
+    <div className="flex w-64 items-center justify-between rounded-control border border-border bg-sidebar px-3 py-2 text-sidebar-foreground text-body">
       <span>Fen</span>
       <MateMenu
         actions={kitMateActions(FEN)}
