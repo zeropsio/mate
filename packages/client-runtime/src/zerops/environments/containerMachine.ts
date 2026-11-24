@@ -29,13 +29,9 @@
  *   tab loaded since, so no claim nobody here could end is held.
  * - A Mate HQ says is `coming` has no server to ask: nothing reads its container until HQ says it
  *   linked, and that word reads it once.
- * - A restart its Mate announced (`restarting(announced)`) begins where the platform and our verbs
- *   leave the level to the reads and no socket of this tab holds the Mate: on HQ saying its Mate is
- *   restarting, or on this tab's socket closed as a planned restart (`1012`). It ends as the
- *   platform's does: on a connect since it began, or on a reading sent after HQ went from
- *   restarting to live — that change asks for the reading. HQ saying the Mate is offline ends it:
- *   the readings say what it is, as if none was announced. HQ's live word held from before it
- *   began says nothing of it.
+ * - A closed link restarts nothing: its Mate's planned close (`1012`) and HQ's relink grace (its
+ *   `restarting` tell) leave the level to the reads. Only the platform's status and our verb say a
+ *   restart was started.
  */
 import type { Instant } from "./exchange.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
@@ -99,14 +95,11 @@ export type ContainerLevel =
     }
   | {
       readonly level: "restarting";
-      /** Its announcer: the platform's status, our verb, or the Mate itself (HQ, a `1012`). */
-      readonly by: "platform" | "you" | "announced";
+      /** Who started it: the platform (its status) or our verb. */
+      readonly by: "platform" | "you";
       readonly since: Instant;
       readonly baseline: InitAtBaseline;
-      /**
-       * When its announcer said it is over — the platform its restart process, HQ its Mate's link
-       * live again; null while it has not.
-       */
+      /** When the platform said its restart is over; null while it has not. */
       readonly platformEnded: Instant | null;
     }
   | { readonly level: "updating"; readonly since: Instant; readonly from: string | null }
@@ -148,18 +141,17 @@ export interface ContainerMachine {
 }
 
 /**
- * HQ's presence for a Mate: one of its links is open (`live`), it announced a restart HQ holds its
- * place through (`restarting`), or neither (`offline`).
+ * HQ's presence for a Mate: one of its links is open (`live`), its link closed and HQ's relink
+ * grace holds its place (`restarting`), or neither (`offline`); `coming`: an open birth holds the
+ * project and its Mate has not linked yet.
  */
-/** `coming`: an open birth holds the project and its Mate has not linked yet. */
 export type HqPresence = "live" | "restarting" | "offline" | "coming";
 
 export type ContainerEvent =
   | { readonly type: "PLATFORM"; readonly status: PlatformStatus }
   | { readonly type: "PROCESS"; readonly running: boolean }
   | { readonly type: "PROBED"; readonly reading: ProbeReading; readonly sentAt: Instant }
-  /** `mateRestarting`: the Mate closed the socket as a planned restart (`1012`) as it dropped. */
-  | { readonly type: "LINK"; readonly connected: boolean; readonly mateRestarting?: true }
+  | { readonly type: "LINK"; readonly connected: boolean }
   /** HQ's presence for its Mate, as its relay holds it now; null while HQ cannot say. */
   | { readonly type: "HQ"; readonly presence: HqPresence | null }
   | { readonly type: "MATE_FLAG"; readonly flag: MateFlag }
@@ -331,23 +323,11 @@ const failedButLinked = (machine: ContainerMachine): boolean =>
   (machine.connectedSince !== null || machine.hq === "live");
 
 /**
- * HQ says its Mate's link is live, and the word speaks for the level: a restart the Mate announced
- * hears it only once HQ went from restarting to live since it began (its `platformEnded`).
- */
-const hqSaysLive = (machine: ContainerMachine): boolean =>
-  machine.hq === "live" && !(announced(machine.state) && machine.state.platformEnded === null);
-
-const announced = (
-  state: ContainerLevel,
-): state is Extract<ContainerLevel, { readonly level: "restarting" }> =>
-  state.level === "restarting" && state.by === "announced";
-
-/**
  * HQ says the Mate of a container coming up is online, and the platform does not say it is down:
  * a reading ends the level where something reads it; in a tab that reads none, HQ's word does.
  */
 const hqSaysOnlineComingUp = (machine: ContainerMachine): boolean =>
-  hqSaysLive(machine) && comingUp(machine) && !platformSaysDown(machine);
+  machine.hq === "live" && comingUp(machine) && !platformSaysDown(machine);
 
 /**
  * The level is one a reading can end: probes read it on their own ladder, or HQ says its Mate is
@@ -700,56 +680,12 @@ const intend = (machine: ContainerMachine, intent: ContainerIntent): ContainerMa
   });
 };
 
-/**
- * The Mate announced its restart: it begins now on a level the reads hold — never over the
- * platform's level or our verb's, never while this tab's socket holds the Mate, and never while HQ
- * says it is offline.
- */
-const announce = (machine: ContainerMachine, now: Instant): ContainerMachine => {
-  switch (machine.state.level) {
-    case "creating":
-    case "provisioning":
-    case "inactive":
-    case "restarting":
-    case "updating":
-      return machine;
-    default:
-      if (machine.connectedSince !== null || machine.hq === "offline") return machine;
-      return moveTo(machine, {
-        level: "restarting",
-        by: "announced",
-        since: now,
-        baseline: baselineOf(machine),
-        platformEnded: null,
-      });
-  }
-};
-
-/** HQ's word on its Mate, and what it says of a restart the Mate announced. */
+/** HQ's word on its Mate. */
 const hear = (machine: ContainerMachine, presence: HqPresence | null, now: Instant) => {
   if (presence === machine.hq) return machine;
   const next: ContainerMachine = { ...machine, hq: presence };
-  const state = machine.state;
-  if (!announced(state)) {
-    // HQ's link decides whether a FAILED service is down (`failedButLinked`).
-    if (presence !== "restarting" && machine.platform?.service?.endsWith("FAILED") === true)
-      return settleLevel(next, now);
-    return presence === "restarting" ? settleLevel(announce(next, now), now) : next;
-  }
-  switch (presence) {
-    case "offline":
-    case "coming":
-      // Its grace ended without it: the readings say what it is, as if none was announced.
-      return settleLevel(moveTo(next, { level: "unknown" }), now);
-    case "live":
-      return state.platformEnded === null
-        ? settleLevel(moveTo(next, { ...state, platformEnded: now }), now)
-        : next;
-    case "restarting":
-      return state.platformEnded === null ? next : moveTo(next, { ...state, platformEnded: null });
-    case null:
-      return next;
-  }
+  // HQ's link decides whether a FAILED service is down (`failedButLinked`).
+  return machine.platform?.service?.endsWith("FAILED") === true ? settleLevel(next, now) : next;
 };
 
 const apply = (
@@ -806,7 +742,7 @@ const apply = (
     case "LINK": {
       const connected = machine.connectedSince !== null;
       if (event.connected === connected) return machine;
-      const linked = settleLevel(
+      return settleLevel(
         {
           ...machine,
           connectedSince: event.connected ? now : null,
@@ -814,11 +750,6 @@ const apply = (
         },
         now,
       );
-      // A socket its Mate closed as a planned restart, or one lost while HQ says its Mate is
-      // restarting, drops into that restart.
-      return !event.connected && (event.mateRestarting === true || linked.hq === "restarting")
-        ? settleLevel(announce(linked, now), now)
-        : linked;
     }
     case "HQ":
       return hear(machine, event.presence, now);

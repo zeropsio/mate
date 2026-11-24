@@ -54,8 +54,6 @@ const LATE_PING_TICK_MILLIS = 10_000;
 const SENT_BYTES_A_TICK = 64 * 1024;
 /** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
 const MATE_ACCESS_ENDED_CLOSE = 4401;
-/** A Mate closed a ticket's socket because it restarts on purpose (an update): `1012`. */
-const MATE_RESTART_CLOSE = 1012;
 /** A WebSocket's `readyState` once its handshake is done. */
 const SOCKET_OPEN = 1;
 
@@ -192,7 +190,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
     // instead of looking like the server closed the connection.
     const pingTimedOut = yield* Ref.make(false);
     // Set by the socket's own close, which runs before the protocol's disconnect hook.
-    let closedBy: "mate-access-ended" | "mate-restarting" | null = null;
+    let closedBy: "mate-access-ended" | null = null;
     const hooks = RpcClient.ConnectionHooks.of({
       onConnect: Deferred.succeed(connected, undefined).pipe(Effect.asVoid),
       onDisconnect: Effect.all([Deferred.isDone(connected), Ref.get(pingTimedOut)]).pipe(
@@ -204,13 +202,11 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
               detail:
                 closedBy === "mate-access-ended"
                   ? `${connection.label} ended this connection's access.`
-                  : closedBy === "mate-restarting"
-                    ? `${connection.label} is restarting.`
-                    : !wasConnected
-                      ? `${connection.label} could not establish a WebSocket connection.`
-                      : timedOut
-                        ? `${connection.label} stopped responding.`
-                        : `${connection.label} disconnected.`,
+                  : !wasConnected
+                    ? `${connection.label} could not establish a WebSocket connection.`
+                    : timedOut
+                      ? `${connection.label} stopped responding.`
+                      : `${connection.label} disconnected.`,
             }),
           ),
         ),
@@ -239,12 +235,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       socket.addEventListener(
         "close",
         (event) => {
-          closedBy =
-            event.code === MATE_ACCESS_ENDED_CLOSE
-              ? "mate-access-ended"
-              : event.code === MATE_RESTART_CLOSE
-                ? "mate-restarting"
-                : null;
+          closedBy = event.code === MATE_ACCESS_ENDED_CLOSE ? "mate-access-ended" : null;
         },
         { once: true },
       );

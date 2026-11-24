@@ -775,22 +775,12 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     prove(entry);
   };
 
-  /**
-   * Its socket proves the container up; a proof lost reads it again. A socket its Mate closed as a
-   * planned restart (`1012`) says so as it drops.
-   */
+  /** Its socket proves the container up; a proof lost reads it again. */
   const prove = (entry: Entry) => {
     if (entry.socket === (entry.container.connectedSince !== null)) return;
-    const link = entry.environment.link;
-    const restarting =
-      !entry.socket &&
-      (link.phase === "backoff" || link.phase === "connecting") &&
-      link.mateRestarting === true;
     const next = transitionContainer(
       entry.container,
-      restarting
-        ? { type: "LINK", connected: false, mateRestarting: true }
-        : { type: "LINK", connected: entry.socket },
+      { type: "LINK", connected: entry.socket },
       { now: clock.now(), watched: watched(entry) },
     );
     entry.container = next.state;

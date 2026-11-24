@@ -4,11 +4,6 @@ next: EN23
 - EN2 — A Mate coming up that HQ says is online and somebody waits on is read when its cap runs out, and is late only once a reading sent since then finds it still not up
 - EN3 — A restart this tab asked for is ended only by a reading or a connect, never by HQ's word that its Mate is online
 - EN4 — A Mate somebody else restarted, in a tab that reads nothing of it, is not said to be restarting once HQ says it is online again, and nothing read before the restart speaks for it after
-- EN5 — A Mate HQ says is restarting is said to be restarting in a tab with no socket to it, though every probe of it goes unanswered: never that it isn't answering
-- EN6 — A socket its Mate closed as a planned restart starts that restart before HQ has said anything
-- EN7 — An announced restart ends on a connect, or on a reading sent after HQ goes from restarting to live, and that change asks for the reading once; HQ's word alone never says the Mate is ready, and a live word HQ held before the restart began ends nothing
-- EN8 — When HQ says a restarting Mate is offline, the tab says what its readings say, as if no restart had been announced
-- EN9 — HQ saying restarting changes nothing while this tab's socket to the Mate is connected, and a restart the platform or this tab's own verb holds keeps its own name
 - EN10 — A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why
 - EN11 — A container's level never changes on a timer; its time cap only marks it overdue
 - EN12 — A descriptor naming another project or none serves nothing for the target
@@ -23,3 +18,4 @@ next: EN23
 - EN21 — A route's Mate the owner's reads say is stopped is never said not to answer however long its route waits, and a running one that stays quiet is once the deadline passes; breaks: its Owner is never offered Start and a Read only viewer is offered Try again
 - EN22 — An opening over a verdict with words of its own, a Mate not answering or a container booting, never ends however long it waits, and one with none, or a ready one, does; breaks: a Mate not answering trades its name, its time and Open in Zerops for This Mate isn't answering after 20 s
 - EN+1 — A Mate HQ says is offline, or whose restart HQ holds open, takes its route's stage from a conversation already open, its link not live, and gives it back when HQ says neither or its link is live again, and its opening never ends on the route's deadline; breaks: an open conversation says only Reconnecting with Try now for minutes after HQ said the Mate isn't answering, or a restart pressed over it shows the link's own banners in turn
+- EN+2 — A Mate whose link closed, by its own planned close or in HQ's relink grace, is restarting only where the platform's restart or this tab's own verb says so, and otherwise keeps the level its readings say; breaks: its row, rail and page say Restarting through the grace while nothing restarts

@@ -96,7 +96,6 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
   const unavailable = {
     ...(hqWords === undefined ? {} : { unavailableReason: hqWords }),
     ...(state.lastFailure?.reason === "mate-not-linked" ? { noLink: true as const } : {}),
-    ...(state.lastFailure?.reason === "mate-restarting" ? { mateRestarting: true as const } : {}),
   };
   switch (state.phase) {
     case "available":

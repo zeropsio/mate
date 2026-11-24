@@ -81,7 +81,7 @@ export type ContainerVerdict =
   | { readonly level: "booting"; readonly overdue: boolean; readonly guessed?: true }
   | {
       readonly level: "restarting";
-      readonly by: "platform" | "you" | "announced";
+      readonly by: "platform" | "you";
       readonly overdue: boolean;
     }
   | { readonly level: "updating"; readonly overdue: boolean }
@@ -102,7 +102,6 @@ export type LinkPhase =
       readonly phase: "connecting";
       readonly unavailableReason?: string;
       readonly noLink?: true;
-      readonly mateRestarting?: true;
     }
   | { readonly phase: "connected" }
   | {
@@ -111,8 +110,6 @@ export type LinkPhase =
       readonly unavailableReason?: string;
       /** HQ holds no live link to this Mate's container (its ticket answer `no-link`). */
       readonly noLink?: true;
-      /** The Mate closed this tab's socket as a planned restart (`1012`): it announces one. */
-      readonly mateRestarting?: true;
     }
   | {
       readonly phase: "blocked";

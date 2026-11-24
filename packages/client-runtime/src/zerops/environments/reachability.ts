@@ -313,10 +313,7 @@ const CONNECTING: Record<ConnectingOn, string> = {
   "mate-link": "This Mate is not connected to HQ.",
 };
 
-/**
- * A restart that names no one: the one announced, and the projects row's line for any restart
- * the platform runs, ours or anyone's.
- */
+/** A restart that names no one: the projects row's line for any restart, ours or anyone's. */
 export const RESTARTING_PHRASE = "This Mate is restarting.";
 
 const RESTARTING_BY: Record<
@@ -325,7 +322,6 @@ const RESTARTING_BY: Record<
 > = {
   platform: "Zerops is restarting this Mate.",
   you: "Restarting this Mate.",
-  announced: RESTARTING_PHRASE,
 };
 
 const noticePhrase = (notice: ContainerNotice): string =>

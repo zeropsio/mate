@@ -237,9 +237,10 @@ it("PJ+4: While HQ's restart of a Mate is open its page says one stage, restarti
     process: undefined,
     lifecycle: { state: "running", verb: "start", cause: "", actions: [] },
   } as const;
-  const announced: Reachability = {
+  // What a container reads while its link is closed and no probe answers it.
+  const quiet: Reachability = {
     kind: "container",
-    container: { level: "restarting", by: "announced", overdue: false },
+    container: { level: "booting", overdue: false, guessed: true },
   };
   const lost: Reachability = { kind: "reconnecting" };
   const ready: Reachability = { kind: "ready", notice: null };
@@ -251,15 +252,15 @@ it("PJ+4: While HQ's restart of a Mate is open its page says one stage, restarti
     [{ restartOpen: true, reachability: lost, mateState: offline }, "restarting", []],
     [{ restartOpen: true, reachability: lost, recovery: stopped }, "restarting", []],
     [{ restartOpen: true, reachability: lost, recovery: starting }, "restarting", []],
-    [{ restartOpen: true, reachability: announced }, "restarting", []],
+    [{ restartOpen: true, reachability: quiet }, "restarting", []],
     [{ restartOpen: true, reachability: ready, conversationShown: true }, "restarting", []],
     [{ restartOpen: true, reachability: gone }, "reachability", ["go-to-projects"]],
     [{ restartOpen: false, reachability: lost, mateState: offline }, "offline", ["open-in-zerops"]],
-    [{ relinking: true, reachability: announced }, "relinking", []],
+    [{ relinking: true, reachability: quiet }, "relinking", []],
     [{ relinking: true, reachability: lost }, "relinking", []],
-    [{ relinking: true, reachability: announced, conversationShown: true }, "relinking", []],
+    [{ relinking: true, reachability: quiet, conversationShown: true }, "relinking", []],
     [{ relinking: true, reachability: ready, conversationShown: true }, "none", []],
-    [{ relinking: true, restartOpen: true, reachability: announced }, "restarting", []],
+    [{ relinking: true, restartOpen: true, reachability: quiet }, "restarting", []],
   ];
   for (const [input, phase, actions] of table) {
     const decision = mateNoticeDecision({ ...on, reachability: null, ...input });

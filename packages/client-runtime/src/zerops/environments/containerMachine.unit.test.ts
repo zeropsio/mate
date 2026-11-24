@@ -59,26 +59,12 @@ const answered = (sentMs: number): ContainerEvent => ({
   sentAt: instant(sentMs),
 });
 
-const dropped = (mateRestarting: boolean): ContainerEvent =>
-  mateRestarting
-    ? { type: "LINK", connected: false, mateRestarting: true }
-    : { type: "LINK", connected: false };
-
 /** A tab whose socket holds a ready Mate HQ says is live. */
 const connected = (watched: boolean): Step =>
   feed(
     [platform("ACTIVE"), answered(START_MS + 500), hq(true), { type: "LINK", connected: true }],
     watched,
   );
-
-/** A tab with no socket to a Mate HQ says is restarting, opened on it and read for a minute. */
-const announcedUnanswered = (): Step => {
-  let step = feed([platform("ACTIVE"), hqSays("restarting")], true);
-  for (let ms = 2_000; ms <= 60_000; ms += 2_000) {
-    step = at(step, silent(step.nowMs + 1), step.nowMs + 2_000, true);
-  }
-  return step;
-};
 
 interface Step {
   readonly machine: ContainerMachine;
@@ -202,102 +188,6 @@ it("EN4: A Mate somebody else restarted, in a tab that reads nothing of it, is n
   expect(process.machine.state).toEqual({ level: "unknown" });
 });
 
-// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | return presence === "restarting" ? settleLevel(announce(next, now), now) : next; → return next;
-it("EN5: A Mate HQ says is restarting is said to be restarting in a tab with no socket to it, though every probe of it goes unanswered: never that it isn't answering", () => {
-  const step = announcedUnanswered();
-  expect(containerVerdict(step.machine)).toEqual({
-    level: "restarting",
-    by: "announced",
-    overdue: false,
-  });
-  // HQ's word reads it, never a poll.
-  expect(probeCadence(step.machine, true)).toEqual({ kind: "on-demand" });
-});
-
-// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | (event.mateRestarting === true || linked.hq === "restarting") → (linked.hq === "restarting")
-it("EN6: A socket its Mate closed as a planned restart starts that restart before HQ has said anything", () => {
-  const planned = feed([dropped(true)], true, connected(true));
-  expect(containerVerdict(planned.machine)).toEqual({
-    level: "restarting",
-    by: "announced",
-    overdue: false,
-  });
-
-  const lost = feed([dropped(false)], true, connected(true));
-  expect(containerVerdict(lost.machine)).toEqual({ level: "ready" });
-});
-
-// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | ? settleLevel(moveTo(next, { ...state, platformEnded: now }), now) → ? next
-it("EN7: An announced restart ends on a connect, or on a reading sent after HQ goes from restarting to live, and that change asks for the reading once; HQ's word alone never says the Mate is ready, and a live word HQ held before the restart began ends nothing", () => {
-  const restarting = announcedUnanswered();
-
-  const reconnected = feed([{ type: "LINK", connected: true }], true, restarting);
-  expect(containerVerdict(reconnected.machine)).toEqual({ level: "ready" });
-
-  const live = feed([hqSays("live")], true, restarting);
-  expect(kinds(live.effects)).toEqual(["probe"]);
-  expect(containerVerdict(live.machine)).toEqual({
-    level: "restarting",
-    by: "announced",
-    overdue: false,
-  });
-  const again = feed([hqSays("live")], true, live);
-  expect(kinds(again.effects)).toEqual([]);
-  const back = at(live, answered(live.nowMs + 100), live.nowMs + 600, true);
-  expect(containerVerdict(back.machine)).toEqual({ level: "ready" });
-
-  // A tab that reads nothing of it, its socket closed as a planned restart while HQ says live.
-  const held = feed([dropped(true), silent(START_MS + 6_000)], false, connected(false));
-  expect(containerVerdict(held.machine)).toEqual({
-    level: "restarting",
-    by: "announced",
-    overdue: false,
-  });
-});
-
-// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | return settleLevel(moveTo(next, { level: "unknown" }), now); → return next;
-it("EN8: When HQ says a restarting Mate is offline, the tab says what its readings say, as if no restart had been announced", () => {
-  const offline = feed([hqSays("offline")], true, announcedUnanswered());
-
-  let unannounced = feed([platform("ACTIVE"), hqSays("offline")], true);
-  for (let ms = 2_000; ms <= 60_000; ms += 2_000) {
-    unannounced = at(unannounced, silent(unannounced.nowMs + 1), unannounced.nowMs + 2_000, true);
-  }
-  expect(containerVerdict(unannounced.machine)).toEqual({
-    level: "booting",
-    overdue: false,
-    guessed: true,
-  });
-  expect(containerVerdict(offline.machine)).toEqual(containerVerdict(unannounced.machine));
-});
-
-// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (machine.connectedSince !== null || machine.hq === "offline") return machine; → if (machine.hq === "offline") return machine;
-it("EN9: HQ saying restarting changes nothing while this tab's socket to the Mate is connected, and a restart the platform or this tab's own verb holds keeps its own name", () => {
-  const linked = feed([hqSays("restarting")], true, connected(true));
-  expect(containerVerdict(linked.machine)).toEqual({ level: "ready" });
-
-  const ready = feed([platform("ACTIVE"), answered(START_MS + 500), hq(true)], true);
-  const platformRestart = feed([platform("RESTARTING"), hqSays("restarting")], true, ready);
-  expect(containerVerdict(platformRestart.machine)).toEqual({
-    level: "restarting",
-    by: "platform",
-    overdue: false,
-  });
-  const ours = feed(
-    [
-      { type: "INTENT", intent: { kind: "restart", since: instant(ready.nowMs + 1_000) } },
-      hqSays("restarting"),
-    ],
-    true,
-    ready,
-  );
-  expect(containerVerdict(ours.machine)).toEqual({
-    level: "restarting",
-    by: "you",
-    overdue: false,
-  });
-});
-
 // witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (machine.connectedSince !== null) return { level: "ready" }; → if (machine.connectedSince !== null) return machine.state;
 it("EN10: A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why", () => {
   const guessing = feed([platform("ACTIVE"), silent(START_MS + 1_500)], true);
@@ -309,7 +199,7 @@ it("EN10: A live socket outranks a boot still guessing, and a socket dropping un
   const linked = feed([{ type: "LINK", connected: true }], true, guessing);
   expect(containerVerdict(linked.machine)).toEqual({ level: "ready" });
 
-  const lost = feed([dropped(false)], true, connected(true));
+  const lost = feed([{ type: "LINK", connected: false }], true, connected(true));
   const unanswered = at(lost, silent(lost.nowMs + 1_000), lost.nowMs + 2_000, true);
   expect(containerVerdict(unanswered.machine)).toEqual({ level: "ready" });
   const why = feed([platform("RESTARTING")], true, unanswered);
@@ -359,4 +249,48 @@ it("EN20: A container whose service Zerops marks FAILED is ready while this tab'
   expect(probeCadence(live.machine, true).kind).not.toBe("none");
   const offline = feed([hq(false)], true, live);
   expect(containerVerdict(offline.machine)).toEqual({ level: "inactive", status: "FAILED" });
+});
+
+// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (service !== null && SERVICE_RESTARTING.has(service)) { → if (service !== null && (SERVICE_RESTARTING.has(service) || machine.hq === "restarting")) {
+it("EN+2: A Mate whose link closed, by its own planned close or in HQ's relink grace, is restarting only where the platform's restart or this tab's own verb says so, and otherwise keeps the level its readings say; breaks: its row, rail and page say Restarting through the grace while nothing restarts", () => {
+  const ready = feed([platform("ACTIVE"), answered(START_MS + 500), hq(true)], true);
+  const unanswered = (from: Step): Step => {
+    let step = from;
+    for (let ms = 2_000; ms <= 60_000; ms += 2_000) {
+      step = at(step, silent(step.nowMs + 1), step.nowMs + 2_000, true);
+    }
+    return step;
+  };
+  const rows: ReadonlyArray<readonly [string, Step, ReturnType<typeof containerVerdict>]> = [
+    [
+      "relink grace, socket dropped",
+      feed([hqSays("restarting"), { type: "LINK", connected: false }], true, connected(true)),
+      { level: "ready" },
+    ],
+    [
+      "relink grace, unanswered",
+      unanswered(feed([platform("ACTIVE"), hqSays("restarting")], true)),
+      { level: "booting", overdue: false, guessed: true },
+    ],
+    [
+      "platform restart",
+      feed([platform("RESTARTING"), hqSays("restarting")], true, ready),
+      { level: "restarting", by: "platform", overdue: false },
+    ],
+    [
+      "our verb",
+      feed(
+        [
+          { type: "INTENT", intent: { kind: "restart", since: instant(ready.nowMs + 1_000) } },
+          hqSays("restarting"),
+        ],
+        true,
+        ready,
+      ),
+      { level: "restarting", by: "you", overdue: false },
+    ],
+  ];
+  for (const [name, step, verdict] of rows) {
+    expect({ name, verdict: containerVerdict(step.machine) }).toEqual({ name, verdict });
+  }
 });
