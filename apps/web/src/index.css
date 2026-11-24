@@ -11374,35 +11374,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   white-space: nowrap;
 }
 
-.picture-view-close {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-left: auto;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--picture-stage-ink);
-  cursor: pointer;
-}
-
-.picture-view-close svg {
-  width: 18px;
-  height: 18px;
-}
-
-.picture-view-close:hover {
-  background: var(--picture-stage-hover);
-}
-
-.picture-view-close:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: -2px;
-}
-
 .picture-view-stage {
   position: relative;
   display: flex;
@@ -12511,47 +12482,6 @@ a.message-file:focus-visible {
 .rv-viewer-words span {
   color: color-mix(in oklab, var(--color-white) 56%, transparent);
   font-variant-numeric: tabular-nums;
-}
-.rv-viewer-x,
-.rv-viewer-step {
-  position: fixed;
-  display: flex;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  color: color-mix(in oklab, var(--color-white) 86%, transparent);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-viewer-x:hover,
-.rv-viewer-step:hover {
-  background: color-mix(in oklab, var(--color-white) 12%, transparent);
-}
-.rv-viewer-x:focus-visible,
-.rv-viewer-step:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-.rv-viewer-x {
-  top: 16px;
-  right: 16px;
-}
-.rv-viewer-step {
-  top: 50%;
-  translate: 0 -50%;
-}
-.rv-viewer-step[data-side="before"] {
-  left: 16px;
-}
-.rv-viewer-step[data-side="after"] {
-  right: 16px;
-}
-.rv-viewer-x svg,
-.rv-viewer-step svg {
-  width: 20px;
-  height: 20px;
 }
 
 /* The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */

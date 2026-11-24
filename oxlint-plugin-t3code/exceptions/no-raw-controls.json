@@ -112,14 +112,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-view-close\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Button variant \"stage\" — a ghost in the picture stage's light ink on its always-dark ground (the expanded image's arrows restyle ghost for the same)",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ConversationStrip.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring\", chats === null ? \"pe-3\" : \"pe-1\", opens ? \"cursor-pointer\" : \"cursor-default\", )}",
@@ -293,22 +285,6 @@
     "fingerprint": "<button> className=\"rv-pic-open\"",
     "owner": "kit pass",
     "reason": "the picture itself is the press that opens its viewer: an image filling its box, which no kit press draws",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"rv-viewer-step\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Button variant \"scrim\" — a ghost press in white ink over the picture viewer's dark backdrop (the viewer's Close, a Dialog Close, wears the same look)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"rv-viewer-step\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Button variant \"scrim\" — a ghost press in white ink over the picture viewer's dark backdrop (the viewer's Close, a Dialog Close, wears the same look)",
     "expires": "never"
   },
   {

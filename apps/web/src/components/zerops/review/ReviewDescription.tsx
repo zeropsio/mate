@@ -24,7 +24,7 @@ import ChatMarkdown, {
   type MarkdownFileElsewhere,
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
-import { InlineButton } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
@@ -376,33 +376,40 @@ function PictureViewer({
                 ) : null}
               </p>
             ) : null}
-            <DialogPrimitive.Close aria-label="Close" className="rv-viewer-x">
-              <XIcon aria-hidden="true" />
+            <DialogPrimitive.Close
+              aria-label="Close"
+              render={
+                <Button className="fixed end-4 top-4 size-10" size="icon-md" variant="scrim" />
+              }
+            >
+              <XIcon aria-hidden="true" className="size-5" />
             </DialogPrimitive.Close>
             {count > 1 ? (
               <>
-                <button
+                <Button
                   aria-label="The picture before"
-                  className="rv-viewer-step"
+                  className="fixed start-4 top-1/2 size-10 -translate-y-1/2"
                   data-side="before"
                   onClick={() => {
                     step(-1);
                   }}
-                  type="button"
+                  size="icon-md"
+                  variant="scrim"
                 >
-                  <ChevronLeftIcon aria-hidden="true" />
-                </button>
-                <button
+                  <ChevronLeftIcon aria-hidden="true" className="size-5" />
+                </Button>
+                <Button
                   aria-label="The picture after"
-                  className="rv-viewer-step"
+                  className="fixed end-4 top-1/2 size-10 -translate-y-1/2"
                   data-side="after"
                   onClick={() => {
                     step(1);
                   }}
-                  type="button"
+                  size="icon-md"
+                  variant="scrim"
                 >
-                  <ChevronRightIcon aria-hidden="true" />
-                </button>
+                  <ChevronRightIcon aria-hidden="true" className="size-5" />
+                </Button>
               </>
             ) : null}
           </DialogPrimitive.Popup>

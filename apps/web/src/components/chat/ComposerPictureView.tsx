@@ -601,14 +601,15 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
             ? `${pictureDims(picture.sourceWidth, picture.sourceHeight)} · ${formatPictureBytes(source.size)}`
             : pictureDims(picture.width, picture.height)}
         </span>
-        <button
-          type="button"
-          className="picture-view-close"
+        <Button
+          variant="scrim"
+          size="icon-md"
+          className="ms-auto"
           aria-label="Close picture"
           onClick={close}
         >
-          <XIcon aria-hidden="true" />
-        </button>
+          <XIcon aria-hidden="true" className="size-4.5" />
+        </Button>
       </div>
       <div ref={stageRef} className="picture-view-stage">
         {layout ? (
