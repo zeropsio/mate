@@ -9,6 +9,7 @@ import { memo, type PointerEventHandler } from "react";
 import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Group } from "../ui/group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -82,11 +83,6 @@ const formatPendingPrimaryActionLabel = (input: {
   }
   return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
 };
-
-// The composer's labeled primary actions (Submit, Refine, Implement) share the send button's
-// message-action pill, so they are composer-owned buttons rather than restyled Buttons.
-const messageActionPillClassName =
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-message-action font-medium text-base text-message-action-foreground shadow-xs shadow-message-action/24 outline-none hover:bg-message-action-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:text-body";
 
 const preventPointerFocus: PointerEventHandler<HTMLElement> = (event) => {
   event.preventDefault();
@@ -184,9 +180,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             </Button>
           )
         ) : null}
-        <button
+        <Button
           type="submit"
-          className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
+          variant="send"
+          shape="round"
+          size="sm"
+          className="h-8 sm:h-7"
           {...pointerFocusProps}
           disabled={answerHeld({
             unavailable: away !== null,
@@ -202,50 +201,58 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             isResponding: pendingAction.isResponding,
             questionIndex: pendingAction.questionIndex,
           })}
-        </button>
+        </Button>
       </div>
     );
   }
 
   if (primary === "refine") {
     return (
-      <button
+      <Button
         type="submit"
-        className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+        variant="send"
+        shape="round"
+        className="h-9 sm:h-8"
         {...pointerFocusProps}
         disabled={held}
       >
         {isConnecting || isSendBusy ? "Sending..." : "Refine"}
-      </button>
+      </Button>
     );
   }
 
   if (primary === "implement") {
     return (
-      <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
-        <button
+      <Group data-chat-composer-implement-actions="true">
+        <Button
           type="submit"
-          className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
+          variant="send"
+          shape="round"
+          className="h-9 sm:h-8"
           {...pointerFocusProps}
           disabled={held}
         >
           {isConnecting || isSendBusy ? "Sending..." : "Implement"}
-        </button>
+        </Button>
         <Menu>
           <MenuTrigger
             render={
-              <button
-                type="button"
-                className={cn(
-                  messageActionPillClassName,
-                  "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
-                )}
+              <Button
+                variant="send"
+                shape="round"
+                size="icon-md"
+                className="h-9 sm:h-8"
                 aria-label="Implementation actions"
                 {...pointerFocusProps}
                 disabled={held}
               />
             }
           >
+            {/* The seam between the pill's two presses, in the pill's own ink. */}
+            <span
+              aria-hidden="true"
+              className="absolute inset-y-0 start-0 w-px bg-message-action-foreground/20"
+            />
             <ChevronDownIcon className="size-3.5" />
           </MenuTrigger>
           <MenuPopup align="end" side="top">
@@ -254,16 +261,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             </MenuItem>
           </MenuPopup>
         </Menu>
-      </div>
+      </Group>
     );
   }
 
   // Blue is for what can be clicked (S3): with nothing to send the button is
   // the toolbar's neutral grey, and it turns blue the moment there is.
   const sendButtonItself = (
-    <button
+    <Button
       type="submit"
-      className="flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8"
+      variant="send"
+      shape="round"
+      size="icon-md"
+      className="size-9 hover:scale-105 active:scale-95 sm:size-8"
       {...pointerFocusProps}
       data-composer-primary=""
       aria-description={sendHint ?? undefined}
@@ -285,7 +295,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       {isConnecting || isSendBusy ? (
         <Spinner size="sm" aria-hidden="true" />
       ) : (
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <svg
+          className="size-3.5"
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          aria-hidden="true"
+        >
           <path
             d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
             stroke="currentColor"
@@ -295,7 +312,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           />
         </svg>
       )}
-    </button>
+    </Button>
   );
   // One Send, whether or not the Mate works in another chat: the hint comes and goes as its
   // description and its hover, and a focused Send keeps its focus as it does.

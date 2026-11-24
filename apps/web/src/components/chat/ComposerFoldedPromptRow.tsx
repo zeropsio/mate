@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Button } from "../ui/button";
 import { AvailabilityDot, availabilityName } from "./AgentAvailability";
 import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import type { ProviderAvailability } from "./providerAvailability.logic";
@@ -47,9 +48,10 @@ export function ComposerFoldedPromptRow({
       </button>
       {tasksBadge}
       {stashBadge}
-      <button
-        type="button"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
+      <Button
+        variant="send"
+        shape="round"
+        size="icon-md"
         disabled={sendDisabled}
         data-composer-primary=""
         aria-label={collapsedComposerPrimaryActionLabel}
@@ -68,7 +70,7 @@ export function ComposerFoldedPromptRow({
             strokeLinejoin="round"
           />
         </svg>
-      </button>
+      </Button>
     </div>
   );
 }
