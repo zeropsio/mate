@@ -271,20 +271,21 @@ export function ProjectSites(
             <PopoverPrimitive.Trigger
               id={tagId}
               render={
-                <button
+                <Button
                   aria-label={shown.sentence}
-                  className="zerops-sites-tag"
-                  data-tone={shown.tone}
+                  className="flex shrink-0"
                   data-zerops-surface="sidebar-project-env-tag"
-                  type="button"
+                  variant="bare"
                 />
               }
             />
           }
         >
-          <EnvDot dot={shown.dot} label={shown.word} />
-          {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the rest. */}
-          <span className="menu-tag-word">{shown.word}</span>
+          <span className="zerops-sites-tag" data-tone={shown.tone}>
+            <EnvDot dot={shown.dot} label={shown.word} />
+            {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the rest. */}
+            <span className="menu-tag-word">{shown.word}</span>
+          </span>
         </TooltipTrigger>
         {open ? null : <TooltipPopup side="bottom">{shown.sentence}</TooltipPopup>}
       </Tooltip>

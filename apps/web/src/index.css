@@ -5355,8 +5355,6 @@ code {
   font-weight: 500;
   line-height: 16px;
   white-space: nowrap;
-  cursor: pointer;
-  outline: none;
   transition: box-shadow 150ms var(--ease-out-strong);
 }
 
@@ -5381,12 +5379,10 @@ code {
   color: var(--zerops-status-ok-text);
 }
 
-.zerops-sites-tag:is(:hover, [data-popup-open]) {
+/* Its press is the kit's bare Button around it: the hairline firms under the pointer and while
+   the popover is open. */
+:is(:hover, [data-popup-open]) > .zerops-sites-tag {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
-}
-
-.zerops-sites-tag:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
 }
 
 /* The popover: 360 px, its own scroll under its title, grown from the door's side. */
