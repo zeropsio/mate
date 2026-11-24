@@ -79,7 +79,7 @@ function PopoverPopup({
       >
         <PopoverPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "dropdown-glass relative flex origin-(--transform-origin) rounded-card text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-edge has-data-[slot=calendar]:rounded-card has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 before:shadow-edge-highlight",
             // Leaves as it enters, so a closing popover stops covering the page and taking clicks.
             "data-ending-style:scale-98 data-ending-style:opacity-0",
             tooltipStyle &&

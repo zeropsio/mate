@@ -441,6 +441,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
   --color-mint-panel: var(--zerops-mint-panel);
+  --shadow-popup: var(--zerops-shadow-popup);
+  --shadow-edge: var(--zerops-shadow-edge);
+  --shadow-edge-highlight: var(--zerops-shadow-edge-highlight);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1621,6 +1624,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-chip-radius: 10px;
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
+  /* A popup's lift; a raised surface's hairline under it, and the top highlight dark mode gives it instead. */
+  --zerops-shadow-popup: 0 16px 40px -18px rgb(0 0 0 / 55%);
+  --zerops-shadow-edge: 0 1px rgb(0 0 0 / 4%);
+  --zerops-shadow-edge-highlight: 0 0 #0000;
   /* A Mate's colour: one of eight per agent, none of them the brand teal
      (brand.ts MATE_TINT_IDS); the eyes are ink on these light discs. */
   --zerops-mate-tint-coral: #ef8f78;
@@ -1712,6 +1719,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-chip-radius: 10px;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
     --zerops-mint-panel: #19261d;
+    --zerops-shadow-popup: 0 18px 44px -18px rgb(0 0 0 / 80%);
+    --zerops-shadow-edge: 0 0 #0000;
+    --zerops-shadow-edge-highlight: 0 -1px rgb(255 255 255 / 6%);
     --zerops-mate-tint-coral: #b85f4b;
     --zerops-mate-tint-amber: #9c7420;
     --zerops-mate-tint-olive: #6f8436;

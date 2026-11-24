@@ -2080,14 +2080,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/ui/autocomplete.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in autocomplete awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/ui/card.tsx",
     "kind": "Literal",
     "fingerprint": "\"[--clip-top:-1rem] [--clip-bottom:-1rem] *:data-[slot=card]:first:[--clip-top:1px] *:data-[slot=card]:last:[--clip-bottom:1px] flex flex-col relative rounded-2xl border bg-card before:bg-muted/72 not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] *:data-[slot=card]:-m-px *:not-last:data-[slot=card]:rounded-b-xl *:not-last:data-[slot=card]:before:rounded-b-[calc(var(--radius-xl)-1px)] *:not-first:data-[slot=card]:rounded-t-xl *:not-first:data-[slot=card]:before:rounded-t-[calc(var(--radius-xl)-1px)] *:data-[slot=card]:[clip-path:inset(var(--clip-top)_1px_var(--clip-bottom)_1px_round_calc(var(--radius-2xl)-1px))] *:data-[slot=card]:shadow-none *:data-[slot=card]:before:hidden *:data-[slot=card]:bg-clip-padding\"",
@@ -2109,14 +2101,6 @@
     "fingerprint": "\"relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-[.25rem] border border-input bg-background not-dark:bg-clip-padding shadow-xs/5 outline-none ring-ring transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[3px] not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/48 data-disabled:opacity-64 sm:size-4 dark:not-data-checked:bg-input/32 dark:aria-invalid:ring-destructive/24 dark:not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)] [[data-disabled],[data-checked],[aria-invalid]]:shadow-none\"",
     "owner": "karel",
     "reason": "T3 chrome styling in checkbox awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/combobox.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] transition-[scale,opacity] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in combobox awaiting semantic roles",
     "expires": "F4"
   },
   {
@@ -2176,27 +2160,11 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/ui/menu.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass relative flex origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in menu awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/ui/number-field.tsx",
     "kind": "Literal",
     "fingerprint": "\"relative flex w-full justify-between rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-data-disabled:not-focus-within:not-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] focus-within:border-ring focus-within:ring-[3px] has-aria-invalid:border-destructive/36 has-autofill:bg-foreground/4 focus-within:has-aria-invalid:border-destructive/64 focus-within:has-aria-invalid:ring-destructive/48 data-disabled:pointer-events-none data-disabled:opacity-64 sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-data-disabled:not-focus-within:not-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [[data-disabled],:focus-within,[aria-invalid]]:shadow-none\"",
     "owner": "karel",
     "reason": "T3 chrome styling in number-field awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/popover.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass relative flex origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in popover awaiting semantic roles",
     "expires": "F4"
   },
   {
@@ -2242,14 +2210,6 @@
   {
     "path": "apps/web/src/components/ui/select.tsx",
     "kind": "Literal",
-    "fingerprint": "\"dropdown-glass relative h-full rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in select awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/select.tsx",
-    "kind": "Literal",
     "fingerprint": "\"w-full min-w-36 border-input bg-background not-dark:bg-clip-padding text-foreground shadow-xs/5 ring-ring/24 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-data-disabled:not-focus-visible:not-aria-invalid:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/16 dark:bg-input/32 dark:aria-invalid:ring-destructive/24 dark:not-data-disabled:not-focus-visible:not-aria-invalid:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='text-'])]:text-icon-muted [[data-disabled],:focus-visible,[aria-invalid],[data-pressed]]:shadow-none\"",
     "owner": "karel",
     "reason": "T3 chrome styling in select awaiting semantic roles",
@@ -2277,22 +2237,6 @@
     "fingerprint": "\"relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] not-has-disabled:has-not-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] sm:text-sm dark:bg-input/32 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:has-not-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
     "owner": "karel",
     "reason": "T3 chrome styling in textarea awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/toast.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass absolute z-[calc(9999-var(--toast-index))] w-full overflow-visible select-none rounded-lg text-popover-foreground shadow-xl shadow-black/25 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in toast awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/toast.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass relative overflow-visible text-balance text-popover-foreground text-xs shadow-xl shadow-black/25 transition-[scale,opacity] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in toast awaiting semantic roles",
     "expires": "F4"
   },
   {
@@ -2339,14 +2283,6 @@
     "path": "apps/web/src/components/ui/tooltip.tsx",
     "kind": "Literal",
     "fingerprint": "\"dropdown-glass shadow-xl shadow-black/25 before:hidden\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in tooltip awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ui/tooltip.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) text-balance rounded-md text-popover-foreground text-xs transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
     "owner": "karel",
     "reason": "T3 chrome styling in tooltip awaiting semantic roles",
     "expires": "F4"
