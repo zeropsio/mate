@@ -427,7 +427,7 @@ function ThreadStatusLabel({
             <span
               role="img"
               aria-label={status.label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.colorClass}`}
+              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.textClass}`}
             />
           }
         >
@@ -449,7 +449,7 @@ function ThreadStatusLabel({
           <span
             role="img"
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-3xs ${tone.colorClass}`}
+            className={`inline-flex items-center gap-1 text-3xs ${tone.textClass}`}
           />
         }
       >

@@ -176,53 +176,28 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
 }
 
 interface ThreadStatusToneClasses {
-  readonly colorClass: string;
+  readonly textClass: string;
   readonly dotClass: string;
-  readonly rowClass: string;
 }
 
-/** The hue each status tone wears: a pill's text and dot, a row's text. */
+/**
+ * The hue each status tone wears, a pill's text and dot and a row's text, in the status grammar's
+ * five tones: what needs the person (an approval, a question, a plan to read) is attention, work
+ * under way is busy, what broke is failed, what is done is ok.
+ */
 export const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneClasses> = {
-  attention: {
-    colorClass: "text-amber-600 dark:text-amber-300/90",
-    dotClass: "bg-amber-500 dark:bg-amber-300/90",
-    rowClass: "text-amber-700 dark:text-amber-300",
-  },
-  input: {
-    colorClass: "text-indigo-600 dark:text-indigo-300/90",
-    dotClass: "bg-indigo-500 dark:bg-indigo-300/90",
-    rowClass: "text-indigo-600 dark:text-indigo-300",
-  },
-  active: {
-    colorClass: "text-sky-600 dark:text-sky-300/80",
-    dotClass: "bg-sky-500 dark:bg-sky-300/80",
-    rowClass: "text-sky-600 dark:text-sky-400",
-  },
-  danger: {
-    colorClass: "text-red-600 dark:text-red-300/90",
-    dotClass: "bg-red-500 dark:bg-red-300/90",
-    rowClass: "text-red-700 dark:text-red-300",
-  },
-  plan: {
-    colorClass: "text-violet-600 dark:text-violet-300/90",
-    dotClass: "bg-violet-500 dark:bg-violet-300/90",
-    rowClass: "text-violet-600 dark:text-violet-300",
-  },
-  success: {
-    colorClass: "text-emerald-600 dark:text-emerald-300/90",
-    dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
-    rowClass: "text-emerald-700 dark:text-emerald-300",
-  },
-  neutral: {
-    colorClass: "text-muted-foreground",
-    dotClass: "bg-muted-foreground/40",
-    rowClass: "text-muted-foreground",
-  },
+  attention: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
+  input: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
+  active: { textClass: "text-status-busy-text", dotClass: "bg-status-busy" },
+  danger: { textClass: "text-status-failed-text", dotClass: "bg-status-failed" },
+  plan: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
+  success: { textClass: "text-status-ok-text", dotClass: "bg-status-ok" },
+  neutral: { textClass: "text-muted-foreground", dotClass: "bg-muted-foreground/40" },
 };
 
 /** The text colour a status wears on its sidebar row, for glyphs that stand for it elsewhere. */
 export function threadStatusToneTextClass(toneId: ThreadStatusToneId): string {
-  return THREAD_STATUS_TONE_CLASSES[toneId].rowClass;
+  return THREAD_STATUS_TONE_CLASSES[toneId].textClass;
 }
 
 interface ThreadStatusRowPresentation {
@@ -249,7 +224,7 @@ export function threadStatusRowPresentation(
     label,
     icon,
     className: cn(
-      THREAD_STATUS_TONE_CLASSES[status.toneId].rowClass,
+      THREAD_STATUS_TONE_CLASSES[status.toneId].textClass,
       status.kind === "working" && !isActive && "opacity-75",
     ),
   };
