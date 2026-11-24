@@ -2547,6 +2547,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               <span aria-hidden="true">·</span>
               <InlineButton
                 aria-expanded={showPlatformProjects}
+                tone="muted"
                 data-zerops-surface="sidebar-platform-projects-toggle"
                 onClick={() => {
                   setPlatformMotion(showPlatformProjects ? "closing" : "opening");
@@ -2620,7 +2621,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             >
               <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
               <span aria-hidden="true">·</span>
-              <InlineButton data-zerops-surface="sidebar-show-everyone" onClick={onShowEveryone}>
+              <InlineButton
+                data-zerops-surface="sidebar-show-everyone"
+                onClick={onShowEveryone}
+                tone="muted"
+              >
                 Show everyone
               </InlineButton>
             </span>
