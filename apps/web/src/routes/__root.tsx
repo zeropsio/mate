@@ -46,7 +46,6 @@ import { ThreadNotificationCoordinator } from "../components/ThreadNotificationC
 import { QueuedMessageSender } from "../components/QueuedMessageSender";
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
-import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
 import { ZeropsOrganizationChoicePage } from "../components/zerops/ZeropsOrganizationScope";
@@ -394,9 +393,6 @@ function SignedInRootRouteView() {
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdatePrimaryNotification /> : null}
         {appShell}
-        {/* Above the router: a theme draft is judged by walking the app, so the
-            editor has to survive navigation away from settings. */}
-        <ThemeEditorHost />
       </AnchoredToastProvider>
     </ToastProvider>
   );

@@ -46,7 +46,7 @@ The goal is not to minimize CSS or class counts at any cost. The goal is to put 
   - dark-only declarations use `@variant dark`;
   - light-only declarations use `@variant light`;
   - raw `.dark` should remain only in the `dark` and `light` custom-variant definitions.
-- Preserve custom themes and runtime token bridges. Removing a variable or selector is safe only when all runtime, inspector, generated, and theme-palette consumers are accounted for.
+- Preserve runtime token bridges. Removing a variable or selector is safe only when all runtime, generated, and theme-palette consumers are accounted for.
 - Contrast and accessibility settings that target app chrome must derive from semantic color tokens. Do not apply `filter` to `html`, `body`, or the app root: it also changes user media, previews, terminals, glass backdrop ownership, and view-transition snapshots.
 - Preserve alpha and surface ownership when deriving contrast tokens. Soften translucent borders and inputs toward transparent rather than an opaque canvas, use a modest semantic-foreground mix for stronger borders, and adjust card, popover, accent, secondary, and message foregrounds against their own surfaces when the base foreground changes.
 - Runtime-adjusted roles must be ordinary custom properties shared by the Tailwind bridge, global CSS, imperative style strings, and bridge snapshots sent to other renderers. Audit literal `var(--foreground)`, `var(--border)`, and related role reads so headings, markdown chrome, menus, previews, and utilities do not split into adjusted and unadjusted colors.

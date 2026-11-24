@@ -819,12 +819,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "project file query atoms are read and written by panels; the adapter owns the read",
   },
   {
-    token: "await fetch(url, { signal: requestSignal })",
-    family: "Mate identity/connection",
-    reason: "a hook fetches workspace images itself; the adapter owns the read",
-    paths: ["apps/web/src/openVsxThemes.ts"],
-  },
-  {
     token: "createWorkspaceFileImageAtomFamily(",
     family: "Mate identity/connection",
     reason: "a hook fetches workspace images itself; the adapter owns the read",

@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { ThemeJsonEditor } from "~/components/settings/ThemeImportDialog";
 import { Button } from "~/components/ui/button";
 import { LimitField } from "~/components/zerops/crew/CrewRunDialog";
 import { CrewTextArea } from "~/components/zerops/crew/CrewView";
@@ -46,17 +45,16 @@ function FieldSpecimens() {
   const [goal, setGoal] = useState("Ship the storefront's checkout to stage.");
   const [name, setName] = useState("Fen");
   const [hours, setHours] = useState("8");
-  const [json, setJson] = useState('{\n  "version": 1,\n  "name": "Aurora"\n}');
   const scope = vaultFixtureScope("shared");
   const [vaultText, setVaultText] = useState(() => vaultToText(scope));
 
   return (
     <CensusLooks>
       <CensusCount
-        components={17}
-        files={38}
-        kit="46 raw <input>, <select> and <textarea> in 36 files, 9 of them with no look (hidden, file, checkbox, slider); the kit's Input renders in 41 files, its fields in 72"
-        looks={17}
+        components={16}
+        files={37}
+        kit="41 raw <input>, <select> and <textarea> in 33 files, 7 of them with no look (hidden, file, checkbox, slider); the kit's Input renders in 39 files, its fields in 69"
+        looks={16}
       />
 
       <CensusLook
@@ -210,20 +208,6 @@ function FieldSpecimens() {
               scope={scope}
               text={vaultText}
             />
-          </div>
-        </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        files={1}
-        name="ThemeJsonEditor"
-        note="a textarea over highlighted JSON"
-        source="apps/web/src/components/settings/ThemeImportDialog.tsx"
-        uses={1}
-      >
-        <Specimen label="a theme's JSON">
-          <div className="w-96 rounded-md border">
-            <ThemeJsonEditor id="kit-theme-json" onChange={setJson} value={json} />
           </div>
         </Specimen>
       </CensusLook>

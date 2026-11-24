@@ -157,12 +157,6 @@ export default defineRule({
             text.includes("buffered.revision>snapshot.value.revision") &&
             !/(?:Atom\.make|\.setState|localStorage|sessionStorage)/u.test(text)
           );
-        case "await fetch(url, { signal: requestSignal })":
-          return (
-            path === "apps/web/src/openVsxThemes.ts" &&
-            text.includes("newURL(OPEN_VSX_SEARCH_URL)") &&
-            text.includes('url.searchParams.set("category","Themes")')
-          );
         case "createWorkspaceFileImageAtomFamily(": {
           const prefetch = body("prefetchWithNativeImage");
           const family = body("createWorkspaceFileImageAtomFamily");

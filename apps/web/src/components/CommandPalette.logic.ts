@@ -36,7 +36,7 @@ export const ADDON_ICON_CLASS = "size-4";
 export type SearchOverlayMode = "command" | "files" | "content";
 
 export interface CommandPaletteOpenIntent {
-  readonly kind: "new-thread-in" | "change-theme";
+  readonly kind: "new-thread-in";
 }
 
 interface CommandPaletteUiState {
@@ -49,7 +49,6 @@ type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
   | { readonly _tag: "ToggleMode"; readonly mode: SearchOverlayMode }
   | { readonly _tag: "OpenNewThreadIn" }
-  | { readonly _tag: "OpenChangeTheme" }
   | { readonly _tag: "ClearOpenIntent" };
 
 export function reduceCommandPaletteUiState(
@@ -67,8 +66,6 @@ export function reduceCommandPaletteUiState(
         : { open: true, mode: action.mode, openIntent: null };
     case "OpenNewThreadIn":
       return { open: true, mode: "command", openIntent: { kind: "new-thread-in" } };
-    case "OpenChangeTheme":
-      return { open: true, mode: "command", openIntent: { kind: "change-theme" } };
     case "ClearOpenIntent":
       return state.openIntent ? { ...state, openIntent: null } : state;
   }

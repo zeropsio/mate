@@ -175,22 +175,6 @@ const renderBootPaletteProperties = (palette: BootPalette, indentation: string):
     `${indentation}sidebar: ${JSON.stringify(palette.sidebar)},`,
   ].join("\n");
 
-const renderDefaultThemePalettes = (): string => {
-  const lines = ["        const DEFAULT_THEME_PALETTES = {"];
-  for (const appearance of APPEARANCES) {
-    lines.push(`          ${appearance}: {`);
-    lines.push(
-      renderBootPaletteProperties(
-        bootPalette(colorsForTheme(ZEROPS_THEME, appearance)),
-        "            ",
-      ),
-    );
-    lines.push("          },");
-  }
-  lines.push("        };");
-  return lines.join("\n");
-};
-
 const renderSplashColors = (): string => {
   const lines = ["        const SPLASH_COLORS = {"];
   for (const appearance of APPEARANCES) {
@@ -241,16 +225,9 @@ const renderWebThemeTokens = (): string =>
     "      (() => {",
     '        const LIGHT_BACKGROUND = "#ffffff";',
     '        const DARK_BACKGROUND = "#0a0a0a";',
-    '        const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";',
     '        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";',
     '        const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";',
-    '        const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";',
     renderSplashColors(),
-    "        // These are the runtime defaults used to complete a custom palette",
-    "        // when a stored theme omits a role. Keep them separate from the",
-    "        // unselected splash so a partial custom theme does not flash generic",
-    "        // app colors before React mounts.",
-    renderDefaultThemePalettes(),
     "        // This generated boot-time copy makes the selected theme visible before",
     "        // the app has mounted.",
     renderBuiltInThemePalettes(),

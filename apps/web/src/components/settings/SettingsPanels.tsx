@@ -51,13 +51,7 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { useCustomThemes } from "../../hooks/useCustomThemes";
-import {
-  readAppearanceModePreference,
-  readThemeHalves,
-  readThemePreference,
-  useTheme,
-} from "../../hooks/useTheme";
+import { readAppearanceModePreference, readThemePreference, useTheme } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { expressLabNote } from "../express/expressGate.logic";
@@ -126,9 +120,9 @@ import {
 } from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ThemeLibrary } from "./ThemeSettings";
 import { WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
 import {
   backgroundActivityOverrideSettings,
@@ -453,15 +447,7 @@ function AboutVersionSection() {
 }
 
 export function useSettingsRestore(onRestored?: () => void) {
-  const {
-    theme,
-    setTheme,
-    followSystem,
-    setFollowSystem,
-    setThemeHalf,
-    clearThemeHalves,
-    themeHalves,
-  } = useTheme();
+  const { theme, setTheme, followSystem, setFollowSystem } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -481,7 +467,6 @@ export function useSettingsRestore(onRestored?: () => void) {
     () => [
       ...(theme !== "system" ? ["Theme"] : []),
       ...(!followSystem ? ["Follow system"] : []),
-      ...(themeHalves !== null ? ["Theme mix"] : []),
       ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
         ? ["Contrast"]
         : []),
@@ -576,7 +561,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.wordWrap,
       followSystem,
       theme,
-      themeHalves,
     ],
   );
 
@@ -602,11 +586,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     } catch {
       // Storage is unreadable; the render-time value is the best rollback.
     }
-    // The mix may have changed while the confirmation dialog was open; both
-    // the dirty check and the rollback must see the live value.
-    const liveHalves = readThemeHalves();
     const needsThemeReset = previousTheme !== "system";
-    const needsMixReset = liveHalves !== null;
     // Same for the appearance mode: trusting the render-time value would skip
     // the reset and report success while a non-system mode stayed in storage.
     const needsFollowSystemReset = readAppearanceModePreference(previousTheme) !== "system";
@@ -619,26 +599,12 @@ export function useSettingsRestore(onRestored?: () => void) {
         }),
       );
     };
-    // Rollback restores the base preference first (which clears any mix) and
-    // then re-applies the captured mix on top, so no failure path can leave
-    // the pair of keys half-restored.
-    const previousHalves = liveHalves;
-    const rollbackThemeState = () => {
-      if (needsThemeReset) setTheme(previousTheme);
-      if (previousHalves?.light) setThemeHalf("light", previousHalves.light);
-      if (previousHalves?.dark) setThemeHalf("dark", previousHalves.dark);
-    };
     if (needsThemeReset && !setTheme("system")) {
       notifyThemeRestoreFailure();
       return;
     }
-    if (needsMixReset && !clearThemeHalves()) {
-      rollbackThemeState();
-      notifyThemeRestoreFailure();
-      return;
-    }
     if (needsFollowSystemReset && !setFollowSystem(true)) {
-      rollbackThemeState();
+      if (needsThemeReset) setTheme(previousTheme);
       notifyThemeRestoreFailure();
       return;
     }
@@ -678,17 +644,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
     });
     onRestored?.();
-  }, [
-    changedSettingLabels,
-    clearThemeHalves,
-    onRestored,
-    setFollowSystem,
-    setTheme,
-    setThemeHalf,
-    theme,
-    themeHalves,
-    updateSettings,
-  ]);
+  }, [changedSettingLabels, onRestored, setFollowSystem, setTheme, theme, updateSettings]);
 
   return {
     changedSettingLabels,
@@ -962,19 +918,14 @@ function BackgroundActivityAdvancedDialog({
   );
 }
 
+const COLOR_SCHEMES = [
+  { mode: "system", label: "System" },
+  { mode: "light", label: "Light" },
+  { mode: "dark", label: "Dark" },
+] as const;
+
 export function AppearanceSettingsPanel() {
-  const {
-    appearanceMode,
-    refreshTheme,
-    resolvedTheme,
-    setAppearanceMode,
-    setTheme,
-    setThemeHalf,
-    theme,
-    themeHalves,
-  } = useTheme();
-  const customThemes = useCustomThemes();
-  const [isImportThemeOpen, setIsImportThemeOpen] = useState(false);
+  const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const glassOpacityRatio =
@@ -994,21 +945,34 @@ export function AppearanceSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection id="appearance" title="Appearance">
-        <div id={searchableSetting("theme").id}>
-          <ThemeLibrary
-            appearanceMode={appearanceMode}
-            customThemes={customThemes}
-            initialAppearance={resolvedTheme}
-            refreshTheme={refreshTheme}
-            isImportOpen={isImportThemeOpen}
-            setAppearanceMode={setAppearanceMode}
-            setTheme={setTheme}
-            setThemeHalf={setThemeHalf}
-            theme={theme}
-            themeHalves={themeHalves}
-            onImportOpenChange={setIsImportThemeOpen}
-          />
-        </div>
+        <SettingsRow
+          {...searchableSetting("color-scheme")}
+          description="Light, dark, or the same as your system."
+          control={
+            <ToggleGroup
+              aria-label="Color scheme"
+              onValueChange={(next) => {
+                const picked = COLOR_SCHEMES.find((scheme) => scheme.mode === next[0]);
+                if (picked === undefined || setAppearanceMode(picked.mode)) return;
+                toastManager.add(
+                  stackedThreadToast({
+                    type: "error",
+                    title: "Couldn’t save the color scheme",
+                    description: "Try again.",
+                  }),
+                );
+              }}
+              value={[appearanceMode]}
+              variant="segmented"
+            >
+              {COLOR_SCHEMES.map((scheme) => (
+                <Toggle key={scheme.mode} value={scheme.mode}>
+                  {scheme.label}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          }
+        />
 
         <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}

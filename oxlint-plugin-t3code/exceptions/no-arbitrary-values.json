@@ -432,62 +432,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.4)] in \"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.4)] in \"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)] in \"h-2.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> leading-[1.45] in \"px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[13px] in \"px-3 text-[13px] leading-[1.45] text-muted-foreground/80 sm:px-4\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> tracking-[-0.005em] in \"px-3 text-sm font-medium tracking-[-0.005em] text-foreground sm:px-4\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> tracking-[-0.005em] in \"text-sm font-medium tracking-[-0.005em] text-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/sidebar/SidebarProjectTree.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[10px] in \"block truncate text-[10px] text-sidebar-muted-foreground\"",

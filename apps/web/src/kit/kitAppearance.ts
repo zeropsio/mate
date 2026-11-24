@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import { applyThemePalette, resolveThemeHalf, type ThemeAppearance } from "~/themePalette";
+import { applyThemePalette, type ThemeAppearance } from "~/themePalette";
 
 /** How the kit page shows its sections: one appearance, or both side by side. */
 export type KitView = ThemeAppearance | "both";
@@ -30,11 +30,11 @@ export function validateKitSearch(raw: Readonly<Record<string, unknown>>): KitSe
  * page puts their own appearance back.
  */
 export function useKitAppearance(appearance: ThemeAppearance | null): void {
-  const { theme, themeHalves, refreshTheme } = useTheme();
+  const { theme, refreshTheme } = useTheme();
   useLayoutEffect(() => {
     if (appearance === null) return;
-    applyThemePalette(resolveThemeHalf(theme, themeHalves, appearance), appearance);
+    applyThemePalette(theme, appearance);
     document.documentElement.classList.toggle("dark", appearance === "dark");
     return refreshTheme;
-  }, [appearance, refreshTheme, theme, themeHalves]);
+  }, [appearance, refreshTheme, theme]);
 }

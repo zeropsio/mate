@@ -8,8 +8,6 @@ import { ProviderInstanceCard } from "~/components/settings/ProviderInstanceCard
 import { DRIVER_OPTION_BY_VALUE } from "~/components/settings/providerDriverMeta";
 import { SettingsRow, SettingsSection } from "~/components/settings/settingsLayout";
 import { teamPeople } from "~/components/settings/teamSettings.logic";
-import { STANDARD_THEME_CARDS } from "~/components/settings/ThemePreviewCircles";
-import { ThemeLibraryCard } from "~/components/settings/ThemeSettings";
 import { TeamList } from "~/components/settings/TeamSettings";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
@@ -398,20 +396,6 @@ function CardsAndRows() {
             tag="stage"
           />
         </ul>
-      </CensusSpecimen>
-      <CensusSpecimen
-        entry={{ source: "apps/web/src/components/settings/ThemeSettings.tsx", uses: 3, files: 1 }}
-        label="<ThemeLibraryCard theme isActive activeModes>"
-      >
-        <div className="w-64">
-          <ThemeLibraryCard
-            activeModes={["light"]}
-            isActive
-            onUse={noop}
-            onUseMode={noop}
-            theme={STANDARD_THEME_CARDS[0]!}
-          />
-        </div>
       </CensusSpecimen>
       <CensusSpecimen
         entry={{ source: "apps/web/src/components/zerops/ZeropsMateCard.tsx", uses: 2, files: 1 }}

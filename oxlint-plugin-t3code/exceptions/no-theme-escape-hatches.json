@@ -1944,62 +1944,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"h-2.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)]\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "TemplateElement",
-    "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
-    "kind": "TemplateElement",
-    "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
-    "owner": "karel",
-    "reason": "picker chrome / derived foreground",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"col-start-1 row-start-1 size-full appearance-none rounded-sm border border-input bg-background outline-none checked:border-primary checked:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:not-checked:bg-input/32 forced-colors:appearance-auto\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ThemeSettings awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/Sidebar.logic.ts",
     "kind": "Literal",
     "fingerprint": "\"bg-amber-500 dark:bg-amber-300/90\"",
@@ -2482,14 +2426,6 @@
   {
     "path": "apps/web/src/index.css",
     "kind": "css-declaration",
-    "fingerprint": ".theme-inspector-spotlight-dimmer{fill:rgb(2 3 8 / 54%)}",
-    "owner": "karel",
-    "reason": "theme inspector overlay / shadow",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
     "fingerprint": ".ultrathink-frame::before{-webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)}",
     "owner": "karel",
     "reason": "mask geometry / alpha ramp, not a colour",
@@ -2685,14 +2621,6 @@
     "fingerprint": "@utility dialog-glass{box-shadow:0 24px 64px -24px rgb(0 0 0 / 65%)}",
     "owner": "karel",
     "reason": "dialog glass shadow outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/index.css",
-    "kind": "css-declaration",
-    "fingerprint": "#theme-inspector-hover [data-theme-inspector-hover-label]{box-shadow:0 4px 16px rgb(0 0 0 / 24%)}",
-    "owner": "karel",
-    "reason": "theme inspector overlay / shadow",
     "expires": "F4"
   },
   {
