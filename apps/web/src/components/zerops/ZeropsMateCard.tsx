@@ -34,7 +34,7 @@ import { MateFace } from "./primitives";
 function PreviewLink({ url }: { readonly url: string }) {
   return (
     <a
-      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
+      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-status-busy-text underline-offset-2 hover:underline"
       data-zerops-surface="mate-preview"
       href={url}
       rel="noreferrer"
@@ -49,12 +49,12 @@ function PreviewLink({ url }: { readonly url: string }) {
 /** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
 /** A verb that is about something with a state wears that state. */
 const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-[var(--zerops-status-ok)]/40 bg-[var(--zerops-status-ok-surface)] text-[var(--zerops-status-ok-text)] hover:bg-[var(--zerops-status-ok-surface)]/70",
-  busy: "border-[var(--zerops-status-busy)]/40 bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)] hover:bg-[var(--zerops-status-busy-surface)]/70",
+  ok: "border-status-ok/40 bg-status-ok-surface text-status-ok-text hover:bg-status-ok-surface/70",
+  busy: "border-status-busy/40 bg-status-busy-surface text-status-busy-text hover:bg-status-busy-surface/70",
   attention:
-    "border-[var(--zerops-status-attention)]/40 bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)] hover:bg-[var(--zerops-status-attention-surface)]/70",
+    "border-status-attention/40 bg-status-attention-surface text-status-attention-text hover:bg-status-attention-surface/70",
   failed:
-    "border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)] hover:bg-[var(--zerops-status-failed-surface)]/70",
+    "border-status-failed/40 bg-status-failed-surface text-status-failed-text hover:bg-status-failed-surface/70",
   off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
 };
 
@@ -67,10 +67,10 @@ const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
  * says it too.
  */
 const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "bg-[var(--zerops-status-ok)]/20 text-[var(--zerops-status-ok-text)]",
-  busy: "bg-[var(--zerops-status-busy)]/20 text-[var(--zerops-status-busy-text)]",
-  attention: "bg-[var(--zerops-status-attention)]/20 text-[var(--zerops-status-attention-text)]",
-  failed: "bg-[var(--zerops-status-failed)]/20 text-[var(--zerops-status-failed-text)]",
+  ok: "bg-status-ok/20 text-status-ok-text",
+  busy: "bg-status-busy/20 text-status-busy-text",
+  attention: "bg-status-attention/20 text-status-attention-text",
+  failed: "bg-status-failed/20 text-status-failed-text",
   off: "bg-muted text-muted-foreground",
 };
 

@@ -584,22 +584,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed)] in \"px-4 pt-3 text-xs text-[var(--zerops-status-failed)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
     "kind": "Literal",
     "fingerprint": "<> bg-[var(--app-theme-surface)] in \"size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]\"",
@@ -618,31 +602,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
     "kind": "Literal",
-    "fingerprint": "<> bg-[var(--zerops-status-ok)] in \"size-2 shrink-0 rounded-full bg-[var(--zerops-status-ok)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> bg-[var(--zerops-status-ok-surface)] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
     "fingerprint": "<> border-[var(--zerops-rail)] in \"size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> leading-[18px] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
@@ -658,23 +618,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
     "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"text-[13px] leading-5 text-foreground tabular-nums\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-ok-text)] in \"shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"
@@ -696,14 +640,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsMateCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-busy-text)] in \"relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text,var(--foreground))] in \"text-[var(--zerops-status-failed-text,var(--foreground))]\"",
@@ -720,14 +656,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"min-w-0 text-[13px] text-muted-foreground\"",
@@ -739,38 +667,6 @@
     "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"text-[13px] text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"min-w-0 truncate text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-sm text-[var(--zerops-status-failed-text)]\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"text-xs text-[var(--zerops-status-failed-text)]\"",
     "owner": "web-intake",
     "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
     "expires": "F6"

@@ -35,17 +35,17 @@ const STEP_GLYPH: Record<
   ProcessStepState,
   { readonly Icon: typeof CheckIcon; readonly className: string }
 > = {
-  queued: { Icon: ClockIcon, className: "text-[var(--zerops-status-off)]" },
-  running: { Icon: PlayIcon, className: "text-[var(--zerops-status-busy)]" },
-  done: { Icon: CheckIcon, className: "text-[var(--zerops-status-ok-text)]" },
-  failed: { Icon: XIcon, className: "text-[var(--zerops-status-failed-text)]" },
+  queued: { Icon: ClockIcon, className: "text-status-off" },
+  running: { Icon: PlayIcon, className: "text-status-busy" },
+  done: { Icon: CheckIcon, className: "text-status-ok-text" },
+  failed: { Icon: XIcon, className: "text-status-failed-text" },
 };
 
 const SEGMENT_BOX: Record<ProcessStepState, string> = {
   queued: "bg-muted/60 text-muted-foreground",
-  running: "bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)]",
+  running: "bg-status-busy-surface text-status-busy-text",
   done: "bg-muted/60 text-foreground",
-  failed: "bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)]",
+  failed: "bg-status-failed-surface text-status-failed-text",
 };
 
 /** Up to this many segments share one row, however narrow; more wrap at a readable width. */

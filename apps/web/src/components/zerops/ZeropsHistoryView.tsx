@@ -158,7 +158,7 @@ function HistoryRow({
           aria-hidden="true"
           className={
             live
-              ? "size-2 shrink-0 rounded-full bg-[var(--zerops-status-ok)]"
+              ? "size-2 shrink-0 rounded-full bg-status-ok"
               : "size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]"
           }
         />
@@ -194,7 +194,7 @@ function HistoryRow({
           {entry.tags.map((tag) =>
             here === undefined ? (
               <span
-                className="shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]"
+                className="shrink-0 rounded-full bg-status-ok-surface px-1.5 text-2xs leading-4.5 font-medium text-status-ok-text"
                 data-zerops-surface="zerops-history-release"
                 key={tag}
               >

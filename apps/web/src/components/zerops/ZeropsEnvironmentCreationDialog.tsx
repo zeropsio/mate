@@ -458,7 +458,7 @@ function agentSwitchNote(role: ZeropsEnvironmentRole): string {
 
 export function FieldError({ children }: { readonly children: string }) {
   return (
-    <p className="text-xs text-[var(--zerops-status-failed-text)]" role="alert">
+    <p className="text-xs text-status-failed-text" role="alert">
       {children}
     </p>
   );

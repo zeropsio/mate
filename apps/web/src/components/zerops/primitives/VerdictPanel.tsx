@@ -15,10 +15,10 @@ import { Badge } from "~/components/ui/badge";
  * same amber as a rebase (2026-09-19).
  */
 const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-[var(--zerops-status-ok)]/40",
-  busy: "border-[var(--zerops-status-busy)]/40",
-  attention: "border-[var(--zerops-status-attention)]/40",
-  failed: "border-[var(--zerops-status-failed)]/40",
+  ok: "border-status-ok/40",
+  busy: "border-status-busy/40",
+  attention: "border-status-attention/40",
+  failed: "border-status-failed/40",
   off: "border-border",
 };
 

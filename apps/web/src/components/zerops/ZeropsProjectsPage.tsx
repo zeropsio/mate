@@ -1142,10 +1142,7 @@ export function ZeropsProjectsContent({
   const renderWaitLine = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
     if (!waitedOn(candidate)) return undefined;
     const failed = (text: string) => (
-      <span
-        className="min-w-0 truncate text-[var(--zerops-status-failed-text)]"
-        data-zerops-surface="mate-subject"
-      >
+      <span className="min-w-0 truncate text-status-failed-text" data-zerops-surface="mate-subject">
         {text}
       </span>
     );
@@ -1258,7 +1255,7 @@ export function ZeropsProjectsContent({
         <span
           className={cn(
             "min-w-0 truncate",
-            presentation.detailIsError && "text-[var(--zerops-status-failed-text)]",
+            presentation.detailIsError && "text-status-failed-text",
           )}
           data-zerops-surface="mate-subject"
         >
@@ -2822,9 +2819,7 @@ export function ZeropsProjectsContent({
           />
         ),
       )}
-      {trouble === null ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
-      )}
+      {trouble === null ? null : <p className="text-sm text-status-failed-text">{trouble}</p>}
     </div>
   );
   return (

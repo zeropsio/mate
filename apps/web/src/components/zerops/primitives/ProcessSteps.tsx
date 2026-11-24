@@ -51,22 +51,22 @@ const ICON_COMPONENT = {
 const PRESENTATION = {
   queued: {
     icon: ICON_MAP.queued,
-    className: "border-[var(--zerops-status-off)] text-[var(--zerops-status-off)]",
+    className: "border-status-off text-status-off",
     tone: "off",
   },
   running: {
     icon: ICON_MAP.running,
-    className: "border-[var(--zerops-status-busy)] text-[var(--zerops-status-busy)]",
+    className: "border-status-busy text-status-busy",
     tone: "busy",
   },
   done: {
     icon: ICON_MAP.done,
-    className: "border-[var(--zerops-status-ok)] text-[var(--zerops-status-ok)]",
+    className: "border-status-ok text-status-ok",
     tone: "ok",
   },
   failed: {
     icon: ICON_MAP.failed,
-    className: "border-[var(--zerops-status-failed)] text-[var(--zerops-status-failed)]",
+    className: "border-status-failed text-status-failed",
     tone: "failed",
   },
 } as const satisfies Record<
