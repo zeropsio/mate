@@ -413,6 +413,8 @@ export function flowAppChanges(input: {
 export interface ChangeLandedEvent {
   /** Stable across reads, so a timeline can key on it. */
   readonly key: string;
+  /** Its application, by which its review opens. */
+  readonly groupId: string;
   readonly repository: string;
   readonly number: number;
   readonly title: string;
@@ -432,6 +434,7 @@ export interface ChangeLandedEvent {
 export function changeLandedEvents(
   changes: ReadonlyArray<FlowPullRequest>,
   mateProjectId: string | undefined,
+  groupId: string,
 ): ReadonlyArray<ChangeLandedEvent> {
   if (mateProjectId === undefined) return [];
   const events: Array<ChangeLandedEvent> = [];
@@ -441,6 +444,7 @@ export function changeLandedEvents(
     if (landedAt === undefined) continue;
     events.push({
       key: `change-landed:${change.repository}#${String(change.number)}`,
+      groupId,
       repository: change.repository,
       number: change.number,
       title: change.title,

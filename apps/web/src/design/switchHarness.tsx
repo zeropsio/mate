@@ -346,6 +346,7 @@ const novaLanding = (createdAt: string): TimelineEntry => ({
   createdAt,
   event: {
     key: `landed:${LANDED_ID}`,
+    groupId: "application-harness",
     repository: "storefront",
     number: 42,
     title: "Show HQ's sign-in in the landing's card",

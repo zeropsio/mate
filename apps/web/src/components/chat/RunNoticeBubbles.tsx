@@ -2,6 +2,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { releaseEndedWords } from "@t3tools/client-runtime/zerops";
 import { use } from "react";
 import { cn } from "~/lib/utils";
+import { LandedTitle } from "./ConversationRows";
 import { Bubble, META, rises } from "./RunBubble";
 import { DisclosureButton, Headline, OutputBlock, useDisclosure } from "./RunDisclosure";
 import { type WorkLogEntry } from "../../session-logic";
@@ -72,10 +73,8 @@ function recordEventWords(
       return { words: words!, detail: detail ?? null };
     }
     case "landed":
-      return {
-        words: `${event.event.repository} #${event.event.number} landed`,
-        detail: event.event.title,
-      };
+      // Its title follows as the link to its review (`LandedTitle`).
+      return { words: `${event.event.repository} #${event.event.number} landed`, detail: null };
     case "release":
       return { words: releaseEndedWords(event.event), detail: null };
     case "compaction":
@@ -115,10 +114,19 @@ export function EventCaption({ event }: { readonly event: ConversationEvent }) {
   return (
     <div className={cn("flex min-w-0 items-center gap-3", META)} data-chat-kind="event">
       <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
-      <span className="min-w-0 truncate text-muted-foreground">
-        <span className="text-foreground/80">{words}</span>
-        {detail !== null ? ` · ${detail}` : null}
-      </span>
+      {event.type === "landed" ? (
+        <span className="flex min-w-0 text-muted-foreground">
+          <span className="shrink-0 whitespace-pre">
+            <span className="text-foreground/80">{words}</span> ·{" "}
+          </span>
+          <LandedTitle event={event.event} />
+        </span>
+      ) : (
+        <span className="min-w-0 truncate text-muted-foreground">
+          <span className="text-foreground/80">{words}</span>
+          {detail !== null ? ` · ${detail}` : null}
+        </span>
+      )}
       <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
     </div>
   );
