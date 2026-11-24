@@ -5841,43 +5841,6 @@ code {
     padding-inline: 0 !important;
   }
 
-  /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
-     its name on the row's middle, its band from the list's inset to the divider's. */
-  .menu-chief-row {
-    display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-    align-items: center;
-    /* As tall as a Mate's card under it, the row's two lines in its 11 px padding (the owner,
-       2026-10-13: "it doesn't look good that this upper card is actually smaller"). */
-    height: var(--sidebar-chief-row-height);
-    /* Its room above it the same as on its left. */
-    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
-    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
-    border-radius: 12px;
-    text-align: left;
-    cursor: pointer;
-    outline: none;
-    position: relative;
-    isolation: isolate;
-    transition: background-color 150ms var(--ease-out-strong);
-  }
-
-  /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
-     project's row (the owner, 2026-10-12: "this should look different"). */
-  .menu-chief-row {
-    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, var(--sidebar));
-    background: var(--chief-ground);
-  }
-
-  .menu-chief-row:hover {
-    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, var(--sidebar));
-  }
-
-  .menu-chief-row:is([data-current], [data-pressed]) {
-    --chief-ground: var(--sidebar-row-active);
-  }
-
   /* Lit from the press, as a Mate's row is under its band (`menu-chief-lit`): its own layer, grown
      into place by opacity and scale, or carried from the band and back (`chiefLitTravel`) — the
      compositor runs either while the page it opens is drawn. */
@@ -5893,7 +5856,7 @@ code {
     will-change: opacity, transform;
   }
 
-  .menu-chief-row:is([data-current], [data-pressed]) .menu-chief-lit {
+  [data-zerops-surface="sidebar-chief-row"]:is([data-current], [data-pressed]) .menu-chief-lit {
     opacity: 1;
     transform: none;
   }
@@ -5901,10 +5864,6 @@ code {
   /* The band stepped aside while its ground is carried up into the Chief's row. */
   .menu-band[data-away] {
     opacity: 0;
-  }
-
-  .menu-chief-row:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .menu-chief-body {
@@ -5917,7 +5876,7 @@ code {
   }
 
   /* The count stands at the first column's end, 4 px before the squares as they stand apart. */
-  .menu-chief-row[data-waits] .menu-chief-body {
+  [data-zerops-surface="sidebar-chief-row"][data-waits] .menu-chief-body {
     padding-inline-end: 44px;
   }
 
@@ -5937,7 +5896,7 @@ code {
   .menu-chief-mark .menu-dot[data-place="corner"] {
     top: 2px;
     right: 1px;
-    box-shadow: 0 0 0 2px var(--chief-ground);
+    box-shadow: 0 0 0 2px var(--row-ground);
   }
 
   .menu-chief-mark .menu-owner {
@@ -5945,7 +5904,7 @@ code {
     left: auto;
     right: -4px;
     bottom: -2px;
-    box-shadow: 0 0 0 2px var(--chief-ground);
+    box-shadow: 0 0 0 2px var(--row-ground);
   }
 
   /* The name alone stands in the row's middle; a line arriving under it lifts it as it grows in. */
@@ -5956,7 +5915,7 @@ code {
     min-width: 0;
   }
 
-  .menu-chief-row[data-lined] .menu-chief-words {
+  [data-zerops-surface="sidebar-chief-row"][data-lined] .menu-chief-words {
     grid-template-rows: auto 1fr;
   }
 

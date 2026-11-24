@@ -168,14 +168,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"menu-chief-row\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row `columns` with a ground of its own — the Chief's menu tile sits in the menu's subgrid columns on its tinted ground and takes the menu's band as it opens; the kit's Row is one flex line",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",

@@ -15,6 +15,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
+import { Row } from "../../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
@@ -72,9 +73,15 @@ export function SidebarChiefRow({
   const shown = line ?? null;
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
-      <button
+      {/* A Mate row's measure in the bar: its mark on the faces' column, its name on the row's
+          middle, its band from the list's inset to the divider's; as tall as a Mate's card under
+          it (the owner, 2026-10-13: "it doesn't look good that this upper card is actually
+          smaller"), its room above the same as on its left. On the mark's teal at rest, set apart
+          from every project's row (the owner, 2026-10-12: "this should look different"). */}
+      <Row
         aria-current={current ? "page" : undefined}
-        className="menu-chief-row"
+        className="me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] mt-[calc(var(--sidebar-content-inset)+1px)] h-(--sidebar-chief-row-height) items-center"
+        columns
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
         data-waits={items.length === 0 ? undefined : ""}
@@ -90,7 +97,9 @@ export function SidebarChiefRow({
           }, 600);
           onOpen();
         }}
-        type="button"
+        ground="tint"
+        pressable="band"
+        render={<button type="button" />}
       >
         <span aria-hidden="true" className="menu-chief-lit" />
         <span className="menu-chief-body">
@@ -122,7 +131,7 @@ export function SidebarChiefRow({
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
-      </button>
+      </Row>
       {waiting === undefined || items.length === 0 ? null : (
         <SidebarWaitingCount seat="row" items={items} verbs={waiting.verbs} />
       )}
