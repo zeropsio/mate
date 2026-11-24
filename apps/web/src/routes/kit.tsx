@@ -15,20 +15,9 @@ function KitRouteView() {
   const navigate = Route.useNavigate();
   return (
     <KitPage
-      view={search.appearance}
-      pane={search.pane === true}
-      onViewChange={(appearance) =>
-        void navigate({ search: (previous) => ({ ...previous, appearance }), replace: true })
-      }
       flows={KIT_FLOWS}
-      flow={search.flow}
-      onFlowChange={(flow) =>
-        void navigate({
-          search: ({ flow: _shown, ...previous }) =>
-            flow === undefined ? previous : { ...previous, flow },
-          replace: true,
-        })
-      }
+      onSearchChange={(next, mode) => void navigate({ search: next, replace: mode === "replace" })}
+      search={search}
     />
   );
 }
