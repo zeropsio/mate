@@ -1,4 +1,4 @@
-next: MN75
+next: MN77
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -74,4 +74,5 @@ next: MN75
 - MN71 — A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up
 - MN73 — A Put it live waiting on a lost answer can be ended by whoever HQ offers its End, and by nobody else; breaks: the application stays held with no way out
 - MN74 — A Mate's row menu keeps the Continue and End HQ offers on its waiting restart or move; breaks: an Owner sees no way to end a restart that holds the Mate
-- MN+1 — A new Mate HQ says is coming offers no Try now unless its container failed at Zerops, and turns failed with HQ's reason for each refusal code HQ put on its birth, a code this build does not know in its details, its way out its birth's Delete; breaks: Try now on a Mate with no server does nothing, a refused Mate waits as coming forever or offers a Delete HQ does not, or a failed container loses its stop and start
+- MN75 — A new Mate HQ says is coming offers no Try now unless its container failed at Zerops, and turns failed with HQ's reason for each refusal code HQ put on its birth, a code this build does not know in its details, its way out its birth's Delete; breaks: Try now on a Mate with no server does nothing, a refused Mate waits as coming forever or offers a Delete HQ does not, or a failed container loses its stop and start
+- MN76 — A new Mate whose hello HQ refused stops its arrival's row on the step that waited for that hello, failed, and nowhere else; breaks: the failed page still spins on Starting under its failed headline

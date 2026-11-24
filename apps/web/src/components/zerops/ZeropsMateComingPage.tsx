@@ -920,6 +920,7 @@ function ExistingMateComingPage({
           ...(setupFailure === undefined ? {} : { setupFailure }),
           ...(pressSteps === undefined ? {} : { press: pressSteps }),
           ...(empty.agentReady ? { agentReady: true } : {}),
+          ...(linkWord.refused === null ? {} : { linkRefused: true }),
         };
 
   const mateActions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
@@ -1740,6 +1741,8 @@ export type ArrivalProgress = BirthLineProgress & {
   readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
   /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
   readonly agentReady?: boolean | undefined;
+  /** HQ refused its hello (`arrivalLink`). */
+  readonly linkRefused?: boolean | undefined;
 };
 
 /** A birth's line without the start it derives (`governingStartedAt`), which is no run's clock. */

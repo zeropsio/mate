@@ -310,6 +310,8 @@ export function arrivalSteps(
      * no sign-in of the viewer's is (`MateEmptyState.agentReady`): nothing is theirs to sign in.
      */
     readonly agentReady?: boolean | undefined;
+    /** HQ refused its hello (`arrivalLink`): the step that waited for that hello failed. */
+    readonly linkRefused?: boolean | undefined;
   },
   mate: Named,
 ): ReadonlyArray<ArrivalStep> {
@@ -364,6 +366,14 @@ export function arrivalSteps(
             ? "active"
             : "waiting";
     steps.push({ id, label, state });
+  }
+  // Its hello is how its start and its conversation's opening end: the first of them not done.
+  if (progress.linkRefused === true) {
+    const at = steps.findIndex(
+      (step) => (step.id === "start" || step.id === "open") && step.state !== "done",
+    );
+    const row = steps[at];
+    if (row !== undefined) steps[at] = { ...row, state: "failed" };
   }
   // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
   const press = progress.press;

@@ -74,7 +74,7 @@ const recordedBirths = () =>
     .flatMap((v) => hqAppFamily.hq!.decode(v.value, v.key.slice("app:".length))?.births ?? []);
 
 // witness: packages/client-runtime/src/data/projections/hqMates.ts | if (birth.projectId === projectId) births.push(birth); → births.push(birth);
-it("PJ+1: A new Mate's refused link is what HQ put on its own project's open birth, and nothing where its birth carries none or only another project's does; breaks: a refused Mate's page waits as coming forever, or a Mate that is coming reads another Mate's refusal", () => {
+it("PJ154: A new Mate's refused link is what HQ put on its own project's open birth, and nothing where its birth carries none or only another project's does; breaks: a refused Mate's page waits as coming forever, or a Mate that is coming reads another Mate's refusal", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const refused = recordedBirths().find((birth) => birth.linkRefusal !== undefined)!;
