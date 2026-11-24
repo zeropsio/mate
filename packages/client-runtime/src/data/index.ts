@@ -213,7 +213,7 @@ export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer } from "./projections/flowAnswer.ts";
-export { restartWay } from "./operations/mateRestart.ts";
+export { containerFailed, restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";

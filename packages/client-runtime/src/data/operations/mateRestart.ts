@@ -3,7 +3,9 @@
  * its row in the process family reflects it, and its terminal status ends it. The platform refuses
  * to restart a service that has failed (`serviceStackIsFailed`, measured on three Mates after a
  * platform outage, 2026-10-01), so a failed Mate is brought back by HQ instead (`restartWay`
- * `"hq"`: the account's `start-mate-restart`), which stops it and starts it on the person's token.
+ * `"hq"`: the account's `start-mate-restart`), which stops it and starts it on the person's token;
+ * so is one HQ offers a restart of (its project's `restart_mate`: it stopped answering while Zerops
+ * shows it running).
  *
  * @module data/operations/mateRestart
  */
@@ -30,15 +32,20 @@ declare module "../model.ts" {
 
 const SERVICE_STATUS_PREFIX = "SERVICE_";
 
-/**
- * How a Mate's container in the status the listing reads for it is brought back: restarted at
- * Zerops, or — failed — by HQ's restart.
- */
-export function restartWay(status: string | undefined): "restart" | "hq" {
+/** Whether a Mate's container is in a failed status, as the listing reads it. */
+export function containerFailed(status: string | undefined): boolean {
   const normalized = status?.startsWith(SERVICE_STATUS_PREFIX)
     ? status.slice(SERVICE_STATUS_PREFIX.length)
     : status;
-  return normalized !== undefined && normalized.endsWith("FAILED") ? "hq" : "restart";
+  return normalized !== undefined && normalized.endsWith("FAILED");
+}
+
+/**
+ * How a Mate is restarted: by HQ where HQ offers its restart (`restartOffered`) or its container
+ * failed, else at Zerops.
+ */
+export function restartWay(status: string | undefined, offered: boolean): "restart" | "hq" {
+  return offered || containerFailed(status) ? "hq" : "restart";
 }
 
 export const mateRestart: OperationKind<"mate-restart"> = {

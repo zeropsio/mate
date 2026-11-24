@@ -217,7 +217,7 @@ export interface HqStructure {
       readonly mate: HqMate;
       /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
       readonly operation?: HqOperation;
-      /** What HQ itself offers the reader on it (`set_up_mate`). */
+      /** What HQ itself offers the reader on it (`set_up_mate`, `restart_mate`). */
       readonly offers?: ReadonlyArray<string>;
     } & HqOffered
   >;
@@ -238,7 +238,7 @@ export interface HqStructure {
         readonly mate: HqMate | null | undefined;
         /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
         readonly operation?: HqOperation;
-        /** What HQ itself offers the reader on it (`set_up_mate`). */
+        /** What HQ itself offers the reader on it (`set_up_mate`, `restart_mate`). */
         readonly offers?: ReadonlyArray<string>;
       } & HqOffered
     >;

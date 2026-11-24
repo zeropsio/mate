@@ -572,7 +572,7 @@ export const HqNavigationProject = Schema.Struct({
   name: Schema.optionalKey(Schema.NonEmptyString),
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
-  /** What HQ offers this reader on the project (`set_up_mate`); absent for none. */
+  /** What HQ offers this reader on the project (`set_up_mate`, `restart_mate`); absent for none. */
   offers: Schema.optionalKey(Schema.Array(Schema.String)),
   person: HqPersonFacts,
   /** Login ID to current person; only credentials present and not API tokens. */

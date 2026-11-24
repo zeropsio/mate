@@ -38,6 +38,7 @@ export function MateDeployConfirmation({
         projectId: candidate.project.id,
         serviceId: candidate.service.id,
         status: candidate.service.status,
+        restartOffered: candidate.project.hq?.restartOffered === true,
         name,
       },
       "redeploy",

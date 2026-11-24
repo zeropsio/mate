@@ -1,10 +1,10 @@
 /**
  * Restarting a Mate's container, whatever state it is in: the account's `mate-restart` operation,
- * which Zerops executes and whose process says how it ended, or — failed — one HQ start
- * (`start-mate-restart`), whose operation every device reads from navigation. Its container is
+ * which Zerops executes and whose process says how it ended, or — failed, or offered by HQ — one HQ
+ * start (`start-mate-restart`), whose operation every device reads from navigation. Its container is
  * then intended to come up as a restart's is (`intendContainer`).
  */
-import { restartWay } from "@t3tools/client-runtime/data";
+import { containerFailed } from "@t3tools/client-runtime/data";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useRecoveryCommand } from "./recoveryOutcomes";
 import { useCallback } from "react";
@@ -36,10 +36,12 @@ export function useRestartMate(): (target: RestartTarget) => Promise<void> {
   const command = useRecoveryCommand("restart-confirmation");
   const rows = useHeldZeropsDetailCandidates();
   return async (target) => {
+    const row = rows.find((candidate) => candidate.project.id === target.projectId);
     const { progress } = await command(
       {
         ...target,
-        name: rows.find((row) => row.project.id === target.projectId)?.project.name ?? "The Mate",
+        name: row?.project.name ?? "The Mate",
+        restartOffered: row?.project.hq?.restartOffered === true,
       },
       "restart",
     );
@@ -60,7 +62,7 @@ export function useReviveFailedMate(): (serviceId: string | undefined) => boolea
       if (serviceId === undefined || orgId === null) return false;
       const candidate = rows.find((row) => row.service?.id === serviceId);
       if (candidate?.service === undefined) return false;
-      if (restartWay(candidate.service.status) !== "hq") return false;
+      if (!containerFailed(candidate.service.status)) return false;
       intendContainer(candidate.key, { kind: "restart" });
       // A restart HQ took is said by its row from navigation, on every device; one it did not is
       // said here, as the menu says it.

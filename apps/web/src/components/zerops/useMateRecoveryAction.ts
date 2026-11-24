@@ -38,6 +38,7 @@ export function useMateRecoveryAction(projectId: string | null) {
               projectId: candidate.project.id,
               serviceId: candidate.service.id,
               status: candidate.service.status,
+              restartOffered: candidate.project.hq?.restartOffered === true,
               projectStatus: candidate.project.status,
               name: candidate.project.name,
             },

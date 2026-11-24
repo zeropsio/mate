@@ -10,7 +10,12 @@
  *
  * @module hq/placement
  */
-import { HQ_OFFER_SET_UP_MATE, type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
+import {
+  HQ_OFFER_RESTART_MATE,
+  HQ_OFFER_SET_UP_MATE,
+  type HqOfferState,
+  hqOffer,
+} from "@t3tools/shared/hqOffers";
 import { type ZeropsMateFace, readMateFace } from "@t3tools/shared/mateFaces";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
@@ -37,6 +42,8 @@ export type HqPlacement =
       readonly operation?: HqOperation;
       /** HQ offers the reader Set up Mate on it (a project's `offers`). */
       readonly setUpOffered?: true;
+      /** HQ offers the reader its Mate's restart (a project's `offers`: `restartWay`). */
+      readonly restartOffered?: true;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | {
@@ -46,6 +53,7 @@ export type HqPlacement =
       readonly mate: HqMate;
       readonly operation?: HqOperation;
       readonly setUpOffered?: true;
+      readonly restartOffered?: true;
     };
 
 /** HQ facts joined by project id: where HQ places each project. */
@@ -108,6 +116,9 @@ export function placementsOf(
         ...(project.offers?.includes(HQ_OFFER_SET_UP_MATE) === true
           ? { setUpOffered: true as const }
           : {}),
+        ...(project.offers?.includes(HQ_OFFER_RESTART_MATE) === true
+          ? { restartOffered: true as const }
+          : {}),
       });
     }
   }
@@ -119,6 +130,9 @@ export function placementsOf(
       mate: withLogins(projectId, mate),
       ...(operation === undefined ? {} : { operation }),
       ...(offers?.includes(HQ_OFFER_SET_UP_MATE) === true ? { setUpOffered: true as const } : {}),
+      ...(offers?.includes(HQ_OFFER_RESTART_MATE) === true
+        ? { restartOffered: true as const }
+        : {}),
     });
   }
   return placements;

@@ -19,7 +19,7 @@ const said = (line: string | undefined) =>
         line.startsWith(LINK_REFUSAL_WORDS[code]!(mate.name)),
       ) ?? (line.startsWith("HQ could not link Wren.") ? "generic" : "other"));
 
-// witness: apps/web/src/zerops/mateArrival.ts | if (input.link !== "coming" || containerFailed) → if (input.link !== "coming")
+// witness: apps/web/src/zerops/mateArrival.ts | if (input.link !== "coming" || containerFailed(input.containerStatus)) → if (input.link !== "coming")
 it("MN75: A new Mate HQ says is coming offers no Try now unless its container failed at Zerops, and turns failed with HQ's reason for each refusal code HQ put on its birth, a code this build does not know in its details, its way out its birth's Delete; breaks: Try now on a Mate with no server does nothing, a refused Mate waits as coming forever or offers a Delete HQ does not, or a failed container loses its stop and start", () => {
   const rows = [
     // HQ link, container status at Zerops, refusal → shown kind, verb, whose words, details,

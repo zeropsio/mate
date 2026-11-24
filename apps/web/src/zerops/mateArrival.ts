@@ -20,7 +20,7 @@
  */
 import type { BirthLineStep, BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { type MateSetup, type MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
-import { TAKING_LONGER_LINE, restartWay, type MateComing } from "@t3tools/client-runtime/data";
+import { TAKING_LONGER_LINE, containerFailed, type MateComing } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import type { HqPresence } from "@t3tools/client-runtime/zerops/environments";
 import type { HqLinkRefusal } from "@t3tools/client-runtime/zerops/hq";
@@ -515,8 +515,7 @@ export function arrivalLink(
     readonly nowMs: number;
   },
 ): ArrivalLink {
-  const containerFailed = restartWay(input.containerStatus) === "hq";
-  if (input.link !== "coming" || containerFailed)
+  if (input.link !== "coming" || containerFailed(input.containerStatus))
     return { refused: null, tryNow: true, exit: "entry" };
   const { refusal } = input;
   if (refusal === null) return { refused: null, tryNow: false, exit: "entry" };

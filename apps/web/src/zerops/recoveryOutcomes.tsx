@@ -70,6 +70,8 @@ interface RecoveryTarget {
   readonly projectId: string;
   readonly serviceId: string;
   readonly status: string | undefined;
+  /** HQ offers its Mate's restart (`HqPlacement.restartOffered`). */
+  readonly restartOffered: boolean;
   readonly name: string;
   readonly projectStatus?: string;
 }
@@ -141,8 +143,8 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
             serviceId: target.serviceId,
           }
         : action === "restart"
-          ? // A failed container Zerops refuses to restart is HQ's to bring back.
-            restartWay(target.status) === "hq"
+          ? // A failed container Zerops refuses to restart, or one HQ offers to, is HQ's to restart.
+            restartWay(target.status, target.restartOffered) === "hq"
             ? { kind: "start-mate-restart", orgId, projectId: target.projectId, id: requestId }
             : {
                 kind: "mate-restart",

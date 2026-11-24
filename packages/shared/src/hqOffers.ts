@@ -60,6 +60,9 @@ export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 /** HQ's offer on a project (its `offers`): set a Mate up on it again after a deleted adoption. */
 export const HQ_OFFER_SET_UP_MATE = "set_up_mate";
 
+/** HQ's offer on a project (its `offers`): restart its Mate, which stopped answering, through HQ. */
+export const HQ_OFFER_RESTART_MATE = "restart_mate";
+
 /** What a control draws for one verb. */
 export type HqOfferState =
   | { readonly kind: "allowed" }
