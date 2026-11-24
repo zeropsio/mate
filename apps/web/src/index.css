@@ -8738,10 +8738,10 @@ label.tm-advanced-row:not([data-disabled]) {
 
 /* A change's row: the row that opens it across every column, and over it, in its own column, its
    pull request on GitHub where it has one. Its padding and its gap are the row's to set
-   (`--ov-change-pad-y`, `--ov-change-pad-x`, `--ov-change-gap`). */
+   (`--row-pad-y`, `--row-pad-x`, `--ov-change-gap`). */
 .ov-change-row {
-  --ov-change-pad-y: 6px;
-  --ov-change-pad-x: 8px;
+  --row-pad-y: 6px;
+  --row-pad-x: 8px;
   --ov-change-gap: 10px;
   display: grid;
   min-width: 0;
@@ -8749,44 +8749,15 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
 }
 
-.ov-change {
-  display: grid;
+/* The row's press (`Row columns`): on the row's line, its cells on it. */
+[data-ov-change],
+[data-ov-change] > * {
   grid-row: 1;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  align-items: start;
-  padding: var(--ov-change-pad-y) var(--ov-change-pad-x);
-  border-radius: 10px;
-  text-align: left;
-  transition: background-color 150ms var(--ease-out-strong);
-}
-
-.ov-change > * {
-  grid-row: 1;
-}
-
-button.ov-change {
-  cursor: pointer;
-}
-
-.ov-change:hover,
-.ov-change:focus-visible {
-  background: color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-
-.ov-change:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 
 /* The row of the change whose bead on the line is pointed at (`data-zerops-change`). */
-.ov-change-row[data-marked] > .ov-change {
+.ov-change-row[data-marked] > [data-ov-change] {
   background: color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-
-/* Work that is no change yet has nothing to open: the row stays still under the pointer. */
-.ov-change[data-plain]:hover {
-  background: none;
 }
 
 /* Where a row leads, at its end, on a page's list: shown while the row is pointed at or focused,
@@ -8800,8 +8771,8 @@ button.ov-change {
   transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
-.ov-change:hover .ov-go,
-.ov-change:focus-visible .ov-go {
+[data-ov-change]:hover .ov-go,
+[data-ov-change]:focus-visible .ov-go {
   opacity: 1;
 }
 
@@ -8822,7 +8793,7 @@ button.ov-change {
   display: flex;
   grid-row: 1;
   grid-column: 5;
-  margin-inline: 8px var(--ov-change-pad-x);
+  margin-inline: 8px var(--row-pad-x);
 }
 
 .ov-change-icon {
@@ -8833,7 +8804,7 @@ button.ov-change {
 }
 
 /* A change with no face of its own: its git mark in the face's column. */
-.ov-change > .ov-change-icon {
+[data-ov-change] > .ov-change-icon {
   grid-column: 1;
   margin-inline-end: calc(2px + var(--ov-change-gap));
 }
@@ -8858,16 +8829,16 @@ button.ov-change {
   margin-inline-start: 8px;
 }
 
-.ov-change:not([data-open]) > .ov-change-act {
+[data-ov-change]:not([data-open]) > .ov-change-act {
   align-self: center;
 }
 
-.ov-change[data-open] .ov-change-when,
-.ov-change[data-open] .ov-change-act {
+[data-ov-change][data-open] .ov-change-when,
+[data-ov-change][data-open] .ov-change-act {
   align-self: center;
 }
 
-.ov-change[data-open] .ov-change-icon {
+[data-ov-change][data-open] .ov-change-icon {
   color: var(--foreground);
 }
 
@@ -8961,7 +8932,7 @@ button.ov-change {
   grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
 }
 
-.ov-changes[data-ledger] .ov-change {
+.ov-changes[data-ledger] [data-ov-change] {
   align-items: center;
 }
 
@@ -8973,7 +8944,7 @@ button.ov-change {
   pointer-events: none;
 }
 
-.ov-change > .ov-change-state {
+[data-ov-change] > .ov-change-state {
   grid-column: 3;
   margin-inline-start: 16px;
   color: var(--muted-foreground);
@@ -9020,20 +8991,20 @@ button.ov-change {
   grid-column: 6;
 }
 
-.ov-changes[data-ledger] .ov-change:not(:hover, :focus-visible) .ov-go {
+.ov-changes[data-ledger] [data-ov-change]:not(:hover, :focus-visible) .ov-go {
   opacity: 0.55;
 }
 
 @container changes (max-width: 639px) {
-  .ov-changes[data-ledger] .ov-change > .ov-change-state {
+  .ov-changes[data-ledger] [data-ov-change] > .ov-change-state {
     grid-row: 2;
     grid-column: 2;
     justify-self: start;
     margin-inline-start: 0;
   }
 
-  .ov-changes[data-ledger] .ov-change > .ov-change-when,
-  .ov-changes[data-ledger] .ov-change > .ov-change-act {
+  .ov-changes[data-ledger] [data-ov-change] > .ov-change-when,
+  .ov-changes[data-ledger] [data-ov-change] > .ov-change-act {
     grid-row: 1 / span 2;
   }
 }
@@ -9048,7 +9019,7 @@ button.ov-change {
   align-self: start;
   justify-self: end;
   gap: 2px;
-  margin-block-start: calc(var(--ov-change-pad-y) + 2px);
+  margin-block-start: calc(var(--row-pad-y) + 2px);
   margin-inline-start: var(--ov-change-gap);
   font-size: 12px;
   line-height: 18px;
@@ -9066,12 +9037,12 @@ button.ov-change {
     -webkit-line-clamp: 2;
   }
 
-  .ov-change-row:not(:has(> .ov-change[data-plain])) .ov-change-pr {
+  .ov-change-row:not(:has(> [data-ov-change][data-plain])) .ov-change-pr {
     display: none;
   }
 }
 
-.ov-change-row:has(> .ov-change[data-open]) > .ov-change-pr {
+.ov-change-row:has(> [data-ov-change][data-open]) > .ov-change-pr {
   align-self: center;
   margin-block-start: 0;
 }
@@ -9312,8 +9283,7 @@ button.ov-change {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ov-mate,
-  .ov-change {
+  .ov-mate {
     transition: opacity 150ms linear;
   }
 }

@@ -384,8 +384,8 @@
 }
 
 [data-zerops-surface="project-changes"] .ov-change-row {
-  --ov-change-pad-y: 10px;
-  --ov-change-pad-x: 10px;
+  --row-pad-y: 10px;
+  --row-pad-x: 10px;
 }
 
 /* Setup files: no change a release ships, said quietly. */
@@ -508,22 +508,22 @@
 }
 
 .pp-hist-body .ov-change-row {
-  --ov-change-pad-y: 8px;
-  --ov-change-pad-x: 0px;
+  --row-pad-y: 8px;
+  --row-pad-x: 0px;
   --ov-change-gap: 12px;
 }
 
-.pp-hist-body .ov-change {
+.pp-hist-body [data-ov-change] {
   align-items: center;
   border-radius: 0;
 }
 
-.pp-hist-body .ov-change:hover,
-.pp-hist-body .ov-change:focus-visible {
+.pp-hist-body [data-ov-change]:hover,
+.pp-hist-body [data-ov-change]:focus-visible {
   background: none;
 }
 
-.pp-hist-body .ov-change:hover .ov-change-title {
+.pp-hist-body [data-ov-change]:hover .ov-change-title {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -567,7 +567,7 @@
 /* The Automation section, opened on the page: the Changes card's anatomy, for tasks. A one-line
    masthead says the pool; under its hairline one ledger — a mark, a title, then facts in columns
    that run down every group — and the sources its tasks come from as rows of the same list. Its
-   rows are the Changes ledger's own (`.ov-change-row`, `.ov-change`, `.ov-change-title`), 40 px
+   rows are the Changes ledger's own (`.ov-change-row`, `[data-ov-change]`, `.ov-change-title`), 40 px
    here, with a cost column. */
 .pa {
   --ln-ground: transparent;
@@ -675,8 +675,8 @@
 }
 
 .pa .pa-row {
-  --ov-change-pad-y: 6px;
-  --ov-change-pad-x: 10px;
+  --row-pad-y: 6px;
+  --row-pad-x: 10px;
   position: relative;
   grid-column: 1 / -1;
   border-top: 1px solid var(--ov-rule);
@@ -686,13 +686,13 @@
   border-top-color: transparent;
 }
 
-.pa-row > .ov-change {
+.pa-row > [data-ov-change] {
   min-height: 40px;
   align-items: center;
 }
 
 /* The row holds its ground while any of it is pointed at: its Stop and its Review stand over it. */
-.pa-row:hover > .ov-change:not([data-plain]) {
+.pa-row:hover > [data-ov-change]:not([data-plain]) {
   background: var(--ov-hover);
 }
 
@@ -820,7 +820,7 @@
   grid-column: 5;
 }
 
-.pa .ov-change:not(:hover, :focus-visible) .ov-go {
+.pa [data-ov-change]:not(:hover, :focus-visible) .ov-go {
   opacity: 0.55;
 }
 

@@ -71,6 +71,7 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Row } from "../../ui/row";
 import { Skeleton } from "../../ui/skeleton";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appReaching } from "../../settings/automationSettings.logic";
@@ -849,9 +850,9 @@ function Placeholders({ count }: { readonly count: number }) {
     <ul aria-hidden="true" className="pa-rows">
       {Array.from({ length: count }, (_, at) => (
         <li className="ov-change-row pa-row" key={at}>
-          <div className="ov-change" data-plain="">
+          <Row columns data-ov-change="" data-plain="">
             <Skeleton className="col-span-full h-3.5" surface="card" />
-          </div>
+          </Row>
         </li>
       ))}
     </ul>
@@ -873,22 +874,24 @@ function RowPress({
 }) {
   if (route === null)
     return (
-      <div className="ov-change" data-plain="">
+      <Row columns data-ov-change="" data-plain="">
         {children}
-      </div>
+      </Row>
     );
   return (
-    <a
-      className="ov-change"
-      href={route}
+    <Row
+      columns
+      data-ov-change=""
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
         event.preventDefault();
         onOpen(route);
       }}
+      pressable
+      render={<a href={route} />}
     >
       {children}
-    </a>
+    </Row>
   );
 }
 
@@ -1176,7 +1179,7 @@ function TaskBoardView({
                   data-zerops-task={row.id}
                   key={row.id}
                 >
-                  <div className="ov-change" data-plain="">
+                  <Row columns data-ov-change="" data-plain="">
                     {/* Its place stands where a face will. */}
                     <span className="pa-lead pa-place">{row.position}</span>
                     <RowText
@@ -1207,7 +1210,7 @@ function TaskBoardView({
                       </span>
                     </span>
                     <span className="pa-act" />
-                  </div>
+                  </Row>
                   {stoppable ? (
                     <TaskStop
                       board={board}
@@ -1472,19 +1475,21 @@ function SourceRowView({
   return (
     <li className="ov-change-row pa-row" data-zerops-source={row.kind}>
       {admin === undefined ? (
-        <div className="ov-change" data-plain="">
+        <Row columns data-ov-change="" data-plain="">
           {cells}
-        </div>
+        </Row>
       ) : (
-        <button
-          className="ov-change"
+        <Row
+          columns
+          data-ov-change=""
           onClick={() => {
             admin.onEdit(row);
           }}
-          type="button"
+          pressable
+          render={<button type="button" />}
         >
           {cells}
-        </button>
+        </Row>
       )}
       {admin === undefined ? null : failed ? (
         <span className="pa-verb">

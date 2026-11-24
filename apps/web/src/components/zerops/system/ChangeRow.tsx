@@ -24,6 +24,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { Button, InlineButton } from "../../ui/button";
+import { Row } from "../../ui/row";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
 import { changeReviewable, type RowStanding } from "./ChangeRow.logic";
@@ -244,20 +245,22 @@ export function ChangeRow(props: ChangeRowProps) {
       data-zerops-change={pull === undefined ? undefined : lineChangeKey(pull)}
     >
       {onOpen === undefined ? (
-        <div className="ov-change" data-plain="" data-open={open ? "true" : undefined}>
+        <Row columns data-open={open ? "true" : undefined} data-ov-change="" data-plain="">
           {contents}
-        </div>
+        </Row>
       ) : (
-        <button
-          className="ov-change"
+        <Row
+          columns
           data-open={open ? "true" : undefined}
+          data-ov-change=""
           onClick={(event) => {
             onOpen(event.currentTarget);
           }}
-          type="button"
+          pressable
+          render={<button type="button" />}
         >
           {contents}
-        </button>
+        </Row>
       )}
       {verb === undefined || verb === null ? null : <span className="ov-change-verb">{verb}</span>}
       {/* Its pull request on GitHub, where the change is mirrored to one. */}

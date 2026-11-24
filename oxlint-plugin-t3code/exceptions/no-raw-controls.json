@@ -208,22 +208,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"ov-change\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-change\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className={file.className}",
@@ -237,14 +221,6 @@
     "fingerprint": "<button> className=\"rv-pic-open\"",
     "owner": "kit pass",
     "reason": "the picture itself is the press that opens its viewer: an image filling its box, which no kit press draws",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/ChangeRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-change\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
     "expires": "never"
   },
   {
