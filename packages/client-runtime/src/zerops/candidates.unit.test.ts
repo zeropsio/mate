@@ -38,7 +38,7 @@ it("ZV118: zcp is found by its service type, never by its name, and every zcp co
 });
 
 // witness: packages/client-runtime/src/zerops/candidates.ts | status === "ACTIVE" || projectBeingMade(status) || projectStopsOrStarts(status); → status === "ACTIVE" || projectBeingMade(status);
-it("ZV+2: A project Zerops is stopping, holds stopped or is starting again keeps each Mate container the row it was while running, its own key and its container, and one with no Mate container stays the project's one row; breaks: a stopped Mate becomes a project row with no computer, so its page offers Go to projects instead of Start", () => {
+it("ZV177: A project Zerops is stopping, holds stopped or is starting again keeps each Mate container the row it was while running, its own key and its container, and one with no Mate container stays the project's one row; breaks: a stopped Mate becomes a project row with no computer, so its page offers Go to projects instead of Start", () => {
   const services = [
     { ...service("s1", "workspace", "zcp@1"), status: "STOPPED" },
     { ...service("s2", "db", "postgresql@16"), status: "STOPPED" },

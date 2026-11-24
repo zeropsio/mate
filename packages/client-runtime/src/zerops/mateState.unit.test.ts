@@ -352,7 +352,7 @@ it("ZV160: Restart is offered on an active project and container unless the plat
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | !isStopped(candidate) && → true &&
-it("ZV+1: Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start", () => {
+it("ZV176: Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start", () => {
   const { service: _service, ...containerless } = RUNNING;
   for (const [project, service, stop] of [
     ["ACTIVE", "ACTIVE", true],
@@ -375,7 +375,7 @@ it("ZV+1: Stop is offered on a running project that holds its Mate container, ne
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | ...touched.filter((service) => !isZcpService(service)), → ...touched,
-it("ZV+3: A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running", () => {
+it("ZV178: A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running", () => {
   const services = [
     { id: "zcp", name: "zcp", status: "ACTIVE", base: "zcp@1" },
     { id: "appdev", name: "appdev", status: "ACTIVE", base: "nodejs@24" },

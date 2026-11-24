@@ -108,7 +108,7 @@ it("MN66: A stopped project's row offers Start only to a person who operates it;
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (startsAgain(candidate.service)) { → if (false) {
-it("MN+1: A Mate whose container starts again after a stop reads Starting… on its projects-screen line, as its menu row does, and one never deployed before reads Coming up; breaks: its card says Coming up. A few minutes. beside a menu row that says Starting… (live check, 2026-11-24)", () => {
+it("MN77: A Mate whose container starts again after a stop reads Starting… on its projects-screen line, as its menu row does, and one never deployed before reads Coming up; breaks: its card says Coming up. A few minutes. beside a menu row that says Starting… (live check, 2026-11-24)", () => {
   const starting = (activeAppVersion: { readonly id: string } | null): ZeropsRowCandidate => ({
     ...running,
     group: "provisioning",
