@@ -7,7 +7,6 @@
  *
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { fadeFillIn } from "~/lib/loadFills";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
@@ -29,7 +28,7 @@ import { useMateWrite } from "~/zerops/useMateWrite";
 
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
-import { gatedPortal } from "../ui/portal-gate";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
@@ -43,8 +42,6 @@ import {
   type WaitingMate,
 } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
-
-const WaitingPortal = gatedPortal(PopoverPrimitive.Portal);
 
 /** What the list asks of the menu: a Mate's conversation, and the fix request's composer. */
 export interface WaitingVerbs {
@@ -115,7 +112,7 @@ export function SidebarWaitingPopover({
   // Nothing waits any more: the list has nothing to hold.
   const shown = open && items.length > 0;
   return (
-    <PopoverPrimitive.Root
+    <Popover
       onOpenChange={(next, details) => {
         // What was pressed: the trigger the list stands beside.
         const pressed = details.event?.target;
@@ -127,40 +124,34 @@ export function SidebarWaitingPopover({
       open={shown}
     >
       {tooltip === undefined ? (
-        <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
+        <PopoverTrigger render={trigger}>{children}</PopoverTrigger>
       ) : (
         <Tooltip>
-          <TooltipTrigger render={<PopoverPrimitive.Trigger render={trigger} />}>
-            {children}
-          </TooltipTrigger>
+          <TooltipTrigger render={<PopoverTrigger render={trigger} />}>{children}</TooltipTrigger>
           <TooltipPopup side="right">{tooltip}</TooltipPopup>
         </Tooltip>
       )}
-      <WaitingPortal>
-        <PopoverPrimitive.Positioner
-          align={placement.side === "bottom" ? "center" : "start"}
-          alignOffset={placement.alignOffset}
-          className="z-130"
-          {...(placement.side === "bottom" ? { collisionPadding: 8 } : {})}
-          side={placement.side}
-          sideOffset={placement.sideOffset}
-        >
-          <PopoverPrimitive.Popup
-            aria-label="Waiting on you"
-            className="menu-wait-list"
-            data-zerops-surface="sidebar-waiting-list"
-          >
-            <WaitingList
-              items={items}
-              onClose={() => {
-                setOpen(false);
-              }}
-              verbs={verbs}
-            />
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </WaitingPortal>
-    </PopoverPrimitive.Root>
+      <PopoverPopup
+        align={placement.side === "bottom" ? "center" : "start"}
+        alignOffset={placement.alignOffset}
+        aria-label="Waiting on you"
+        data-zerops-surface="sidebar-waiting-list"
+        padding="compact"
+        side={placement.side}
+        sideOffset={placement.sideOffset}
+        width="lg"
+      >
+        <div className="text-body">
+          <WaitingList
+            items={items}
+            onClose={() => {
+              setOpen(false);
+            }}
+            verbs={verbs}
+          />
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
