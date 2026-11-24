@@ -38,6 +38,7 @@ import {
 } from "~/components/chat/ConversationOpeningStage";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { Textarea } from "~/components/ui/textarea";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import "../index.css";
 
@@ -94,7 +95,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
   }
   return (
     <ComposerStandInDock>
-      <textarea aria-label="Message" className="block w-full" defaultValue={DRAFT} />
+      <Textarea aria-label="Message" defaultValue={DRAFT} />
     </ComposerStandInDock>
   );
 }

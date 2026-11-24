@@ -56,6 +56,7 @@ import { parseBrief, renderCrewHome, type CrewDefinition } from "@t3tools/shared
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Button } from "~/components/ui/button";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
@@ -698,24 +699,24 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-e bg-sidebar p-4"
+        className="flex shrink-0 flex-col items-start gap-1 border-border border-e bg-sidebar p-4"
         style={{ width: MENU }}
       >
         <p className="pb-2 text-muted-foreground text-caption">A crewmate's empty conversation</p>
         {STATES.map((each) => (
-          <button
+          <Button
             aria-current={each.id === current.id ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-body aria-[current=true]:bg-accent"
             data-harness-state={each.id}
             key={each.id}
             onClick={() => {
               setCurrentId(each.id);
               setJob(null);
             }}
-            type="button"
+            size="sm"
+            variant={each.id === current.id ? "secondary" : "ghost"}
           >
             {each.label}
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">

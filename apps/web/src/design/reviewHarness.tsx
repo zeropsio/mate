@@ -22,6 +22,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Row as KitRow } from "~/components/ui/row";
+import { Button } from "~/components/ui/button";
 import { MateFace } from "~/components/zerops/primitives";
 import {
   changeReviewItem,
@@ -347,34 +348,22 @@ function Harness() {
         <div className="flex flex-col gap-2 text-body">
           <p>Opened: {opened}</p>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setOrbit((n) => n + 1)}
-              type="button"
-            >
+            <Button size="xs" variant="secondary" onClick={() => setOrbit((n) => n + 1)}>
               + change
-            </button>
-            <button
-              className="rounded border px-2 py-1"
+            </Button>
+            <Button
+              size="xs"
+              variant="secondary"
               onClick={() => setOrbit((n) => Math.max(0, n - 1))}
-              type="button"
             >
               − change
-            </button>
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setCrew((on) => !on)}
-              type="button"
-            >
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => setCrew((on) => !on)}>
               crew task
-            </button>
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setRelease((on) => !on)}
-              type="button"
-            >
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => setRelease((on) => !on)}>
               release
-            </button>
+            </Button>
           </div>
         </div>
       </div>

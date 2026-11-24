@@ -1712,18 +1712,18 @@ const MENU_WIDTH = Number(
 function SidebarFootToggle() {
   const { open, toggleSidebar } = useSidebar();
   return (
-    <button
+    <Button
       aria-label={open ? "Collapse sidebar" : "Open the menu"}
-      className="menu-foot-button"
       onClick={toggleSidebar}
-      type="button"
+      size="icon-sm"
+      variant="sidebar"
     >
       {open ? (
         <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
       ) : (
         <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
       )}
-    </button>
+    </Button>
   );
 }
 

@@ -10,8 +10,8 @@ import {
 const RULE_NAME = "no-raw-controls";
 const LEDGER_DIRECTORY_ENV = "T3CODE_RAW_CONTROLS_LEDGER_DIRECTORY";
 const SCOPE_MARKER = "/apps/web/src/";
-/** The kit draws its controls; its own pages and the design harness show them over fixtures. */
-const OWNS_ITS_CONTROLS = /^apps\/web\/src\/(?:components\/ui|kit|design)\//u;
+/** The kit draws its controls; its own pages show the home-made ones it replaces. */
+const OWNS_ITS_CONTROLS = /^apps\/web\/src\/(?:components\/ui|kit)\//u;
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__\/|__fixtures__\/|testing\/|[^/]+\.(?:test|spec|bench)\.[cm]?[jt]sx?$)/u;
 

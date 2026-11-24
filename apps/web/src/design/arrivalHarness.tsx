@@ -50,6 +50,7 @@ import {
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogTrigger } from "~/components/ui/dialog";
+import { Textarea } from "~/components/ui/textarea";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { MateFace } from "~/components/zerops/primitives";
 import {
@@ -918,7 +919,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
         <MateLinkLineView
           onTryNow={askAgainLabel(voice.actions) === null ? undefined : () => undefined}
           processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
-          projects={<a href="#projects" />}
+          // The app fills this with the router's Link; the harness has no router, nowhere to go.
+          projects={<span />}
           projectUrl={WREN.projectUrl}
           voice={{ ...voice, text: null }}
         />
@@ -1144,11 +1146,9 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       </div>
       {state.id === "empty" ? (
         <div className="shrink-0 px-6 pb-5" data-harness-composer>
-          <textarea
-            aria-label="Message Wren"
-            className="mx-auto block min-h-17.5 w-full max-w-3xl rounded-2xl border border-border bg-background p-4"
-            placeholder="Ask Wren to do something…"
-          />
+          <div className="mx-auto max-w-3xl">
+            <Textarea aria-label="Message Wren" placeholder="Ask Wren to do something…" />
+          </div>
         </div>
       ) : null}
       {state.dialog === undefined ? null : (
@@ -1214,7 +1214,7 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 overflow-y-auto border-border border-r p-4"
+        className="flex shrink-0 flex-col items-start gap-1 overflow-y-auto border-border border-r p-4"
         style={{ width: 435 }}
       >
         <p className="pb-1 text-muted-foreground text-caption">
@@ -1226,16 +1226,16 @@ function Harness() {
           </Button>
         </div>
         {STATES.map((candidate) => (
-          <button
+          <Button
             aria-current={candidate.id === current ? "true" : undefined}
-            className="rounded-lg px-3 py-1.5 text-left text-body aria-[current=true]:bg-accent"
             data-harness-state={candidate.id}
             key={candidate.id}
             onClick={() => setCurrent(candidate.id)}
-            type="button"
+            size="sm"
+            variant={candidate.id === current ? "secondary" : "ghost"}
           >
             {candidate.label}
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">

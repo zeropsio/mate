@@ -46,6 +46,7 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
+import { Button } from "~/components/ui/button";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
@@ -1021,23 +1022,23 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-r p-4"
+        className="flex shrink-0 flex-col items-start gap-1 border-border border-r p-4"
         style={{ width: 435 }}
       >
         <p className="pb-2 text-muted-foreground text-caption">
           Switching Mates · first open waits {LATENCY_MS} ms
         </p>
         {THREADS.map((candidate) => (
-          <button
+          <Button
             key={candidate.key}
-            type="button"
             data-harness-thread={candidate.key}
             aria-current={candidate.key === current ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-body aria-[current=true]:bg-accent"
             onClick={() => setCurrent(candidate.key)}
+            size="sm"
+            variant={candidate.key === current ? "secondary" : "ghost"}
           >
             {candidate.name} · {candidate.turns} turns
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
