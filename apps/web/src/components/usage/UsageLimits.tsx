@@ -51,6 +51,7 @@ import {
   AlertDialogPopup,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
@@ -333,16 +334,13 @@ function PlaceChips({ places }: { readonly places: readonly LimitsPlace[] }) {
   return (
     <ul className="flex flex-wrap items-center gap-1.5" aria-label="Signed in on">
       {places.map((place) => (
-        <li
-          key={place.environmentId}
-          className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-caption text-muted-foreground"
-        >
+        <Badge className="max-w-full" key={place.environmentId} render={<li />}>
           {place.owner ? (
             <PersonAvatar name={place.owner.name} picture={place.owner.avatarUrl} size={16} />
           ) : null}
           <span className="truncate">{place.name}</span>
           {place.owner ? <span className="sr-only">{`, ${place.owner.name}'s Mate`}</span> : null}
-        </li>
+        </Badge>
       ))}
     </ul>
   );

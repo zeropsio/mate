@@ -58,28 +58,11 @@ const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
   off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
 };
 
-/**
- * A count, in the colour of what it counts.
- *
- * The verb's count used to take a separate `urgent` flag, which one call site
- * set and never unset — so *Release* counted what it would ship in the same
- * amber a change that cannot land wears. A verb says one thing, so its count
- * says it too.
- */
-const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "bg-status-ok/20 text-status-ok-text",
-  busy: "bg-status-busy/20 text-status-busy-text",
-  attention: "bg-status-attention/20 text-status-attention-text",
-  failed: "bg-status-failed/20 text-status-failed-text",
-  off: "bg-muted text-muted-foreground",
-};
-
 export function ZeropsMateVerb({
   label,
   onClick,
   disabled = false,
   description,
-  count,
   tone,
   action,
   ...rest
@@ -94,14 +77,6 @@ export function ZeropsMateVerb({
   /** The press, with what was pressed: a review opens from it (pass 16, R7). */
   readonly onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly disabled?: boolean;
-  /**
-   * How much the verb would carry, worn on the verb itself.
-   *
-   * *Release* used to say `Release` on one line while a separate amber chip
-   * said `1 waiting` on the next, with a globe and a menu between the fact and
-   * its cure — two elements for one thing (the owner, 2026-09-19).
-   */
-  readonly count?: number | undefined;
   /**
    * What the verb is about, where that has a state: a change that cannot land
    * and a release that is merely waiting are not the same news, and a row of
@@ -135,17 +110,6 @@ export function ZeropsMateVerb({
       type="button"
     >
       {label}
-      {count === undefined || count === 0 ? null : (
-        <span
-          className={cn(
-            "ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
-            tone === undefined ? "bg-muted text-muted-foreground" : COUNT_TONE_CLASS[tone],
-          )}
-          data-zerops-surface="verb-count"
-        >
-          {count}
-        </span>
-      )}
     </button>
   );
 }

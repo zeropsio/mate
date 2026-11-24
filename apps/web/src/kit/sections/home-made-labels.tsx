@@ -28,7 +28,7 @@ function LabelSpecimens() {
       <CensusCount
         components={11}
         files={12}
-        kit="the kit has Badge with 5 tones and a dot form, rendered in 58 files"
+        kit="the kit has Badge with 5 tones and a dot form, rendered in 62 files"
         looks={6}
       />
 

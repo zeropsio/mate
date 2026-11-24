@@ -45,7 +45,7 @@ export interface UsageTaskRow {
   readonly title: string;
   /** Where to follow it in Mate; null where HQ names none. */
   readonly target: UsageTaskTarget | null;
-  /** Where it stands, in the words and with the dot every surface uses (`taskStatusDot`). */
+  /** Where it stands, in the words and with the dot every surface uses (`taskStatusTone`). */
   readonly status: TaskStatus;
   readonly state: string;
   /** Null where its Mate never reported one: never a made-up zero. */

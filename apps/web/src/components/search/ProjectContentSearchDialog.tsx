@@ -11,6 +11,7 @@ import { useProjectContentSearch } from "~/state/queries";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -265,9 +266,7 @@ function OpenContentSearchDialog(props: {
                         {path.directory}
                       </span>
                     ) : null}
-                    <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 tabular-nums text-3xs text-muted-foreground">
-                      {group.matches.length}
-                    </span>
+                    <Badge className="ml-auto">{group.matches.length}</Badge>
                   </div>
                   {group.matches.map((match) => (
                     <button
