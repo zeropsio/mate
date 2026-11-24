@@ -5,14 +5,15 @@
  * dialog (`ZeropsAgentSignInDialog`), opened on the agent that was asked for.
  *
  * A card per agent, with its own logo, says whose account it needs, the project's usual one
- * first: two side by side, more one under another. The chosen card opens in place — from its own
- * box (a clip reveal, 260 ms), the other cards fading (140 ms) — into two numbered steps, and its
- * login starts that moment so the provider's page is ready by the time it is asked for. *Open
+ * first, one under another (the owner's design, 2026-11-23): the first two, then *Show N more
+ * options* for the rest. The chosen card opens in place in the list — from its own box (a clip
+ * reveal, 260 ms) — into its numbered steps, the other cards dimmed; one card is open at a time,
+ * and its login starts that moment so the provider's page is ready by the time it is asked for. *Open
  * Claude* opens it in a new tab at once — a tab opened before the page's address is printed is
  * sent there when it is — and the code the page shows is pasted into the field, which sends it on
  * paste (Claude Code, Antigravity). Codex and Grok show their short code to confirm on the
- * provider's page; Cursor waits for the approval there; all three finish by themselves. *Use
- * another agent* goes back to the cards. What the login prints stays behind *Show what's
+ * provider's page; Cursor waits for the approval there; all three finish by themselves. The open
+ * card's arrow folds it back; another card opens in its place. What the login prints stays behind *Show what's
  * happening*, in the theme's own colours.
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -25,7 +26,15 @@ import type {
   ZeropsAgentLoginState,
   ZeropsUserId,
 } from "@t3tools/contracts";
-import { ArrowUpRightIcon, CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
+import {
+  XIcon,
+  ArrowRightIcon,
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import {
   lazy,
   Suspense,
@@ -83,8 +92,6 @@ import {
   signInAgents,
   startsAtOnce,
   signInFoot,
-  USUAL_AGENT_TITLE,
-  USUAL_AGENT_WORD,
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
 import { AGENT_SIGN_IN_CARDS } from "@t3tools/client-runtime/zerops/agentSignIn";
@@ -99,21 +106,21 @@ const TerminalViewport = lazy(
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
 
-/** Where an opening card comes from: the chosen card's box, or — a switch, a retry — a fade. */
-type CardOrigin = DOMRect | "fade" | null;
+/** An opening card fades its insides in while its slot glides to its height; null once it has. */
+type CardOrigin = "fade" | null;
+/** How long a card takes to open into its steps, or fold back. */
+const OPEN_GLIDE_MS = 320;
 const COPIED_MS = 2_000;
-/** How long a card's leaving takes: its fade, and a frame to spare. */
-const CARDS_LEAVE_MS = 180;
+/** The options shown before *Show N more options*. */
+const FIRST_OPTIONS = 2;
 
 /** An agent as a sign-in shows it: its row, and what a login beyond the defaults calls it. */
 export type SignInAgent = Pick<ZeropsAgentAuth, "agentId" | "login"> &
   Partial<Omit<ZeropsAgentAuth, "agentId" | "login">>;
 
 interface AgentSignInViewProps {
-  /** The agents offered, in the order offered (`signInAgents`). */
+  /** The agents offered, in the order offered (`signInAgents`): the project's usual one first. */
   readonly agents: ReadonlyArray<SignInAgent>;
-  /** The project's usual agent, whose card says so. */
-  readonly usual: ZeropsAgentId | null;
   /** The Mate being signed in; null where the sign-in is not one Mate's. */
   readonly mateName: string | null;
   /** Opened on one agent from the start, with no other to switch to (a dialog asked for it). */
@@ -149,25 +156,40 @@ interface AgentSignInViewProps {
 }
 
 /** OpenCode's card: it runs on its free models or a model provider's API key, never an account. */
-const OPENCODE_CARD = { name: "OpenCode", account: "Free models or a model key" } as const;
+const OPENCODE_CARD = {
+  name: "OpenCode",
+  account: "Free models or a model key",
+  connect: "Connect OpenCode",
+} as const;
 
-/** The cards, and the one that stands open. */
+const OPENCODE = "opencode" as const;
+
+/** The cards, one under another, and the one that stands open among them. */
 export function AgentSignInView(props: AgentSignInViewProps) {
   const { agents, fixed = false } = props;
-  // The order the cards were first drawn in stays: a late answer never moves them.
-  const [usual] = useState(props.usual);
   const [chosen, setChosen] = useState<ZeropsAgentId | null>(() =>
     fixed ? (agents[0]?.agentId ?? null) : null,
   );
   // When the open card's attempt began: a failure left from an earlier one is not its outcome.
   const [since, setSince] = useState<number | null>(() => (fixed ? Date.now() : null));
   const open = openAgentOf(agents, chosen);
+  const openAgent = agents.find((agent) => agent.agentId === open);
   const origin = useRef<CardOrigin>(null);
-  const [cardsLeaving, setCardsLeaving] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
+  const [more, setMore] = useState(false);
 
-  const choose = (agentId: ZeropsAgentId, from: CardOrigin) => {
-    origin.current = from;
+  // Folds the open card: a login it started stops, so another can start.
+  const fold = () => {
+    if (openAgent !== undefined && loginRunning(openAgent.login)) props.onCancel(openAgent.agentId);
+    setChosen(null);
+    setSince(null);
+    setKeysOpen(false);
+  };
+  const choose = (agentId: ZeropsAgentId) => {
+    if (openAgent !== undefined && openAgent.agentId !== agentId && loginRunning(openAgent.login))
+      props.onCancel(openAgent.agentId);
+    setKeysOpen(false);
+    origin.current = "fade";
     setChosen(agentId);
     setSince(Date.now());
     if (props.available !== false) props.onStart(agentId);
@@ -188,38 +210,42 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     props.onStart(chosen);
   }, [chosen, fixed, props, waitsForPress]);
 
-  useEffect(() => {
-    if (!cardsLeaving) return;
-    const timer = window.setTimeout(() => setCardsLeaving(false), CARDS_LEAVE_MS);
-    return () => window.clearTimeout(timer);
-  }, [cardsLeaving]);
-
-  const cards = (leaving: boolean) => (
-    <div
-      aria-hidden={leaving ? true : undefined}
-      className="arrival-cards"
-      data-leaving={leaving ? "" : undefined}
-      inert={leaving}
-    >
-      {agents.map((agent) => (
-        <AgentCard
-          agentId={agent.agentId}
-          disabled={props.available === false}
-          key={agent.agentId}
-          onChoose={(event) => {
-            setCardsLeaving(true);
-            choose(agent.agentId, event.currentTarget.getBoundingClientRect());
-          }}
-          usual={agent.agentId === usual}
-        />
-      ))}
-      {props.openCode === undefined ? null : (
+  const options: ReadonlyArray<ZeropsAgentId | typeof OPENCODE> = [
+    ...agents.map((agent) => agent.agentId),
+    ...(props.openCode === undefined ? [] : [OPENCODE]),
+  ];
+  const opened = keysOpen && props.openCode !== undefined ? OPENCODE : open;
+  // The open card stays in sight: one past the first two shows every option.
+  const all =
+    fixed || more || (options.indexOf(opened ?? OPENCODE) >= FIRST_OPTIONS && opened !== null);
+  const hidden = options.length - FIRST_OPTIONS;
+  const dimmed = opened !== null && !fixed;
+  // One option in the list: its card, or the card standing open, in a slot gliding between them.
+  const slot = (option: ZeropsAgentId | typeof OPENCODE) => (
+    <OptionSlot key={option} open={opened === option}>
+      {renderOption(option)}
+    </OptionSlot>
+  );
+  function renderOption(option: ZeropsAgentId | typeof OPENCODE) {
+    if (option === OPENCODE)
+      return opened === OPENCODE ? (
+        <div className="arrival-open" data-agent-id={OPENCODE} key={OPENCODE}>
+          <div className="arrival-open-head">
+            <OpenCodeLogoTile />
+            <span className="arrival-open-title">{OPENCODE_CARD.connect}</span>
+            <FoldPress onFold={fold} />
+          </div>
+          <div className="arrival-open-body">{props.openCode}</div>
+        </div>
+      ) : (
         <button
           className="arrival-card"
-          data-agent-id="opencode"
+          data-agent-id={OPENCODE}
+          data-dim={dimmed ? "" : undefined}
           disabled={props.available === false}
+          key={OPENCODE}
           onClick={() => {
-            setCardsLeaving(true);
+            fold();
             setKeysOpen(true);
           }}
           type="button"
@@ -229,119 +255,123 @@ export function AgentSignInView(props: AgentSignInViewProps) {
             <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
             <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
           </span>
+          <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
         </button>
-      )}
-    </div>
-  );
+      );
+    if (openAgent !== undefined && option === openAgent.agentId && opened === option)
+      return (
+        <OpenCard
+          {...props}
+          agent={openAgent}
+          key={openAgent.agentId}
+          origin={origin}
+          since={since}
+          replace={
+            waitsForPress && !pressed
+              ? replacedSignInLine({
+                  agentId: openAgent.agentId,
+                  authorizedBy: openAgent.authorizedBy,
+                  viewerSubject: props.viewerSubject,
+                  nameOf: props.nameOf ?? NO_NAMES,
+                })
+              : null
+          }
+          onDismiss={props.onDismiss ?? fold}
+          onReplace={() => {
+            setPressed(true);
+            setSince(Date.now());
+            props.onStart(openAgent.agentId);
+          }}
+          onRetry={() => choose(openAgent.agentId)}
+          onFold={fixed ? null : fold}
+        />
+      );
+    return (
+      <AgentCard
+        agentId={option}
+        dim={dimmed}
+        disabled={props.available === false}
+        key={option}
+        onChoose={() => choose(option)}
+      />
+    );
+  }
 
-  const openAgent = agents.find((agent) => agent.agentId === open);
   return (
     <div
       className="arrival-sign-in"
       inert={props.available === false}
       aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
-      data-open={keysOpen && props.openCode !== undefined ? "opencode" : (open ?? undefined)}
+      data-open={opened ?? undefined}
       data-zerops-surface="agent-sign-in"
     >
-      {keysOpen && props.openCode !== undefined ? (
-        <>
-          {cardsLeaving ? cards(true) : null}
-          <div className="arrival-open" data-agent-id="opencode">
-            <div className="arrival-open-head">
-              <OpenCodeLogoTile small />
-              <span className="arrival-card-words">
-                <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
-                <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
-              </span>
-              <span className="flex-1" />
-              <InlineButton data-sign-in-switch onClick={() => setKeysOpen(false)} tone="muted">
-                Use another agent
-              </InlineButton>
-            </div>
-            <div className="arrival-open-body">{props.openCode}</div>
+      <div className="arrival-cards">
+        {options.slice(0, FIRST_OPTIONS).map(slot)}
+        {hidden <= 0 ? null : (
+          // The rest unfold under the first two and fold back into them.
+          <div className="arrival-cards-rest" data-open={all ? "" : undefined} inert={!all}>
+            <div className="arrival-cards-rest-inner">{options.slice(FIRST_OPTIONS).map(slot)}</div>
           </div>
-        </>
-      ) : openAgent === undefined ? (
-        cards(false)
-      ) : (
-        <>
-          {cardsLeaving ? cards(true) : null}
-          <OpenCard
-            {...props}
-            agent={openAgent}
-            key={openAgent.agentId}
-            origin={origin}
-            since={since}
-            replace={
-              waitsForPress && !pressed
-                ? replacedSignInLine({
-                    agentId: openAgent.agentId,
-                    authorizedBy: openAgent.authorizedBy,
-                    viewerSubject: props.viewerSubject,
-                    nameOf: props.nameOf ?? NO_NAMES,
-                  })
-                : null
-            }
-            onDismiss={props.onDismiss ?? (() => setChosen(null))}
-            onReplace={() => {
-              setPressed(true);
-              setSince(Date.now());
-              props.onStart(openAgent.agentId);
-            }}
-            onRetry={() => choose(openAgent.agentId, "fade")}
-            onSwitch={
-              fixed || agents.length < 2
-                ? null
-                : () => {
-                    // Back to every agent offered: with more than two, there is no one "other".
-                    if (loginRunning(openAgent.login)) props.onCancel(openAgent.agentId);
-                    setChosen(null);
-                    setSince(null);
-                  }
-            }
-          />
-        </>
+        )}
+      </div>
+      {fixed || hidden <= 0 || (all && !more) ? null : (
+        <button
+          aria-expanded={more}
+          className="arrival-more"
+          data-sign-in-more
+          onClick={() => setMore(!more)}
+          type="button"
+        >
+          {more ? "Show fewer options" : `Show ${String(hidden)} more options`}
+          <ChevronDownIcon aria-hidden="true" />
+        </button>
       )}
     </div>
   );
 }
 
-function AgentLogoTile({ agentId, small = false }: { agentId: ZeropsAgentId; small?: boolean }) {
+/** The open card's close button: it folds the card back into the list. */
+function FoldPress({ onFold }: { readonly onFold: () => void }) {
   return (
-    <span
-      aria-hidden="true"
-      className="arrival-logo"
-      data-agent-logo={agentId}
-      data-small={small ? "" : undefined}
+    <button
+      aria-label="Close"
+      className="arrival-open-fold"
+      data-sign-in-fold
+      onClick={onFold}
+      type="button"
     >
-      <ZeropsAgentLogo agentId={agentId} className={small ? "size-4.5" : "size-5"} />
+      <XIcon aria-hidden="true" />
+    </button>
+  );
+}
+
+function AgentLogoTile({ agentId }: { agentId: ZeropsAgentId }) {
+  return (
+    <span aria-hidden="true" className="arrival-logo" data-agent-logo={agentId}>
+      <ZeropsAgentLogo agentId={agentId} className="size-6.5" />
     </span>
   );
 }
 
-function OpenCodeLogoTile({ small = false }: { small?: boolean }) {
+function OpenCodeLogoTile() {
   return (
-    <span
-      aria-hidden="true"
-      className="arrival-logo"
-      data-agent-logo="opencode"
-      data-small={small ? "" : undefined}
-    >
-      <OpenCodeIcon className={small ? "size-4.5" : "size-5"} />
+    <span aria-hidden="true" className="arrival-logo" data-agent-logo="opencode">
+      <OpenCodeIcon className="size-6.5" />
     </span>
   );
 }
 
 function AgentCard({
   agentId,
-  usual,
+  dim,
   onChoose,
   disabled,
 }: {
   readonly disabled: boolean;
   readonly agentId: ZeropsAgentId;
-  readonly usual: boolean;
+  /** Another card stands open: this one steps back. */
+  readonly dim: boolean;
   readonly onChoose: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const card = AGENT_SIGN_IN_CARDS[agentId];
@@ -350,22 +380,16 @@ function AgentCard({
       disabled={disabled}
       className="arrival-card"
       data-agent-id={agentId}
+      data-dim={dim ? "" : undefined}
       onClick={onChoose}
       type="button"
     >
       <AgentLogoTile agentId={agentId} />
       <span className="arrival-card-words">
-        <span className="arrival-card-name">
-          {card.name}
-          {usual ? (
-            <span className="arrival-chip" data-usual-agent>
-              {USUAL_AGENT_WORD}
-              <span className="sr-only"> — {USUAL_AGENT_TITLE}</span>
-            </span>
-          ) : null}
-        </span>
+        <span className="arrival-card-name">{card.name}</span>
         <span className="arrival-card-account">{card.account}</span>
       </span>
+      <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
     </button>
   );
 }
@@ -381,7 +405,7 @@ function OpenCard({
   replace,
   onReplace,
   onDismiss,
-  onSwitch,
+  onFold,
   onRetry,
   onSubmitCode,
   terminal,
@@ -393,7 +417,8 @@ function OpenCard({
   /** What signing in replaces, while the login waits for the person's press; null once it does not. */
   readonly replace: string | null;
   readonly onReplace: () => void;
-  readonly onSwitch: (() => void) | null;
+  /** Folds it back into the list; null where it is the only one (a dialog). */
+  readonly onFold: (() => void) | null;
   readonly onRetry: () => void;
 }) {
   const agentId = agent.agentId;
@@ -406,7 +431,6 @@ function OpenCard({
   const opened = openedAt !== null && (since === null || openedAt >= since);
   const steps = agentSignInSteps({ agentId, login: attempt, opened, codeField, sent });
   const words = agentSignInWords(agentId, mateName);
-  const card = AGENT_SIGN_IN_CARDS[agentId];
   const box = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   useStepGlide(
@@ -440,7 +464,7 @@ function OpenCard({
     if (phase === "failed" || phase === "succeeded" || phase === undefined) setSent(undefined);
   }, [phase]);
 
-  // Opened from its card: the card's box grows into this one.
+  // Opened from its card: its insides fade in as its slot glides open (`OptionSlot`).
   useLayoutEffect(() => {
     const element = box.current;
     const from = origin.current;
@@ -457,24 +481,7 @@ function OpenCard({
         });
       }
     };
-    if (from === "fade" || prefersReducedMotion()) {
-      fadeIn();
-      return;
-    }
-    const to = element.getBoundingClientRect();
-    const inset = [
-      Math.max(0, from.top - to.top),
-      Math.max(0, to.right - from.right),
-      Math.max(0, to.bottom - from.bottom),
-      Math.max(0, from.left - to.left),
-    ];
-    element.animate(
-      [
-        { clipPath: `inset(${inset.map((value) => `${value}px`).join(" ")} round 14px)` },
-        { clipPath: "inset(0px 0px 0px 0px round 14px)" },
-      ],
-      { duration: 260, easing: EASE_OUT_STRONG },
-    );
+    if (prefersReducedMotion()) return;
     fadeIn();
   }, [origin]);
 
@@ -515,17 +522,9 @@ function OpenCard({
       ref={box}
     >
       <div className="arrival-open-head">
-        <AgentLogoTile agentId={agentId} small />
-        <span className="arrival-card-words">
-          <span className="arrival-card-name">{title ?? card.name}</span>
-          <span className="arrival-card-account">{card.account}</span>
-        </span>
-        <span className="flex-1" />
-        {onSwitch === null ? null : (
-          <InlineButton data-sign-in-switch onClick={onSwitch} tone="muted">
-            {words.switchTo}
-          </InlineButton>
-        )}
+        <AgentLogoTile agentId={agentId} />
+        <span className="arrival-open-title">{title ?? words.connect}</span>
+        {onFold === null ? null : <FoldPress onFold={onFold} />}
       </div>
       <div aria-live="polite" className="arrival-open-body" ref={body}>
         {replace === null ? (
@@ -595,7 +594,11 @@ const STEP_GLIDE_MS = 240;
  * re-centres smoothly and the arrival's slot grows with it. A glide still running is taken up
  * where it stands; what grows is clipped only while it glides.
  */
-function useStepGlide(body: RefObject<HTMLDivElement | null>, step: string) {
+function useStepGlide(
+  body: RefObject<HTMLDivElement | null>,
+  step: string,
+  duration: number = STEP_GLIDE_MS,
+) {
   const settled = useRef<number | null>(null);
   const shown = useRef(step);
   useLayoutEffect(() => {
@@ -623,9 +626,37 @@ function useStepGlide(body: RefObject<HTMLDivElement | null>, step: string) {
         { height: `${from}px`, overflow: "clip" },
         { height: `${to}px`, overflow: "clip" },
       ],
-      { duration: STEP_GLIDE_MS, easing: EASE_OUT_STRONG },
+      { duration, easing: EASE_OUT_STRONG },
     );
-  }, [body, step]);
+  }, [body, duration, step]);
+}
+
+/**
+ * An option's place in the list: its height glides as its card opens into its steps or folds
+ * back, and a card folded back fades in.
+ */
+function OptionSlot({ open, children }: { readonly open: boolean; readonly children: ReactNode }) {
+  const slot = useRef<HTMLDivElement>(null);
+  const state = open ? "open" : "card";
+  useStepGlide(slot, state, OPEN_GLIDE_MS);
+  const was = useRef(state);
+  useLayoutEffect(() => {
+    const before = was.current;
+    was.current = state;
+    const card = slot.current?.firstElementChild;
+    if (before === state || state !== "card" || card == null || prefersReducedMotion()) return;
+    card.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 220,
+      delay: 80,
+      easing: EASE_OUT_STRONG,
+      fill: "backwards",
+    });
+  }, [state]);
+  return (
+    <div className="arrival-option" data-state={state} ref={slot}>
+      {children}
+    </div>
+  );
 }
 
 function OpenCardSteps({
@@ -801,9 +832,15 @@ function PasteCodeStep({
           )}
         </span>
       )}
-      {terminal ? null : (
-        <span className="arrival-open-step-hint" data-failed={sendFailed ? "" : undefined}>
-          {sendFailed ? "The code didn't reach the sign-in. Paste it again." : words.pasteHint}
+      {terminal ? null : sendFailed ? (
+        <span className="arrival-open-step-hint" data-failed="">
+          The code didn't reach the sign-in. Paste it again.
+        </span>
+      ) : (
+        // What happens then, as the third step.
+        <span className="arrival-open-step-then">
+          <span className="arrival-num">3</span>
+          <span className="arrival-open-step-words">{words.pasteHint}</span>
         </span>
       )}
     </div>
@@ -985,7 +1022,6 @@ export function ZeropsAgentSignIn({
       onSubmitCode={onSubmitCode}
       terminal={terminal}
       title={login?.title}
-      usual={usual.usual}
       viewerSubject={viewerSubject}
       openCode={
         // Among every agent offered, never a dialog opened on one.

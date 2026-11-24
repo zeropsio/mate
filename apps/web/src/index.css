@@ -16640,9 +16640,54 @@ a.message-file:focus-visible {
   height: 14px;
 }
 
-/* ---- the sign-in (`ZeropsAgentSignIn`), S1: two cards, one opens ---- */
+/* The stage while it asks for a sign-in, to the owner's design (2026-11-23): the face 120 px, the
+   headline 28 px semibold 20 px under it, the cards 36 px under that. */
+.arrival-face > * {
+  transition:
+    width 320ms var(--ease-out-strong),
+    height 320ms var(--ease-out-strong);
+}
+
+/* A scrollbar coming as the options unfold takes no width from the stage: nothing moves. */
+[data-mate-stage-area] {
+  scrollbar-gutter: stable both-edges;
+}
+
+[data-arrival^="sign-in"] .arrival-face > * {
+  width: 120px;
+  height: 120px;
+}
+
+[data-arrival^="sign-in"] [data-arrival-headline] {
+  margin-top: 20px;
+}
+
+/* The Chief's face is the product's mark, drawn edge to edge in its box: it stands further off. */
+[data-arrival^="sign-in"]:has(.arrival-face [data-mate-mark]) [data-arrival-headline] {
+  margin-top: 32px;
+}
+
+[data-arrival^="sign-in"] [data-arrival-slot] {
+  margin-top: 36px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-face > * {
+    transition: none;
+  }
+}
+
+/* ---- the sign-in (`ZeropsAgentSignIn`), to the owner's design (2026-11-23): cards 352 px wide one
+   under another, the first two then *Show N more options*; the chosen one opens in place, the
+   others dimmed ---- */
 .arrival-sign-in {
   position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 352px;
+  margin-inline: auto;
+  flex-direction: column;
+  align-items: center;
   container-type: inline-size;
   /* A card of its own in the stage's slot: its words start on their line, never the stage's
      centred text (the owner, 2026-10-13: "once again misaligned"). */
@@ -16654,62 +16699,90 @@ a.message-file:focus-visible {
 }
 
 .arrival-cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.arrival-cards:has(> :only-child) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* More agents than a pair: still two by two, closer together (the owner, 2026-11-20: "all the
-   major agents access buttons in two columns"). */
-.arrival-cards:has(> :nth-child(3)) {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
   gap: 8px;
 }
 
-.arrival-cards:has(> :nth-child(3)) > .arrival-card {
-  padding-block: 10px;
+/* An option's slot: its height glides while its card opens or folds (`OptionSlot`), the card's
+   ring still drawn past the clip. */
+.arrival-option {
+  display: flex;
+  flex-direction: column;
+  overflow-clip-margin: 2px;
 }
 
-/* Too narrow for two cards to say whose account each needs (a panel, a phone): one over the
-   other. */
-@container (max-width: 460px) {
-  .arrival-cards {
-    grid-template-columns: minmax(0, 1fr);
+/* The options past the first two: they unfold under them in 320 ms and fold back. */
+.arrival-cards-rest {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -8px;
+  opacity: 0;
+  transition:
+    grid-template-rows 320ms var(--ease-out-strong),
+    margin-top 320ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+}
+
+.arrival-cards-rest[data-open] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+
+.arrival-cards-rest-inner {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow: clip;
+  overflow-clip-margin: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-cards-rest {
+    transition: none;
   }
-}
-
-.arrival-cards[data-leaving] {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  pointer-events: none;
-  animation: arrival-fade-out 140ms var(--ease-out-strong) both;
 }
 
 .arrival-card,
 .arrival-open {
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .arrival-card {
   display: flex;
+  height: 62px;
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 14px;
+  padding: 10px 16px 10px 10px;
   color: var(--foreground);
   text-align: left;
   cursor: pointer;
   transition:
     box-shadow 150ms var(--ease-out-strong),
+    opacity 200ms var(--ease-out-strong),
     scale 150ms var(--ease-out-strong);
+}
+
+/* Another card stands open: this one steps back, and comes forward under the pointer. */
+.arrival-card[data-dim] {
+  opacity: 0.5;
+}
+
+.arrival-card[data-dim]:is(:hover, :focus-visible) {
+  opacity: 1;
+}
+
+.arrival-card-go {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
 }
 
 @media (hover: hover) {
@@ -16736,34 +16809,21 @@ a.message-file:focus-visible {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: var(--muted);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
-}
-
-.arrival-logo[data-small] {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .arrival-card-words {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 
 .arrival-card-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 15px;
   line-height: 20px;
-  font-weight: 500;
-}
-
-.arrival-open-head .arrival-card-name {
-  font-size: 14px;
+  font-weight: 600;
 }
 
 .arrival-card-account {
@@ -16775,20 +16835,6 @@ a.message-file:focus-visible {
   text-overflow: ellipsis;
 }
 
-.arrival-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--muted-foreground);
-  font-size: 11.5px;
-  line-height: 1;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
 .arrival-open {
   overflow: hidden;
 }
@@ -16797,26 +16843,111 @@ a.message-file:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  /* "Use another agent" takes the account line's size, not the page's. */
-  font-size: 13px;
+  padding: 10px 12px 10px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.arrival-open-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.arrival-open-fold {
+  display: grid;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+}
+
+.arrival-open-fold:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.arrival-open-fold:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.arrival-open-fold svg {
+  width: 16px;
+  height: 16px;
 }
 
 .arrival-open-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 4px 14px 16px;
+  padding: 16px 16px 18px;
 }
 
+/* *Show N more options*: a quiet pill under the cards. */
+.arrival-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.arrival-more:hover {
+  color: var(--foreground);
+}
+
+.arrival-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.arrival-more svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 200ms var(--ease-out-strong);
+}
+
+.arrival-more[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+/* A step: its number, its words, and under the words what it asks for — a press, a field. */
 .arrival-open-step {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
-  row-gap: 6px;
+  row-gap: 10px;
   /* "Open again" takes the account line's size, not the page's. */
   font-size: 13px;
+}
+
+.arrival-open-step > :nth-child(3) {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.arrival-open-step > span:empty:not(:first-child) {
+  display: none;
+}
+
+.arrival-open-step-then {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  margin-top: 4px;
 }
 
 .arrival-open-step-words {
@@ -16851,8 +16982,8 @@ a.message-file:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 9999px;
   background: var(--muted);
   box-shadow: inset 0 0 0 1px var(--border);
@@ -16879,9 +17010,9 @@ a.message-file:focus-visible {
 /* Claude's code: pasted here, sent on paste. */
 .arrival-input {
   width: 100%;
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--card);
   box-shadow: inset 0 0 0 1px var(--input);
   color: var(--foreground);

@@ -7,7 +7,7 @@
  * - Coming up: asleep, "Wren is coming up on Beviro.", how long is left, and the Mate's own steps
  *   in the person's words — its copy of the project, its computer, starting the Mate, opening its
  *   conversation, then the person's sign-in — as one row on its setup's clock.
- * - Signing in: awake, "Sign Wren in to start.", what happens once it is, and the sign-in itself
+ * - Signing in: awake, "Connect your AI provider", and the sign-in itself
  *   (`ZeropsAgentSignIn`). A colleague who opens a Mate nobody has signed in sees the same screen;
  *   only the sentence says who added it and that signing it in makes it theirs.
  * - Standing up: at work, while the ask the sign-in sends is on its way; the conversation then
@@ -74,7 +74,7 @@ export function arrivalHeadlineClauses(mate: Named, kind: ArrivalKind): Readonly
     case "sign-in":
     case "sign-in-plain":
     case "sign-in-colleague":
-      return [`Sign ${keptWhole(mate.name)} in to start.`];
+      return ["Connect your AI provider", `to ${keptWhole(mate.name)}`];
     case "standing-up":
       return mate.project === undefined
         ? [`${keptWhole(mate.name)} is standing up development.`]
@@ -133,14 +133,10 @@ export function arrivalSentence(
       return context.why ?? comingSentence(context.late);
     case "coming-failed":
       return context.why ?? "";
+    // The headline says it all (the owner's design, 2026-11-23).
     case "sign-in":
-      return mate.project === undefined
-        ? `Once it's signed in, ${name} gets the app running.`
-        : `Once it's signed in, ${name} gets ${mate.project} running.`;
     case "sign-in-plain":
-      return mate.project === undefined
-        ? `Once it's signed in, ${name} writes and runs code on its own copy of the project.`
-        : `Once it's signed in, ${name} writes and runs code on its own copy of ${mate.project}.`;
+      return "";
     case "sign-in-colleague":
       return context.addedBy === undefined
         ? `Nobody has signed ${name} in yet. Sign it in with your own account and it's yours.`
