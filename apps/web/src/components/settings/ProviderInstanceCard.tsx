@@ -62,7 +62,7 @@ import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { environmentKeptWithKeys, environmentShownBesideKeys } from "./openCodeKeys.logic";
 import {
   getProviderVersionAdvisoryPresentation,
-  PROVIDER_STATUS_STYLES,
+  PROVIDER_STATUS_TONE,
   getProviderSummary,
   getProviderVersionLabel,
   type ProviderStatusKey,
@@ -449,7 +449,7 @@ export function ProviderInstanceCard({
   const statusKey: ProviderStatusKey = enabled
     ? ((liveProvider?.status as ProviderStatusKey | undefined) ?? "warning")
     : "disabled";
-  const statusStyle = PROVIDER_STATUS_STYLES[statusKey];
+  const statusTone = PROVIDER_STATUS_TONE[statusKey];
   const rawSummary = getProviderSummary(liveProvider);
   const summary = enabled ? rawSummary : { headline: "Disabled", detail: null };
   const authEmail = liveProvider?.auth.email;
@@ -673,13 +673,7 @@ export function ProviderInstanceCard({
 
   if (mode === "list") {
     return (
-      <div
-        className={cn(
-          "group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 transition-colors last:border-b-0",
-          selected && "bg-muted/50",
-        )}
-      >
-        {selected ? <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" /> : null}
+      <div className="group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 last:border-b-0">
         <div
           className={cn(
             "min-w-0 flex-1 transition-opacity",
@@ -689,19 +683,17 @@ export function ProviderInstanceCard({
           <Row
             size="sm"
             pressable
+            picked={selected}
             render={<button type="button" onClick={onSelect} aria-pressed={selected} />}
             lead={titleIconNode}
             title={displayName}
             badges={versionCodeNode}
             line={
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className={cn("size-1.5 shrink-0 rounded-full", statusStyle.dot)} />
-                <span className="truncate">
-                  {summary.headline}
-                  {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
-                  {String(instanceId) !== String(instance.driver) ? ` · ${instanceId}` : null}
-                </span>
-              </span>
+              <Badge className="max-w-full" dot tone={statusTone}>
+                {summary.headline}
+                {compatibilityLabel ? ` · ${compatibilityLabel}` : null}
+                {String(instanceId) !== String(instance.driver) ? ` · ${instanceId}` : null}
+              </Badge>
             }
           />
         </div>
