@@ -103,7 +103,7 @@ type ButtonShape = NonNullable<VariantProps<typeof controlVariants>["shape"]>;
  * disabled look.
  */
 const bareButtonClassName =
-  "cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default";
+  "cursor-pointer rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default";
 
 function buttonVariants({
   variant,
