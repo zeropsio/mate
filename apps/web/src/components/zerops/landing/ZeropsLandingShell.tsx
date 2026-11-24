@@ -110,16 +110,16 @@ export function ZeropsHqSignInFrame({
  */
 export function ZeropsByline() {
   return (
-    <a
-      className="inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-foreground"
-      data-zerops-byline="true"
-      href="https://zerops.io"
-      rel="noreferrer"
-      target="_blank"
-    >
-      <ZeropsMark className="size-3.5" />
-      Mate by Zerops
-    </a>
+    <span className="text-caption">
+      <InlineButton
+        data-zerops-byline="true"
+        render={<a href="https://zerops.io" rel="noreferrer" target="_blank" />}
+        tone="muted"
+      >
+        <ZeropsMark className="me-1 size-3.5" />
+        Mate by Zerops
+      </InlineButton>
+    </span>
   );
 }
 

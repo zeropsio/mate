@@ -9,7 +9,7 @@ import type { VaultWrite } from "@t3tools/client-runtime/data";
 import { EyeOffIcon, KeyRoundIcon, RotateCwIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { RESTART_CONFIRM, type notLiveLine } from "./vault.logic";
 import { unsetTitle, type VaultEntry, type vaultNeeds } from "./vaultGroups.logic";
@@ -53,14 +53,13 @@ export function VaultLines(props: VaultLinesProps) {
           <Line
             icon={<RotateCwIcon aria-hidden="true" className="size-3.5 text-warning-foreground" />}
           >
-            <button
-              className="text-left outline-none hover:underline focus-visible:underline"
+            <InlineButton
               data-vault-notlive-item={`restart:${notLive.restarts[0]?.serviceId ?? ""}`}
               onClick={props.onOpenNotLive}
-              type="button"
+              tone="plain"
             >
-              {notLive.text}
-            </button>
+              <span className="whitespace-normal text-start font-normal">{notLive.text}</span>
+            </InlineButton>
           </Line>
           {props.actor === "environment"
             ? notLive.restarts.map((item) => (
@@ -78,18 +77,19 @@ export function VaultLines(props: VaultLinesProps) {
         <Line
           icon={<KeyRoundIcon aria-hidden="true" className="size-3.5 text-warning-foreground" />}
         >
-          <button
-            className="text-left outline-none hover:underline focus-visible:underline"
+          <InlineButton
             data-vault-needs="unset"
             onClick={() => {
               const first = unset[0];
               if (first !== undefined) props.onOpenUnset(first);
             }}
-            type="button"
+            tone="plain"
           >
-            {unsetTitle(unset)} — paste {unset.length === 1 ? "it" : "them"} in{" "}
-            {unset.length === 1 ? "its row" : "their rows"}
-          </button>
+            <span className="whitespace-normal text-start font-normal">
+              {unsetTitle(unset)} — paste {unset.length === 1 ? "it" : "them"} in{" "}
+              {unset.length === 1 ? "its row" : "their rows"}
+            </span>
+          </InlineButton>
         </Line>
       )}
       {readable.length === 0 ? null : (

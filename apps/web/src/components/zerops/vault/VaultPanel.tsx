@@ -25,6 +25,7 @@ import { ChevronDownIcon, EllipsisIcon, PlusIcon, SearchIcon, TextIcon, XIcon } 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
@@ -646,24 +647,21 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                 const open = openMade.has(scope.id);
                 const { words } = serviceWords(scope);
                 return (
-                  <div
-                    className="vault-row"
+                  <Collapsible
+                    render={<div className="vault-row" />}
                     data-open={open ? "" : undefined}
                     data-vault-app={scope.hostname}
                     key={scope.id}
+                    onOpenChange={() =>
+                      setOpenMade((current) => {
+                        const next = new Set(current);
+                        if (!next.delete(scope.id)) next.add(scope.id);
+                        return next;
+                      })
+                    }
+                    open={open}
                   >
-                    <button
-                      aria-expanded={open}
-                      className="flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      onClick={() =>
-                        setOpenMade((current) => {
-                          const next = new Set(current);
-                          if (!next.delete(scope.id)) next.add(scope.id);
-                          return next;
-                        })
-                      }
-                      type="button"
-                    >
+                    <CollapsibleTrigger className="flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                       <span className="font-mono text-caption text-foreground">
                         {scope.hostname}
                       </span>
@@ -680,7 +678,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                         aria-hidden="true"
                         className="vault-chevron size-4 shrink-0 text-muted-foreground"
                       />
-                    </button>
+                    </CollapsibleTrigger>
                     <div className="vault-row-body" inert={!open}>
                       <div>
                         {open ? (
@@ -690,7 +688,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                         ) : null}
                       </div>
                     </div>
-                  </div>
+                  </Collapsible>
                 );
               })}
             </div>

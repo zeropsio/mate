@@ -896,20 +896,12 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/zerops/addresses/AddressesZerops.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"inline-flex min-w-0 max-w-full items-center gap-1 hover:underline\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"menu-chief-row\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Row `columns` with a ground of its own — the Chief's menu tile sits in the menu's subgrid columns on its tinted ground and takes the menu's band as it opens; the kit's Row is one flex line",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
@@ -960,46 +952,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/place/PlaceServices.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"group flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-3 py-2.5 outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/place/PlaceServices.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/place/PlaceVaultCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={ROW}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/place/PlaceVaultCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={ROW}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className=\"ov-change\"",
@@ -1014,14 +966,6 @@
     "owner": "kit pass",
     "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/proposal/ProposalCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-w-0 items-center gap-1 text-start text-caption text-muted-foreground hover:text-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
   },
   {
     "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
@@ -1108,39 +1052,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<textarea> className=\"vault-textarea block w-full resize-none overflow-x-auto bg-transparent py-2 pr-2.5 pl-1 font-mono text-caption leading-5 whitespace-pre text-foreground outline-none\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultLines.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"text-left outline-none hover:underline focus-visible:underline\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultLines.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"text-left outline-none hover:underline focus-visible:underline\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Textarea \"code\" — a frameless monospace box that never wraps, its lines on the 20 px rhythm the .env editor's mark gutter beside it keeps",
+    "expires": "never"
   }
 ]

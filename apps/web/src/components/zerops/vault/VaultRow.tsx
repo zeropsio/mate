@@ -30,6 +30,7 @@ import { useState, type ReactNode } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
 import { MiddleTruncate } from "../../ui/middle-truncate";
 import { Spinner } from "../../ui/spinner";
@@ -151,18 +152,17 @@ export function VaultRow(props: VaultRowProps) {
   const { value, open, activity } = props;
   const stale = value.readers.some((reader) => reader.state === "restart");
   return (
-    <div
-      className="vault-row"
+    <Collapsible
+      render={<div className="vault-row" />}
       data-flash={props.flash ? "" : undefined}
       data-open={open ? "" : undefined}
       data-vault-row={value.key}
+      onOpenChange={props.onToggle}
+      open={open}
     >
-      <button
-        aria-expanded={open}
+      <CollapsibleTrigger
         // On a phone a value's name stands over its key: side by side, both were cut mid-word.
         className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2"
-        onClick={props.onToggle}
-        type="button"
       >
         <span className="flex min-w-0 shrink items-center gap-2 max-sm:flex-col max-sm:items-start max-sm:gap-0.5">
           <span className="truncate text-line text-foreground max-sm:max-w-full">
@@ -208,7 +208,7 @@ export function VaultRow(props: VaultRowProps) {
           aria-hidden="true"
           className="vault-chevron size-4 shrink-0 text-muted-foreground"
         />
-      </button>
+      </CollapsibleTrigger>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
           className="px-3.5 pb-2.5 -mt-1 text-caption leading-4 text-muted-foreground"
@@ -220,7 +220,7 @@ export function VaultRow(props: VaultRowProps) {
       <div className="vault-row-body" inert={!open}>
         <div>{open ? <RowBody {...props} /> : null}</div>
       </div>
-    </div>
+    </Collapsible>
   );
 }
 

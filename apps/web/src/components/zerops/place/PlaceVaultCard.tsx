@@ -7,16 +7,15 @@
  */
 import { ChevronRightIcon, KeyRoundIcon, RotateCwIcon } from "lucide-react";
 
+import { Row } from "~/components/ui/row";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { VaultOverview, VaultOverviewPart } from "../vault/vaultOverview.logic";
 import { VaultPartName } from "../vault/VaultPartName";
 
 const CARD = "flex min-w-0 flex-col rounded-xl border border-border/70 bg-card p-1.5";
 /** A row that opens the drawer: it fills under the pointer and on focus, as the page's rows do. */
-const ROW =
-  "group flex min-w-0 cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-start outline-none hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring";
 /** Where a row leads, at its end: every row of the card is a door, so it is said at rest. */
-const GOES = "size-4 shrink-0 text-muted-foreground/70 group-hover:text-muted-foreground";
+const GOES = "size-4 shrink-0 text-muted-foreground/70";
 const QUIET = "px-3 py-2.5 text-body text-muted-foreground";
 /** Between what every app gets and each app's own: a hairline inside the rows' own inset. */
 const RULE = "mx-3 my-1.5 border-t border-border/70";
@@ -57,48 +56,56 @@ export function PlaceVaultCard({
   const forAll = overview.parts.filter((part) => part.hostname === null);
   const own = overview.parts.filter((part) => part.hostname !== null);
   const rowOf = (part: VaultOverviewPart) => (
-    <button
-      className={ROW}
+    <Row
       data-zerops-vault-part={part.id}
       key={part.id}
-      onClick={() => {
-        onOpen(part.id);
-      }}
-      type="button"
-    >
-      <span className="min-w-0 flex-1 truncate text-body text-foreground">
-        <VaultPartName scope={part} size="row" />
-      </span>
-      <span className="shrink-0 text-caption whitespace-nowrap text-muted-foreground/80 tabular-nums">
-        {part.counts}
-      </span>
-      <ChevronRightIcon aria-hidden="true" className={GOES} />
-    </button>
+      meta={
+        <span className="flex items-center gap-2">
+          {part.counts}
+          <ChevronRightIcon aria-hidden="true" className={GOES} />
+        </span>
+      }
+      pressable
+      render={
+        <button
+          onClick={() => {
+            onOpen(part.id);
+          }}
+          type="button"
+        />
+      }
+      size="sm"
+      title={<VaultPartName scope={part} size="row" />}
+    />
   );
   return (
     <div className={CARD} data-zerops-surface="place-vault" data-state="read">
       {overview.needs.map((need) => (
-        <button
-          className={ROW}
+        <Row
           data-zerops-vault-need={need.kind}
           key={need.kind}
-          onClick={() => {
-            onOpen();
-          }}
-          type="button"
-        >
-          <span aria-hidden="true" className="flex shrink-0 text-status-attention-text">
-            {need.kind === "not-live" ? (
-              <RotateCwIcon className="size-3.5" />
-            ) : (
-              <KeyRoundIcon className="size-3.5" />
-            )}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-body text-status-attention-text">
-            {need.text}
-          </span>
-          <ChevronRightIcon aria-hidden="true" className={GOES} />
-        </button>
+          lead={
+            <span aria-hidden="true" className="flex text-status-attention-text">
+              {need.kind === "not-live" ? (
+                <RotateCwIcon className="size-3.5" />
+              ) : (
+                <KeyRoundIcon className="size-3.5" />
+              )}
+            </span>
+          }
+          meta={<ChevronRightIcon aria-hidden="true" className={GOES} />}
+          pressable
+          render={
+            <button
+              onClick={() => {
+                onOpen();
+              }}
+              type="button"
+            />
+          }
+          size="sm"
+          title={<span className="font-normal text-status-attention-text">{need.text}</span>}
+        />
       ))}
       {overview.parts.length === 0 ? (
         <p className={QUIET}>Nothing in the vault yet</p>

@@ -18,6 +18,7 @@ import { AskCard, AskFooter } from "../../ask/AskCard";
 import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Spinner } from "../../ui/spinner";
 import { MateFace } from "../primitives";
 import { ZeropsOperationEnd } from "../ZeropsOperationEnd";
@@ -378,25 +379,25 @@ function Words({ words }: { readonly words: string }) {
 export function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="grid min-w-0 gap-1.5" data-proposal-attachment>
-      <button
-        aria-expanded={open}
-        className="flex min-w-0 items-center gap-1 text-start text-caption text-muted-foreground hover:text-foreground"
-        onClick={() => setOpen((current) => !current)}
-        type="button"
-      >
+    <Collapsible
+      render={<div className="grid min-w-0 gap-1.5" />}
+      data-proposal-attachment
+      onOpenChange={setOpen}
+      open={open}
+    >
+      <CollapsibleTrigger className="flex min-w-0 items-center gap-1 text-start text-caption text-muted-foreground hover:text-foreground">
         <ChevronRightIcon
           aria-hidden="true"
           className={open ? "size-3.5 shrink-0 rotate-90" : "size-3.5 shrink-0"}
         />
         <span className="min-w-0 truncate">{title}</span>
-      </button>
+      </CollapsibleTrigger>
       {open ? (
         <pre className="max-h-60 min-w-0 overflow-auto rounded-control bg-muted px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
           {text}
         </pre>
       ) : null}
-    </div>
+    </Collapsible>
   );
 }
 
