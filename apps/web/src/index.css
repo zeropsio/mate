@@ -9850,8 +9850,8 @@ label.tm-advanced-row:not([data-disabled]) {
   color: color-mix(in oklab, var(--color-foreground) 80%, transparent);
   transition: color var(--duration-quick) cubic-bezier(0.23, 1, 0.32, 1);
 }
-.run-item-open:hover > .run-item-more,
-.run-item-open:focus-visible > .run-item-more {
+[data-chat-disclose]:hover > .run-item-more,
+[data-chat-disclose]:focus-visible > .run-item-more {
   color: var(--color-foreground);
 }
 [data-chat-bubble="thought"] {

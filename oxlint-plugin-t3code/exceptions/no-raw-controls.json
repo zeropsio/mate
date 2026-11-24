@@ -88,14 +88,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
-    "owner": "kit pass",
-    "reason": "an invisible press over capped words, so a press anywhere on them opens the whole; its look is the \"more\" word",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/chat/RunNowLine.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-now-fold\"",

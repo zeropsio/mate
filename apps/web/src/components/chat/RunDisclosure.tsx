@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
-import { InlineButton } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsibleTrigger } from "../ui/collapsible";
 import { META, ROW } from "./RunBubble";
 import { RunShimmer } from "./RunShimmer";
@@ -163,18 +163,18 @@ export function OpensWhole({
           {children}
         </CappedBox>
         {cut && !disclosure.open ? (
-          <button
+          <Button
             aria-expanded={false}
             aria-label={`Show all of the ${what}`}
-            className="run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="absolute inset-0"
             data-chat-disclose
             onClick={() => disclosure.set(true)}
-            type="button"
+            variant="bare"
           >
             <span aria-hidden="true" className={cn(META, "run-item-more")}>
               more
             </span>
-          </button>
+          </Button>
         ) : null}
       </div>
       {disclosure.open ? (
