@@ -26,12 +26,9 @@ import {
   servedPlaces,
   type ChangeLandedEvent,
   type ServedPlace,
-  type FlowPullRequest,
   type ProductionLive,
   type ReleaseEndedEvent,
 } from "@t3tools/client-runtime/zerops";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo, useState } from "react";
 
 import { useProductionAddresses } from "./useProductionAddresses";
@@ -49,35 +46,6 @@ import {
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
-
-/** The Mate that lives in `environmentId`, as the listing names it; none until it does. */
-function mateIn(
-  listing: Shown<ReadonlyArray<CandidateRow>>,
-  environmentId: string,
-): CandidateRow | undefined {
-  const mate = findCandidate(
-    listing,
-    (candidate) => String(candidate.environmentId) === environmentId,
-  );
-  return mate.kind === "found" ? mate.row : undefined;
-}
-
-/**
- * The landings of the Mate that lives in `environmentId`. Which Mate that is comes from the
- * listing; until it names one, no landing is placed — a timeline without them says nothing, where
- * one with another Mate's would say something false.
- */
-export function changeLandedEventsFor(
-  listing: Shown<ReadonlyArray<CandidateRow>>,
-  environmentId: string,
-  changes: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
-): ReadonlyArray<ChangeLandedEvent> {
-  const mate = mateIn(listing, environmentId);
-  if (mate === undefined) return NONE;
-  const merged = [...changes.values()].flatMap((app) => [...app.merged]);
-  const events = changeLandedEvents(merged, mate.project.id);
-  return events.length === 0 ? NONE : events;
-}
 
 /**
  * Holds the application detail of the Mate that lives in `environmentId` while its conversation is
@@ -129,13 +97,14 @@ export function useZeropsChangeLandedEvents(
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
   const { changes } = useAppsChanges(appIds);
   return useMemo(() => {
-    if (mate === undefined) return NONE;
+    if (mate === undefined || groupId === undefined) return NONE;
     const events = changeLandedEvents(
       [...changes.values()].flatMap((app) => [...app.merged]),
       mate.project.id,
+      groupId,
     );
     return events.length === 0 ? NONE : events;
-  }, [changes, mate]);
+  }, [changes, groupId, mate]);
 }
 
 /**
