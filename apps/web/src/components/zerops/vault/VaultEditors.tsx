@@ -13,6 +13,7 @@ import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
 import { Switch } from "../../ui/switch";
+import { Textarea } from "../../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   generateVaultValue,
@@ -231,12 +232,12 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
               );
             })}
           </div>
-          <textarea
+          <Textarea
             aria-label={`${label} values as text`}
-            className="vault-textarea block w-full resize-none overflow-x-auto bg-transparent py-2 pr-2.5 pl-1 font-mono text-caption leading-5 whitespace-pre text-foreground outline-none"
             onChange={(event) =>
               props.onChange({ ...props.text, [which]: event.currentTarget.value })
             }
+            size="code"
             spellCheck={false}
             value={props.text[which]}
           />

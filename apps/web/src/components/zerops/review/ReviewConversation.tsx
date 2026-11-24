@@ -35,6 +35,7 @@ import { PersonAvatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
+import { Textarea } from "~/components/ui/textarea";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -244,9 +245,9 @@ function SayBox({
   return (
     <>
       <div className="rv-say">
-        <textarea
+        <Textarea
           aria-label="Say something on this change"
-          className="rv-say-box"
+          className="flex-1"
           onChange={(event) => {
             write(event.target.value);
           }}
@@ -258,6 +259,7 @@ function SayBox({
           }
           readOnly={pending !== null}
           rows={1}
+          size="line"
           value={pending?.body ?? said}
         />
         <SayVerb

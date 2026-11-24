@@ -12900,31 +12900,6 @@ a.message-file:focus-visible {
     inset 0 0 0 1px color-mix(in oklab, var(--foreground) 22%, transparent),
     0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
 }
-.rv-say-box {
-  flex: 1;
-  min-width: 0;
-  max-height: 200px;
-  /* One line until it is written in, then as tall as what is written, up to its cap. */
-  field-sizing: content;
-  padding: 4px 0;
-  border: 0;
-  outline: none;
-  resize: none;
-  overflow-y: auto;
-  background: transparent;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--foreground);
-}
-.rv-say-box::placeholder {
-  color: var(--muted-foreground);
-}
-/* A phone zooms the page into a field under 16 px. */
-@media (max-width: 39.999rem) {
-  .rv-say-box {
-    font-size: var(--field-phone-size);
-  }
-}
 .rv-say-trouble {
   margin: 6px 0 0;
   font-size: var(--text-body);
@@ -15793,28 +15768,6 @@ a.message-file:focus-visible {
       0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
   }
 
-  /* The pill grows with what is written, up to six lines, and gives it back
-     when it is sent. */
-  .crew-composer-input {
-    flex: 1 1 auto;
-    min-width: 0;
-    max-height: 132px;
-    field-sizing: content;
-    overflow-y: auto;
-    padding: 6px 0;
-    border: 0;
-    background: transparent;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--foreground);
-    resize: none;
-    outline: none;
-  }
-
-  .crew-composer-input::placeholder {
-    color: var(--muted-foreground);
-  }
-
   /* Who a message to the crew goes to: the lead's face and name, a 24 px chip. */
   .crew-chip {
     display: inline-flex;
@@ -16175,11 +16128,6 @@ a.message-file:focus-visible {
 .vault-gutter > span {
   display: block;
   height: 20px;
-}
-
-.vault-textarea {
-  field-sizing: content;
-  tab-size: 2;
 }
 
 @media (prefers-reduced-motion: reduce) {

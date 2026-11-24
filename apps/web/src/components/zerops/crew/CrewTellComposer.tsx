@@ -35,6 +35,7 @@ import { cn } from "~/lib/utils";
 import { isPathSuggestionCurrent } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
 import { Button } from "../../ui/button";
+import { Textarea } from "../../ui/textarea";
 import { MateFace } from "../primitives";
 import { CrewPress, CrewTip } from "./CrewParts";
 import {
@@ -157,9 +158,9 @@ export function CrewTellComposer({
   return (
     <div className="relative mx-4 mt-4 @max-md:mt-3.5" data-crew-composer>
       <div className="crew-composer">
-        <textarea
+        <Textarea
           aria-label={placeholder}
-          className="crew-composer-input"
+          className="flex-1"
           onChange={(event) => {
             setText(event.target.value);
             setCaret(event.target.selectionStart);
@@ -169,6 +170,7 @@ export function CrewTellComposer({
           placeholder={placeholder}
           ref={input}
           rows={1}
+          size="line"
           value={text}
         />
         {lead === null ? (
