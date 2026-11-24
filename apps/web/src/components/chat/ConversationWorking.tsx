@@ -36,6 +36,7 @@ import { cn } from "~/lib/utils";
 import { useOperationCard } from "../zerops/operation/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { InlineButton } from "../ui/button";
+import { Row } from "../ui/row";
 import { MateFace } from "../zerops/primitives";
 import {
   formatWorkDuration,
@@ -140,61 +141,57 @@ function Instrument({
   readonly open?: boolean;
   readonly onToggle?: (() => void) | null;
 }) {
-  const body = (
-    <>
-      <span aria-hidden="true" />
-      {/* Narrow, the name takes its own line over the bar and the words, so
-          the words stay readable; either way a name past its room gives way,
-          whole on hover, and nothing runs over the figure. */}
-      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 @md/panel:flex-nowrap">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span className="min-w-0 basis-full truncate text-start font-medium text-foreground @md/panel:min-w-24 @md/panel:max-w-1/2 @md/panel:shrink-0 @md/panel:basis-auto" />
-            }
-          >
-            {subject}
-          </TooltipTrigger>
-          <TooltipPopup side="top">{subject}</TooltipPopup>
-        </Tooltip>
-        <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate text-start",
-            failed ? "text-status-failed-text" : "text-muted-foreground",
-          )}
+  // Narrow, the name takes its own line over the bar and the words, so the
+  // words stay readable; either way a name past its room gives way, whole on
+  // hover, and nothing runs over the figure.
+  const title = (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 @md/panel:flex-nowrap">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span className="min-w-0 basis-full truncate text-start font-medium text-foreground @md/panel:min-w-24 @md/panel:max-w-1/2 @md/panel:shrink-0 @md/panel:basis-auto" />
+          }
         >
-          {words}
-        </span>
-      </span>
-      <span className="flex items-center gap-1.5 text-muted-foreground tabular-nums">
-        {figure}
-        {onToggle === null ? null : (
-          <ChevronDownIcon
-            aria-hidden="true"
-            className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 group-hover/bar:text-foreground group-aria-expanded/bar:rotate-180"
-          />
+          {subject}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{subject}</TooltipPopup>
+      </Tooltip>
+      <StatusBar className="w-14 shrink-0 @md/panel:w-28" segments={bar} />
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-start",
+          failed ? "text-status-failed-text" : "text-muted-foreground",
         )}
+      >
+        {words}
       </span>
-    </>
+    </span>
+  );
+  const meta = (
+    <span className="flex items-center gap-1.5">
+      {figure}
+      {onToggle === null ? null : (
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 group-hover/row:text-foreground group-aria-expanded/row:rotate-180"
+        />
+      )}
+    </span>
   );
   if (onToggle === null) {
-    return (
-      <div aria-label={label} className="run-bar" role="group">
-        {body}
-      </div>
-    );
+    return <Row aria-label={label} meta={meta} role="group" size="bar" title={title} />;
   }
   return (
-    <button
+    <Row
       aria-expanded={open}
       aria-label={label}
-      className="run-bar group/bar"
+      meta={meta}
       onClick={onToggle}
-      type="button"
-    >
-      {body}
-    </button>
+      pressable
+      render={<button type="button" />}
+      size="bar"
+      title={title}
+    />
   );
 }
 
@@ -218,60 +215,58 @@ function Band({
   readonly onToggle?: (() => void) | null;
 }) {
   const changed = useChangedSinceShown(line.title);
-  const body = (
-    <>
-      <span className="flex justify-center">
-        <ToneDot tone={line.tone} />
-      </span>
-      <span className="flex min-w-0 items-center gap-2">
-        {glyph}
-        {line.count === null ? null : (
-          <span className="shrink-0 font-medium text-foreground">{line.count}</span>
+  const title = (
+    <span className="flex min-w-0 items-center gap-2">
+      {glyph}
+      {line.count === null ? null : (
+        <span className="shrink-0 font-medium text-foreground">{line.count}</span>
+      )}
+      <span
+        key={line.title}
+        className={cn(
+          "min-w-0 truncate",
+          line.count === null ? "text-foreground" : "text-muted-foreground",
+          changed && "animate-words-in motion-reduce:animate-none",
         )}
-        <span
-          key={line.title}
-          className={cn(
-            "min-w-0 truncate",
-            line.count === null ? "text-foreground" : "text-muted-foreground",
-            changed && "animate-words-in motion-reduce:animate-none",
-          )}
-        >
-          {line.title}
+      >
+        {line.title}
+      </span>
+      {line.others === null ? null : (
+        <span className="min-w-0 max-w-1/2 shrink-0 truncate text-muted-foreground">
+          · {line.others}
         </span>
-        {line.others === null ? null : (
-          <span className="min-w-0 max-w-1/2 shrink-0 truncate text-muted-foreground">
-            · {line.others}
-          </span>
-        )}
-      </span>
-      <span className="flex items-center gap-1.5 text-muted-foreground tabular-nums">
-        {spanOf(line.startedAt, line.endedAt)}
-        {onToggle === null ? null : (
-          <ChevronDownIcon
-            aria-hidden="true"
-            className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 ease-out group-hover/bar:text-foreground group-aria-expanded/bar:rotate-180 motion-reduce:transition-none"
-          />
-        )}
-      </span>
-    </>
+      )}
+    </span>
+  );
+  const lead = <ToneDot tone={line.tone} />;
+  const meta = (
+    <span className="flex items-center gap-1.5">
+      {spanOf(line.startedAt, line.endedAt)}
+      {onToggle === null ? null : (
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 ease-out group-hover/row:text-foreground group-aria-expanded/row:rotate-180 motion-reduce:transition-none"
+        />
+      )}
+    </span>
   );
   if (onToggle === null) {
     return (
-      <div aria-label={line.label} className="run-bar" role="group">
-        {body}
-      </div>
+      <Row aria-label={line.label} lead={lead} meta={meta} role="group" size="bar" title={title} />
     );
   }
   return (
-    <button
+    <Row
       aria-expanded={open}
       aria-label={`${line.label}. ${open ? "Hide" : "Show"} each one`}
-      className="run-bar group/bar"
+      lead={lead}
+      meta={meta}
       onClick={onToggle}
-      type="button"
-    >
-      {body}
-    </button>
+      pressable
+      render={<button type="button" />}
+      size="bar"
+      title={title}
+    />
   );
 }
 
@@ -946,10 +941,12 @@ export function ConversationAfterWork({
           {lines.map((line) =>
             line.more === true ? (
               // How many more run, under the rows: no mark, as it names none of them.
-              <li key={line.key} className="run-bar text-muted-foreground">
-                <span aria-hidden="true" />
-                <span>{line.title}</span>
-              </li>
+              <Row
+                key={line.key}
+                render={<li />}
+                size="bar"
+                title={<span className="text-muted-foreground">{line.title}</span>}
+              />
             ) : (
               <DetailRow
                 key={line.key}

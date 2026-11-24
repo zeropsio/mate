@@ -112,30 +112,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-bar group/bar\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-bar group/bar\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/DetailRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-bar cursor-pointer transition-colors hover:bg-foreground/4\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"absolute inset-0 z-0 cursor-zoom-out\"",
