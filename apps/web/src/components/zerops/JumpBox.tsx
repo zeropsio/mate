@@ -600,11 +600,7 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       break;
     }
     case "stop":
-      lead = (
-        <span aria-label={item.stop.word} className="inline-flex" role="img">
-          <EnvDot dot={item.stop.dot} />
-        </span>
-      );
+      lead = <EnvDot dot={item.stop.dot} label={item.stop.word} />;
       title = (
         <Marked
           match={match}

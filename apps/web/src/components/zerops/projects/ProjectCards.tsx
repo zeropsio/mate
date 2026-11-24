@@ -66,6 +66,7 @@ import type {
   StageSettingUp,
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { spendProjectIds } from "./projectSpend.logic";
 import { ProjectCreditLine } from "./ProjectCreditLine";
@@ -263,9 +264,21 @@ function CardRow({
   );
 }
 
+const PLACE_DOT: Readonly<
+  Record<Exclude<PlaceLineData["dot"], "none">, { tone: BadgeTone; word: string }>
+> = {
+  running: { tone: "success", word: "Running" },
+  failed: { tone: "warning", word: "Failed" },
+  down: { tone: "danger", word: "Down" },
+  releasing: { tone: "info", word: "Releasing" },
+  unknown: { tone: "neutral", word: "Unknown" },
+};
+
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLineData["dot"] }) {
-  return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
+  if (dot === "none") return <i aria-hidden="true" className="ov-dot" data-dot="none" />;
+  const { tone, word } = PLACE_DOT[dot];
+  return <Badge aria-label={word} dot tone={tone} />;
 }
 
 /** How long a card waits for its detail before it paints what it has: HQ may not answer. */

@@ -1,6 +1,5 @@
 import { ProviderInstanceId } from "@t3tools/contracts";
 
-import { HelperMark, StatusDot as HelperStatusDot } from "~/components/AgentsPanel";
 import { AvailabilityDot } from "~/components/chat/AgentAvailability";
 import { ComposerStashBadge } from "~/components/chat/ComposerStashBadge";
 import { ComposerTasksBadge } from "~/components/chat/ComposerTasksBadge";
@@ -23,16 +22,13 @@ import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const HELPER_STATUSES = ["running", "waiting", "idle", "completed", "failed", "cancelled"] as const;
-const AGENTS_PANEL = "apps/web/src/components/AgentsPanel.tsx";
-
 function LabelSpecimens() {
   return (
     <CensusLooks>
       <CensusCount
-        components={13}
-        files={14}
-        kit="the kit has Badge with 5 tones and a dot form, rendered in 30 files"
+        components={11}
+        files={12}
+        kit="the kit has Badge with 5 tones and a dot form, rendered in 58 files"
         looks={6}
       />
 
@@ -52,35 +48,29 @@ function LabelSpecimens() {
         </CensusComponent>
       </CensusLook>
 
-      <CensusLook files={6} name="6 px bare dots" note="a state's colour with no word" uses={12}>
+      <CensusLook
+        files={3}
+        name="6 px bare dots"
+        note="a mark ringed on an icon's corner, a separator between two words"
+        uses={5}
+      >
         <CensusComponent
           name="AvailabilityDot"
           source="apps/web/src/components/chat/AgentAvailability.tsx"
         >
           {(["warning", "error"] as const).map((tone) => (
-            <Specimen key={tone} label={`availability tone "${tone}"`}>
-              <AvailabilityDot
-                availability={{
-                  instanceId: ProviderInstanceId.make("codex"),
-                  tone,
-                  title: tone === "error" ? "Signed out" : "Usage limit near",
-                  message: null,
-                }}
-              />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="StatusDot (a helper's)" source={AGENTS_PANEL}>
-          {HELPER_STATUSES.map((status) => (
-            <Specimen key={status} label={specimenLabel({ status })}>
-              <HelperStatusDot status={status} />
-            </Specimen>
-          ))}
-        </CensusComponent>
-        <CensusComponent name="HelperMark" source={AGENTS_PANEL}>
-          {HELPER_STATUSES.map((status) => (
-            <Specimen key={status} label={specimenLabel({ status })}>
-              <HelperMark status={status} />
+            <Specimen key={tone} label={`availability tone "${tone}" on a corner`}>
+              <span className="relative flex size-4">
+                <AvailabilityDot
+                  availability={{
+                    instanceId: ProviderInstanceId.make("codex"),
+                    tone,
+                    title: tone === "error" ? "Signed out" : "Usage limit near",
+                    message: null,
+                  }}
+                  corner
+                />
+              </span>
             </Specimen>
           ))}
         </CensusComponent>
@@ -101,8 +91,8 @@ function LabelSpecimens() {
       <CensusLook
         files={8}
         name="Dots drawn by a CSS class"
-        note="menu-dot, ov-dot, zerops-envdot in index.css"
-        uses={11}
+        note="menu-dot in a Mate's tint or ringed on its face; the hollow and spinner forms no status dot draws"
+        uses={10}
       >
         <CensusComponent name="MateDot" source="apps/web/src/components/zerops/MateDot.tsx">
           {(["attention", "unread", "failed", "working"] as const).map((tone) => (
@@ -121,19 +111,17 @@ function LabelSpecimens() {
           name="PlaceDot"
           source="apps/web/src/components/zerops/projects/ProjectCards.tsx"
         >
-          {(["running", "failed", "down", "releasing", "none", "unknown"] as const).map((dot) => (
-            <Specimen key={dot} label={specimenLabel({ dot })}>
-              <PlaceDot dot={dot} />
-            </Specimen>
-          ))}
+          <Specimen label={specimenLabel({ dot: "none" })}>
+            <PlaceDot dot="none" />
+          </Specimen>
         </CensusComponent>
         <CensusComponent
           name="EnvDot"
           source="apps/web/src/components/zerops/SidebarProductionChip.tsx"
         >
-          {(["ok", "attention", "failed", "off", "hollow", "spinner"] as const).map((dot) => (
+          {(["hollow", "spinner"] as const).map((dot) => (
             <Specimen key={dot} label={specimenLabel({ dot })}>
-              <EnvDot dot={dot} />
+              <EnvDot dot={dot} label={dot === "hollow" ? "Stopped" : "Starting"} />
             </Specimen>
           ))}
         </CensusComponent>

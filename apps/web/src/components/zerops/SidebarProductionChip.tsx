@@ -11,11 +11,11 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { fixMatesOf } from "~/zerops/fixMates";
 import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 
+import { Badge, type BadgeTone } from "../ui/badge";
 import { gatedPortal } from "../ui/portal-gate";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -35,9 +35,24 @@ export interface ChipMate {
   readonly threadKey: string | undefined;
 }
 
-/** A stop's dot in its place's head, and the same mark wherever a stop is listed (the jump box). */
-export function EnvDot({ dot, className }: { readonly dot: ChipDot; readonly className?: string }) {
-  return <span aria-hidden="true" className={cn("zerops-envdot", className)} data-dot={dot} />;
+const ENV_DOT_TONE = {
+  ok: "success",
+  attention: "warning",
+  failed: "danger",
+  off: "neutral",
+} as const satisfies Partial<Record<ChipDot, BadgeTone>>;
+
+/**
+ * A stop's dot in its place's head, and the same mark wherever a stop is listed (the jump box),
+ * named by the stop's word. A stop at rest on purpose is hollow and one on its way a small spinner,
+ * which no status dot draws.
+ */
+export function EnvDot({ dot, label }: { readonly dot: ChipDot; readonly label: string }) {
+  return dot === "hollow" || dot === "spinner" ? (
+    <span aria-label={label} className="zerops-envdot" data-dot={dot} role="img" />
+  ) : (
+    <Badge aria-label={label} dot tone={ENV_DOT_TONE[dot]} />
+  );
 }
 
 export function OpenInZerops({ projectId }: { readonly projectId: string }) {

@@ -31,6 +31,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
+import { Badge } from "../ui/badge";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -326,9 +327,10 @@ export function BrowserStrip({
       {running && onStage === latest ? (
         // Live is busy, never failure: the blue its take pulses in the
         // list. A hairline, not a shadow, keeps it off the page under it.
-        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-caption leading-5">
-          <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-          Live
+        <span className="absolute end-2 bottom-2 inline-flex rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-caption leading-5">
+          <Badge dot tone="info">
+            Live
+          </Badge>
         </span>
       ) : null}
     </>
@@ -483,7 +485,7 @@ export function BrowserStrip({
                   </span>
                   <span className="min-w-0 flex-1 truncate">{takeWords}</span>
                   {live ? (
-                    <span className="size-1.5 shrink-0 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
+                    <Badge aria-label="Live" dot tone="info" />
                   ) : state === "failed" ? (
                     <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
                   ) : state === "retried" ? (

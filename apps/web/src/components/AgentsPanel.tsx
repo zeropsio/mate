@@ -51,6 +51,7 @@ import {
 } from "~/components/chat/helpers.logic";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { orchestrationEnvironment } from "~/state/orchestration";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 
@@ -60,26 +61,22 @@ import { Button } from "~/components/ui/button";
  * stalled/waiting/queued subagent is still the fleet doing its job, not a
  * user problem). Only settled states differentiate.
  */
-const STATUS_VISUALS: Record<RuntimeSubagent["status"], { dotClass: string; label: string }> = {
-  pending: { dotClass: "bg-info", label: "Working" },
-  running: { dotClass: "bg-info", label: "Working" },
-  waiting: { dotClass: "bg-info", label: "Working" },
-  // Idle reads as settled (muted, not sky): a resting Codex child looks done
+const STATUS_VISUALS: Record<RuntimeSubagent["status"], { tone: BadgeTone; label: string }> = {
+  pending: { tone: "info", label: "Working" },
+  running: { tone: "info", label: "Working" },
+  waiting: { tone: "info", label: "Working" },
+  // Idle reads as settled (neutral, not sky): a resting Codex child looks done
   // unless resumed — live-test: sky idle dots read as stuck in-progress.
-  idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
-  completed: { dotClass: "bg-success", label: "Completed" },
-  failed: { dotClass: "bg-destructive", label: "Failed" },
-  cancelled: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-  interrupted: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
+  idle: { tone: "neutral", label: "Idle · resumable" },
+  completed: { tone: "success", label: "Completed" },
+  failed: { tone: "danger", label: "Failed" },
+  cancelled: { tone: "neutral", label: "Stopped" },
+  interrupted: { tone: "neutral", label: "Stopped" },
 };
 
 export function StatusDot({ status }: { status: RuntimeSubagent["status"] }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-1.5 shrink-0 rounded-full", STATUS_VISUALS[status].dotClass)}
-    />
-  );
+  const { tone, label } = STATUS_VISUALS[status];
+  return <Badge aria-label={label} dot tone={tone} />;
 }
 
 function formatElapsedSeconds(totalSeconds: number): string {
@@ -115,18 +112,12 @@ export function HelperMark({ status }: { status: RuntimeSubagent["status"] }) {
   if (status === "cancelled" || status === "interrupted") {
     return <Minus aria-hidden className="size-3.5 text-muted-foreground" strokeWidth={2.5} />;
   }
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "size-2 rounded-full",
-        status === "waiting"
-          ? "bg-status-attention"
-          : status === "idle"
-            ? "bg-muted-foreground/50"
-            : "bg-status-busy",
-      )}
-    />
+  return status === "waiting" ? (
+    <Badge aria-label="Waiting" dot tone="warning" />
+  ) : status === "idle" ? (
+    <Badge aria-label="Idle" dot tone="neutral" />
+  ) : (
+    <Badge aria-label="Working" dot tone="info" />
   );
 }
 
