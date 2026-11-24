@@ -15,6 +15,7 @@ import {
   type ConversationRowState,
   type MateMessageItem,
   type MateRowRef,
+  mateMessageNoticeHeading,
   mateMessageSenderName,
   type RunEnd,
 } from "@t3tools/contracts";
@@ -234,18 +235,20 @@ const answerOf = (view: ConversationView): ConversationView["lastAgent"] =>
  */
 export const attributedLine = (line: string, from: MateMessageItem | undefined): string => {
   if (from === undefined) return line;
+  if (from.kind === "notice") return mateMessageNoticeHeading(from.about);
   const name = mateMessageSenderName(from.from);
   return from.kind === "answer" ? `${name} answered: ${line}` : `${name}: ${line}`;
 };
 
 const saidLineOf = (said: NonNullable<ConversationView["latestAsk"]>): string | null => {
+  if (said.mateMessage?.kind === "notice") return mateMessageNoticeHeading(said.mateMessage.about);
   const line = subjectOf(said);
   return line === null ? null : rowText(attributedLine(line, said.mateMessage));
 };
 
 /** The Mate whose message a row's subject is, by its project and its own name. */
 const saidByOf = (said: NonNullable<ConversationView["latestAsk"]>): MateRowRef | undefined =>
-  said.mateMessage === undefined
+  said.mateMessage === undefined || said.mateMessage.kind === "notice"
     ? undefined
     : {
         projectId: said.mateMessage.from.projectId,

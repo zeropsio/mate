@@ -220,10 +220,13 @@ function messageOf(
         ...(item.mateMessage === undefined
           ? {}
           : {
-              mateMessage: {
-                ...item.mateMessage,
-                from: namedAsMenu(item.mateMessage.from, mateNamesOf),
-              },
+              mateMessage:
+                item.mateMessage.kind === "notice"
+                  ? item.mateMessage
+                  : {
+                      ...item.mateMessage,
+                      from: namedAsMenu(item.mateMessage.from, mateNamesOf),
+                    },
             }),
         ...(item.taskId === undefined ? {} : { taskId: item.taskId }),
         attachments: item.attachments.filter(

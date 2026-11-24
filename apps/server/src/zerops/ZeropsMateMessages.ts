@@ -108,6 +108,7 @@ export class ZeropsMateMessages extends Context.Service<
  * Mate" with neither.
  */
 export const toldOf = (message: MateMessage): string => {
+  if (message.kind === "notice") return message.words;
   const name = mateMessageSenderName(message.from);
   // HQ's one name ("Frontend Legacy - Mavi") is the Mate and its project (`mateMessageNamesOf`).
   const { mate, project } = mateMessageNamesOf(message.from);
@@ -136,7 +137,7 @@ export const toldOf = (message: MateMessage): string => {
 
 /** The sending Mate's words as its row shows them: what it wrote, and what it attached. */
 const wordsOf = (message: MateMessage): string =>
-  message.attachment === undefined
+  message.kind === "notice" || message.attachment === undefined
     ? message.words
     : `${message.words}\n\n[Attachment: ${message.attachment.title}]\n${message.attachment.text}`;
 
