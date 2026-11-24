@@ -18,9 +18,8 @@ const loadChatView = () =>
   (loading ??= import("./ChatView").then((module) => (loaded = module.default)));
 
 /**
- * Starts fetching the conversation's code now (a reload on a conversation's address, at boot), so
- * it arrives with the conversation's data rather than after it. The one shared load: a failure is
- * met by the boundary, which shows the route's error view.
+ * Starts fetching the conversation's code at boot, so it arrives before a person opens one. The
+ * one shared load: a failure is met by the boundary, which shows the route's error view.
  */
 export function preloadChatView(): void {
   loadChatView().catch(() => undefined);
