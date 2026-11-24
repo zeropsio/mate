@@ -14,6 +14,7 @@ export {
   type HqKeys,
   type HqParts,
   type HqBirthLeft,
+  type HqLinkRefusal,
   type HqOperation,
   type HqProposalApproval,
   type HqProposalEffect,

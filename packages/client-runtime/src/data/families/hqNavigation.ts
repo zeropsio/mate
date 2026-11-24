@@ -75,6 +75,8 @@ const Birth = Schema.Struct({
   intent: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
+  // A string code, so a refusal a later HQ names never takes the birth away (`HqLinkRefusal`).
+  linkRefusal: Schema.optionalKey(Schema.Struct({ code: Schema.String, at: Schema.String })),
 });
 /** A birth as navigation sends it, under its application or as `birth:<id>`, with its start. */
 const NavigationBirth = Schema.Struct({ ...Birth.fields, ...HqNavigationBirthStart.fields });

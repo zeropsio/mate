@@ -138,3 +138,4 @@ next: PJ154
 - PJ144 — A running birth HQ offers no Delete holds Delete, drawn and not pressable, for a person HQ offers its Mate's record and for nobody else; breaks: a new Mate has no menu while it comes up, or one that failed promises a Delete that never comes
 - PJ148 — A new Mate's container is not read while HQ holds its birth open with no link, and is read once as HQ says it linked; breaks: the page fills with failed requests for the minutes its container starts
 - PJ150 — A waiting access change offers another reader End and its maker Delete, a running one neither, and a reader not yet known no press; breaks: an Owner cannot free a person held by a maker who left
+- PJ+1 — A new Mate's refused link is what HQ put on its own project's open birth, and nothing where its birth carries none or only another project's does; breaks: a refused Mate's page waits as coming forever, or a Mate that is coming reads another Mate's refusal

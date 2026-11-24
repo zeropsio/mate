@@ -7,9 +7,15 @@
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqPresence, Reachability } from "../../zerops/environments/index.ts";
+import type { HqLinkRefusal } from "../../zerops/hq/client.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
-import { hqAppsScope, hqBirthsScope, placementsScope } from "../families/hqNavigation.ts";
+import {
+  hqAppsScope,
+  hqBirthsScope,
+  placementsScope,
+  type HqBirthValue,
+} from "../families/hqNavigation.ts";
 import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
@@ -170,6 +176,25 @@ export const hqMatePresence: Projection<MateProjectKey, MateLiveView["presence"]
   derive: (read, key) => overviewOf(read, key)?.presence ?? null,
   equals: sameValue,
 };
+/** The open births HQ holds on the project: under its applications and in none. */
+function projectBirths(
+  read: ProjectionReads,
+  { orgId, projectId }: MateProjectKey,
+): HqBirthValue[] {
+  const births: HqBirthValue[] = [];
+  for (const id of read.members(hqAppsScope(orgId)).ids) {
+    const app = read.fact("hqApp", id);
+    if (app.kind !== "known") continue;
+    for (const birth of app.value.births ?? [])
+      if (birth.projectId === projectId) births.push(birth);
+  }
+  for (const id of read.members(hqBirthsScope(orgId)).ids) {
+    const birth = read.fact("hqBirth", id);
+    if (birth.kind === "known" && birth.value.projectId === projectId) births.push(birth.value);
+  }
+  return births;
+}
+
 /**
  * HQ's one word on a Mate's link, which every read of its container obeys. An open birth on its
  * project with no link is `coming`: HQ ends the birth on the Mate's admitted hello, so until then
@@ -182,21 +207,22 @@ export const hqMateLink: Projection<MateProjectKey, HqPresence | null> = {
     const presence = overviewOf(read, key)?.presence ?? null;
     if (presence?.restarting === true) return "restarting";
     if (presence?.online === true) return "live";
-    const inApp = read.members(hqAppsScope(key.orgId)).ids.some((id) => {
-      const app = read.fact("hqApp", id);
-      return (
-        app.kind === "known" &&
-        app.value.births?.some((birth) => birth.projectId === key.projectId) === true
-      );
-    });
-    const inNoApp = read.members(hqBirthsScope(key.orgId)).ids.some((id) => {
-      const birth = read.fact("hqBirth", id);
-      return birth.kind === "known" && birth.value.projectId === key.projectId;
-    });
-    if (inApp || inNoApp) return "coming";
+    if (projectBirths(read, key).length > 0) return "coming";
     return presence === null ? null : "offline";
   },
   equals: Object.is,
+};
+
+/**
+ * Why HQ refused the hello of the Mate its open birth on the project made, and when: HQ's own
+ * verdict, put on the birth; null while HQ refused none, or holds no open birth there.
+ */
+export const hqMateLinkRefusal: Projection<MateProjectKey, HqLinkRefusal | null> = {
+  name: "hqMateLinkRefusal",
+  keyOf: hqMateOverview.keyOf,
+  derive: (read, key) =>
+    projectBirths(read, key).find((birth) => birth.linkRefusal !== undefined)?.linkRefusal ?? null,
+  equals: sameValue,
 };
 export const hqMateLogins: Projection<MateProjectKey, MateLiveView["logins"]> = {
   name: "hqMateLogins",

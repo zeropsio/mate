@@ -594,6 +594,17 @@ export interface HqBirth {
   /** An adopted birth's `HqBirthLeft`s as HQ sends them; one this build does not know is read past. */
   readonly left?: ReadonlyArray<string>;
   readonly intent?: Readonly<Record<string, unknown>>;
+  /** HQ's last refusal of a hello of the birth's key; absent while HQ refused none. */
+  readonly linkRefusal?: HqLinkRefusal;
+}
+
+/**
+ * Why HQ refused the hello of a birth's Mate (`key_refused`, `key_too_wide`, `key_not_sensitive`,
+ * `not_a_mate`; a code this build does not know is kept as sent), and when: UTC, ISO 8601.
+ */
+export interface HqLinkRefusal {
+  readonly code: string;
+  readonly at: string;
 }
 
 /** HQ's answer to `POST /api/births`: the birth intent it recorded, by id, and its face. */

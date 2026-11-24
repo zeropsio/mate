@@ -249,6 +249,7 @@ export {
   hqMateRefusalAtom,
   hqMateAnsweredAtom,
   hqMateLinkAtom,
+  hqMateLinkRefusalAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,
