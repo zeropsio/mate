@@ -12,6 +12,7 @@
  */
 import { breadcrumbsFor } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { ZeropsDataConsolePath } from "@t3tools/contracts";
+import { InlineButton } from "~/components/ui/button";
 
 interface ZeropsDataBreadcrumbsProps {
   /** Segments the tree collapses away — they get no crumb (`db / orders`, not `db / public / orders`). */
@@ -46,14 +47,13 @@ export function ZeropsDataBreadcrumbs({
                 {crumb.label}
               </span>
             ) : (
-              <button
-                className="truncate text-muted-foreground hover:text-foreground"
+              <InlineButton
                 data-zerops-data-breadcrumb={crumb.label}
                 onClick={() => onNavigate(crumb.path)}
-                type="button"
+                tone="muted"
               >
                 {crumb.label}
-              </button>
+              </InlineButton>
             )}
           </span>
         );

@@ -47,6 +47,7 @@ import { useRef, type KeyboardEvent, type ReactNode, type RefObject } from "reac
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
@@ -240,12 +241,11 @@ export function ZeropsDataTable({
         >
           {model.columns.map((column) => (
             <label className="flex items-center gap-1 text-caption" key={column.name}>
-              <input
+              <Checkbox
                 checked={column.pk || !hiddenColumns.has(column.name)}
                 data-zerops-data-table-column-toggle={column.name}
                 disabled={column.pk}
-                onChange={() => onToggleColumn(column.name)}
-                type="checkbox"
+                onCheckedChange={() => onToggleColumn(column.name)}
               />
               {column.name}
             </label>

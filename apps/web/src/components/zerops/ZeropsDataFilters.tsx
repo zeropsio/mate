@@ -33,6 +33,7 @@ import type { KeyboardEvent, RefObject } from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 
 const OPERATOR_LABELS: ReadonlyArray<{ readonly op: DataConsoleFilterOp; readonly label: string }> =
   [
@@ -52,9 +53,6 @@ const OPERATOR_LABELS: ReadonlyArray<{ readonly op: DataConsoleFilterOp; readonl
 const VALUELESS_OPS: ReadonlySet<DataConsoleFilterOp> = new Set(["isNull", "notNull"]);
 
 /** Borderless inside the chip: the chip's own border is the group's outline. */
-const CHIP_SELECT_CLASS =
-  "cursor-pointer bg-transparent px-1 py-0.5 text-caption outline-none focus-visible:bg-accent";
-
 interface ZeropsDataFiltersProps {
   /** Which half to render: the toolbar button group, or the chips and raw input under it. */
   readonly slot: "toolbar" | "rows";
@@ -152,54 +150,68 @@ export function ZeropsDataFilters({
         <div className="flex flex-wrap items-center gap-1">
           {filters.map((filter, index) => (
             <div
-              className="inline-flex items-center gap-0.5 rounded-[var(--control-radius)] border border-border"
+              className="inline-flex items-center gap-0.5 rounded-control border border-border text-caption"
               key={`${index}-${filter.column}-${filter.op}`}
             >
-              <select
-                aria-label="Filter column"
-                className={CHIP_SELECT_CLASS}
-                data-zerops-data-filter-column={String(index)}
-                onChange={(event) =>
-                  replaceFilter(index, { ...filter, column: event.target.value })
-                }
+              <Select
+                onValueChange={(column) => {
+                  if (column !== null) replaceFilter(index, { ...filter, column });
+                }}
                 value={filter.column}
               >
-                {columns.map((column) => (
-                  <option key={column.name} value={column.name}>
-                    {column.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter operator"
-                className={CHIP_SELECT_CLASS}
-                data-zerops-data-filter-op={String(index)}
-                onChange={(event) =>
-                  replaceFilter(index, {
-                    ...filter,
-                    op: event.target.value as DataConsoleFilterOp,
-                  })
-                }
+                <SelectTrigger
+                  aria-label="Filter column"
+                  data-zerops-data-filter-column={String(index)}
+                  size="xs"
+                  variant="ghost"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup alignItemWithTrigger={false}>
+                  {columns.map((column) => (
+                    <SelectItem key={column.name} value={column.name}>
+                      {column.name}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+              <Select
+                onValueChange={(op) => {
+                  if (op !== null) replaceFilter(index, { ...filter, op });
+                }}
                 value={filter.op}
               >
-                {OPERATOR_LABELS.map((entry) => (
-                  <option key={entry.op} value={entry.op}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-label="Filter operator"
+                  data-zerops-data-filter-op={String(index)}
+                  size="xs"
+                  variant="ghost"
+                >
+                  <SelectValue>
+                    {OPERATOR_LABELS.find((entry) => entry.op === filter.op)?.label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup alignItemWithTrigger={false}>
+                  {OPERATOR_LABELS.map((entry) => (
+                    <SelectItem key={entry.op} value={entry.op}>
+                      {entry.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
               {VALUELESS_OPS.has(filter.op) ? null : (
                 <Input
                   aria-label="Filter value"
                   autoFocus={autoFocusIndex === index}
-                  className="h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
+                  className="w-24"
                   data-zerops-data-filter-value={String(index)}
                   onChange={(event) =>
                     replaceFilter(index, { ...filter, value: event.target.value })
                   }
                   onKeyDown={applyOnEnter}
                   placeholder="value"
-                  size="sm"
+                  size="compact"
+                  unstyled
                   value={filter.value ?? ""}
                   {...(index === 0 && valueInputRef ? { ref: valueInputRef } : {})}
                 />
@@ -220,12 +232,11 @@ export function ZeropsDataFilters({
       {rawOpen ? (
         <Input
           aria-label="Raw WHERE clause"
-          className="h-7 text-xs"
           data-zerops-data-filter-raw
           onChange={(event) => onChangeRawWhere?.(event.target.value)}
           onKeyDown={applyOnEnter}
           placeholder="status = 'paid' AND total > 100"
-          size="sm"
+          size="compact"
           value={rawWhere}
         />
       ) : null}

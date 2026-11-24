@@ -1376,62 +1376,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> bg-transparent in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> border-0 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> focus-visible:ring-0 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> px-1 in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> shadow-none in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> text-xs in \"h-6 w-24 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> text-xs in \"h-7 text-xs\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsDataTable.tsx",
     "kind": "Literal",
     "fingerprint": "<TableHeader> bg-card in \"sticky top-0 z-10 bg-card\"",

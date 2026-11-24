@@ -67,6 +67,8 @@ import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { Input } from "../ui/input";
+import { Row } from "../ui/row";
 import { STATUS_BADGE_TONE } from "./primitives";
 import { RightPanelPageEdge } from "../RightPanelPage";
 import { ZeropsDataFilters } from "./ZeropsDataFilters";
@@ -733,16 +735,10 @@ export function ZeropsDataPanel({
   const serviceList = (rows: ReadonlyArray<DataServiceRowView>) => (
     <div className="space-y-1" data-zerops-data-services>
       {rows.map((row) => (
-        <button
-          className="flex w-full flex-col items-start gap-0.5 rounded-card px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-          data-zerops-data-service={row.hostname}
-          disabled={!row.canBrowse}
-          key={row.hostname}
-          onClick={() => (row.canBrowse ? onOpenService(row.hostname) : undefined)}
-          type="button"
-        >
-          <span className="flex w-full items-center justify-between gap-1">
-            <span className="flex min-w-0 items-center gap-1.5">
+        <Row
+          aria-disabled={row.canBrowse ? undefined : true}
+          badges={
+            <>
               {row.topologyService !== undefined ? (
                 <Badge
                   dot
@@ -752,17 +748,26 @@ export function ZeropsDataPanel({
                   {zeropsStatusWord(row.topologyService.status)}
                 </Badge>
               ) : null}
-              <span className="truncate">{row.hostname}</span>
-            </span>
-            {row.viewOnly ? <Badge data-zerops-data-service-view-only>View only</Badge> : null}
-          </span>
-          <span className="text-muted-foreground">{row.typeWords}</span>
-          {row.vpnGateReason !== undefined ? (
-            <span className="text-muted-foreground" data-zerops-data-service-vpn-hint>
-              {row.vpnGateReason}
-            </span>
-          ) : null}
-        </button>
+              {row.viewOnly ? <Badge data-zerops-data-service-view-only>View only</Badge> : null}
+            </>
+          }
+          data-zerops-data-service={row.hostname}
+          key={row.hostname}
+          line={
+            row.vpnGateReason === undefined ? (
+              row.typeWords
+            ) : (
+              <>
+                {row.typeWords} · <span data-zerops-data-service-vpn-hint>{row.vpnGateReason}</span>
+              </>
+            )
+          }
+          onClick={() => (row.canBrowse ? onOpenService(row.hostname) : undefined)}
+          pressable
+          render={<button disabled={!row.canBrowse} type="button" />}
+          size="xs"
+          title={row.hostname}
+        />
       ))}
     </div>
   );
@@ -927,11 +932,11 @@ export function ZeropsDataPanel({
         {database.summary?.bucket ? `Bucket: ${database.summary.bucket}` : noun} · {loadedCount}{" "}
         loaded · Total unknown
       </p>
-      <input
+      <Input
         aria-label="Filter loaded items"
         data-zerops-data-loaded-search
-        className="w-full rounded border border-border bg-transparent px-2 py-1 text-caption"
         placeholder="Filter loaded names…"
+        size="compact"
         value={loadedSearch}
         onChange={(event) => setLoadedSearch(event.target.value)}
       />
@@ -1043,14 +1048,15 @@ export function ZeropsDataPanel({
         {...(canSearchDocs
           ? {
               toolbarLeading: (
-                <input
-                  className="h-7 rounded-control border border-border bg-transparent px-2 text-xs"
+                <Input
+                  className="w-48"
                   data-zerops-data-document-search
                   onChange={(event) => setDocumentSearchQuery(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") handleDocumentSearchSubmit();
                   }}
                   placeholder="Search documents…"
+                  size="compact"
                   type="text"
                   value={documentSearchQuery}
                 />

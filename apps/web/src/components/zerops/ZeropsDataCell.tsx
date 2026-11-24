@@ -14,6 +14,7 @@
  */
 import { describeCell } from "@t3tools/client-runtime/zerops/dataConsole";
 import { Maximize2Icon } from "lucide-react";
+import { Button } from "~/components/ui/button";
 
 interface ZeropsDataCellProps {
   readonly value: unknown;
@@ -34,18 +35,18 @@ export function ZeropsDataCell({ value, onExpand }: ZeropsDataCellProps) {
     <span className="inline-flex max-w-full items-center gap-1" data-zerops-data-cell={detail.kind}>
       <span className="truncate">{detail.oneLine}</span>
       {expandable && onExpand !== undefined ? (
-        <button
+        <Button
           aria-label="Expand value"
-          className="text-muted-foreground hover:text-foreground"
           data-zerops-data-cell-expand
           onClick={(event) => {
             event.stopPropagation();
             onExpand();
           }}
-          type="button"
+          size="icon-2xs"
+          variant="ghost-muted"
         >
-          <Maximize2Icon className="size-3" />
-        </button>
+          <Maximize2Icon />
+        </Button>
       ) : null}
     </span>
   );
