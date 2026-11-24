@@ -20,6 +20,38 @@ function InputSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
+      <SpecimenBlock title="Inline">
+        <SpecimenGrid>
+          <Specimen label='size="inline"'>
+            <div className="flex h-5 w-72 min-w-0 items-center font-mono text-body text-foreground">
+              <span className="shrink-0 text-muted-foreground">octo-dev/</span>
+              <Input
+                aria-label="New repository's name"
+                className="-ms-0.5 flex-1"
+                defaultValue="tea-shop"
+                size="inline"
+              />
+            </div>
+          </Specimen>
+          <Specimen label='size="inline" aria-invalid'>
+            <div className="flex h-5 w-72 min-w-0 items-center font-mono text-body text-foreground">
+              <span className="shrink-0 text-muted-foreground">octo-dev/</span>
+              <Input
+                aria-invalid
+                aria-label="New repository's name, invalid"
+                className="-ms-0.5 flex-1"
+                defaultValue="tea shop"
+                size="inline"
+              />
+            </div>
+          </Specimen>
+          <Specimen label='size="inline" unstyled'>
+            <div className="w-72 text-center font-semibold text-display text-foreground">
+              <Input aria-label="Mate's name" defaultValue="Quinn" size="inline" unstyled />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
       <SpecimenBlock title="States and types">
         <SpecimenGrid>
           {[

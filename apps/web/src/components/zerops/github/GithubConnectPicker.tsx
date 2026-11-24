@@ -1273,12 +1273,12 @@ function NewRepositoryRow({
         <span className="flex h-5 min-w-0 items-center font-mono text-body text-foreground">
           <span className="shrink-0 text-muted-foreground">{account}/</span>
           {checked ? (
-            <input
+            <Input
               aria-invalid={created.invalid}
               aria-label="New repository's name"
               autoCapitalize="off"
               autoComplete="off"
-              className="-ms-0.5 h-5 min-w-0 flex-1 rounded-sm bg-background px-0.5 leading-5 ring-1 ring-ring outline-none aria-invalid:ring-destructive"
+              className="-ms-0.5 flex-1"
               maxLength={100}
               onChange={(event) => created.onName(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -1287,6 +1287,7 @@ function NewRepositoryRow({
                 if (!created.invalid) created.onSubmit();
               }}
               ref={field}
+              size="inline"
               spellCheck={false}
               type="text"
               value={created.name}

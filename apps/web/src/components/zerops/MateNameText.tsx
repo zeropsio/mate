@@ -1,3 +1,5 @@
+import { Input } from "../ui/input";
+
 /**
  * A Mate's name as the big line under its face (the New project page's Mate step, the add-Mate
  * dialog), editable where it stands: a press puts the caret in it and typing changes it, with no
@@ -18,18 +20,19 @@ export function MateNameText({
   readonly readOnly?: boolean;
 }) {
   return (
-    <input
+    <Input
       aria-describedby={describedBy}
       aria-invalid={invalid || undefined}
       aria-label="Mate's name"
       autoComplete="off"
-      className="mate-name-text"
       maxLength={40}
       onChange={(event) => {
         onValueChange(event.target.value);
       }}
       readOnly={readOnly}
+      size="inline"
       spellCheck={false}
+      unstyled
       value={value}
     />
   );

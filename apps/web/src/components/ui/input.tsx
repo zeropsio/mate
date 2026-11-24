@@ -6,7 +6,11 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputElement>, "size"> & {
-  size?: "sm" | "compact" | "default" | "lg" | "xl" | "hero" | number;
+  /**
+   * `inline`: the field is its line — the line's own type and height, no padding, as wide as its
+   * words — drawn as a hairline ring; `unstyled` leaves the typed words alone, the caret the only sign.
+   */
+  size?: "sm" | "compact" | "default" | "lg" | "xl" | "hero" | "inline" | number;
   /** Monospace with tabular digits, for paths, commands, colors and numbers. */
   font?: "default" | "mono";
   unstyled?: boolean;
@@ -54,6 +58,8 @@ function Input({
     // A page that is this one field: 46 px tall, typed at the emphasis step.
     size === "hero" &&
       "h-11.5 px-[calc(--spacing(4)-1px)] text-emphasis leading-11.5 sm:h-11.5 sm:text-emphasis sm:leading-11.5",
+    size === "inline" &&
+      "field-sizing-content h-auto min-w-[1ch] px-0 leading-[inherit] [text-align:inherit] sm:h-auto sm:leading-[inherit]",
     props.type === "search" &&
       "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none",
     // Number fields are typed into; browser spin buttons crowd narrow fields and step by 1.
@@ -92,7 +98,12 @@ function Input({
     <span
       className={
         cn(
+          size === "inline" && "inline-flex max-w-full min-w-0",
           !unstyled &&
+            size === "inline" &&
+            "rounded-sm bg-background px-0.5 ring-1 ring-ring has-aria-invalid:ring-destructive",
+          !unstyled &&
+            size !== "inline" &&
             "relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]",
           !unstyled &&
             size === "compact" &&

@@ -328,14 +328,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/MateNameText.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"mate-name-text\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Input `inline` — the typed words are the field (a Mate's name as the big line under its face): no box, sized to its text (field-sizing: content); the kit's Input always draws its own height and padding",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarRail.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"menu-rail-count\"",
@@ -397,14 +389,6 @@
     "fingerprint": "<a>",
     "owner": "kit pass",
     "reason": "a link inside a repository's rendered markdown: a plain anchor the markdown's prose styles, as every rendered text's links are",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/github/GithubConnectPicker.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"-ms-0.5 h-5 min-w-0 flex-1 rounded-sm bg-background px-0.5 leading-5 ring-1 ring-ring outline-none aria-invalid:ring-destructive\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Input size \"inline\" — a field at its line's own 20 px height inside a row, the new repository's name typed in place so picking the row moves nothing (the kit's smallest field is 28 px)",
     "expires": "never"
   },
   {
