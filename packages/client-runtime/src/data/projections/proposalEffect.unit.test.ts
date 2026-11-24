@@ -15,7 +15,7 @@ const effect = (id: string): HqOperation => ({
   phase: "effect_requested",
   at: AT,
   acceptedAt: AT,
-  failure: { step: "effect", code: "outcome_unknown", at: AT, origin: "hq" },
+  failure: { step: "zerops", code: "zerops_not_answering", at: AT, origin: "hq" },
   continueBy: "u-maker",
   offers: ["continue", "end"],
 });

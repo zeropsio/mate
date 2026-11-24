@@ -2,7 +2,6 @@ import {
   accessLostLine,
   birthStopped,
   operationFailureWords,
-  outcomeUnknownLine,
   platformErrorLine,
   waitingWords,
   sharedBirthsAtom,
@@ -91,12 +90,9 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       : null;
   const accessLost =
     waits && birth.failure !== undefined ? accessLostLine(birth.failure, continues) : null;
-  const outcomeUnknown =
-    waits && birth.failure !== undefined ? outcomeUnknownLine(birth.failure, continues) : null;
   const failure =
     platformError ??
     accessLost ??
-    outcomeUnknown ??
     waiting ??
     (birth.failure === undefined
       ? null

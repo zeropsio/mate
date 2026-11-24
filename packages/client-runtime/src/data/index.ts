@@ -164,7 +164,6 @@ export {
   accessLostLine,
   operationFailureDetails,
   operationFailureWords,
-  outcomeUnknownLine,
   platformErrorLine,
   PRESSING,
   waitingWords,

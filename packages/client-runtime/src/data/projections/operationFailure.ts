@@ -10,7 +10,6 @@ import { zeropsRefusedWords } from "../../zerops/hq/refusals.ts";
 /** A Zerops process the step followed failed: one sentence per HQ code of the spec's list. */
 const PROCESS_FAILED = new Map<string, string>([
   ["project_create_failed", "Zerops could not create the project."],
-  ["project_create_platform_error", "Zerops had an internal error creating the project."],
   ["project_delete_failed", "Zerops could not delete the project."],
   ["build_failed", "Zerops could not build the Mate's service."],
   ["restart_failed", "Zerops could not restart the Mate's service."],
@@ -30,27 +29,18 @@ const ACCESS_LOST = "access_lost";
 const ACCESS_LOST_WORDS =
   "HQ can no longer act for its maker on this project. Zerops may still be finishing it.";
 
-/** A write got no verdict: it may or may not have happened, and the press only reads. */
-const OUTCOME_UNKNOWN = "outcome_unknown";
-
-const OUTCOME_UNKNOWN_WORDS = "Zerops did not confirm whether this step went through.";
-
 /** Zerops stopped answering a read: nothing is known to have failed, and Continue reads again. */
 const ZEROPS_NOT_ANSWERING = "zerops_not_answering";
 
 const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking.";
 
-/** Zerops failed the project's creation: no press can repeat it, so End is the one way out. */
-const PROJECT_CREATE_PLATFORM_ERROR = "project_create_platform_error";
-
 /** The word on the button of HQ's one Continue offer: what the press does for this reason. */
-export type WaitingPress = "Continue" | "Try again" | "Check again";
+export type WaitingPress = "Continue" | "Try again";
 
 /** What a press says while HQ takes it. */
 export const PRESSING: Readonly<Record<WaitingPress, string>> = {
   Continue: "Continuing…",
   "Try again": "Trying again…",
-  "Check again": "Checking…",
 };
 
 /** A waiting operation as its maker reads it: the press, a row's clause, the whole sentence. */
@@ -58,8 +48,6 @@ export interface WaitingWords {
   readonly press: WaitingPress;
   readonly why: string;
   readonly line: string;
-  /** No Continue can change it: `line` is every reader's, and End is the way out. */
-  readonly endOnly?: true;
 }
 
 /** The one list of waiting reasons: the work resumes, a failed step is sent again, or it reads. */
@@ -89,28 +77,11 @@ const WAITING = new Map<string, WaitingWords>([
     },
   ],
   [
-    OUTCOME_UNKNOWN,
-    {
-      press: "Check again",
-      why: "Zerops did not confirm it went through",
-      line: `${OUTCOME_UNKNOWN_WORDS} Check again to find out; nothing is sent again. If it stays unconfirmed, you can give it up and start again; a request already at Zerops may still finish.`,
-    },
-  ],
-  [
     ZEROPS_NOT_ANSWERING,
     {
       press: "Try again",
       why: "Zerops is not answering",
       line: `${ZEROPS_NOT_ANSWERING_WORDS} Nothing is known to have failed. Try again when you are ready.`,
-    },
-  ],
-  [
-    PROJECT_CREATE_PLATFORM_ERROR,
-    {
-      press: "Continue",
-      why: "Zerops could not create the project",
-      line: "Zerops had an internal error creating the project, and trying again cannot repair it. End it to free the application; the project stays and can be deleted.",
-      endOnly: true,
     },
   ],
 ]);
@@ -152,14 +123,6 @@ export function accessLostLine(failure: HqOperationFailure, continues: boolean):
   }`;
 }
 
-/** The whole line of an operation waiting on an unknown outcome; null for any other failure. */
-export function outcomeUnknownLine(failure: HqOperationFailure, continues: boolean): string | null {
-  if (failure.origin !== "hq" || failure.code !== OUTCOME_UNKNOWN) return null;
-  return continues
-    ? waitingWords(OUTCOME_UNKNOWN).line
-    : `${OUTCOME_UNKNOWN_WORDS} It waits for its maker to check, which sends nothing again.`;
-}
-
 /** HQ's code for a check of an operation Zerops refused: it is not Zerops' own, so never shown. */
 const OBSERVATION_REFUSED = "operation_observation_refused";
 
@@ -167,7 +130,6 @@ const OBSERVATION_REFUSED = "operation_observation_refused";
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
-  [OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_WORDS],
   [ZEROPS_NOT_ANSWERING, ZEROPS_NOT_ANSWERING_WORDS],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],

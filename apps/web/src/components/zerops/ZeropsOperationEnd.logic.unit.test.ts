@@ -32,7 +32,7 @@ it("MN45: A waiting rename, deletion or setup draws End only where HQ offers thi
 // witness: apps/web/src/components/zerops/ZeropsOperationEnd.logic.ts | return offered && { kind: "end-operation" as const, ...offered, projectId }; → return offered && { kind: "end-operation" as const, ...offered, projectId: offered.orgId };
 it("MN+1: A waiting restart, move, deletion or approved effect on a project draws End only where HQ offers this reader its end, beside their Continue at an unknown outcome, and that End ends this operation of this project; breaks: a write no read can find holds its Mate for good, or a reader HQ refuses is shown an End", () => {
   const intent = { kind: "end-operation", orgId: "org-1", id: "op-1", projectId: "project-1" };
-  const unknown = { ...waiting, ...waitingWords("outcome_unknown"), yours: true };
+  const unknown = { ...waiting, ...waitingWords("zerops_not_answering"), yours: true };
   const cases: ReadonlyArray<readonly [HqOperationStanding, typeof intent | undefined]> = [
     [{ ...waiting, endable: true }, intent],
     [{ ...unknown, endable: true }, intent],

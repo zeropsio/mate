@@ -15,7 +15,6 @@ import { sameValue } from "./equal.ts";
 import {
   operationFailureDetails,
   operationFailureWords,
-  outcomeUnknownLine,
   waitingWords,
   type WaitingPress,
 } from "./operationFailure.ts";
@@ -131,9 +130,7 @@ export function accessOperationRows(
           ...stopped,
           state: "waiting",
           continueBy,
-          failure:
-            (continueBy === viewer ? outcomeUnknownLine(failure, true) : null) ??
-            operationFailureWords(failure),
+          failure: operationFailureWords(failure),
           press: waitingWords(failure.code).press,
           mine: continueBy === viewer,
           ...(viewer !== null && continueBy !== viewer ? { endable: true as const } : {}),

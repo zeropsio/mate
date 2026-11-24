@@ -54,7 +54,12 @@ it("MN+40: A Put it live waiting on a lost answer can be ended by whoever HQ off
     acceptedAt: "2026-11-24T10:00:00Z",
     at: "2026-11-24T10:00:00Z",
     continueBy: "maker",
-    failure: { step: "project", code: "outcome_unknown", origin: "hq", at: "2026-11-24T10:00:00Z" },
+    failure: {
+      step: "zerops",
+      code: "zerops_not_answering",
+      origin: "hq",
+      at: "2026-11-24T10:00:00Z",
+    },
     offers,
   });
   expect(endOperationIntent(putLiveOf(waiting(["continue", "end"])), "org-1", "app-1")).toEqual({

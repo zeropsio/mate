@@ -8,7 +8,6 @@ import {
   accessLostLine,
   operationFailureDetails,
   operationFailureWords,
-  outcomeUnknownLine,
   platformErrorLine,
   waitingWords,
 } from "./operationFailure.ts";
@@ -112,36 +111,13 @@ it("PJ145: A birth waiting on lost access has its own line, which differs for a 
   expect(accessLostLine({ ...lost, origin: "zerops" }, true)).toBeNull();
 });
 
-// witness: packages/client-runtime/src/data/projections/operationFailure.ts | press: "Check again", → press: "Continue",
-it("PJ+1: A write Zerops gave no verdict on waits under Check again, whose sentence differs for its maker and for anyone else and never shows HQ's code, and a reason this build does not know still offers Continue; breaks: a person is told a press repeats a write it only reads, or an unknown reason leaves a surface with no press", () => {
-  const unknown = failure("hq", "outcome_unknown");
-  expect(waitingWords(unknown.code).press).toBe("Check again");
-  const maker = outcomeUnknownLine(unknown, true);
-  const other = outcomeUnknownLine(unknown, false);
-  expect(maker).not.toBeNull();
-  expect(other).not.toBeNull();
-  expect(maker).not.toBe(other);
-  expect(maker).not.toContain(unknown.code);
-  expect(operationFailureWords(unknown)).not.toContain(unknown.code);
-  expect(outcomeUnknownLine({ ...unknown, code: "token_expired" }, true)).toBeNull();
-  expect(waitingWords("a_reason_of_a_later_build").press).toBe("Continue");
-});
-
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking."; → const ZEROPS_NOT_ANSWERING_WORDS = "Zerops had an internal error.";
-it("PJ+50: A read Zerops stopped answering is said as Zerops not answering, never as its internal error, and a creation Zerops failed says End is its way out to every reader, never that it waits for someone to continue; breaks: a person is told Zerops broke when it was only silent, or waits for a Continue that does not exist.", () => {
+it("PJ+50: A read Zerops stopped answering is said as Zerops not answering, never as its internal error; breaks: a person is told Zerops broke when it was only silent.", () => {
   const silent = failure("hq", "zerops_not_answering");
   expect(operationFailureWords(silent)).not.toContain("internal error");
   expect(operationFailureWords(silent)).not.toContain(silent.code);
   expect(waitingWords(silent.code).line).not.toContain("internal error");
   expect(waitingWords(silent.code).press).toBe("Try again");
-  expect(waitingWords(silent.code).endOnly).toBeUndefined();
-  const failed = waitingWords("project_create_platform_error");
-  expect(failed.endOnly).toBe(true);
-  expect(failed.line).toContain("End it");
-  expect(failed.line).not.toContain("Continue");
-  expect(
-    operationFailureWords(failure("zerops_process", "project_create_platform_error")),
-  ).not.toContain("project_create_platform_error");
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts |         "zerops", →         "zerops_",
