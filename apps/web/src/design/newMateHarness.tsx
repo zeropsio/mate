@@ -9,7 +9,7 @@
  * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
  * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
  * has a `reading` repo shut the door, to watch nothing move). *Shuffle* rolls another face and
- * name; *Mate access & persona* opens the persona and who can work with it. A press on
+ * name; *Mate access & persona setup* opens the persona and who can work with it. A press on
  * Add gives way to the new Mate's page at once, the steps this tab runs advancing under its copy
  * (`pressPage.tsx`, `&fail=` stops one). Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.

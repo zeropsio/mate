@@ -1,8 +1,8 @@
 /**
  * The New Mate dialog: who the new Mate is, as the New project page's Mate step asks it
  * (`ZeropsNewProjectPage`, pen.dev v4WZU): its face big, the colours and shapes opening as a ring
- * around it (*Change style*, `MateFaceRing`), its name, typed in place (`MateNameText`), *Shuffle* rolling a new face and name, and
- * Add. *Mate access & persona* opens how it works with its person (`NewMatePersona`) and who can
+ * around it (*Edit style*, `MateFaceRing`), its name, typed in place (`MateNameText`), *Shuffle style* rolling a new face and name, and
+ * Add. *Mate access & persona setup* opens how it works with its person (`NewMatePersona`) and who can
  * work with it, under the rest, the dialog scrolling down to them. Everything else is decided for them. The Mate gets its own copy of the project
  * with the project's recipe deployed (the tier read from the group repo's `main`), runs its agent,
  * and is called what the project calls its Mates (`proposedEnvironmentName`). A project with no
@@ -23,13 +23,7 @@ import type { MatePersona } from "@t3tools/contracts";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  PencilIcon,
-  ShuffleIcon,
-  SlidersHorizontalIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronDownIcon, PencilIcon, ShuffleIcon } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -234,9 +228,9 @@ export function ZeropsNewMateForm({
     if (goes) go();
   }, [goes]);
 
-  // *Mate access & persona* open: the persona and who can work with it, under the Mate.
+  // *Mate access & persona setup* open: the persona and who can work with it, under the Mate.
   const [options, setOptions] = useState(false);
-  // *Change style* open: the colours and shapes stand as a ring around the face.
+  // *Edit style* open: the colours and shapes stand as a ring around the face.
   const [styling, setStyling] = useState(false);
   const optionsRoom = useOptionsGlide(options);
   const shuffle = useMateShuffle({
@@ -328,24 +322,24 @@ export function ZeropsNewMateForm({
                 <Button
                   aria-busy={shuffle.rolling || undefined}
                   onClick={shuffle.roll}
-                  size="sm"
+                  size="md"
                   type="button"
                   variant="secondary"
                 >
                   <ShuffleIcon aria-hidden />
-                  Shuffle
+                  Shuffle style
                 </Button>
                 <Button
                   aria-expanded={styling}
                   onClick={() => {
                     setStyling(!styling);
                   }}
-                  size="sm"
+                  size="md"
                   type="button"
                   variant="secondary"
                 >
                   {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
-                  {styling ? "Confirm style" : "Change style"}
+                  {styling ? "Confirm style" : "Edit style"}
                 </Button>
               </div>
             </div>
@@ -399,8 +393,7 @@ export function ZeropsNewMateForm({
             type="button"
             variant="ghost-muted"
           >
-            {options ? null : <SlidersHorizontalIcon aria-hidden />}
-            {options ? "Hide options" : "Mate access & persona"}
+            Mate access &amp; persona setup
             <ChevronDownIcon aria-hidden className="new-mate-chevron" />
           </Button>
         </div>
