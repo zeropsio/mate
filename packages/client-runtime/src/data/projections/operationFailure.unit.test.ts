@@ -131,7 +131,7 @@ it("PJ+50: A read Zerops stopped answering is said as Zerops not answering, neve
   expect(operationFailureWords(silent)).not.toContain("internal error");
   expect(operationFailureWords(silent)).not.toContain(silent.code);
   expect(waitingWords(silent.code).line).not.toContain("internal error");
-  expect(waitingWords(silent.code).press).toBe("Continue");
+  expect(waitingWords(silent.code).press).toBe("Try again");
   expect(waitingWords(silent.code).endOnly).toBeUndefined();
   const failed = waitingWords("project_create_platform_error");
   expect(failed.endOnly).toBe(true);

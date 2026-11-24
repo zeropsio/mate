@@ -99,9 +99,9 @@ const WAITING = new Map<string, WaitingWords>([
   [
     ZEROPS_NOT_ANSWERING,
     {
-      press: "Continue",
+      press: "Try again",
       why: "Zerops is not answering",
-      line: `${ZEROPS_NOT_ANSWERING_WORDS} Nothing is known to have failed. Continue to check where it stands.`,
+      line: `${ZEROPS_NOT_ANSWERING_WORDS} Nothing is known to have failed. Try again when you are ready.`,
     },
   ],
   [
