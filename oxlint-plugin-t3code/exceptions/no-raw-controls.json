@@ -4,23 +4,23 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the anchor of a download behaviour (it fetches the original before following it); it has no look of its own, its caller draws it",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className={cn( CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, className, )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a file link inside rendered markdown, drawn as the markdown's file chip: the plain anchor its copy and context menu read",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", block ? \"block\" : \"inline-block\", className, )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -28,24 +28,24 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( CHAT_FILE_TAG_CHIP_CLASS_NAME, MARKDOWN_FILE_LINK_CLASS_NAME, \"select-text\", className, )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the same file chip inside rendered markdown where nothing opens it: a press for its menu, drawn as the anchor beside it",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<input>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/ChatMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<input>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/RightPanelTabs.tsx",
@@ -68,8 +68,8 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the anchor of a link behaviour (it opens a preview beside the chat when one serves the address); it has no look of its own, its caller or a markdown link draws it",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
@@ -84,7 +84,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-control px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", check === onStage ? \"bg-accent/70 text-foreground\" : \"text-muted-foreground\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: a Row lead for a thumbnail — a take's picture in its device's shape, wider than the mark slot (52 × 32), on a picked row",
     "expires": "surface:kit"
   },
   {
@@ -92,7 +92,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", TAKE_PICTURE_CLASS[device], state === \"failed\" ? \"border-status-failed ring-1 ring-status-failed\" : state === \"retried\" ? \"border-status-attention\" : \"border-border\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -100,23 +100,23 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the edge of the notice stacked behind the front one, drawn as that card's edge; a press only so the stack opens from it",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body\", customAnswer ? \"text-foreground\" : \"text-placeholder\", !multiSelect && \"px-3 py-2\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the folded composer's words, drawn in the editor's own type so opening it changes no letter; a press only to open the editor",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/ComposerFoldedPromptRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"send\" — the composer's message-action ink (its send and its Refine, Implement and answer pills), which no variant carries",
     "expires": "surface:kit"
   },
   {
@@ -124,8 +124,8 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none\", COMPOSER_PROMPT_TYPE_CLASS_NAME, words ? \"text-foreground\" : \"text-placeholder\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the folded composer's words, drawn in the editor's own type so opening it changes no letter; a press only to open the editor",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/ComposerPicture.tsx",
@@ -156,7 +156,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"send\" — the composer's message-action ink (its send and its Refine, Implement and answer pills), which no variant carries",
     "expires": "surface:kit"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-8 sm:h-7\", compact ? \"px-3\" : \"px-4\")}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"send\" — the composer's message-action ink (its send and its Refine, Implement and answer pills), which no variant carries",
     "expires": "surface:kit"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-9 rounded-r-none px-4 sm:h-8\")}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"send\" — the composer's message-action ink (its send and its Refine, Implement and answer pills), which no variant carries",
     "expires": "surface:kit"
   },
   {
@@ -180,7 +180,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn(messageActionPillClassName, \"h-9 sm:h-8\", compact ? \"px-3\" : \"px-4\")}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"send\" — the composer's message-action ink (its send and its Refine, Implement and answer pills), which no variant carries",
     "expires": "surface:kit"
   },
   {
@@ -188,7 +188,15 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring\", chats === null ? \"pe-3\" : \"pe-1\", opens ? \"cursor-pointer\" : \"cursor-default\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "the conversation line's Mate: the line's travelling band draws its ground (.conversation-band), the press is its bare hit target",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<button> className=\"run-bar group/bar\"",
+    "owner": "kit pass",
+    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
     "expires": "surface:kit"
   },
   {
@@ -196,15 +204,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-bar group/bar\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-bar group/bar\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
     "expires": "surface:kit"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-bar cursor-pointer transition-colors hover:bg-foreground/4\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Row size \"bar\" — the run card's line: a 28 px lead column, 32 px tall, its figure on the card's right edge, so it keeps the card's grid",
     "expires": "surface:kit"
   },
   {
@@ -220,15 +220,15 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"absolute inset-0 z-0 cursor-zoom-out\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "an invisible press filling the room around the expanded picture, so a click beside it closes; it has no look",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/MermaidDiagram.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( fit, \"cursor-zoom-in rounded-control focus-visible:outline-2 focus-visible:outline-ring\", )}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -236,7 +236,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"message-picture-open\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -244,7 +244,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"block h-20 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -260,15 +260,15 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-now-fold\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "the run card's head toggle: an invisible overlay its line's own words stand over (the head's chevron and Show work are those words)",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/RunPersonMark.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"block h-16 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -276,7 +276,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"h-full w-full cursor-zoom-in\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -284,15 +284,15 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "an invisible press over the minimap that picks the message under the pointer; it has no look",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/TurnReport.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"run-result-tile\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: Button variant \"picture\" — a bare press around a picture or a tile that opens it: no ground or padding, the picture's own corners, a zoom-in cursor, the focus ring",
     "expires": "surface:kit"
   },
   {
@@ -316,23 +316,23 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a range input: the kit has no slider",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a range input: the kit has no slider",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/settings/TeamInvitePage.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"tm-role-card\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: RadioGroup's card form — a choice drawn as a card, its name and its line, the chosen one outlined in blue",
     "expires": "surface:kit"
   },
   {
