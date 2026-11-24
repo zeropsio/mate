@@ -249,13 +249,6 @@ export function ProjectPageBody<T>({
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
-          <ProjectChanges
-            entry={entry}
-            facts={facts}
-            lines={lines}
-            props={props}
-            waiting={waitingChangeKeys(entry, waits, standingHere)}
-          />
           <ProjectMates
             addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
@@ -263,6 +256,13 @@ export function ProjectPageBody<T>({
             onAddMate={onAddMate}
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
+          />
+          <ProjectChanges
+            entry={entry}
+            facts={facts}
+            lines={lines}
+            props={props}
+            waiting={waitingChangeKeys(entry, waits, standingHere)}
           />
           {setup.automationStanding ? (
             <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
