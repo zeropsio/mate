@@ -4,7 +4,7 @@
   /* The headline (Overview and the squares) is the desktop's top bar; the Chief's row stands 8 px
      under it, the list's first. */
   --sidebar-menu-headline-height: 4.0625rem;
-  --sidebar-chief-row-height: 48px;
+  --sidebar-chief-row-height: 66px;
   --sidebar-menu-header-height: calc(
     var(--sidebar-menu-headline-height) + 8px + var(--sidebar-chief-row-height)
   );

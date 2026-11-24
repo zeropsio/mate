@@ -6196,39 +6196,15 @@ code {
 }
 
 @layer components {
-  /* The menu's headline (`SidebarOverviewLink`): Overview, its grid on the Mates' faces' column
-     and its word just before their names, quiet until pointed at or open. */
+  /* The menu's headline (`SidebarOverviewLink`): Overview, a quiet square (`menu-round-button`)
+     centred on the Mates' faces' column, held lit while it is the page open. */
   .menu-overview {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 12px;
-    height: 32px;
-    margin-inline-start: calc(var(--sidebar-content-inset) + 1px);
-    padding-inline: 20px 12px;
-    border-radius: 10px;
-    color: var(--muted-foreground);
-    font-size: 14px;
-    font-weight: 500;
-    line-height: 20px;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong);
-  }
-
-  .menu-overview:hover {
-    background: var(--sidebar-row-hover);
-    color: var(--sidebar-foreground);
+    margin-inline-start: calc(var(--sidebar-content-inset) + 1px + 12px);
   }
 
   .menu-overview[data-current] {
-    background: var(--sidebar-row-active);
+    background: var(--sidebar-row-hover);
     color: var(--sidebar-foreground);
-  }
-
-  .menu-overview:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   /* What waits on the person, counted before the headline's squares: the error's red, so it reads
@@ -6243,7 +6219,7 @@ code {
     padding: 0 9px;
     border-radius: 9999px;
     background: var(--destructive);
-    color: var(--destructive-foreground);
+    color: var(--color-white);
     font-size: 13px;
     line-height: 16px;
     font-weight: 600;
@@ -6278,10 +6254,12 @@ code {
     padding-inline: 0 !important;
   }
 
-  /* The Chief (`SidebarChiefRow`): the list's first row, a Mate row's measure on the sidebar's own
-     ground — its mark on the faces' column, its name where every project's starts. */
+  /* The Chief (`SidebarChiefRow`): the list's first row, a Mate row's measure — its mark on the
+     faces' column, its name where every project's starts. */
   .menu-chief-row {
-    --chief-ground: var(--sidebar);
+    /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
+       project's row (the owner, 2026-10-12: "this should look different"). */
+    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, var(--sidebar));
     position: relative;
     isolation: isolate;
     display: flex;
@@ -6296,19 +6274,19 @@ code {
     transition: background-color 150ms var(--ease-out-strong);
   }
 
-  /* 8 px under the headline, and the projects straight under it: the list's own 16 px above its
-     first row is the Chief's room. */
+  /* 8 px under the headline, and the projects a row's 6 px under it: the list's own 16 px above
+     its first row is the Chief's room. */
   .menu-list-chief {
     padding-top: 8px;
   }
 
   /* `!important` over the list's own top padding utility. */
   .menu-list-chief + [data-zerops-surface="sidebar-environments"] {
-    padding-top: 0 !important;
+    padding-top: 6px !important;
   }
 
   .menu-chief-row:hover {
-    --chief-ground: var(--sidebar-row-hover);
+    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, var(--sidebar));
   }
 
   .menu-chief-row:is([data-current], [data-pressed]) {

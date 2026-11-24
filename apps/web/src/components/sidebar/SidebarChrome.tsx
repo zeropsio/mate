@@ -96,21 +96,28 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
 });
 
 /**
- * The menu's headline: Overview, its grid on the Mates' faces' column, lit while it is the page
- * open.
+ * The menu's headline: Overview, a square as quiet as search and +, its grid on the Mates' faces'
+ * column, its name in its tooltip; held lit while it is the page open.
  */
 export function SidebarOverviewLink({ current }: { readonly current: boolean }) {
   return (
-    <Link
-      aria-current={current ? "page" : undefined}
-      className="menu-overview"
-      data-current={current ? "" : undefined}
-      data-zerops-surface="sidebar-overview"
-      to="/zerops"
-    >
-      <LayoutGridIcon aria-hidden="true" className="size-4" />
-      Overview
-    </Link>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            aria-current={current ? "page" : undefined}
+            aria-label="Overview"
+            className="menu-round-button menu-overview"
+            data-current={current ? "" : undefined}
+            data-zerops-surface="sidebar-overview"
+            to="/zerops"
+          />
+        }
+      >
+        <LayoutGridIcon aria-hidden="true" className="size-4" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">Overview</TooltipPopup>
+    </Tooltip>
   );
 }
 
