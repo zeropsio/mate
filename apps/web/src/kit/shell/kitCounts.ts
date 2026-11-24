@@ -17,22 +17,36 @@ export const KIT_GUARDS = [
   { rule: "no-unknown-classes", line: "A class Tailwind does not generate" },
 ] as const;
 
+/** A ledger entry as far as the kit reads it: when it is due. */
+interface LedgerEntry {
+  readonly expires?: string;
+}
+
 // The ledgers are read at build, and only where the build carries the design harness: production's
 // kit counts none and bundles none.
-const ledgers: Readonly<Record<string, readonly unknown[]>> =
+const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> =
   import.meta.env.VITE_DESIGN_HARNESS === ""
     ? {}
-    : import.meta.glob<readonly unknown[]>(
+    : import.meta.glob<readonly LedgerEntry[]>(
         "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes}.json",
         { eager: true, import: "default" },
       );
 
-/** Each guard's entry count, by rule; absent when this build does not carry the ledgers. */
-export const KIT_GUARD_COUNTS: ReadonlyMap<string, number> = new Map(
-  Object.entries(ledgers).map(([path, entries]) => [
-    path.slice(path.lastIndexOf("/") + 1, -".json".length),
-    entries.length,
-  ]),
+/** A guard's ledger: the places still to fix, and those it keeps on purpose (`expires: "never"`). */
+export interface KitGuardCount {
+  readonly toFix: number;
+  readonly kept: number;
+}
+
+/** Each guard's ledger, by rule; absent when this build does not carry the ledgers. */
+export const KIT_GUARD_COUNTS: ReadonlyMap<string, KitGuardCount> = new Map(
+  Object.entries(ledgers).map(([path, entries]) => {
+    const kept = entries.filter((entry) => entry.expires === "never").length;
+    return [
+      path.slice(path.lastIndexOf("/") + 1, -".json".length),
+      { toFix: entries.length - kept, kept },
+    ];
+  }),
 );
 
 /** What the sections' sources draw, counted from their text. */

@@ -78,7 +78,7 @@ export function OverviewPage({
   const components = sections.filter(isComponentSection).length;
   const states = flows.reduce((total, flow) => total + (flow.states?.length ?? 0), 0);
   const ledgersShipped = KIT_GUARD_COUNTS.size > 0;
-  const exceptions = [...KIT_GUARD_COUNTS.values()].reduce((total, count) => total + count, 0);
+  const toFix = [...KIT_GUARD_COUNTS.values()].reduce((total, count) => total + count.toFix, 0);
 
   const quickLinks: ReadonlyArray<readonly [string, string, string, LucideIcon]> = [
     ["foundations:colour", "Colour", "Every theme role, light and dark", PaletteIcon],
@@ -109,7 +109,7 @@ export function OverviewPage({
       </div>
 
       <div className="grid grid-cols-2 items-start gap-8">
-        <Section count={ledgersShipped ? `${exceptions} to fix` : undefined} title="Guard health">
+        <Section count={ledgersShipped ? `${toFix} to fix` : undefined} title="Guard health">
           <Card variant="flat">
             <div className="flex flex-col p-1">
               {KIT_GUARDS.map(({ rule, line }) => {
@@ -122,7 +122,16 @@ export function OverviewPage({
                       count === undefined ? (
                         "—"
                       ) : (
-                        <Badge tone={count === 0 ? "success" : "warning"}>{count}</Badge>
+                        <span className="flex items-center gap-2">
+                          {count.kept > 0 ? (
+                            <span className="text-caption text-muted-foreground">
+                              {count.kept} kept
+                            </span>
+                          ) : null}
+                          <Badge tone={count.toFix === 0 ? "success" : "warning"}>
+                            {count.toFix}
+                          </Badge>
+                        </span>
                       )
                     }
                     size="sm"
@@ -134,7 +143,7 @@ export function OverviewPage({
           </Card>
           <p className="m-0 text-caption text-muted-foreground">
             {ledgersShipped
-              ? "Each number is a ledger of places that still break the rule. Drive every one to zero; a ledger only shrinks."
+              ? "Each number is a place that still breaks the rule: drive them to zero. Kept ones break it on purpose, each with its reason (a vendor's icon colours, a native picker). A ledger only shrinks."
               : "This build does not carry the guards' ledgers; the dev server and the design harness do."}
           </p>
         </Section>
