@@ -19,6 +19,9 @@ import { Atom } from "effect/reactivity";
 import {
   listedProjectAtom,
   hqMateAnsweredAtom,
+  hqMateLinkAtom,
+  hqMateLinkRefusalAtom,
+  restartWay,
   shownHqProjectPeopleAtom,
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
@@ -124,6 +127,7 @@ import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   ARRIVAL_PACE_MS,
+  arrivalLink,
   arrivalRow,
   arrivalSteps,
   onSetupClock,
@@ -223,6 +227,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   return (
     <ExistingMateComingPage
       projectId={projectId}
+      birthId={birth?.id}
       birthReady={readyProjectIds.includes(projectId)}
       hqRun={
         birth !== undefined && next?.kind === "wait" && next.for === "hq"
@@ -392,10 +397,13 @@ function MateDeletionStage({
 
 function ExistingMateComingPage({
   projectId,
+  birthId,
   birthReady,
   hqRun,
 }: {
   readonly projectId: string;
+  /** Its open birth at HQ, whose offers are its page's way out while HQ refuses its link. */
+  readonly birthId: string | undefined;
   readonly birthReady: boolean;
   /**
    * HQ runs its setup's next step (the project's settings, its key, the import): no container is
@@ -795,8 +803,18 @@ function ExistingMateComingPage({
   const reviveFailed = useReviveFailedMate();
   const linkKey = link.key;
   const failedServiceId = candidate?.service?.id;
+  // HQ's word on its link: no Try now while HQ says it is coming, and HQ's refusal of its hello.
+  const hqLink = useAtomValue(hqMateLinkAtom(projectId));
+  const linkRefusal = useAtomValue(hqMateLinkRefusalAtom(projectId));
+  const linkWord = arrivalLink(mate, {
+    link: hqLink,
+    containerFailed:
+      candidate?.service !== undefined && restartWay(candidate.service.status) === "hq",
+    refusal: linkRefusal,
+    nowMs: Date.now(),
+  });
   const tryNow =
-    linkKey === undefined
+    linkKey === undefined || !linkWord.tryNow
       ? undefined
       : () => {
           if (!reviveFailed(failedServiceId)) void connect({ key: linkKey });
@@ -924,8 +942,19 @@ function ExistingMateComingPage({
       : mateActions
           .actionsFor(candidate, readZeropsMembership(candidate.project))
           .entries.find((entry) => entry.id === "delete");
+  // HQ refused its link: its way out is its birth's Delete, as HQ offers it.
+  const birthDelete =
+    linkWord.refused === null || birthId === undefined
+      ? undefined
+      : mateActions.birthActionsFor(birthId).find((entry) => entry.id === "delete");
   const removeEntry =
-    deleteEntry === undefined || "separator" in deleteEntry ? undefined : deleteEntry;
+    linkWord.refused !== null
+      ? birthDelete === undefined || "separator" in birthDelete
+        ? undefined
+        : birthDelete
+      : deleteEntry === undefined || "separator" in deleteEntry
+        ? undefined
+        : deleteEntry;
 
   const restartSetup = useRestartMate();
   const [retryingSetup, setRetryingSetup] = useState(false);
@@ -972,7 +1001,15 @@ function ExistingMateComingPage({
           details: mateActions.trouble,
         });
 
-  const shown: MateComing | undefined = arrival;
+  const shown: MateComing | undefined =
+    linkWord.refused === null
+      ? arrival
+      : {
+          kind: "failed",
+          line: linkWord.refused.sentence,
+          verb: "remove",
+          details: linkWord.refused.details,
+        };
   // The hand-over: the words turn into the conversation's own, and the header with them — its way
   // into Zerops and its actions arrive here, in place, so the route changes under an unchanged frame.
   const handingArrival = handing && cameUp;
@@ -1035,6 +1072,7 @@ function ExistingMateComingPage({
                   nowMs={progress?.nowMs}
                   onRemove={deletion?.kind === "failed" ? undefined : removeEntry?.onSelect}
                   removeDisabled={removeEntry?.disabled}
+                  removeLabel={linkWord.refused === null ? undefined : removeEntry?.label}
                   onRedeploy={redeploy}
                   {...(setupOrigin === undefined
                     ? {}
@@ -1472,6 +1510,7 @@ export function ComingBelow({
   nowMs,
   mate,
   removeDisabled = false,
+  removeLabel = "Remove",
   onRemove,
   onRedeploy,
   onTryAgain,
@@ -1499,6 +1538,8 @@ export function ComingBelow({
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly removeDisabled?: boolean | undefined;
+  /** The word on its way out: *Remove*, or the birth's *Delete* where HQ offers that instead. */
+  readonly removeLabel?: string | undefined;
   readonly onRemove?: (() => void) | undefined;
   readonly onTryAgain?: (() => void) | undefined;
   readonly onRedeploy?: (() => void) | undefined;
@@ -1575,7 +1616,7 @@ export function ComingBelow({
         </Button>
       ) : coming.verb === "remove" && onRemove !== undefined ? (
         <Button variant="primary" size="md" disabled={removeDisabled} onClick={onRemove}>
-          Remove
+          {removeLabel}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
