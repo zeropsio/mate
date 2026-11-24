@@ -1,6 +1,8 @@
+import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 import { AtomRegistry } from "effect/reactivity";
-import type { HqBirth } from "../../zerops/hq/client.ts";
+import { HqBirthOffer, HqBirthOperation, type HqBirth } from "../../zerops/hq/client.ts";
+import { recorded } from "../__fixtures__/recorded.ts";
 import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
@@ -28,6 +30,20 @@ const running: HqBirth = {
   offers: ["delete"],
 };
 
+const decodeBirths = Schema.decodeUnknownSync(
+  Schema.Struct({
+    births: Schema.Array(
+      Schema.Struct({ operation: HqBirthOperation, offers: Schema.Array(HqBirthOffer) }),
+    ),
+  }),
+);
+/** What HQ's recorded delivery offers on the birth it shows; nothing once the birth ended. */
+const answeredOffers = (name: string): ReadonlyArray<HqBirthOffer> =>
+  recorded("scope-values", `mate-hq/navigation.birth.${name}`)
+    .values.filter((v) => v.key.startsWith("app:"))
+    .flatMap((v) => decodeBirths(v.value).births)
+    .flatMap((b) => b.offers);
+
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer === "continue" || → (offer === "continue" && person.editRecord) ||
 it("PJ135: A birth offers Continue, Delete or its project's deletion only where HQ offers it and the person's live permission allows it; breaks: a bound birth offers its maker a Delete HQ refuses, or a person without the right is offered one", () => {
   const nobody = { addMate: false, editRecord: false };
@@ -35,7 +51,11 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
   const examples = [
     // HQ names the reader in its Continue: kept whatever their permission.
     { offers: ["continue"], person: nobody, offered: ["continue"] },
-    { offers: ["delete"], person: { addMate: true, editRecord: false }, offered: ["delete"] },
+    {
+      offers: answeredOffers("running"),
+      person: { addMate: true, editRecord: false },
+      offered: ["delete"],
+    },
     { offers: ["delete"], person: { addMate: false, editRecord: true }, offered: [] },
     {
       offers: ["delete_project"],
@@ -45,15 +65,15 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
     { offers: ["delete_project"], person: { addMate: true, editRecord: false }, offered: [] },
     // A bound birth HQ gives no offer (its create in flight, its deletion running) offers its
     // maker no Delete.
-    { offers: [], person: everyone, offered: [] },
+    { offers: answeredOffers("ended"), person: everyone, offered: [] },
     // A waiting bound birth: its maker continues it, and deletes its project only with the right.
     {
-      offers: ["continue", "delete_project"],
+      offers: answeredOffers("waiting-token-expired"),
       person: { addMate: true, editRecord: false },
       offered: ["continue"],
     },
     {
-      offers: ["continue", "delete_project"],
+      offers: answeredOffers("waiting-token-expired"),
       person: everyone,
       offered: ["continue", "delete_project"],
     },
