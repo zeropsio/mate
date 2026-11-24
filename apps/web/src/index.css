@@ -5562,12 +5562,6 @@ code {
     height: auto !important;
   }
 
-  /* The menu's top bar keeps no gutter of its own (`SidebarChromeHeader`); `!important` over the
-     header's padding utilities. */
-  [data-menu-head] {
-    padding-inline: 0 !important;
-  }
-
   /* Lit from the press, as a Mate's row is under its band (`menu-chief-lit`): its own layer, grown
      into place by opacity and scale, or carried from the band and back (`chiefLitTravel`) — the
      compositor runs either while the page it opens is drawn. */
@@ -6098,8 +6092,6 @@ code {
     padding: 7px 0 6px;
     border-radius: var(--radius-card);
     color: var(--sidebar-foreground);
-    cursor: pointer;
-    outline: none;
     transition: background-color 150ms var(--ease-out-strong);
   }
 
@@ -6109,29 +6101,22 @@ code {
     width: 44px;
     height: 40px;
     border-radius: var(--radius-control);
-    cursor: pointer;
-    outline: none;
     transition: background-color 150ms var(--ease-out-strong);
   }
 
-  .menu-rail-tile:hover,
-  .menu-rail-kid:hover {
+  /* Lit from its press (`RailControl`, the kit's bare Button), which holds the focus outline. */
+  [data-rail-press]:hover > .menu-rail-tile,
+  [data-rail-press]:hover > .menu-rail-kid {
     --menu-ground: var(--menu-rail-hover);
 
     background: var(--menu-rail-hover);
   }
 
-  .menu-rail-tile[data-current],
-  .menu-rail-kid[data-current] {
+  [data-rail-press][data-current] > .menu-rail-tile,
+  [data-rail-press][data-current] > .menu-rail-kid {
     --menu-ground: var(--sidebar-row-active);
 
     background: var(--sidebar-row-active);
-  }
-
-  .menu-rail-tile:focus-visible,
-  .menu-rail-kid:focus-visible,
-  .menu-rail-open:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
   }
 
   /* The face's box: the menu row's 36 px column, a kid's 28 px face inside it as under a group. */
@@ -6178,14 +6163,12 @@ code {
     height: 36px;
     border-radius: var(--radius-control);
     color: var(--sidebar-muted-foreground);
-    cursor: pointer;
-    outline: none;
     transition:
       background-color 150ms var(--ease-out-strong),
       color 150ms var(--ease-out-strong);
   }
 
-  .menu-rail-open:hover {
+  [data-rail-press]:hover > .menu-rail-open {
     background: var(--sidebar-row-hover);
     color: var(--sidebar-foreground);
   }

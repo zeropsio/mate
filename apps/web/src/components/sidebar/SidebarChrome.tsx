@@ -72,14 +72,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     // its centre and its bottom edge; on the web its 40 px mark stands centred in it on the Mates'
     // faces' column. Beside a desktop's traffic lights the bar is the title bar's height, centred
     // on them.
-    <SidebarHeader
-      variant="bar"
-      dragRegion={isElectron}
-      className="@container/sidebar-header"
-      // The phone's 12 px gutter held the sheet's close button once; `[data-menu-head]` takes it
-      // back, so the mark, the Chief's row and the squares stand on their own inset at every width.
-      data-menu-head=""
-    >
+    <SidebarHeader variant="bar" dragRegion={isElectron} className="@container/sidebar-header">
       {/* The phone's sheet has no toggle of its own up here: the bar is the Chief's and the
           squares', whole. A tap beside the sheet, a swipe, or the foot's toggle closes it. */}
       {brand === undefined ? (
