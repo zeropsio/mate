@@ -80,8 +80,14 @@ import { HeaderLinksView, SitesButtonView } from "~/components/chat/ChatHeaderLi
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
-import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
+import {
+  SidebarChromeHeader,
+  SidebarCreateButton,
+  SidebarOverviewLink,
+} from "~/components/sidebar/SidebarChrome";
 import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/SidebarChiefRow";
+import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
+import { SidebarWaitingCount } from "~/components/zerops/SidebarWaiting";
 import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
 import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
@@ -1384,33 +1390,29 @@ function SidebarFrame({
           : ({ width, "--workspace-controls-left": `${CONTROLS}px` } as CSSProperties)
       }
     >
-      {/* The app's top row: the Chief across the menu's width, the squares over its end, what
-          waits on you counted beside them; `?inset=90` beside macOS's traffic lights. */}
+      {/* The app's top row: Overview, then what waits on you counted before the squares;
+          `?inset=90` beside macOS's traffic lights. */}
       <SidebarChromeHeader
         isElectron={false}
-        brand={
-          <SidebarChiefRow
-            current={overviewOpen}
-            onOpen={() => {
-              menuActions.push("chief");
-              setOpen("");
-            }}
-            waiting={{
-              items: WAIT_ALL ?? waiting.items,
-              verbs: {
-                onOpenMate: (projectId: string) => {
-                  menuActions.push(`open ${projectId}`);
-                  setOpen(projectId);
-                },
-                onAskToFix: (projectId: string, problem: { readonly what: string }) => {
-                  menuActions.push(`ask ${projectId}: ${problem.what}`);
-                },
-              },
-            }}
-          />
-        }
+        brand={<SidebarOverviewLink current={overviewOpen} />}
         actions={
           <>
+            {(WAIT_ALL ?? waiting.items).length === 0 ? null : (
+              <SidebarWaitingCount
+                className="menu-top-count"
+                items={WAIT_ALL ?? waiting.items}
+                verbs={{
+                  onOpenMate: (projectId: string) => {
+                    menuActions.push(`open ${projectId}`);
+                    setOpen(projectId);
+                  },
+                  onAskToFix: (projectId: string, problem: { readonly what: string }) => {
+                    menuActions.push(`ask ${projectId}: ${problem.what}`);
+                  },
+                }}
+              />
+            )}
+            <SidebarScopeButton onScope={() => menuActions.push("scope")} scope="everyone" />
             <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
             <SidebarCreateButton
               onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
@@ -1425,6 +1427,14 @@ function SidebarFrame({
           Its inset is the app's list's (`Sidebar`): the menu's 0.75rem, a pixel more at the start. */}
       <SidebarContent>
         <div className="ps-3.25 pe-3 pb-1">
+          {/* The person's Chief, the list's first row. */}
+          <SidebarChiefRow
+            current={false}
+            onOpen={() => {
+              menuActions.push("chief");
+              setOpen("");
+            }}
+          />
           <RegistryContext value={comingRegistry ?? outerRegistry}>
             <SidebarZeropsTree
               candidates={RELOAD_MS === null ? candidates : reloaded.rows}
