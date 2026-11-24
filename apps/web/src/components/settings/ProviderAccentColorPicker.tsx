@@ -4,10 +4,10 @@ import { FALLBACK_PROVIDER_ACCENT, PROVIDER_ACCENT_SWATCHES } from "@t3tools/sha
 import { PipetteIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
-import { ColorSelector } from "../color-selector";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 
@@ -289,14 +289,31 @@ export function ProviderAccentColorPicker(props: {
           selected={customSelected}
           onCommit={commitAccentColor}
         />
-        <ColorSelector
-          key={selectedValue}
-          colors={[...PROVIDER_ACCENT_SWATCHES]}
-          defaultValue={selectedValue}
-          size="lg"
-          onColorSelect={commitAccentColor}
-          className="flex-wrap gap-1.5"
-        />
+        {/* Each swatch's disc is as wide as the custom one beside it; its press is the kit's. */}
+        <RadioSwatchGroup<string>
+          aria-label={`Accent color for ${displayName}`}
+          className="flex flex-wrap"
+          onValueChange={commitAccentColor}
+          options={PROVIDER_ACCENT_SWATCHES}
+          value={selectedValue}
+        >
+          {PROVIDER_ACCENT_SWATCHES.map((swatch) => (
+            <RadioSwatch aria-label={swatch} key={swatch} style={{ color: swatch }} value={swatch}>
+              <svg aria-hidden="true" viewBox="0 0 36 36">
+                <circle
+                  cx="18"
+                  cy="18"
+                  data-slot="radio-swatch-ring"
+                  fill="none"
+                  r="15.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <circle cx="18" cy="18" fill="currentColor" r="12" />
+              </svg>
+            </RadioSwatch>
+          ))}
+        </RadioSwatchGroup>
         {/* Holds its room while there is no colour to clear, so the swatches never move. */}
         <span
           className={cn(
