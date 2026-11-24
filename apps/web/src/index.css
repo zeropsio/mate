@@ -15916,7 +15916,7 @@ a.message-file:focus-visible {
 }
 
 /* The add-Mate dialog (`ZeropsNewMateForm`, pen.dev SOrKZ and jHpVk): 400 px wide, 24 px in
-   from its edges; the face ring a 200 × 189 stage 12 px from what is around it, the face 152 px
+   from its edges (the header 16 px from top and bottom); the face ring a 200 × 189 stage 12 px from what is around it, the face 152 px
    and two thirds of that open, options 26 px; the name, the two presses 16 px under it and 32 px
    over the options or the foot. *Mate access & persona setup* opens the persona and who can work
    with the Mate under it, the dialog scrolling down to them over a rule at the foot. */
@@ -15925,7 +15925,7 @@ a.message-file:focus-visible {
 }
 
 [data-zerops-surface="new-mate-form"] [data-slot="dialog-header"] {
-  padding: 24px 64px 24px 24px;
+  padding: 16px 64px 16px 24px;
 }
 
 /* As tall as the close press, so the two share a middle. */
@@ -15936,7 +15936,7 @@ a.message-file:focus-visible {
 }
 
 [data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) > button[aria-label="Close"] {
-  top: 24px;
+  top: 16px;
   inset-inline-end: 24px;
 }
 
