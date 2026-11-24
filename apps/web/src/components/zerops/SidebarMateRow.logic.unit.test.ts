@@ -128,3 +128,77 @@ it("MN+1: A Mate HQ says nobody is signed in to, whose last run failed, or that 
     words("resting", "a_new_why"),
   ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
 });
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (askLine?.kind === "sign-in") return { kind: "sign-in" }; → if (askLine?.kind === "sign-in" && input.stateWords === undefined) return { kind: "sign-in" };
+it("MN+2: A Mate's row says HQ's verdict that it cannot work or never started in place of its last words at rest, and a sign-in waiting on someone or anything it does now keeps the line; breaks: a signed-out Mate's row shows its last answer as if it could work, or the verdict hides whom its sign-in waits on", () => {
+  const since = "2020-06-15T12:00:00.000Z";
+  const words = (state: string, why?: string) =>
+    mateStateWords({ state, since, why }, "Ada", "24-hour");
+  const signIn = { kind: "sign-in", text: "Sign it in", waitsOnViewer: true } as const;
+  const rows = [
+    {
+      name: "a sign-in waits",
+      state: "idle",
+      askLine: signIn,
+      words: words("cannot_run", "signed_out"),
+      kind: "sign-in",
+    },
+    {
+      name: "signed out at rest",
+      state: "idle",
+      askLine: undefined,
+      words: words("cannot_run", "signed_out"),
+      kind: "state",
+    },
+    {
+      name: "never started",
+      state: "idle",
+      askLine: undefined,
+      words: words("not_starting", "never_linked"),
+      kind: "state",
+    },
+    {
+      name: "at work",
+      state: "working",
+      askLine: undefined,
+      words: words("cannot_run", "session_error"),
+      kind: "reply",
+    },
+    {
+      name: "HQ names no verdict",
+      state: "idle",
+      askLine: undefined,
+      words: words("online"),
+      kind: "reply",
+    },
+  ] as const;
+  for (const row of rows) {
+    const second = mateRowSecond({
+      view: {
+        state: row.state,
+        reply: { kind: "words", text: "Done.", tone: "muted" },
+        slot: { kind: "none" },
+      },
+      askLine: row.askLine,
+      outsideHq: false,
+      noContainer: false,
+      mine: true,
+      waitsOn: undefined,
+      change: undefined,
+      stateWords: row.words,
+    });
+    expect({ name: row.name, kind: second.kind }).toEqual({ name: row.name, kind: row.kind });
+  }
+  expect(
+    mateRowSecond({
+      view: { state: "idle", reply: undefined, slot: { kind: "none" } },
+      askLine: undefined,
+      outsideHq: false,
+      noContainer: false,
+      mine: true,
+      waitsOn: undefined,
+      change: undefined,
+      stateWords: words("cannot_run", "signed_out"),
+    }),
+  ).toEqual({ kind: "state", text: "Ada can't work: nobody is signed in." });
+});

@@ -1029,6 +1029,8 @@ export type MateRowSecond =
       readonly task?: string;
     }
   | { readonly kind: "waits-on"; readonly text: string }
+  /** HQ's verdict that it cannot work or never started, in its words (`mateStateWords`). */
+  | { readonly kind: "state"; readonly text: string }
   | { readonly kind: "paused"; readonly until: string }
   /** Its open change by its title; `count` where several wait (`changeLineWords`). */
   | {
@@ -1484,6 +1486,11 @@ export function mateRowSecond(input: {
    * never takes. Absent: an ordinary Mate.
    */
   readonly automated?: MateAutomationLine | undefined;
+  /**
+   * HQ's verdict on it in words (`mateStateWords`): it says them where the row would say its last
+   * words at rest, never over a sign-in, a draft, a change or anything it does now.
+   */
+  readonly stateWords?: string | undefined;
 }): MateRowSecond {
   const { view, askLine, change, automated } = input;
   // A row says an automated Mate at work works, its clock how long.
@@ -1565,6 +1572,7 @@ export function mateRowSecond(input: {
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
   if (change !== undefined) return { kind: "change", title: change.title, mine: false, ...counted };
   if (restLine !== undefined) return restLine;
+  if (input.stateWords !== undefined) return { kind: "state", text: input.stateWords };
   // A result the viewer has not seen is for them: in ink, beside the unread dot.
   return said(view.state === "unread" ? "ink" : "muted");
 }

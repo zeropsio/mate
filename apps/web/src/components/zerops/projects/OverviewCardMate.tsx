@@ -29,6 +29,7 @@ import {
   mateGoing,
   projectMoveOf,
   mateRestartOf,
+  hqMateStateAtom,
   type AgentAdmissionAttention,
   type MateComing,
 } from "@t3tools/client-runtime/data";
@@ -37,6 +38,8 @@ import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
+import { useAtomValue } from "@effect/atom-react";
+import { mateStateWords } from "~/zerops/lastKnownMate.logic";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -284,6 +287,8 @@ export function OverviewCardMate({
   const automatedKey = useAutomatedKey();
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   const asks = activity !== undefined && asksPerson(activity.kind);
+  // HQ's verdict on it, where it cannot work or never started, as its row says it.
+  const verdict = useAtomValue(hqMateStateAtom(candidate.project.id));
   const second = mateRowSecond({
     view,
     askLine,
@@ -311,6 +316,7 @@ export function OverviewCardMate({
             ...(says === undefined ? {} : { says }),
           },
     automated,
+    stateWords: mateStateWords(verdict, name, timestampFormat),
   });
   // Its time: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });

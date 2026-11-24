@@ -834,6 +834,7 @@ export function cardSecondWords(input: {
       };
     }
     case "waits-on":
+    case "state":
       return muted(second.text);
     case "paused":
       return muted(`Paused until ${input.pausedUntil(second.until)}`);

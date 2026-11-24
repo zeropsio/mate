@@ -116,7 +116,8 @@ import { asksPerson } from "@t3tools/shared/threadStatus";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import { hqMateStateAtom, shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import { mateStateWords } from "~/zerops/lastKnownMate.logic";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -3692,6 +3693,8 @@ function useMateRowState<T extends RosterCandidate>({
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
+  // HQ's verdict on it, where it cannot work or never started (`mateStateWords`).
+  const verdict = useAtomValue(hqMateStateAtom(candidate.project.id));
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
     view,
@@ -3708,6 +3711,7 @@ function useMateRowState<T extends RosterCandidate>({
     // Its open changes stand on its project's row (Review), so the row's lines stay the Mate's.
     change: undefined,
     automated,
+    stateWords: mateStateWords(verdict, name, timestampFormat),
   });
   // Its time slot: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
@@ -4455,6 +4459,15 @@ function MateSecondLine({
         <span
           className="menu-line2 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-waits-on"
+        >
+          {second.text}
+        </span>
+      );
+    case "state":
+      return (
+        <span
+          className="menu-line2 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-state"
         >
           {second.text}
         </span>

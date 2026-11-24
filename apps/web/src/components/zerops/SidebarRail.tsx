@@ -12,7 +12,9 @@
  * we should do tiles and just not do reveal").
  */
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import { hqMateStateAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import { useClientSettings } from "~/hooks/useSettings";
+import { mateStateWords } from "~/zerops/lastKnownMate.logic";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/reactivity";
 import {
@@ -231,11 +233,13 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
  */
 function RailMateTip({ mate }: { readonly mate: RailMate }) {
   const activity = useProjectMateActivity(mate.projectId);
+  const stateWords = useRailStateWords(mate);
   const asked = activity?.task ?? activity?.subject;
   const answer =
     mate.waits ??
     (activity?.kind === "failed" ? activity.errorLine : undefined) ??
     activity?.question ??
+    (activity?.kind === "working" ? undefined : stateWords) ??
     answerAwaitedWords(activity) ??
     activity?.snippet ??
     (mate.line.length > 0 ? mate.line : undefined);
@@ -275,23 +279,42 @@ function RailGroupTip({
         <span className="menu-rail-card-project">{`${String(mates.length + coming.length)} Mates`}</span>
       </span>
       {mates.map((mate) => (
-        <span className="menu-rail-card-mate" key={mate.projectId}>
-          <span className="menu-rail-card-mate-name">
-            {mate.name}
-            {mate.dot === undefined ? null : (
-              <span className="menu-rail-card-state" data-dot={mate.dot}>
-                {railDotWords(mate.dot)}
-              </span>
-            )}
-          </span>
-          {mate.line.length === 0 ? null : <span className="menu-rail-card-line">{mate.line}</span>}
-        </span>
+        <RailGroupMate key={mate.projectId} mate={mate} />
       ))}
       {coming.map(({ member }) => (
         <span className="menu-rail-card-mate" key={member.projectId}>
           {member.name}
         </span>
       ))}
+    </span>
+  );
+}
+
+/**
+ * HQ's verdict on a rail Mate in words (`mateStateWords`), where it cannot work or never started:
+ * its card says them where its row's line would say its last words.
+ */
+function useRailStateWords(mate: RailMate): string | undefined {
+  const verdict = useAtomValue(hqMateStateAtom(mate.projectId));
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  return mateStateWords(verdict, mate.name, timestampFormat);
+}
+
+/** One Mate on a group's card: its name, its state in words, its line. */
+function RailGroupMate({ mate }: { readonly mate: RailMate }) {
+  const stateWords = useRailStateWords(mate);
+  const line = mate.waits ?? (mate.working ? undefined : stateWords) ?? mate.line;
+  return (
+    <span className="menu-rail-card-mate">
+      <span className="menu-rail-card-mate-name">
+        {mate.name}
+        {mate.dot === undefined ? null : (
+          <span className="menu-rail-card-state" data-dot={mate.dot}>
+            {railDotWords(mate.dot)}
+          </span>
+        )}
+      </span>
+      {line.length === 0 ? null : <span className="menu-rail-card-line">{line}</span>}
     </span>
   );
 }
