@@ -23,6 +23,7 @@ import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
+import { mateStopStanding } from "@t3tools/client-runtime/zerops/mateState";
 import {
   mateAdmissionSummary,
   mateDeletionOfProject,
@@ -291,6 +292,7 @@ export function OverviewCardMate({
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
     restarting: restartSaid,
+    stop: mateStopStanding(candidate),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,

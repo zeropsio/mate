@@ -173,6 +173,19 @@ const PROJECT_PROVISIONING_STATUSES = new Set(["NEW", "CREATING"]);
 export const projectBeingMade = (status: string): boolean =>
   PROJECT_PROVISIONING_STATUSES.has(status);
 
+const PROJECT_STOP_STATUSES = new Set(["STOPPING", "STOPPED", "STARTING"]);
+
+/**
+ * A project Zerops is stopping, holds stopped or is starting again: its services are read as an
+ * active one's are, so each Mate container in it stays the row it was while running — the same
+ * key, the same Mate — and only its status says it is not running.
+ */
+export const projectStopsOrStarts = (status: string): boolean => PROJECT_STOP_STATUSES.has(status);
+
+/** A project whose services are read, and whose Mate containers are its rows. */
+export const projectReadsServices = (status: string): boolean =>
+  status === "ACTIVE" || projectBeingMade(status) || projectStopsOrStarts(status);
+
 /**
  * Whether a row's project holds no Mate container, by the listing's read of its services
  * (`missingContainer`), never services still unread. Its card, its page, its menu row and the Add
@@ -430,7 +443,7 @@ export function deriveZeropsCandidates(
 ): ReadonlyArray<ZeropsCandidate> {
   // A project Zerops is still making is read like an active one: only an open birth says a Mate is
   // on its way, and its status says nothing of that.
-  if (project.status !== "ACTIVE" && !projectBeingMade(project.status)) {
+  if (!projectReadsServices(project.status)) {
     return [unavailable(project, `project is ${project.status}`)];
   }
   if (services === null) {
@@ -443,6 +456,10 @@ export function deriveZeropsCandidates(
   }
 
   const containers = services.filter(isZcpService);
+  // A stopped project without a Mate container is the platform's project alone, as it always was.
+  if (containers.length === 0 && projectStopsOrStarts(project.status)) {
+    return [unavailable(project, `project is ${project.status}`)];
+  }
   if (containers.length === 0) {
     return [
       applyProjectCreationVerdict(
@@ -466,6 +483,15 @@ export function deriveZeropsCandidates(
         : { activeAppVersion: service.activeAppVersion }),
       ...(service.created === undefined ? {} : { created: service.created }),
     };
+    if (projectStopsOrStarts(project.status)) {
+      return {
+        key,
+        project,
+        group: "unavailable",
+        reason: `project is ${project.status}`,
+        service: candidateService,
+      };
+    }
     if (service.status !== "ACTIVE") {
       if (SERVICE_PROVISIONING_STATUSES.has(service.status)) {
         return {

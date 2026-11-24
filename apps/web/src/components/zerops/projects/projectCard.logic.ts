@@ -815,6 +815,7 @@ export function cardSecondWords(input: {
     case "moving":
     case "moved":
     case "restarting":
+    case "stop":
       return muted(second.text);
     case "outside":
       return muted(NOT_IN_HQ_LINE);

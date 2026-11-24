@@ -431,12 +431,14 @@ export function mateNoticeVoice(
             actions,
           );
         case "inactive":
-          return say(
-            `${name} is stopped.`,
-            "Open projects to start the container.",
-            "sleep",
-            actions,
-          );
+          return reachability.container.status === "STOPPING"
+            ? say(`${name} is stopping.`, "", "sleep", [])
+            : say(
+                `${name} is stopped.`,
+                "Start it to pick up where it left off.",
+                "sleep",
+                actions,
+              );
         case "needs-update":
           return say(
             `${name} needs an update before starting.`,

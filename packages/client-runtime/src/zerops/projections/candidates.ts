@@ -20,7 +20,7 @@ import {
   addressSeenAfter,
   deriveZeropsCandidates,
   isZcpService,
-  projectBeingMade,
+  projectReadsServices,
   newestSubdomainProcess,
   subdomainEnableOf,
   type AddressFacts,
@@ -69,16 +69,17 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
   candidates.map((candidate) => ({ ...candidate, presence: "known" }));
 
 /**
- * One project's candidates. Only an active project's or one still being made has its services read
- * (`servicesOf`): any other status decides its one row alone. A reader that holds what it knows of its containers' addresses
- * judges them by it (`AddressFacts`).
+ * One project's candidates. Only an active project's, one still being made, or one stopping,
+ * stopped or starting again has its services read (`servicesOf`): any other status decides its
+ * one row alone. A reader that holds what it knows of its containers' addresses judges them by it
+ * (`AddressFacts`).
  */
 export function projectCandidates(
   project: ZeropsProject,
   servicesOf: () => Known<ReadonlyArray<ZeropsService>>,
   facts?: AddressFacts,
 ): ReadonlyArray<CandidateRow> {
-  if (project.status !== "ACTIVE" && !projectBeingMade(project.status))
+  if (!projectReadsServices(project.status))
     return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
   const listing = servicesOf();
   if (listing.state === "failed")

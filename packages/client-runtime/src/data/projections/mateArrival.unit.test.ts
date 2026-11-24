@@ -148,7 +148,12 @@ it("PJ88: A Mate whose computer is up and has not answered stays coming until it
 
 // witness: packages/client-runtime/src/data/projections/mateArrival.ts | (reachability?.kind === "refused-role" || → (false ||
 it("PJ121: A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again", () => {
-  const stopped = { standing: { kind: "unknown" }, status: "STOPPED", process: undefined } as const;
+  const stopped = {
+    standing: { kind: "unknown" },
+    status: "STOPPED",
+    process: undefined,
+    stop: "stopped",
+  } as const;
   const down = { kind: "container", container: { level: "inactive", status: "STOPPED" } } as const;
   const on = { recovery: stopped, mateName: "Ada", conversationShown: false, nowMs: 0 };
   const access = { phase: "access", recovery: null, actions: ["go-to-projects"] };
