@@ -624,13 +624,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   -webkit-backdrop-filter: var(--glass-backdrop);
   backdrop-filter: var(--glass-backdrop);
   border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
-  box-shadow: 0 24px 64px -24px rgb(0 0 0 / 65%);
+  box-shadow: var(--zerops-shadow-dialog);
 
   @variant dark {
     border-color: color-mix(in srgb, var(--color-white) 8%, transparent);
-    box-shadow:
-      inset 0 1px rgb(255 255 255 / 4%),
-      0 24px 72px -20px rgb(0 0 0 / 90%);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -934,11 +931,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     );
     -webkit-backdrop-filter: var(--glass-backdrop);
     backdrop-filter: var(--glass-backdrop);
-    box-shadow: 0 -8px 24px -18px rgb(0 0 0 / 45%);
-
-    @variant dark {
-      box-shadow: 0 -10px 28px -18px rgb(0 0 0 / 80%);
-    }
+    box-shadow: var(--zerops-shadow-tab);
 
     @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
       background: var(--chat-composer-glass-surface, var(--card));
@@ -983,23 +976,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
         --chat-composer-glass-surface,
         color-mix(in srgb, var(--background) 96%, var(--color-white))
       );
-
-      &::before {
-        background:
-          linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
-          linear-gradient(
-            to top,
-            transparent 0 var(--chat-composer-attachment-overlap),
-            rgb(0 0 0 / 18%) var(--chat-composer-attachment-overlap),
-            transparent calc(var(--chat-composer-attachment-overlap) + 10px)
-          ),
-          color-mix(
-            in srgb,
-            var(--chat-composer-attached-surface) var(--glass-opacity),
-            transparent
-          );
-        box-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
-      }
     }
   }
 
@@ -1032,6 +1008,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     border-radius: var(--radius-card) var(--radius-card) 0 0;
     background:
       linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
+      linear-gradient(
+        to top,
+        transparent 0 var(--chat-composer-attachment-overlap),
+        var(--zerops-seam-shade) var(--chat-composer-attachment-overlap),
+        transparent calc(var(--chat-composer-attachment-overlap) + 10px)
+      ),
       color-mix(in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent);
     -webkit-backdrop-filter: var(--glass-backdrop);
     backdrop-filter: var(--glass-backdrop);
@@ -1045,7 +1027,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
       transparent 0 var(--chat-composer-attachment-overlap),
       black var(--chat-composer-attachment-overlap)
     );
-    box-shadow: 0 12px 28px -18px rgb(0 0 0 / 40%);
+    box-shadow: var(--zerops-shadow-drawer);
     content: "";
 
     @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -1274,33 +1256,26 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   .chat-composer-context-strip {
     position: relative;
     isolation: isolate;
-
-    @variant dark {
-      &::before {
-        border-color: rgb(255 255 255 / 7%);
-        background:
-          linear-gradient(
-            to bottom,
-            transparent 0 1rem,
-            rgb(0 0 0 / 18%) 1rem,
-            transparent calc(1rem + 10px)
-          ),
-          rgb(255 255 255 / 2%);
-        box-shadow: 0 14px 32px -18px rgb(0 0 0 / 75%);
-      }
-    }
   }
 
   .chat-composer-context-strip::before {
     position: absolute;
     z-index: -1;
     inset: 0;
-    border: 1px solid var(--chat-composer-outline);
+    border: 1px solid var(--zerops-attachment-edge, var(--chat-composer-outline));
     border-radius: 0 0 var(--radius-card) var(--radius-card);
+    background:
+      linear-gradient(
+        to bottom,
+        transparent 0 1rem,
+        var(--zerops-seam-shade) 1rem,
+        transparent calc(1rem + 10px)
+      ),
+      var(--zerops-attachment-lift);
     /* Start the strip outline exactly where the composer's curve reaches its tangent. */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
     mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
-    box-shadow: 0 12px 28px -18px rgb(0 0 0 / 40%);
+    box-shadow: var(--zerops-shadow-drawer);
     content: "";
   }
 
@@ -1310,27 +1285,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     )
     .chat-composer-context-strip {
     &::before {
-      background: color-mix(
-        in srgb,
-        var(--chat-composer-glass-surface) var(--glass-opacity),
-        transparent
-      );
+      background:
+        linear-gradient(
+          to bottom,
+          transparent 0 1rem,
+          var(--zerops-seam-shade) 1rem,
+          transparent calc(1rem + 10px)
+        ),
+        linear-gradient(var(--zerops-attachment-lift), var(--zerops-attachment-lift)),
+        color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
       -webkit-backdrop-filter: var(--glass-backdrop);
       backdrop-filter: var(--glass-backdrop);
-    }
-
-    @variant dark {
-      &::before {
-        background:
-          linear-gradient(
-            to bottom,
-            transparent 0 1rem,
-            rgb(0 0 0 / 18%) 1rem,
-            transparent calc(1rem + 10px)
-          ),
-          linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)),
-          color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
-      }
     }
   }
 
@@ -1342,29 +1307,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
 
     .chat-composer-context-strip::before {
-      background: color-mix(
-        in srgb,
-        var(--chat-composer-glass-surface) var(--glass-opacity),
-        transparent
-      );
+      background:
+        linear-gradient(
+          to bottom,
+          transparent 0 1rem,
+          var(--zerops-seam-shade) 1rem,
+          transparent calc(1rem + 10px)
+        ),
+        linear-gradient(var(--zerops-attachment-lift), var(--zerops-attachment-lift)),
+        color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
       -webkit-backdrop-filter: var(--glass-backdrop);
       backdrop-filter: var(--glass-backdrop);
-    }
-
-    .chat-composer-context-strip {
-      @variant dark {
-        &::before {
-          background:
-            linear-gradient(
-              to bottom,
-              transparent 0 1rem,
-              rgb(0 0 0 / 18%) 1rem,
-              transparent calc(1rem + 10px)
-            ),
-            linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)),
-            color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
-        }
-      }
     }
   }
 
@@ -1585,6 +1538,15 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
   /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
   --zerops-shimmer: rgb(255 255 255 / 64%);
+  /* A lift's shadow: a drawer or strip hanging under the composer, a tab standing on it, a
+     dialog. */
+  --zerops-shadow-drawer: 0 12px 28px -18px rgb(0 0 0 / 40%);
+  --zerops-shadow-tab: 0 -8px 24px -18px rgb(0 0 0 / 45%);
+  --zerops-shadow-dialog: 0 24px 64px -24px rgb(0 0 0 / 65%);
+  /* The composer's attachments in dark: a shade just past the seam where they meet it, and a faint
+     lift of their glass; light draws neither. */
+  --zerops-seam-shade: transparent;
+  --zerops-attachment-lift: transparent;
   /* The ink on a vivid fill that is no theme's own (a person's accent, a count's dot): white in
      both appearances. */
   --zerops-fill-ink: var(--color-white);
@@ -1647,6 +1609,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-segment: color-mix(in oklab, var(--color-input) 72%, transparent);
     --zerops-segment-hover: color-mix(in oklab, var(--color-input) 32%, transparent);
     --zerops-shimmer: rgb(255 255 255 / 4%);
+    --zerops-shadow-drawer: 0 14px 32px -18px rgb(0 0 0 / 75%);
+    --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);
+    --zerops-shadow-dialog: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
+    --zerops-seam-shade: rgb(0 0 0 / 18%);
+    --zerops-attachment-lift: rgb(255 255 255 / 2%);
+    /* The context strip's own hairline in dark; light draws it in the composer's outline. */
+    --zerops-attachment-edge: rgb(255 255 255 / 7%);
     --zerops-skill-text: var(--color-fuchsia-300);
     --zerops-mate-tint-coral: #b85f4b;
     --zerops-mate-tint-amber: #9c7420;
