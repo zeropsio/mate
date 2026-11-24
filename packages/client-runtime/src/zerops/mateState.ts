@@ -73,6 +73,8 @@ export type HqVerb = "offered" | "held" | "no";
 
 export interface MateVerbs {
   readonly start: boolean;
+  /** Stopping its whole project, its computer and every service beside it, until Start. */
+  readonly stop: boolean;
   readonly restart: boolean;
   readonly redeploy: boolean;
   /** Renaming its project, whose name is the Mate's: a platform write for its OWNER or ADMIN. */
@@ -94,7 +96,7 @@ export interface MateState {
   /** HQ's current placement holds no record of it, and nothing is bringing it up. */
   readonly outsideHq: boolean;
   /**
-   * Whether the viewer may run its Zerops verbs (Enable, Start, Restart, Redeploy): their role works
+   * Whether the viewer may run its Zerops verbs (Enable, Start, Stop, Restart, Redeploy): their role works
    * there and, on a project HQ places, HQ's entry opens it. Before HQ's first answer, nobody.
    */
   readonly operates: boolean;
@@ -108,6 +110,7 @@ export interface MateState {
 
 const NO_VERBS: MateVerbs = {
   start: false,
+  stop: false,
   restart: false,
   redeploy: false,
   rename: false,
@@ -139,6 +142,36 @@ const inTransition = (candidate: ZeropsCandidate): boolean =>
   [candidate.project.status, candidate.service?.status].some(
     (status) => status === "STARTING" || status === "STOPPING",
   );
+
+/** A container STARTING that ran before: it starts again, where one never deployed comes up. */
+export const startsAgain = (
+  service: { readonly status: string; readonly activeAppVersion?: unknown } | undefined,
+): boolean => service?.status === "STARTING" && service.activeAppVersion != null;
+
+/** Where a Mate's computer stands in a stop and a start, as the platform says it. */
+export type MateStopStanding = "stopping" | "stopped" | "starting";
+
+/**
+ * Its project on its way to STOPPED, at it or on its way back — or, in a running project or one not
+ * read, its container: undefined while it runs, or comes up the first time (`startsAgain`).
+ */
+export function mateStopStanding(candidate: {
+  readonly project?: { readonly status: string } | undefined;
+  readonly service?: { readonly status: string; readonly activeAppVersion?: unknown } | undefined;
+}): MateStopStanding | undefined {
+  const project = candidate.project?.status ?? "ACTIVE";
+  const status = project === "ACTIVE" ? candidate.service?.status : project;
+  switch (status) {
+    case "STOPPING":
+      return "stopping";
+    case "STOPPED":
+      return "stopped";
+    case "STARTING":
+      return project === "STARTING" || startsAgain(candidate.service) ? "starting" : undefined;
+    default:
+      return undefined;
+  }
+}
 
 /** Whether a Mate is on its way off Zerops: HQ's deletion of it runs, or the platform says so. */
 export function mateDeleting(status: string, going: boolean): boolean {
@@ -193,6 +226,14 @@ export function mateState(facts: MateFacts): MateState {
       candidate.missingContainer !== true &&
       !inTransition(candidate) &&
       isStopped(candidate),
+    // From a running project only: never beside Start, nor while the platform is moving it.
+    stop:
+      operates &&
+      !redeploy &&
+      candidate.project.status === "ACTIVE" &&
+      candidate.service !== undefined &&
+      !isStopped(candidate) &&
+      !inTransition(candidate),
     // Never while the platform or our verb already brings it up: a restart would race it.
     restart:
       operates &&

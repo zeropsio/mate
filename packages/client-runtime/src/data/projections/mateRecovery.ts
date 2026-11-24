@@ -11,6 +11,7 @@ import { projectRestarts } from "./restartEvidence.ts";
 import { sameValue } from "./equal.ts";
 import { projectProcesses, type ProjectKey } from "./processes.ts";
 import { projectStanding, type ProjectStanding } from "./projects.ts";
+import { mateStopStanding, type MateStopStanding } from "../../zerops/mateState.ts";
 
 export interface MateRecovery {
   readonly standing: ProjectStanding;
@@ -18,6 +19,8 @@ export interface MateRecovery {
   readonly process: ActivityProcess | undefined;
   readonly diskFull?: boolean;
   readonly lifecycle?: RestartRecovery | undefined;
+  /** Where its computer stands in a stop and a start (`mateStopStanding`); absent while it runs. */
+  readonly stop?: MateStopStanding | undefined;
 }
 export const mateRecovery: Projection<
   ProjectKey & { readonly serviceId: string | undefined },
@@ -54,9 +57,14 @@ export const mateRecovery: Projection<
           ? service.value.status
           : undefined;
     const linked = hqMatePresence.derive(read, key)?.online === true;
+    const stop = mateStopStanding({
+      project: standing.kind === "listed" ? standing.project : undefined,
+      service: service?.kind === "known" ? service.value : undefined,
+    });
     return {
       standing,
       status,
+      ...(stop === undefined ? {} : { stop }),
       lifecycle: readRestartRecovery(projectRestarts.derive(read, key), process, status, linked),
       process,
       diskFull,

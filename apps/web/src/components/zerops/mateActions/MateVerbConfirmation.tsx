@@ -2,22 +2,30 @@ import { useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
 import { RecoveryItems } from "../RecoveryOutcomes";
 import { useAtomValue } from "@effect/atom-react";
 
-import { ZeropsRestartMateDialog } from "../ZeropsRestartMateDialog";
-import { idleRestartWords, restartMateWords } from "../ZeropsRestartMateDialog.logic";
+import { ZeropsMateVerbDialog } from "../ZeropsMateVerbDialog";
+import {
+  idleRestartWords,
+  mateVerbWords,
+  type MateComputerVerb,
+} from "../ZeropsMateVerbDialog.logic";
 import { useThreadShells } from "~/state/entities";
 import { hqMatesAtom } from "~/state/zerops";
 
-interface RestartTarget {
+interface VerbTarget {
   readonly name: string;
   readonly projectId: string;
-  readonly environmentId: Parameters<typeof restartMateWords>[1];
+  readonly environmentId: Parameters<typeof mateVerbWords>[2];
 }
 
-function useRestartWords({ name, projectId, environmentId }: RestartTarget): string {
+function useVerbWords(
+  verb: MateComputerVerb,
+  { name, projectId, environmentId }: VerbTarget,
+): string {
   const threads = useThreadShells();
   const hq = useAtomValue(hqMatesAtom);
   const told = hq?.mates?.get(projectId);
-  return restartMateWords(
+  return mateVerbWords(
+    verb,
     name,
     environmentId,
     threads,
@@ -25,19 +33,23 @@ function useRestartWords({ name, projectId, environmentId }: RestartTarget): str
   );
 }
 
+type ConfirmationProps = Omit<Parameters<typeof ZeropsMateVerbDialog>[0], "body" | "verb"> &
+  VerbTarget;
+
 /** Subscribe to work only while confirming, so streamed work never rerenders the Mate menus. */
 export function RestartMateConfirmation({
   name,
   projectId,
   environmentId,
   ...dialog
-}: Omit<Parameters<typeof ZeropsRestartMateDialog>[0], "body"> & RestartTarget) {
-  const body = useRestartWords({ name, projectId, environmentId });
+}: ConfirmationProps) {
+  const body = useVerbWords("restart", { name, projectId, environmentId });
   const { items } = useRecoveryFeedback(projectId, "restart-confirmation");
   const latest = items.at(-1)?.outcome;
   return (
-    <ZeropsRestartMateDialog
+    <ZeropsMateVerbDialog
       {...dialog}
+      verb="restart"
       name={name}
       body={body}
       pending={
@@ -50,9 +62,20 @@ export function RestartMateConfirmation({
   );
 }
 
+/** Stopping the Mate's whole project, with the work it would end named. */
+export function StopMateConfirmation({
+  name,
+  projectId,
+  environmentId,
+  ...dialog
+}: ConfirmationProps) {
+  const body = useVerbWords("stop", { name, projectId, environmentId });
+  return <ZeropsMateVerbDialog {...dialog} verb="stop" name={name} body={body} />;
+}
+
 /** The update confirmation uses the same reading of running chats as the Mate's own menu. */
-export function RestartMateWarning(props: RestartTarget) {
-  const words = useRestartWords(props);
+export function RestartMateWarning(props: VerbTarget) {
+  const words = useVerbWords("restart", props);
   return (
     <>
       {words === idleRestartWords(props.name) ? "Restarting interrupts work running in it." : words}

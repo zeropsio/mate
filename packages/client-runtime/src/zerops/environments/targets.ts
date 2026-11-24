@@ -23,6 +23,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { Known } from "../knowledge/known.ts";
 import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { projectStopsOrStarts } from "../candidates.ts";
 import type { PlatformStatus } from "./containerMachine.ts";
 import type { Presence, ServiceTransition } from "./environmentMachine.ts";
 import type { TargetKey } from "./exchange.ts";
@@ -54,7 +55,10 @@ export function candidatePresence(row: CandidateRow): Presence {
   if (row.presence !== "known") return { kind: "unknown" };
   if (row.containerOrigin !== undefined) return { kind: "present", origin: row.containerOrigin };
   if (row.addressAwaited !== undefined) return { kind: "address-pending" };
-  const status = row.service?.status ?? row.project.status;
+  // A project stopping, stopped or starting says it for its containers, whatever theirs still say.
+  const status = projectStopsOrStarts(row.project.status)
+    ? row.project.status
+    : (row.service?.status ?? row.project.status);
   if (SERVICE_TRANSITIONS.has(status)) {
     return { kind: "transitioning", status: status as ServiceTransition };
   }

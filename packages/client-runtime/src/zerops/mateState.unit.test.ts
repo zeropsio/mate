@@ -174,7 +174,7 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | : mayWork && viewer.visibility === "open"); → : mayWork);
-it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
+it("ZV159: Start, Stop, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
     ADMIN: true,
@@ -198,12 +198,14 @@ it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may oper
       const viewer = { ...OWNER, role, visibility };
       const operates = roleOperates && seen;
       expect(mateState(facts({ viewer })).verbs.restart).toBe(operates);
+      expect(mateState(facts({ viewer })).verbs.stop).toBe(operates);
       expect(mateState(facts({ viewer, candidate: stopped })).verbs.start).toBe(operates);
       expect(mateState(facts({ viewer, arrival: "redeploy" })).verbs.redeploy).toBe(operates);
     }
   }
   expect(mateState(facts({ viewer: null })).verbs).toMatchObject({
     start: false,
+    stop: false,
     restart: false,
     redeploy: false,
     delete: false,
@@ -340,6 +342,29 @@ it("ZV160: Restart is offered on an active project and container unless the plat
   for (const [over, start] of starts) {
     const candidate = { ...(over.service === undefined ? containerless : RUNNING), ...over };
     expect(mateState(facts({ candidate })).verbs.start).toBe(start);
+  }
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | !isStopped(candidate) && → true &&
+it("ZV+1: Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start", () => {
+  const { service: _service, ...containerless } = RUNNING;
+  for (const [project, service, stop] of [
+    ["ACTIVE", "ACTIVE", true],
+    ["ACTIVE", "FAILED", true],
+    ["ACTIVE", "STOPPED", false],
+    ["ACTIVE", "STOPPING", false],
+    ["ACTIVE", "STARTING", false],
+    ["STOPPED", "STOPPED", false],
+    ["STOPPING", "ACTIVE", false],
+    ["STARTING", "STOPPED", false],
+    ["ACTIVE", undefined, false],
+  ] as const) {
+    const candidate: ZeropsCandidate = {
+      ...containerless,
+      project: { ...RUNNING.project, status: project },
+      ...(service === undefined ? {} : { service: { id: "s-zcp", name: "zcp", status: service } }),
+    };
+    expect(mateState(facts({ candidate })).verbs.stop).toBe(stop);
   }
 });
 

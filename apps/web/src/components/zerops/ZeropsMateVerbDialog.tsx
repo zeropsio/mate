@@ -9,8 +9,11 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+import { MATE_VERB_LABELS, type MateComputerVerb } from "./ZeropsMateVerbDialog.logic";
 
-export function ZeropsRestartMateDialog({
+/** Confirming what a Mate's computer is asked to do: restart, or stop with its whole project. */
+export function ZeropsMateVerbDialog({
+  verb,
   name,
   body,
   pending,
@@ -20,6 +23,7 @@ export function ZeropsRestartMateDialog({
   feedback,
   confirmLabel,
 }: {
+  readonly verb: MateComputerVerb;
   readonly name: string;
   readonly body: string;
   readonly pending: boolean;
@@ -29,6 +33,7 @@ export function ZeropsRestartMateDialog({
   readonly feedback?: ReactNode;
   readonly confirmLabel?: string | undefined;
 }) {
+  const labels = MATE_VERB_LABELS[verb];
   return (
     <Dialog
       open
@@ -38,7 +43,7 @@ export function ZeropsRestartMateDialog({
     >
       <DialogPopup className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{`Restart ${name}`}</DialogTitle>
+          <DialogTitle>{`${labels.press} ${name}`}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>
         {feedback === null || feedback === undefined ? null : <DialogPanel>{feedback}</DialogPanel>}
@@ -51,8 +56,12 @@ export function ZeropsRestartMateDialog({
           <Button onClick={onCancel} variant="ghost">
             Cancel
           </Button>
-          <Button disabled={pending} onClick={onConfirm}>
-            {confirmLabel ?? (pending ? "Restarting…" : "Restart")}
+          <Button
+            disabled={pending}
+            onClick={onConfirm}
+            variant={verb === "stop" ? "destructive" : "primary"}
+          >
+            {confirmLabel ?? (pending ? labels.pending : labels.press)}
           </Button>
         </DialogFooter>
       </DialogPopup>

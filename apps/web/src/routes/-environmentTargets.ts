@@ -263,13 +263,16 @@ export function useRouteMateProject(environmentId: EnvironmentId | null): {
   };
 }
 
-/** The owner's verdict on a route's Mate (`mateRecovery`), and whether it says it is stopped. */
+/**
+ * The owner's verdict on a route's Mate (`mateRecovery`), and whether it says it is stopped — or
+ * stopping or starting, which it says in its own words just as well.
+ */
 export function useRouteMate(
   projectId: string | null,
   serviceId: string | undefined,
 ): { readonly recovery: MateRecovery; readonly stopped: boolean } {
   const recovery = useMateRecovery(projectId, serviceId);
-  return { recovery, stopped: recovery.status === "STOPPED" };
+  return { recovery, stopped: recovery.stop !== undefined };
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };

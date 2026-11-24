@@ -3408,7 +3408,11 @@ const ROW_ACTION_CLASS = "menu-row-action";
 
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
-import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
+import {
+  mateArrivalOf,
+  mateState,
+  mateStopStanding,
+} from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
@@ -3700,6 +3704,7 @@ function useMateRowState<T extends RosterCandidate>({
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
     restarting: restartSaid,
+    stop: mateStopStanding(candidate),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4405,6 +4410,7 @@ function MateSecondLine({
     case "moving":
     case "moved":
     case "restarting":
+    case "stop":
       return (
         <span
           className="menu-line2 truncate text-muted-foreground"

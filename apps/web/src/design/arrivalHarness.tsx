@@ -291,6 +291,13 @@ const recoveryFixtures: ReadonlyArray<readonly [string, MateRecovery]> = [
     "container-failed",
     { standing: { kind: "unknown" }, status: "ACTION_FAILED", process: undefined },
   ],
+  ...(["stopping", "stopped", "starting"] as const).map(
+    (stop) =>
+      [
+        stop,
+        { standing: { kind: "unknown" }, status: stop.toUpperCase(), process: undefined, stop },
+      ] as const,
+  ),
   [
     "disk-full",
     { standing: { kind: "unknown" }, status: "ACTIVE", process: undefined, diskFull: true },

@@ -18,7 +18,7 @@ import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { RestartMateWarning } from "./mateActions/RestartMateConfirmation";
+import { RestartMateWarning } from "./mateActions/MateVerbConfirmation";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
 /**
