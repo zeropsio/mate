@@ -10,6 +10,7 @@ import { cn } from "~/lib/utils";
 
 import { Button, InlineButton } from "../../ui/button";
 import { Row } from "../../ui/row";
+import { SectionHeader } from "../../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 
 /** A tooltip saying what a press does; nothing around it while there is nothing to say. */
@@ -114,10 +115,12 @@ export function useArrived<T>(value: T): boolean {
   return seen.arrived;
 }
 
-/** A heading over one of the tab's groups: 12/500, muted. */
+/** A heading over one of the tab's groups: the kit's section heading, one level under the tab's. */
 export function CrewHeading({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="px-4 font-medium text-muted-foreground text-caption leading-4">{children}</div>
+    <div className="px-4">
+      <SectionHeader level={3} title={children} />
+    </div>
   );
 }
 
