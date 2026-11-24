@@ -21,7 +21,7 @@ export function MateWorkingTime({
   const nowMs = useSecondsNowMs(true);
   return (
     <span
-      className={cn("menu-clock menu-time shrink-0 tabular-nums", className)}
+      className={cn("menu-clock shrink-0 text-caption tabular-nums", className)}
       data-tint={tint}
       data-zerops-surface="sidebar-mate-time"
     >

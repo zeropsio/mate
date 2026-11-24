@@ -4126,7 +4126,7 @@ function MateRowView<T extends RosterCandidate>({
         strong={view.strongName}
         title={
           <span
-            className={cn("menu-name flex min-w-0", renaming && "invisible")}
+            className={cn("flex min-w-0", renaming && "invisible")}
             data-zerops-surface="sidebar-mate-name"
           >
             {project === undefined || sameName(project, name) ? (
@@ -4579,7 +4579,7 @@ function MateSlot({
   }
 }
 
-const TIME_CLASS = "menu-time shrink-0 text-muted-foreground tabular-nums";
+const TIME_CLASS = "shrink-0 text-caption text-muted-foreground tabular-nums";
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
@@ -4817,7 +4817,7 @@ function ComingMateRow({
       render={<button type="button" />}
       size="lg"
       title={
-        <span className="menu-name flex min-w-0">
+        <span className="flex min-w-0">
           {project === undefined || sameName(project, name) ? (
             <span className="min-w-0 truncate">{name}</span>
           ) : (

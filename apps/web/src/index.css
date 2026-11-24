@@ -3468,18 +3468,9 @@ code {
   /* A Mate's row is the kit's `Row` at its `lg` size: a 36 px face in a 36 px column, 12 px to the
      words — its name and time, and one line under them, its answer (the owner, 2026-10-12: "just
      go with answer") — 63 px, 8 px inside the row's own band. */
-  /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/22, the
-     time and counts 12/16, muted and tabular. */
-  .menu-name {
-    font-size: 15px;
-    line-height: 21px;
-  }
-
-  .menu-time {
-    font-size: 12px;
-    line-height: 16px;
-  }
-
+  /* A name and the line under it take the row's own type (15/21, 14/22), the time the caption's
+     (12/16). A line drawn outside the row's line slot (the Chief's) sets its 14/22 here; the
+     menu's coarse-pointer rules find a row's line by this class. */
   .menu-line2 {
     display: block;
     font-size: 14px;
@@ -3866,7 +3857,7 @@ code {
      which do the same): a mark that no longer fits wraps under the line, out of sight, never cut —
      the empty first item keeps even the first mark from holding the line alone. Its shrink dwarfs
      the names' so it gives all its room before the Mate's name loses a letter. */
-  .menu-name .menu-marks {
+  [data-slot="row-title"] .menu-marks {
     flex: 0 1000000000 auto;
     flex-wrap: wrap;
     min-width: 0;
@@ -3875,7 +3866,7 @@ code {
     margin-inline: 7px 1px;
   }
 
-  .menu-name .menu-marks::before {
+  [data-slot="row-title"] .menu-marks::before {
     content: "";
     width: 0;
     height: 100%;
