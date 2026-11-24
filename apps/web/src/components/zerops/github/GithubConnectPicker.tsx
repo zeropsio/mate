@@ -23,14 +23,16 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { DialogFooter, DialogPanel } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import { Spinner } from "~/components/ui/spinner";
+import { Toggle } from "~/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn, randomUUID } from "~/lib/utils";
 import { useProjectFlows } from "~/zerops/projectFlows";
@@ -949,17 +951,11 @@ function pickStep(
         )}
         <div aria-label="GitHub account" className="flex flex-wrap gap-1.5" role="group">
           {accounts.map((each) => (
-            <button
-              aria-pressed={each.account === account?.account}
-              className={cn(
-                "inline-flex h-8 items-center gap-2 rounded-full border bg-background ps-1.5 pe-3 text-body outline-none transition-[background-color,box-shadow] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-                each.account === account?.account
-                  ? "border-primary ring-1 ring-primary"
-                  : "border-border",
-              )}
+            <Toggle
               key={each.account}
-              onClick={() => input.onAccount(each.account)}
-              type="button"
+              onPressedChange={() => input.onAccount(each.account)}
+              pressed={each.account === account?.account}
+              variant="outline"
             >
               <AccountFace account={each.account} />
               {each.account}
@@ -968,16 +964,12 @@ function pickStep(
                   {addedWords(each, nameOf)}
                 </span>
               )}
-            </button>
+            </Toggle>
           ))}
-          <button
-            className="inline-flex h-8 items-center rounded-full border border-dashed border-input px-3 text-body text-primary outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-            disabled={input.authority !== null}
-            onClick={input.onAdd}
-            type="button"
-          >
-            + Add account
-          </button>
+          <Button disabled={input.authority !== null} onClick={input.onAdd} variant="ghost">
+            <PlusIcon aria-hidden="true" />
+            Add account
+          </Button>
         </div>
         {account === null ? null : (
           <>
@@ -1157,52 +1149,61 @@ function RepositoryList({
           .filter((part) => part !== null)
           .join(" · ");
         return (
-          <button
-            aria-checked={checked}
-            aria-disabled={disabled}
+          <div
             className={cn(
-              "grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 border-t px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out first:border-t-0 focus-visible:bg-accent",
-              disabled ? "cursor-default" : "hover:bg-accent/60",
+              "border-t first:border-t-0",
               row.fresh &&
                 "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
             )}
             key={name}
-            onClick={() => {
-              if (!disabled) onPick(account, name);
-            }}
-            onKeyDown={radioKeys}
-            role="radio"
-            tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
-            type="button"
           >
-            <span
-              aria-hidden="true"
-              className={cn(
-                "flex size-4 items-center justify-center rounded-full border",
-                checked ? "border-primary" : "border-input",
-              )}
-            >
-              {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-            </span>
-            <span className="grid min-w-0 gap-px">
-              <span
-                className={cn(
-                  "font-mono text-body wrap-anywhere",
-                  disabled ? "text-muted-foreground/70" : "text-foreground",
-                )}
-              >
-                {name}
-              </span>
-              <span className="text-caption text-muted-foreground">{row.taken ?? words}</span>
-            </span>
-            {row.fresh ? (
-              <Badge tone="info">New</Badge>
-            ) : row.suggested ? (
-              <Badge tone="info">Suggested</Badge>
-            ) : (
-              <span />
-            )}
-          </button>
+            <Row
+              aria-checked={checked}
+              aria-disabled={disabled}
+              badges={
+                row.fresh ? (
+                  <Badge tone="info">New</Badge>
+                ) : row.suggested ? (
+                  <Badge tone="info">Suggested</Badge>
+                ) : null
+              }
+              lead={
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-4 items-center justify-center rounded-full border",
+                    checked ? "border-primary" : "border-input",
+                  )}
+                >
+                  {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
+                </span>
+              }
+              line={row.taken ?? words}
+              pressable
+              render={
+                <button
+                  onClick={() => {
+                    if (!disabled) onPick(account, name);
+                  }}
+                  onKeyDown={radioKeys}
+                  role="radio"
+                  tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
+                  type="button"
+                />
+              }
+              size="sm"
+              title={
+                <span
+                  className={cn(
+                    "font-mono font-normal",
+                    disabled ? "text-muted-foreground/70" : "text-foreground",
+                  )}
+                >
+                  {name}
+                </span>
+              }
+            />
+          </div>
         );
       })}
     </div>

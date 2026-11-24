@@ -277,15 +277,11 @@ function RepoRow({
         <p className="flex min-h-5 min-w-0 items-baseline gap-1.5 max-sm:flex-col max-sm:items-start max-sm:gap-0">
           <span className="real-name shrink-0 text-foreground @lg:hidden">{entry.name}</span>
           {state.destination === null ? null : (
-            <a
-              className={cn(
-                // In a phone's column it is as wide as its words unless held to the row.
-                "real-name min-w-0 truncate hover:underline max-sm:max-w-full",
-                state.tone === "busy" ? "text-muted-foreground" : "text-foreground",
-              )}
-              href={state.destination.href}
-              rel="noreferrer"
-              target="_blank"
+            <InlineButton
+              // In a phone's column it is as wide as its words unless held to the row.
+              className="min-w-0 max-sm:max-w-full"
+              render={<a href={state.destination.href} rel="noreferrer" target="_blank" />}
+              tone={state.tone === "busy" ? "muted" : "plain"}
             >
               {/* The mark stands on the slug's x-height, the gap before it the gap after. */}
               {state.destination.href.startsWith("https://github.com/") ? (
@@ -293,8 +289,8 @@ function RepoRow({
               ) : (
                 <GitBranchIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
               )}
-              {state.destination.label}
-            </a>
+              <span className="real-name truncate font-normal">{state.destination.label}</span>
+            </InlineButton>
           )}
         </p>
         <StateLine state={state} />
