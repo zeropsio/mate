@@ -3,8 +3,8 @@ import { hqNavigationAnswered, shownHqMenuNavigationAtom } from "@t3tools/client
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   openingEndPhrase,
+  openingMayEnd,
   reachabilityRefusalWords,
-  restartingOnTime,
 } from "@t3tools/client-runtime/zerops/environments";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import { createFileRoute } from "@tanstack/react-router";
@@ -102,8 +102,8 @@ function ChatThreadRouteView() {
   const { stopped } = useRouteMate(mateProject.projectId, mateProject.serviceId);
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
-  // A Mate restarting within its cap says so itself and comes back on its own: no deadline runs;
-  // nor over a stopped one, which says so with its verbs and is never said not to answer.
+  // A verdict with words of its own (not answering, restarting, stopped) keeps saying them with
+  // its way out: only a wait the gate says may end runs the deadline (`openingMayEnd`).
   const named = serverThreadShell !== null || serverThreadDetail !== null;
   const awaited = named
     ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
@@ -111,8 +111,7 @@ function ChatThreadRouteView() {
       : null
     : renderState === "loading" &&
         routeMate.kind !== "nobody" &&
-        !restartingOnTime(reachability) &&
-        !stopped
+        openingMayEnd(reachability, stopped)
       ? "find"
       : null;
   const patienceSpent = usePatienceSpent(

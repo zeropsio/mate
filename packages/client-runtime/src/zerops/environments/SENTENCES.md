@@ -1,4 +1,4 @@
-next: EN22
+next: EN23
 
 - EN1 — A Mate HQ says is online, in a tab that reads nothing of it, is never said to be starting or late there: its container reads as not read yet, as in a tab loaded since
 - EN2 — A Mate coming up that HQ says is online and somebody waits on is read when its cap runs out, and is late only once a reading sent since then finds it still not up
@@ -21,3 +21,4 @@ next: EN22
 - EN19 — A remembered Mate is gone only on its own organization's listing
 - EN20 — A container whose service Zerops marks FAILED is ready while this tab's socket to its Mate is connected, and not stopped while HQ says the Mate is live; breaks: a working Mate reads stopped and its conversation stays shut
 - EN21 — A route's Mate the owner's reads say is stopped is never said not to answer however long its route waits, and a running one that stays quiet is once the deadline passes; breaks: its Owner is never offered Start and a Read only viewer is offered Try again
+- EN22 — An opening over a verdict with words of its own, a Mate not answering or a container booting, never ends however long it waits, and one with none, or a ready one, does; breaks: a Mate not answering trades its name, its time and Open in Zerops for This Mate isn't answering after 20 s

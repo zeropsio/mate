@@ -79,6 +79,19 @@ export type RouteTarget =
   | { readonly kind: "overdue"; readonly end: OpeningEnd; readonly refusal?: string };
 
 /**
+ * Whether a wait over this verdict may end a route's opening, wherever its deadline runs (the
+ * route gate, the thread route): only a verdict with no words of its own (`opensQuietly`), or a
+ * ready Mate whose conversation is not found, and never a Mate the owner's reads say is stopped.
+ * Every other verdict says its cause with its verbs for as long as it holds.
+ */
+export function openingMayEnd(reachability: Reachability | null, mateStopped: boolean): boolean {
+  return (
+    !mateStopped &&
+    (reachability === null || reachability.kind === "ready" || opensQuietly(reachability))
+  );
+}
+
+/**
  * Whether the route's deadline runs for this target: while it would wait for its environment to
  * be found, or hold its opening over a verdict with no words of its own (`opensQuietly`) and
  * nothing to show. Every other wait says its cause with its verbs, a Mate the owner's reads say is
@@ -89,7 +102,12 @@ export function routeDeadlineRuns(target: RouteTarget | null, mateStopped: boole
   if (target === null || target.kind === "overdue") return false;
   if (target.kind === "unresolved")
     return target.discovery === "pending" || target.discovery === "hq";
-  return target.content === "empty" && opensQuietly(target.reachability) && !mateStopped;
+  // A ready Mate opens the route's own view, whose own deadline bounds its search.
+  return (
+    target.content === "empty" &&
+    target.reachability.kind !== "ready" &&
+    openingMayEnd(target.reachability, mateStopped)
+  );
 }
 
 /**
