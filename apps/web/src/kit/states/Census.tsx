@@ -81,7 +81,7 @@ export function StateFrame({
         ? "min-h-40 w-[440px]"
         : "min-h-12 w-[440px]";
   return (
-    <div className={`relative flex min-w-0 flex-col overflow-hidden rounded-xl border ${box}`}>
+    <div className={`relative flex min-w-0 flex-col overflow-hidden rounded-card border ${box}`}>
       {children}
     </div>
   );

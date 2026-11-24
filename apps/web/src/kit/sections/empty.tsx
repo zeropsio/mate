@@ -30,7 +30,7 @@ function EmptySpecimens() {
             key={`${size}-${media}`}
             label={`${specimenLabel({ size })} · <EmptyMedia ${specimenLabel({ variant: media })}>`}
           >
-            <div className="flex w-96 rounded-xl border">
+            <div className="flex w-96 rounded-card border">
               <Empty size={size}>
                 <EmptyHeader>
                   <EmptyMedia variant={media}>

@@ -277,7 +277,7 @@ function SpacingPage() {
             <code className="w-24 shrink-0 font-mono font-medium text-caption">
               {step} · {step * SPACING_UNIT} px
             </code>
-            <span className={`h-4 shrink-0 rounded-sm bg-primary/50 ${SPACING_WIDTH[step]}`} />
+            <span className={`h-4 shrink-0 rounded-mark bg-primary/50 ${SPACING_WIDTH[step]}`} />
             <code className="font-mono text-caption text-muted-foreground">
               gap-{step} p-{step} m-{step}
             </code>
@@ -387,7 +387,7 @@ function MotionRow({ step }: { readonly step: keyof typeof MOTION.duration }) {
       </Button>
       <span className="relative h-6 w-48 shrink-0 rounded-control bg-muted">
         <span
-          className={`absolute top-1 left-1 size-4 rounded-sm bg-primary transition-transform ease-out-strong motion-reduce:transition-none ${DURATION_CLASS[step]} ${moved ? "translate-x-42" : "translate-x-0"}`}
+          className={`absolute top-1 left-1 size-4 rounded-mark bg-primary transition-transform ease-out-strong motion-reduce:transition-none ${DURATION_CLASS[step]} ${moved ? "translate-x-42" : "translate-x-0"}`}
         />
       </span>
       <span className="text-caption text-muted-foreground">{DURATION_USE[step]}</span>

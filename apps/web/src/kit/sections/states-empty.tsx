@@ -105,7 +105,7 @@ function EmptyCensus() {
           label="<EmptyProjectFilePicker />"
           source="apps/web/src/components/files/ProjectFilePicker.tsx"
         >
-          <div className="w-[520px] rounded-xl border">
+          <div className="w-[520px] rounded-card border">
             <EmptyProjectFilePicker />
           </div>
         </Specimen>
@@ -113,7 +113,7 @@ function EmptyCensus() {
           label="<EmptyContentSearchDialog />"
           source="apps/web/src/components/search/ProjectContentSearchDialog.tsx"
         >
-          <div className="flex h-60 w-[520px] flex-col rounded-xl border">
+          <div className="flex h-60 w-[520px] flex-col rounded-card border">
             <EmptyContentSearchDialog />
           </div>
         </Specimen>

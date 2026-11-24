@@ -106,7 +106,7 @@ function RowSpecimens() {
             <div className="flex w-80 flex-col gap-0.5">
               <Row
                 aria-pressed
-                lead={<span className="h-8 w-13 rounded-sm border border-border bg-card" />}
+                lead={<span className="h-8 w-13 rounded-control border border-border bg-card" />}
                 meta={<CheckIcon aria-hidden="true" className="size-3.5 text-status-ok" />}
                 picked
                 pressable
@@ -117,7 +117,7 @@ function RowSpecimens() {
               />
               <Row
                 aria-pressed={false}
-                lead={<span className="h-8 w-4 rounded-sm border border-border bg-card" />}
+                lead={<span className="h-8 w-4 rounded-mark border border-border bg-card" />}
                 meta={<CheckIcon aria-hidden="true" className="size-3.5 text-status-ok" />}
                 pressable
                 render={<button type="button" />}

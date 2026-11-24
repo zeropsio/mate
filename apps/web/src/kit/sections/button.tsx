@@ -176,12 +176,12 @@ function ButtonSpecimens() {
           <Specimen label="bare: a press whose picture or tile is its look">
             <div className="flex items-center gap-3">
               <Button aria-label="Open the screenshot" className="cursor-zoom-in" variant="bare">
-                <span className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-card text-muted-foreground">
+                <span className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-control border border-border/60 bg-card text-muted-foreground">
                   <ImageIcon className="size-6" />
                 </span>
               </Button>
               <Button className="block aspect-square w-28" variant="bare">
-                <span className="flex size-full flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center text-caption font-medium transition-colors hover:bg-accent/60">
+                <span className="flex size-full flex-col items-center justify-center gap-2 rounded-control border border-border bg-muted p-3 text-center text-caption font-medium transition-colors hover:bg-accent/60">
                   <ImageIcon className="size-6" />A design
                 </span>
               </Button>

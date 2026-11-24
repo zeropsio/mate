@@ -47,7 +47,7 @@ function MotionSpecimen({ step }: { readonly step: keyof typeof MOTION.duration 
       </Button>
       <span className="relative h-6 w-32 rounded-control bg-muted">
         <span
-          className={`absolute top-1 left-1 size-4 rounded-sm bg-primary transition-transform ease-out-strong ${DURATION_CLASS[step]} ${moved ? "translate-x-26" : "translate-x-0"}`}
+          className={`absolute top-1 left-1 size-4 rounded-mark bg-primary transition-transform ease-out-strong ${DURATION_CLASS[step]} ${moved ? "translate-x-26" : "translate-x-0"}`}
         />
       </span>
     </div>
@@ -75,7 +75,7 @@ function TokenSpecimens() {
         <div className="flex items-end gap-4">
           {SPACING_STEPS.map((step) => (
             <div className="flex flex-col items-center gap-1" key={step}>
-              <span className={`h-8 rounded-sm bg-primary/40 ${SPACING_WIDTH[step]}`} />
+              <span className={`h-8 rounded-mark bg-primary/40 ${SPACING_WIDTH[step]}`} />
               <code className="font-mono text-caption text-muted-foreground">
                 {step * SPACING_UNIT}
               </code>

@@ -51,7 +51,7 @@ export function ChosenLoading() {
           label={`<Loading label="…" shape="${shape}"${shape === "room" ? "" : ` count={${count}}`} />`}
           source="apps/web/src/components/ui/loading.tsx"
         >
-          <div className="w-[440px] rounded-xl border p-4">
+          <div className="w-[440px] rounded-card border p-4">
             <Loading count={count} label="Your projects" shape={shape} />
           </div>
         </Specimen>
@@ -64,14 +64,14 @@ export function ChosenEmpty() {
   return (
     <Chosen>
       <Specimen label='<EmptyState size="row">' source="apps/web/src/components/ui/empty.tsx">
-        <div className="w-[440px] rounded-xl border">
+        <div className="w-[440px] rounded-card border">
           <EmptyState mark={<InboxIcon />} size="row">
             No open ports on this service.
           </EmptyState>
         </div>
       </Specimen>
       <Specimen label='<EmptyState size="row" action={…}>'>
-        <div className="w-[440px] rounded-xl border">
+        <div className="w-[440px] rounded-card border">
           <EmptyState
             action={
               <Button size="sm" variant="secondary">
@@ -85,7 +85,7 @@ export function ChosenEmpty() {
         </div>
       </Specimen>
       <Specimen label='<EmptyState size="section" mark={…} action={…}>'>
-        <div className="flex w-[440px] rounded-xl border">
+        <div className="flex w-[440px] rounded-card border">
           <EmptyState
             action={
               <Button size="sm" variant="link">

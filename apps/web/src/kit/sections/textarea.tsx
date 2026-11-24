@@ -27,7 +27,7 @@ export default defineKitSection({
         </Specimen>
       ))}
       <Specimen label='size="line"'>
-        <div className="flex w-80 items-end gap-2 rounded-3xl bg-card py-2 ps-4.5 pe-2 shadow-xs ring-1 ring-foreground/8">
+        <div className="flex w-80 items-end gap-2 rounded-sheet bg-card py-2 ps-4.5 pe-2 shadow-xs ring-1 ring-foreground/8">
           <Textarea
             aria-label="Tell the crew"
             className="flex-1"
