@@ -1,4 +1,5 @@
 import { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
+import { RADII } from "@t3tools/shared/brand";
 import { type CxOptions, cx } from "class-variance-authority";
 import * as Hex from "effect/encoding/Hex";
 import { extendTailwindMerge } from "tailwind-merge";
@@ -22,7 +23,7 @@ const twMerge = extendTailwindMerge({
         "line",
         "prose",
       ],
-      radius: ["control", "card", "sheet"],
+      radius: Object.keys(RADII),
     },
   },
 });
