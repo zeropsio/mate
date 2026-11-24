@@ -365,6 +365,31 @@ export function newMateSubmit(input: {
     : { kind: "create", recipe: { kind: "none" } };
 }
 
+/**
+ * A new Mate's name and what its button does with it. A proposal is offered only as the refusal
+ * judges it against the names read now: none until every name is read, another once it is taken.
+ * What the person typed, or asked with before, is theirs and judged the same way.
+ */
+export function offeredBotName(input: {
+  readonly typed: string | null;
+  readonly proposal: string;
+  readonly appName?: string | undefined;
+  readonly takenBotNames: TakenBotNames;
+  readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
+  readonly tierLoading: boolean;
+  readonly another: ((current: string) => string) | undefined;
+}): { readonly proposal: string; readonly botName: string; readonly submit: NewMateSubmit } {
+  const { typed, proposal, appName, takenBotNames, tier, tierLoading, another } = input;
+  const judge = (botName: string) =>
+    newMateSubmit({ botName, appName, takenBotNames, tier, tierLoading });
+  if (typed !== null) return { proposal, botName: typed, submit: judge(typed) };
+  if (!takenBotNames.complete)
+    return { proposal, botName: "", submit: { kind: "wait", on: "names" } };
+  const vouched = judge(proposal).kind === "refuse" ? another?.(proposal) : proposal;
+  if (vouched === undefined) return { proposal, botName: "", submit: judge("") };
+  return { proposal: vouched, botName: vouched, submit: judge(vouched) };
+}
+
 /** The quiet line while the group repo is read for the recipe. */
 export const READING_RECIPE = "Reading the project's setup files…";
 

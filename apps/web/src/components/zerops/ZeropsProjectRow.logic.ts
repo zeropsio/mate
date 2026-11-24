@@ -28,13 +28,16 @@ import {
   type FlowReleaseRow,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  mateHasNoContainer,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import { type HqMateOfferStates, type HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateOnlyOwnerOpensIt,
-  type RoleMateVisibility,
+  type MateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -61,22 +64,6 @@ export const NOT_IN_HQ_LINE = "Not in this HQ";
 /** A Mate whose project holds no container: its body is gone, the tag declares it, nothing runs it. */
 export const NO_CONTAINER_LINE = "This Mate has no container yet.";
 
-/**
- * Whether a row's project holds no Mate container, by the listing's read of its services
- * (`missingContainer`) — never services still unread. Its card, its page row and its menu row all
- * say it from here; a project gone on Zerops or never created says that instead.
- */
-export function mateHasNoContainer(
-  candidate: Pick<ZeropsCandidate, "group" | "projectGone" | "creationFailed" | "missingContainer">,
-): boolean {
-  return (
-    candidate.group === "unavailable" &&
-    candidate.projectGone !== true &&
-    candidate.creationFailed === undefined &&
-    candidate.missingContainer === true
-  );
-}
-
 export interface ZeropsRowInput {
   readonly coming?: import("@t3tools/client-runtime/data").MateComing | undefined;
   /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
@@ -93,7 +80,7 @@ export interface ZeropsRowInput {
    * opened; absent means the caller is not making that distinction (an
    * environment that is not a Mate, a list with no membership to judge by).
    */
-  readonly visibility?: RoleMateVisibility | undefined;
+  readonly visibility?: MateVisibility | undefined;
   /** Who owns it, when the account can be read for a name. */
   readonly ownerName?: string | undefined;
   /**
@@ -139,20 +126,30 @@ export interface ZeropsRowInput {
   };
 }
 
+/** Whether HQ offers the person the record of a Mate whose setup failed, to remove it. */
+export const mayRemoveMate = (offers: HqMateOfferStates | undefined): boolean =>
+  offers?.held === true && offers.edit.kind === "allowed";
+
 /**
- * Opening is the Mate's door's decision, and the other platform verbs are Zerops' to enforce.
- * A Mate the person may only see is the row's `visibility` (`mateVisibility`). Removing a failed
+ * Opening is the Mate's door's decision; the platform verbs are offered to whoever `mateState` says
+ * operates the project. Setting a Mate up is HQ's start, so it is offered only where that start
+ * would admit the person.
+ * A Mate the person may only see is the row's `visibility` (HQ's `person.entry`). Removing a failed
  * setup requires HQ's offer to edit its Mate record; setting up a plain project requires HQ's
  * offer to create that record.
  */
-export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
+export function mateRowCan(
+  offers: HqMateOfferStates | undefined,
+  operates: boolean,
+): ZeropsRowInput["can"] {
   return {
     open: true,
-    enable: true,
-    setUpMate: true,
-    start: true,
-    restart: true,
-    remove: offers?.held === true && offers.edit.kind === "allowed",
+    enable: operates,
+    setUpMate:
+      offers !== undefined && (offers.held ? offers.setUp : offers.createRecord).kind === "allowed",
+    start: operates,
+    restart: operates,
+    remove: mayRemoveMate(offers),
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
@@ -200,6 +197,16 @@ export function setUpMateVerb(input: {
   return input.settingUpKey === input.candidateKey
     ? { disabled: true, label: "Setting up…" }
     : { disabled: true, label: "Set up Mate" };
+}
+
+/** What Set up Mate does to the project, by the listing's read of its zcp service. */
+export type SetUpMateEffect = "adds-container" | "restarts-container" | "unread";
+
+export function setUpMateEffect(
+  candidate: Pick<ZeropsCandidate, "service" | "missingContainer">,
+): SetUpMateEffect {
+  if (candidate.service !== undefined) return "restarts-container";
+  return candidate.missingContainer === true ? "adds-container" : "unread";
 }
 
 export interface ZeropsRowPresentation {
@@ -335,8 +342,8 @@ export interface PlainProjectEvidence {
 /**
  * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
  * structure): no Mate, no place in HQ and no record of it there at all, and not one this tab is
- * making. A project's tags and its age decide
- * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
+ * making. A project's tags and its age decide nothing. Anything nothing can tell apart — HQ's
+ * structure not known — is not plain.
  */
 function plainZeropsProject(
   project: ZeropsCandidate["project"],
@@ -347,6 +354,32 @@ function plainZeropsProject(
     project.hq === undefined &&
     !evidence.hqRecords.has(project.id) &&
     !evidence.local.has(project.id)
+  );
+}
+
+/**
+ * The projects of an application held with no Mate that HQ offers Set up Mate on: none has a Mate's
+ * row to wear the verb, so its card and page draw one for each.
+ */
+export function plainSetUpCandidates<
+  T extends {
+    readonly project: {
+      readonly hq?:
+        | {
+            readonly appId: string | null;
+            readonly mate: unknown;
+            readonly setUpOffered?: true | boolean;
+          }
+        | undefined;
+    };
+  },
+>(candidates: ReadonlyArray<T>, groupId: string): ReadonlyArray<T> {
+  return candidates.filter(
+    (candidate) =>
+      candidate.project.hq !== undefined &&
+      candidate.project.hq.setUpOffered === true &&
+      candidate.project.hq.appId === groupId &&
+      candidate.project.hq.mate == null,
   );
 }
 
@@ -610,10 +643,20 @@ export function mateLineHoldsVerb(action: ZeropsRowAction): boolean {
   return action.kind === "enable" || action.kind === "set-up-mate" || action.kind === "retry-probe";
 }
 
+/** What a press on a Mate's card opens: none where its line holds a verb, a button of its own. */
+export function mateCardPress<Open>(action: ZeropsRowAction, open: Open): Open | undefined {
+  return mateLineHoldsVerb(action) ? undefined : open;
+}
+
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
   if (input.outsideHq && !awaitsEnable(input)) return { kind: "not-in-hq" };
+  // HQ's offer after a deleted adoption, whatever the attempt's zcp service reads meanwhile and
+  // whether the person may open this Mate: HQ decided it for them.
+  if (candidate.project.hq?.setUpOffered === true) {
+    return { kind: "set-up-mate", label: "Set up Mate" };
+  }
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };
@@ -644,6 +687,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       // them as it runs, importing nothing where a container is there already. Never an
       // environment an earlier group tagged, whose role nothing here can read.
       if (
+        input.coming?.kind !== "coming" &&
         can.setUpMate &&
         mateSetupOffered(role) &&
         ((candidate.missingContainer === true &&

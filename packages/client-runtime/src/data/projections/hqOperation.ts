@@ -9,12 +9,16 @@
  */
 import type { HqOperation } from "../../zerops/hq/client.ts";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
-
-/** HQ's failure code of an operation whose token was refused or lapsed: it waits for its maker. */
-const TOKEN_EXPIRED = "token_expired";
+import { waitingPress, type WaitingPress } from "./operationFailure.ts";
 
 /** HQ's offer of an operation's Continue to the person reading (spec "Operation offers"). */
 const CONTINUE = "continue";
+
+/**
+ * HQ's offer of an application's operation's end to an Owner or an Admin, while its maker cannot
+ * continue it (spec "Operation offers").
+ */
+const END = "end";
 
 export type HqOperationStanding =
   /** None of this kind is shown: nothing runs, or the newest one ended done. */
@@ -22,14 +26,18 @@ export type HqOperationStanding =
   /** HQ runs it: the target offers nothing that would start it again. */
   | { readonly kind: "going" }
   /**
-   * It stopped open because its maker's token lapsed: it waits for their Continue of `id`
-   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue.
+   * It stopped open and HQ names its maker: it waits for their Continue of `id`
+   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
+   * `endable` where HQ offers them its end, its maker being unable to continue it; `press` the
+   * word on that Continue's button, by what it waits on.
    */
   | {
       readonly kind: "waiting";
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
+      readonly press: WaitingPress;
+      readonly endable?: true;
     }
   /**
    * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
@@ -53,14 +61,16 @@ export function hqOperationOf(
   if (operation?.kind !== kind) return NONE;
   if (operation.failure === undefined)
     return operation.needs === undefined ? GOING : { kind: "needs", needs: operation.needs };
-  // HQ names its maker only while it stands open waiting for their fresh token, and offers its
-  // Continue only to that maker while the right it decides again is theirs.
-  if (operation.failure.code === TOKEN_EXPIRED && operation.continueBy !== undefined)
+  // HQ names its maker exactly while the operation waits for them, whatever it waits on, and
+  // offers its Continue only to that maker while the right it decides again is theirs.
+  if (operation.continueBy !== undefined)
     return {
       kind: "waiting",
       id: operation.id,
       continueBy: operation.continueBy,
       yours: operation.offers?.includes(CONTINUE) === true,
+      press: waitingPress(operation.failure.code),
+      ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
   return { kind: "failed", failure: operation.failure };
 }

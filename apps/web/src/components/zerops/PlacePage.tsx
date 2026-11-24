@@ -146,7 +146,7 @@ import { PlaceNextCard, PlaceNextRelease } from "./place/PlaceNext";
 import { PlaceVaultCard } from "./place/PlaceVaultCard";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
-  placeServiceRows,
+  placeServiceTable,
   placeTitle,
   environmentTitle,
   rollBackTarget,
@@ -1207,7 +1207,25 @@ export function ZeropsStopPane({
           ),
         };
   const projectId = stop.target.kind === "zerops" ? stop.target.projectId : undefined;
-  const table = placeServiceRows(services, platformServices);
+  const { rows: table, slots: missingSlots } = placeServiceTable({
+    code: services,
+    platform: platformServices,
+    notInZerops,
+  });
+  // A production gets a service only by a release: HQ refuses the verb.
+  const addVerb = (hostname: string) =>
+    addService === undefined || production ? null : (
+      <Button
+        disabled={addService.running(hostname)}
+        onClick={() => addService.onAdd(hostname)}
+        size="sm"
+        variant="secondary"
+      >
+        {addService.running(hostname)
+          ? flowVerbLabel("add-service", true)
+          : `${flowVerbLabel("add-service", false)} ${hostname}`}
+      </Button>
+    );
   // Still being read: the slot holds its cards' shape. Read, with nothing declared by HQ: the
   // platform's own services stand in the same cards.
   const servicesWaiting =
@@ -1692,7 +1710,9 @@ export function ZeropsStopPane({
 
             <PlaceSection
               label={
-                <SectionLabel count={servicesWaiting ? undefined : table.length}>
+                <SectionLabel
+                  count={servicesWaiting ? undefined : table.length + missingSlots.length}
+                >
                   Services
                 </SectionLabel>
               }
@@ -1701,39 +1721,27 @@ export function ZeropsStopPane({
                 <PlaceServicesWaiting />
               ) : projectId === undefined ? null : (
                 <PlaceServiceTable
+                  absentVerb={addVerb}
                   answered={answered}
+                  byRelease={production}
                   deployAgain={deployAgain}
                   projectId={projectId}
                   rows={table}
                   said={verdict.detail}
                   usageRead={usageRead}
                 >
-                  {notInZerops.map((hostname) => (
+                  {missingSlots.map((hostname) => (
                     <PlaceMissingService
                       answer={answered.get(hostname)}
                       byRelease={production}
                       hostname={hostname}
                       key={hostname}
-                      verb={
-                        // A production gets a service only by a release: HQ refuses the verb.
-                        addService === undefined || production ? null : (
-                          <Button
-                            disabled={addService.running(hostname)}
-                            onClick={() => addService.onAdd(hostname)}
-                            size="sm"
-                            variant="secondary"
-                          >
-                            {addService.running(hostname)
-                              ? flowVerbLabel("add-service", true)
-                              : `${flowVerbLabel("add-service", false)} ${hostname}`}
-                          </Button>
-                        )
-                      }
+                      verb={addVerb(hostname)}
                     />
                   ))}
                 </PlaceServiceTable>
               )}
-              {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
+              {servicesWaiting || table.length > 0 || missingSlots.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
                 <p
                   className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"

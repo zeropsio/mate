@@ -1,8 +1,10 @@
+import { ThreadId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { expect, it } from "vite-plus/test";
 import {
   EMPTY_JUMP_INDEX,
   jumpGroups,
+  jumpMateOf,
   jumpWritePlan,
   type JumpMate,
   type SidebarJumpIndex,
@@ -60,4 +62,38 @@ it("MN5: The jump box finds but never offers writing to a Mate somebody else sig
   expect(itemsOf(jumpGroups(index, "", [], othersSignedIn, true))).toContain("new-project");
   expect(itemsOf(jumpGroups(index, "", [], othersSignedIn, false))).not.toContain("new-project");
   expect(itemsOf(jumpGroups(index, "new", [], othersSignedIn, false))).not.toContain("new-project");
+});
+
+// witness: apps/web/src/components/zerops/JumpBox.logic.ts | const face = life === "up" ? read : matePose(read, input.pose); → const face = read;
+it("MN62: A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps", () => {
+  const idle = { threadId: ThreadId.make("thread-nova"), kind: "idle", face: "idle" } as const;
+  const working = {
+    threadId: ThreadId.make("thread-nova"),
+    kind: "working",
+    face: "working",
+  } as const;
+  const rows = [
+    { life: "up", activity: idle, face: "needs" },
+    { life: "deleting", activity: idle, face: "sleep" },
+    { life: "deleting", activity: working, face: "sleep" },
+    { life: "coming", activity: idle, face: "waking" },
+    { life: "failed", activity: idle, face: "sleep" },
+  ] as const;
+  for (const row of rows) {
+    const found = jumpMateOf({
+      projectId: "p-nova",
+      name: "Nova",
+      tint: "sky",
+      shape: MATE_SHAPE_OF_TINT.sky,
+      projectName: "Shop",
+      environmentId: "env-p-nova",
+      owner: { called: "you", isViewer: true },
+      connected: true,
+      activity: { ...row.activity, subject: undefined, snippet: undefined, pausedUntil: undefined },
+      reviewWaits: true,
+      mine: true,
+      pose: { life: row.life },
+    });
+    expect({ life: row.life, face: found.face }).toEqual({ life: row.life, face: row.face });
+  }
 });

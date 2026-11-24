@@ -16,7 +16,9 @@ import { factOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import { zeropsNavigationLink } from "./zerops.ts";
+import { makeZeropsWire, type ZeropsWireClient } from "./zeropsWire.ts";
 
 const ORG = "v1";
 const PROJECT_SEARCH = "/project/search";
@@ -625,6 +627,45 @@ it.effect(
         "NO_ACCESS",
       );
       expect(fixture.requests.filter(({ path }) => path === "/user/info").length).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/zeropsWire.ts | [/^\/process\/[^/?]+$/u, "processNotFound"], → [/^\/process\/[^/?]+$/u, "processGone"],
+it.effect(
+  "AD86: A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      // The session's own client as Zerops answers a gone process (measured: 404 processNotFound).
+      const client = {
+        requestData: () =>
+          Promise.reject(new ZeropsApiError("v3", "not-found", 404, "processNotFound")),
+      } as unknown as ZeropsWireClient;
+      const session = makeZeropsWire({ client });
+      const fixture = fixtureWire((request) =>
+        request.method === "GET" && request.path === "/process/v2"
+          ? session.read!(request.path)
+          : platform(() => ({ items: [] }))(request),
+      );
+      const { fiber, link } = yield* running(store, fixture);
+      const demand = { family: "process", listing: "process", ownerId: "v2" } as const;
+      const asks = () => fixture.requests.filter(({ path }) => path === "/process/v2").length;
+      const release = link.demandDetail(demand);
+      yield* settle;
+      expect(asks()).toBe(1);
+      link.retryDetail(demand);
+      yield* settle;
+      expect(asks()).toBe(1);
+      link.reread();
+      yield* settle;
+      yield* reopened(store, fixture);
+      expect(asks()).toBe(1);
+      release();
+      yield* settle;
+      link.demandDetail(demand);
+      yield* settle;
+      expect(asks()).toBe(1);
       yield* Fiber.interrupt(fiber);
     }),
 );

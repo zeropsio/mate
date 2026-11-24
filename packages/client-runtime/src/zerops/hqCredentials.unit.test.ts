@@ -1,9 +1,17 @@
 import type { GitCredential } from "@t3tools/shared/hqGit";
 import * as DateTime from "effect/DateTime";
 import { AtomRegistry } from "effect/reactivity";
+import { it as itEffect } from "@effect/vitest";
 import { expect, it } from "vite-plus/test";
 
+import * as Effect from "effect/Effect";
+
 import { makeGitCredentials } from "../data/adapters/hqGitCredentials.ts";
+import { liveZerops } from "../data/__fixtures__/account.ts";
+import { seedHqNavigation } from "../data/__fixtures__/hqNavigation.ts";
+import { makeOperations } from "../data/operations/coordinator.ts";
+import { makeHqExecutor } from "../data/operations/executors/hq.ts";
+import type { OperationIntent } from "../data/model.ts";
 import { gitCredentials } from "../data/projections/gitCredentials.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../data/store.ts";
 import { HqError, makeHqApi, type HqApi, type OpenHqSocket } from "./hq/client.ts";
@@ -47,13 +55,12 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.gitCredentials("app-1"),
   (api) => api.issueGitCredential("app-1"),
   (api) => api.revokeGitCredential("app-1", "c1"),
-  (api) => api.takeOverList("u2", []),
   (api) => api.deleteAccessChange("op-1"),
   (api) => api.recordReveal({ projectId: "p1", service: "db", key: "PASSWORD" }),
 ];
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ changes }, true)) }, → { method: "POST", body: JSON.stringify({ changes }) },
-it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a take-over replace, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
+it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
   const requests: Array<{
     readonly call: string;
     readonly text: string;
@@ -98,31 +105,18 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a take-over repla
         },
       }),
     (hq: HqApi) => hq.handOver("p1", "user-bob"),
-    (hq: HqApi) => hq.takeOver("u2", "t1", "user-bob"),
     (hq: HqApi) => hq.continueOperation("op-2"),
     (hq: HqApi) =>
       hq.startAccessChanges([{ id: "op-3", change: { kind: "remove", userId: "user-bob" } }]),
   ];
   // Only what each call sends is judged: HQ's empty answer need not read as the call's.
   for (const call of calls) await call(api)?.catch(() => undefined);
-  // The take-over list is the person's own Zerops read, handed to HQ under its session alone.
-  expect(
-    requests.filter((request) => request.call.startsWith("POST /api/members/u2/take-over")),
-  ).toEqual([
-    expect.objectContaining({
-      call: "POST /api/members/u2/take-over",
-      text: expect.stringContaining('{"list":[]}'),
-      bearer: "Bearer session-1",
-    }),
-    expect.objectContaining({ call: "POST /api/members/u2/take-over/t1" }),
-  ]);
   expect(
     requests.filter((request) => request.text.includes("person-token")).map((r) => r.call),
   ).toEqual([
     "POST /api/door",
     "POST /api/births",
     "POST /api/mates/p1/hand-over",
-    "POST /api/members/u2/take-over/t1",
     "POST /api/operations/op-2/continue",
     "POST /api/access-changes",
   ]);
@@ -338,3 +332,105 @@ it("ZV103: A Git password is issued, listed and revoked through the person's ses
   ]);
   expect(calls.filter((call) => call.url.includes("test-password"))).toEqual([]);
 });
+
+/** HQ over a literal `fetch` that keeps what each request sent: its `METHOD path`, its bearer, its body. */
+function sentTo() {
+  const sent: Array<{
+    readonly call: string;
+    readonly bearer: string | null;
+    readonly body: string;
+  }> = [];
+  const api = makeHqApi({
+    address: ADDRESS,
+    orgId: ORG,
+    openSocket: noSocket,
+    accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+    fetch: async (url, init) => {
+      const path = new URL(url).pathname;
+      sent.push({
+        call: `${init?.method ?? "GET"} ${path}`,
+        bearer: new Headers(init?.headers).get("authorization"),
+        body: String(init?.body ?? ""),
+      });
+      if (path === "/api/door")
+        return answer(200, { session: "session-1", expiresAt: "2099-01-01T00:00:00.000Z" });
+      return answer(201, {});
+    },
+  });
+  return { api, sent };
+}
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | await withAccess(ownerUserId === undefined ? {} : { ownerUserId }), → ownerUserId === undefined ? {} : { ownerUserId },
+it("ZV168: A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted", async () => {
+  const { api, sent } = sentTo();
+  await api.takeOver("u2", "t1", "user-bob").catch(() => undefined);
+  expect(
+    sent.map(({ call, bearer, body }) => [call, bearer, body.includes("person-token")]),
+  ).toEqual([
+    ["POST /api/door", null, true],
+    ["POST /api/members/u2/take-over/t1", "Bearer session-1", true],
+  ]);
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | body: JSON.stringify({ list }), → body: JSON.stringify(await withAccess({ list })),
+it("ZV169: A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for", async () => {
+  const { api, sent } = sentTo();
+  await api.takeOverList("u2", []).catch(() => undefined);
+  expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
+    { call: "POST /api/members/u2/take-over", bearer: "Bearer session-1", body: '{"list":[]}' },
+  ]);
+});
+
+/** One press through the real operations and HQ's executor over `sentTo`: the requests it sent. */
+function pressed(intent: OperationIntent) {
+  const { api, sent } = sentTo();
+  const store = makeAccountStore(AtomRegistry.make());
+  liveZerops({ running: [] }).forEach(store.dispatch);
+  seedHqNavigation(store, ORG, {});
+  const operations = makeOperations({
+    store,
+    makeId: () => "r1",
+    executors: { hq: makeHqExecutor({ store, apiOf: () => api, active: () => true }) },
+  });
+  return Effect.ignore(operations.submit(intent)).pipe(
+    Effect.map(() => sent.map(({ call }) => call).filter((call) => call !== "POST /api/door")),
+  );
+}
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | return api.createBirth(birth); → return api.createBirth(birth).catch(() => api.createBirth(birth));
+itEffect.effect(
+  "ZV170: A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice",
+  () =>
+    Effect.gen(function* () {
+      expect(
+        yield* pressed({
+          kind: "create-birth",
+          orgId: ORG,
+          id: "b1",
+          appId: "app-1",
+          face: "",
+          intent: {
+            projectName: "shop-stage",
+            recipe: { kind: "none" },
+            agents: [],
+            standUp: false,
+            automated: false,
+            placement: { role: "stage", name: "stage", chief: false },
+            location: null,
+            userRoles: [],
+          },
+        }),
+      ).toEqual(["POST /api/births"]);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | api.continueOperation(intent.id).catch((cause: unknown) => { → api.continueOperation(intent.id).then(() => api.continueOperation(intent.id)).catch((cause: unknown) => {
+itEffect.effect(
+  "ZV171: A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice",
+  () =>
+    Effect.gen(function* () {
+      expect(yield* pressed({ kind: "continue-operation", orgId: ORG, id: "op-2" })).toEqual([
+        "POST /api/operations/op-2/continue",
+      ]);
+    }),
+);

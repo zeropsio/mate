@@ -13,6 +13,7 @@ export {
   type HqBackupUsage,
   type HqKeys,
   type HqParts,
+  type HqBirthLeft,
   type HqOperation,
   type HqProposalApproval,
   type HqProposalEffect,

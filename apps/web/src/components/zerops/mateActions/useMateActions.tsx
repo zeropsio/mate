@@ -93,6 +93,8 @@ import {
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import {
+  adoptedBirthDeleteBody,
+  openBirthLeft,
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
@@ -286,7 +288,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
     readonly orgId: string;
-    readonly adopted?: true;
+    /** It adopted an existing project: its body reads what it left from HQ's birth as it stands. */
+    readonly adopted: boolean;
     readonly name: string;
   } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
@@ -323,8 +326,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
 
   const hqStructure = useAtomValue(hqNavigationAtom);
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
-  // Each Mate's visibility for the person, as the account reads it from live Zerops data
-  // (`mateVisibility`); one not judged yet is absent.
+  // Whether each Mate opens for the person, as HQ says it (`person.entry`); one not judged yet
+  // is absent.
   const visibilities = useAtomValue(
     shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
   );
@@ -904,7 +907,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           ? [
               {
                 id: "continue-operation",
-                label: "Continue",
+                label: sharedBirthPresentation(birth).press,
                 disabled: busyKey === key,
                 onSelect: () => {
                   void write(key, async () => {
@@ -933,7 +936,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                   setDeletingBirth({
                     birthId: birth.id,
                     orgId: activeOrganization?.id ?? "",
-                    ...(birth.adopted === true ? { adopted: true as const } : {}),
+                    adopted: birth.adopted === true,
                     name: birth.intent?.placement.name ?? "Mate",
                   });
                 },
@@ -977,7 +980,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               ? [
                   {
                     id: "continue-operation",
-                    label: "Continue",
+                    label: deletion.press,
                     disabled: busyKey === candidate.key,
                     onSelect: () => {
                       void write(candidate.key, async () => {
@@ -1000,7 +1003,25 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       if (menu === "none") return { setupOnly: false, entries: [] };
       if (menu === "birth") {
         const birth = births.find((birth) => birth.projectId === candidate.project.id);
-        return { setupOnly: true, entries: birth === undefined ? [] : birthActionsFor(birth.id) };
+        if (birth === undefined) return { setupOnly: true, entries: [] };
+        return {
+          setupOnly: true,
+          entries: [
+            ...birthActionsFor(birth.id),
+            ...(birth.deleteHeld === true
+              ? [
+                  {
+                    id: "delete-held",
+                    label: "Delete",
+                    variant: "destructive" as const,
+                    disabled: true,
+                    why: "Available once its setup finishes or stops",
+                    onSelect: () => {},
+                  },
+                ]
+              : []),
+          ],
+        };
       }
       const busy = busyKey === candidate.key;
       // HQ's move or restart of it, running or waiting for its maker's fresh token: no second one
@@ -1455,10 +1476,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           pending={press.pending}
           words={{
             title: `Delete ${deletingBirth.name}?`,
-            body:
-              deletingBirth.adopted === true
-                ? "This stops setting up the Mate and leaves the existing project and its services untouched."
-                : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
+            body: deletingBirth.adopted
+              ? adoptedBirthDeleteBody(openBirthLeft(births, deletingBirth.birthId))
+              : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
             label: `Type ${deletingBirth.name} to confirm`,
             submit: `Delete ${deletingBirth.name}`,
             pending: "Deleting…",

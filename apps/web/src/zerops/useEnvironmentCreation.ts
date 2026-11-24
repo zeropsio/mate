@@ -20,14 +20,11 @@ import {
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import {
   appProjectName,
-  formatMateFace,
   mateBirthTier,
   nameUnderApp,
   stageRecipe,
-  type BirthIntent,
   type ZeropsEnvironmentRole,
   type CanonicalGroup,
-  type ZeropsAgentType,
   type EnvironmentRecipeChoice,
   type ZeropsCorePackage,
   type ZeropsMateFace,
@@ -42,6 +39,7 @@ import { useCallback } from "react";
 
 import { captureAccountLifetime } from "./accountLifetime";
 import { useReadGroupAgents } from "./groupAgents";
+import { addedMateBirth } from "./mateBirths.logic";
 import { useEnvironmentStarts } from "./useEnvironmentOperation";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -105,14 +103,6 @@ interface EnvironmentCreate {
   (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun>;
 }
 
-/** Only a dev Mate with a recipe has development to stand up after sign-in. */
-function addedMateStandUp(
-  role: ZeropsEnvironmentRole,
-  choice: Pick<EnvironmentCreationChoice, "withAgent" | "recipe">,
-): boolean {
-  return role === "dev" && choice.withAgent && choice.recipe.kind === "tier";
-}
-
 /**
  * What HQ places an environment added to a group as. A stage with its own Mate is a Mate that is
  * also the stage, HQ's `devstage`, which HQ places as a Mate: its key is authorized only for a
@@ -130,81 +120,6 @@ function addedEnvironmentKind(role: ZeropsEnvironmentRole, withAgent: boolean): 
     case "dev":
       return "mate";
   }
-}
-
-type PlannedTier = NonNullable<Extract<ReturnType<typeof mateBirthTier>, { ok: true }>["tier"]>;
-
-/**
- * The Create a Mate added to a group is born from (`POST /api/births`): its application, its face,
- * the plan HQ runs — its project's name, the name it is drawn by under the application (D3), its
- * agents, the person's ask for its stand-up, who reaches it — the persona its stand-up runs with,
- * and its recipe's tier as converted for its import (`mateBirthTier`). HQ places a
- * dev Mate as a Mate and a stage with its own Mate as the stage (`devstage`).
- */
-function addedMateBirth(input: {
-  readonly groupId: string;
-  readonly role: ZeropsEnvironmentRole;
-  readonly kind: "mate" | "devstage";
-  readonly choice: Pick<
-    EnvironmentCreationChoice,
-    "face" | "withAgent" | "recipe" | "automated" | "persona"
-  >;
-  readonly projectName: string;
-  readonly displayName: string;
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
-  readonly userRoles: ReadonlyArray<ProjectGrant>;
-  /** The tier its import brings beside its container (`mateBirthTier`). */
-  readonly tier: PlannedTier | undefined;
-}): {
-  readonly appId: string;
-  readonly face: string;
-  readonly intent: BirthIntent;
-  readonly standupPersona?: MatePersona;
-  readonly tier?: {
-    readonly yaml: string;
-    readonly variables?: NonNullable<PlannedTier["projectVariables"]>;
-  };
-} {
-  const { choice, tier } = input;
-  const standUp = addedMateStandUp(input.role, choice);
-  const recipe =
-    choice.recipe.kind === "none"
-      ? { kind: "none" as const }
-      : {
-          kind: "tier" as const,
-          id: "group" as const,
-          revision: choice.recipe.revision,
-          tier: choice.recipe.tier,
-        };
-  return {
-    appId: input.groupId,
-    // Empty where none was picked: the Mate wears its name's tint.
-    face: choice.face === undefined ? "" : formatMateFace(choice.face),
-    intent: {
-      projectName: input.projectName,
-      recipe,
-      agents: input.agents,
-      standUp,
-      automated: choice.automated === true,
-      placement: {
-        role: input.kind === "mate" ? "dev" : "stage",
-        name: input.displayName,
-        chief: false,
-      },
-      location: null,
-      userRoles: input.userRoles,
-    },
-    // Its persona rides with its stand-up ask: the Mate takes it when its stand-up runs.
-    ...(standUp && choice.persona !== undefined ? { standupPersona: choice.persona } : {}),
-    ...(tier === undefined
-      ? {}
-      : {
-          tier: {
-            yaml: tier.yaml,
-            ...(tier.projectVariables === undefined ? {} : { variables: tier.projectVariables }),
-          },
-        }),
-  };
 }
 
 /**

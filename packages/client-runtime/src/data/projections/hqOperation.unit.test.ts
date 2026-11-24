@@ -11,7 +11,7 @@ const listed = (
 ): HqOperation => ({ id: "op-1", kind, phase, at: AT, acceptedAt: AT, ...more });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.offers?.includes(CONTINUE) === true, → yours: operation.continueBy !== undefined,
-it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
+it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker exactly where HQ names one to continue it, whatever it waits on, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
   const cases: ReadonlyArray<
     readonly [HqOperation | undefined, string, HqOperationStanding["kind"], boolean?]
   > = [
@@ -67,10 +67,19 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     [
       listed("deploy_key", "retire_requested", {
         failure: failure("ownerRoleRequired", "retire"),
-        continueBy: "u-me",
       }),
       "deploy_key",
       "failed",
+    ],
+    [
+      listed("environment", "project_created", {
+        failure: failure("access_lost", "watch"),
+        continueBy: "u-other",
+        offers: [],
+      }),
+      "environment",
+      "waiting",
+      false,
     ],
     [
       listed("put_live", "release_requested", {
@@ -88,5 +97,44 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     if (said.kind === "waiting") expect(said.yours, label).toBe(yours);
     if (said.kind === "needs") expect(said.needs, label).toBe("release_review");
     if (said.kind === "failed") expect(said.failure, label).toBe(operation?.failure);
+  }
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | [ZEROPS_PLATFORM_ERROR, "Try again"], → [ZEROPS_PLATFORM_ERROR, "Continue"],
+it("PJ147: A waiting operation's one offered press is worded by what it waits on: Continue after a lapsed sign-in or lost access, where the work resumes, and Try again after a Zerops platform error, where a failed step is sent again; breaks: a person is told their work merely continues when the press repeats a failed step", () => {
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["token_expired", "Continue"],
+    ["access_lost", "Continue"],
+    ["zerops_platform_error", "Try again"],
+  ];
+  for (const [code, press] of cases) {
+    const said = hqOperationOf(
+      listed("environment", "project_created", {
+        failure: failure(code, "watch"),
+        continueBy: "u-maker",
+        offers: ["continue"],
+      }),
+      "environment",
+    );
+    expect(said.kind === "waiting" ? said.press : null, code).toBe(press);
+  }
+});
+
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}), → ...(operation.offers?.includes(CONTINUE) !== true ? { endable: true as const } : {}),
+it("PJ136: A waiting application operation offers its End only where HQ offers the reader its end, never to its maker's Continue or to another reader; breaks: an Owner is never shown how to free an application whose maker lost the right, or a reader HQ refuses is shown an End", () => {
+  const waiting = (offers: ReadonlyArray<string>) =>
+    listed("environment", "project_created", {
+      failure: failure("token_expired", "watch"),
+      continueBy: "u-maker",
+      offers,
+    });
+  const cases: ReadonlyArray<readonly [ReadonlyArray<string>, boolean]> = [
+    [["end"], true],
+    [["continue"], false],
+    [[], false],
+  ];
+  for (const [offers, endable] of cases) {
+    const said = hqOperationOf(waiting(offers), "environment");
+    expect(said.kind === "waiting" && said.endable === true, JSON.stringify(offers)).toBe(endable);
   }
 });

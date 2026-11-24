@@ -2,24 +2,24 @@
   "$provenance": {
     "producer": "mate-hq",
     "schema": "scope-reset",
-    "target": "production HQ, the standing owner of the test organisation; fixtures in mate-hq docs/architecture/testing.md",
+    "target": "production HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
     "command": "GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e",
     "steps": [
       "Have the browser profiles of the standing low-role person (nonmember) and the standing owner (test-rw) signed in to Zerops and set HQ_LIVE_PROFILES to the directory holding them.",
       "Create an absolute empty directory outside the checkout and run GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e.",
       "The recorder opens one door session of the test organisation as each of the two persons and asks, as the standing owner, the first delivery of the navigation scope on the person's stream, the frame whole.",
-      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the renamed application's saved or temporary name.",
+      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the temporary template's id.",
       "It ends both sessions with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
     ],
-    "recordedAt": "2026-11-19T04:14:28Z"
+    "recordedAt": "2026-11-23T09:10:15Z"
   },
   "value": {
     "type": "scope-reset",
     "scope": {
       "kind": "navigation"
     },
-    "incarnation": "ce7d9789-b978-43f1-b3ad-c2802eab3e87:1",
-    "revision": 1,
+    "incarnation": "88f95232-1193-4ca3-bb38-03987de02245:1",
+    "revision": 3,
     "values": [
       {
         "key": "org",
@@ -50,17 +50,18 @@
             "empty": false,
             "deletingProjectIds": []
           },
+          "createdAt": "v3",
           "environments": [],
           "id": "v2",
           "intake": null,
-          "name": "v3",
+          "name": "v4",
           "problems": [],
           "projectIds": [
-            "v4"
+            "v5"
           ],
           "releaseOffer": {
             "head": null,
-            "suggestion": "v5",
+            "suggestion": "v6",
             "summary": {
               "subjects": [],
               "total": 0,
@@ -70,16 +71,11 @@
             },
             "gate": {
               "allow": false,
-              "reason": "v6"
+              "reason": "v7"
             },
             "inFlight": null
           },
           "rollouts": [
-            {
-              "id": "v7",
-              "note": null,
-              "planned": true
-            },
             {
               "id": "v8",
               "note": null,
@@ -184,12 +180,17 @@
               "id": "v28",
               "note": null,
               "planned": true
+            },
+            {
+              "id": "v29",
+              "note": null,
+              "planned": true
             }
           ]
         }
       },
       {
-        "key": "app:v29",
+        "key": "app:v30",
         "value": {
           "births": [],
           "changes": [],
@@ -197,17 +198,18 @@
             "empty": false,
             "deletingProjectIds": []
           },
+          "createdAt": "v31",
           "environments": [],
-          "id": "v29",
+          "id": "v30",
           "intake": null,
-          "name": "v30",
+          "name": "v32",
           "problems": [],
           "projectIds": [
-            "v31"
+            "v33"
           ],
           "releaseOffer": {
-            "head": "v32",
-            "suggestion": "v5",
+            "head": "v34",
+            "suggestion": "v6",
             "summary": {
               "subjects": [],
               "total": 0,
@@ -217,21 +219,11 @@
             },
             "gate": {
               "allow": false,
-              "reason": "v6"
+              "reason": "v7"
             },
             "inFlight": null
           },
           "rollouts": [
-            {
-              "id": "v33",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v34",
-              "note": null,
-              "planned": true
-            },
             {
               "id": "v35",
               "note": null,
@@ -266,12 +258,107 @@
               "id": "v41",
               "note": null,
               "planned": true
+            },
+            {
+              "id": "v42",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v43",
+              "note": null,
+              "planned": true
             }
           ]
         }
       },
       {
-        "key": "app:v42",
+        "key": "app:v44",
+        "value": {
+          "births": [
+            {
+              "id": "v45",
+              "face": "v46",
+              "madeBy": "v47",
+              "intent": {
+                "projectName": "v48",
+                "recipe": {
+                  "kind": "v49"
+                },
+                "agents": [],
+                "standUp": false,
+                "automated": false,
+                "placement": {
+                  "role": "v50",
+                  "name": "v51",
+                  "chief": false
+                },
+                "location": "v52",
+                "userRoles": [
+                  {
+                    "clientUserId": "v53",
+                    "roleCode": "v54"
+                  }
+                ]
+              },
+              "projectId": "v55",
+              "importProcessId": "v56",
+              "state": "v57",
+              "offers": [
+                "v58",
+                "v59"
+              ],
+              "operation": {
+                "kind": "v60",
+                "phase": "v61",
+                "at": "v62",
+                "acceptedAt": "v63",
+                "failure": {
+                  "at": "v64",
+                  "code": "v65",
+                  "step": "v66",
+                  "origin": "v67"
+                },
+                "continueBy": "v47"
+              },
+              "startedAt": "v63"
+            }
+          ],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v63",
+          "environments": [],
+          "id": "v44",
+          "intake": null,
+          "name": "v68",
+          "problems": [],
+          "projectIds": [
+            "v55"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v6",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v7"
+            },
+            "inFlight": null
+          },
+          "rollouts": []
+        }
+      },
+      {
+        "key": "app:v69",
         "value": {
           "births": [],
           "changes": [],
@@ -279,850 +366,852 @@
             "empty": false,
             "deletingProjectIds": []
           },
+          "createdAt": "v70",
           "environments": [
             {
               "birth": {
                 "ended": true
               },
-              "id": "v43",
+              "id": "v71",
               "jobs": [
                 {
-                  "id": "v44",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v47",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v47",
+                  "id": "v72",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v75",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v75",
                   "reason": null,
                   "sourceArchiveBytes": 1,
-                  "appVersionId": "v50",
-                  "processId": "v51",
+                  "appVersionId": "v78",
+                  "processId": "v79",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v51",
-                        "status": "v53",
+                        "id": "v79",
+                        "status": "v81",
                         "_version": 2,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v50",
-                      "status": "v54",
+                      "id": "v78",
+                      "status": "v82",
                       "_version": 3
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v51",
-                          "status": "v57",
+                          "id": "v79",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v50",
-                        "status": "v58"
+                        "id": "v78",
+                        "status": "v85"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v51",
-                          "status": "v57",
+                          "id": "v79",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v50",
-                        "status": "v61"
+                        "id": "v78",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v51",
-                          "status": "v57",
+                          "id": "v79",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v50",
-                        "status": "v62"
+                        "id": "v78",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v51",
-                          "status": "v57",
+                          "id": "v79",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v50",
-                        "status": "v54"
+                        "id": "v78",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v51",
-                          "status": "v53",
+                          "id": "v79",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v50",
-                        "status": "v54"
+                        "id": "v78",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v50",
+                  "verifiedVersionId": "v78",
                   "requestedBy": null,
-                  "at": "v63",
-                  "endedAt": "v64",
+                  "at": "v89",
+                  "endedAt": "v90",
                   "supersededBy": null
                 },
                 {
-                  "id": "v65",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v66",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v66",
+                  "id": "v91",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v92",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v92",
                   "reason": null,
                   "sourceArchiveBytes": 4,
-                  "appVersionId": "v67",
-                  "processId": "v68",
+                  "appVersionId": "v93",
+                  "processId": "v94",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v68",
-                        "status": "v53",
+                        "id": "v94",
+                        "status": "v81",
                         "_version": 5,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v67",
-                      "status": "v62",
+                      "id": "v93",
+                      "status": "v88",
                       "_version": 3
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v68",
-                          "status": "v57",
+                          "id": "v94",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v67",
-                        "status": "v58"
+                        "id": "v93",
+                        "status": "v85"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v68",
-                          "status": "v57",
+                          "id": "v94",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v67",
-                        "status": "v61"
+                        "id": "v93",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v68",
-                          "status": "v57",
+                          "id": "v94",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v67",
-                        "status": "v62"
+                        "id": "v93",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v68",
-                          "status": "v53",
+                          "id": "v94",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v67",
-                        "status": "v62"
+                        "id": "v93",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v67",
+                  "verifiedVersionId": "v93",
                   "requestedBy": null,
-                  "at": "v69",
-                  "endedAt": "v70",
+                  "at": "v95",
+                  "endedAt": "v96",
                   "supersededBy": null
                 },
                 {
-                  "id": "v71",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v72",
-                  "state": "v48",
-                  "cause": "v73",
+                  "id": "v97",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v98",
+                  "state": "v76",
+                  "cause": "v99",
                   "ref": null,
-                  "reason": "v74",
+                  "reason": "v100",
                   "sourceArchiveBytes": null,
                   "appVersionId": null,
                   "processId": null,
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [],
                     "version": null,
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [],
-                  "verifiedVersionId": "v75",
-                  "requestedBy": "v76",
-                  "at": "v77",
-                  "endedAt": "v78",
+                  "verifiedVersionId": "v101",
+                  "requestedBy": "v47",
+                  "at": "v102",
+                  "endedAt": "v103",
                   "supersededBy": null
                 },
                 {
-                  "id": "v79",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v72",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v72",
+                  "id": "v104",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v98",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v98",
                   "reason": null,
                   "sourceArchiveBytes": 6,
-                  "appVersionId": "v75",
-                  "processId": "v80",
+                  "appVersionId": "v101",
+                  "processId": "v105",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v80",
-                        "status": "v53",
+                        "id": "v105",
+                        "status": "v81",
                         "_version": 3,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v75",
-                      "status": "v62",
+                      "id": "v101",
+                      "status": "v88",
                       "_version": 7
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v80",
-                          "status": "v57",
+                          "id": "v105",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v75",
-                        "status": "v81"
+                        "id": "v101",
+                        "status": "v106"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v80",
-                          "status": "v57",
+                          "id": "v105",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v75",
-                        "status": "v61"
+                        "id": "v101",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v80",
-                          "status": "v57",
+                          "id": "v105",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v75",
-                        "status": "v62"
+                        "id": "v101",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v80",
-                          "status": "v53",
+                          "id": "v105",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v75",
-                        "status": "v62"
+                        "id": "v101",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v75",
+                  "verifiedVersionId": "v101",
                   "requestedBy": null,
-                  "at": "v82",
-                  "endedAt": "v83",
+                  "at": "v107",
+                  "endedAt": "v108",
                   "supersededBy": null
                 },
                 {
-                  "id": "v84",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v85",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v85",
+                  "id": "v109",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v110",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v110",
                   "reason": null,
                   "sourceArchiveBytes": 8,
-                  "appVersionId": "v86",
-                  "processId": "v87",
+                  "appVersionId": "v111",
+                  "processId": "v112",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v87",
-                        "status": "v53",
+                        "id": "v112",
+                        "status": "v81",
                         "_version": 5,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v86",
-                      "status": "v54",
+                      "id": "v111",
+                      "status": "v82",
                       "_version": 7
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v87",
-                          "status": "v57",
+                          "id": "v112",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v86",
-                        "status": "v61"
+                        "id": "v111",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v87",
-                          "status": "v57",
+                          "id": "v112",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v86",
-                        "status": "v62"
+                        "id": "v111",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v87",
-                          "status": "v57",
+                          "id": "v112",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v86",
-                        "status": "v54"
+                        "id": "v111",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v87",
-                          "status": "v53",
+                          "id": "v112",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v86",
-                        "status": "v54"
+                        "id": "v111",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v86",
+                  "verifiedVersionId": "v111",
                   "requestedBy": null,
-                  "at": "v88",
-                  "endedAt": "v89",
+                  "at": "v113",
+                  "endedAt": "v114",
                   "supersededBy": null
                 },
                 {
-                  "id": "v90",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v91",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v91",
+                  "id": "v115",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v116",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v116",
                   "reason": null,
                   "sourceArchiveBytes": 9,
-                  "appVersionId": "v92",
-                  "processId": "v93",
+                  "appVersionId": "v117",
+                  "processId": "v118",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v93",
-                        "status": "v53",
+                        "id": "v118",
+                        "status": "v81",
                         "_version": 2,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v92",
-                      "status": "v62",
+                      "id": "v117",
+                      "status": "v88",
                       "_version": 7
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v93",
-                          "status": "v57",
+                          "id": "v118",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v92",
-                        "status": "v81"
+                        "id": "v117",
+                        "status": "v106"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v93",
-                          "status": "v57",
+                          "id": "v118",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v92",
-                        "status": "v61"
+                        "id": "v117",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v93",
-                          "status": "v57",
+                          "id": "v118",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v92",
-                        "status": "v62"
+                        "id": "v117",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v93",
-                          "status": "v53",
+                          "id": "v118",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v92",
-                        "status": "v62"
+                        "id": "v117",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v92",
+                  "verifiedVersionId": "v117",
                   "requestedBy": null,
-                  "at": "v94",
-                  "endedAt": "v95",
+                  "at": "v119",
+                  "endedAt": "v120",
                   "supersededBy": null
                 },
                 {
-                  "id": "v96",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v97",
-                  "state": "v48",
-                  "cause": "v49",
-                  "ref": "v97",
+                  "id": "v121",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v122",
+                  "state": "v76",
+                  "cause": "v77",
+                  "ref": "v122",
                   "reason": null,
                   "sourceArchiveBytes": 10,
-                  "appVersionId": "v98",
-                  "processId": "v99",
+                  "appVersionId": "v123",
+                  "processId": "v124",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v99",
-                        "status": "v53",
+                        "id": "v124",
+                        "status": "v81",
                         "_version": 5,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v98",
-                      "status": "v54",
+                      "id": "v123",
+                      "status": "v82",
                       "_version": 2
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v99",
-                          "status": "v57",
+                          "id": "v124",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v98",
-                        "status": "v58"
+                        "id": "v123",
+                        "status": "v85"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v99",
-                          "status": "v57",
+                          "id": "v124",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v98",
-                        "status": "v61"
+                        "id": "v123",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v99",
-                          "status": "v57",
+                          "id": "v124",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v98",
-                        "status": "v62"
+                        "id": "v123",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v99",
-                          "status": "v57",
+                          "id": "v124",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v98",
-                        "status": "v54"
+                        "id": "v123",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v99",
-                          "status": "v53",
+                          "id": "v124",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v98",
-                        "status": "v54"
+                        "id": "v123",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v98",
+                  "verifiedVersionId": "v123",
                   "requestedBy": null,
-                  "at": "v100",
-                  "endedAt": "v101",
+                  "at": "v125",
+                  "endedAt": "v126",
                   "supersededBy": null
                 },
                 {
-                  "id": "v102",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v103",
-                  "state": "v48",
-                  "cause": "v73",
+                  "id": "v127",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v128",
+                  "state": "v76",
+                  "cause": "v99",
                   "ref": null,
                   "reason": null,
                   "sourceArchiveBytes": 11,
-                  "appVersionId": "v104",
-                  "processId": "v105",
+                  "appVersionId": "v129",
+                  "processId": "v130",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v105",
-                        "status": "v53",
+                        "id": "v130",
+                        "status": "v81",
                         "_version": 5,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v104",
-                      "status": "v62",
+                      "id": "v129",
+                      "status": "v88",
                       "_version": 3
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v105",
-                          "status": "v57",
+                          "id": "v130",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v104",
-                        "status": "v81"
+                        "id": "v129",
+                        "status": "v106"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v105",
-                          "status": "v57",
+                          "id": "v130",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v104",
-                        "status": "v61"
+                        "id": "v129",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v105",
-                          "status": "v57",
+                          "id": "v130",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v104",
-                        "status": "v62"
+                        "id": "v129",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v105",
-                          "status": "v53",
+                          "id": "v130",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v104",
-                        "status": "v62"
+                        "id": "v129",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v104",
-                  "requestedBy": "v76",
-                  "at": "v106",
-                  "endedAt": "v107",
+                  "verifiedVersionId": "v129",
+                  "requestedBy": "v47",
+                  "at": "v131",
+                  "endedAt": "v132",
                   "supersededBy": null
                 },
                 {
-                  "id": "v108",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v103",
-                  "state": "v109",
-                  "cause": "v110",
+                  "id": "v133",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v128",
+                  "state": "v134",
+                  "cause": "v135",
                   "ref": null,
-                  "reason": "v111",
+                  "reason": "v136",
                   "sourceArchiveBytes": null,
                   "appVersionId": null,
                   "processId": null,
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [],
                     "version": null,
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [],
                   "verifiedVersionId": null,
                   "requestedBy": null,
-                  "at": "v112",
-                  "endedAt": "v113",
+                  "at": "v137",
+                  "endedAt": "v138",
                   "supersededBy": null
                 },
                 {
-                  "id": "v114",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v103",
-                  "state": "v109",
-                  "cause": "v115",
+                  "id": "v139",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v128",
+                  "state": "v134",
+                  "cause": "v140",
                   "ref": null,
-                  "reason": "v116",
+                  "reason": "v141",
                   "sourceArchiveBytes": null,
                   "appVersionId": null,
                   "processId": null,
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [],
                     "version": null,
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [],
                   "verifiedVersionId": null,
                   "requestedBy": null,
-                  "at": "v117",
-                  "endedAt": "v118",
+                  "at": "v142",
+                  "endedAt": "v143",
                   "supersededBy": null
                 }
               ],
               "keyHeld": true,
-              "keyId": "v119",
+              "keyId": "v144",
               "keyInvalid": false,
-              "name": "v120",
+              "name": "v145",
               "order": 12,
               "release": null,
               "sources": [
-                "v121"
+                "v146"
               ],
+              "state": "v147",
               "target": {
                 "kind": "zerops",
-                "projectId": "v43"
+                "projectId": "v71"
               },
               "tier": "stage"
             },
@@ -1131,484 +1220,485 @@
                 "ended": true
               },
               "deleteProjectOnRemoval": true,
-              "id": "v122",
+              "id": "v148",
               "jobs": [
                 {
-                  "id": "v123",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v47",
-                  "state": "v48",
-                  "cause": "v124",
-                  "ref": "v125",
+                  "id": "v149",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v75",
+                  "state": "v76",
+                  "cause": "v150",
+                  "ref": "v151",
                   "reason": null,
                   "sourceArchiveBytes": 1,
-                  "appVersionId": "v126",
-                  "processId": "v127",
+                  "appVersionId": "v152",
+                  "processId": "v153",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v127",
-                        "status": "v53",
+                        "id": "v153",
+                        "status": "v81",
                         "_version": 13,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v126",
-                      "status": "v54",
+                      "id": "v152",
+                      "status": "v82",
                       "_version": 3
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v127",
-                          "status": "v57",
+                          "id": "v153",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v126",
-                        "status": "v58"
+                        "id": "v152",
+                        "status": "v85"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v127",
-                          "status": "v57",
+                          "id": "v153",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v126",
-                        "status": "v61"
+                        "id": "v152",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v127",
-                          "status": "v57",
+                          "id": "v153",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v126",
-                        "status": "v62"
+                        "id": "v152",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v127",
-                          "status": "v57",
+                          "id": "v153",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v126",
-                        "status": "v54"
+                        "id": "v152",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v127",
-                          "status": "v53",
+                          "id": "v153",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v126",
-                        "status": "v54"
+                        "id": "v152",
+                        "status": "v82"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v126",
-                  "requestedBy": "v76",
-                  "at": "v128",
-                  "endedAt": "v129",
+                  "verifiedVersionId": "v152",
+                  "requestedBy": "v47",
+                  "at": "v154",
+                  "endedAt": "v155",
                   "supersededBy": null
                 },
                 {
-                  "id": "v130",
-                  "kind": "v45",
-                  "service": "v46",
-                  "sha": "v66",
-                  "state": "v48",
-                  "cause": "v124",
-                  "ref": "v131",
+                  "id": "v156",
+                  "kind": "v73",
+                  "service": "v74",
+                  "sha": "v92",
+                  "state": "v76",
+                  "cause": "v150",
+                  "ref": "v157",
                   "reason": null,
                   "sourceArchiveBytes": 4,
-                  "appVersionId": "v132",
-                  "processId": "v133",
+                  "appVersionId": "v158",
+                  "processId": "v159",
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v133",
-                        "status": "v53",
+                        "id": "v159",
+                        "status": "v81",
                         "_version": 2,
                         "error": null
                       }
                     ],
                     "version": {
-                      "id": "v132",
-                      "status": "v62",
+                      "id": "v158",
+                      "status": "v88",
                       "_version": 7
                     },
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v133",
-                          "status": "v57",
+                          "id": "v159",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v132",
-                        "status": "v61"
+                        "id": "v158",
+                        "status": "v87"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v133",
-                          "status": "v57",
+                          "id": "v159",
+                          "status": "v84",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v132",
-                        "status": "v62"
+                        "id": "v158",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v133",
-                          "status": "v53",
+                          "id": "v159",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": {
-                        "id": "v132",
-                        "status": "v62"
+                        "id": "v158",
+                        "status": "v88"
                       },
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
-                  "verifiedVersionId": "v132",
-                  "requestedBy": "v76",
-                  "at": "v134",
-                  "endedAt": "v135",
+                  "verifiedVersionId": "v158",
+                  "requestedBy": "v47",
+                  "at": "v160",
+                  "endedAt": "v161",
                   "supersededBy": null
                 },
                 {
-                  "id": "v136",
-                  "kind": "v137",
+                  "id": "v162",
+                  "kind": "v163",
                   "service": null,
                   "services": [
-                    "v46"
+                    "v74"
                   ],
-                  "sha": "v138",
-                  "state": "v48",
-                  "cause": "v124",
-                  "ref": "v131",
+                  "sha": "v164",
+                  "state": "v76",
+                  "cause": "v150",
+                  "ref": "v157",
                   "reason": null,
                   "sourceArchiveBytes": null,
                   "appVersionId": null,
                   "processId": null,
                   "evidence": {
-                    "phase": "v52",
+                    "phase": "v80",
                     "processes": [
                       {
-                        "id": "v139",
-                        "status": "v53",
+                        "id": "v165",
+                        "status": "v81",
                         "error": null
                       },
                       {
-                        "id": "v140",
-                        "status": "v53",
+                        "id": "v166",
+                        "status": "v81",
                         "error": null
                       }
                     ],
                     "version": null,
-                    "nextActor": "v55",
-                    "nextAction": "v56"
+                    "nextActor": "v49",
+                    "nextAction": "v83"
                   },
                   "steps": [
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v140",
-                          "status": "v57",
+                          "id": "v166",
+                          "status": "v84",
                           "error": null
                         },
                         {
-                          "id": "v139",
-                          "status": "v53",
+                          "id": "v165",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": null,
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v140",
-                          "status": "v53",
+                          "id": "v166",
+                          "status": "v81",
                           "error": null
                         },
                         {
-                          "id": "v139",
-                          "status": "v53",
+                          "id": "v165",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": null,
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     },
                     {
-                      "phase": "v48",
+                      "phase": "v76",
                       "processes": [
                         {
-                          "id": "v139",
-                          "status": "v53",
+                          "id": "v165",
+                          "status": "v81",
                           "error": null
                         },
                         {
-                          "id": "v140",
-                          "status": "v53",
+                          "id": "v166",
+                          "status": "v81",
                           "error": null
                         }
                       ],
                       "version": null,
-                      "nextActor": "v59",
-                      "nextAction": "v60"
+                      "nextActor": "v67",
+                      "nextAction": "v86"
                     }
                   ],
                   "verifiedVersionId": null,
-                  "requestedBy": "v76",
-                  "at": "v134",
-                  "endedAt": "v141",
+                  "requestedBy": "v47",
+                  "at": "v160",
+                  "endedAt": "v167",
                   "supersededBy": null
                 }
               ],
               "keyHeld": true,
-              "keyId": "v142",
+              "keyId": "v168",
               "keyInvalid": false,
-              "name": "v143",
+              "name": "v169",
               "order": 14,
               "release": {
-                "id": "v144",
-                "tag": "v125",
+                "id": "v170",
+                "tag": "v151",
                 "planned": true,
                 "ended": true,
                 "landed": true,
-                "endedAt": "v145",
+                "endedAt": "v171",
                 "leftOut": [],
-                "target": "v146",
+                "target": "v172",
                 "releaseTarget": {
-                  "environmentId": "v122",
-                  "createdAt": "v147",
+                  "environmentId": "v148",
+                  "createdAt": "v173",
                   "target": {
-                    "kind": "v146",
-                    "projectId": "v122"
+                    "kind": "v172",
+                    "projectId": "v148"
                   }
                 }
               },
               "sources": [
-                "v124"
+                "v150"
               ],
+              "state": "v147",
               "target": {
                 "kind": "zerops",
-                "projectId": "v122"
+                "projectId": "v148"
               },
               "tier": "production"
             }
           ],
-          "id": "v42",
+          "id": "v69",
           "intake": null,
-          "name": "v148",
+          "name": "v174",
           "problems": [
             {
-              "code": "v149",
-              "what": "v150",
+              "code": "v175",
+              "what": "v176",
               "where": {
-                "appId": "v42",
-                "projectId": "v43",
-                "service": "v46",
-                "repo": "v151",
-                "head": "v103",
-                "operationId": "v152"
+                "appId": "v69",
+                "projectId": "v71",
+                "service": "v74",
+                "repo": "v177",
+                "head": "v128",
+                "operationId": "v178"
               },
               "rule": {
-                "source": "v59",
-                "code": "v149"
+                "source": "v67",
+                "code": "v175"
               },
               "next": {
-                "actor": "v153",
-                "action": "v154"
+                "actor": "v179",
+                "action": "v180"
               }
             },
             {
-              "code": "v155",
-              "what": "v156",
+              "code": "v181",
+              "what": "v182",
               "where": {
-                "appId": "v42",
-                "projectId": "v43",
-                "service": "v46",
-                "repo": "v151",
-                "head": "v103",
-                "operationId": "v157"
+                "appId": "v69",
+                "projectId": "v71",
+                "service": "v74",
+                "repo": "v177",
+                "head": "v128",
+                "operationId": "v183"
               },
               "rule": {
-                "source": "v59",
-                "code": "v155"
+                "source": "v67",
+                "code": "v181"
               },
               "next": {
-                "actor": "v158",
-                "action": "v159"
+                "actor": "v184",
+                "action": "v185"
               }
             },
             {
-              "code": "v160",
-              "what": "v161",
+              "code": "v186",
+              "what": "v187",
               "where": {
-                "appId": "v42",
-                "projectId": "v162",
-                "tier": "v163",
-                "operationId": "v164"
+                "appId": "v69",
+                "projectId": "v188",
+                "tier": "v189",
+                "operationId": "v190"
               },
               "rule": {
-                "source": "v59",
-                "code": "v165"
+                "source": "v67",
+                "code": "v191"
               },
               "next": {
-                "actor": "v158",
-                "action": "v166"
+                "actor": "v184",
+                "action": "v192"
               }
             },
             {
-              "code": "v160",
-              "what": "v161",
+              "code": "v186",
+              "what": "v187",
               "where": {
-                "appId": "v42",
-                "projectId": "v167",
-                "tier": "v163",
-                "operationId": "v168"
+                "appId": "v69",
+                "projectId": "v193",
+                "tier": "v189",
+                "operationId": "v194"
               },
               "rule": {
-                "source": "v59",
-                "code": "v165"
+                "source": "v67",
+                "code": "v191"
               },
               "next": {
-                "actor": "v158",
-                "action": "v166"
+                "actor": "v184",
+                "action": "v192"
               }
             },
             {
-              "code": "v160",
-              "what": "v161",
+              "code": "v186",
+              "what": "v187",
               "where": {
-                "appId": "v42",
-                "projectId": "v167",
-                "tier": "v163",
-                "operationId": "v169"
+                "appId": "v69",
+                "projectId": "v193",
+                "tier": "v189",
+                "operationId": "v195"
               },
               "rule": {
-                "source": "v59",
-                "code": "v165"
+                "source": "v67",
+                "code": "v191"
               },
               "next": {
-                "actor": "v158",
-                "action": "v166"
+                "actor": "v184",
+                "action": "v192"
               }
             },
             {
-              "code": "v160",
-              "what": "v161",
+              "code": "v186",
+              "what": "v187",
               "where": {
-                "appId": "v42",
-                "projectId": "v122",
-                "tier": "v163",
-                "operationId": "v170"
+                "appId": "v69",
+                "projectId": "v148",
+                "tier": "v189",
+                "operationId": "v196"
               },
               "rule": {
-                "source": "v59",
-                "code": "v165"
+                "source": "v67",
+                "code": "v191"
               },
               "next": {
-                "actor": "v158",
-                "action": "v166"
+                "actor": "v184",
+                "action": "v192"
               }
             },
             {
-              "code": "v160",
-              "what": "v161",
+              "code": "v186",
+              "what": "v187",
               "where": {
-                "appId": "v42",
-                "projectId": "v122",
-                "tier": "v163",
-                "operationId": "v171"
+                "appId": "v69",
+                "projectId": "v148",
+                "tier": "v189",
+                "operationId": "v197"
               },
               "rule": {
-                "source": "v59",
-                "code": "v165"
+                "source": "v67",
+                "code": "v191"
               },
               "next": {
-                "actor": "v158",
-                "action": "v166"
+                "actor": "v184",
+                "action": "v192"
               }
             }
           ],
           "projectIds": [
-            "v172",
-            "v43",
-            "v122"
+            "v198",
+            "v71",
+            "v148"
           ],
           "releaseOffer": {
-            "head": "v138",
-            "suggestion": "v173",
+            "head": "v164",
+            "suggestion": "v199",
             "summary": {
               "subjects": [],
               "total": 0,
@@ -1617,108 +1707,22 @@
               "changeCount": 0
             },
             "releaseTarget": {
-              "environmentId": "v122",
-              "createdAt": "v147",
+              "environmentId": "v148",
+              "createdAt": "v173",
               "target": {
-                "kind": "v146",
-                "projectId": "v122"
+                "kind": "v172",
+                "projectId": "v148"
               }
             },
             "gate": {
               "allow": false,
-              "reason": "v174"
+              "reason": "v200"
             },
             "inFlight": null
           },
           "rollouts": [
             {
-              "id": "v144",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v175",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v176",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v177",
-              "note": null,
-              "planned": true
-            }
-          ]
-        }
-      },
-      {
-        "key": "app:v178",
-        "value": {
-          "births": [],
-          "changes": [],
-          "contents": {
-            "empty": false,
-            "deletingProjectIds": []
-          },
-          "environments": [],
-          "id": "v178",
-          "intake": null,
-          "name": "v179",
-          "problems": [],
-          "projectIds": [
-            "v180",
-            "v181",
-            "v182",
-            "v183",
-            "v184"
-          ],
-          "releaseOffer": {
-            "head": "v185",
-            "suggestion": "v5",
-            "summary": {
-              "subjects": [
-                "v186",
-                "v187",
-                "v188",
-                "v189",
-                "v190",
-                "v191",
-                "v192",
-                "v193",
-                "v194"
-              ],
-              "total": 18209,
-              "more": 0,
-              "atLeast": false,
-              "changeCount": 9
-            },
-            "gate": {
-              "allow": false,
-              "reason": "v6"
-            },
-            "inFlight": null
-          },
-          "rollouts": [
-            {
-              "id": "v195",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v196",
-              "note": "v197",
-              "planned": true
-            },
-            {
-              "id": "v198",
-              "note": "v199",
-              "planned": true
-            },
-            {
-              "id": "v200",
+              "id": "v170",
               "note": null,
               "planned": true
             },
@@ -1736,52 +1740,12 @@
               "id": "v203",
               "note": null,
               "planned": true
-            },
-            {
-              "id": "v204",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v205",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v206",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v207",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v208",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v209",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v210",
-              "note": null,
-              "planned": true
-            },
-            {
-              "id": "v211",
-              "note": null,
-              "planned": true
             }
           ]
         }
       },
       {
-        "key": "app:v212",
+        "key": "app:v204",
         "value": {
           "births": [],
           "changes": [],
@@ -1789,17 +1753,141 @@
             "empty": false,
             "deletingProjectIds": []
           },
+          "createdAt": "v205",
           "environments": [],
-          "id": "v212",
+          "id": "v204",
           "intake": null,
-          "name": "v213",
+          "name": "v206",
           "problems": [],
           "projectIds": [
-            "v214"
+            "v207"
           ],
           "releaseOffer": {
-            "head": null,
-            "suggestion": "v5",
+            "head": "v208",
+            "suggestion": "v6",
+            "summary": {
+              "subjects": [
+                "v209",
+                "v210",
+                "v211",
+                "v212",
+                "v213",
+                "v214",
+                "v215",
+                "v216",
+                "v217"
+              ],
+              "total": 18209,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 9
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v7"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v218",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v219",
+              "note": "v220",
+              "planned": true
+            },
+            {
+              "id": "v221",
+              "note": "v222",
+              "planned": true
+            },
+            {
+              "id": "v223",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v224",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v225",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v226",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v227",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v228",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v229",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v230",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v231",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v232",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v233",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v234",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v235",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v236",
+          "environments": [],
+          "id": "v235",
+          "intake": null,
+          "name": "v237",
+          "problems": [],
+          "projectIds": [
+            "v238"
+          ],
+          "releaseOffer": {
+            "head": "v239",
+            "suggestion": "v240",
             "summary": {
               "subjects": [],
               "total": 0,
@@ -1809,7 +1897,7 @@
             },
             "gate": {
               "allow": false,
-              "reason": "v6"
+              "reason": "v7"
             },
             "inFlight": null
           },
@@ -1817,394 +1905,226 @@
         }
       },
       {
-        "key": "project:v31",
+        "key": "project:v33",
         "value": {
-          "appId": "v29",
+          "appId": "v30",
           "everSignedIn": {},
           "kind": "mate",
           "mate": {
-            "birthId": "v215",
-            "face": "v216",
-            "madeBy": "v76",
+            "birthId": "v241",
+            "face": "v242",
+            "madeBy": "v47",
             "standupRequestedBy": null,
-            "serviceId": "v217"
+            "serviceId": "v243",
+            "bornAt": "v244",
+            "state": "v245"
           },
-          "name": "v218",
+          "name": "v246",
           "person": {
             "chief": "mine",
-            "chiefProjectId": "v31",
+            "chiefProjectId": "v33",
+            "entry": "operates",
             "mine": true,
-            "ownerUserId": "v76",
+            "ownerUserId": "v47",
             "unseen": 0,
             "waitsOnViewer": true
           },
-          "projectId": "v31",
+          "projectId": "v33",
           "signedInNow": {}
         }
       },
       {
-        "key": "project:v172",
+        "key": "project:v198",
         "value": {
-          "appId": "v42",
+          "appId": "v69",
           "everSignedIn": {
-            "v219": "v76"
+            "v247": "v47"
           },
-          "kind": "mate",
-          "mate": {
-            "birthId": "v220",
-            "importProcessId": "v221",
-            "face": "v222",
-            "madeBy": "v76",
-            "standupRequestedBy": null,
-            "serviceId": "v223"
-          },
-          "name": "v224",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": 0,
-            "waitsOnViewer": true
-          },
-          "projectId": "v172",
-          "signedInNow": {
-            "v219": "v76"
-          }
-        }
-      },
-      {
-        "key": "project:v43",
-        "value": {
-          "appId": "v42",
-          "everSignedIn": {},
-          "kind": "stage",
-          "mate": null,
-          "name": "v225",
-          "person": {
-            "chiefProjectId": null,
-            "mine": false,
-            "ownerUserId": null,
-            "unseen": null,
-            "waitsOnViewer": false
-          },
-          "projectId": "v43",
-          "signedInNow": {}
-        }
-      },
-      {
-        "key": "project:v122",
-        "value": {
-          "appId": "v42",
-          "everSignedIn": {},
-          "kind": "production",
-          "mate": null,
-          "name": "v226",
-          "person": {
-            "chiefProjectId": null,
-            "mine": false,
-            "ownerUserId": null,
-            "unseen": null,
-            "waitsOnViewer": false
-          },
-          "projectId": "v122",
-          "signedInNow": {}
-        }
-      },
-      {
-        "key": "project:v4",
-        "value": {
-          "appId": "v2",
-          "everSignedIn": {},
-          "kind": "mate",
-          "mate": {
-            "face": "v227",
-            "madeBy": "v76",
-            "standupRequestedBy": null,
-            "serviceId": "v228"
-          },
-          "name": "v3",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": null,
-            "waitsOnViewer": false
-          },
-          "projectId": "v4",
-          "signedInNow": {}
-        }
-      },
-      {
-        "key": "project:v180",
-        "value": {
-          "appId": "v178",
-          "everSignedIn": {
-            "v229": "v76"
-          },
-          "kind": "mate",
-          "mate": {
-            "birthId": "v230",
-            "importProcessId": "v231",
-            "face": "v232",
-            "madeBy": "v76",
-            "standupRequestedBy": "v76",
-            "serviceId": "v233"
-          },
-          "name": "v234",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": 0,
-            "waitsOnViewer": true
-          },
-          "projectId": "v180",
-          "signedInNow": {
-            "v229": "v76"
-          }
-        }
-      },
-      {
-        "key": "project:v181",
-        "value": {
-          "appId": "v178",
-          "everSignedIn": {
-            "v229": "v76"
-          },
-          "kind": "mate",
-          "mate": {
-            "birthId": "v235",
-            "importProcessId": "v236",
-            "face": "v237",
-            "madeBy": "v76",
-            "standupRequestedBy": "v76",
-            "serviceId": "v238"
-          },
-          "name": "v239",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": 0,
-            "waitsOnViewer": true
-          },
-          "projectId": "v181",
-          "signedInNow": {
-            "v229": "v76"
-          }
-        }
-      },
-      {
-        "key": "project:v182",
-        "value": {
-          "appId": "v178",
-          "everSignedIn": {},
-          "kind": "mate",
-          "mate": {
-            "birthId": "v240",
-            "face": "v216",
-            "madeBy": "v76",
-            "standupRequestedBy": "v76",
-            "serviceId": "v241"
-          },
-          "name": "v242",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": 0,
-            "waitsOnViewer": false
-          },
-          "projectId": "v182",
-          "signedInNow": {}
-        }
-      },
-      {
-        "key": "project:v183",
-        "value": {
-          "appId": "v178",
-          "everSignedIn": {},
-          "kind": "mate",
-          "mate": {
-            "birthId": "v243",
-            "importProcessId": "v244",
-            "face": "v245",
-            "madeBy": "v76",
-            "standupRequestedBy": "v76",
-            "serviceId": "v246"
-          },
-          "name": "v247",
-          "person": {
-            "chiefProjectId": "v31",
-            "mine": true,
-            "ownerUserId": "v76",
-            "unseen": 0,
-            "waitsOnViewer": false
-          },
-          "projectId": "v183",
-          "signedInNow": {}
-        }
-      },
-      {
-        "key": "project:v184",
-        "value": {
-          "appId": "v178",
-          "everSignedIn": {},
           "kind": "mate",
           "mate": {
             "birthId": "v248",
             "importProcessId": "v249",
             "face": "v250",
-            "madeBy": "v76",
-            "standupRequestedBy": "v76",
-            "serviceId": "v251"
+            "madeBy": "v47",
+            "standupRequestedBy": null,
+            "serviceId": "v251",
+            "bornAt": "v244",
+            "state": "v245"
           },
           "name": "v252",
           "person": {
-            "chiefProjectId": "v31",
+            "chiefProjectId": "v33",
+            "entry": "operates",
             "mine": true,
-            "ownerUserId": "v76",
+            "ownerUserId": "v47",
             "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v198",
+          "signedInNow": {
+            "v247": "v47"
+          }
+        }
+      },
+      {
+        "key": "project:v71",
+        "value": {
+          "appId": "v69",
+          "everSignedIn": {},
+          "kind": "stage",
+          "mate": null,
+          "name": "",
+          "person": {
+            "chiefProjectId": null,
+            "entry": "operates",
+            "mine": false,
+            "ownerUserId": null,
+            "unseen": null,
             "waitsOnViewer": false
           },
-          "projectId": "v184",
+          "projectId": "v71",
           "signedInNow": {}
         }
       },
       {
-        "key": "project:v214",
+        "key": "project:v148",
         "value": {
-          "appId": "v212",
+          "appId": "v69",
+          "everSignedIn": {},
+          "kind": "production",
+          "mate": null,
+          "name": "",
+          "person": {
+            "chiefProjectId": null,
+            "entry": "operates",
+            "mine": false,
+            "ownerUserId": null,
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v148",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v5",
+        "value": {
+          "appId": "v2",
           "everSignedIn": {},
           "kind": "mate",
           "mate": {
             "face": "v253",
-            "madeBy": "v76",
+            "madeBy": "v47",
             "standupRequestedBy": null,
-            "serviceId": null
+            "serviceId": "v254",
+            "bornAt": "v244",
+            "state": "v255"
           },
-          "name": "v213",
+          "name": "v4",
           "person": {
-            "chiefProjectId": "v31",
+            "chiefProjectId": "v33",
+            "entry": "operates",
             "mine": true,
-            "ownerUserId": "v76",
+            "ownerUserId": "v47",
             "unseen": null,
             "waitsOnViewer": false
           },
-          "projectId": "v214",
+          "projectId": "v5",
           "signedInNow": {}
         }
       },
       {
-        "key": "press:v182",
+        "key": "project:v207",
         "value": {
+          "appId": "v204",
+          "everSignedIn": {
+            "v256": "v47"
+          },
           "kind": "mate",
-          "appId": "v178",
-          "held": false
-        }
-      },
-      {
-        "key": "lifecycle:v254",
-        "value": {
-          "requestId": "v254",
-          "intent": {
-            "kind": "prepare-mate-deletion",
-            "orgId": "v255",
-            "hqProjectId": "v256",
-            "projectId": "v257"
+          "mate": {
+            "birthId": "v257",
+            "importProcessId": "v258",
+            "face": "v259",
+            "madeBy": "v47",
+            "standupRequestedBy": "v47",
+            "serviceId": "v260",
+            "bornAt": "v244",
+            "state": "v245"
           },
-          "at": "2026-10-26T17:47:20.490Z",
-          "result": {
-            "keyTokenId": null,
-            "completion": "v258"
+          "name": "v261",
+          "person": {
+            "chiefProjectId": "v33",
+            "entry": "operates",
+            "mine": true,
+            "ownerUserId": "v47",
+            "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v207",
+          "signedInNow": {
+            "v256": "v47"
           }
         }
       },
       {
-        "key": "lifecycle:v259",
+        "key": "project:v238",
         "value": {
-          "requestId": "v259",
-          "intent": {
-            "kind": "prepare-mate-deletion",
-            "orgId": "v255",
-            "hqProjectId": "v59",
-            "projectId": "v260"
+          "appId": "v235",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "face": "v262",
+            "madeBy": "v47",
+            "standupRequestedBy": null,
+            "serviceId": null,
+            "bornAt": "v244",
+            "state": "v263"
           },
-          "at": "2026-10-26T19:01:56.177Z",
-          "result": {
-            "keyTokenId": "v261",
-            "completion": "v262"
-          }
+          "name": "v237",
+          "person": {
+            "chiefProjectId": "v33",
+            "entry": "operates",
+            "mine": true,
+            "ownerUserId": "v47",
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v238",
+          "signedInNow": {}
         }
       },
       {
-        "key": "lifecycle:v263",
+        "key": "project:v55",
         "value": {
-          "requestId": "v263",
-          "intent": {
-            "kind": "complete-mate-deletion",
-            "orgId": "v255",
-            "hqProjectId": "v59",
-            "projectId": "v260",
-            "preparedRequestId": "v259",
-            "completion": "v262"
+          "appId": "v44",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v45",
+            "face": "v46",
+            "madeBy": "v47",
+            "standupRequestedBy": null,
+            "serviceId": null,
+            "bornAt": "v244",
+            "state": "v264"
           },
-          "at": "2026-10-26T19:02:12.326Z"
-        }
-      },
-      {
-        "key": "lifecycle:v264",
-        "value": {
-          "requestId": "v264",
-          "intent": {
-            "kind": "prepare-mate-deletion",
-            "orgId": "v255",
-            "hqProjectId": "v59",
-            "projectId": "v265"
+          "name": "v48",
+          "person": {
+            "chiefProjectId": "v33",
+            "entry": "operates",
+            "mine": true,
+            "ownerUserId": "v47",
+            "unseen": null,
+            "waitsOnViewer": false
           },
-          "at": "2026-10-26T19:35:26.539Z",
-          "result": {
-            "keyTokenId": "v266",
-            "completion": "v267"
-          }
-        }
-      },
-      {
-        "key": "lifecycle:v268",
-        "value": {
-          "requestId": "v268",
-          "intent": {
-            "kind": "complete-mate-deletion",
-            "orgId": "v255",
-            "hqProjectId": "v59",
-            "projectId": "v265",
-            "preparedRequestId": "v264",
-            "completion": "v267"
-          },
-          "at": "2026-10-26T19:35:42.473Z"
-        }
-      },
-      {
-        "key": "lifecycle:v269",
-        "value": {
-          "requestId": "v269",
-          "intent": {
-            "kind": "remove-production",
-            "orgId": "v255",
-            "projectId": "v270",
-            "appId": "v271",
-            "deleteProject": false
-          },
-          "at": "2026-11-10T02:17:22.364Z",
-          "productionRemoval": {
-            "deleteProject": false
-          }
+          "projectId": "v55",
+          "signedInNow": {}
         }
       },
       {
         "key": "auto-update-policy",
         "value": {
-          "orgId": "v255",
+          "orgId": "v265",
           "enabled": true,
           "revision": 0
         }
@@ -2212,7 +2132,7 @@
       {
         "key": "persona-templates",
         "value": {
-          "orgId": "v255",
+          "orgId": "v265",
           "templates": []
         }
       }

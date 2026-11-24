@@ -1,6 +1,12 @@
 import { readBirthIntent } from "../../zerops/birthIntent.ts";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
-import type { HqBirth, HqBirthOffer, HqBirthState } from "../../zerops/hq/client.ts";
+import {
+  HQ_BIRTH_LEFT,
+  type HqBirth,
+  type HqBirthLeft,
+  type HqBirthOffer,
+  type HqBirthState,
+} from "../../zerops/hq/client.ts";
 import { hqMateOffers } from "../../zerops/hq/placement.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
@@ -57,6 +63,23 @@ export function birthOffersFor(
   );
 }
 
+/**
+ * Whether a birth's Delete is drawn and not pressable: its operation runs, HQ offers no Delete
+ * meanwhile, and the person holds the Mate's record, so its project's deletion comes to them when
+ * the operation ends or waits for its maker.
+ */
+export function birthDeleteHeld(
+  birth: { readonly state: HqBirthState; readonly offers: ReadonlyArray<HqBirthOffer> },
+  editRecord: boolean,
+): boolean {
+  return (
+    birth.state === "running" &&
+    editRecord &&
+    !birth.offers.includes("delete") &&
+    !birth.offers.includes("delete_project")
+  );
+}
+
 export interface SharedBirth {
   readonly id: string;
   readonly appId: string;
@@ -65,6 +88,11 @@ export interface SharedBirth {
   readonly madeBy?: string;
   readonly chief?: boolean;
   readonly adopted?: true;
+  /**
+   * What an adopted birth's attempt may have written to the project, which its Delete leaves, in
+   * HQ's order (`births[].left`); absent for any other birth.
+   */
+  readonly left?: ReadonlyArray<HqBirthLeft>;
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   readonly intent: ReturnType<typeof readBirthIntent>;
@@ -75,6 +103,8 @@ export interface SharedBirth {
   readonly state: HqBirthState;
   /** HQ's offers this person's live permission allows (`birthOffersFor`). */
   readonly offers: ReadonlyArray<HqBirthOffer>;
+  /** Delete is drawn and not pressable until HQ offers it (`birthDeleteHeld`). */
+  readonly deleteHeld?: true;
   /** Its operation's failure as HQ sent it; absent while it has none. */
   readonly failure?: NonNullable<HqBirth["operation"]["failure"]>;
 }
@@ -145,12 +175,20 @@ export const sharedBirths: Projection<
           ...(birth.chief === undefined ? {} : { chief: birth.chief }),
           projectId,
           ...(birth.adopted === true ? { adopted: true as const } : {}),
+          ...(birth.left === undefined
+            ? {}
+            : {
+                left: birth.left.filter((left): left is HqBirthLeft =>
+                  (HQ_BIRTH_LEFT as ReadonlyArray<string>).includes(left),
+                ),
+              }),
           importProcessId: birth.importProcessId ?? null,
           intent: readBirthIntent(birth.intent),
           startedAt: Date.parse(birth.operation.acceptedAt),
           progress,
           state: birth.state,
           offers: birthOffersFor(birth.offers, { addMate: authorized, editRecord }),
+          ...(birthDeleteHeld(birth, editRecord) ? { deleteHeld: true as const } : {}),
           ...(birth.operation.failure === undefined ? {} : { failure: birth.operation.failure }),
         };
       }),

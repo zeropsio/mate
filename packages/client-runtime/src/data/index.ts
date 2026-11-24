@@ -160,7 +160,14 @@ export {
   type SharedBirth,
   type SharedBirthState,
 } from "./projections/birthProgress.ts";
-export { operationFailureDetails, operationFailureWords } from "./projections/operationFailure.ts";
+export {
+  accessLostLine,
+  operationFailureDetails,
+  operationFailureWords,
+  platformErrorLine,
+  waitingPress,
+  type WaitingPress,
+} from "./projections/operationFailure.ts";
 export { hqOperationOf, type HqOperationStanding } from "./projections/hqOperation.ts";
 export {
   mateDeletionOf,
@@ -237,6 +244,7 @@ export {
   hqMateOverviewAtom,
   hqMateRefusalAtom,
   hqMateAnsweredAtom,
+  hqMateLinkAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,

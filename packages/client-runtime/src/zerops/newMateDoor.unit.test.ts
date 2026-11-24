@@ -185,6 +185,7 @@ it("ZV29: A project's Mates are its listed Mates in the listing's order, then th
   }
 
   const mates = newMateDoorMates({
+    birthOn: () => false,
     environments: [
       listed("cleo-project", "mate", "Cleo"),
       listed("stage-project", "stage"),
@@ -201,4 +202,28 @@ it("ZV29: A project's Mates are its listed Mates in the listing's order, then th
     { projectId: "beviro-project", name: "beviro-project" },
     { projectId: "wren-project", name: "Wren" },
   ]);
+});
+
+// witness: packages/client-runtime/src/zerops/newMateDoor.ts | const working = mates.filter((mate) => mate.noContainer !== true); → const working = mates;
+it("ZV166: The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running", () => {
+  const item = {
+    key: "p",
+    group: "unavailable",
+    missingContainer: true,
+    project: {
+      id: "p",
+      name: "Quinn",
+      hq: { appId: "a", appName: "Shop", kind: "mate", mate: { face: "" } },
+    },
+  } as unknown as ZeropsCandidate;
+  const door = (birthOn: (projectId: string) => boolean) =>
+    newMateDoor({
+      ...doorInput,
+      mates: newMateDoorMates({ environments: [{ item }], pending: [], birthOn }),
+    });
+  expect(door(() => false)).toMatchObject({ kind: "closed", action: undefined });
+  expect(door(() => true)).toMatchObject({
+    kind: "closed",
+    action: { kind: "mate", projectId: "p" },
+  });
 });

@@ -38,7 +38,8 @@ const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
   not_project_reader: "You have no access to this Zerops project.",
   not_mate_operator: "You need more than Read access to this Mate's Zerops project.",
   app_not_seen: "You have no access to that project.",
-  cannot_create_projects: "Your Zerops membership does not allow creating projects.",
+  cannot_create_projects:
+    "Your Zerops membership does not allow adding Mates or creating projects.",
   not_structure_writer: "Only an owner or admin of the organization can do this.",
   not_project_admin: "You need Admin access to this Zerops project.",
   not_own_new_mate:

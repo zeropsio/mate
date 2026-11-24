@@ -58,6 +58,8 @@ interface ZeropsEnvironmentCreationFormProps {
    * production's suggested after its project and role (`proposedEnvironmentName`).
    */
   readonly defaultName: string;
+  /** The name an Add started over was asked with (`ZeropsNewMateForm`). */
+  readonly askedName?: string | undefined;
   /** Another name free on the account, for a Mate's die (`ZeropsNewMateForm`). */
   readonly proposeAnotherName?: ((current: string) => string) | undefined;
   readonly defaultWithAgent: boolean;
@@ -113,6 +115,7 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
   const { defaultTintFor, defaultShapeFor, closed, onDoorAction, onCancel, onCreate } = props;
   return (
     <ZeropsNewMateForm
+      askedBotName={props.askedName}
       closed={closed}
       defaultBotName={defaultName}
       defaultShapeFor={defaultShapeFor}

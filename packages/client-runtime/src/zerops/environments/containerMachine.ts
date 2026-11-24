@@ -27,6 +27,8 @@
  *   it overdue on the clock. Where nothing in this tab reads it and no verb of ours holds it, HQ
  *   saying online ends the claim that it is coming up: it is not read yet (`unknown`), as in a
  *   tab loaded since, so no claim nobody here could end is held.
+ * - A Mate HQ says is `coming` has no server to ask: nothing reads its container until HQ says it
+ *   linked, and that word reads it once.
  * - A restart its Mate announced (`restarting(announced)`) begins where the platform and our verbs
  *   leave the level to the reads and no socket of this tab holds the Mate: on HQ saying its Mate is
  *   restarting, or on this tab's socket closed as a planned restart (`1012`). It ends as the
@@ -149,7 +151,8 @@ export interface ContainerMachine {
  * HQ's presence for a Mate: one of its links is open (`live`), it announced a restart HQ holds its
  * place through (`restarting`), or neither (`offline`).
  */
-export type HqPresence = "live" | "restarting" | "offline";
+/** `coming`: an open birth holds the project and its Mate has not linked yet. */
+export type HqPresence = "live" | "restarting" | "offline" | "coming";
 
 export type ContainerEvent =
   | { readonly type: "PLATFORM"; readonly status: PlatformStatus }
@@ -263,7 +266,7 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
  * waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
  */
 export const probeCadence = (machine: ContainerMachine, watched = false): ProbeCadence => {
-  if (platformSaysDown(machine)) return { kind: "none" };
+  if (machine.hq === "coming" || platformSaysDown(machine)) return { kind: "none" };
   if (hqReadsWayUp(machine)) return ON_DEMAND;
   switch (machine.state.level) {
     case "booting":
@@ -735,6 +738,7 @@ const hear = (machine: ContainerMachine, presence: HqPresence | null, now: Insta
   }
   switch (presence) {
     case "offline":
+    case "coming":
       // Its grace ended without it: the readings say what it is, as if none was announced.
       return settleLevel(moveTo(next, { level: "unknown" }), now);
     case "live":
@@ -872,7 +876,7 @@ export function transitionContainer(
     event.type === "HQ" &&
     event.presence === "live" &&
     machine.hq !== "live" &&
-    hqReadsWayUp(next) &&
+    (machine.hq === "coming" || hqReadsWayUp(next)) &&
     !platformSaysDown(next) &&
     !effects.some((effect) => effect.kind === "probe")
   ) {

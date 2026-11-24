@@ -177,7 +177,7 @@ export function useNewProjectAnswer(): NewProjectAnswer {
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const taken = useTakenBotNames();
-  // Free among the names read by then; a clash read later is refused by name.
+  // Only a first candidate: the form offers it once every name is read and it is still free.
   const [defaultBotName] = useState(() =>
     generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );

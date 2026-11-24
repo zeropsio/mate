@@ -5,7 +5,7 @@ import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { makeAccountStore } from "../store.ts";
-import { birthOffersFor, birthProgressOf, sharedBirths } from "./birthProgress.ts";
+import { birthDeleteHeld, birthOffersFor, birthProgressOf, sharedBirths } from "./birthProgress.ts";
 const plan = {
   projectName: "Shop - Ada",
   recipe: { kind: "none" },
@@ -60,6 +60,21 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
   ] as const;
   expect(examples.map(({ offers, person }) => birthOffersFor(offers, person))).toEqual(
     examples.map(({ offered }) => offered),
+  );
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.state === "running" && → birth.state !== "failed" &&
+it("PJ144: A running birth HQ offers no Delete holds Delete, drawn and not pressable, for a person HQ offers its Mate's record and for nobody else; breaks: a new Mate has no menu while it comes up, or one that failed promises a Delete that never comes", () => {
+  const examples = [
+    { state: "running", offers: [], editRecord: true, held: true },
+    { state: "running", offers: [], editRecord: false, held: false },
+    { state: "running", offers: ["delete"], editRecord: true, held: false },
+    { state: "waiting_for_maker", offers: ["continue"], editRecord: true, held: false },
+    { state: "failed", offers: [], editRecord: true, held: false },
+    { state: "awaiting_link", offers: ["delete_project"], editRecord: true, held: false },
+  ] as const;
+  expect(examples.map((birth) => birthDeleteHeld(birth, birth.editRecord))).toEqual(
+    examples.map(({ held }) => held),
   );
 });
 
@@ -166,6 +181,38 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
   expect(registry.get(read).open).toMatchObject([
     { id: "birth", adopted: true, offers: ["delete"] },
+  ]);
+  stop();
+  store.close();
+  registry.dispose();
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | (HQ_BIRTH_LEFT as ReadonlyArray<string>).includes(left), → left !== "",
+it("PJ137: An adopted birth carries what HQ says its attempt left in the project, in HQ's order, reading past a thing this build does not know, and a birth HQ names nothing of carries nothing; breaks: the Delete dialog names a thing HQ never said, or drops the Mate key HQ now refuses", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+    store.dispatch,
+  );
+  membershipInputs("OWNER").forEach(store.dispatch);
+  const adopted = {
+    ...running,
+    projectId: "p1",
+    adopted: true,
+    left: ["zcp_service", "mate_key", "service_accounts", "mate_tag", "zcp_enabled"],
+  };
+  const made = { ...running, id: "made" };
+  seedHqNavigation(store, ORG, {
+    structure: {
+      apps: [{ id: "app", name: "Shop", projects: [], births: [adopted, made] }],
+      ungrouped: [],
+    },
+  });
+  const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+  const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+  expect(registry.get(read).open.map(({ id, left }) => ({ id, left }))).toEqual([
+    { id: "birth", left: ["zcp_service", "mate_key", "mate_tag", "zcp_enabled"] },
+    { id: "made", left: undefined },
   ]);
   stop();
   store.close();

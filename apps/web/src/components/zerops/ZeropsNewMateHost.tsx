@@ -18,6 +18,7 @@
  * It also keeps a new Mate's conversation read while that view hands over to it, so the route
  * changing under the person paints the view's last frame, never a loading pane.
  */
+import { useSharedBirths } from "~/zerops/sharedBirths";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -159,6 +160,7 @@ function NewMateDialog({
   // Who sets the project up and writes its recipe: its Mates, listed and coming — one waiting for
   // the viewer's sign-in says so.
   const awaitsYourSignIn = useAwaitsYourSignIn(candidates);
+  const births = useSharedBirths();
   const mates = useMemo(
     () =>
       entry === undefined
@@ -167,14 +169,14 @@ function NewMateDialog({
             environments: entry.environments,
             pending: entry.group.pending,
             awaitsYourSignIn,
+            birthOn: (projectId) => births.some((birth) => birth.projectId === projectId),
           }),
-    [awaitsYourSignIn, entry],
+    [awaitsYourSignIn, births, entry],
   );
   const openMate = useOpenMate();
-  // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash
-  // if one turns up.
-  const [defaultBotName] = useState(
-    () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  // Only a first candidate: the form offers it once every name is read and it is still free.
+  const [defaultBotName] = useState(() =>
+    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
   const dismiss = useNewMateDialog((state) => state.dismiss);
   const navigate = useNavigate();
@@ -334,6 +336,7 @@ function NewMateDialog({
       {...(forecast === undefined ? {} : { forecast })}
       closed={closed}
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
+      askedName={again?.botName}
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
         again?.botName !== undefined && name === again.botName

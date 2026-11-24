@@ -49,6 +49,8 @@ export interface StreamFault {
    * {@link StreamState.defects}, which no baseline resets.
    */
   readonly defect?: true;
+  /** The owner said the thing read no longer exists and never returns: no retry asks it again. */
+  readonly final?: true;
 }
 
 export type NextAction =
@@ -410,6 +412,7 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
     };
   if (state.phase === "refused" || state.phase === "unsupported")
     return state.phase === "refused" &&
+      state.fault?.final !== true &&
       (event.kind === "manual-retry" || event.kind === "input-changed")
       ? attempt({ ...state, failures: 0, repaired: false, fault: null }, now)
       : settle(state);

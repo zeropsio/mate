@@ -7,6 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
+import { ZeropsMateVerb } from "../ZeropsMateCard";
 import { FileIcon, GlobeIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
@@ -821,6 +822,7 @@ function GoingLive({
                 Putting it live gives {name} a production of its own: its own address, and every
                 release after it.
                 {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
+                {production.unlock === undefined ? null : ` ${production.unlock}`}
               </p>
             </div>
             {production.add ? (
@@ -939,6 +941,7 @@ function ProjectMates<T>({
   readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
+  const setUps = props.setUpMate?.(entry) ?? [];
   const draw = (mate: FlowMateEntry<T>) =>
     mate.kind === "coming" ? (
       <ComingMate
@@ -967,6 +970,14 @@ function ProjectMates<T>({
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
+        {setUps.map((setUp) => (
+          <ZeropsMateVerb
+            disabled={setUp.disabled}
+            key={setUp.key}
+            label={setUp.label}
+            onClick={setUp.onPress}
+          />
+        ))}
         {addMateHidden ? null : (
           <AddMateCard
             alone={mates.length === 0}

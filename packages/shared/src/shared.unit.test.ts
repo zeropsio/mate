@@ -31,11 +31,10 @@ import {
   VECTOR_PROJECT_ID,
   VECTOR_USER_ID,
   permissionVectors,
-  roleAnswerVectors,
   type PermissionCall,
 } from "./zeropsPermissions.vectors.ts";
-import { organizationOffers } from "./zeropsOffers.ts";
-import { mayCreateProjects, projectReach, zeropsRoleAnswer } from "./zeropsRoles.ts";
+import { organizationOffers, placementOffers } from "./zeropsOffers.ts";
+import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
 
@@ -293,50 +292,6 @@ it("SH6: Every verb the rule decides answers each organization role, project ove
   }
 });
 
-// witness: packages/shared/src/zeropsRoles.ts | : "hidden"; → : "listed";
-it("SH7: The role function opens a Mate from Basic user up, lists it to a read-only person and hides it below that or from anyone not an active member, by the project's override over the organization role, and names no other project as a Mate", () => {
-  for (const vector of roleAnswerVectors) {
-    const { header, rows } = readGrid(vector.grid);
-    expect(header, vector.name).toEqual([
-      "role",
-      "status",
-      "active",
-      "canCreate",
-      ...PROJECT_COLUMNS,
-    ]);
-    expect([...rows.keys()], vector.name).toEqual(gridRows.map((row) => row.join(" ")));
-    for (const [orgRole, status] of gridRows) {
-      const answers = PROJECT_COLUMNS.map((column) =>
-        zeropsRoleAnswer({
-          person: {
-            id: VECTOR_USER_ID,
-            orgRole,
-            status,
-            canCreateProjects: vector.canCreateProjects,
-          },
-          overrides: column === "gone" || column === "none" ? {} : { [VECTOR_PROJECT_ID]: column },
-          registry: {
-            groups: [
-              {
-                id: "G",
-                projects: column === "gone" ? [] : [{ id: VECTOR_PROJECT_ID, kind: vector.kind }],
-              },
-            ],
-          },
-        }),
-      );
-      const [active, canCreate, ...cells] = rows.get(`${orgRole} ${status}`) ?? [];
-      expect(answers, `${vector.name}: ${orgRole} ${status}`).toEqual(
-        cells.map((cell) => ({
-          active: active === "true",
-          canCreate: canCreate === "true",
-          mates: cell === "absent" ? {} : { [VECTOR_PROJECT_ID]: cell },
-        })),
-      );
-    }
-  }
-});
-
 // witness: packages/shared/src/zeropsOffers.ts | stop_task: structure, → stop_task: createAppPermission(facts),
 it("SH8: Setting the automated Mates' key, stopping a task and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read", () => {
   const verbs = ["add_automated_mate", "stop_task", "origin_remote"];
@@ -454,4 +409,28 @@ it("SH4: The theme defines every colour role in both appearances at full alpha, 
   }
   // The light placeholder is read on its input; the dark one is the Zerops exclusion.
   expect(contrastRatio(light.placeholder, light.input)).toBeGreaterThanOrEqual(4.5);
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | return attachPermission(facts, { projectId, projectIds, kind: "mate", held, slotTaken: false }); → return adds;
+it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits: who may create projects and owns the project's attach, an owner or admin of the organization or an Admin grant on it; breaks: a Basic user presses it and HQ refuses, or an Admin has no way to set it up", () => {
+  const table = [
+    ["OWNER", false, undefined, "allowed"],
+    ["ADMIN", true, undefined, "allowed"],
+    ["BASIC_USER", false, undefined, "cannot_create_projects"],
+    ["BASIC_USER", true, undefined, "not_own_new_mate"],
+    ["BASIC_USER", true, "ADMIN", "allowed"],
+  ] as const;
+  for (const [roleCode, canCreateProjects, override, want] of table) {
+    const facts: PermissionFacts = {
+      member: { roleCode, status: "ACTIVE", canCreateProjects },
+      project: (id) => (id === "p" ? (override === undefined ? {} : { override }) : undefined),
+    };
+    const can = placementOffers(facts, { projectId: "p", kind: "mate" }, { projectIds: ["p"] });
+    const said = hqOffer(can, "set_up");
+    expect([roleCode, override, said.kind === "refused" ? said.reason : said.kind]).toEqual([
+      roleCode,
+      override,
+      want,
+    ]);
+  }
 });

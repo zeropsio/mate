@@ -1,10 +1,14 @@
 import {
+  accessLostLine,
   birthStopped,
   operationFailureWords,
+  platformErrorLine,
+  waitingPress,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
   type SharedBirthState,
+  type WaitingPress,
 } from "@t3tools/client-runtime/data";
 import { readMateFace, type ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import { useAtomValue } from "@effect/atom-react";
@@ -28,7 +32,7 @@ const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
 
 const FAILURE_STEP = {
   create: "Creating project",
-  watch: "Waiting for project",
+  watch: "Setting up project",
   access: "Granting project access",
   settings: "Updating project settings",
   key: "Creating project key",
@@ -55,6 +59,10 @@ export function sharedBirthPresentation(birth: SharedBirth): {
   /** It stopped, or what Zerops shows of its import or container needs a look. */
   readonly attention: boolean;
   readonly actions: ReadonlyArray<"continue-operation" | "delete">;
+  /** It waits for its maker's Continue, which HQ does not offer the person reading. */
+  readonly waitsOnMaker: boolean;
+  /** The word on its Continue's button, by what it waits on. */
+  readonly press: WaitingPress;
 } {
   const { phase, next, reason } = birth.progress;
   const stopped = birthStopped(birth.state);
@@ -65,13 +73,25 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "import-accepted": "Import accepted",
     "container-starting": "Container starting",
   }[phase];
+  const waits = birth.state === "waiting_for_maker";
+  const platformError =
+    birth.failure === undefined
+      ? null
+      : platformErrorLine(
+          birth.failure,
+          waits ? (continues ? "continue" : "maker-continues") : "ended",
+        );
   const waiting =
-    birth.state === "waiting_for_maker"
+    waits && birth.failure?.code === "token_expired"
       ? continues
         ? WAITS_FOR_MAKER.maker
         : WAITS_FOR_MAKER.other
       : null;
+  const accessLost =
+    waits && birth.failure !== undefined ? accessLostLine(birth.failure, continues) : null;
   const failure =
+    platformError ??
+    accessLost ??
     waiting ??
     (birth.failure === undefined
       ? null
@@ -102,6 +122,8 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         : [phaseLine, detail].filter((part) => part !== null).join(" · ")),
     stopped,
     attention,
+    waitsOnMaker: waits && !continues,
+    press: waitingPress(birth.failure?.code ?? ""),
     actions: [
       ...(continues ? ["continue-operation" as const] : []),
       ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")
@@ -121,7 +143,7 @@ export function comingOfBirth(birth: SharedBirth): MateComing {
   return {
     kind: "coming",
     line: shown.row,
-    birth: { attention: shown.attention },
+    birth: { attention: shown.attention, ...(shown.waitsOnMaker ? { waitsOnMaker: true } : {}) },
     since: birth.startedAt,
   };
 }

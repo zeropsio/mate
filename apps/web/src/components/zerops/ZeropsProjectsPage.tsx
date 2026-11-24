@@ -60,7 +60,7 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { MateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
 import {
@@ -170,6 +170,7 @@ import {
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { environmentSetupStep, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newMateRecipeChange } from "@t3tools/client-runtime/zerops/newMateDoor";
@@ -231,14 +232,17 @@ import {
   type ZeropsRowInput,
   connectFailureLine,
   deriveZeropsRowAction,
+  setUpMateEffect,
   setUpMateVerb,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
   mateCardHoldsMenu,
+  mateCardPress,
   mateLineHoldsVerb,
   mateRowCan,
   plainEvidenceOf,
+  plainSetUpCandidates,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
@@ -942,11 +946,11 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do on each project row, as the tree carries it from live Zerops data
-  // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
+  // Whether each project row opens for this person, as the tree carries HQ's `person.entry`. A
+  // `listed` row is shown, never opened; one not judged yet is not held back.
   const menuTree = useAtomValue(menuTreeAtom);
   const visibilities = useMemo(() => menuMateVisibilities(menuTree), [menuTree]);
-  const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
+  const visibilityOf = (candidate: ZeropsCandidate): MateVisibility | undefined =>
     visibilities.get(candidate.project.id);
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
@@ -1009,7 +1013,7 @@ export function ZeropsProjectsContent({
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(mateOffersOf(candidate.project.id)),
+      can: mateRowCan(mateOffersOf(candidate.project.id), stateOf(candidate).operates),
       plainEvidence,
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
@@ -2140,7 +2144,7 @@ export function ZeropsProjectsContent({
           parts={parts}
           key={candidate.key}
           name={name}
-          onOpen={select}
+          onOpen={layout === "page-card" ? mateCardPress(action, select) : select}
           // Its card's Vault door, on its project's page: the page's one drawer, on its own values,
           // told to the Mate where it is connected.
           onVault={
@@ -2529,6 +2533,25 @@ export function ZeropsProjectsContent({
                 }
               : undefined;
         }}
+        // HQ's Set up Mate on a project with no Mate's row to wear it; the confirmation is the row's.
+        setUpMate={({ group }) => {
+          const offered = plainSetUpCandidates(candidates, group.groupId);
+          return offered.map((candidate) => {
+            const verb = setUpMateVerb({ candidateKey: candidate.key, settingUpKey });
+            return {
+              key: candidate.key,
+              disabled: verb.disabled,
+              // Two on one card are told apart by their project.
+              label:
+                offered.length > 1
+                  ? `${verb.label} in ${projectNameInApp(candidate.project)}`
+                  : verb.label,
+              onPress: () => {
+                setConfirmingSetUp(candidate);
+              },
+            };
+          });
+        }}
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
         // A person who only reads is offered none (`addMateDoor`): not theirs to want.
@@ -2636,6 +2659,7 @@ export function ZeropsProjectsContent({
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (
         <ZeropsSetUpMateDialog
+          effect={setUpMateEffect(confirmingSetUp)}
           name={projectNameInApp(confirmingSetUp.project)}
           onCancel={() => setConfirmingSetUp(null)}
           onConfirm={() => {
@@ -2792,6 +2816,19 @@ export function ZeropsProjectsContent({
                         },
                       }
                     : {}),
+                  ...(() => {
+                    const end = endOperationIntent(standing, activeOrganization.id, group.groupId);
+                    return end === undefined
+                      ? {}
+                      : {
+                          onEnd: () => {
+                            void operations.submit(end).then(({ progress, evidence }) => {
+                              const said = writeTrouble(progress, evidence);
+                              if (said !== null) setToolError(said);
+                            });
+                          },
+                        };
+                  })(),
                 })}
             phase={operation.phase}
             standing={standing}

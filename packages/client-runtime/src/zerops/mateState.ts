@@ -7,12 +7,8 @@
  * platform write the platform refuses from the person's role, or an HQ write HQ refuses, is never
  * drawn: an offer that fails afterwards turns a permission into an error message.
  */
-import {
-  isMateKind,
-  projectReach,
-  type RoleMateVisibility,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
+import { isMateKind, projectReach, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import type { MateVisibility } from "./mateAccess.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import type { ZeropsCandidate } from "./candidates.ts";
@@ -31,8 +27,8 @@ export interface MateContainerLevel {
 export interface MateViewerFacts {
   /** Their effective role on its project (`resolveMateProjectRole`). */
   readonly role: ZeropsOrgRole;
-  /** Whether they may see or open it (`mateVisibility`); absent while it is not judged. */
-  readonly visibility: RoleMateVisibility | undefined;
+  /** Whether it opens for them, as HQ says (`person.entry`); absent while it is not judged. */
+  readonly visibility: MateVisibility | undefined;
   /** HQ's offers of its record and its place (`hqMateOffers`); absent while HQ has not said. */
   readonly offers: HqMateOfferStates | undefined;
   /** An owner or admin of the organization, who hands Mates over (`handsOverMates`). */
@@ -98,6 +94,11 @@ export interface MateState {
   /** HQ's current placement holds no record of it, and nothing is bringing it up. */
   readonly outsideHq: boolean;
   /**
+   * Whether the viewer may run its Zerops verbs (Enable, Start, Restart, Redeploy): their role works
+   * there and, on a project HQ places, HQ's entry opens it. Before HQ's first answer, nobody.
+   */
+  readonly operates: boolean;
+  /**
    * What its menu holds: nothing (`none`), its shared birth's own entries (`birth`), Delete alone
    * while it comes up (`setup`), or its verbs (`verbs`).
    */
@@ -154,9 +155,17 @@ export function mateState(facts: MateFacts): MateState {
     candidate.project.hq === undefined &&
     candidate.service !== undefined &&
     facts.arrival === "none";
+  const reach = viewer === null ? null : projectReach(viewer.role);
+  const mayWork = reach === "work" || reach === "administer";
+  const operates =
+    viewer !== null &&
+    (candidate.project.hq === undefined
+      ? facts.placementKnown && mayWork
+      : mayWork && viewer.visibility === "open");
   const state = (menu: MateState["menu"], verbs: MateVerbs = NO_VERBS): MateState => ({
     deleting,
     outsideHq,
+    operates,
     menu,
     verbs,
   });
@@ -165,13 +174,6 @@ export function mateState(facts: MateFacts): MateState {
   if (facts.arrival === "birth") return state("birth");
   if (outsideHq) return state("none");
 
-  const reach = viewer === null ? null : projectReach(viewer.role);
-  // A Mate the person may see but not open offers nothing that operates it.
-  const operates =
-    viewer !== null &&
-    viewer.visibility !== "listed" &&
-    viewer.visibility !== "hidden" &&
-    (reach === "work" || reach === "administer");
   const record =
     viewer?.offers?.held === true && isMateKind(heldOf(candidate.project))
       ? viewer.offers

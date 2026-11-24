@@ -1,13 +1,10 @@
 /**
- * The app's own lazy surfaces (routes, the conversation, its panels, the review), loaded once the
- * page has settled, so a deploy that removes this build's chunks never reaches a person's click.
- *
- * Each deploy replaces the whole bundle (`staleChunk.ts`): a tab open across a deploy that opens a
- * surface it has not opened yet asks for a chunk the host no longer has, and the only recovery is a
- * reload that takes the page away behind the click. A module once imported stays in the page's
- * module map, and a later `import()` of it is answered from there with no request: warmed, the tab
- * keeps working on its own build however many deploys pass. Content renderers (syntax grammars,
- * diagrams, image decoders) are not surfaces and stay on demand; they recover in place.
+ * The lazy surfaces of what this page opened (the conversation's panels, a review), loaded once
+ * the page has settled, so opening one answers on the click's own commit. Routes and the
+ * conversation itself are never warmed: every page load would then fetch and evaluate the whole
+ * app. An open tab keeps the chunks of its build through the app-shell worker's asset cache, and a
+ * chunk a later deploy removed recovers by the guarded reload (`staleChunk.ts`). Content renderers
+ * (syntax grammars, diagrams, image decoders) stay on demand; they recover in place.
  *
  * One at a time, each in an idle slice, after the page's first seconds: warming never competes
  * with what the person waits on. A surface that registers while warming (the conversation's
@@ -125,17 +122,17 @@ function makeChunkWarmer(host: ChunkWarmerHost) {
 const SETTLE_MS = 4_000;
 
 /**
- * Warms the app's surfaces in this page: the router's route chunks beside every declared loader.
- * Started once, after the page's first seconds; a surface declared later starts another pass.
+ * Warms the declared surfaces in this page. Started once, after the page's first seconds; a
+ * surface declared later (opening a conversation declares its panels) starts another pass.
  */
-export function warmAppChunksAfterSettling(routeLoaders: ReadonlyArray<Load>): void {
+export function warmAppChunksAfterSettling(): void {
   const idle = (then: () => void) => {
     if (typeof window.requestIdleCallback === "function")
       window.requestIdleCallback(then, { timeout: 2_000 });
     else window.setTimeout(then, 50);
   };
   const warmer = makeChunkWarmer({
-    loaders: () => [...routeLoaders, ...registered],
+    loaders: () => registered,
     idle,
   });
   window.setTimeout(() => {

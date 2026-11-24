@@ -67,7 +67,10 @@ const ROWS: ReadonlyArray<{
   },
   { name: "Releasing", standing: { kind: "going", releasing: true, since: NOW - 40_000 } },
   { name: "Its release waits for a review", standing: { kind: "review" } },
-  { name: "Waiting for its maker", standing: { kind: "waiting", id: "op-1", yours: true } },
+  {
+    name: "Waiting for its maker",
+    standing: { kind: "waiting", id: "op-1", yours: true, press: "Continue" },
+  },
   {
     name: "Stopped",
     standing: {
@@ -104,6 +107,7 @@ function Composer({ name, top }: { readonly name: string; readonly top: ReactNod
 function Harness() {
   const [shape, setShape] = useState<ProductionShape | undefined>(SHAPE);
   const model = putLiveSheet({
+    stageHeld: false,
     project: "Cookbook",
     changes: [
       {

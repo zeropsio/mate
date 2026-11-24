@@ -1,4 +1,4 @@
-next: ZV166
+next: ZV176
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -76,7 +76,7 @@ next: ZV166
 - ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
 - ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
 - ZV98 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
-- ZV99 — Only HQ's door, creating a Mate, a Mate's hand-over, a take-over replace, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session
+- ZV99 — Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session
 - ZV100 — HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key
 - ZV101 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
 - ZV102 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
@@ -134,3 +134,13 @@ next: ZV166
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
 - ZV164 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
+- ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
+- ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
+- ZV168 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
+- ZV169 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
+- ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
+- ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
+- ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
+- ZV173 — A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project
+- ZV174 — An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project
+- ZV175 — Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer

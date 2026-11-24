@@ -697,6 +697,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       ...(container !== undefined && (platformSaysDown(container) || container.hq === "restarting")
         ? { serverDown: true }
         : {}),
+      ...(container?.hq === "coming" ? { unlinked: true } : {}),
     };
   };
 
@@ -801,7 +802,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
    * Reads the container once this batch ends — only one something waits on, with an address, no
    * socket proving it up, and no platform status saying it is down. One whose way up HQ's presence
    * reads (`hqReadsWayUp`) is read only `overHq`: on HQ's word that its Mate is back, or a person's
-   * ask.
+   * ask. One HQ says is `coming` is not read at all: it has no server yet.
    */
   const requestFor = (
     entry: Entry,
@@ -809,6 +810,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     options: { readonly health?: boolean; readonly overHq?: boolean } = {},
   ) => {
     if (entry.origin === null || entry.container.connectedSince !== null) return;
+    if (entry.container.hq === "coming") return;
     if (platformSaysDown(entry.container) || !watched(entry)) return;
     if (hqReadsWayUp(entry.container) && options.overHq !== true) return;
     const origin = originFor(entry.origin);

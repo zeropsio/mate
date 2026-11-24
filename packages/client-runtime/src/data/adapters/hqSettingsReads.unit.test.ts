@@ -61,7 +61,18 @@ it("AD2: The organization's GitHub apps, as HQ sends them, are held whole when a
         apps: [
           {
             appId: 1,
-            installations: [{ state: "accepted", repositories: [{ usedBy }, { usedBy }] }],
+            installations: [
+              {
+                state: "accepted",
+                repositories: [
+                  { usedBy: null },
+                  { usedBy },
+                  { usedBy: null },
+                  { usedBy: null },
+                  { usedBy },
+                ],
+              },
+            ],
           },
         ],
       },

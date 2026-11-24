@@ -68,7 +68,7 @@ export function ServiceCreateAskCard(props: ServiceCreateAskCardProps) {
             action={
               view.resume && props.onContinue !== undefined ? (
                 <Button onClick={props.onContinue} variant="secondary">
-                  Continue
+                  {view.press ?? "Continue"}
                 </Button>
               ) : undefined
             }

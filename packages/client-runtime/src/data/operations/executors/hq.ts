@@ -74,6 +74,7 @@ export type HqWrites = Pick<
   | "answerKeptGit"
   | "createBirth"
   | "continueOperation"
+  | "endOperation"
   | "startMateDeletion"
   | "startMateRestart"
   | "startProductionRemoval"
@@ -548,6 +549,14 @@ export function makeHqExecutor(ports: {
                   return;
                 throw cause;
               }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.id),
+        );
+      case "end-operation":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.endOperation(intent.id),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.id),

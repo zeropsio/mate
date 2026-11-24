@@ -1,10 +1,10 @@
-next: AD86
+next: AD87
 
-- AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
+- AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
 - AD3 — HQ's refusal of the organization's activity to a person it does not let read it, as HQ sends it, ends the read as denied: it waits for the person and is never asked again as an outage
 - AD4 — HQ's ready frame after its first navigation delivery, as HQ sends it, makes the navigation live and its Core declaration held as HQ declared it: the protocol, the build and both capabilities
-- AD5 — A navigation delivery that follows what is held (the same incarnation, the next revision), as HQ sends it after an application is renamed, is committed: its application is held and every record of the first delivery stays
+- AD5 — A navigation delivery that follows what is held (the same incarnation, the next revision), as HQ sends it after a persona template is saved, is committed: the template is held and every record of the first delivery stays
 - AD6 — A navigation delivery that does not follow what is held, HQ's own delta arriving a second time, is never committed: HQ is asked for the navigation whole by one subscribe, with no cursor and no unsubscribe before it
 - AD7 — HQ saying the navigation changed, as HQ sends it, is answered on the open socket by one retry naming the navigation; no value is assumed
 - AD8 — When HQ ends a socket as planned, the next one resumes the navigation from the cursor of the last delivery HQ sent and names every record held, so an unchanged navigation is not sent again
@@ -85,3 +85,4 @@ next: AD86
 - AD83 — The person's membership read before Zerops answered the registration of the organization's memberships (the session's own `/user/info`) is read again once that registration lists it with another role, whichever of the two lands first, so a demotion landing between them reads No access although its frame never comes; breaks: a person demoted while the page loads keeps their old role, and HQ keeps showing them the Mates it showed before
 - AD84 — A detail asked to be read again as its read answers, before that read has ended, is read again at once; breaks: the ask starts no read, so the detail stands unanswered until its deadline passes ten seconds later and shows a failed read before its retry reads it
 - AD85 — A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said
+- AD86 — A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists

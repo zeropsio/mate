@@ -40,6 +40,15 @@ declare module "../model.ts" {
       readonly appId?: string;
     };
     /**
+     * An Owner's or an Admin's end of operation `id` on the application `appId` or its production,
+     * which waits for a maker who cannot continue it.
+     */
+    readonly "end-operation": {
+      readonly orgId: string;
+      readonly id: string;
+      readonly appId: string;
+    };
+    /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
      * keeps its application's Git once its last Mate is gone.
      */
@@ -166,6 +175,15 @@ const operationBirth = (read: ProjectionReads, orgId: string, id: string) =>
     .ids.flatMap((appId) => birthsOf(read, appId))
     .find((birth) => birth.id === id);
 
+/** The operation `id` as HQ shows it on the application or on one of its environments. */
+const appOperation = (app: Pick<HqAppValue, "operation" | "environments">, id: string) =>
+  [
+    app.operation,
+    ...(app.environments ?? []).map((environment) =>
+      "operation" in environment ? environment.operation : undefined,
+    ),
+  ].find((shown) => shown?.id === id);
+
 const createBirth: OperationKind<"create-birth"> = {
   kind: "create-birth",
   executor: "hq",
@@ -200,13 +218,7 @@ const continueOperation = shown(
       const app = read.fact("hqApp", intent.appId);
       if (removedForViewer(app)) return true;
       if (app.kind !== "known") return false;
-      const operation = [
-        app.value.operation,
-        ...(app.value.environments ?? []).map((environment) =>
-          "operation" in environment ? environment.operation : undefined,
-        ),
-      ].find((shown) => shown?.id === intent.id);
-      return operation?.continueBy === undefined;
+      return appOperation(app.value, intent.id)?.continueBy === undefined;
     }
     if (intent.projectId === undefined) {
       const birth = operationBirth(read, intent.orgId, intent.id);
@@ -224,6 +236,23 @@ const continueOperation = shown(
     if (placement.kind !== "known") return false;
     const operation = placement.value.operation;
     return operation?.id !== intent.id || operation.continueBy === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. The application or its production showing the operation ended (its
+ * failure `ended`), or no longer showing it, or the application no longer there, adopts a lost
+ * answer. One shown running or still waiting is not ended: its maker's Continue may have won.
+ */
+const endOperation = shown(
+  "end-operation",
+  (intent) => intent.id,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    if (app.kind !== "known") return false;
+    const operation = appOperation(app.value, intent.id);
+    return operation === undefined || operation.failure?.code === "ended";
   },
 );
 
@@ -440,6 +469,7 @@ export const HQ_WRITE_KINDS = [
   updateMateFace,
   createBirth,
   continueOperation,
+  endOperation,
   startMateDeletion,
   startMateRestart,
   startProductionRemoval,

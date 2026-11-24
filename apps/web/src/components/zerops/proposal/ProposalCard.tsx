@@ -58,6 +58,8 @@ export interface ProposalCardProps {
   readonly onDecline: () => void;
   /** Running, HQ's operation waits for the approver's fresh sign-in: theirs to continue. */
   readonly onContinue?: (() => void) | undefined;
+  /** The word on that Continue's button, by what HQ's operation waits on. */
+  readonly continuePress?: string | undefined;
   /** `mate.message` and `chief.message`: opens the Mate it went to. */
   readonly onOpenRecipient?: (() => void) | undefined;
   /** `chief.message` where the person has no Chief: setting one up stands in for Approve. */
@@ -171,7 +173,7 @@ export function ProposalCard(props: ProposalCardProps) {
       </>
     ) : stage === "running" && props.onContinue !== undefined ? (
       <Button onClick={props.onContinue} variant="secondary">
-        Continue
+        {props.continuePress ?? "Continue"}
       </Button>
     ) : stage === "done" && props.onOpenRecipient !== undefined ? (
       proposal.kind === "mate.message" ? (

@@ -33,7 +33,10 @@ import {
   restingWhenFree,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
+import { mateDeleting } from "@t3tools/client-runtime/zerops/mateState";
 import {
+  mateDeletionOfProject,
+  mateGoing,
   operationFailureWords,
   type MateComing,
   type MateDeletion,
@@ -257,6 +260,10 @@ export const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
     : tone === "failed"
       ? "Stopped on an error"
       : "Waiting for you";
+
+/** A coming Mate HQ holds for its maker's Continue, which it does not offer the person reading. */
+export const comingWaitsOnMaker = (coming: MateComing | undefined): boolean =>
+  coming?.kind === "coming" && coming.birth?.waitsOnMaker === true;
 
 /**
  * A Mate's row in one of its states (M7): no status word says it — the
@@ -823,6 +830,7 @@ export interface MateBornLine {
  * words stand alone. Why it stopped, and what to do, is its own view's to say.
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
+  if (comingWaitsOnMaker(coming)) return WAITS_ON_MAKER_LINE;
   if (coming.kind === "failed") {
     return coming.verb === "redeploy"
       ? { words: coming.line, since: undefined, tone: "attention" }
@@ -834,6 +842,13 @@ export function mateBornLine(coming: MateComing): MateBornLine {
     return { words: coming.line, since: undefined, tone: "attention" };
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
+
+/** A birth held for a Continue HQ does not offer the person reading: nothing here needs them. */
+export const WAITS_ON_MAKER_LINE: MateBornLine = {
+  words: "Waiting for its maker",
+  since: undefined,
+  tone: "muted",
+};
 
 const BORN_STOPPED: MateBornLine = {
   words: SETTING_UP_STOPPED,
@@ -869,8 +884,9 @@ export function pendingBornLine(
  */
 export function comingStopped(
   member: Pick<ZeropsGroupPendingMember, "failed">,
-  birth: { readonly attention: boolean } | undefined,
+  birth: { readonly attention: boolean; readonly waitsOnMaker?: boolean } | undefined,
 ): boolean {
+  if (birth?.waitsOnMaker === true) return false;
   return birth?.attention ?? member.failed === true;
 }
 
@@ -892,12 +908,13 @@ export function mateRowMenu<
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
   const life = mateLifeOf(coming);
+  const needs = life === "failed" && !comingWaitsOnMaker(coming);
   return {
     ...view,
-    state: life === "failed" ? "needs" : "idle",
+    state: needs ? "needs" : "idle",
     face: matePose(view.face, { life }),
     slot: { kind: "none" },
-    dot: life === "failed" ? "attention" : undefined,
+    dot: needs ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
@@ -906,9 +923,33 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
 }
 
 /** Where a listed Mate is in its life, from its coming up (`mateComing`). */
-export function mateLifeOf(coming: MateComing | undefined): MateLife {
+function mateLifeOf(coming: MateComing | undefined): MateLife {
   if (coming === undefined) return "up";
   return coming.kind === "failed" || coming.birth?.attention === true ? "failed" : "coming";
+}
+
+/**
+ * Where a listed Mate is in its life, the one answer its row, its find in the jump box and its
+ * face on a folded group wear: on its way off Zerops (`mateDeleting`, as `mateState` reads it)
+ * before anything of its coming up (`mateLifeOf`).
+ */
+export function mateRowLife(
+  project: Parameters<typeof mateDeletionOfProject>[0],
+  coming: MateComing | undefined,
+): MateLife {
+  return mateDeleting(project.status, mateGoing(mateDeletionOfProject(project)))
+    ? "deleting"
+    : mateLifeOf(coming);
+}
+
+/** What a row reads (`mateRowReading`) becomes in its life (`mateRowLife`). */
+export function mateLifeRowView(
+  read: MateRowView,
+  life: MateLife,
+  coming: MateComing | undefined,
+): MateRowView {
+  if (life === "deleting") return mateDeletingView(read);
+  return coming === undefined ? read : mateComingRowView(read, coming);
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */
@@ -1408,6 +1449,8 @@ export function mateRowSecond(input: {
   readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
   /** How HQ's restart of it stands (`mateRestartOf`); absent: none. */
   readonly restart?: HqOperationStanding | undefined;
+  /** Its container is restarting (`mateRestartSaid`), whoever restarted it. */
+  readonly restarting?: boolean | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1456,6 +1499,7 @@ export function mateRowSecond(input: {
     moveLine?.kind === "move-failed" ||
     moveLine?.kind === "restart-failed";
   if (moveLine !== undefined && !moveEnded) return moveLine;
+  if (input.restarting === true) return { kind: "restarting", text: "Restarting…" };
   // HQ keeps an ended move or restart on its project until the next start there: it is said only
   // at rest, where the Mate has nothing more urgent of its own.
   const restLine = moveEnded && view.state === "idle" ? moveLine : undefined;

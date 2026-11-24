@@ -72,7 +72,11 @@ export type MateComing =
       /** How far it has got, as the projects page says it. */
       readonly line: string;
       /** A shared HQ birth carries its proven phase and does not use the local arrival clock. */
-      readonly birth?: { readonly attention: boolean };
+      readonly birth?: {
+        readonly attention: boolean;
+        /** HQ holds it for its maker's Continue and does not offer it to the person reading. */
+        readonly waitsOnMaker?: true;
+      };
       /** When its setup began, wall ms, where this browser pressed it: its first press, its clock. */
       readonly since?: number | undefined;
     }
@@ -433,6 +437,8 @@ export type MateComingPage =
   | { readonly kind: "coming"; readonly coming: MateComing }
   /** Its conversation can be opened: the view hands over to it. */
   | { readonly kind: "up" }
+  /** Its project holds no container and nothing is bringing one: no wait, and no link to make. */
+  | { readonly kind: "no-container" }
   /**
    * On its way to its conversation: what it waits for, as its machine says it (null while no
    * machine names it yet); the view connects it where the person's session allows.
@@ -454,7 +460,9 @@ export type MateComingPage =
  */
 export function mateComingPage(input: {
   readonly coming: MateComing | undefined;
-  readonly candidate: { readonly group: ZeropsCandidateGroup } | undefined;
+  readonly candidate:
+    | { readonly group: ZeropsCandidateGroup; readonly missingContainer?: true | undefined }
+    | undefined;
   /** The listing is whole: a project it lacks is not on the account. */
   readonly complete: boolean;
   /** Its conversation's environment is registered and worth a link (`mateLink`). */
@@ -473,6 +481,7 @@ export function mateComingPage(input: {
   }
   if (input.linked || candidate?.group === "connected") return { kind: "up" };
   if (input.coming !== undefined) return { kind: "coming", coming: input.coming };
+  if (candidate?.missingContainer === true) return { kind: "no-container" };
   if (candidate === undefined) {
     if (input.complete) return { kind: "unreachable", reachability: null };
     return reachability === null ? undefined : { kind: "reaching", reachability };

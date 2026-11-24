@@ -3,62 +3,15 @@
  * operation runs — it records the Mate, gives the zcp its own key, turns Zerops Mate on and
  * restarts it. The projects screen and a Mate's page press the same Create from here.
  */
-import {
-  type BirthIntent,
-  formatMateFace,
-  newMateTint,
-  projectNameInApp,
-} from "@t3tools/client-runtime/zerops";
 import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useCallback } from "react";
 
 import { randomUUID } from "~/lib/utils";
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import { useReadGroupAgents } from "./groupAgents";
+import { mateSetUpBirth } from "./mateBirths.logic";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-
-/**
- * The one Create of a Mate on a project that exists — *Set up Mate* and *Enable* (`POST /api/births`
- * with `projectId`): HQ's operation grants `owner` the project first, records the Mate, mints its
- * key, and imports its container or turns on and restarts the one it holds; the tab writes none of
- * it. Its face is the one HQ records for the Mate already, else the tint its name gets among the
- * account's (`newMateTint`) and that tint's shape; its name is its project's in Zerops (D3).
- */
-function mateSetUpBirth(input: {
-  readonly id: string;
-  readonly project: ZeropsCandidate["project"];
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  /** The application it is adopted into; HQ places it otherwise. */
-  readonly appId?: string | undefined;
-  readonly agents: BirthIntent["agents"];
-  /** Whom its operation grants `OWNER` on the project (`ownerAtAdd`); none where nobody. */
-  readonly owner: string | null;
-}) {
-  const recorded = input.project.hq?.mate?.face;
-  const tint = newMateTint(input.candidates, input.project.name);
-  return {
-    id: input.id,
-    projectId: input.project.id,
-    ...(input.appId === undefined ? {} : { appId: input.appId }),
-    face:
-      recorded === undefined || recorded === ""
-        ? formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] })
-        : recorded,
-    intent: {
-      projectName: input.project.name,
-      recipe: { kind: "none" },
-      agents: input.agents,
-      standUp: false,
-      automated: false,
-      placement: { role: "dev", name: projectNameInApp(input.project), chief: false },
-      location: null,
-      userRoles: [],
-    } satisfies BirthIntent,
-    ...(input.owner === null ? {} : { owner: input.owner }),
-  };
-}
 
 /** One Create on a project that exists (`mateSetUpBirth`): resolves once HQ took it, rejects with its refusal. */
 export function useSendMateSetUp() {
@@ -111,7 +64,7 @@ export function useCreateMateBirth(input: {
         id: randomUUID(),
         project: candidate.project,
         candidates,
-        appId: group?.group.groupId,
+        appId: group?.group.groupId ?? candidate.project.hq?.appId ?? undefined,
         agents,
         owner: ownerAtAdd({ userRoles: candidate.project.userRoles, adder: activeOrganization }),
       });

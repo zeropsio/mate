@@ -58,16 +58,9 @@ window.addEventListener("vite:preloadError", (event) => {
   staleChunkRecovery.recover(event.payload);
 });
 
-// The app's surfaces load once the page settles: a later deploy never strands a click
-// (`appChunks.ts`). A desktop window's bundle is its own files, never replaced under it; the
-// design kit is a maintainer's page.
-if (!isElectron) {
-  warmAppChunksAfterSettling(
-    Object.values(router.routesById)
-      .filter((route) => route.id !== "/kit")
-      .map((route) => () => router.loadRouteChunk(route) ?? Promise.resolve()),
-  );
-}
+// The surfaces of what the person opened load once the page settles (`appChunks.ts`). A desktop
+// window's bundle is its own files, never replaced under it.
+if (!isElectron) warmAppChunksAfterSettling();
 
 // The hosted client's worker keeps its page for offline loads and its chunks for open tabs
 // (`appShell/appShellClient.ts`).

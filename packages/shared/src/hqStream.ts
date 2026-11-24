@@ -253,6 +253,8 @@ export const HqPersonFacts = Schema.Struct({
   /** The viewer's own Chief, on Mates the viewer owns. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
+  /** What the viewer's ticket into a Mate on the project would meet, from their held standing. */
+  entry: Schema.Literals(["operates", "read_only", "none"]),
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
   /** The project is a Chief: the viewer's own, or another person's. */
@@ -556,9 +558,12 @@ export type HqNavigationApp = typeof HqNavigationApp.Type;
 export const HqNavigationProject = Schema.Struct({
   projectId: Schema.String,
   appId: Schema.NullOr(Schema.String),
-  name: Schema.String,
+  /** The Mate's name where HQ holds one; absent otherwise, a blank name read as absent. */
+  name: Schema.optionalKey(Schema.NonEmptyString),
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
+  /** What HQ offers this reader on the project (`set_up_mate`); absent for none. */
+  offers: Schema.optionalKey(Schema.Array(Schema.String)),
   person: HqPersonFacts,
   /** Login ID to current person; only credentials present and not API tokens. */
   signedInNow: Schema.Record(Schema.String, ZeropsUserId),

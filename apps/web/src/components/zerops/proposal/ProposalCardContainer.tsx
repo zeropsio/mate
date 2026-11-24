@@ -732,6 +732,7 @@ function Proposal({
       mateName={proposer?.name ?? "Your Mate"}
       onApprove={() => void approve()}
       onContinue={onContinue}
+      continuePress={waiting?.kind === "waiting" ? waiting.press : undefined}
       onDecline={() => void decide({ state: "declined", at: new Date().toISOString() })}
       onOpenRecipient={
         proposal.kind === "mate.message"

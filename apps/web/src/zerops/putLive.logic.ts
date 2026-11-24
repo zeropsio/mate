@@ -13,7 +13,11 @@
  * Pure: what is offered, what the sheet says, and where HQ's run of it stands. The one start is
  * the host's (`PutLiveHost`); HQ makes production and releases to it as its `put_live` operation.
  */
-import { hqOperationOf, operationFailureWords } from "@t3tools/client-runtime/data";
+import {
+  hqOperationOf,
+  operationFailureWords,
+  type WaitingPress,
+} from "@t3tools/client-runtime/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
@@ -68,8 +72,8 @@ export interface PutLiveSheetModel {
     /** The answer picked; none is picked for the person. */
     readonly shape: ProductionShape | undefined;
   };
-  /** Stage, offered for later — never asked now. */
-  readonly later: string;
+  /** Stage, offered for later — never asked now; none where the application holds one. */
+  readonly later: string | undefined;
   readonly button: string;
   /** Why the button waits, where it does: the setup files being read, or none to make it from. */
   readonly hold: string | undefined;
@@ -77,6 +81,10 @@ export interface PutLiveSheetModel {
   readonly busy?: true | undefined;
   /** Why HQ did not take the last press, said beside the button, which is pressed again. */
   readonly refused?: string | undefined;
+  /** HQ holds production: the button leads to it, and nothing here starts another. */
+  readonly placed?: true | undefined;
+  /** Whether the project's own form for production is offered from the sheet. */
+  readonly setUpYourself?: boolean | undefined;
 }
 
 /** One answer to who production is for, and what it makes, in the person's words. */
@@ -135,7 +143,7 @@ function plain(text: string): string {
     .trim();
 }
 
-export const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
+const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
 const RECIPE_READING = "Reading how the project runs…";
 export const CHOOSE_SHAPE = "Choose who it's for";
 const SETUP_MISSING =
@@ -171,8 +179,11 @@ export function putLiveSheet(input: {
   /** Who production may be for, from the recipe (`putLiveShapes`); `undefined` while it is read. */
   readonly shapes?: ReadonlyArray<PutLiveShapeChoice> | undefined;
   readonly shape?: ProductionShape | undefined;
+  /** Whether the application holds a stage; `undefined` while its environments are read. */
+  readonly stageHeld: boolean | undefined;
 }): PutLiveSheetModel {
   const { changes } = input;
+  const later = input.stageHeld === false ? PUT_LIVE_LATER : undefined;
   const shapes = input.recipe === "loading" ? undefined : (input.shapes ?? []);
   const where = {
     ...PUT_LIVE_WHERE,
@@ -185,7 +196,7 @@ export function putLiveSheet(input: {
       title: `Put ${input.project} live`,
       what: undefined,
       where,
-      later: PUT_LIVE_LATER,
+      later,
       button: "Put it live",
       hold: undefined,
     };
@@ -203,7 +214,7 @@ export function putLiveSheet(input: {
     title: `Put ${input.project} live`,
     what,
     where,
-    later: PUT_LIVE_LATER,
+    later,
     button: "Put it live",
     hold:
       first === undefined
@@ -234,6 +245,60 @@ export function putLiveSheetUnderWay(
     : { ...model, hold: "It's already on its way." };
 }
 
+const OTHER_SETUP = "Another setup on this application is running.";
+const GIT_ONLY = "Production can be added here only as a Git branch.";
+
+/**
+ * The sheet as HQ's answers stand now, on any device: pressed here, its run; HQ holding production,
+ * the way to it, for a press elsewhere may have made it while this sheet stood open; else HQ's run,
+ * another setup, what HQ offers, and why the button waits.
+ */
+export function putLiveSheetNow(
+  model: PutLiveSheetModel,
+  input: {
+    readonly pressedHere: boolean;
+    /** HQ's `put_live` operation runs on the application. */
+    readonly going: boolean;
+    /** HQ holds a production of the application. */
+    readonly placed: boolean;
+    readonly otherSetup: boolean;
+    /** HQ offers a Zerops production; `undefined` before it says. */
+    readonly zeropsProduction: boolean | undefined;
+    /** HQ offers the project's own form for production. */
+    readonly setUpOffered: boolean;
+    readonly waits: string | undefined;
+    readonly refused: string | undefined;
+  },
+): PutLiveSheetModel {
+  if (input.pressedHere)
+    return { ...putLiveSheetUnderWay(model, { pressedHere: true }), setUpYourself: false };
+  if (input.placed)
+    return {
+      ...model,
+      what: model.what ?? { title: "Production is made", lines: [] },
+      where: {
+        ...model.where,
+        line: "It's made. Its release shows on the project.",
+        creates: [],
+        shapes: [],
+      },
+      later: undefined,
+      button: "See progress",
+      hold: undefined,
+      refused: undefined,
+      placed: true,
+      setUpYourself: false,
+    };
+  if (input.going)
+    return { ...putLiveSheetUnderWay(model, { pressedHere: false }), setUpYourself: false };
+  const setUpYourself = input.setUpOffered;
+  if (input.otherSetup) return { ...model, hold: OTHER_SETUP, setUpYourself };
+  if (input.zeropsProduction === false) return { ...model, hold: GIT_ONLY, setUpYourself };
+  if (input.waits !== undefined && model.hold === undefined)
+    return { ...model, hold: input.waits, setUpYourself };
+  return { ...model, refused: input.refused, setUpYourself };
+}
+
 // ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
@@ -257,7 +322,12 @@ export type PutLiveStanding =
       readonly since: number | undefined;
     }
   | { readonly kind: "review" }
-  | { readonly kind: "waiting"; readonly id: string; readonly yours: boolean }
+  | {
+      readonly kind: "waiting";
+      readonly id: string;
+      readonly yours: boolean;
+      readonly press: WaitingPress;
+    }
   | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
 const NOT_PUT_LIVE: PutLiveStanding = { kind: "none" };
@@ -282,7 +352,7 @@ export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
     case "needs":
       return standing.needs === "release_review" ? { kind: "review" } : NOT_PUT_LIVE;
     case "waiting":
-      return { kind: "waiting", id: standing.id, yours: standing.yours };
+      return { kind: "waiting", id: standing.id, yours: standing.yours, press: standing.press };
     case "failed":
       return { kind: "failed", failure: standing.failure };
   }

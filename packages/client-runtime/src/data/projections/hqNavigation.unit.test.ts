@@ -5,6 +5,7 @@ import {
   hqAppsScope,
   hqOrganizationScope,
   hqStatusScope,
+  placementFamily,
   placementsScope,
 } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
@@ -14,6 +15,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqNavigation, hqNavigationAnswered } from "./hqNavigation.ts";
+import { hqMateIdentities } from "./hqMateIdentity.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 
 const ORG = "org";
@@ -282,7 +284,6 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
     value: {
       projectId,
       appId,
-      name: "",
       kind,
       mate: kind === "mate" ? mate : null,
       person,
@@ -334,4 +335,130 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
   ]);
   expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["lone-in-zerops"]);
   expect(shop?.contents).toEqual({ empty: false, deletingProjectIds: ["stage", "gone", "ada"] });
+});
+
+// witness: packages/client-runtime/src/data/projections/hqNavigation.ts | !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)) → projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement))
+it("PJ138: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete", () => {
+  const application = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
+    const app = hqAppFamily.hq!.decode(
+      {
+        id: "shop",
+        name: "Shop",
+        contents: { empty: false, deletingProjectIds: [] },
+        environments: [],
+        changes: [],
+        releaseOffer: null,
+        projectIds: projects.map(([id]) => id),
+        births: [],
+      },
+      "app:shop",
+    )!;
+    const next = { ...revision, revision: 2 };
+    return navigation(
+      apply(read, [
+        ...liveProjects(
+          ORG,
+          projects.map(([id]) => ({ id })),
+        ),
+        ...membershipInputs("ADMIN"),
+        {
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: generations,
+          reset: false,
+          rows: [
+            { family: "hqApp", id: "shop", value: app, revision: next },
+            ...projects.map(([id, kind, offered]) => ({
+              family: "placement" as const,
+              id,
+              revision: next,
+              value: {
+                projectId: id,
+                appId: "shop",
+                name: id,
+                kind,
+                mate: kind === "mate" ? mate : null,
+                person,
+                signedInNow: {},
+                everSignedIn: {},
+                ...(offered ? { offers: ["set_up_mate"] } : {}),
+              },
+            })),
+          ],
+          removals: [],
+        },
+      ]),
+    ).structure?.apps[0];
+  };
+  const said = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
+    const app = application(projects);
+    return { standsIn: app?.setUpOffered === true, addMate: app?.can?.add_mate?.allow };
+  };
+  const standsIn = { standsIn: true, addMate: true };
+  const not = { standsIn: false, addMate: true };
+  expect(said([["plain", "plain", true]])).toEqual(standsIn);
+  expect(said([["kept", "mate", true]])).toEqual(standsIn);
+  expect(
+    said([
+      ["kept", "mate", true],
+      ["stage", "stage", false],
+    ]),
+  ).toEqual(standsIn);
+  expect(
+    said([
+      ["kept", "mate", true],
+      ["ada", "mate", false],
+    ]),
+  ).toEqual(not);
+  expect(said([["plain", "plain", false]])).toEqual(not);
+});
+
+// witness: packages/shared/src/hqStream.ts | name: Schema.optionalKey(Schema.NonEmptyString), → name: Schema.optionalKey(Schema.String),
+it("PJ142: A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops", () => {
+  const sent = {
+    projectId: "lone",
+    appId: null,
+    kind: "mate",
+    mate,
+    person,
+    signedInNow: {},
+    everSignedIn: {},
+  };
+  const decoded = (frame: unknown) => placementFamily.hq!.decode(frame, "lone");
+  expect(decoded({ ...sent, name: "" })?.name).toBeUndefined();
+  expect(decoded({ ...sent, name: "" })?.kind).toBe("mate");
+  expect(decoded(sent)?.name).toBeUndefined();
+  expect(decoded({ ...sent, name: "Ada" })?.name).toBe("Ada");
+});
+
+// witness: packages/client-runtime/src/data/projections/hqMateIdentity.ts | (zerops.kind === "known" && zerops.value.name?.trim()) || fact.value.name?.trim(); → fact.value.name?.trim();
+it("PJ143: A Mate HQ holds no name for takes its identity from the person's own Zerops list, and has none until that list names it; breaks: a Mate without an HQ name loses its name and face wherever its identity is read", () => {
+  const placed = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [
+        {
+          family: "placement",
+          id: "lone",
+          revision: { ...revision, revision: 2 },
+          value: {
+            projectId: "lone",
+            appId: null,
+            kind: "mate",
+            mate,
+            person,
+            signedInNow: {},
+            everSignedIn: {},
+          },
+        },
+      ],
+      removals: [],
+    },
+  ]);
+  expect(hqMateIdentities.derive(readsOfState(placed), ORG).lone).toBeUndefined();
+  const listed = apply(placed, liveProjects(ORG, [{ id: "lone", name: "lone-in-zerops" }]));
+  expect(hqMateIdentities.derive(readsOfState(listed), ORG).lone?.fullName).toBe("lone-in-zerops");
 });

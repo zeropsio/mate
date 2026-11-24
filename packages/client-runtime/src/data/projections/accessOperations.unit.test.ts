@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
+import { recorded } from "../__fixtures__/recorded.ts";
 import { accessOperationRows } from "./accessOperations.ts";
 
 const acceptedAt = "2026-11-21T10:00:00.000Z";
@@ -34,7 +35,7 @@ const failed: HqAccessOperation = {
   },
 };
 
-// witness: packages/client-runtime/src/data/projections/accessOperations.ts | mine: continueBy === viewer → mine: continueBy !== undefined
+// witness: packages/client-runtime/src/data/projections/accessOperations.ts | return [...values] → return values.filter(({ operation }) => operation?.failure !== undefined)
 it("PJ126: A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words", () => {
   expect(accessOperationRows([failed, waiting, running], "ada")).toEqual([
     {
@@ -55,6 +56,7 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
       failure: "Your Zerops sign-in ran out before it finished.",
       details: null,
       continueBy: "ada",
+      press: "Continue",
       mine: true,
     },
     {
@@ -95,6 +97,13 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
     failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
     details: null,
     mine: false,
+  });
+  // HQ's own frame of a change it has just accepted reads as running.
+  const frame = recorded("scope-values", "mate-hq/navigation.access-change.running");
+  const accepted = Schema.decodeUnknownSync(HqAccessOperation)(frame.values[0]?.value);
+  expect(accessOperationRows([accepted], "ada")[0]).toMatchObject({
+    kind: "projects",
+    state: "running",
   });
 });
 

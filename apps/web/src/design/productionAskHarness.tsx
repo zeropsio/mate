@@ -91,7 +91,13 @@ const CREATES: ReadonlyArray<{
     name: "paused",
     plan: planOf(DB),
     decision: APPROVED,
-    effect: { kind: "waiting", id: "op-create", continueBy: "dana", yours: true },
+    effect: {
+      kind: "waiting",
+      id: "op-create",
+      continueBy: "dana",
+      yours: true,
+      press: "Continue",
+    },
   },
   {
     name: "failed",

@@ -22,6 +22,7 @@
 import type { HqHiddenEnvironment } from "@t3tools/shared/hqStream";
 
 import { readBirthIntent, type BirthIntent } from "../../zerops/birthIntent.ts";
+import { mateEntryVisibility, type MateVisibility } from "../../zerops/mateAccess.ts";
 import {
   hqAppsScope,
   hqBirthsScope,
@@ -36,7 +37,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import { streamTrouble } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 import { hqLinkOf } from "./hqLink.ts";
-import { mateVisibility } from "./mateVisibility.ts";
+import { hqPersonFacts } from "./hqNavigation.ts";
 
 /** The tag HQ puts on the project of a birth it runs: `mb-` and the birth's id (mate-hq `birth.Tag`). */
 const BIRTH_TAG_PREFIX = "mb-";
@@ -56,8 +57,8 @@ export interface MenuMate {
   readonly intent: BirthIntent | undefined;
   /** HQ's placement of its project; `null` before the hello. */
   readonly placement: PlacementValue | null;
-  /** Whether the person may open it or only see it listed (`mateVisibility`); never a filter. */
-  readonly visibility: "open" | "listed" | "unknown";
+  /** Whether it opens for the person or is only listed, as HQ says; never a filter. */
+  readonly visibility: MateVisibility | "unknown";
 }
 
 /** One of an application's environments, in HQ's order. */
@@ -117,8 +118,8 @@ export interface MenuTree {
   readonly ungrouped: ReadonlyArray<MenuMate>;
   /** Roster projects HQ names nowhere and that carry no birth tag, newest first. */
   readonly platform: ReadonlyArray<ProjectValue>;
-  /** The roster's open or listed verdict by project; a project not judged yet is absent. */
-  readonly projectVisibilities: Readonly<Record<string, "open" | "listed">>;
+  /** HQ's open or listed verdict by project it places; any other project is absent. */
+  readonly projectVisibilities: Readonly<Record<string, MateVisibility>>;
   /**
    * HQ's applications the tree draws no group for, once HQ said its whole list of them, so a page
    * opened on one says why instead of waiting; none while that list is partial.
@@ -198,9 +199,12 @@ function matesOf(
 ): ReadonlyArray<MenuMate> {
   const taken = new Set<string>();
   const born = births.map((birth): MenuMate => {
+    // Only a placement that records a Mate is this birth's row: a plain project's holds none, so
+    // its open birth is drawn as the member it is, with its own Continue and Delete.
     const placed = placements.find(
       ({ id, value }) =>
-        value.mate?.birthId === birth.id || (birth.projectId != null && id === birth.projectId),
+        value.mate?.birthId === birth.id ||
+        (value.mate != null && birth.projectId != null && id === birth.projectId),
     );
     if (placed !== undefined) taken.add(placed.id);
     const projectId = placed?.id ?? birth.projectId ?? null;
@@ -264,27 +268,19 @@ export const menuTree: Projection<string, MenuTree> = {
   name: "menuTree",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
-    const visibilities = new Map<string, MenuMate["visibility"]>();
-    // Each member reads through the projection, so its inputs remain dependencies of the tree.
-    const visibilityOf = (projectId: string | null): MenuMate["visibility"] => {
-      const visibility =
-        projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId });
-      if (projectId !== null) visibilities.set(projectId, visibility);
-      return visibility;
-    };
-    const withVisibilities = (tree: Omit<MenuTree, "projectVisibilities">): MenuTree => {
-      // Environment and platform rows also need the roster's verdict, even before HQ answers.
-      for (const projectId of read.members(projectsScope(orgId)).ids)
-        if (!visibilities.has(projectId)) visibilityOf(projectId);
-      return {
-        ...tree,
-        projectVisibilities: Object.fromEntries(
-          [...visibilities].flatMap(([id, visibility]) =>
-            visibility === "unknown" ? [] : [[id, visibility] as const],
-          ),
-        ),
-      };
-    };
+    const people = hqPersonFacts.derive(read, orgId);
+    const visibilityOf = (projectId: string | null): MenuMate["visibility"] =>
+      projectId === null ? "unknown" : mateEntryVisibility(people[projectId]?.entry);
+    const projectVisibilities = Object.fromEntries(
+      Object.keys(people).flatMap((id) => {
+        const visibility = visibilityOf(id);
+        return visibility === "unknown" ? [] : [[id, visibility] as const];
+      }),
+    );
+    const withVisibilities = (tree: Omit<MenuTree, "projectVisibilities">): MenuTree => ({
+      ...tree,
+      projectVisibilities,
+    });
     const appsScope = hqAppsScope(orgId);
     if (read.coverage(appsScope) !== "complete" && read.members(appsScope).ids.length === 0)
       return withVisibilities(unanswered(read, orgId));
@@ -442,8 +438,8 @@ export function accessAsksOf(group: MenuGroup): ReadonlyArray<HqHiddenEnvironmen
 
 const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
 
-/** Open or listed by roster project, including environments and Platform; unknown is absent. */
-export function menuMateVisibilities(tree: MenuTree): ReadonlyMap<string, "open" | "listed"> {
+/** Open or listed by project HQ places, environments included; any other is absent. */
+export function menuMateVisibilities(tree: MenuTree): ReadonlyMap<string, MateVisibility> {
   return new Map(Object.entries(tree.projectVisibilities));
 }
 /** HQ is making a Mate no row draws yet: a member its birth alone holds. */

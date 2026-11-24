@@ -2,7 +2,8 @@
  * A stage's or a production's setup as HQ runs it: its application's `environment` operation, or
  * the `deploy_key` operation that finishes an attached one, as
  * navigation shows it on every device (`hqOperationOf`) — how far it got, where it stopped and in
- * whose words, and while its maker's sign-in ran out, their Continue. Nothing of it runs in this
+ * whose words, and while its maker's sign-in ran out, their Continue, or an Owner's or an Admin's
+ * End where HQ offers it, its maker being unable to continue it. Nothing of it runs in this
  * tab: a closed tab changes nothing, and another device shows the same card.
  */
 import {
@@ -15,6 +16,7 @@ import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 
 /** The steps an `environment` operation goes through, as a person names them. */
 const STEPS = [
@@ -60,6 +62,7 @@ export function ZeropsEnvironmentCreation({
   nowMs,
   waitingFor,
   onContinue,
+  onEnd,
   onStartAgain,
   onDismiss,
 }: {
@@ -79,6 +82,8 @@ export function ZeropsEnvironmentCreation({
   readonly waitingFor?: ReactNode;
   /** Gives HQ the person's fresh sign-in: their own setup only. */
   readonly onContinue?: (() => void) | undefined;
+  /** Ends it at HQ; given only where HQ offers its end (`endOperationIntent`). */
+  readonly onEnd?: (() => void) | undefined;
   /** Opens the form again, for a setup that failed. */
   readonly onStartAgain?: (() => void) | undefined;
   readonly onDismiss: () => void;
@@ -122,9 +127,10 @@ export function ZeropsEnvironmentCreation({
       <div className="flex justify-end gap-2">
         {standing.kind === "waiting" && onContinue !== undefined ? (
           <Button onClick={onContinue} size="sm">
-            Continue
+            {standing.press}
           </Button>
         ) : null}
+        {onEnd === undefined ? null : <ZeropsOperationEnd kind={kind} name={name} onEnd={onEnd} />}
         {standing.kind === "failed" && onStartAgain !== undefined ? (
           <Button onClick={onStartAgain} size="sm">
             Start again

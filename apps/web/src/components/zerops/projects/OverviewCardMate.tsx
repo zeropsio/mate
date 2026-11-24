@@ -22,7 +22,7 @@ import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import { mateHasNoContainer } from "../ZeropsProjectRow.logic";
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateAdmissionSummary,
   mateDeletionOfProject,
@@ -48,7 +48,7 @@ import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
-import { useMateFaceWatch } from "~/zerops/useMateMoments";
+import { useMateFaceWatch, useMateRestartSaid } from "~/zerops/useMateMoments";
 import {
   useMateAwayNow,
   useMateLinkedInHq,
@@ -175,6 +175,7 @@ export function OverviewCardMate({
   const reviewWaits = mateReviewWaits(flow, projectId, standingHere);
   // How many of its changes wait so: an automated Mate holds one per task, several at once.
   const inReview = mateReviewCount(flow, projectId, standingHere);
+  const restartSaid = useMateRestartSaid(candidate.key);
   const watch = useMateFaceWatch({
     environmentId: candidate.environmentId ?? null,
     projectId,
@@ -289,6 +290,7 @@ export function OverviewCardMate({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    restarting: restartSaid,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,

@@ -8,6 +8,7 @@
  * button deletes anything: nothing about this can be undone.
  */
 import type { ZeropsEnvironmentServices } from "@t3tools/client-runtime/zerops";
+import type { HqBirthLeft } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 /** What a Mate on its way off Zerops says: its dialog's button, and its row's line. */
@@ -120,4 +121,38 @@ export function landingAfterDelete(input: {
   const before = at === -1 ? undefined : input.siblings.slice(0, at).findLast(opens);
   const next = after ?? before;
   return next === undefined ? { kind: "projects" } : { kind: "mate", projectId: next.projectId };
+}
+
+/** Each thing an adopted birth's attempt left in the project, as its Delete dialog names it. */
+const LEFT_WORDS: Readonly<Record<HqBirthLeft, string>> = {
+  zcp_service: "its zcp service",
+  mate_key: "the Mate key it made, which HQ no longer accepts",
+  mate_tag: "the project's mate tag",
+  isolation: "the isolation settings it changed",
+  owner_grant: "the owner access it granted",
+  zcp_enabled:
+    "the Mate settings it wrote to the project's own zcp service, which now refuses that key",
+};
+
+/**
+ * The body of an adopted birth's Delete: it stops the setup, deletes nothing in Zerops, and names
+ * what HQ's records say the attempt left in the project (`SharedBirth.left`), for the person to
+ * remove in Zerops if they want.
+ */
+export function adoptedBirthDeleteBody(left: ReadonlyArray<HqBirthLeft> | undefined): string {
+  const stops = "This stops setting up the Mate and deletes nothing in Zerops.";
+  const check =
+    "A step it was in the middle of may have added more, so check the project in Zerops before removing anything.";
+  if (left === undefined) return `${stops} HQ no longer holds this setup open. ${check}`;
+  if (left.length === 0) return `${stops} HQ records no change to the existing project. ${check}`;
+  return `${stops} HQ records these in the project, and they stay: ${left.map((thing) => LEFT_WORDS[thing]).join(", ")}. ${check}`;
+}
+
+/** What HQ says an open birth left now, by its id; `undefined` once HQ holds it open no more. */
+export function openBirthLeft(
+  births: ReadonlyArray<{ readonly id: string; readonly left?: ReadonlyArray<HqBirthLeft> }>,
+  birthId: string,
+): ReadonlyArray<HqBirthLeft> | undefined {
+  const birth = births.find((birth) => birth.id === birthId);
+  return birth === undefined ? undefined : (birth.left ?? []);
 }

@@ -1,5 +1,5 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
-import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { MateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { shownMateVisibilitiesAtom } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -274,7 +274,7 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
 }
 
 /** No Mate judged: no account, or none of its Mates read yet. */
-const NOT_JUDGED: Readonly<Record<string, RoleMateVisibility>> = {};
+const NOT_JUDGED: Readonly<Record<string, MateVisibility>> = {};
 
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
   const {
@@ -295,8 +295,8 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   const isConnecting = connectingKey !== null;
   const visibleError = actionError ?? error;
   const body = useMemo(() => candidatePickerBody(listing, readAtMs), [listing, readAtMs]);
-  // What this person may do with each Mate, as the account reads it from live Zerops data
-  // (`mateVisibility`); one not judged yet, or with no account, is absent.
+  // Whether each Mate opens for this person, as HQ says it (`person.entry`); one not judged yet,
+  // or with no account, is absent.
   const accountData = useAccountData();
   const registry = accountData?.registry ?? null;
   const visibilitiesAtom = shownMateVisibilitiesAtom(
@@ -313,8 +313,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   );
   const visibilities = useSyncExternalStore(subscribeVisibilities, readVisibilities);
   const visibilityOf = useCallback(
-    (candidate: MobileCandidate): RoleMateVisibility | undefined =>
-      visibilities[candidate.project.id],
+    (candidate: MobileCandidate): MateVisibility | undefined => visibilities[candidate.project.id],
     [visibilities],
   );
   const sections = useMemo(() => {

@@ -108,11 +108,14 @@ const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]
  * Why the project's deletion cannot start yet, or `undefined` once it can: HQ refuses its start
  * while a Mate or plain project stands in it (`app_has_mate`), so one opened confirmed by its last
  * Mate's Delete starts only once HQ's structure (`placements`, `null` while unread) holds none. A
- * Mate's deletion HQ runs releases it there when its project is gone.
+ * Mate's deletion HQ runs releases it there when its project is gone. Zerops stops listing that
+ * project first, and with it HQ's placement, so HQ's `deleting` ids carry the wait to its end.
  */
 export function applicationDeletionHold(
   placements: ReadonlyMap<string, HqPlacement> | null,
   appId: string,
+  /** The application's `contents.deletingProjectIds`. */
+  deleting: ReadonlyArray<string>,
 ):
   | { readonly words: string; readonly failed: boolean; readonly details: string | null }
   | undefined {
@@ -123,7 +126,15 @@ export function applicationDeletionHold(
       ? [mateDeletionOf({ operation: placement.operation, status: undefined })]
       : [],
   );
-  if (deletions.length === 0) return undefined;
+  if (deletions.length === 0) {
+    const mateGoing = deleting.some((id) => {
+      const placement = placements.get(id);
+      return placement === undefined || HOLDING_KINDS.has(placement.kind);
+    });
+    return mateGoing
+      ? { words: "Waiting for HQ to delete its Mate…", failed: false, details: null }
+      : undefined;
+  }
   const failed = deletions.find((deletion) => deletion.kind === "failed");
   if (failed?.kind === "failed")
     return {

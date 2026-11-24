@@ -57,6 +57,9 @@ export type HqApplicationOffers = { readonly [K in HqApplicationVerb]?: HqDecisi
  */
 export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 
+/** HQ's offer on a project (its `offers`): set a Mate up on it again after a deleted adoption. */
+export const HQ_OFFER_SET_UP_MATE = "set_up_mate";
+
 /** What a control draws for one verb. */
 export type HqOfferState =
   | { readonly kind: "allowed" }

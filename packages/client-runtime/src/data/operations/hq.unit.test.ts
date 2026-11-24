@@ -3,12 +3,14 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { HqError } from "../../zerops/hq/client.ts";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 import { seedHqNavigation, type SeededHq } from "../__fixtures__/hqNavigation.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
+import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
 import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
 
@@ -369,5 +371,71 @@ it.effect(
             : { stage: "refused", reason: said },
         );
       }
+    }),
+);
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | operation.failure?.code === "ended"; → operation.continueBy === undefined;
+it("OP62: A lost End answer counts as ended only when HQ shows that operation ended or no longer shows it, never while it runs on; breaks: an End that lost to the maker's Continue is reported done while the operation keeps acting", () => {
+  const end = HQ_WRITE_KINDS.find((kind) => kind.kind === "end-operation");
+  const intent = { kind: "end-operation", orgId: ORG, id: "op", appId: "app" } as const;
+  const shows = (operation: unknown) =>
+    end?.reflected(
+      { fact: () => ({ kind: "known", value: { operation } }) } as never,
+      intent as never,
+      {} as never,
+    );
+  expect(shows({ id: "op" })).toBe(false);
+  expect(shows({ id: "op", continueBy: "maker" })).toBe(false);
+  expect(shows({ id: "op", failure: { code: "ended" } })).toBe(true);
+  expect(shows(undefined)).toBe(true);
+});
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | ].find((shown) => shown?.id === id); → ].slice(0, 1).find((shown) => shown?.id === id);
+it.effect(
+  "OP63: A lost answer to ending a production's removal is adopted only once HQ shows that removal ended or no longer shows it; breaks: an End HQ never took reads as done while the application stays held",
+  () =>
+    Effect.gen(function* () {
+      const removal = {
+        id: "removal-1",
+        kind: "production_removal",
+        phase: "delete_requested",
+        at: "2026-11-23T10:00:05Z",
+        acceptedAt: "2026-11-23T10:00:00Z",
+        continueBy: "u-maker",
+        offers: ["end"],
+        failure: {
+          step: "delete_project",
+          code: "token_expired",
+          at: "2026-11-23T10:00:05Z",
+          origin: "hq",
+        },
+      };
+      const production = { ...gitEnvironment, jobs: [], operation: removal };
+      const held = { ...shop, environments: [production] } as unknown as App;
+      const intent = { kind: "end-operation", orgId: ORG, id: removal.id, appId: shop.id } as const;
+
+      const unchanged = account({ structure: { apps: [held], ungrouped: [] } });
+      yield* operationsOf(unchanged, {
+        endOperation: async () => {
+          throw lost;
+        },
+      }).submit(intent);
+      expect(progress(unchanged, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      const ended = account({ structure: { apps: [held], ungrouped: [] } });
+      yield* operationsOf(ended, {
+        endOperation: async () => {
+          const { continueBy: _gone, ...open } = removal;
+          const stopped = { ...open, offers: [], failure: { ...removal.failure, code: "ended" } };
+          hqSays(ended, [
+            {
+              ...shop,
+              environments: [{ ...production, operation: stopped }],
+            } as unknown as App,
+          ]);
+          throw lost;
+        },
+      }).submit(intent);
+      expect(progress(ended, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
 );

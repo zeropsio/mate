@@ -1,7 +1,19 @@
 import { expect, it } from "vite-plus/test";
 import type { SharedBirth } from "@t3tools/client-runtime/data";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { comingOfBirth, sharedBirthPresentation } from "../../zerops/sharedBirths.ts";
-import { comingDeletionStage } from "./ZeropsMateComingPage.logic.ts";
+import {
+  mateBornLine,
+  mateComingRowView,
+  mateDotLabel,
+  mateRowView,
+} from "./SidebarMateRow.logic.ts";
+import { mateOpening } from "../../zerops/mateOpening.logic.ts";
+import {
+  comingDeletionStage,
+  comingHandOverDestination,
+  comingOpenStands,
+} from "./ZeropsMateComingPage.logic.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
 it("MN20: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
@@ -37,7 +49,7 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
     at: "2026-11-23T10:00:00Z",
     origin: "zerops",
   };
-  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada" } as const;
+  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", press: "Continue" } as const;
   const deletions = [
     undefined,
     { kind: "none" },
@@ -118,4 +130,74 @@ it("MN41: A birth HQ stopped is its own card, and one HQ runs or finished never 
     { stopped: false, attention: false, actions: [] },
     { stopped: false, attention: true, actions: [] },
   ]);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsMateComingPage.logic.ts | to: "/$environmentId/$threadId" as const, → to: "/zerops" as const,
+it("MN59: A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview", () => {
+  const threadRef = {
+    environmentId: EnvironmentId.make("env-rye"),
+    threadId: ThreadId.make("thread-rye"),
+  };
+  expect(comingHandOverDestination(threadRef)).toEqual({
+    to: "/$environmentId/$threadId",
+    params: { environmentId: "env-rye", threadId: "thread-rye" },
+    replace: true,
+  });
+});
+
+// witness: apps/web/src/zerops/sharedBirths.ts | waitsOnMaker: waits && !continues, → waitsOnMaker: false,
+it("MN68: A birth HQ holds for its maker's Continue says it waits for its maker, not for you, to whoever HQ does not offer that Continue, and still waits for you to the maker it offers it to; breaks: an Owner or member is told a Mate waits for them when nothing they can press moves it", () => {
+  const birth = (offers: SharedBirth["offers"]): SharedBirth => ({
+    id: "birth-1",
+    appId: "shop",
+    appName: "Shop",
+    face: "slate:squircle",
+    madeBy: "maker",
+    projectId: "project-1",
+    importProcessId: null,
+    intent: undefined,
+    startedAt: Date.parse("2026-11-23T10:00:00Z"),
+    progress: { phase: "import-accepted", next: { kind: "wait", for: "hq" }, reason: null },
+    state: "waiting_for_maker",
+    failure: { step: "import", code: "access_lost", at: "2026-11-23T10:01:00Z", origin: "hq" },
+    offers,
+  });
+  const words = (offers: SharedBirth["offers"]) => {
+    const coming = comingOfBirth(birth(offers));
+    const { dot } = mateComingRowView(mateRowView(undefined, "idle"), coming);
+    return dot === undefined ? mateBornLine(coming).words : mateDotLabel(dot);
+  };
+  expect([words(["delete_project"]), words([]), words(["continue", "delete_project"])]).toEqual([
+    "Waiting for its maker",
+    "Waiting for its maker",
+    "Waiting for you",
+  ]);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsMateComingPage.logic.ts | return input.answer === undefined ? input.asked : input.answer !== "own-view"; → return input.answer === undefined ? input.asked : true;
+it("MN71: A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up", () => {
+  const open = (project: string | undefined) =>
+    mateOpening({
+      going: false,
+      settled: true,
+      linked: true,
+      primary: undefined,
+      told: undefined,
+      project,
+    });
+  // Its shell is live and holds no project yet: opening answers with the page it is already on.
+  let asked = comingOpenStands({
+    asked: false,
+    noConversation: true,
+    answer: open(undefined).kind,
+  });
+  expect(asked).toBe(false);
+  // Its project arrives: the page asks again and a conversation starts.
+  expect(open("project").kind).toBe("new-conversation");
+  asked = comingOpenStands({ asked, noConversation: true, answer: open("project").kind });
+  expect(asked).toBe(true);
+  expect(comingOpenStands({ asked, noConversation: true })).toBe(true);
+  // Its socket drops before that start reached the conversation: back live, it asks again.
+  asked = comingOpenStands({ asked, noConversation: false });
+  expect(comingOpenStands({ asked, noConversation: true })).toBe(false);
 });

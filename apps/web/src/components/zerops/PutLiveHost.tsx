@@ -7,9 +7,11 @@
  * device. Where HQ ends it at the release's review, the review opens in every tab that watched it
  * run.
  */
+import { applicationEnvironments } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { hqOperationOf } from "@t3tools/client-runtime/data";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
@@ -23,11 +25,15 @@ import {
   putLiveServices,
   putLiveShapes,
   putLiveSheet,
-  putLiveSheetUnderWay,
+  putLiveSheetNow,
 } from "~/zerops/putLive.logic";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { useOpenReview } from "~/zerops/review";
-import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import {
+  useAddEnvironment,
+  useApplicationEnvironmentFacts,
+  useEnvironmentOffers,
+} from "~/zerops/useAddEnvironment";
 import {
   applicationOperationAtom,
   applicationOperationsAtom,
@@ -125,7 +131,6 @@ function useGroupEntry(groupId: string) {
   );
 }
 
-const OTHER_SETUP = "Another setup on this application is running.";
 const NOTHING_ON_MAIN = "The project has nothing on main to put live yet.";
 
 function PutLiveSheetContainer({
@@ -142,8 +147,30 @@ function PutLiveSheetContainer({
     ask.groupId,
   );
   const offers = useEnvironmentOffers()(ask.groupId);
+  const environmentFacts = useApplicationEnvironmentFacts();
+  // What the application holds of each tier, the one answer every door reads.
+  const held = useMemo(
+    () =>
+      applicationEnvironments(
+        environmentFacts(
+          ask.groupId,
+          flow === undefined
+            ? undefined
+            : {
+                environments: flow.environmentInputs,
+                recipeRead: flow.recipeRead,
+                recipeTiers: flow.recipeTiers,
+                merged: flow.merged,
+                pullRequests: flow.pullRequests,
+                outside: flow.outside,
+              },
+        ),
+      ).held,
+    [ask.groupId, environmentFacts, flow],
+  );
   const addEnvironment = useAddEnvironment();
   const close = usePutLive((state) => state.close);
+  const navigate = useNavigate();
   const openReview = useOpenReview();
   const operations = useAccountOperations();
   // Production gets the project's people at their level there, as a stage added from it does.
@@ -188,9 +215,11 @@ function PutLiveSheetContainer({
     creates,
     shapes,
     shape,
+    stageHeld:
+      flow?.declarationsRead === true ? held.some(({ tier }) => tier === "stage") : undefined,
   });
   const release = flow?.release;
-  const held =
+  const waits =
     flow !== undefined && (release?.groupHead === undefined || release.entries.length === 0)
       ? NOTHING_ON_MAIN
       : people.kind === "failed"
@@ -245,23 +274,22 @@ function PutLiveSheetContainer({
     if (progress.stage !== "uncertain") startId.current = null;
     setRefused(trouble);
   };
+  const sheet = putLiveSheetNow(model, {
+    pressedHere: sending,
+    going: standing.kind === "going",
+    // HQ's record of production, a Git branch's included, whichever device's press made it.
+    placed: held.some(({ tier }) => tier === "production") || release?.releaseTarget !== undefined,
+    otherSetup,
+    zeropsProduction: offers?.zerops?.production,
+    setUpOffered: offers?.production === true,
+    waits,
+    refused,
+  });
   return (
     <PutLiveSheet
-      model={
-        sending
-          ? putLiveSheetUnderWay(model, { pressedHere: true })
-          : standing.kind === "going"
-            ? putLiveSheetUnderWay(model, { pressedHere: false })
-            : otherSetup
-              ? { ...model, hold: OTHER_SETUP }
-              : offers?.zerops?.production === false
-                ? { ...model, hold: "Production can be added here only as a Git branch." }
-                : held !== undefined && model.hold === undefined
-                  ? { ...model, hold: held }
-                  : { ...model, refused }
-      }
+      model={sheet}
       onSetUpYourself={
-        offers?.production === true
+        sheet.setUpYourself === true
           ? () => {
               onLeave(() => {
                 addEnvironment(ask.groupId, "production");
@@ -272,6 +300,11 @@ function PutLiveSheetContainer({
       }
       onShape={setShape}
       onPutLive={() => {
+        if (sheet.placed === true) {
+          close();
+          void navigate({ to: "/group/$groupId/flow", params: { groupId: ask.groupId } });
+          return;
+        }
         void putLive();
       }}
       onSeeCode={

@@ -44,8 +44,8 @@ import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import {
   faceName,
   newMateFace,
-  newMateSubmit,
   newMateWords,
+  offeredBotName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newProjectButton, regionPlace } from "./ZeropsNewProjectForm.logic";
 
@@ -68,10 +68,10 @@ export interface NewProjectFormInput {
   readonly loading: boolean;
   /** Why the locations could not be read; `null` when they were. */
   readonly locationError: string | null;
-  /** The first Mate's name proposed, free on the account (`generateBotName`). */
+  /** The first Mate's name to propose, offered once the account's names vouch for it. */
   readonly defaultBotName: string;
-  /** Another name free on the account, never the one given: the die at the name's end. */
-  readonly proposeAnotherName?: ((current: string) => string) | undefined;
+  /** Another name free on the account, never the one given. */
+  readonly proposeAnotherName: (current: string) => string;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
   readonly takenBotNames: TakenBotNames;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
@@ -108,6 +108,10 @@ export interface NewProjectForm {
   /** The Mate as it is called while its name is typed: a blank field keeps the last name. */
   readonly calledName: string;
   readonly nameMate: (typed: string) => void;
+  /** The die at the name's end; absent until every name is read. */
+  readonly another: (() => void) | undefined;
+  /** Offers a name as the proposal (*Shuffle*'s roll), never as one the person typed. */
+  readonly propose: (offer: string) => void;
   readonly face: ZeropsMateFace;
   readonly pickTint: (tint: MateTintId) => void;
   readonly pickShape: (shape: MateShapeId) => void;
@@ -133,7 +137,19 @@ export function useNewProjectForm(
   const { defaultBotName, takenBotNames: taken, creating, retry, closed } = input;
   const [name, setName] = useState("");
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
-  const [botName, setBotName] = useState(defaultBotName);
+  const [typed, setTyped] = useState<string | null>(null);
+  const [proposal, setProposal] = useState(defaultBotName);
+  // A new project has no recipe to wait on: only the name, new on the account.
+  const named = offeredBotName({
+    typed,
+    proposal,
+    takenBotNames: taken,
+    tier: undefined,
+    tierLoading: false,
+    another: input.proposeAnotherName,
+  });
+  if (named.proposal !== proposal) setProposal(named.proposal);
+  const { botName, submit } = named;
   // The last name typed: a blank field keeps the face it had rather than flashing another.
   const [heldName, setHeldName] = useState(defaultBotName);
   const [picked, setPicked] = useState<{
@@ -148,13 +164,6 @@ export function useNewProjectForm(
     name: calledName,
     picked,
     defaultTint: input.defaultTintFor,
-  });
-  // A new project has no recipe to wait on: only the name, new on the account.
-  const submit = newMateSubmit({
-    botName,
-    takenBotNames: taken,
-    tier: undefined,
-    tierLoading: false,
   });
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
   // Create stays on with no project name: its press asks for one, at the name.
@@ -181,11 +190,20 @@ export function useNewProjectForm(
         (input.locations.length > 0 && !input.locationId) ||
         submit.kind === "wait"));
 
-  const nameMate = (typed: string) => {
-    setBotName(typed);
-    const named = typed.replace(/\s+/g, " ").trim();
-    if (named.length > 0) setHeldName(named);
+  const nameMate = (value: string) => {
+    setTyped(value);
+    const called = value.replace(/\s+/g, " ").trim();
+    if (called.length > 0) setHeldName(called);
   };
+  const propose = (offer: string) => {
+    setProposal(offer);
+    setTyped(null);
+  };
+  const another = taken.complete
+    ? () => {
+        propose(input.proposeAnotherName(botName.replace(/\s+/g, " ").trim()));
+      }
+    : undefined;
   const press = () => {
     if (creating || closed !== undefined) return;
     if (retry !== undefined) {
@@ -212,6 +230,8 @@ export function useNewProjectForm(
     botName,
     calledName,
     nameMate,
+    another,
+    propose,
     face,
     pickTint: (tint) => {
       if (!creating) setPicked((current) => ({ ...current, tint }));
@@ -322,7 +342,7 @@ export function FirstMateField({
   /** `xl` where the form is the page's hero (the first run's card). */
   readonly size?: "default" | "xl" | undefined;
 }) {
-  const { proposeAnotherName, creating } = form.input;
+  const { creating } = form.input;
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={MATE_FIELD}>{label}</Label>
@@ -337,13 +357,7 @@ export function FirstMateField({
           describedBy={LINE}
           id={MATE_FIELD}
           invalid={form.refused !== undefined}
-          onAnother={
-            proposeAnotherName === undefined
-              ? undefined
-              : () => {
-                  form.nameMate(proposeAnotherName(form.botName.replace(/\s+/g, " ").trim()));
-                }
-          }
+          onAnother={form.another}
           onValueChange={form.nameMate}
           readOnly={creating}
           size={size}
@@ -519,8 +533,9 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     name: form.botName,
     pickTint: form.pickTint,
     pickShape: form.pickShape,
-    setName: form.nameMate,
-    proposeAnotherName,
+    setName: form.propose,
+    // Until every name is read no proposal is offered, so the roll keeps the name.
+    proposeAnotherName: form.another === undefined ? undefined : proposeAnotherName,
   });
   // Each step opens on what it asks, where a keyboard is at hand: the name, then the Mate's press.
   useEffect(() => {

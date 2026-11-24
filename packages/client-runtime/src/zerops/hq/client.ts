@@ -209,7 +209,7 @@ export interface HqStructure {
    * are read. The client derives it; HQ sends none. Absent until both are read.
    */
   readonly placeable?: Readonly<Record<string, HqOffers>>;
-  /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
+  /** The Mates HQ holds in no application: their name as the client resolves it, and their record. */
   readonly ungrouped: ReadonlyArray<
     {
       readonly projectId: string;
@@ -217,6 +217,8 @@ export interface HqStructure {
       readonly mate: HqMate;
       /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
       readonly operation?: HqOperation;
+      /** What HQ itself offers the reader on it (`set_up_mate`). */
+      readonly offers?: ReadonlyArray<string>;
     } & HqOffered
   >;
   readonly apps: ReadonlyArray<{
@@ -236,10 +238,14 @@ export interface HqStructure {
         readonly mate: HqMate | null | undefined;
         /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
         readonly operation?: HqOperation;
+        /** What HQ itself offers the reader on it (`set_up_mate`). */
+        readonly offers?: ReadonlyArray<string>;
       } & HqOffered
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
     readonly can?: HqOffers;
+    /** Set up Mate on one of its projects stands in for Add a Mate: no other Mate stands in it. */
+    readonly setUpOffered?: true;
     /**
      * Absent while HQ's record of the application is not read whole: projected projects cannot
      * establish emptiness.
@@ -269,7 +275,7 @@ export interface HqStructure {
 
 /**
  * A birth's operation as HQ runs it (`mate-hq spec/protocol.md` S13a): its phase, its failure, and
- * while its token lapsed (`token_expired`) the person whose Continue it waits for.
+ * while it waits for its maker the person whose Continue it waits for.
  */
 export const HqBirthOperation = Schema.Struct({
   kind: Schema.Literal("birth"),
@@ -317,12 +323,29 @@ export const HqBirthOffer = Schema.Literals(["continue", "delete", "delete_proje
 export type HqBirthOffer = typeof HqBirthOffer.Type;
 
 /**
+ * One thing an adopted birth's attempt may have written to the existing project, which its Delete
+ * leaves there (navigation, `births[].left`): the `zcp` service its import asked for, the Mate key
+ * it minted (HQ refuses that key from then on), the project's `mate` tag, its isolation settings,
+ * the `OWNER` grant it asked for a person, and what enabling the project's own zcp service wrote
+ * to it (the Mate key and HQ's address as secrets, `ZCP_MATE_ENABLED`, a restart).
+ */
+export const HQ_BIRTH_LEFT = [
+  "zcp_service",
+  "mate_key",
+  "mate_tag",
+  "isolation",
+  "owner_grant",
+  "zcp_enabled",
+] as const;
+export type HqBirthLeft = (typeof HQ_BIRTH_LEFT)[number];
+
+/**
  * The operation HQ shows on a project, an application or a production (`mate-hq spec/protocol.md`
  * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
  * production's removal (`production_removal`), a project's move (`project_move`), an application's
  * rename (`app_rename`, S13d) or another kind it runs there, by its `id` (what Continue names), open
  * or stopped with its failure, which names who stopped it and why,
- * and while its token lapsed (`token_expired`) the person whose Continue it waits for. An
+ * and while it waits for its maker the person whose Continue it waits for. An
  * application's rename names the projects of its receipt the person sees, each with its result once
  * it has one (`renamed`, `renamed_since`, `moved`, `gone` or `refused:<Zerops' code>`). Its kind and
  * phase are read as strings: a kind or phase this build does not know never takes its project away.
@@ -559,6 +582,8 @@ export interface HqBirth {
   readonly chief?: boolean;
   readonly chiefRegistered?: boolean;
   readonly adopted?: boolean;
+  /** An adopted birth's `HqBirthLeft`s as HQ sends them; one this build does not know is read past. */
+  readonly left?: ReadonlyArray<string>;
   readonly intent?: Readonly<Record<string, unknown>>;
 }
 
@@ -694,6 +719,12 @@ export interface HqApi {
    * /api/operations/{id}/continue`); HQ queues its job again from the phase it recorded.
    */
   readonly continueOperation: (id: string) => Promise<void>;
+  /**
+   * Ends an application's operation that waits for a maker who cannot continue it (`POST
+   * /api/operations/{id}/end`), an organisation Owner's or Admin's: HQ frees the application and
+   * deletes nothing, so a project the operation made stays.
+   */
+  readonly endOperation: (id: string) => Promise<void>;
   /**
    * Starts a Mate's deletion with the person's access token (`POST
    * /api/projects/{projectId}/deletion`): HQ deletes its project and releases its records; `id` is
@@ -1939,6 +1970,13 @@ export function makeHqApi(input: {
           message: signIn,
         });
       }
+    },
+    endOperation: async (id) => {
+      await authorized(
+        `/api/operations/${encodeURIComponent(id)}/end`,
+        { method: "POST", body: JSON.stringify({}) },
+        true,
+      );
     },
     startMateDeletion: (projectId, start) =>
       startOperation(`/api/projects/${encodeURIComponent(projectId)}/deletion`, start, {

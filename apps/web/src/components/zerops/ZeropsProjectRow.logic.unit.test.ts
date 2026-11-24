@@ -1,17 +1,22 @@
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
+import { addMateDoor } from "../../zerops/addMateDoor.ts";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
+import { openBirthLeft } from "./ZeropsDeleteMateDialog.logic.ts";
 import { moveAttemptFor } from "./mateActions/moveAttempt.ts";
 import { crewMayTakeLine, mateRowSecond } from "./SidebarMateRow.logic.ts";
 import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.logic.ts";
 import { appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic.ts";
 import {
   deriveZeropsRowAction,
+  plainSetUpCandidates,
   deriveZeropsRowPresentation,
   mateCardHoldsMenu,
-  mateHasNoContainer,
   mateLineHoldsVerb,
   mateRowCan,
+  setUpMateEffect,
+  mateCardPress,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic.ts";
@@ -45,20 +50,20 @@ const row = (
   visibility: ZeropsRowInput["visibility"],
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | remove: offers?.held === true && offers.edit.kind === "allowed", → remove: true,
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | offers?.held === true && offers.edit.kind === "allowed"; → true;
 it("MN39: Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work", () => {
   const allowed = { kind: "allowed" } as const;
   const refused = { kind: "refused", reason: "not yours" } as const;
   const unknown = { kind: "unknown" } as const;
   const cases = [
-    [{ held: true, edit: allowed, detach: allowed }, true],
-    [{ held: true, edit: refused, detach: allowed }, false],
-    [{ held: true, edit: unknown, detach: allowed }, false],
+    [{ held: true, edit: allowed, detach: allowed, setUp: allowed }, true],
+    [{ held: true, edit: refused, detach: allowed, setUp: allowed }, false],
+    [{ held: true, edit: unknown, detach: allowed, setUp: allowed }, false],
     [{ held: false, createRecord: allowed }, false],
     [undefined, false],
   ] as const;
   for (const [offers, remove] of cases) {
-    expect(mateRowCan(offers).remove).toBe(remove);
+    expect(mateRowCan(offers, true).remove).toBe(remove);
   }
 });
 
@@ -81,6 +86,24 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
   expect(deriveZeropsRowAction(row(failedBirth, { ...every, remove: false }, "open")).kind).toBe(
     "none",
   );
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | can.start && isStopped(candidate) → isStopped(candidate)
+it("MN66: A stopped project's row offers Start only to a person who operates it; breaks: a Read-only person's row offers a Start Zerops refuses", () => {
+  const stopped: ZeropsRowCandidate = {
+    ...running,
+    group: "unavailable",
+    project: { ...running.project, status: "STOPPED" },
+    service: { id: "s-zcp", name: "zcp", status: "STOPPED" },
+  };
+  const action = (operates: boolean) =>
+    deriveZeropsRowAction({
+      candidate: stopped,
+      health: "ready",
+      can: mateRowCan(undefined, operates),
+    }).kind;
+  expect(action(true)).toBe("start");
+  expect(action(false)).toBe("none");
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return coming?.kind === "coming"; → return coming?.kind === "failed";
@@ -307,7 +330,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     [
       "waiting on its maker",
       "needs",
-      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false },
+      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false, press: "Continue" },
       "restarting",
     ],
     ["failed, the Mate asks", "needs", failed, "ask"],
@@ -316,4 +339,138 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
   ] as const;
   for (const [standing, state, restart, kind] of cases)
     expect({ standing, kind: line(state, restart) }).toEqual({ standing, kind });
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered !== true && can.setUpMate) {
+it("MN42: A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it", () => {
+  const hq = { appId: "app", appName: "Shop", kind: "plain", mate: null } as const;
+  const withHq = (group: ZeropsRowCandidate["group"], setUpOffered: boolean) =>
+    ({
+      ...running,
+      group,
+      project: { ...running.project, hq: setUpOffered ? { ...hq, setUpOffered } : hq },
+    }) satisfies ZeropsRowCandidate;
+  const cases = [
+    ["ready", true, "set-up-mate"],
+    ["provisioning", true, "set-up-mate"],
+    ["unavailable", true, "set-up-mate"],
+    ["ready", false, "open"],
+    ["provisioning", false, "none"],
+  ] as const;
+  for (const [group, offered, kind] of cases) {
+    const said = deriveZeropsRowAction({
+      candidate: withHq(group, offered),
+      health: "ready",
+      can: every,
+    });
+    expect({ group, offered, kind: said.kind }).toEqual({ group, offered, kind });
+  }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | candidate.project.hq.appId === groupId && → candidate.project.hq.appId !== groupId &&
+it("MN43: A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it", () => {
+  const row = (
+    id: string,
+    appId: string,
+    setUpOffered: boolean,
+    mate: { face: string } | null,
+  ) => ({
+    key: id,
+    project: {
+      id,
+      hq: {
+        appId,
+        appName: "Shop",
+        kind: mate === null ? ("plain" as const) : ("mate" as const),
+        mate,
+        ...(setUpOffered ? { setUpOffered } : {}),
+      },
+    },
+  });
+  const candidates = [
+    row("other-app", "elsewhere", true, null),
+    row("not-offered", "app", false, null),
+    row("kept-mate", "app", true, { face: "" }),
+    row("held-plain", "app", true, null),
+  ];
+  expect(plainSetUpCandidates(candidates, "app").map((row) => row.key)).toEqual(["held-plain"]);
+  expect(plainSetUpCandidates(candidates.slice(0, 3), "app")).toEqual([]);
+});
+
+// witness: apps/web/src/zerops/addMateDoor.ts | if (input.setUpOffered === true) return { kind: "none" }; → if (input.setUpOffered === false) return { kind: "none" };
+it("MN44: The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears", () => {
+  const allowed = { kind: "allowed" } as const;
+  expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: true }).kind).toBe(
+    "none",
+  );
+  expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: false }).kind).toBe(
+    "offered",
+  );
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return mateLineHoldsVerb(action) ? undefined : open; → return open;
+it("MN46: A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears", () => {
+  const open = () => undefined;
+  for (const [action, opens] of [
+    [{ kind: "set-up-mate", label: "Set up Mate" }, false],
+    [{ kind: "enable", label: "Enable Zerops Mate" }, false],
+    [{ kind: "retry-probe", label: "Try again" }, false],
+    [{ kind: "open", label: "Open" }, true],
+    [{ kind: "none" }, true],
+  ] as const) {
+    expect([action.kind, mateCardPress(action, open) === open]).toEqual([action.kind, opens]);
+  }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | births.find((birth) => birth.id === birthId) → births.find((birth) => birth.id !== birthId)
+it("MN47: An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project", () => {
+  const now = [
+    { id: "other", left: ["mate_tag"] },
+    { id: "b1", left: ["mate_tag", "zcp_service"] },
+    { id: "bare" },
+  ] as const;
+  expect(openBirthLeft(now, "b1")).toEqual(["mate_tag", "zcp_service"]);
+  expect(openBirthLeft(now, "bare")).toEqual([]);
+  expect(openBirthLeft(now, "gone")).toBeUndefined();
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.service !== undefined) return "restarts-container"; → if (candidate.service !== undefined) return "adds-container";
+it("MN48: Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts", () => {
+  expect(setUpMateEffect({ missingContainer: true })).toBe("adds-container");
+  expect(setUpMateEffect({ service: { id: "s", name: "zcp", status: "ACTIVE" } })).toBe(
+    "restarts-container",
+  );
+  expect(setUpMateEffect({})).toBe("unread");
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered === true && input.visibility !== "listed") {
+it("MN49: HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again", () => {
+  const hq = { appId: "app", appName: "Shop", kind: "mate", mate: { face: "" } } as const;
+  const listed = (setUpOffered: boolean) =>
+    deriveZeropsRowAction({
+      candidate: {
+        ...running,
+        project: { ...running.project, hq: setUpOffered ? { ...hq, setUpOffered } : hq },
+      },
+      health: "ready",
+      visibility: "listed",
+      can: every,
+    }).kind;
+  expect(listed(true)).toBe("set-up-mate");
+  expect(listed(false)).toBe("none");
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return candidates.filter( → return candidates.slice(0, 1).filter(
+it("MN50: Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is", () => {
+  const row = (id: string) => ({
+    key: id,
+    project: {
+      id,
+      hq: { appId: "app", appName: "Shop", kind: "plain" as const, mate: null, setUpOffered: true },
+    },
+  });
+  expect(plainSetUpCandidates([row("one"), row("two")], "app").map((row) => row.key)).toEqual([
+    "one",
+    "two",
+  ]);
 });

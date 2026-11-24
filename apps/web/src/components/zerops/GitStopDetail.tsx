@@ -12,6 +12,8 @@ import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { writeTrouble } from "~/zerops/zeropsWrite";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { randomUUID } from "~/lib/utils";
 import { stoppedWords } from "~/zerops/stoppedWords";
@@ -515,7 +517,8 @@ function ZeropsProductionRemoval({
         Removing production…
       </p>
     );
-  if (removal.kind === "waiting")
+  if (removal.kind === "waiting") {
+    const end = endOperationIntent(removal, orgId, appId);
     return (
       <>
         <p className="rv-note" data-zerops-surface="production-removal-waiting">
@@ -530,12 +533,23 @@ function ZeropsProductionRemoval({
               void submit({ kind: "continue-operation", orgId, id: removal.id, appId });
             }}
           >
-            Continue
+            {removal.press}
           </Button>
         ) : null}
+        {end === undefined ? null : (
+          <ZeropsOperationEnd
+            disabled={busy}
+            kind="production_removal"
+            name={environment.name}
+            onEnd={() => {
+              void submit(end);
+            }}
+          />
+        )}
         {said}
       </>
     );
+  }
   if (!allowed) return null;
   const deleteProject = environment.deleteProjectOnRemoval === true;
   const attempt = `${target.projectId}:${String(deleteProject)}`;

@@ -58,6 +58,7 @@ it("MN36: A creation waiting for its approver's Zerops sign-in offers Continue t
     id: "op-1",
     continueBy: "dana",
     yours,
+    press: "Continue",
   });
   const cases = [
     ["its approver", true, true],

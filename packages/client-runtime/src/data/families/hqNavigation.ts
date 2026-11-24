@@ -70,6 +70,8 @@ const Birth = Schema.Struct({
   chief: Schema.optionalKey(Schema.Boolean),
   chiefRegistered: Schema.optionalKey(Schema.Boolean),
   adopted: Schema.optionalKey(Schema.Boolean),
+  // Strings, so a thing a later HQ names never takes the birth away (`HqBirthLeft`).
+  left: Schema.optionalKey(Schema.Array(Schema.String)),
   intent: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),

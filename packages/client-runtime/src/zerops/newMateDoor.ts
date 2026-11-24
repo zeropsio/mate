@@ -6,7 +6,7 @@
 import { hasMate } from "./mateEnvironments.ts";
 import { projectNameInApp, type ZeropsGroupPendingMember } from "./groups.ts";
 import { isRecipeProposal, recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
-import type { ZeropsCandidate } from "./candidates.ts";
+import { mateHasNoContainer, type ZeropsCandidate } from "./candidates.ts";
 import { crewPossessive } from "./crew/phrases.ts";
 
 /** Where the project's recipe stands, as the Mate's dialog tells it. */
@@ -21,6 +21,8 @@ interface NewMateDoorMate {
   readonly name: string;
   /** Up, its agent waiting for the viewer's own sign-in (`useSignInWaits`): it sets nothing up yet. */
   readonly awaitsYourSignIn?: true;
+  /** Its project holds no container and no birth is bringing one: it waits for its Set up. */
+  readonly noContainer?: true;
 }
 
 /** The change a Mate proposed the recipe in, still open, and that Mate while the project has it. */
@@ -101,7 +103,16 @@ export function newMateDoor(input: {
       action: { kind: "change", label: "Review the change", number: change.number },
     };
   }
-  const [writer, ...others] = mates;
+  const working = mates.filter((mate) => mate.noContainer !== true);
+  const [waiting] = mates;
+  if (working.length === 0 && waiting !== undefined) {
+    return {
+      kind: "closed",
+      reason: `Set up ${waiting.name} first. New Mates can join once it has set ${groupName} up.`,
+      action: undefined,
+    };
+  }
+  const [writer, ...others] = working;
   if (writer !== undefined && others.length === 0) {
     return {
       kind: "closed",
@@ -154,13 +165,16 @@ export function newMateGate(input: {
 /**
  * The project's Mates, as the door counts and names them: the listed ones by their project, in the
  * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
- * hold yet is setting the project up as surely as one it does.
+ * hold yet is setting the project up as surely as one it does. A Mate with no container and no
+ * open birth (`birthOn`) sets nothing up: it is named as waiting for its Set up.
  */
 export function newMateDoorMates(input: {
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
   /** Its agent waits for the viewer's own sign-in (`useSignInWaits`); none while not read. */
   readonly awaitsYourSignIn?: ((item: ZeropsCandidate) => boolean) | undefined;
+  /** HQ holds an open birth on the project. */
+  readonly birthOn: (projectId: string) => boolean;
 }): ReadonlyArray<NewMateDoorMate> {
   const listed = input.environments.flatMap(({ item }) =>
     hasMate(item)
@@ -168,6 +182,9 @@ export function newMateDoorMates(input: {
           {
             projectId: item.project.id,
             name: projectNameInApp(item.project),
+            ...(mateHasNoContainer(item) && !input.birthOn(item.project.id)
+              ? { noContainer: true as const }
+              : {}),
             ...(input.awaitsYourSignIn?.(item) === true ? { awaitsYourSignIn: true as const } : {}),
           },
         ]

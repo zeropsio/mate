@@ -22,6 +22,7 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { applicationOperationAtom, hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
+import { useHqStructure } from "~/zerops/useHqOffers";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -49,6 +50,8 @@ import {
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import { deleteMateConfirmed } from "./ZeropsDeleteMateDialog.logic";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 
 export function ZeropsDeleteApplicationForm({
   name,
@@ -81,8 +84,18 @@ export function ZeropsDeleteApplicationForm({
   readonly status?:
     | { readonly words: string; readonly failed: boolean; readonly details: string | null }
     | undefined;
-  /** HQ's deletion stopped waiting for someone's Continue: who, and the reader's own Continue. */
-  readonly waiting?: { readonly line: ReactNode; readonly onContinue?: () => void } | undefined;
+  /**
+   * HQ's deletion stopped waiting for someone's Continue: who, the reader's own Continue, and the
+   * End HQ offers an Owner or an Admin once its maker cannot continue it.
+   */
+  readonly waiting?:
+    | {
+        readonly line: ReactNode;
+        readonly press: string;
+        readonly onContinue?: () => void;
+        readonly onEnd?: () => void;
+      }
+    | undefined;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
@@ -151,8 +164,16 @@ export function ZeropsDeleteApplicationForm({
         </Button>
         {waiting?.onContinue === undefined ? null : (
           <Button onClick={waiting.onContinue} disabled={pending} type="button" variant="secondary">
-            Continue
+            {waiting.press}
           </Button>
+        )}
+        {waiting?.onEnd === undefined ? null : (
+          <ZeropsOperationEnd
+            disabled={pending}
+            kind="app_deletion"
+            name={name}
+            onEnd={waiting.onEnd}
+          />
         )}
         <Button
           aria-busy={pending || undefined}
@@ -217,7 +238,12 @@ function ZeropsDeleteApplicationDialog({
   const detail = useHqAppDetail(target.appId);
   const words = deleteApplicationWords(target, applicationHoldings(detail));
   const placements = useAtomValue(hqPlacementsAtom);
-  const hold = applicationDeletionHold(placements, target.appId);
+  const structure = useHqStructure();
+  const hold = applicationDeletionHold(
+    placements,
+    target.appId,
+    structure?.apps.find((app) => app.id === target.appId)?.contents?.deletingProjectIds ?? [],
+  );
   const deletion = hqOperationOf(
     useAtomValue(applicationOperationAtom(target.appId)),
     "app_deletion",
@@ -268,11 +294,13 @@ function ZeropsDeleteApplicationDialog({
     if (gone) onClose();
   }, [gone]);
   const orgId = activeOrganization?.id;
+  const end = endOperationIntent(deletion, orgId, target.appId);
   const waiting =
     deletion.kind !== "waiting" || orgId === undefined
       ? undefined
       : {
           line: <DeletionWaitingWords orgId={orgId} userId={deletion.continueBy} />,
+          press: deletion.press,
           ...(deletion.yours
             ? {
                 onContinue: () => {
@@ -292,6 +320,18 @@ function ZeropsDeleteApplicationDialog({
                 },
               }
             : {}),
+          ...(end === undefined
+            ? {}
+            : {
+                onEnd: () => {
+                  settle(
+                    operations.submit(end).then(({ progress, evidence }) => {
+                      const trouble = writeTrouble(progress, evidence);
+                      if (trouble !== null) throw new Error(trouble);
+                    }),
+                  );
+                },
+              }),
         };
   const running = deletion.kind === "going";
 

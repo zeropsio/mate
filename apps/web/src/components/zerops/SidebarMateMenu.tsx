@@ -121,15 +121,15 @@ export function MateMenuItems({
     return (
       <>
         {entries.map((entry) => (
-          <MenuItem
+          <MenuItemWithWhy
             data-zerops-mate-menu={entry.id}
             disabled={entry.disabled === true}
             key={entry.id}
+            label={entry.label}
             onClick={entry.onSelect}
             variant={entry.variant ?? "default"}
-          >
-            {entry.label}
-          </MenuItem>
+            why={entry.why}
+          />
         ))}
       </>
     );

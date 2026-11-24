@@ -171,7 +171,7 @@ import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing, MenuTree } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
-import { useMateFaceWatch } from "~/zerops/useMateMoments";
+import { useMateFaceWatch, useMateRestartSaid } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
@@ -311,12 +311,12 @@ import {
 import {
   comingStopped,
   mateBornLine,
-  mateComingRowView,
-  mateLifeOf,
+  mateLifeRowView,
+  mateRowLife,
   mateRowMenu,
   mateCrewItem,
-  mateDeletingView,
   mateDotLabel,
+  WAITS_ON_MAKER_LINE,
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
@@ -1382,7 +1382,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id, (pull) => standingOf(id, pull)),
           mine: waitsOnViewer(item.project.id),
-          pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+          pose: matePoseOf(item, minuteMs, mateRowLife(item.project, getComing?.(item))),
         }),
       );
     }
@@ -2148,17 +2148,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       }
       const { item } = entry;
       const live = getActivity?.(item);
+      const comingNow = getComing?.(item);
+      const life = mateRowLife(item.project, comingNow);
       const read = mateRowReading({
         name: entry.name,
         connected: mateAwake(item, hqMates),
         activity: live,
         reviewWaits: reviewWaits(item),
         mine: waitsOnViewer(item.project.id),
-        pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+        pose: matePoseOf(item, minuteMs, life),
         free: mateAutomation(item.project.hq?.mate)?.task === null,
       });
-      const comingNow = getComing?.(item);
-      const view = comingNow === undefined ? read : mateComingRowView(read, comingNow);
+      const view = mateLifeRowView(read, life, comingNow);
       const owner = getOwner?.(item);
       return [
         {
@@ -3405,7 +3406,8 @@ const ROW_STOP_ARMED_CLASS =
 
 const ROW_ACTION_CLASS = "menu-row-action";
 
-import { mateHasNoContainer, NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
+import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 
@@ -3539,16 +3541,18 @@ function useMateRowState<T extends RosterCandidate>({
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
-  // (`mateComingRowView`).
+  // (`mateLifeRowView`), and one on its way off Zerops only that.
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
   const awayNowMs = useMateAwayNow(offlineSince);
   // Waking while it comes up and arrives (`mateFaceFor`).
-  const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
+  const life = mateRowLife(candidate.project, coming);
+  const pose = matePoseOf(candidate, nowMs, life);
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
   const stopPress = useStopPress(activity?.threadKey);
   // Its face's watch (`mateFace`, below), and its update restarting it, which its line says.
+  const restartSaid = useMateRestartSaid(candidate.key);
   const watch = useMateFaceWatch({
     environmentId: candidate.environmentId ?? null,
     projectId: candidate.project.id,
@@ -3568,11 +3572,7 @@ function useMateRowState<T extends RosterCandidate>({
     updating: watch.updating,
     free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
-  const view = deleting
-    ? mateDeletingView(read)
-    : coming !== undefined
-      ? mateComingRowView(read, coming)
-      : read;
+  const view = mateLifeRowView(read, life, coming);
   const retainedReply =
     view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
@@ -3699,6 +3699,7 @@ function useMateRowState<T extends RosterCandidate>({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    restarting: restartSaid,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4800,9 +4801,11 @@ function ComingMateRow({
       line={
         <MateComingLine
           line={
-            shared?.attention === true
-              ? { words: shared.line, since: undefined, tone: "attention" }
-              : pendingBornLine(coming)
+            shared?.waitsOnMaker === true
+              ? WAITS_ON_MAKER_LINE
+              : shared?.attention === true
+                ? { words: shared.line, since: undefined, tone: "attention" }
+                : pendingBornLine(coming)
           }
         />
       }

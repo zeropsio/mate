@@ -10,7 +10,7 @@
  *
  * @module hq/placement
  */
-import { type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
+import { HQ_OFFER_SET_UP_MATE, type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
 import { type ZeropsMateFace, readMateFace } from "@t3tools/shared/mateFaces";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
@@ -35,6 +35,8 @@ export type HqPlacement =
       readonly mate: HqMate | null | undefined;
       /** The operation HQ runs on the project (`HqOperation`), as its navigation shows it. */
       readonly operation?: HqOperation;
+      /** HQ offers the reader Set up Mate on it (a project's `offers`). */
+      readonly setUpOffered?: true;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | {
@@ -43,6 +45,7 @@ export type HqPlacement =
       readonly kind: "mate";
       readonly mate: HqMate;
       readonly operation?: HqOperation;
+      readonly setUpOffered?: true;
     };
 
 /** HQ facts joined by project id: where HQ places each project. */
@@ -102,16 +105,20 @@ export function placementsOf(
         kind,
         mate: project.mate == null ? project.mate : withLogins(project.projectId, project.mate),
         ...(project.operation === undefined ? {} : { operation: project.operation }),
+        ...(project.offers?.includes(HQ_OFFER_SET_UP_MATE) === true
+          ? { setUpOffered: true as const }
+          : {}),
       });
     }
   }
-  for (const { projectId, mate, operation } of structure.ungrouped) {
+  for (const { projectId, mate, operation, offers } of structure.ungrouped) {
     placements.set(projectId, {
       appId: null,
       appName: null,
       kind: "mate",
       mate: withLogins(projectId, mate),
       ...(operation === undefined ? {} : { operation }),
+      ...(offers?.includes(HQ_OFFER_SET_UP_MATE) === true ? { setUpOffered: true as const } : {}),
     });
   }
   return placements;
@@ -264,14 +271,15 @@ export function placedNames(structure: MatePlacementStructure): ReadonlyMap<stri
  * What the reader of a project is offered (`can`, `@t3tools/shared/hqOffers`), decided from their
  * live Zerops roles: of a Mate it holds, its record and leaving its application; of a project it holds nowhere, writing its Mate's record. HQ decides the write
  * again at the press.
- * Whether the reader may see or open the Mate is never HQ's offer: its visibility is the client's
- * verdict from live Zerops data (`mateVisibility`).
+ * Whether the Mate opens for the reader is no offer: it is HQ's `person.entry`
+ * (`mateEntryVisibility`).
  */
 export type HqMateOfferStates =
   | {
       readonly held: true;
       readonly edit: HqOfferState;
       readonly detach: HqOfferState;
+      readonly setUp: HqOfferState;
     }
   | { readonly held: false; readonly createRecord: HqOfferState };
 
@@ -294,5 +302,6 @@ export function hqMateOffers(
     held: true,
     edit: hqOffer(mate.can, "edit_mate_record"),
     detach: hqOffer(mate.can, "detach"),
+    setUp: hqOffer(mate.can, "set_up"),
   };
 }

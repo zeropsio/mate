@@ -161,9 +161,10 @@ export function useMateStandUp(input: {
     messageCount,
     live,
   });
-  const origin = useMateOfEnvironment(environmentId)?.origin ?? undefined;
+  const located = useMateOfEnvironment(environmentId);
+  const origin = located?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const { setup } = useMateSetup(own && awaitedHere && messageCount === 0 ? origin : undefined);
+  const { setup } = useMateSetup(own && awaitedHere && messageCount === 0 ? located : undefined);
   const failed = own && awaitedHere && setup?.standup === "failed" && conversation !== "started";
   const sendFailed = failed && setup?.standupFailure === "send_failed";
   const [submitting, setRetrying] = useState(false);

@@ -26,6 +26,8 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 import { APP_RENAME, appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 
@@ -109,6 +111,7 @@ export function ZeropsRenameProjectDialog({
   };
   const orgId = activeOrganization?.id;
   const running = standing.kind === "going" || standing.kind === "waiting";
+  const end = endOperationIntent(standing, orgId, group.groupId);
   const beginRename = (name: string) => {
     const after = standing.kind === "failed" ? operation?.id : undefined;
     start.current = renameAttemptFor(start.current, name, after, randomUUID);
@@ -169,9 +172,24 @@ export function ZeropsRenameProjectDialog({
                   type="button"
                   variant="secondary"
                 >
-                  Continue
+                  {standing.press}
                 </Button>
               ) : null}
+              {end === undefined ? null : (
+                <ZeropsOperationEnd
+                  disabled={pending}
+                  kind={APP_RENAME}
+                  name={hqName ?? group.name}
+                  onEnd={() =>
+                    settle(
+                      operations.submit(end).then(({ progress, evidence }) => {
+                        const trouble = writeTrouble(progress, evidence);
+                        if (trouble !== null) throw new Error(trouble);
+                      }),
+                    )
+                  }
+                />
+              )}
             </div>
           ) : view.line === undefined ? null : (
             <p

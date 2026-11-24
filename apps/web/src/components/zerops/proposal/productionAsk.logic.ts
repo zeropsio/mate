@@ -147,6 +147,8 @@ export interface ServiceCreateView {
   readonly blocked: string | undefined;
   /** HQ's creation waits for the viewer's own fresh sign-in: they are offered Continue. */
   readonly resume: boolean;
+  /** The word on that Continue's button, by what HQ's creation waits on. */
+  readonly press?: string;
 }
 
 const runsWords = (services: ReadonlyArray<string>) =>
@@ -233,7 +235,8 @@ export function serviceCreateView(input: {
   });
   const running = decision?.state === "running";
 
-  if (running && input.effect.kind === "waiting") return { ...working, resume: input.effect.yours };
+  if (running && input.effect.kind === "waiting")
+    return { ...working, resume: input.effect.yours, press: input.effect.press };
   if (input.sending || running) return working;
   if ((plan.kind === "ready" && remaining.length === 0) || decision?.state === "done")
     // The line says it once: what it would have done is no longer a plan.
