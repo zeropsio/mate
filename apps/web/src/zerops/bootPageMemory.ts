@@ -60,10 +60,8 @@ export function bootPage(): Record<string, unknown> {
     .flatMap((element) => (element === null ? [] : [getComputedStyle(element)]))
     .find((style) => style.borderRightWidth !== "0px");
   if (edge !== undefined) page.edge = edge.borderRightColor;
-  // The menu's top row: its band, which the Chief's row and its place both stand on.
-  const top = document.querySelector(
-    `${MENU} :is([data-zerops-surface="sidebar-chief-row"], [data-zerops-surface="sidebar-chief-place"] a)`,
-  );
+  // The Chief's row, the list's first: its ground, lit while it is the page open.
+  const top = document.querySelector(`${MENU} [data-zerops-surface="sidebar-chief-row"]`);
   if (top !== null && painted(top)) {
     const style = getComputedStyle(top);
     page.top = { at: box(top), surface: style.backgroundColor, radius: style.borderTopLeftRadius };
