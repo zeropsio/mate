@@ -324,6 +324,16 @@ export const HqNavigationMate = Schema.Struct({
    * precision. Its row's one clock: it does not move at the hello.
    */
   bornAt: Schema.String,
+  /**
+   * HQ's one verdict on whether the Mate can work (`zeropsio/mate-hq:spec/protocol.md`,
+   * Lifecycle states), an open string: a state a later HQ names never fails the decode. Absent
+   * where the reader may not operate the Mate.
+   */
+  state: Schema.optionalKey(Schema.String),
+  /** Since when that state holds, UTC at millisecond precision; absent where HQ holds no time. */
+  stateSince: Schema.optionalKey(Schema.String),
+  /** Why it holds, from HQ's closed set, an open string; absent where the state says it all. */
+  stateWhy: Schema.optionalKey(Schema.String),
 });
 /** Bounded environment jobs, retaining the latest live job for each service too. */
 export const HqNavigationJob = Schema.Struct({
