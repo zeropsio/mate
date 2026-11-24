@@ -60,27 +60,6 @@
                 "acceptedAt": "v10"
               },
               "startedAt": "v11"
-            },
-            {
-              "id": "v15",
-              "face": "",
-              "madeBy": "v3",
-              "projectId": "v16",
-              "state": "awaiting_link",
-              "offers": [
-                "delete_project"
-              ],
-              "operation": {
-                "kind": "birth",
-                "phase": "import_accepted",
-                "at": "v10",
-                "acceptedAt": "v10"
-              },
-              "linkRefusal": {
-                "code": "key_refused",
-                "at": "v17"
-              },
-              "startedAt": "v11"
             }
           ],
           "changes": [],

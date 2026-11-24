@@ -69,7 +69,7 @@ it("PJ41: A generic refusal or a transient error from HQ does not claim who owns
 
 /** The births HQ's recorded navigation shows on its application, read as the web reads them. */
 const recordedBirths = () =>
-  recorded("scope-values", "mate-hq/navigation.birth.running")
+  recorded("scope-values", "mate-hq/navigation.birth.link-refused")
     .values.filter((v) => v.key.startsWith("app:"))
     .flatMap((v) => hqAppFamily.hq!.decode(v.value, v.key.slice("app:".length))?.births ?? []);
 
@@ -89,7 +89,7 @@ it("PJ+1: A new Mate's refused link is what HQ put on its own project's open bir
   const refusalOf = (projectId: string) =>
     registry.get(store.data.project(hqMateLinkRefusal, key(projectId)));
   expect([refused.projectId!, "quiet", "other"].map(refusalOf)).toEqual([
-    { code: "key_refused", at: "v17" },
+    { code: "key_refused", at: "v14" },
     null,
     null,
   ]);

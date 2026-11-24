@@ -1,0 +1,107 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
+    "steps": [
+      "On a prepared test environment run the manual journey: journey run --manual birth-link-refused --env \u003cenv\u003e --out \u003cjourney receipts\u003e. It makes what it needs and removes it.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads birth-link-refused/test-rw-hq-frames.json and takes the navigation delivery showing the run's first birth operation birth.link-refused.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
+    ],
+    "recordedAt": "2026-11-24T07:03:49Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "9bb7dee1-906d-462c-9bd9-4867d0e7c69e:1",
+    "revision": 12,
+    "values": [
+      {
+        "key": "app:v1",
+        "value": {
+          "births": [
+            {
+              "id": "v2",
+              "face": "v3",
+              "madeBy": "v4",
+              "intent": {
+                "projectName": "v5",
+                "recipe": {
+                  "kind": "v6"
+                },
+                "agents": [],
+                "standUp": false,
+                "automated": false,
+                "placement": {
+                  "role": "v7",
+                  "name": "v8",
+                  "chief": false
+                },
+                "location": "v9",
+                "userRoles": [
+                  {
+                    "clientUserId": "v10",
+                    "roleCode": "v11"
+                  }
+                ]
+              },
+              "projectId": "v12",
+              "importProcessId": "v13",
+              "state": "awaiting_link",
+              "offers": [
+                "delete_project"
+              ],
+              "linkRefusal": {
+                "code": "key_refused",
+                "at": "v14"
+              },
+              "operation": {
+                "kind": "birth",
+                "phase": "import_accepted",
+                "at": "v15",
+                "acceptedAt": "v16"
+              },
+              "startedAt": "v17"
+            }
+          ],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v17",
+          "environments": [],
+          "id": "v1",
+          "intake": null,
+          "name": "v18",
+          "problems": [],
+          "projectIds": [
+            "v12"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v19",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v20"
+            },
+            "inFlight": null
+          },
+          "rollouts": []
+        }
+      }
+    ],
+    "removals": []
+  }
+}
