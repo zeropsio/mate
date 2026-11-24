@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 // A skeleton's width and height are its content, so consumers size it through
 // className (the lint contract allows layout there). Its shape is not.
 const skeletonVariants = cva(
-  "relative overflow-hidden bg-muted [--skeleton-highlight:--alpha(var(--color-white)/64%)] after:absolute after:inset-0 after:animate-skeleton after:bg-[linear-gradient(120deg,transparent_40%,var(--skeleton-highlight),transparent_60%)] motion-reduce:after:content-none dark:[--skeleton-highlight:--alpha(var(--color-white)/4%)]",
+  "relative overflow-hidden bg-muted after:absolute after:inset-0 after:animate-skeleton after:bg-linear-120/srgb after:from-transparent after:from-40% after:via-shimmer after:to-transparent after:to-60% motion-reduce:after:content-none",
   {
     variants: {
       shape: {

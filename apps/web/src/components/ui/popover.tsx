@@ -84,8 +84,7 @@ function PopoverPopup({
             "data-ending-style:scale-98 data-ending-style:opacity-0",
             tooltipStyle &&
               "w-fit text-balance rounded-control text-caption shadow-md/5 before:rounded-[calc(var(--radius-control)-1px)]",
-            !tooltipStyle &&
-              "shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
+            !tooltipStyle && "shadow-popup",
             width !== "auto" && ["max-w-[calc(100vw-2rem)]", popoverPopupWidthClassName[width]],
             className,
           )}

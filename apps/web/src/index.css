@@ -452,6 +452,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-invalid: var(--zerops-field-invalid);
   --color-well: var(--zerops-well);
   --color-well-edge: var(--zerops-well-edge);
+  --color-field-hover: var(--zerops-field-hover);
+  --color-field-pressed: var(--zerops-field-pressed);
+  --color-segment: var(--zerops-segment);
+  --color-segment-hover: var(--zerops-segment-hover);
+  --color-shimmer: var(--zerops-shimmer);
   /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
      draws its eyes and mouth in. */
   --color-update-role: var(--zerops-update-role);
@@ -1570,6 +1575,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      the ground alone sets it apart. */
   --zerops-well: var(--color-secondary);
   --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
+  /* A field-like press (an outline toggle) under the pointer and pressed: the hover's accent and a
+     step of input in light; in dark, input over its translucent ground, then input itself. */
+  --zerops-field-hover: var(--color-accent);
+  --zerops-field-pressed: color-mix(in oklab, var(--color-input) 64%, transparent);
+  /* A segmented control's chosen segment and a segment under the pointer, on the track's input
+     tint: the page's ground, half of it on hover; in dark, more input. */
+  --zerops-segment: var(--color-background);
+  --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
+  /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
+  --zerops-shimmer: rgb(255 255 255 / 64%);
   /* The ink on a vivid fill that is no theme's own (a person's accent, a count's dot): white in
      both appearances. */
   --zerops-fill-ink: var(--color-white);
@@ -1627,6 +1642,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-ground-clip: border-box;
     --zerops-well: color-mix(in oklab, var(--color-input) 32%, transparent);
     --zerops-well-edge: transparent;
+    --zerops-field-hover: color-mix(in oklab, var(--color-input) 64%, transparent);
+    --zerops-field-pressed: var(--color-input);
+    --zerops-segment: color-mix(in oklab, var(--color-input) 72%, transparent);
+    --zerops-segment-hover: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-shimmer: rgb(255 255 255 / 4%);
     --zerops-skill-text: var(--color-fuchsia-300);
     --zerops-mate-tint-coral: #b85f4b;
     --zerops-mate-tint-amber: #9c7420;
