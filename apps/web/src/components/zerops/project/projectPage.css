@@ -93,7 +93,7 @@
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   display: grid;
   min-width: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -154,7 +154,7 @@
 .pp-setup-card {
   gap: 12px;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 /* A side card of rows (the code repositories): the rows' own padding stands in for the card's. */
@@ -228,7 +228,7 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--primary) 14%, transparent);
   color: var(--primary);
 }
@@ -298,7 +298,7 @@
 
 /* A group of the list the picture's count led to: lit a moment. */
 [data-zerops-surface="project-changes"] [data-zerops-change-group] {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   transition: background-color 260ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
@@ -409,7 +409,7 @@
 .pp-hist-release {
   display: grid;
   min-width: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .pp-hist-release[data-open] {
@@ -1047,7 +1047,7 @@
   min-height: 0;
   overflow-y: auto;
   border-top: 1px solid var(--border);
-  border-radius: 0 0 calc(var(--radius-2xl) - 1px) calc(var(--radius-2xl) - 1px);
+  border-radius: 0 0 calc(var(--radius-sheet) - 1px) calc(var(--radius-sheet) - 1px);
 }
 
 /* The Automation ledger there starts on the title's edge. */

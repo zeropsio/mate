@@ -339,7 +339,7 @@ export const countOffScaleDeclarations = (
  */
 export const OFF_SCALE_BUDGET: Readonly<Record<ScaleProperty, number>> = {
   "font-size": 38,
-  "border-radius": 105,
+  "border-radius": 3,
   duration: 105,
 };
 

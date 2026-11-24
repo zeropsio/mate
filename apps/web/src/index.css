@@ -874,7 +874,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   [data-settings-page-scroll] div.settings-search-target-pulse,
   [data-settings-page-scroll] section.settings-search-target-pulse > div:first-child {
     animation: settings-search-target-pulse 650ms ease-in-out 2;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-card);
   }
 
   /* The pulse is the destination indicator; without it (reduced motion), the
@@ -900,7 +900,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   [data-zerops-flash] {
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-control);
     animation: zerops-reveal-flash 1.3s ease-out 1;
   }
 
@@ -1065,7 +1065,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     z-index: -1;
     inset: 0;
     border: 1px solid var(--chat-composer-attached-outline);
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
     background:
       linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
       color-mix(in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent);
@@ -1114,7 +1114,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   .chat-composer-drawer-slot .chat-composer-drawer-surface::before {
     bottom: var(--chat-composer-attachment-overlap);
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     -webkit-mask-image: none;
     mask-image: none;
   }
@@ -1156,7 +1156,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     position: absolute;
     z-index: 0;
     inset: 0;
-    border-radius: 20px;
+    border-radius: var(--composer-radius);
     background: var(--chat-composer-glass-surface);
     content: "";
   }
@@ -1167,36 +1167,45 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   /* The joined shape exists for a strip: a shell told to expect one whose
      toolbar then has nothing to say (a Mate's conversation) keeps the plain
-     20px surface, not two shoulders hanging below its corners. */
+     composer surface, not two shoulders hanging below its corners. */
   .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
+    /* The composer's corner (a sheet's) and the strip's (a card's), each with its curve's control
+       offset: a quarter circle drawn as one cubic curve. */
+    --shell-corner: var(--composer-radius);
+    --shell-corner-control: calc(var(--shell-corner) * 0.4475);
+    --strip-corner: var(--radius-card);
+    --strip-corner-control: calc(var(--strip-corner) * 0.4475);
     border-radius: 0;
     /*
-     * One continuous layer: a 20px composer joined to a 16px strip. The
-     * strip is inset 1.375rem per side, so the step-in positions and their
-     * curve controls stay in rem to keep tracking it at non-default interface
-     * font sizes; the composer's 20px top radius and the strip's 16px bottom
-     * radius are px by design.
+     * One continuous layer: the composer joined to its strip. The strip is
+     * inset 1.375rem per side, so the step-in positions and their curve
+     * controls stay in rem to keep tracking it at non-default interface font
+     * sizes; the two corners are the radius roles'.
      */
     clip-path: shape(
-      from 0 20px,
-      curve to 20px 0 with 0 8.95px / 8.95px 0,
-      line to calc(100% - 20px) 0,
-      curve to 100% 20px with calc(100% - 8.95px) 0 / 100% 8.95px,
+      from 0 var(--shell-corner),
+      curve to var(--shell-corner) 0 with 0 var(--shell-corner-control) /
+        var(--shell-corner-control) 0,
+      line to calc(100% - var(--shell-corner)) 0,
+      curve to 100% var(--shell-corner) with calc(100% - var(--shell-corner-control)) 0 / 100%
+        var(--shell-corner-control),
       line to 100% calc(100% - var(--chat-composer-context-extension) - 1.375rem),
       curve to calc(100% - 1.375rem) calc(100% - var(--chat-composer-context-extension)) with 100%
         calc(100% - var(--chat-composer-context-extension) - 0.6156rem) / calc(100% - 0.6156rem)
         calc(100% - var(--chat-composer-context-extension)),
-      line to calc(100% - 1.375rem) calc(100% - 16px),
-      curve to calc(100% - 1.375rem - 16px) 100% with calc(100% - 1.375rem) calc(100% - 7.16px) /
-        calc(100% - 1.375rem - 7.16px) 100%,
-      line to calc(1.375rem + 16px) 100%,
-      curve to 1.375rem calc(100% - 16px) with calc(1.375rem + 7.16px) 100% / 1.375rem
-        calc(100% - 7.16px),
+      line to calc(100% - 1.375rem) calc(100% - var(--strip-corner)),
+      curve to calc(100% - 1.375rem - var(--strip-corner)) 100% with calc(100% - 1.375rem)
+        calc(100% - var(--strip-corner-control)) /
+        calc(100% - 1.375rem - var(--strip-corner-control)) 100%,
+      line to calc(1.375rem + var(--strip-corner)) 100%,
+      curve to 1.375rem calc(100% - var(--strip-corner)) with
+        calc(1.375rem + var(--strip-corner-control)) 100% / 1.375rem
+        calc(100% - var(--strip-corner-control)),
       line to 1.375rem calc(100% - var(--chat-composer-context-extension)),
       curve to 0 calc(100% - var(--chat-composer-context-extension) - 1.375rem) with 0.6156rem
         calc(100% - var(--chat-composer-context-extension)) / 0
         calc(100% - var(--chat-composer-context-extension) - 0.6156rem),
-      line to 0 22px,
+      line to 0 var(--shell-corner),
       close
     );
   }
@@ -1209,7 +1218,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   .chat-composer-glass-host {
-    border-radius: 20px;
+    border-radius: var(--composer-radius);
     box-shadow: var(--chat-composer-shadow);
   }
 
@@ -1323,8 +1332,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     z-index: -1;
     inset: 0;
     border: 1px solid var(--chat-composer-outline);
-    border-radius: 0 0 16px 16px;
-    /* Start the strip outline exactly where the composer's 22px curve reaches its tangent. */
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    /* Start the strip outline exactly where the composer's curve reaches its tangent. */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
     mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
     box-shadow: 0 12px 28px -18px rgb(0 0 0 / 40%);
@@ -1364,7 +1373,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   @supports not (clip-path: shape(from 0 0, line to 1px 1px)) {
     .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
       inset-block-end: var(--chat-composer-context-extension);
-      border-radius: 22px;
+      border-radius: var(--composer-radius);
       clip-path: none;
     }
 
@@ -2237,7 +2246,7 @@ code {
 
 ::-webkit-scrollbar-thumb {
   background: var(--app-scrollbar-thumb);
-  border-radius: 3px;
+  border-radius: var(--radius-mark);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -2517,7 +2526,7 @@ code {
 .chat-markdown .chat-markdown-callout {
   display: flow-root;
   border: 0;
-  border-radius: 1rem;
+  border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--callout-tone) 9%, transparent);
   padding: 0.625rem 1.25rem;
   color: inherit;
@@ -2596,7 +2605,7 @@ code {
   min-width: 1rem;
   align-items: center;
   justify-content: center;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-mark);
   text-decoration: none;
   font-size: 0.6875rem;
   font-weight: 600;
@@ -2608,7 +2617,7 @@ code {
    at its sides and no margin, where 5 px pushed commas away ("Login , Boards ,"). */
 .chat-markdown :not(pre) > code {
   margin: 0;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-mark);
   background: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
   padding: 0.125rem 0.1875rem;
   color: var(--contrast-foreground);
@@ -2664,7 +2673,7 @@ code {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--contrast-border);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-card);
   background: var(--muted);
   padding: 0.8rem 0.9rem;
   scrollbar-width: thin;
@@ -3497,7 +3506,7 @@ code {
     align-items: center;
     height: 22px;
     padding: 0 8px;
-    border-radius: 7px;
+    border-radius: var(--radius-control);
     font-size: 12px;
     font-weight: 500;
     line-height: 16px;
@@ -3586,7 +3595,7 @@ code {
     width: 56px;
     height: 56px;
     margin-bottom: 16px;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     background: var(--muted);
     color: var(--muted-foreground);
   }
@@ -3642,7 +3651,7 @@ code {
     width: 100%;
     margin-top: 24px;
     padding: 16px;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background: var(--card);
     box-shadow: inset 0 0 0 1px var(--border);
     text-align: left;
@@ -3695,7 +3704,7 @@ code {
     min-width: 0;
     min-height: 36px;
     padding-inline: 12px 4px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     background: var(--muted);
   }
 
@@ -3716,7 +3725,7 @@ code {
     flex-direction: column;
     gap: 12px;
     padding: 12px 14px;
-    border-radius: 10px;
+    border-radius: var(--radius-card);
     background: color-mix(in oklab, var(--muted) 60%, transparent);
   }
 
@@ -3883,7 +3892,7 @@ code {
     gap: 3px;
     height: 18px;
     padding-inline: 5px;
-    border-radius: 6px;
+    border-radius: var(--radius-mark);
     background: color-mix(in oklab, currentColor 11%, transparent);
     font-size: 11px;
     font-weight: 600;
@@ -4002,7 +4011,7 @@ code {
     height: 18px;
     margin-left: 1px;
     padding: 0 5px;
-    border-radius: 9px;
+    border-radius: 999px;
     background: color-mix(in oklab, var(--primary-foreground) 22%, transparent);
     font-size: 11px;
   }
@@ -4059,7 +4068,7 @@ code {
     overscroll-behavior: contain;
     padding: 0 6px 6px;
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background-color: var(--card);
     color: var(--card-foreground);
     box-shadow:
@@ -4293,7 +4302,7 @@ code {
      (`MateUnit`): the row's corners, which its hover and the selected band
      paint it in. */
   .menu-unit {
-    border-radius: 12px;
+    border-radius: var(--radius-card);
   }
 
   /* ==== The menu by project (the owner, 2026-10-12) ==== */
@@ -4381,7 +4390,7 @@ code {
     height: 20px;
     padding: 0 3px;
     margin-inline: -3px;
-    border-radius: 5px;
+    border-radius: var(--radius-mark);
     font-size: 14px;
     line-height: 20px;
     background: none;
@@ -4568,7 +4577,7 @@ code {
     width: 32px;
     height: 32px;
     place-items: center;
-    border-radius: 9px;
+    border-radius: var(--radius-control);
     background: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
     color: var(--sidebar-muted-foreground);
   }
@@ -4588,7 +4597,7 @@ code {
   /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
      and a smaller corner than the Mate's row above it. */
   .menu-line {
-    border-radius: 10px;
+    border-radius: var(--radius-control);
   }
 
   /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
@@ -4601,7 +4610,7 @@ code {
     align-items: center;
     height: 36px;
     padding: 0 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     font-size: 14px;
     line-height: 20px;
   }
@@ -4828,7 +4837,7 @@ code {
     position: absolute;
     inset: 0;
     overflow: clip;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     will-change: transform;
   }
 
@@ -5140,7 +5149,7 @@ code {
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background-color: var(--card);
   color: var(--card-foreground);
   box-shadow:
@@ -5193,7 +5202,7 @@ code {
   column-gap: 10px;
   align-items: center;
   padding: 7px 10px;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   text-align: start;
 }
 
@@ -5234,7 +5243,7 @@ code {
   align-items: center;
   gap: 8px;
   padding: 6px 10px 6px 36px;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   color: var(--muted-foreground);
   outline: none;
   transition:
@@ -5266,7 +5275,7 @@ code {
 
 .zerops-envpop-review {
   padding: 3px 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   color: var(--info-foreground);
   font-weight: 500;
   cursor: pointer;
@@ -5298,7 +5307,7 @@ code {
   flex-direction: column;
   gap: 6px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background-color: var(--card);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--card-foreground) 12%, transparent);
   color: var(--card-foreground);
@@ -5318,7 +5327,7 @@ code {
 
 .zerops-envpop-draft pre {
   padding: 6px 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-mark);
   background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
   color: color-mix(in oklab, var(--card-foreground) 76%, transparent);
   font-family: var(--font-mono);
@@ -5351,7 +5360,7 @@ code {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--sidebar-muted-foreground);
   cursor: pointer;
   outline: none;
@@ -5448,7 +5457,7 @@ code {
   }
 }
 
-/* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
+/* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, a control's corner), its dot before
    its word. Red and amber on their status grounds; moving on the quiet card ground the Review
    tag wears; landed on the ok ground. */
 .zerops-sites-tag {
@@ -5458,7 +5467,7 @@ code {
   gap: 6px;
   height: 22px;
   padding: 0 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
@@ -5505,7 +5514,7 @@ code {
   max-height: min(560px, 70vh, var(--available-height));
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background-color: var(--card);
   color: var(--card-foreground);
   box-shadow:
@@ -5598,14 +5607,14 @@ code {
 .zerops-sites-section {
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .zerops-sites-section:not([hidden]) ~ .zerops-sites-section:not([hidden]) {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--border);
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
 }
 
 .zerops-sites-sectionhead {
@@ -5656,7 +5665,7 @@ code {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--muted-foreground);
   outline: none;
   transition:
@@ -5997,7 +6006,7 @@ code {
     height: var(--sidebar-chief-row-height);
     margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     outline: none;
   }
 
@@ -6030,7 +6039,7 @@ code {
     overscroll-behavior: contain;
     padding: 8px;
     border: 1px solid var(--border);
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     background: var(--card);
     color: var(--card-foreground);
     box-shadow: 0 12px 32px color-mix(in oklab, var(--color-black) 14%, transparent);
@@ -6094,7 +6103,7 @@ code {
     column-gap: 12px;
     margin-bottom: 12px;
     padding: 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-control);
   }
 
   .menu-wait-face {
@@ -6176,7 +6185,7 @@ code {
     height: 52px;
     margin-block: 6px;
     padding-inline: 8px 4px;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     text-align: start;
     cursor: pointer;
     outline: none;
@@ -6275,7 +6284,7 @@ code {
     place-items: center;
     width: 32px;
     height: 32px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     color: var(--sidebar-muted-foreground);
     cursor: pointer;
     outline: none;
@@ -6353,7 +6362,7 @@ code {
     place-items: center;
     width: 48px;
     height: 48px;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     color: var(--sidebar-foreground);
     cursor: pointer;
     outline: none;
@@ -6415,7 +6424,7 @@ code {
     align-items: center;
     gap: 2px;
     width: 80px;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
   }
 
   .menu-rail-project[data-open] {
@@ -6434,7 +6443,7 @@ code {
     gap: 4px;
     width: 80px;
     padding: 7px 0 6px;
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     color: var(--sidebar-foreground);
     cursor: pointer;
     outline: none;
@@ -6446,7 +6455,7 @@ code {
     place-items: center;
     width: 44px;
     height: 40px;
-    border-radius: 12px;
+    border-radius: var(--radius-control);
     cursor: pointer;
     outline: none;
     transition: background-color 150ms var(--ease-out-strong);
@@ -6515,7 +6524,7 @@ code {
     place-items: center;
     width: 36px;
     height: 36px;
-    border-radius: 10px;
+    border-radius: var(--radius-control);
     color: var(--sidebar-muted-foreground);
     cursor: pointer;
     outline: none;
@@ -6913,7 +6922,7 @@ code {
   min-width: 0;
   flex-direction: column;
   padding: 18px 12px 10px;
-  border-radius: 20px;
+  border-radius: var(--radius-sheet);
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -7048,7 +7057,7 @@ a.ov-card-site:hover {
   gap: 6px;
   margin-top: 16px;
   padding: 0 6px 6px;
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   background: var(--ov-wait-ground);
 }
 
@@ -7068,7 +7077,7 @@ a.ov-card-site:hover {
   column-gap: 8px;
   align-items: center;
   padding: 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: var(--ov-ground);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
 }
@@ -7078,7 +7087,7 @@ a.ov-card-site:hover {
   width: 24px;
   height: 24px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--primary);
 }
 
@@ -7141,7 +7150,7 @@ a.ov-card-site:hover {
   column-gap: 12px;
   align-items: start;
   padding: 8px 6px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   transition:
     background-color 200ms var(--ease-out-strong),
     box-shadow 200ms var(--ease-out-strong);
@@ -7590,7 +7599,7 @@ a.ov-acc-face:hover [data-part="name"] {
   min-height: 28px;
   margin-inline-start: -6px;
   padding: 0 4px 0 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: default;
 }
 
@@ -7811,7 +7820,7 @@ a.ov-chip-who:focus-visible {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
   text-align: center;
   transition:
@@ -8189,7 +8198,7 @@ a.ov-chip-who:focus-visible {
   }
 
   .tm-team .tm-card {
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     background: transparent;
     text-align: left;
   }
@@ -8338,7 +8347,7 @@ a.ov-chip-who:focus-visible {
 .tm-advanced {
   display: grid;
   padding: 0 18px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
 }
 
@@ -8436,7 +8445,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   min-height: 40px;
   padding: 6px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .tm-pick-row[data-ticked] {
@@ -8486,7 +8495,7 @@ label.tm-advanced-row:not([data-disabled]) {
   width: 100%;
   max-width: 420px;
   padding: 24px;
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
 }
 
@@ -8506,7 +8515,7 @@ label.tm-advanced-row:not([data-disabled]) {
   display: grid;
   gap: 2px;
   padding: 6px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--ov-lift);
 }
 
@@ -8516,7 +8525,7 @@ label.tm-advanced-row:not([data-disabled]) {
   gap: 12px;
   min-height: 36px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background-color 150ms var(--ease-out-strong);
 }
@@ -9180,7 +9189,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 1px;
   padding: 0 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 16px;
@@ -9221,7 +9230,7 @@ label.tm-advanced-row:not([data-disabled]) {
   gap: 10px;
   margin-left: -8px;
   padding: 0 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: background-color 150ms var(--ease-out-strong);
 }
@@ -9278,7 +9287,7 @@ label.tm-advanced-row:not([data-disabled]) {
 /* What it does: its words in a soft box. */
 .rv-what {
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   font-size: 14px;
   line-height: 20px;
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
@@ -9462,10 +9471,9 @@ label.tm-advanced-row:not([data-disabled]) {
   padding-inline: 15px;
 }
 
-/* The edge row is 16 px tall: a round 20 px corner would be squeezed to 16
-   in it, so its corners reach the composer's width across and the row's
-   height up — a curve that meets the card's side as the top's does, and
-   differs from a circle by under a pixel. */
+/* The edge row is 16 px tall: a round corner larger than that would be
+   squeezed in it, so its corners reach the composer's width across and the
+   row's height up — a curve that meets the card's side as the top's does. */
 .run-tray-bottom {
   height: 16px;
   border-bottom-width: 1px;
@@ -9738,7 +9746,7 @@ label.tm-advanced-row:not([data-disabled]) {
   inset: 0 -6px;
   margin: 0;
   padding: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   /* Its words name it; the line's own words stand over it. */
   font-size: 0;
   color: transparent;
@@ -10245,7 +10253,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-scroll:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
   outline-offset: 2px;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
 }
 /* A step done: its kind's mark takes the place its Mate's face held while it ran. */
 .run-mark-done {
@@ -10335,7 +10343,7 @@ label.tm-advanced-row:not([data-disabled]) {
   margin-block: -2px;
   margin-right: -8px;
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: var(--text-body);
   line-height: 20px;
   color: var(--color-muted-foreground);
@@ -10498,7 +10506,7 @@ label.tm-advanced-row:not([data-disabled]) {
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   color: var(--color-muted-foreground);
   transition:
     background-color 150ms ease,
@@ -10581,7 +10589,7 @@ label.tm-advanced-row:not([data-disabled]) {
   height: 96px;
   max-width: 100%;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background-color: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   /* Its fill comes with its picture, on the picture's own fade (`.asset-image-frame > img`). */
   transition: background-color 140ms ease-out;
@@ -10605,7 +10613,7 @@ label.tm-advanced-row:not([data-disabled]) {
   display: inline-block;
   max-width: 100%;
   vertical-align: top;
-  border-radius: 10px;
+  border-radius: var(--radius-card);
 }
 /* Laid over the picture it stands in for, it never takes the pointer: a press reaches the
    picture (and a zoomed viewer's pan) even after the underlay has faded out. */
@@ -10660,7 +10668,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 .run-result-tile[data-result-picture="unavailable"] .run-result-more {
   inset: auto 4px 4px auto;
-  border-radius: 4px;
+  border-radius: var(--radius-mark);
   padding: 0 4px;
 }
 .run-result-tile img {
@@ -10739,15 +10747,15 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
 }
 
 /* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
-   menu's selected band while its own chat is open — 32 px tall, 11 px
-   corners — and with a crew, the crewmate whose chat is on screen stands on
+   menu's selected band while its own chat is open — 32 px tall, a
+   control's corners — and with a crew, the crewmate whose chat is on screen stands on
    the same band as a 28 px pill. The band is one surface of its own that
    travels between them (`.conversation-band`, pass 18). The band coming and
    going changes no width: the Mate's pill keeps its padding with or without
    it. */
 .conversation-mate,
 .conversation-mate-press {
-  border-radius: 11px;
+  border-radius: var(--radius-control);
 }
 
 /* A colleague's Mate on the line wears its owner's mark as its row in the menu does: 12 px, on
@@ -10809,7 +10817,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
   /* The composer's corners: the conversation's other box, a run's card,
      wears them too, in every state. */
-  --composer-radius: 20px;
+  --composer-radius: var(--radius-sheet);
 
   @variant dark {
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
@@ -10835,7 +10843,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--color-muted-foreground);
   cursor: pointer;
   outline: none;
@@ -10878,7 +10886,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--color-muted-foreground);
   opacity: 0;
   cursor: pointer;
@@ -11083,14 +11091,14 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: block;
   width: fit-content;
   max-width: 100%;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .composer-picture-img {
   display: block;
   max-width: 100%;
   height: 80px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   object-fit: cover;
   background: var(--color-muted);
   box-shadow: 0 0 0 1px var(--picture-edge);
@@ -11151,7 +11159,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   left: 6px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 5px;
+  border-radius: var(--radius-mark);
   background: var(--picture-tag-surface);
   color: var(--picture-stage-ink);
   font: 500 12px/18px var(--font-sans);
@@ -11164,7 +11172,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   left: 6px;
   display: flex;
   padding: 2px;
-  border-radius: 5px;
+  border-radius: var(--radius-mark);
   background: var(--color-popover);
   color: var(--color-warning-foreground);
 }
@@ -11261,7 +11269,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   padding: 5px 9px;
   overflow: hidden;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   background: var(--color-popover);
   color: var(--color-popover-foreground);
   box-shadow:
@@ -11378,7 +11386,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .picture-crop-handle[data-handle="s"]::before,
 .picture-crop-handle[data-handle="e"]::before,
 .picture-crop-handle[data-handle="w"]::before {
-  border-radius: 2px;
+  border-radius: 999px;
   background: var(--picture-crop-handle);
 }
 .picture-crop-handle[data-handle="n"]::before {
@@ -11404,7 +11412,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   width: 250px;
   padding: 10px 10px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--color-popover);
   color: var(--color-popover-foreground);
   box-shadow: var(--picture-pop-shadow);
@@ -11458,7 +11466,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   max-width: 100%;
   padding: 6px;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--color-popover);
   color: var(--color-popover-foreground);
   box-shadow: var(--picture-pop-shadow);
@@ -11471,7 +11479,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: none;
   color: inherit;
   font: 500 13px/1 var(--font-sans);
@@ -11556,7 +11564,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   display: block;
   max-width: 100%;
   max-height: 300px;
-  border-radius: 10px;
+  border-radius: var(--radius-card);
   box-shadow: 0 0 0 1px var(--picture-edge);
 }
 
@@ -11622,7 +11630,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   max-width: 100%;
   height: 80px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 14%, transparent);
   color: var(--color-foreground);
@@ -11702,7 +11710,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   max-width: 100%;
   height: 40px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 12%, transparent);
   color: inherit;
@@ -11782,7 +11790,7 @@ a.message-file:focus-visible {
   --rv-max: calc(100dvh - 24px);
   max-height: var(--rv-max);
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-sheet);
   background: var(--card);
   color: var(--foreground);
   box-shadow:
@@ -12021,7 +12029,7 @@ a.message-file:focus-visible {
 .rv-why[data-tone="failed"] {
   margin-top: 10px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   color: var(--foreground);
 }
 .rv-why[data-tone="attention"] {
@@ -12068,7 +12076,7 @@ a.message-file:focus-visible {
   margin: 28px -8px 0;
   padding: 12px 16px 14px;
   border: 0;
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
@@ -12174,7 +12182,7 @@ a.message-file:focus-visible {
 }
 .rv-skeleton span {
   height: 12px;
-  border-radius: 6px;
+  border-radius: 999px;
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 .rv-skeleton span:last-child {
@@ -12205,7 +12213,7 @@ a.message-file:focus-visible {
   max-width: 100%;
   margin: 12px 0;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 /* The hairline sits over the picture, so a screenshot's white edge still meets the page. */
 .rv-pic::after {
@@ -12262,7 +12270,7 @@ a.message-file:focus-visible {
   gap: 8px;
   margin: 8px 0;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
   font-size: var(--text-body);
   line-height: 18px;
@@ -12315,7 +12323,7 @@ a.message-file:focus-visible {
   min-height: 0;
   max-width: 100%;
   max-height: calc(100dvh - 160px);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   object-fit: contain;
   box-shadow: 0 30px 80px -30px color-mix(in oklab, var(--color-black) 60%, transparent);
 }
@@ -12334,7 +12342,7 @@ a.message-file:focus-visible {
 /* The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
 .rv-files {
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 .rv-files > :where(:not(:first-child)),
@@ -12362,7 +12370,7 @@ a.message-file:focus-visible {
   height: 16px;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-mark);
   font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
@@ -12399,7 +12407,7 @@ a.message-file:focus-visible {
 .rv-file-skeleton span {
   width: 40%;
   height: 10px;
-  border-radius: 5px;
+  border-radius: 999px;
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 
@@ -12470,7 +12478,7 @@ a.message-file:focus-visible {
   grid-template-columns: 16px minmax(0, 1fr);
   gap: 4px 10px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: color-mix(in oklab, var(--zerops-status-attention) 9%, transparent);
 }
 .rv-finding > svg {
@@ -12508,7 +12516,7 @@ a.message-file:focus-visible {
 .rv-finding-more > summary {
   width: fit-content;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-mark);
   outline-offset: 2px;
 }
 .rv-finding-more > summary:hover {
@@ -12613,7 +12621,7 @@ a.message-file:focus-visible {
 }
 .rv-remark-skeleton span {
   height: 10px;
-  border-radius: 5px;
+  border-radius: 999px;
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 .rv-remark-skeleton span:first-child {
@@ -12637,7 +12645,7 @@ a.message-file:focus-visible {
   align-items: flex-end;
   gap: 6px;
   padding: 5px 5px 5px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
   transition: box-shadow 150ms ease;
@@ -12701,7 +12709,7 @@ a.message-file:focus-visible {
 }
 .rv-commit-skeleton span {
   height: 10px;
-  border-radius: 5px;
+  border-radius: 999px;
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 .rv-commit-skeleton span:first-child {
@@ -12724,7 +12732,7 @@ a.message-file:focus-visible {
   column-gap: 12px;
   align-content: center;
   padding: 4px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 .rv-relrow > :first-child {
   grid-area: face;
@@ -12893,7 +12901,7 @@ a.message-file:focus-visible {
   gap: 6px;
   margin-left: -8px;
   padding: 0 10px 0 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: var(--text-body);
   font-weight: 500;
   line-height: 18px;
@@ -13061,7 +13069,7 @@ a.message-file:focus-visible {
   display: grid;
   padding: 2px 0;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   list-style: none;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
 }
@@ -13199,7 +13207,7 @@ a.message-file:focus-visible {
   display: block;
   height: 12px;
   margin-block: 3px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--muted);
 }
 .rv-plan {
@@ -13207,7 +13215,7 @@ a.message-file:focus-visible {
   margin: 0;
   padding: 6px 0;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   list-style: none;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
 }
@@ -13369,7 +13377,7 @@ a.message-file:focus-visible {
 /* The field's place in a value step still being read: the height the field stands at. */
 .rv-pstep-more > .rv-pskel-field {
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 .rv-pstep-more > p {
   margin: 0;
@@ -13382,7 +13390,7 @@ a.message-file:focus-visible {
   margin: 0;
   overflow: auto;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--muted);
   font-family: var(--font-mono);
   font-size: 12px;
@@ -13433,7 +13441,7 @@ a.message-file:focus-visible {
 /* The primary's keys: a chip in the button's own ink, enabled or waiting. */
 .rv-keys {
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-mark);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
@@ -14051,7 +14059,7 @@ a.message-file:focus-visible {
   gap: 24px;
   padding: 28px 28px 12px;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: var(--radius-sheet);
   background: var(--card);
   box-shadow: 0 16px 40px -16px var(--first-run-card-shadow);
   grid-area: form;
@@ -14517,7 +14525,7 @@ a.message-file:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 0 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .np-add-row[data-picked] {
@@ -15023,7 +15031,7 @@ a.message-file:focus-visible {
 
 .arrival-card,
 .arrival-open {
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: var(--surface-raised);
   box-shadow: 0 0 0 1px var(--border);
 }
@@ -15197,7 +15205,7 @@ a.message-file:focus-visible {
   gap: 8px;
   height: 36px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--card);
   box-shadow: inset 0 0 0 1px var(--input);
   color: var(--muted-foreground);
@@ -15217,7 +15225,7 @@ a.message-file:focus-visible {
   align-items: center;
   height: 36px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--muted);
   box-shadow: inset 0 0 0 1px var(--border);
   color: var(--foreground);
@@ -15254,7 +15262,7 @@ a.message-file:focus-visible {
   height: 128px;
   margin: 0 14px 14px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: var(--muted);
   box-shadow: inset 0 0 0 1px var(--border);
   color: var(--foreground);
@@ -15385,7 +15393,7 @@ a.message-file:focus-visible {
     align-items: start;
     margin: 0 8px;
     padding: 10px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     transition: background-color 150ms ease;
   }
 
@@ -15427,7 +15435,7 @@ a.message-file:focus-visible {
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     color: var(--muted-foreground);
     cursor: pointer;
     outline: none;
@@ -15487,14 +15495,14 @@ a.message-file:focus-visible {
     background: var(--zerops-status-attention);
   }
 
-  /* The composer, at the top: a 48 px pill, the tab's only white surface. */
+  /* The composer, at the top: 48 px tall on a sheet's corners, the tab's only white surface. */
   .crew-composer {
     display: flex;
     align-items: flex-end;
     gap: 8px;
     min-height: 48px;
     padding: 8px 8px 8px 18px;
-    border-radius: 24px;
+    border-radius: var(--radius-sheet);
     background: var(--card);
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
@@ -15524,7 +15532,7 @@ a.message-file:focus-visible {
     height: 24px;
     margin-block: 4px;
     padding: 0 9px 0 4px;
-    border-radius: 12px;
+    border-radius: 999px;
     background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
     font-size: 12px;
     font-weight: 500;
@@ -15534,7 +15542,7 @@ a.message-file:focus-visible {
   }
 
   /* The composer's place for a viewer who may not run the crew (D6): the
-     pill's own 48 px and radius, quiet rather than white — nothing is
+     composer's own 48 px and corners, quiet rather than white — nothing is
      written here — the lock in the conversation's amber, its words on at
      most two lines, and the one way out at its end. */
   .crew-locked {
@@ -15543,7 +15551,7 @@ a.message-file:focus-visible {
     gap: 10px;
     min-height: 48px;
     padding: 6px 8px 6px 16px;
-    border-radius: 24px;
+    border-radius: var(--radius-sheet);
     background: color-mix(in oklab, var(--foreground) 3.5%, transparent);
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 7%, transparent);
   }
@@ -15568,7 +15576,7 @@ a.message-file:focus-visible {
     gap: 8px;
     height: 40px;
     padding: 0 6px 0 14px;
-    border-radius: 20px;
+    border-radius: 999px;
     background: var(--card);
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
@@ -15581,7 +15589,7 @@ a.message-file:focus-visible {
     display: flex;
     flex-direction: column;
     padding: 4px 12px;
-    border-radius: 10px;
+    border-radius: var(--radius-card);
     background: var(--secondary);
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent);
   }
@@ -15647,7 +15655,7 @@ a.message-file:focus-visible {
     column-gap: 12px;
     align-items: center;
     padding: 12px 12px 12px 10px;
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
   }
 
@@ -15770,7 +15778,7 @@ a.message-file:focus-visible {
 /* A card as the right panel draws its own (the launcher's): card surface, a light edge. */
 .vault-box {
   overflow: hidden;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: 0 0 0 1px var(--vault-edge);
 }
@@ -15792,7 +15800,7 @@ a.message-file:focus-visible {
 .vault-ref {
   display: inline-block;
   padding: 0 5px;
-  border-radius: 5px;
+  border-radius: var(--radius-mark);
   background: var(--vault-mark);
   font-size: 11px;
   line-height: 17px;
@@ -15979,7 +15987,7 @@ a.message-file:focus-visible {
      no card around it. Before a client ever measured it, a modest first box it glides from. */
   height: 240px;
   overflow: hidden;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
 }
 .published-page-frame[data-glide] {
   transition: height 260ms var(--ease-out-strong);
