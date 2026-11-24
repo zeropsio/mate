@@ -850,10 +850,10 @@ export function mateNoticeDecision(input: {
           ? "restarting"
           : recovery !== null
             ? "recovery"
-            : input.relinking === true && !live && !terminal
-              ? "relinking"
-              : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
-                ? notice.level
+            : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
+              ? notice.level
+              : input.relinking === true && !live && !terminal
+                ? "relinking"
                 : input.mateState?.state === "offline" && !live && !terminal
                   ? "offline"
                   : reachability === null || opensQuietly(reachability)

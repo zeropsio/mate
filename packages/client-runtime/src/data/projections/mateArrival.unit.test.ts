@@ -245,6 +245,15 @@ it("PJ+4: While HQ's restart of a Mate is open its page says one stage, restarti
   const lost: Reachability = { kind: "reconnecting" };
   const ready: Reachability = { kind: "ready", notice: null };
   const gone: Reachability = { kind: "gone", because: "direct-not-found" };
+  // The container's own stage while HQ holds its relink grace: an update, a restart Zerops runs.
+  const updating: Reachability = {
+    kind: "container",
+    container: { level: "updating", overdue: false },
+  };
+  const platformRestart: Reachability = {
+    kind: "container",
+    container: { level: "restarting", by: "platform", overdue: false },
+  };
   const on = { mateName: "Basil", conversationShown: false, nowMs: 0 };
   type Input = Partial<Parameters<typeof mateNoticeDecision>[0]>;
   // HQ's open restart × HQ's grace × the container, link and verdict: the stage and its verbs.
@@ -261,6 +270,8 @@ it("PJ+4: While HQ's restart of a Mate is open its page says one stage, restarti
     [{ relinking: true, reachability: quiet, conversationShown: true }, "relinking", []],
     [{ relinking: true, reachability: ready, conversationShown: true }, "none", []],
     [{ relinking: true, restartOpen: true, reachability: quiet }, "restarting", []],
+    [{ relinking: true, reachability: updating }, "updating", []],
+    [{ relinking: true, reachability: platformRestart }, "restarting", []],
   ];
   for (const [input, phase, actions] of table) {
     const decision = mateNoticeDecision({ ...on, reachability: null, ...input });
