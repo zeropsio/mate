@@ -8,7 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useEffect, useMemo, useState } from "react";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
@@ -194,9 +194,7 @@ export function ZeropsGitOverview({
                       {repositoryHref === undefined ? (
                         <span className="font-medium">{repository.name}</span>
                       ) : (
-                        <a
-                          className="min-w-0 truncate rounded-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                          href={repositoryHref(repository.appId, repository.name)}
+                        <InlineButton
                           onClick={(event) => {
                             if (
                               onOpenRepository === undefined ||
@@ -210,9 +208,11 @@ export function ZeropsGitOverview({
                             event.preventDefault();
                             onOpenRepository(repository.appId, repository.name);
                           }}
+                          render={<a href={repositoryHref(repository.appId, repository.name)} />}
+                          tone="plain"
                         >
                           {repository.name}
-                        </a>
+                        </InlineButton>
                       )}
                       {repository.name === "group" ? (
                         <span className="text-caption text-muted-foreground">Setup</span>

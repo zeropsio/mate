@@ -37,7 +37,7 @@ import { GitReleaseRows } from "./ZeropsReleaseRows";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { useMemo, useRef, useState } from "react";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { SectionLabel } from "./system";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -161,9 +161,9 @@ export function GitStopDetail({
                 return guide === undefined ? null : (
                   <p className="rv-note" data-git-ruleset key={repo.name}>
                     {guide.words}{" "}
-                    <a href={guide.url} rel="noreferrer" target="_blank">
+                    <InlineButton render={<a href={guide.url} rel="noreferrer" target="_blank" />}>
                       Open {repo.name}'s rulesets
-                    </a>
+                    </InlineButton>
                   </p>
                 );
               })}

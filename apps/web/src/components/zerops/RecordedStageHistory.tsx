@@ -1,6 +1,7 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
+import { Row } from "~/components/ui/row";
 import { GitBrowserLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 import type { HistoryChange } from "./ZeropsHistoryView";
 import { ChangeAge } from "./system/ChangeRow";
@@ -26,18 +27,15 @@ export function RecordedStageHistory({
       ) : (
         <ul>
           {changes.map((change) => (
-            <li
-              className="flex items-center gap-2 py-2 text-body"
-              key={`${change.repository}-${String(change.number)}`}
-            >
-              <button
-                type="button"
-                className="min-w-0 flex-1 text-left"
+            <li key={`${change.repository}-${String(change.number)}`}>
+              <Row
+                meta={<ChangeAge at={change.mergedAt} />}
                 onClick={(event) => onOpenChange?.(change, event.currentTarget)}
-              >
-                {change.title}
-              </button>
-              <ChangeAge at={change.mergedAt} />
+                pressable
+                render={<button type="button" />}
+                size="sm"
+                title={change.title}
+              />
             </li>
           ))}
         </ul>

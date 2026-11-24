@@ -27,7 +27,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
 import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
@@ -171,12 +171,10 @@ export function ZeropsChangeLinkChip({
         ? GitPullRequestClosed
         : GitPullRequestArrow;
   const chip = (
-    <a
-      className="inline-flex items-baseline gap-1 rounded-control border border-border bg-muted px-1.5 align-baseline text-body no-underline"
+    <InlineButton
       data-zerops-change-state={state === undefined ? "reading" : state.kind}
       data-zerops-change-since={landedSince ? "landed" : undefined}
       data-zerops-change-chip={`${pull?.repository ?? link?.repo ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
-      href={href}
       onClick={(event) => {
         if (
           !follow ||
@@ -190,8 +188,8 @@ export function ZeropsChangeLinkChip({
         event.preventDefault();
         follow();
       }}
-      rel="noopener noreferrer"
-      target="_blank"
+      render={<a href={href} rel="noopener noreferrer" target="_blank" />}
+      tone="plain"
     >
       <span className="relative inline-flex shrink-0 self-center">
         <Glyph
@@ -214,7 +212,7 @@ export function ZeropsChangeLinkChip({
           {`, ${state.word}${landedSince ? ", merged since this message" : ""}`}
         </span>
       )}
-    </a>
+    </InlineButton>
   );
   if (state === undefined) return chip;
   return (

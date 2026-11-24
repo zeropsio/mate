@@ -8,6 +8,8 @@ import { historyAge } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "~/components/ui/button";
+import { Row } from "~/components/ui/row";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
@@ -77,11 +79,12 @@ export function GitCommitsFold({
   if (commits?.length === 0) return null;
   return (
     <section className="flex min-w-0 flex-col" data-zerops-surface="git-commits">
-      <button
+      <Button
         aria-expanded={open}
-        className="-mx-1.5 flex w-fit cursor-pointer items-center gap-1 rounded-control px-1.5 py-1 text-caption text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="-ms-2 self-start"
         onClick={onToggle}
-        type="button"
+        size="xs"
+        variant="ghost-muted"
       >
         <ChevronRightIcon
           aria-hidden="true"
@@ -94,40 +97,36 @@ export function GitCommitsFold({
         {commits === undefined ? null : (
           <span className="tabular-nums">{` · ${String(commits.length)}`}</span>
         )}
-      </button>
+      </Button>
       {!open ? null : commits === undefined ? (
         <p className="py-1 ps-5 text-caption text-muted-foreground">Reading commits…</p>
       ) : (
         <ul className="m-0 flex min-w-0 list-none flex-col p-0 ps-5">
           {commits.map((commit) => {
             const age = commit.at === undefined ? undefined : historyAge(commit.at, now);
-            const line = (
-              <>
-                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
-                  {commit.sha.slice(0, 7)}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-foreground">{commit.subject}</span>
-                {age === undefined ? null : (
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{age}</span>
-                )}
-              </>
-            );
+            const row = {
+              meta: age,
+              size: "xs" as const,
+              title: (
+                <>
+                  <span className="me-2 font-mono font-normal text-2xs text-muted-foreground">
+                    {commit.sha.slice(0, 7)}
+                  </span>
+                  {commit.subject}
+                </>
+              ),
+            };
             return (
-              <li
-                className="flex min-w-0 text-caption"
-                data-zerops-surface="git-commit"
-                key={commit.sha}
-              >
+              <li className="-mx-1.5 min-w-0" data-zerops-surface="git-commit" key={commit.sha}>
                 {onOpenCommit === undefined ? (
-                  <div className="flex min-w-0 flex-1 items-baseline gap-2 py-1">{line}</div>
+                  <Row {...row} />
                 ) : (
-                  <button
-                    className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-control px-1.5 py-1 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                  <Row
+                    {...row}
                     onClick={() => onOpenCommit(commit)}
-                    type="button"
-                  >
-                    {line}
-                  </button>
+                    pressable
+                    render={<button type="button" />}
+                  />
                 )}
               </li>
             );

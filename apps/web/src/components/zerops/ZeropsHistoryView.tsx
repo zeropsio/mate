@@ -33,6 +33,7 @@ import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { Badge } from "~/components/ui/badge";
+import { InlineButton } from "~/components/ui/button";
 import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 
 /** What to call the things a history row names. */
@@ -165,18 +166,18 @@ function HistoryRow({
         <span aria-hidden="true" className={last ? RAIL_BLANK : RAIL_LINE} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
-        <span className="flex min-w-0 items-baseline gap-2">
+        <span className="flex min-w-0 items-baseline gap-2 text-body leading-5">
           {onOpenChange === undefined || change === null ? (
             <span className="min-w-0 flex-1 truncate text-body leading-5 font-medium">
               {entry.subject}
             </span>
           ) : (
-            <button
-              className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-body leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            <InlineButton
+              className="min-w-0 flex-1 shrink"
               onClick={(event) => {
                 onOpenChange(change, event.currentTarget);
               }}
-              type="button"
+              tone="plain"
             >
               <span className="min-w-0 truncate">{entry.subject}</span>
               {/* What opens says so at rest: hover was the only sign this row had more in it,
@@ -186,7 +187,7 @@ function HistoryRow({
                 aria-hidden="true"
                 className="size-3.5 shrink-0 self-center text-muted-foreground/60"
               />
-            </button>
+            </InlineButton>
           )}
           {/* The name it went live under, where a release carried it: on a
               stop's Deploys the version in plain text beside a release role

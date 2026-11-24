@@ -9,6 +9,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 
+import { InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useNowMs } from "~/zerops/useNowMs";
 
@@ -37,9 +38,9 @@ export function GitCommitLink({ remote, sha }: { readonly remote: string; readon
   if (guide.kind !== "guide" || guide.host === "unknown") return null;
   const path = guide.host === "gitlab" ? "/-/commit/" : "/commit/";
   return (
-    <a href={`${url}${path}${sha}`} rel="noreferrer" target="_blank">
+    <InlineButton render={<a href={`${url}${path}${sha}`} rel="noreferrer" target="_blank" />}>
       Open {new URL(remote).host}
-    </a>
+    </InlineButton>
   );
 }
 
@@ -57,9 +58,9 @@ function GitCiStatus({ repo }: { readonly repo: GitRepositoryDelivery }) {
           {check.url === null ? (
             check.name
           ) : (
-            <a href={check.url} rel="noreferrer" target="_blank">
+            <InlineButton render={<a href={check.url} rel="noreferrer" target="_blank" />}>
               {check.name}
-            </a>
+            </InlineButton>
           )}
         </Fragment>
       ))}

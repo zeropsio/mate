@@ -298,12 +298,13 @@ function ReleaseRow({
       >
         {expandable ? (
           // The whole row opens it in place (`after`); its way back stands over the row's end.
-          <button
+          <Button
             aria-expanded={open}
             aria-label={releaseCarriedToggleLabel(release.tag, open)}
-            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground group-hover/release:text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            className="after:absolute after:inset-0"
             onClick={toggle}
-            type="button"
+            size="icon-2xs"
+            variant="ghost-muted"
           >
             <ChevronRightIcon
               aria-hidden="true"
@@ -312,7 +313,7 @@ function ReleaseRow({
                 open && "rotate-90",
               )}
             />
-          </button>
+          </Button>
         ) : (
           <span aria-hidden="true" className="size-5 shrink-0" />
         )}

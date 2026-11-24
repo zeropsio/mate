@@ -16,6 +16,7 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useLayoutEffect, useRef, type JSX } from "react";
 
+import { InlineButton } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import {
   Dialog,
@@ -85,27 +86,23 @@ export function ZeropsBuildLog({
   const count = lineCount(lines.length);
   return (
     <span
-      className="inline-flex shrink-0"
+      className={cn("inline-flex h-5 shrink-0 text-caption", !openable && "invisible")}
       data-zerops-build-log
       data-zerops-build-log-status={status}
     >
-      <button
+      <InlineButton
         aria-haspopup="dialog"
         aria-hidden={openable ? undefined : true}
         aria-label={count === undefined ? "Open the build's log" : `Open the build's log, ${count}`}
-        className={cn(
-          "group/log inline-flex h-5 items-center gap-0.5 text-muted-foreground text-caption transition-colors hover:text-foreground",
-          !openable && "invisible",
-        )}
         data-zerops-build-log-toggle
         disabled={!openable}
         onClick={onToggle}
         tabIndex={openable ? undefined : -1}
-        type="button"
+        tone="muted"
       >
         Log
         <ChevronRightIcon aria-hidden="true" className="size-3 shrink-0" />
-      </button>
+      </InlineButton>
       <Dialog
         onOpenChange={(next) => {
           if (!next) onToggle();
