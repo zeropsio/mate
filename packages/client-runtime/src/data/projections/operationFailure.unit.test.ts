@@ -1,5 +1,7 @@
 import { expect, it } from "vite-plus/test";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { HqBirthOperation } from "../../zerops/hq/client.ts";
 import {
@@ -140,6 +142,30 @@ it("PJ+50: A read Zerops stopped answering is said as Zerops not answering, neve
   expect(
     operationFailureWords(failure("zerops_process", "project_create_platform_error")),
   ).not.toContain("project_create_platform_error");
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts |         "zerops", →         "zerops_",
+it("PJ+51: A birth whose Zerops retries are spent decodes with its failure at step `zerops`; breaks: the web refuses the row, draws the birth as running with no Try again, and an application holding it stops updating", () => {
+  const spent = { ...failure("hq", "zerops_not_answering"), step: "zerops" };
+  const row = Schema.decodeUnknownOption(HqBirthOperation)({
+    kind: "birth",
+    phase: "project_requested",
+    at,
+    acceptedAt: at,
+    failure: spent,
+  });
+  expect(Option.getOrNull(row)?.failure?.step).toBe("zerops");
+});
+
+// witness: packages/shared/src/hqAccessOperation.ts | "invite", "zerops"]), → "invite", "zerops_"]),
+it("PJ+52: An access change whose Zerops retries are spent decodes with its failure at step `zerops`; breaks: the web refuses the row and draws the change as running with no Try again or End while it holds the person", () => {
+  const spent = { ...failure("hq", "zerops_not_answering"), step: "zerops" };
+  const row = Schema.decodeUnknownOption(HqAccessOperation)({
+    id: "c-1",
+    change: { kind: "role", userId: "u-1" },
+    operation: { kind: "access", phase: "role_requested", at, acceptedAt: at, failure: spent },
+  });
+  expect(Option.getOrNull(row)?.operation?.failure?.step).toBe("zerops");
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")

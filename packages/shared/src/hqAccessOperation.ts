@@ -33,7 +33,7 @@ export const HqAccessOperation = Schema.Struct({
       failure: Schema.optionalKey(
         Schema.Struct({
           ...HqOperationFailure.fields,
-          step: Schema.Literals(["search", "grants", "role", "remove", "invite"]),
+          step: Schema.Literals(["search", "grants", "role", "remove", "invite", "zerops"]),
         }),
       ),
       continueBy: Schema.optionalKey(Schema.String),

@@ -295,7 +295,16 @@ export const HqBirthOperation = Schema.Struct({
   failure: Schema.optionalKey(
     Schema.Struct({
       ...HqOperationFailure.fields,
-      step: Schema.Literals(["create", "watch", "access", "settings", "key", "import", "restart"]),
+      step: Schema.Literals([
+        "create",
+        "watch",
+        "access",
+        "settings",
+        "key",
+        "import",
+        "restart",
+        "zerops",
+      ]),
     }),
   ),
   continueBy: Schema.optionalKey(Schema.String),

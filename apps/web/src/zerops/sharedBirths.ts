@@ -39,6 +39,7 @@ const FAILURE_STEP = {
   key: "Creating project key",
   import: "Importing services",
   restart: "Restarting the Mate service",
+  zerops: "Reaching Zerops",
 };
 
 /** A birth HQ holds for its maker's Continue: to them, and to everyone else. */
