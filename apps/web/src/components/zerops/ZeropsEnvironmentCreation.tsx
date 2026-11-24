@@ -119,7 +119,7 @@ export function ZeropsEnvironmentCreation({
       />
       {standing.kind === "waiting" ? (
         <p className="text-xs text-muted-foreground">
-          {standing.yours ? standing.line : waitingFor}
+          {standing.yours || standing.endOnly === true ? standing.line : waitingFor}
         </p>
       ) : null}
       <div className="flex justify-end gap-2">

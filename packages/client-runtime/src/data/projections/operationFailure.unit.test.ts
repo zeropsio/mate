@@ -125,6 +125,23 @@ it("PJ+1: A write Zerops gave no verdict on waits under Check again, whose sente
   expect(waitingWords("a_reason_of_a_later_build").press).toBe("Continue");
 });
 
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking."; → const ZEROPS_NOT_ANSWERING_WORDS = "Zerops had an internal error.";
+it("PJ+50: A read Zerops stopped answering is said as Zerops not answering, never as its internal error, and a creation Zerops failed says End is its way out to every reader, never that it waits for someone to continue; breaks: a person is told Zerops broke when it was only silent, or waits for a Continue that does not exist.", () => {
+  const silent = failure("hq", "zerops_not_answering");
+  expect(operationFailureWords(silent)).not.toContain("internal error");
+  expect(operationFailureWords(silent)).not.toContain(silent.code);
+  expect(waitingWords(silent.code).line).not.toContain("internal error");
+  expect(waitingWords(silent.code).press).toBe("Continue");
+  expect(waitingWords(silent.code).endOnly).toBeUndefined();
+  const failed = waitingWords("project_create_platform_error");
+  expect(failed.endOnly).toBe(true);
+  expect(failed.line).toContain("End it");
+  expect(failed.line).not.toContain("Continue");
+  expect(
+    operationFailureWords(failure("zerops_process", "project_create_platform_error")),
+  ).not.toContain("project_create_platform_error");
+});
+
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")
 it("PJ146: A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`", () => {
   const refused = failure("zerops", "operation_observation_refused", null);

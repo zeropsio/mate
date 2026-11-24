@@ -10,6 +10,7 @@ import { zeropsRefusedWords } from "../../zerops/hq/refusals.ts";
 /** A Zerops process the step followed failed: one sentence per HQ code of the spec's list. */
 const PROCESS_FAILED = new Map<string, string>([
   ["project_create_failed", "Zerops could not create the project."],
+  ["project_create_platform_error", "Zerops had an internal error creating the project."],
   ["project_delete_failed", "Zerops could not delete the project."],
   ["build_failed", "Zerops could not build the Mate's service."],
   ["restart_failed", "Zerops could not restart the Mate's service."],
@@ -34,6 +35,14 @@ const OUTCOME_UNKNOWN = "outcome_unknown";
 
 const OUTCOME_UNKNOWN_WORDS = "Zerops did not confirm whether this step went through.";
 
+/** Zerops stopped answering a read: nothing is known to have failed, and Continue reads again. */
+const ZEROPS_NOT_ANSWERING = "zerops_not_answering";
+
+const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking.";
+
+/** Zerops failed the project's creation: no press can repeat it, so End is the one way out. */
+const PROJECT_CREATE_PLATFORM_ERROR = "project_create_platform_error";
+
 /** The word on the button of HQ's one Continue offer: what the press does for this reason. */
 export type WaitingPress = "Continue" | "Try again" | "Check again";
 
@@ -49,6 +58,8 @@ export interface WaitingWords {
   readonly press: WaitingPress;
   readonly why: string;
   readonly line: string;
+  /** No Continue can change it: `line` is every reader's, and End is the way out. */
+  readonly endOnly?: true;
 }
 
 /** The one list of waiting reasons: the work resumes, a failed step is sent again, or it reads. */
@@ -83,6 +94,23 @@ const WAITING = new Map<string, WaitingWords>([
       press: "Check again",
       why: "Zerops did not confirm it went through",
       line: `${OUTCOME_UNKNOWN_WORDS} Check again to find out; nothing is sent again. If it stays unconfirmed, you can give it up and start again; a request already at Zerops may still finish.`,
+    },
+  ],
+  [
+    ZEROPS_NOT_ANSWERING,
+    {
+      press: "Continue",
+      why: "Zerops is not answering",
+      line: `${ZEROPS_NOT_ANSWERING_WORDS} Nothing is known to have failed. Continue to check where it stands.`,
+    },
+  ],
+  [
+    PROJECT_CREATE_PLATFORM_ERROR,
+    {
+      press: "Continue",
+      why: "Zerops could not create the project",
+      line: "Zerops had an internal error creating the project, and trying again cannot repair it. End it to free the application; the project stays and can be deleted.",
+      endOnly: true,
     },
   ],
 ]);
@@ -140,6 +168,7 @@ const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
   [OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_WORDS],
+  [ZEROPS_NOT_ANSWERING, ZEROPS_NOT_ANSWERING_WORDS],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
   [
