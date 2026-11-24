@@ -64,9 +64,12 @@ const controlVariants = cva(
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
-        /** A ghost on the menu's own ground: the menu's row hover under the pointer or while its popup is open. */
+        /**
+         * A ghost on the menu: under the pointer or while its popup is open, a step of the menu's ink
+         * over whatever it stands on, so a row's verb still shows on the row's own hover ground.
+         */
         sidebar:
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-row-hover [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
+          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-foreground/8 [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
         /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
         "destructive-ghost":
           "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",
@@ -97,10 +100,10 @@ type ButtonShape = NonNullable<VariantProps<typeof controlVariants>["shape"]>;
 
 /**
  * `bare`: a press around a picture, a tile or a card body that draws its own look — no ground,
- * border, padding or type of its own, nor any size; the picture's corner and the focus ring's ink
- * and weight (an outline, so it never covers the picture's own edge). Unpositioned, so a holder's
- * stretched press (a face card's body) still reaches the holder's edge. Its content draws its
- * disabled look.
+ * border, padding or type of its own, nor any size; the picture's corner (round with
+ * `shape="round"`, for a face) and the focus ring's ink and weight (an outline, so it never covers
+ * the picture's own edge). Unpositioned, so a holder's stretched press (a face card's body) still
+ * reaches the holder's edge. Its content draws its disabled look.
  */
 const bareButtonClassName =
   "cursor-pointer rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default";
@@ -111,7 +114,7 @@ function buttonVariants({
   ...props
 }: VariantProps<typeof controlVariants> & { readonly className?: string | undefined }): string {
   return variant === "bare"
-    ? cn(bareButtonClassName, className)
+    ? cn(bareButtonClassName, props.shape === "round" && "rounded-full", className)
     : controlVariants({ className, variant, ...props });
 }
 
