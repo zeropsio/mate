@@ -103,8 +103,12 @@ it("PJ+1: A Mate's state is the one HQ's navigation names for it, with its since
   seedHqNavigation(store, "org", {
     structure: { apps: [], ungrouped: [{ projectId: "plain", name: "Plain", mate: { face: "" } }] },
   });
-  const frame = recorded("scope-values", "mate-hq/navigation.mate.cannot-run");
-  const project = frame.values.find((v) => v.key.startsWith("project:"))!;
+  const frame = recorded("scope-reset", "mate-hq/navigation.mate.cannot-run");
+  const project = frame.values.find(
+    (v) =>
+      v.key.startsWith("project:") &&
+      placementFamily.hq!.decode(v.value, v.key)?.mate?.state === "cannot_run",
+  )!;
   const recordedId = project.key.slice("project:".length);
   const placed = placementFamily.hq!.decode(project.value, project.key)!;
   const later = placementFamily.hq!.decode(
@@ -140,8 +144,8 @@ it("PJ+1: A Mate's state is the one HQ's navigation names for it, with its since
   const stateOf = (projectId: string) =>
     registry.get(store.data.project(hqMateState, key(projectId)));
   expect([recordedId, "later", "plain"].map(stateOf)).toEqual([
-    { state: "cannot_run", since: "2026-11-24T08:00:00.000Z", why: "signed_out" },
-    { state: "resting", since: "2026-11-24T08:00:00.000Z", why: "a_new_why" },
+    { state: "cannot_run", since: "2026-11-24T09:01:24.870Z", why: "signed_out" },
+    { state: "resting", since: "2026-11-24T09:01:24.870Z", why: "a_new_why" },
     null,
   ]);
   registry.dispose();

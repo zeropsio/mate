@@ -1,29 +1,48 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "schema": "scope-values",
+    "schema": "scope-reset",
     "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
-    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq <test environment> --profile <a second person's profile> --owner-profile test-rw --answers-from <journey receipts> --record-answers <dir>",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
     "steps": [
-      "On a prepared test environment run the manual journey: journey run --manual birth-continue-by-maker --env <env> --out <journey receipts>. It makes what it needs and removes it.",
-      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq <test environment> --profile <a second person's profile> --owner-profile test-rw --answers-from <journey receipts> --record-answers <dir>.",
-      "The writer reads birth-continue-by-maker/test-rw-hq-frames.json and takes the navigation delivery showing the run's first birth operation birth.ended.",
-      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain.",
-      "Stand-in until HQ records it: the delivery the steps above record, its placed Mate given the three fields HQ's spec states for a linked Mate nobody is signed in to: state cannot_run, stateWhy signed_out, stateSince.",
-      "HQ's own recording replaces this file: mate-hq recordings/stream/navigation-project.cannot-run.json, made by hand on a standing test environment from a linked Mate whose overview lists every login not-authorized, written in the public form of the answers recorder."
+      "On a prepared test environment: Sign the environment's standing Mate out of every agent: delete its service's Claude token variables (CLAUDE_CODE_OAUTH_TOKEN, ZCP_AGENT_TOKEN_CLAUDE_CODE), turn OpenCode off in its Mate settings (providers.opencode.enabled false in ~/.t3/userdata/settings.json), restart zerops@mate and wait until HQ's overview of it holds every login not-authorized and runsWithoutSignIn false. Afterwards remove the settings file and run env prepare, which signs the token login again.",
+      "While it holds, run the kept journey: journey run signin --env \u003cenv\u003e --out \u003cjourney receipts\u003e.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads signin/test-rw-hq-frames.json and takes the first navigation delivery holding a Mate whose state is cannot_run.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
     ],
-    "recordedAt": "2026-11-23T23:03:12Z"
+    "recordedAt": "2026-11-24T09:06:19Z"
   },
   "value": {
-    "type": "scope-values",
+    "type": "scope-reset",
     "scope": {
       "kind": "navigation"
     },
-    "incarnation": "bb1eae38-9c9c-4bc7-8578-92fbc585f10c:1",
-    "revision": 14,
+    "incarnation": "ded66970-c813-4b7d-aa53-127b36a94d47:1",
+    "revision": 2,
     "values": [
       {
-        "key": "app:v1",
+        "key": "org",
+        "value": {
+          "build": "v1",
+          "viewer": {
+            "firstSignedInAt": "2026-11-13T18:00:52Z",
+            "founder": true
+          }
+        }
+      },
+      {
+        "key": "status",
+        "value": {
+          "parts": {
+            "db": "up",
+            "git": "open",
+            "keys": "ok"
+          }
+        }
+      },
+      {
+        "key": "app:v2",
         "value": {
           "births": [],
           "changes": [],
@@ -31,18 +50,110 @@
             "empty": false,
             "deletingProjectIds": []
           },
-          "createdAt": "v2",
+          "createdAt": "v3",
           "environments": [],
-          "id": "v1",
+          "id": "v2",
           "intake": null,
-          "name": "v3",
+          "name": "v4",
+          "problems": [],
+          "projectIds": [],
+          "releaseOffer": null,
+          "rollouts": []
+        }
+      },
+      {
+        "key": "app:v5",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v6",
+          "environments": [],
+          "id": "v5",
+          "intake": null,
+          "name": "v7",
           "problems": [],
           "projectIds": [
-            "v4"
+            "v8"
+          ],
+          "releaseOffer": {
+            "head": "v9",
+            "suggestion": "v10",
+            "summary": {
+              "subjects": [
+                "v11"
+              ],
+              "total": 1,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 1
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v12"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v13",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v14",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v15",
+        "value": {
+          "births": [],
+          "changes": [
+            {
+              "repo": "v16",
+              "number": 1,
+              "mateProjectId": "v17",
+              "title": "v18",
+              "state": "v19",
+              "hasHead": true,
+              "updatedAt": "v20",
+              "mergeability": "v21",
+              "ready": true,
+              "mergeRoute": {
+                "via": "v22"
+              }
+            }
+          ],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v23",
+          "environments": [],
+          "id": "v15",
+          "intake": null,
+          "mergers": {
+            "people": [
+              "v24"
+            ],
+            "setBy": "v24",
+            "setAt": "v25"
+          },
+          "name": "v26",
+          "problems": [],
+          "projectIds": [
+            "v17"
           ],
           "releaseOffer": {
             "head": null,
-            "suggestion": "v5",
+            "suggestion": "v10",
             "summary": {
               "subjects": [],
               "total": 0,
@@ -52,41 +163,106 @@
             },
             "gate": {
               "allow": false,
-              "reason": "v6"
+              "reason": "v12"
             },
             "inFlight": null
           },
-          "rollouts": []
+          "rollouts": [
+            {
+              "id": "v27",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v28",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v29",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v30",
+              "note": null,
+              "planned": true
+            }
+          ]
         }
       },
       {
-        "key": "project:v4",
+        "key": "project:v8",
         "value": {
-          "appId": "v1",
+          "appId": "v5",
           "everSignedIn": {},
           "kind": "mate",
           "mate": {
-            "birthId": "v7",
-            "face": "",
-            "madeBy": "v8",
+            "birthId": "v31",
+            "importProcessId": "v32",
+            "face": "v33",
+            "madeBy": "v24",
             "standupRequestedBy": null,
-            "serviceId": "v9",
-            "bornAt": "v2",
+            "serviceId": "v34",
+            "bornAt": "v35",
             "state": "cannot_run",
-            "stateSince": "2026-11-24T08:00:00.000Z",
+            "stateSince": "2026-11-24T09:01:24.870Z",
             "stateWhy": "signed_out"
           },
-          "name": "v11",
+          "name": "v36",
           "person": {
             "chiefProjectId": null,
             "entry": "operates",
             "mine": true,
-            "ownerUserId": "v8",
+            "ownerUserId": "v24",
+            "unseen": 0,
+            "waitsOnViewer": false
+          },
+          "projectId": "v8",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v17",
+        "value": {
+          "appId": "v15",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "face": "v37",
+            "madeBy": "v24",
+            "standupRequestedBy": null,
+            "serviceId": null,
+            "bornAt": "v35",
+            "state": "no_container",
+            "stateSince": "2026-11-22T02:53:46.829Z"
+          },
+          "name": "v38",
+          "person": {
+            "chiefProjectId": null,
+            "entry": "operates",
+            "mine": true,
+            "ownerUserId": "v24",
             "unseen": null,
             "waitsOnViewer": false
           },
-          "projectId": "v4",
+          "projectId": "v17",
           "signedInNow": {}
+        }
+      },
+      {
+        "key": "auto-update-policy",
+        "value": {
+          "orgId": "v39",
+          "enabled": true,
+          "revision": 0
+        }
+      },
+      {
+        "key": "persona-templates",
+        "value": {
+          "orgId": "v39",
+          "templates": []
         }
       }
     ],
