@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Label } from "../ui/label";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 
 export function ZeropsAssignMateForm({
   projectName,
@@ -81,28 +82,36 @@ export function ZeropsAssignMateForm({
       <DialogPanel>
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-member`}>Owner</Label>
-          <select
-            aria-busy={readingOrganization === undefined ? undefined : true}
-            autoFocus
-            className="h-9 w-full rounded-control border border-border bg-background px-3 text-body text-foreground"
+          <Select
             disabled={pending || readingOrganization !== undefined || readFailed !== undefined}
-            id={`${id}-member`}
-            onChange={(event) => {
-              setSelected(event.target.value);
+            onValueChange={(userId) => {
+              if (userId !== null) setSelected(userId);
             }}
-            value={candidate === undefined ? "" : selected}
+            value={candidate === undefined ? null : selected}
           >
-            <option disabled value="">
-              {readingOrganization === undefined
-                ? "Pick a person"
-                : `Reading ${readingOrganization}…`}
-            </option>
-            {candidates.map((candidate) => (
-              <option key={candidate.userId} value={candidate.userId}>
-                {candidate.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-busy={readingOrganization === undefined ? undefined : true}
+              autoFocus
+              id={`${id}-member`}
+            >
+              <SelectValue
+                placeholder={
+                  readingOrganization === undefined
+                    ? "Pick a person"
+                    : `Reading ${readingOrganization}…`
+                }
+              >
+                {candidate?.name}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectPopup alignItemWithTrigger={false}>
+              {candidates.map((person) => (
+                <SelectItem key={person.userId} value={person.userId}>
+                  {person.name}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
         </div>
         {readFailed === undefined ? null : (
           <div className="mt-3 flex flex-col items-start gap-3">

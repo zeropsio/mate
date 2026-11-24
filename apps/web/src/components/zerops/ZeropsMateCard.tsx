@@ -18,52 +18,35 @@
  *
  * Structural: every word on the line and every verb is the caller's (R5).
  */
-import type {
-  MateMarkState,
-  MateShapeId,
-  MateTintId,
-  ServiceStatusToneId,
-} from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
+import { Button, InlineButton } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
 /** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
 function PreviewLink({ url }: { readonly url: string }) {
   return (
-    <a
-      className="relative z-[1] inline-flex w-fit items-center gap-1 text-caption text-status-busy-text underline-offset-2 hover:underline"
-      data-zerops-surface="mate-preview"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <ExternalLinkIcon aria-hidden="true" className="size-3" />
-      Preview
-    </a>
+    <span className="relative z-[1] text-caption">
+      <InlineButton
+        data-zerops-surface="mate-preview"
+        render={<a href={url} rel="noreferrer" target="_blank" />}
+      >
+        <ExternalLinkIcon aria-hidden="true" className="size-3" />
+        Preview
+      </InlineButton>
+    </span>
   );
 }
 
-/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
-/** A verb that is about something with a state wears that state. */
-const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-status-ok/40 bg-status-ok-surface text-status-ok-text hover:bg-status-ok-surface/70",
-  busy: "border-status-busy/40 bg-status-busy-surface text-status-busy-text hover:bg-status-busy-surface/70",
-  attention:
-    "border-status-attention/40 bg-status-attention-surface text-status-attention-text hover:bg-status-attention-surface/70",
-  failed:
-    "border-status-failed/40 bg-status-failed-surface text-status-failed-text hover:bg-status-failed-surface/70",
-  off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
-};
-
+/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". */
 export function ZeropsMateVerb({
   label,
   onClick,
   disabled = false,
   description,
-  tone,
   action,
   ...rest
 }: {
@@ -78,12 +61,6 @@ export function ZeropsMateVerb({
   readonly onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly disabled?: boolean;
   /**
-   * What the verb is about, where that has a state: a change that cannot land
-   * and a release that is merely waiting are not the same news, and a row of
-   * identical grey pills says they are.
-   */
-  readonly tone?: ServiceStatusToneId | undefined;
-  /**
    * What the verb would actually do, in words — for a verb whose name says
    * the mechanism rather than the outcome. It becomes the button's accessible
    * name, so the answer is not hover-only: a keyboard reaches it too.
@@ -91,26 +68,19 @@ export function ZeropsMateVerb({
   readonly description?: string | undefined;
 }) {
   return (
-    <button
+    <Button
       {...rest}
       aria-label={description === undefined ? undefined : `${label}: ${description}`}
-      // A verb, drawn as one. It was blue underlined text, which in this app
-      // meant "this leaves for Gitea" until nothing did any more — so every
-      // verb read as a link out, and the one that mattered (Release) was
-      // quieter than the amber chip counting what it would ship.
-      className={cn(
-        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-control border px-1.5 text-caption leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
-        tone === undefined
-          ? "border-input bg-popover text-foreground hover:bg-accent/50"
-          : VERB_TONE_CLASS[tone],
-      )}
+      // Above the card's stretched name, which covers the card to open it.
+      className="z-[1]"
       data-zerops-primary-action={action ?? label}
       disabled={disabled}
       onClick={onClick}
-      type="button"
+      size="xs"
+      variant="secondary"
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -136,7 +106,6 @@ const LAYOUT = {
     surface: CARD_SURFACE_CLASS,
     opens:
       "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
-    hit: "after:rounded-card",
     lineOne: "",
     name: "",
     time: "",
@@ -144,7 +113,6 @@ const LAYOUT = {
   row: {
     surface: ROW_SURFACE_CLASS,
     opens: "hover:bg-accent/60",
-    hit: "after:rounded-control",
     // A row sits in a narrow step: the name never gives way, and its time and
     // Preview follow it — wrapping under it rather than cutting it to an
     // initial — with or without a Preview, at every width.
@@ -239,18 +207,17 @@ export function ZeropsMateCard({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
           {onSelect ? (
-            <button
-              className={cn(
-                "min-w-0 flex-1 truncate rounded-sm text-left text-body leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
-                LAYOUT[layout].hit,
-                LAYOUT[layout].name,
-              )}
-              data-zerops-surface="mate-open"
-              onClick={onSelect}
-              type="button"
-            >
-              {name}
-            </button>
+            <span className={cn("flex min-w-0 flex-1 text-body leading-5", LAYOUT[layout].name)}>
+              {/* The name opens the Mate, and its press covers the card. */}
+              <InlineButton
+                className="max-w-full min-w-0 after:absolute after:inset-0"
+                data-zerops-surface="mate-open"
+                onClick={onSelect}
+                tone="plain"
+              >
+                <span className="truncate">{name}</span>
+              </InlineButton>
+            </span>
           ) : (
             <span
               className={cn(

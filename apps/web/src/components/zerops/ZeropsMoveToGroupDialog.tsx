@@ -8,6 +8,7 @@ import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useId, useState } from "react";
 
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
   DialogFooter,
@@ -218,11 +219,10 @@ export function ZeropsMoveToGroupForm({
                   and access.
                 </p>
                 <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={acknowledged}
                     disabled={pending}
-                    onChange={(event) => setAcknowledged(event.target.checked)}
+                    onCheckedChange={(checked) => setAcknowledged(checked)}
                   />
                   I understand the role and access changes for {name}.
                 </label>

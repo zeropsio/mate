@@ -18,6 +18,7 @@ import {
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button, InlineButton } from "../ui/button";
+import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { ZeropsLandingShell } from "./landing/ZeropsLandingShell";
@@ -108,31 +109,26 @@ export function ZeropsOrganizationChoice({
       <ul aria-label="Your organizations" className="-m-3 space-y-1">
         {organizations.map((organization, index) => (
           <li key={organization.membershipId}>
-            <button
+            <Row
               autoFocus={index === 0}
-              className="group flex w-full cursor-pointer items-center gap-3.5 rounded-2xl px-3 py-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
               data-zerops-organization-choice
-              type="button"
+              lead={
+                <span
+                  aria-hidden="true"
+                  className="flex size-8 items-center justify-center rounded-lg bg-muted text-body font-semibold text-foreground"
+                >
+                  {organization.name.trim().charAt(0).toLocaleUpperCase()}
+                </span>
+              }
+              line={zeropsOrganizationRoleLabel(organization)}
+              meta={<ChevronRightIcon aria-hidden="true" className="size-4" />}
               onClick={() => {
                 onSelect(organization.membershipId);
               }}
-            >
-              <span
-                aria-hidden="true"
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-base font-semibold text-foreground"
-              >
-                {organization.name.trim().charAt(0).toLocaleUpperCase()}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-body leading-5 font-semibold text-foreground">
-                  {organization.name}
-                </span>
-                <span className="block text-caption leading-4 text-muted-foreground">
-                  {zeropsOrganizationRoleLabel(organization)}
-                </span>
-              </span>
-              <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground group-focus-visible:text-foreground" />
-            </button>
+              pressable
+              render={<button type="button" />}
+              title={organization.name}
+            />
           </li>
         ))}
       </ul>

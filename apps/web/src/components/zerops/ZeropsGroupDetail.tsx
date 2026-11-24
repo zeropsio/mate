@@ -58,6 +58,7 @@ import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords, type UnreadFlowWords } from "~/zerops/hqRead.logic";
+import { Button, InlineButton } from "../ui/button";
 import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
@@ -267,13 +268,13 @@ export function ZeropsRuntimeStops({
                 {onOpen === undefined ? (
                   <span className="flex min-w-0 items-center gap-3">{words}</span>
                 ) : (
-                  <button
-                    className="flex min-w-0 items-center gap-3 text-left"
-                    type="button"
+                  <Button
+                    className="-ms-3 min-w-0"
                     onClick={() => onOpen(stop.environmentId ?? stop.projectId)}
+                    variant="ghost"
                   >
-                    {words}
-                  </button>
+                    <span className="flex min-w-0 items-center gap-3">{words}</span>
+                  </Button>
                 )}
                 <StopReadAgain projectId={stop.projectId} />
               </div>
@@ -370,19 +371,20 @@ function GitStopLine({
 }) {
   const navigate = useNavigate();
   return (
-    <button
-      className="py-2 text-body font-medium"
-      data-zerops-environment-id={environment.id}
-      type="button"
-      onClick={() => {
-        void navigate({
-          to: "/group/$groupId/$projectId",
-          params: { groupId, projectId: environment.id },
-        });
-      }}
-    >
-      {environmentTitle(environment.tier, environment.name)}
-    </button>
+    <span className="py-2 text-body">
+      <InlineButton
+        data-zerops-environment-id={environment.id}
+        onClick={() => {
+          void navigate({
+            to: "/group/$groupId/$projectId",
+            params: { groupId, projectId: environment.id },
+          });
+        }}
+        tone="plain"
+      >
+        {environmentTitle(environment.tier, environment.name)}
+      </InlineButton>
+    </span>
   );
 }
 function ZeropsStopLine({
@@ -442,34 +444,42 @@ function ZeropsStopLine({
   }
   return (
     <li>
-      <button
+      <Button
         // Fixed tracks, not a right-ragged flex: a version and a state that
         // start at a different x on every row cannot be read down the column.
         // The state's track holds its longest word whole: the run's column said "Nothing depl…".
-        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3 rounded-control px-2 py-2 text-left transition-colors hover:bg-muted"
+        className="w-full min-w-0"
         data-zerops-environment-id={environment.id}
         onClick={open}
-        type="button"
+        size="lg"
+        variant="ghost"
       >
-        <span className="min-w-0 truncate text-body font-medium text-foreground">{title}</span>
-        <span className="truncate text-end font-mono text-caption text-muted-foreground tabular-nums">
-          {says.version}
-        </span>
-        {/* Never a wordless dot on its own: a colour that has to be learnt is
-            a colour nobody reads, and a screen reader gets nothing from it. */}
-        {/* The dot carries the state; the word supports it. Unsized, it
-            inherited 16px and came out larger than the name it annotates. */}
-        {dotTone === undefined ? (
-          <span className="text-caption text-muted-foreground">{word}</span>
-        ) : (
-          <span className="shrink-0 text-caption text-muted-foreground">
-            <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
-              {word}
-            </Badge>
+        <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3">
+          <span className="min-w-0 truncate text-start text-body font-medium text-foreground">
+            {title}
           </span>
-        )}
-        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
-      </button>
+          <span className="truncate text-end font-mono text-caption text-muted-foreground tabular-nums">
+            {says.version}
+          </span>
+          {/* Never a wordless dot on its own: a colour that has to be learnt is
+            a colour nobody reads, and a screen reader gets nothing from it. */}
+          {/* The dot carries the state; the word supports it. Unsized, it
+            inherited 16px and came out larger than the name it annotates. */}
+          {dotTone === undefined ? (
+            <span className="text-caption text-muted-foreground">{word}</span>
+          ) : (
+            <span className="shrink-0 text-caption text-muted-foreground">
+              <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
+                {word}
+              </Badge>
+            </span>
+          )}
+          <ChevronRightIcon
+            aria-hidden="true"
+            className="size-4 shrink-0 text-muted-foreground/60"
+          />
+        </span>
+      </Button>
       {/* An application of several parts: how many, and each that differs from the version. */}
       {environment.parts === undefined ? null : (
         <span className="block truncate px-2 pb-2 text-caption text-muted-foreground">

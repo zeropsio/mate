@@ -8,7 +8,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import { cn } from "~/lib/utils";
+import { Button } from "~/components/ui/button";
 import type { MateAddress } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { mateAddressOpenTarget } from "./MateAddresses.logic";
@@ -39,18 +39,15 @@ export function MateAddressExternalLink({
   readonly className?: string;
 }) {
   return (
-    <a
+    <Button
       aria-label={`Open ${address.service} in a new tab`}
-      className={cn(
-        "relative inline-flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:size-10",
-        className,
-      )}
+      className={className}
       data-mate-address-external
-      href={address.url}
-      rel="noreferrer"
-      target="_blank"
+      render={<a href={address.url} rel="noreferrer" target="_blank" />}
+      size="icon-xs"
+      variant="ghost-muted"
     >
-      <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
-    </a>
+      <ExternalLinkIcon aria-hidden="true" />
+    </Button>
   );
 }

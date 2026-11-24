@@ -42,7 +42,7 @@ import type {
   ZeropsServiceRoute,
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
@@ -572,19 +572,18 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
 export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
   return (
     <div className="flex w-72 max-w-full flex-col text-body" data-zerops-service-detail>
-      <a
-        className="group flex min-w-0 max-w-full items-baseline gap-1 text-foreground"
+      <InlineButton
+        className="group max-w-full min-w-0 items-baseline"
         data-zerops-service-dashboard
-        href={row.dashboardUrl}
-        rel="noreferrer"
-        target="_blank"
+        render={<a href={row.dashboardUrl} rel="noreferrer" target="_blank" />}
+        tone="plain"
       >
         <ServiceName className="flex-1" row={row} />
         <ArrowUpRightIcon
           aria-hidden="true"
           className="size-3.5 shrink-0 self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
         />
-      </a>
+      </InlineButton>
       {row.meta.length === 0 ? null : (
         <p
           className="mt-0.5 min-w-0 max-w-full break-words text-caption text-muted-foreground"
