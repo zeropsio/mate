@@ -91,6 +91,8 @@ interface ReleasePlanProps {
   /** Renews production's deploy key, on the step HQ stopped at for it; `renewing` while it runs. */
   readonly onRenew?: (() => void) | undefined;
   readonly renewing?: boolean | undefined;
+  /** The renew button's word, by what a stopped renewal waits on. */
+  readonly renewWord?: string | undefined;
   /** A service's deploy log, once its job has one. */
   readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
   /** The platform's process a busy step is, by the step's key: where its build stands. */
@@ -111,6 +113,7 @@ export function ReleasePlan({
   onCreate,
   onRenew,
   renewing = false,
+  renewWord = "Renew the key",
   logOf,
   running,
   live,
@@ -204,6 +207,7 @@ export function ReleasePlan({
             onCreate={onCreate}
             onRenew={onRenew}
             renewing={renewing}
+            renewWord={renewWord}
             // A deploy under way says where its build stands; a creation's title and clock say all.
             running={
               step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
@@ -329,6 +333,7 @@ function PlanStep({
   onCreate,
   onRenew,
   renewing,
+  renewWord,
   log,
   running,
   live,
@@ -340,6 +345,7 @@ function PlanStep({
   readonly onCreate: (() => void) | undefined;
   readonly onRenew: (() => void) | undefined;
   readonly renewing: boolean;
+  readonly renewWord: string;
   readonly log: ReleaseStepLog | undefined;
   readonly running: Running | undefined;
   readonly live: ReleasePlanProps["live"];
@@ -389,7 +395,7 @@ function PlanStep({
           // Its words change while it runs; its place does not.
           <span className="rv-pstep-aside">
             <InlineButton data-release-renew="" disabled={renewing} onClick={onRenew}>
-              {renewing ? "Renewing…" : "Renew the key"}
+              {renewing ? "Renewing…" : renewWord}
             </InlineButton>
           </span>
         )

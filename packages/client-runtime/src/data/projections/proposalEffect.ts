@@ -32,6 +32,35 @@ export const proposalEffectOf: Projection<
   equals: sameValue,
 };
 
+/** An approval's own operation as navigation shows it, and the project it shows it on. */
+export interface ProposalOperation {
+  readonly operation: HqOperation;
+  readonly projectId: string;
+}
+
+/**
+ * The operation HQ names as one proposal's own (its decision's `operation`), wherever navigation
+ * shows it: a card's Continue and End act on this, never on what its project happens to show.
+ */
+export const proposalOperationOf: Projection<
+  { readonly orgId: string; readonly operationId: string },
+  ProposalOperation | undefined
+> = {
+  name: "proposalOperationOf",
+  keyOf: ({ orgId, operationId }) => `${orgId}/${operationId}`,
+  derive: (read, { orgId, operationId }) => {
+    for (const projectId of read.members(placementsScope(orgId)).ids) {
+      const placement = read.fact("placement", projectId);
+      if (placement.kind !== "known") continue;
+      const operation = placement.value.operation;
+      if (operation?.kind === PROPOSAL_EFFECT && operation.id === operationId)
+        return { operation, projectId };
+    }
+    return undefined;
+  },
+  equals: sameValue,
+};
+
 /**
  * How the effect's operation stands, as one value that changes with each move of it in navigation
  * (shown, its phase, its failure, gone): what a card reads HQ's decision again on.

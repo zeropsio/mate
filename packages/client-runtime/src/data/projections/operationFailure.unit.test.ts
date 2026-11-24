@@ -1,5 +1,7 @@
 import { expect, it } from "vite-plus/test";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { HqBirthOperation } from "../../zerops/hq/client.ts";
 import {
@@ -7,6 +9,7 @@ import {
   operationFailureDetails,
   operationFailureWords,
   platformErrorLine,
+  waitingWords,
 } from "./operationFailure.ts";
 
 const at = "2026-11-09T11:04:31.000Z";
@@ -106,6 +109,39 @@ it("PJ145: A birth waiting on lost access has its own line, which differs for a 
   expect(operationFailureWords(lost)).not.toContain(lost.code);
   expect(accessLostLine({ ...lost, code: "token_expired" }, true)).toBeNull();
   expect(accessLostLine({ ...lost, origin: "zerops" }, true)).toBeNull();
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | const ZEROPS_NOT_ANSWERING_WORDS = "Zerops has not been answering, so HQ stopped asking."; → const ZEROPS_NOT_ANSWERING_WORDS = "Zerops had an internal error.";
+it("PJ151: A read Zerops stopped answering is said as Zerops not answering, never as its internal error; breaks: a person is told Zerops broke when it was only silent.", () => {
+  const silent = failure("hq", "zerops_not_answering");
+  expect(operationFailureWords(silent)).not.toContain("internal error");
+  expect(operationFailureWords(silent)).not.toContain(silent.code);
+  expect(waitingWords(silent.code).line).not.toContain("internal error");
+  expect(waitingWords(silent.code).press).toBe("Try again");
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts |         "zerops", →         "zerops_",
+it("PJ152: A birth whose Zerops retries are spent decodes with its failure at step `zerops`; breaks: the web refuses the row, draws the birth as running with no Try again, and an application holding it stops updating", () => {
+  const spent = { ...failure("hq", "zerops_not_answering"), step: "zerops" };
+  const row = Schema.decodeUnknownOption(HqBirthOperation)({
+    kind: "birth",
+    phase: "project_requested",
+    at,
+    acceptedAt: at,
+    failure: spent,
+  });
+  expect(Option.getOrNull(row)?.failure?.step).toBe("zerops");
+});
+
+// witness: packages/shared/src/hqAccessOperation.ts | "invite", "zerops"]), → "invite", "zerops_"]),
+it("PJ153: An access change whose Zerops retries are spent decodes with its failure at step `zerops`; breaks: the web refuses the row and draws the change as running with no Try again or End while it holds the person", () => {
+  const spent = { ...failure("hq", "zerops_not_answering"), step: "zerops" };
+  const row = Schema.decodeUnknownOption(HqAccessOperation)({
+    id: "c-1",
+    change: { kind: "role", userId: "u-1" },
+    operation: { kind: "access", phase: "role_requested", at, acceptedAt: at, failure: spent },
+  });
+  expect(Option.getOrNull(row)?.operation?.failure?.step).toBe("zerops");
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")

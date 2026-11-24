@@ -16,7 +16,7 @@
 import {
   hqOperationOf,
   operationFailureWords,
-  type WaitingPress,
+  type WaitingWords,
 } from "@t3tools/client-runtime/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
@@ -311,7 +311,7 @@ export function putLiveSheetNow(
  * - `going` — HQ makes production, or, `releasing`, releases to it, since `since`.
  * - `review` — production is made, and its release creates something the press did not approve or
  *   reads a value production's vault lacks: the person decides it in the release's review.
- * - `waiting` — the maker's Zerops sign-in ran out: their Continue (`id`) carries it on.
+ * - `waiting` — it waits for its maker: their Continue (`id`) carries it on.
  * - `failed` — it stopped with HQ's failure; Put it live is offered again.
  */
 export type PutLiveStanding =
@@ -326,7 +326,10 @@ export type PutLiveStanding =
       readonly kind: "waiting";
       readonly id: string;
       readonly yours: boolean;
-      readonly press: WaitingPress;
+      readonly press: WaitingWords["press"];
+      readonly line: string;
+      /** HQ offers the person reading its End. */
+      readonly endable?: true;
     }
   | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
@@ -352,7 +355,14 @@ export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
     case "needs":
       return standing.needs === "release_review" ? { kind: "review" } : NOT_PUT_LIVE;
     case "waiting":
-      return { kind: "waiting", id: standing.id, yours: standing.yours, press: standing.press };
+      return {
+        kind: "waiting",
+        id: standing.id,
+        yours: standing.yours,
+        press: standing.press,
+        line: standing.line,
+        ...(standing.endable === true ? { endable: true as const } : {}),
+      };
     case "failed":
       return { kind: "failed", failure: standing.failure };
   }
@@ -386,7 +396,7 @@ export function putLiveProgress(
       return {
         title: `${project} isn't live yet`,
         step: standing.yours
-          ? "Your Zerops sign-in ran out before it finished."
+          ? standing.line
           : "It waits for the person who started it to continue it.",
       };
     case "failed":

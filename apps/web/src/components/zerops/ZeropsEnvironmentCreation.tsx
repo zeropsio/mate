@@ -2,7 +2,7 @@
  * A stage's or a production's setup as HQ runs it: its application's `environment` operation, or
  * the `deploy_key` operation that finishes an attached one, as
  * navigation shows it on every device (`hqOperationOf`) — how far it got, where it stopped and in
- * whose words, and while its maker's sign-in ran out, their Continue, or an Owner's or an Admin's
+ * whose words, and while it waits for its maker, their Continue, or an Owner's or an Admin's
  * End where HQ offers it, its maker being unable to continue it. Nothing of it runs in this
  * tab: a closed tab changes nothing, and another device shows the same card.
  */
@@ -119,9 +119,7 @@ export function ZeropsEnvironmentCreation({
       />
       {standing.kind === "waiting" ? (
         <p className="text-xs text-muted-foreground">
-          {standing.yours
-            ? "Your Zerops sign-in ran out before it finished. Continue gives HQ your current one."
-            : waitingFor}
+          {standing.yours ? standing.line : waitingFor}
         </p>
       ) : null}
       <div className="flex justify-end gap-2">

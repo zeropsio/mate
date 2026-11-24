@@ -1,3 +1,4 @@
+import { waitingWords } from "@t3tools/client-runtime/data";
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { mateDeletionOf, mateGoing, type MateDeletion } from "@t3tools/client-runtime/data";
@@ -69,7 +70,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
     id: "op-1",
     continueBy: "ada",
     yours: false,
-    press: "Continue",
+    ...waitingWords("token_expired"),
   } as const;
   const expected: Record<keyof typeof phases, Record<keyof typeof listings, MateDeletion>> = {
     accepted: { listed: deleting, DELETING: deleting, gone: deleting },
@@ -130,12 +131,24 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
     [
       "its maker reads",
       stopped(tokenExpired, "ada", ["continue"]),
-      { kind: "waiting", id: "op-7", continueBy: "ada", yours: true, press: "Continue" },
+      {
+        kind: "waiting",
+        id: "op-7",
+        continueBy: "ada",
+        yours: true,
+        ...waitingWords("token_expired"),
+      },
     ],
     [
       "someone else reads",
       stopped(tokenExpired, "ada"),
-      { kind: "waiting", id: "op-7", continueBy: "ada", yours: false, press: "Continue" },
+      {
+        kind: "waiting",
+        id: "op-7",
+        continueBy: "ada",
+        yours: false,
+        ...waitingWords("token_expired"),
+      },
     ],
     ["Zerops refused", stopped(zeropsFailure), { kind: "failed", failure: zeropsFailure }],
     ["HQ stopped it", stopped(hqFailure), { kind: "failed", failure: hqFailure }],

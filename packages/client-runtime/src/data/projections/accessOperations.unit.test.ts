@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
 import { recorded } from "../__fixtures__/recorded.ts";
-import { accessOperationRows } from "./accessOperations.ts";
+import { accessOperationRows, accessOperationWithdrawal } from "./accessOperations.ts";
 
 const acceptedAt = "2026-11-21T10:00:00.000Z";
 const at = "2026-11-21T10:00:05.000Z";
@@ -142,4 +142,15 @@ it("PJ130: An access change's row says its failure by who stopped it and holds Z
   const stoppedByHq = rowFor({ step: "search", code: "not_member", at, origin: "hq" });
   expect(stoppedByHq.failure).not.toContain("not_member");
   expect(stoppedByHq.details).toBeNull();
+});
+
+// witness: packages/client-runtime/src/data/projections/accessOperations.ts | ...(viewer !== null && continueBy !== viewer ? { endable: true as const } : {}), → ...({}),
+it("PJ150: A waiting access change offers another reader End and its maker Delete, a running one neither, and a reader not yet known no press; breaks: an Owner cannot free a person held by a maker who left", () => {
+  const withdrawal = (value: HqAccessOperation, viewer: string | null) =>
+    accessOperationWithdrawal(accessOperationRows([value], viewer)[0]!);
+  const maker = waiting.operation!.continueBy!;
+  expect(withdrawal(waiting, "owner")).toBe("end");
+  expect(withdrawal(waiting, maker)).toBe("delete");
+  expect(withdrawal(waiting, null)).toBe(null);
+  expect(withdrawal(running, maker)).toBe(null);
 });

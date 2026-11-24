@@ -7,7 +7,7 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import { mateRestartSaid } from "../../zerops/mateMoments.logic.ts";
-import { mateRowLife, mateRowSecond } from "./SidebarMateRow.logic.ts";
+import { mateRowLife, mateRowSecond, sidebarMateVerbs } from "./SidebarMateRow.logic.ts";
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | return mateDeleting(project.status, mateGoing(mateDeletionOfProject(project))) → return mateDeleting(project.status, false)
 it("MN63: A listed Mate's life, the one its menu row, its find in the jump box and its face on a folded group wear, is deleting while HQ's deletion of it runs or Zerops lists its project DELETING, before anything of its coming up; breaks: a Mate HQ is deleting wears its conversation's face, or its coming up's, in the jump box and a folded group", () => {
@@ -97,4 +97,13 @@ it("MN67: A Mate restarting reads restarting on its row and card for the whole r
     200_001,
   );
   expect(second(pastCap)).toBe("sign-in");
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts |   "end-restart": null, → "end-restart-off": null,
+it("MN74: A Mate's row menu keeps the Continue and End HQ offers on its waiting restart or move; breaks: an Owner sees no way to end a restart that holds the Mate", () => {
+  const offered = ["continue-restart", "end-restart", "continue-move", "end-move"];
+  const entries = offered.map((id) => ({ id, label: id, onSelect: () => {} }));
+  expect(
+    sidebarMateVerbs(entries).flatMap((entry) => ("separator" in entry ? [] : [entry.id])),
+  ).toEqual(offered);
 });
