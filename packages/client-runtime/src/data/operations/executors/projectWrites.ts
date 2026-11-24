@@ -33,11 +33,12 @@ const tagWrite = <A>(call: () => Promise<A>) =>
     }),
   );
 
-/** Starting or stopping a whole project: one call on its id. */
-export function projectLifecycleExecutor(call: (projectId: string) => Promise<void>) {
-  return (requestId: string, intent: IntentOf<"start-project" | "stop-project">) =>
+export function startProjectExecutor(platform: {
+  readonly startProject: (projectId: string) => Promise<void>;
+}) {
+  return (requestId: string, intent: IntentOf<"start-project">) =>
     Effect.as(
-      verb(() => call(intent.projectId)),
+      verb(() => platform.startProject(intent.projectId)),
       answeredReceipt(requestId, { family: "project", id: intent.projectId }),
     );
 }

@@ -5,7 +5,13 @@ import { expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
 import type { ContainerLevel } from "./environments/containerMachine.ts";
-import { mateArrivalOf, mateState, type MateFacts, type MateViewerFacts } from "./mateState.ts";
+import {
+  mateArrivalOf,
+  mateServicesToWrite,
+  mateState,
+  type MateFacts,
+  type MateViewerFacts,
+} from "./mateState.ts";
 
 const ALLOWED: HqOfferState = { kind: "allowed" };
 const REFUSED: HqOfferState = { kind: "refused", reason: "not yours" };
@@ -366,6 +372,24 @@ it("ZV+1: Stop is offered on a running project that holds its Mate container, ne
     };
     expect(mateState(facts({ candidate })).verbs.stop).toBe(stop);
   }
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | ...touched.filter((service) => !isZcpService(service)), → ...touched,
+it("ZV+3: A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running", () => {
+  const services = [
+    { id: "zcp", name: "zcp", status: "ACTIVE", base: "zcp@1" },
+    { id: "appdev", name: "appdev", status: "ACTIVE", base: "nodejs@24" },
+    { id: "core", name: "core", status: "ACTIVE", isSystem: true },
+    { id: "db", name: "db", status: "STOPPED", base: "postgresql@17" },
+    { id: "appstage", name: "appstage", status: "ACTIVE", base: "nodejs@24" },
+  ];
+  expect(mateServicesToWrite("stop", services)).toEqual(["appdev", "appstage", "zcp"]);
+  expect(
+    mateServicesToWrite(
+      "start",
+      services.map((service) => ({ ...service, status: "STOPPED" })),
+    ),
+  ).toEqual(["appdev", "db", "appstage", "zcp"]);
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove }); → if (false) return state("setup", { ...NO_VERBS, delete: remove });

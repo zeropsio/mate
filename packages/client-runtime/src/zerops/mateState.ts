@@ -12,6 +12,8 @@ import type { MateVisibility } from "./mateAccess.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import type { ZeropsCandidate } from "./candidates.ts";
+import { isZcpService } from "./containerAddress.ts";
+import type { ZeropsService } from "./api/service.ts";
 import type { ContainerLevel } from "./environments/containerMachine.ts";
 import { heldOf, type HqMateOfferStates } from "./hq/placement.ts";
 import { hasMate, PROJECT_GOING_STATUSES } from "./mateEnvironments.ts";
@@ -171,6 +173,27 @@ export function mateStopStanding(candidate: {
     default:
       return undefined;
   }
+}
+
+/**
+ * The services of a Mate's project in the order its Stop or Start writes them, one each: every
+ * running one to stop, or every stopped one to start, never the platform's own. Zerops answers a
+ * whole project's stop `notAvailable` (measured 2026-11-24), so a Mate stops service by service.
+ * Its Mate container goes last: a write refused partway leaves the Mate as it was, and its verb
+ * offered again.
+ */
+export function mateServicesToWrite(
+  verb: "stop" | "start",
+  services: ReadonlyArray<ZeropsService>,
+): ReadonlyArray<string> {
+  const status = verb === "stop" ? "ACTIVE" : "STOPPED";
+  const touched = services.filter(
+    (service) => service.isSystem !== true && service.status === status,
+  );
+  return [
+    ...touched.filter((service) => !isZcpService(service)),
+    ...touched.filter(isZcpService),
+  ].map((service) => service.id);
 }
 
 /** Whether a Mate is on its way off Zerops: HQ's deletion of it runs, or the platform says so. */

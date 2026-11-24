@@ -45,11 +45,7 @@ import {
   startService,
   cancelBuild,
 } from "../../../zerops/api/service.ts";
-import {
-  startProject,
-  stopProject,
-  importServicesIntoProject,
-} from "../../../zerops/api/project.ts";
+import { startProject, importServicesIntoProject } from "../../../zerops/api/project.ts";
 import {
   makeProjectTagWriter,
   makeInMemoryProjectTagLocks,
@@ -65,8 +61,8 @@ import { createServicesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
-  projectLifecycleExecutor,
   renameProjectExecutor,
+  startProjectExecutor,
   updateProjectTagsExecutor,
 } from "./projectWrites.ts";
 import {
@@ -97,7 +93,6 @@ type ServiceLifecycle = {
   ) => Promise<{ readonly processId: string | undefined }>;
   readonly cancelBuild: (appVersionId: string) => Promise<void>;
   readonly startProject: (projectId: string) => Promise<void>;
-  readonly stopProject: (projectId: string) => Promise<void>;
 };
 
 export function makeZeropsExecutor(input: {
@@ -147,8 +142,9 @@ export function makeZeropsExecutor(input: {
     const deleteOne = deleteServiceExecutor({
       deleteService: (serviceId) => client.deleteService(serviceId),
     });
-    const startAll = projectLifecycleExecutor((projectId) => client.startProject(projectId));
-    const stopAll = projectLifecycleExecutor((projectId) => client.stopProject(projectId));
+    const startAll = startProjectExecutor({
+      startProject: (projectId) => client.startProject(projectId),
+    });
     const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
     const rename = renameProjectExecutor(tags);
     const retag = updateProjectTagsExecutor(tags);
@@ -192,8 +188,6 @@ export function makeZeropsExecutor(input: {
               return deleteOne(requestId, intent);
             case "start-project":
               return startAll(requestId, intent);
-            case "stop-project":
-              return stopAll(requestId, intent);
             case "rename-project":
               return rename(requestId, intent);
             case "update-project-tags":
@@ -287,7 +281,6 @@ export function makeZeropsExecutor(input: {
         deleteService: (id) => deleteService(source.door, id, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         startProject: (id) => startProject(source.door, id, check),
-        stopProject: (id) => stopProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
         importServicesIntoProject: (id, yaml) =>
           importServicesIntoProject(source.door, id, yaml, undefined, check),

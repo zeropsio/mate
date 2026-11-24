@@ -46,7 +46,6 @@ import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
-import { stopProject } from "./stopProject.ts";
 import { stopService } from "./stopService.ts";
 import { deleteService } from "./deleteService.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
@@ -88,7 +87,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   stopService,
   deleteService,
   startProject,
-  stopProject,
   renameProject,
   updateProjectTags,
   createServices,

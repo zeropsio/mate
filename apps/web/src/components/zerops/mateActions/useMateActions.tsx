@@ -140,10 +140,14 @@ import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "~/zerops/zeropsWrite";
+import { startMate, stopMate, submitZeropsWrite, writeTrouble } from "~/zerops/zeropsWrite";
 import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
+import {
+  projectServicesAtom,
+  sharedBirthsAtom,
+  type SharedBirth,
+} from "@t3tools/client-runtime/data";
 import { useBirthActions } from "~/zerops/useBirthActions";
 import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
 import { ZeropsOperationEndDialog } from "../ZeropsOperationEnd";
@@ -485,45 +489,39 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [activeOrganization],
   );
 
+  /** The Mate's project's services as read: what its Stop and Start write (`mateServicesToWrite`). */
+  const servicesOf = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      atomRegistry.get(projectServicesAtom(candidate.project.id)).services,
+    [atomRegistry],
+  );
+
   const start = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
-      const projectId = candidate.project.id;
-      const serviceId = candidate.service?.id;
-      // A STOPPED project starts every service in it; a STOPPED service while
-      // the project is ACTIVE starts only that service.
-      const started: ZeropsWrite | null =
-        candidate.project.status === "STOPPED"
-          ? { kind: "start-project", projectId }
-          : serviceId === undefined
-            ? null
-            : { kind: "start-service", projectId, serviceId };
-      if (started === null) return;
+      const orgId = activeOrganization.id;
       void write(
         candidate.key,
-        () => submitZeropsWrite(operations, activeOrganization.id, started),
+        () => startMate(operations, orgId, candidate, servicesOf(candidate)),
         refresh,
       );
     },
-    [activeOrganization, operations, refresh, write],
+    [activeOrganization, operations, refresh, write, servicesOf],
   );
 
   /**
-   * Stops the Mate's whole project — its computer and every service beside it — until Start.
-   * The dialog stays open until Zerops answers: a refusal is said there.
+   * Stops every running service of the Mate's project — its computer and every service beside
+   * it — until Start. The dialog stays open until Zerops took them all: a refusal is said there.
    */
   const stop = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
+      const orgId = activeOrganization.id;
       const replyToDialog = captureDialogReply();
       setPress({ pending: true, error: null });
       void write(
         candidate.key,
-        () =>
-          submitZeropsWrite(operations, activeOrganization.id, {
-            kind: "stop-project",
-            projectId: candidate.project.id,
-          }),
+        () => stopMate(operations, orgId, candidate, servicesOf(candidate)),
         () => {
           replyToDialog(null);
           refresh();
@@ -531,7 +529,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         (reason) => setPress({ pending: false, error: reason }),
       );
     },
-    [activeOrganization, operations, refresh, write, captureDialogReply],
+    [activeOrganization, operations, refresh, write, captureDialogReply, servicesOf],
   );
 
   const restartMate = useRestartMate();

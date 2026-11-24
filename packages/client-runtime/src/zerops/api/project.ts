@@ -2,8 +2,8 @@ import type { ZeropsDoor } from "../api.ts";
 import type { HqPlacement } from "../hq/placement.ts";
 import type { ZeropsServiceImportResult } from "./service.ts";
 
-/** A project's record as the Zerops REST API returns it, and the calls that fill, start and stop
- * a project: one resource of `../api.ts`'s client. */
+/** A project's record as the Zerops REST API returns it, and the calls that fill and start a
+ * project: one resource of `../api.ts`'s client. */
 
 export interface ZeropsProject {
   readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
@@ -60,26 +60,6 @@ export async function startProject(
 ): Promise<void> {
   await door(
     `/project/${projectId}/start`,
-    { method: "PUT" },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-}
-
-/**
- * `PUT /project/{id}/stop` with the user's own token — stops every service in an ACTIVE project.
- * Zerops marks it deprecated in favour of stopping each service; it is the one call that leaves
- * the project itself STOPPED, which `startProject` brings back whole.
- */
-export async function stopProject(
-  door: ZeropsDoor,
-  projectId: string,
-  beforeWrite?: () => Promise<void>,
-): Promise<void> {
-  await door(
-    `/project/${projectId}/stop`,
     { method: "PUT" },
     {
       operationKind: "project-write",

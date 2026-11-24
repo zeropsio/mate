@@ -1,5 +1,5 @@
 import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
-import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { projectServicesAtom, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
@@ -29,13 +29,13 @@ import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUp
  * (`ZeropsNewProjectHost`), not here.
  */
 
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { PlayIcon, PlusIcon } from "lucide-react";
@@ -109,7 +109,7 @@ import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
-import { submitZeropsWrite } from "~/zerops/zeropsWrite";
+import { startMate } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
   activityMomentOf,
@@ -814,6 +814,7 @@ export function ZeropsProjectsContent({
   });
   const { activeOrganization, client, organizationStatus, status, user } = useZeropsSession();
   const operations = useAccountOperations();
+  const registry = useContext(RegistryContext);
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -1362,27 +1363,12 @@ export function ZeropsProjectsContent({
         if (activeOrganization === null) return;
         setConnectError(null);
         setStartingCandidateKey(candidate.key);
-        const projectId = candidate.project.id;
-        // A STOPPED project starts every service in it; a STOPPED zcp
-        // service while the project is ACTIVE starts only that service.
-        const serviceId = candidate.service?.id;
-        const write =
-          candidate.project.status === "STOPPED"
-            ? submitZeropsWrite(operations, activeOrganization.id, {
-                kind: "start-project",
-                projectId,
-              })
-            : serviceId
-              ? submitZeropsWrite(operations, activeOrganization.id, {
-                  kind: "start-service",
-                  projectId,
-                  serviceId,
-                })
-              : null;
-        if (write === null) {
-          setStartingCandidateKey(null);
-          return;
-        }
+        const write = startMate(
+          operations,
+          activeOrganization.id,
+          candidate,
+          registry.get(projectServicesAtom(candidate.project.id)).services,
+        );
         void readContainerAfter(candidate, write)
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
