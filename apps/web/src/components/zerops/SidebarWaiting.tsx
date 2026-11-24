@@ -172,41 +172,45 @@ export function SidebarWaitingPopover({
 export function SidebarWaitingCount({
   items,
   verbs,
-  className,
+  seat,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
   readonly verbs: WaitingVerbs;
-  readonly className: string;
+  /** Where it stands: beside the Chief's row (a 28 px count), or on a rail tile's corner (20 px). */
+  readonly seat: "row" | "rail";
 }) {
   const words = waitingCountWords(items);
   return (
-    <SidebarWaitingPopover
-      items={items}
-      tooltip={
-        <span className="menu-rail-tip">
-          <span className="menu-rail-tip-name">
-            Waiting on you
-            <span className="menu-rail-tip-key">⌥↓</span>
+    <span className={seat === "rail" ? "menu-rail-count" : "menu-chief-count"}>
+      <SidebarWaitingPopover
+        items={items}
+        tooltip={
+          <span className="menu-rail-tip">
+            <span className="menu-rail-tip-name">
+              Waiting on you
+              <span className="menu-rail-tip-key">⌥↓</span>
+            </span>
+            <span className="menu-rail-tip-line">{words.line}</span>
           </span>
-          <span className="menu-rail-tip-line">{words.line}</span>
-        </span>
-      }
-      trigger={
-        <button
-          aria-label={words.label}
-          className={className}
-          data-waiting-trigger=""
-          data-zerops-surface="sidebar-waiting"
-          // It stands with the menu's fill, or arrives later into its own seat: either way it
-          // fades in where it stands (`fadeFillIn`).
-          ref={fadeFillIn}
-          type="button"
-        />
-      }
-      verbs={verbs}
-    >
-      <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-    </SidebarWaitingPopover>
+        }
+        trigger={
+          <Button
+            aria-label={words.label}
+            data-waiting-trigger=""
+            data-zerops-surface="sidebar-waiting"
+            // It stands with the menu's fill, or arrives later into its own seat: either way it
+            // fades in where it stands (`fadeFillIn`).
+            ref={fadeFillIn}
+            shape="round"
+            size={seat === "rail" ? "2xs" : "sm"}
+            variant="warning"
+          />
+        }
+        verbs={verbs}
+      >
+        <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+      </SidebarWaitingPopover>
+    </span>
   );
 }
 

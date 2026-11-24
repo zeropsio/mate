@@ -200,22 +200,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/SidebarRail.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"menu-rail-count\"",
-    "owner": "kit pass",
-    "reason": "needs kit: a count press — Badge's warning pill that opens what it counts (the rail's Waiting count, on its tile's corner); a Badge is never a press and no Button draws a count",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarWaiting.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={className}",
-    "owner": "kit pass",
-    "reason": "needs kit: a count press — Badge's warning pill that opens what it counts (the menu's and the Chief's Waiting count, drawn by its caller's seat); a Badge is never a press and no Button draws a count",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"menu-chief-row\"",

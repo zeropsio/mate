@@ -124,7 +124,7 @@ export function SidebarChiefRow({
         </span>
       </button>
       {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
+        <SidebarWaitingCount seat="row" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );
@@ -183,7 +183,7 @@ export function SidebarChiefTile({
         </TooltipPopup>
       </Tooltip>
       {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-rail-count" items={items} verbs={waiting.verbs} />
+        <SidebarWaitingCount seat="rail" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );
@@ -211,7 +211,7 @@ export function SidebarChiefPlace({
         </span>
       </Link>
       {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-chief-count" items={items} verbs={waiting.verbs} />
+        <SidebarWaitingCount seat="row" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );

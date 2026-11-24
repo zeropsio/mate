@@ -6033,8 +6033,9 @@ code {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
+  /* The seat of the Chief's Waiting count (`SidebarWaitingCount`): over the Chief's row, whose lit
+     layer makes it a positioned box of its own, on its middle. */
   .menu-chief-count {
-    /* Over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle. */
     position: relative;
     z-index: 1;
     margin-block-start: calc(var(--sidebar-content-inset) + 1px);
@@ -6042,43 +6043,7 @@ code {
     grid-column: 1;
     justify-self: end;
     place-items: center;
-    min-width: 28px;
-    height: 28px;
     margin-inline-end: 4px;
-    padding: 0 9px;
-    border-radius: 9999px;
-    background: var(--zerops-status-attention-surface);
-    color: var(--zerops-status-attention-text);
-    font-size: var(--text-body);
-    line-height: 16px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 150ms var(--ease-out-strong);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .menu-chief-count:hover,
-    .menu-chief-count[data-popup-open] {
-      background: color-mix(
-        in oklab,
-        var(--zerops-status-attention-text) 16%,
-        var(--zerops-status-attention-surface)
-      );
-    }
-  }
-
-  .menu-chief-count:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .menu-chief-count:active {
-      scale: 0.96;
-    }
   }
 }
 
@@ -6431,35 +6396,16 @@ code {
     background: var(--sidebar-row-active);
   }
 
+  /* The seat of a rail tile's Waiting count, on the tile's corner: the menu's ground around the
+     count cuts it out of the tile. */
   .menu-rail-count {
     position: absolute;
-    top: -3px;
-    right: -8px;
+    top: -5px;
+    right: -10px;
     display: grid;
-    place-items: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 5px;
+    padding: 2px;
     border-radius: 9999px;
-    background: var(--zerops-status-attention-surface);
-    box-shadow: 0 0 0 2px var(--sidebar);
-    color: var(--zerops-status-attention-text);
-    font-size: 11px;
-    font-weight: 650;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-    cursor: pointer;
-    outline: none;
-    transition: background-color 150ms var(--ease-out-strong);
-  }
-
-  .menu-rail-count:hover,
-  .menu-rail-count[data-popup-open] {
-    background: color-mix(
-      in oklab,
-      var(--zerops-status-attention) 22%,
-      var(--zerops-status-attention-surface)
-    );
+    background: var(--sidebar);
   }
 
   .menu-rail-actions {
@@ -6549,7 +6495,6 @@ code {
   }
 
   .menu-rail-head:focus-visible,
-  .menu-rail-count:focus-visible,
   .menu-rail-tile:focus-visible,
   .menu-rail-kid:focus-visible,
   .menu-rail-open:focus-visible {
@@ -6695,7 +6640,6 @@ code {
     .menu-stage-menu,
     .menu-stage-body,
     .menu-rail-head,
-    .menu-rail-count,
     .menu-rail-tile,
     .menu-rail-kid,
     .menu-rail-open {

@@ -71,6 +71,7 @@ import {
 } from "./SidebarRail.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
+import { Button } from "../ui/button";
 
 export const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
@@ -652,22 +653,26 @@ export function SidebarRail({
         <MateMark awake playful className="h-8.25 w-7" />
       </RailControl>
       {waiting.length === 0 ? null : (
-        <SidebarWaitingPopover
-          items={waiting}
-          tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
-          trigger={
-            <button
-              aria-label={words.label}
-              className="menu-rail-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-rail-waiting"
-              type="button"
-            />
-          }
-          verbs={verbs}
-        >
-          {waiting.length}
-        </SidebarWaitingPopover>
+        // The count's seat on the tile's corner, cut out of the tile by the menu's ground.
+        <span className="menu-rail-count">
+          <SidebarWaitingPopover
+            items={waiting}
+            tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
+            trigger={
+              <Button
+                aria-label={words.label}
+                data-waiting-trigger=""
+                data-zerops-surface="sidebar-rail-waiting"
+                shape="round"
+                size="2xs"
+                variant="warning"
+              />
+            }
+            verbs={verbs}
+          >
+            {waiting.length}
+          </SidebarWaitingPopover>
+        </span>
       )}
     </div>
   );
