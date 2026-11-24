@@ -45,6 +45,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 import { Row } from "~/components/ui/row";
+import { Tab, TabPress } from "~/components/ui/tab-strip";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
@@ -1933,14 +1934,11 @@ export default function ThreadTerminalDrawer({
                             isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""
                           }`;
                           return (
-                            <div
+                            <Tab
                               key={terminalId}
-                              className={cn(
-                                "group/tab flex h-6 w-full items-center gap-0.5 rounded-control pr-2 pl-1.5 text-caption",
-                                isActive
-                                  ? "bg-accent text-foreground"
-                                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                              )}
+                              active={isActive}
+                              className="w-full max-w-none"
+                              tabId={terminalId}
                             >
                               <PanelTabCloseButton
                                 label={closeTerminalLabel}
@@ -1949,14 +1947,13 @@ export default function ThreadTerminalDrawer({
                               >
                                 <TerminalSquare className="size-3 shrink-0" />
                               </PanelTabCloseButton>
-                              <button
-                                type="button"
-                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
+                              <TabPress
+                                className="flex-1"
                                 onClick={() => onActiveTerminalChange(terminalId)}
                               >
                                 <span className="truncate">{terminalLabel}</span>
-                              </button>
-                            </div>
+                              </TabPress>
+                            </Tab>
                           );
                         })}
                       </div>

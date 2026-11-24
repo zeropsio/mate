@@ -40,28 +40,12 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-w-0 cursor-pointer items-center gap-1\"",
-    "owner": "kit pass",
-    "reason": "needs kit: a Tab's press — the activate target inside a TabStrip Tab, drawn bare because the Tab draws the look (the pointer branch hands TooltipTrigger the same press)",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/ServiceBrowserLink.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
     "reason": "the anchor of a link behaviour (it opens a preview beside the chat when one serves the address); it has no look of its own, its caller or a markdown link draws it",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left\"",
-    "owner": "kit pass",
-    "reason": "needs kit: a Tab's press — the activate target inside a TabStrip Tab, drawn bare because the Tab draws the look (the pointer branch hands TooltipTrigger the same press)",
-    "expires": "surface:kit"
   },
   {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",

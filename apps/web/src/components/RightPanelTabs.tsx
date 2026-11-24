@@ -62,7 +62,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { Tab, TabStrip, useTabStripCompact } from "./ui/tab-strip";
+import { Tab, TabPress, TabStrip, useTabStripCompact } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -599,17 +599,13 @@ function SurfaceTabFace(props: {
   if (touch && !compact) {
     return (
       <>
-        <button
-          className="flex min-w-0 cursor-pointer items-center gap-1"
-          onClick={props.onActivate}
-          type="button"
-        >
+        <TabPress onClick={props.onActivate}>
           <span className="relative flex size-4 shrink-0 items-center justify-center">
             {props.icon}
             {pendingDot}
           </span>
           <span className="truncate">{props.title}</span>
-        </button>
+        </TabPress>
         {props.active ? (
           <Button
             aria-label={`Close ${props.title}`}
@@ -628,11 +624,10 @@ function SurfaceTabFace(props: {
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <TabPress
               aria-label={props.title}
-              className="relative flex size-4 cursor-pointer items-center justify-center"
+              className="relative size-4 justify-center"
               onClick={props.onActivate}
-              type="button"
             />
           }
         >
@@ -650,15 +645,7 @@ function SurfaceTabFace(props: {
         {pendingDot}
       </PanelTabCloseButton>
       <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="cursor-pointer flex min-w-0 items-center"
-              onClick={props.onActivate}
-            />
-          }
-        >
+        <TooltipTrigger render={<TabPress onClick={props.onActivate} />}>
           <span className="truncate">{props.title}</span>
         </TooltipTrigger>
         <TooltipPopup>{props.title}</TooltipPopup>
