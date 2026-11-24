@@ -48,6 +48,8 @@ import {
 } from "../ui/command";
 import { SETTINGS_SECTION_ICONS } from "../settings/settingsSectionIcons";
 import { sidebarAccountDestinationIcon } from "../sidebar/SidebarChrome";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Kbd, KbdGroup } from "../ui/kbd";
 import {
   highlightParts,
@@ -465,14 +467,14 @@ function JumpWriteView({
   return (
     <div className="contents" data-testid="jump-box">
       <div className="px-2 py-1.5">
-        <div className="flex h-10 items-center gap-2 border border-transparent ps-2.25 pe-3 sm:h-9">
+        <div className="flex h-10 items-center gap-2 border border-transparent ps-2.25 pe-3 text-base text-foreground sm:h-9 sm:text-body">
           <SearchIcon
             aria-hidden="true"
             className="size-4.5 shrink-0 text-icon-muted opacity-80 sm:size-4"
           />
-          <button
+          <Button
             aria-label={`Writing to ${target.name}. Write to another Mate`}
-            className="inline-flex h-6.5 max-w-1/2 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-accent ps-0.75 pe-2.5 text-line font-medium text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="max-w-1/2"
             data-zerops-surface="jump-target"
             onClick={() => {
               model.backToList();
@@ -480,17 +482,21 @@ function JumpWriteView({
             onMouseDown={(event) => {
               event.preventDefault();
             }}
-            type="button"
+            shape="round"
+            size="sm"
+            variant="secondary"
           >
             <MateFace shape={target.shape} size={20} state={target.face} tint={target.tint} />
             <span className="min-w-0 truncate">{target.name}</span>
-          </button>
-          <input
+          </Button>
+          <Input
             aria-describedby="jump-write-hint"
             aria-label={`Write to ${target.name}`}
             autoComplete="off"
-            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-body"
+            className="min-w-0 flex-1"
             data-zerops-surface="jump-write-input"
+            nativeInput
+            unstyled
             onChange={(event) => {
               setText(event.currentTarget.value);
             }}

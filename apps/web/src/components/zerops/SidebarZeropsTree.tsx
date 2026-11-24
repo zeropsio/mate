@@ -145,6 +145,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type ReactNode,
@@ -1256,13 +1257,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         data-zerops-surface="sidebar-environments-empty"
       >
         <span className="text-caption text-sidebar-muted-foreground">No Mate yet</span>
-        <button
-          className="inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          onClick={onBrowseProjects}
-          type="button"
-        >
+        <Button onClick={onBrowseProjects} size="xs" variant="secondary">
           Set up Mate
-        </button>
+        </Button>
       </div>
     );
   }
@@ -2683,15 +2680,9 @@ export function SidebarAccountLine({
         {title == null ? null : <span className="truncate opacity-75">{title}</span>}
       </span>
       {actions.map(({ label, run, busy = false }) => (
-        <button
-          className="shrink-0 cursor-pointer rounded-control px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent"
-          disabled={busy}
-          key={label}
-          onClick={run}
-          type="button"
-        >
+        <Button disabled={busy} key={label} onClick={run} size="xs" variant="sidebar">
           {label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -2790,38 +2781,49 @@ export function SidebarHqStatus({
   }
   // Words give way to the header's other members and wrap; the spinner keeps its size.
   const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
+  const words = (
+    <>
+      {working ? spinner : null}
+      {kind === "syncing" ? null : (
+        <span
+          aria-hidden="true"
+          className="line-clamp-2 text-left text-caption leading-tight text-sidebar-muted-foreground"
+        >
+          {line}
+        </span>
+      )}
+      <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
+    </>
+  );
   return (
     <span className="flex min-w-0 flex-col items-start gap-1">
       <Tooltip>
-        <TooltipTrigger
-          render={
-            onAgain === undefined ? (
+        {onAgain === undefined ? (
+          <TooltipTrigger
+            render={
               <span
                 className={cn("inline-flex items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
                 role="status"
               />
-            ) : (
+            }
+          >
+            {words}
+          </TooltipTrigger>
+        ) : (
+          <TooltipTrigger
+            render={
               <button
                 className={cn("inline-flex cursor-pointer items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={onAgain}
                 type="button"
               />
-            )
-          }
-        >
-          {working ? spinner : null}
-          {kind === "syncing" ? null : (
-            <span
-              aria-hidden="true"
-              className="line-clamp-2 text-left text-caption leading-tight text-sidebar-muted-foreground"
-            >
-              {line}
-            </span>
-          )}
-          <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
-        </TooltipTrigger>
+            }
+          >
+            {words}
+          </TooltipTrigger>
+        )}
         <TooltipPopup side="bottom">
           {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
@@ -3165,50 +3167,48 @@ function ProjectGroupRow<T extends RosterCandidate>({
         ref={rowBox}
       >
         {(() => {
-          const button = (
-            <button
-              aria-current={current ? "true" : undefined}
-              aria-expanded={open}
-              data-zerops-row=""
-              data-zerops-surface="sidebar-project"
-              onClick={() => {
-                if (drag.swallowClick()) return;
-                if (longPress.current.fired) {
-                  longPress.current.fired = false;
-                  return;
-                }
-                onPress();
-              }}
-              onKeyDown={(event) => {
-                const step = projectRowKey({
-                  key: event.key,
-                  modified: event.metaKey || event.ctrlKey || event.altKey,
-                  kind: "group",
-                  open,
-                });
-                if (step === "next" || step === "previous") {
-                  event.preventDefault();
-                  keys.move(event.currentTarget, step === "next" ? 1 : -1);
-                  return;
-                }
-                if (step === "open" || step === "fold") {
-                  event.preventDefault();
-                  onToggle();
-                  return;
-                }
-                if (step === "into") {
-                  event.preventDefault();
-                  onInto();
-                  return;
-                }
-                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-                  event.preventDefault();
-                  openMenu();
-                }
-              }}
-              type="button"
-            />
-          );
+          const button = {
+            "aria-current": current ? ("true" as const) : undefined,
+            "aria-expanded": open,
+            "data-zerops-row": "",
+            "data-zerops-surface": "sidebar-project",
+            onClick: () => {
+              if (drag.swallowClick()) return;
+              if (longPress.current.fired) {
+                longPress.current.fired = false;
+                return;
+              }
+              onPress();
+            },
+            onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+              const step = projectRowKey({
+                key: event.key,
+                modified: event.metaKey || event.ctrlKey || event.altKey,
+                kind: "group",
+                open,
+              });
+              if (step === "next" || step === "previous") {
+                event.preventDefault();
+                keys.move(event.currentTarget, step === "next" ? 1 : -1);
+                return;
+              }
+              if (step === "open" || step === "fold") {
+                event.preventDefault();
+                onToggle();
+                return;
+              }
+              if (step === "into") {
+                event.preventDefault();
+                onInto();
+                return;
+              }
+              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.preventDefault();
+                openMenu();
+              }
+            },
+            type: "button" as const,
+          };
           const cluster = <ProjectCluster faces={faces} more={more} />;
           return lead === undefined ? (
             <Row
@@ -3216,7 +3216,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               lead={cluster}
               meta={<span className="min-w-16" />}
               pressable="band"
-              render={button}
+              render={<button {...button} />}
               size="lg"
               badges={<ProjectNameMarks />}
               title={<span data-zerops-surface="sidebar-project-name">{name}</span>}
@@ -3229,7 +3229,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               mark={cluster}
               mates={mates}
               name={name}
-              render={button}
+              render={<button {...button} />}
               timestampFormat={timestampFormat}
             />
           ) : (
@@ -3240,7 +3240,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               mark={cluster}
               mates={mates}
               name={name}
-              render={button}
+              render={<button {...button} />}
               timestampFormat={timestampFormat}
             />
           );

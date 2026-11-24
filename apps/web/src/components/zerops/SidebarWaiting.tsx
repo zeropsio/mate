@@ -27,6 +27,7 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
 import { gatedPortal } from "../ui/portal-gate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -646,17 +647,20 @@ export function Replying({
   return (
     <>
       {replying ? (
-        <label className="menu-wait-reply">
-          <input
+        <InputGroup className="basis-full">
+          <InputGroupInput
             aria-label={label}
             disabled={sending}
+            nativeInput
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             ref={field}
             type="text"
           />
-          <Kbd>↵</Kbd>
-        </label>
+          <InputGroupAddon align="inline-end">
+            <Kbd>↵</Kbd>
+          </InputGroupAddon>
+        </InputGroup>
       ) : (
         children
       )}

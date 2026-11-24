@@ -34,6 +34,7 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from "../ui/menu";
+import { Input } from "../ui/input";
 import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -429,14 +430,15 @@ export function MateRenameField({
   };
   return (
     <span
-      className="absolute start-17.25 end-15.5 top-2.5 flex h-5"
+      className="absolute start-15 end-15.5 top-1.5 flex"
       data-zerops-surface="sidebar-mate-rename"
     >
-      <input
+      <Input
         aria-invalid={tried && error !== undefined}
         aria-label="Mate's name"
-        className="-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-body leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive"
+        className="min-w-0 flex-1"
         id="sidebar-mate-rename"
+        nativeInput
         onBlur={() => {
           finish(true);
         }}
@@ -454,6 +456,7 @@ export function MateRenameField({
           }
         }}
         ref={input}
+        size="compact"
         spellCheck={false}
         value={value}
       />

@@ -1,6 +1,7 @@
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 
+import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 
 export function ListingNotice({
@@ -33,13 +34,9 @@ export function ListingNotice({
         {message.text}
       </span>
       {affordance === null || onAct === undefined ? null : (
-        <button
-          className="inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          onClick={() => onAct(affordance)}
-          type="button"
-        >
+        <Button onClick={() => onAct(affordance)} size="xs" variant="secondary">
           {affordance.label}
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -34,6 +34,7 @@ import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview, useReviewShown } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
 import { Button } from "../ui/button";
+import { Row } from "../ui/row";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -605,7 +606,7 @@ function ReviewList({
   const together = reviewTogether(live);
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const current = activeKey !== undefined && keys.includes(activeKey) ? activeKey : keys[0];
-  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const buttons = useRef(new Map<string, HTMLElement>());
 
   // The focused item left: the focus moves to the one that now leads, never to the page.
   useLayoutEffect(() => {
@@ -619,7 +620,7 @@ function ReviewList({
 
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     if (keys.length === 0) return;
-    const onItem = [...buttons.current.values()].includes(event.target as HTMLButtonElement);
+    const onItem = [...buttons.current.values()].includes(event.target as HTMLElement);
     const at = !onItem || current === undefined ? -1 : keys.indexOf(current);
     let to: string | undefined;
     switch (event.key) {
@@ -712,7 +713,7 @@ function ReviewListItem({
   readonly together: boolean;
   readonly onFocus: () => void;
   readonly onOpen: () => void;
-  readonly refOf: (element: HTMLButtonElement | null) => void;
+  readonly refOf: (element: HTMLElement | null) => void;
 }) {
   const bylineId = useId();
   const [truncated, setTruncated] = useState(false);
@@ -732,23 +733,35 @@ function ReviewListItem({
       ? VIEW_CHANGE
       : standingPressLabel(item.standing, REVIEW_LABEL);
   return (
-    <button
+    <Row
       aria-describedby={bylineId}
       aria-label={`${verb} ${item.title}`}
-      className="menu-tagpop-item"
       // In full where it is the viewer's move; paler where it is somebody else's.
       data-mine={waits ? undefined : ""}
       data-standing={item.standing}
       data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
+      lead={<ReviewMaker by={item.by} />}
+      line={<span id={bylineId}>{reviewItemByline(item)}</span>}
+      meta={
+        // The row is the press; its verb wears the one Review look, or none where nothing is asked.
+        <Button
+          data-menu-tagpop-verb=""
+          render={<span aria-hidden="true" />}
+          size="xs"
+          variant={waits || together ? "ghost" : "secondary"}
+        >
+          {verb}
+        </Button>
+      }
       onClick={onOpen}
       onFocus={onFocus}
+      pressable
       ref={refOf}
+      render={<button type="button" />}
+      size="sm"
       tabIndex={current ? 0 : -1}
-      type="button"
-    >
-      <ReviewMaker by={item.by} />
-      <span className="menu-tagpop-text">
+      title={
         <Tooltip disabled={!truncated}>
           <TooltipTrigger
             render={
@@ -766,20 +779,8 @@ function ReviewListItem({
           </TooltipTrigger>
           <TooltipPopup side="top">{item.title}</TooltipPopup>
         </Tooltip>
-        <span className="menu-tagpop-by" id={bylineId}>
-          {reviewItemByline(item)}
-        </span>
-      </span>
-      {/* The row is the press; its verb wears the one Review look, or none where nothing is asked. */}
-      <Button
-        data-menu-tagpop-verb=""
-        render={<span aria-hidden="true" />}
-        size="xs"
-        variant={waits || together ? "ghost" : "secondary"}
-      >
-        {verb}
-      </Button>
-    </button>
+      }
+    />
   );
 }
 

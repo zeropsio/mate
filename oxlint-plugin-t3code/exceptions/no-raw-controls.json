@@ -368,22 +368,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/zerops/JumpBox.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"inline-flex h-6.5 max-w-1/2 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-accent ps-0.75 pe-2.5 text-line font-medium text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/JumpBox.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-body\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/MateAddresses.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a> className={cn( \"relative inline-flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:size-10\", className, )}",
@@ -408,41 +392,9 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/zerops/MateStatusMarker.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button>",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/RecordedStageHistory.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"min-w-0 flex-1 text-left\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarListingNotice.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarMateMenu.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-body leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarProjectReview.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"menu-tagpop-item\"",
     "owner": "kit pass",
     "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
     "expires": "surface:kit"
@@ -452,7 +404,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"menu-rail-count\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: a count press — Badge's warning pill that opens what it counts (the rail's Waiting count, on its tile's corner); a Badge is never a press and no Button draws a count",
     "expires": "surface:kit"
   },
   {
@@ -460,47 +412,7 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={className}",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarWaiting.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button>",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"inline-flex cursor-pointer items-center rounded-control border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"shrink-0 cursor-pointer rounded-control px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn(\"inline-flex cursor-pointer items-center gap-1.5\", fit)}",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
+    "reason": "needs kit: a count press — Badge's warning pill that opens what it counts (the menu's and the Chief's Waiting count, drawn by its caller's seat); a Badge is never a press and no Button draws a count",
     "expires": "surface:kit"
   },
   {
