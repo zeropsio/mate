@@ -87,6 +87,18 @@ function CardSpecimens() {
           </Card>
         </div>
       </Specimen>
+      <Specimen label='<Card variant="flat" size="md"> holding <Card variant="inset" size="sm">'>
+        <div className="w-[28rem]">
+          <Card size="md" variant="flat">
+            <p className="m-0 text-body">A card on the page.</p>
+            <Card size="sm" variant="inset">
+              <p className="m-0 text-muted-foreground text-body">
+                A card inside it: a deeper tint, no second border.
+              </p>
+            </Card>
+          </Card>
+        </div>
+      </Specimen>
       <Specimen label="<CardFrame> around two cards">
         <div className="w-96">
           <CardFrame>

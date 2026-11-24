@@ -1,7 +1,15 @@
-import { CheckIcon, FileIcon, FolderIcon, GitPullRequestIcon } from "lucide-react";
+import {
+  CheckIcon,
+  FileIcon,
+  FolderIcon,
+  GitPullRequestIcon,
+  MoreHorizontalIcon,
+} from "lucide-react";
 
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 import { Row } from "~/components/ui/row";
+import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
@@ -95,6 +103,47 @@ function RowSpecimens() {
                     <span className="text-muted-foreground">Deploying</span>
                   </span>
                 }
+              />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="A person, a Mate: md and lg">
+        <SpecimenGrid>
+          <Specimen label='size="md" lead={<PersonAvatar size={32} />} control badges'>
+            <div className="w-[28rem]">
+              <Row
+                control={
+                  <Button aria-label="More" size="icon-sm" variant="ghost">
+                    <MoreHorizontalIcon />
+                  </Button>
+                }
+                lead={<PersonAvatar name="Petra Malá" size={32} />}
+                line="Owner · full access"
+                title="Petra Malá"
+              />
+              <Row
+                badges={
+                  <Badge dot tone="warning">
+                    Invited
+                  </Badge>
+                }
+                lead={<PersonAvatar name="Jan Svoboda" size={32} />}
+                line="Developer · invited"
+                title="Jan Svoboda, whose name is long enough to meet its badge"
+              />
+            </div>
+          </Specimen>
+          <Specimen label='size="lg" pressable lead={<MateFace size={32} />} meta line (the menu)'>
+            <div className="w-[25rem]">
+              <Row
+                lead={<MateFace size={32} state="working" tint="olive" />}
+                line="Reading the release notes since 1.0."
+                meta="1m"
+                pressable
+                render={<button type="button" />}
+                size="lg"
+                title="Fen"
               />
             </div>
           </Specimen>
