@@ -788,7 +788,7 @@ function Conversation(): ReactNode {
   return (
     <div className="flex justify-center px-5 pt-4 pb-8 sm:px-6">
       <div className="flex w-full max-w-3xl justify-end">
-        <p className="rounded-2xl bg-secondary px-4 py-2.5 text-body">
+        <p className="rounded-card bg-secondary px-4 py-2.5 text-body">
           Go on with the rules engine, the scoring first.
         </p>
       </div>

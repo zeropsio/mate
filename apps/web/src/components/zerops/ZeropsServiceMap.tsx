@@ -438,7 +438,7 @@ function RouteLink({ href, label }: { href: string; label: string }) {
   return (
     <li className="flex min-w-0 max-w-full">
       <ServiceBrowserLink
-        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-sm text-caption text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-mark text-caption text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
         href={href}
         rel="noreferrer"
         target="_blank"
@@ -977,7 +977,7 @@ export function ZeropsServiceMap({
         </SectionLabel>
         {view.isEmpty || services.length === 0 ? (
           <p
-            className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+            className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
             data-zerops-map-empty
           >
             No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something

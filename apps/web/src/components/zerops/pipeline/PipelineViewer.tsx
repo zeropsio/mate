@@ -126,7 +126,7 @@ function LogPane({
       </div>
       {lines.length === 0 ? (
         <p
-          className="flex h-96 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground text-body md:h-140"
+          className="flex h-96 items-center justify-center rounded-card bg-muted/60 text-muted-foreground text-body md:h-140"
           data-zerops-pipeline-log-empty
         >
           {kind === "service" && status === "ended"
@@ -175,7 +175,7 @@ function LogLines({
     <ol
       aria-label="Log"
       aria-live={live ? "polite" : undefined}
-      className="h-96 overflow-y-auto rounded-lg bg-muted/60 py-2 font-mono text-caption leading-5 md:h-140"
+      className="h-96 overflow-y-auto rounded-card bg-muted/60 py-2 font-mono text-caption leading-5 md:h-140"
       data-zerops-pipeline-log
       onScroll={(event) => {
         const scroller = event.currentTarget;
@@ -268,7 +268,7 @@ function ConfigPane({
         </Button>
       </div>
       <pre
-        className="h-96 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-caption leading-5 md:h-140"
+        className="h-96 overflow-auto rounded-card bg-muted/60 px-3 py-2 font-mono text-caption leading-5 md:h-140"
         data-zerops-pipeline-config
       >
         {config}

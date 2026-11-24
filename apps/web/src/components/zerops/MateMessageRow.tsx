@@ -85,7 +85,7 @@ export function MateMessageRow({
   const folded = folds && !expanded;
   return (
     <article
-      className="mate-letter flex min-w-0 flex-col gap-2 rounded-2xl px-4 pt-3 pb-2"
+      className="mate-letter flex min-w-0 flex-col gap-2 rounded-card px-4 pt-3 pb-2"
       data-mate-tint={look.tint}
       data-zerops-surface="mate-message"
     >

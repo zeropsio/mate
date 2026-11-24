@@ -92,7 +92,7 @@ export function ZeropsEnvironmentCreation({
   const at = keyOnly ? 0 : (PHASE_STEP[phase] ?? 0);
   return (
     <section
-      className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4"
+      className="space-y-3 rounded-card border border-border/55 bg-card/20 px-4 py-4"
       data-zerops-surface="environment-creation"
       data-zerops-creation-outcome={standing.kind}
     >

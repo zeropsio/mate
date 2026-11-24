@@ -336,7 +336,7 @@ function Turn({
 }) {
   return (
     <div className="grid gap-6">
-      <p className="ms-auto max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-message-foreground text-prose">
+      <p className="ms-auto max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-message-foreground text-prose">
         {ask}
       </p>
       <div>

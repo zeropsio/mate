@@ -30,7 +30,7 @@ export function WhatHappensNext({
   return (
     <section
       aria-labelledby={id}
-      className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 py-2.5"
+      className="flex flex-col gap-1 rounded-card bg-muted/60 px-3.5 py-2.5"
       data-zerops-surface="what-happens-next"
     >
       <h3 className="text-caption leading-4 font-medium text-muted-foreground" id={id}>

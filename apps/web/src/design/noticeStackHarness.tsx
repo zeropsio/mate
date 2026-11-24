@@ -53,7 +53,7 @@ function Composer({
       <div className="pt-6">
         <ComposerBannerStack className="relative z-0" items={items} />
         <div
-          className="relative z-10 w-full overflow-hidden rounded-3xl border border-border bg-card"
+          className="relative z-10 w-full overflow-hidden rounded-sheet border border-border bg-card"
           data-chat-composer-main-surface="true"
         >
           <div className="px-4 pt-3 pb-12 text-placeholder text-body">

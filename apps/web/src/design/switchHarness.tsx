@@ -940,7 +940,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
         style={{ height: COMPOSER_HEIGHT }}
       >
         <div
-          className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
+          className="mx-auto max-w-3xl rounded-sheet border border-border bg-card shadow-sm"
           style={{ height: COMPOSER_HEIGHT - 20 }}
         />
       </div>

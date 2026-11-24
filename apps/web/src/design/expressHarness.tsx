@@ -29,7 +29,11 @@ function Harness() {
         <p className="text-muted-foreground text-body">In the message ({attached.length}):</p>
         {attached.map((file) => (
           <figure className="flex flex-col gap-1" key={file.url}>
-            <img alt={file.name} className="max-h-60 self-start rounded-lg border" src={file.url} />
+            <img
+              alt={file.name}
+              className="max-h-60 self-start rounded-card border"
+              src={file.url}
+            />
             <figcaption className="text-muted-foreground text-caption">{file.name}</figcaption>
           </figure>
         ))}

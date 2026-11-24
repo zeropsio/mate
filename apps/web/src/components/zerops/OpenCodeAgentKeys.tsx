@@ -35,7 +35,7 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
     >
       <span
         aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
+        className="flex size-8 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
       >
         <OpenCodeIcon className="size-4" />
       </span>

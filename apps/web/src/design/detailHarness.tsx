@@ -1438,7 +1438,7 @@ function State({
         </span>
         <p className="text-caption text-muted-foreground/78">{note}</p>
       </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-background">
+      <div className="overflow-hidden rounded-card border border-border bg-background">
         {children}
       </div>
     </section>

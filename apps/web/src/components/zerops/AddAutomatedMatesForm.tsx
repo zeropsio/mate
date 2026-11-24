@@ -310,7 +310,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
           </section>
           <section
             aria-labelledby={`${id}-next`}
-            className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 pt-2.5 pb-3"
+            className="flex flex-col gap-1 rounded-card bg-muted/60 px-3.5 pt-2.5 pb-3"
             data-zerops-surface="what-happens-next"
           >
             <h3

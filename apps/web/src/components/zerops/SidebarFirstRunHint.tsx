@@ -6,7 +6,7 @@
 export function SidebarFirstRunHint() {
   return (
     <p
-      className="mx-0.5 mt-1 rounded-lg border border-dashed border-sidebar-border px-3 py-2.5 text-caption leading-4 text-sidebar-muted-foreground"
+      className="mx-0.5 mt-1 rounded-card border border-dashed border-sidebar-border px-3 py-2.5 text-caption leading-4 text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-first-run"
     >
       Your projects and their Mates appear here.

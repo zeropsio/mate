@@ -152,7 +152,7 @@ function FailureCause({
   }
   return (
     <div
-      className="mt-2 flex flex-col gap-1 rounded-lg bg-destructive/8 px-3 py-2 text-body"
+      className="mt-2 flex flex-col gap-1 rounded-control bg-destructive/8 px-3 py-2 text-body"
       data-zerops-pipeline-cause
     >
       {error?.command === undefined ? null : (

@@ -223,7 +223,7 @@ function McpCard(card: (typeof MCP_CARDS)[number]) {
     />
   );
   return MCP_DENSITY === "compact" ? (
-    <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
+    <div className="w-full overflow-hidden rounded-sheet border border-border bg-card">
       {drawn}
       <div className="px-4 pt-3 pb-8 text-placeholder text-body">Ask anything...</div>
     </div>

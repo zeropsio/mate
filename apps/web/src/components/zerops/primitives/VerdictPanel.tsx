@@ -28,7 +28,7 @@ const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
  * the layout shift it was put there to prevent.
  */
 const VERDICT_PANEL_CLASS =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border px-3 py-2.5";
 
 type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
   /** The answer, in one sentence a person could read aloud. */

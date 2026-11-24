@@ -425,7 +425,7 @@ function Composer({
     <section className="flex w-full max-w-3xl flex-col gap-2" data-composer-top-harness={state}>
       <span className="text-caption font-medium text-muted-foreground">{name}</span>
       <div
-        className="w-full max-w-3xl overflow-hidden rounded-3xl border border-border bg-card"
+        className="w-full max-w-3xl overflow-hidden rounded-sheet border border-border bg-card"
         data-chat-composer-main-surface="true"
       >
         <div data-chat-composer-surface="true">

@@ -390,7 +390,7 @@ function LiveComposer() {
   }, [files, pictures, playUploads]);
   return (
     <div className="grid gap-3">
-      <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+      <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
         <ComposerPromptEditor
           editorRef={editorRef}
           value={draft.prompt}
@@ -451,7 +451,7 @@ function LiveSent(props: { readonly text: string; readonly attachments: ChatAtta
   if (!placed) return null;
   return (
     <div className="flex justify-end" data-live-sent>
-      <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+      <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
         <MessagePictureBody
           segments={placed.segments}
           dimensions={new Map()}
@@ -465,7 +465,7 @@ function LiveSent(props: { readonly text: string; readonly attachments: ChatAtta
 
 function Wire(props: { readonly parts: ReadonlyArray<PictureContentPart>; readonly made: Made }) {
   return (
-    <ol className="grid gap-0 rounded-2xl border border-border bg-card text-card-foreground">
+    <ol className="grid gap-0 rounded-card border border-border bg-card text-card-foreground">
       {props.parts.map((part) => (
         <li
           key={part.kind === "image" ? `image-${part.index}` : `text-${part.text}`}
@@ -585,7 +585,7 @@ function Harness() {
           label="The composer"
           note="The picture sits where it was pasted, between the words, with its marks drawn in. Click it to open it."
         >
-          <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+          <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
             {made ? (
               <ComposerPromptEditor
                 editorRef={editorRef}
@@ -618,7 +618,7 @@ function Harness() {
           note="Each picture where it was put, its notes under it; the original's line when it went along."
         >
           <div className="flex justify-end">
-            <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+            <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
               {placed ? (
                 <MessagePictureBody
                   segments={placed.segments}

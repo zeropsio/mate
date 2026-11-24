@@ -269,7 +269,7 @@ export function MateTaskCardView({
   }, []);
   return (
     <article
-      className="flex flex-col gap-1.5 rounded-2xl border border-border/70 bg-card px-5 pt-3.5 pb-3"
+      className="flex flex-col gap-1.5 rounded-card border border-border/70 bg-card px-5 pt-3.5 pb-3"
       data-zerops-surface="mate-task-card"
     >
       <div className="flex min-w-0 items-center gap-2 text-line text-muted-foreground">
@@ -364,7 +364,7 @@ function mateTaskMessageHeading(message: Pick<MateTaskMessage, "from" | "author"
 export function MateTaskMessageRow({ message }: { readonly message: MateTaskMessage }) {
   return (
     <div
-      className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
+      className="flex flex-col gap-1 rounded-card border border-border/70 bg-card px-4 py-2.5"
       data-zerops-surface="mate-task-message"
     >
       <p className="min-w-0 truncate text-line text-muted-foreground">

@@ -105,7 +105,7 @@ export function PlaceServicesWaiting() {
     >
       {[0, 1].map((card) => (
         <li
-          className="flex min-w-0 flex-col gap-3.5 rounded-xl border border-border/70 bg-card px-4 pt-3.5 pb-4"
+          className="flex min-w-0 flex-col gap-3.5 rounded-card border border-border/70 bg-card px-4 pt-3.5 pb-4"
           key={card}
         >
           <div className="flex min-w-0 flex-col gap-1">
@@ -159,7 +159,7 @@ export function PlaceMissingService({
 }) {
   return (
     <li
-      className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-dashed border-border py-3 ps-4 pe-3"
+      className="flex min-w-0 items-center justify-between gap-3 rounded-card border border-dashed border-border py-3 ps-4 pe-3"
       data-zerops-missing-service={hostname}
       data-zerops-surface="stop-not-in-zerops"
     >
@@ -406,7 +406,7 @@ export function PlaceAddressCard({
     shownOffers.length === 0;
   return (
     <div
-      className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card p-1.5"
+      className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5"
       data-zerops-surface="place-addresses"
     >
       <div className="empty:hidden px-3 py-1">

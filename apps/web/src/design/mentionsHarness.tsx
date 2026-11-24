@@ -131,7 +131,7 @@ function Composer() {
           }}
         />
       ) : null}
-      <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+      <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
         <ComposerPromptEditor
           editorRef={editorRef}
           value={value}

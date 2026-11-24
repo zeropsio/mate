@@ -54,7 +54,7 @@ export function ZeropsLandingShell({
 
 // Solid, as app.zerops.io's card is: HQ's page in it is transparent, and over a see-through card
 // its form hardly stands off the page.
-const LANDING_CARD = "rounded-3xl border border-border/55 bg-card shadow-sm/5";
+const LANDING_CARD = "rounded-sheet border border-border/55 bg-card shadow-sm/5";
 
 /**
  * HQ's sign-in in the landing's card, the whole composition: HQ's page draws the heading, Mate's mark
@@ -177,7 +177,7 @@ export function FormError({ message }: { readonly message: string | null }) {
   return (
     <p
       role="alert"
-      className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-body text-foreground"
+      className="rounded-control border border-border bg-muted/35 px-3 py-2 text-body text-foreground"
     >
       {message}
     </p>

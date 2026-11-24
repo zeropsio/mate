@@ -174,7 +174,7 @@ function RecordTable({
   const beside = records.map((record) => record.name);
   return (
     <div
-      className="rounded-lg bg-muted/60 px-3 text-foreground text-body"
+      className="rounded-card bg-muted/60 px-3 text-foreground text-body"
       data-dns-table=""
       role="table"
     >

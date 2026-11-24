@@ -69,7 +69,7 @@ export function ServiceRow({
   return (
     <li
       className={cn(
-        "flex min-w-0 flex-col rounded-xl border border-border/70 bg-card",
+        "flex min-w-0 flex-col rounded-card border border-border/70 bg-card",
         panel ? "gap-3 px-3.5 pt-3 pb-3.5" : "gap-3.5 px-4 pt-3.5 pb-4",
       )}
       data-zerops-service-row={density}

@@ -134,7 +134,7 @@ export function ZeropsGitPanel({
         </div>
       )}
       {repositories.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
+        <p className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
           {model.emptyLine ?? NO_REPOSITORY_LINE}
         </p>
       ) : (
@@ -184,7 +184,7 @@ export function ZeropsGitPanel({
                   </div>
                 )}
               </div>
-              <div className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card">
+              <div className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card">
                 {repository.work.length === 0 ? (
                   // No change to show while the remote does not answer: the slot says what it holds.
                   <p

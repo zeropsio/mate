@@ -61,7 +61,7 @@ export function PlaceLine({
         "shrink-0 font-medium text-foreground outline-none",
         density === "row"
           ? "after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-ring"
-          : "rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+          : "rounded-mark underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring",
       )}
       data-zerops-place-name=""
       params={{ groupId, projectId }}

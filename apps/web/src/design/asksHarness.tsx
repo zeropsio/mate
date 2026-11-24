@@ -106,7 +106,7 @@ function Specimen(props: {
       {props.chips}
       {props.density === "compact" ? (
         // The composer's own frame, the ask at its top.
-        <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
+        <div className="w-full overflow-hidden rounded-sheet border border-border bg-card">
           {props.children}
           <div className="px-4 pt-3 pb-10 text-placeholder text-body">Ask anything...</div>
         </div>

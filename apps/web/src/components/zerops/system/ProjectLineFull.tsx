@@ -271,7 +271,7 @@ function StationName({
   if (!held && station.projectId !== undefined)
     return (
       <Link
-        className="ln-name rounded-sm"
+        className="ln-name rounded-mark"
         params={{ groupId, projectId: station.projectId }}
         preload="intent"
         to="/group/$groupId/$projectId"
@@ -326,7 +326,7 @@ function SideRow({ side, groupId }: { readonly side: LineSide; readonly groupId:
         words
       ) : (
         <Link
-          className="min-w-0 rounded-sm"
+          className="min-w-0 rounded-mark"
           params={{ groupId, projectId: side.projectId }}
           preload="intent"
           to="/group/$groupId/$projectId"

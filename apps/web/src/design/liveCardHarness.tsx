@@ -2347,7 +2347,7 @@ function Pane() {
           data-harness-composer=""
         >
           <div
-            className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
+            className="mx-auto max-w-3xl rounded-sheet border border-border bg-card shadow-sm"
             style={{ height: composerHeight - 20 }}
           />
         </div>

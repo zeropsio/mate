@@ -21,7 +21,7 @@ export function PlaceAccessCard({
   const more = people.length - ACCESS_FACES;
   return (
     <div
-      className="flex min-w-0 items-center gap-3.5 rounded-xl border border-border/70 bg-card px-4 py-3.5"
+      className="flex min-w-0 items-center gap-3.5 rounded-card border border-border/70 bg-card px-4 py-3.5"
       data-zerops-surface="place-access"
     >
       {summary === null ? (

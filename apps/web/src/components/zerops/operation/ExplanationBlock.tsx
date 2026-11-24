@@ -29,7 +29,7 @@ const VISIBLE_TAIL_LINES = 6;
 
 function LogLines({ lines }: { readonly lines: ReadonlyArray<{ key: string; line: string }> }) {
   return (
-    <ol className="space-y-0.5 overflow-x-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed">
+    <ol className="space-y-0.5 overflow-x-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed">
       {lines.map(({ key, line }) => {
         const error = isErrorLogLine(line);
         return (

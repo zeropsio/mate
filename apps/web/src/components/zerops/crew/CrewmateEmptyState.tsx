@@ -160,7 +160,7 @@ export function CrewmateEmptyState({
             </p>
             {model.job === "" && model.work.length === 0 ? null : (
               <section
-                className="mt-10 flex w-full max-w-md flex-col rounded-2xl border border-foreground/7 bg-run-tray px-4 py-3"
+                className="mt-10 flex w-full max-w-md flex-col rounded-card border border-foreground/7 bg-run-tray px-4 py-3"
                 data-crewmate-card
               >
                 {model.job === "" ? null : (

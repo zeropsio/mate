@@ -258,7 +258,7 @@ function Harness() {
         </div>
       </main>
       <div className="mx-auto w-full max-w-3xl shrink-0 px-6 pb-4">
-        <div className="rounded-3xl border border-border bg-card">
+        <div className="rounded-sheet border border-border bg-card">
           <p className="px-5 pt-4 pb-2 text-muted-foreground text-prose">Ask Nova anything…</p>
           <div className="flex items-center gap-2 pt-1.5 pe-3 pb-3 ps-3.5">
             <ProviderModelPicker

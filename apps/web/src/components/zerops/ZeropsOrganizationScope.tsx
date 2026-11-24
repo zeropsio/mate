@@ -115,7 +115,7 @@ export function ZeropsOrganizationChoice({
               lead={
                 <span
                   aria-hidden="true"
-                  className="flex size-8 items-center justify-center rounded-lg bg-muted text-body font-semibold text-foreground"
+                  className="flex size-8 items-center justify-center rounded-control bg-muted text-body font-semibold text-foreground"
                 >
                   {organization.name.trim().charAt(0).toLocaleUpperCase()}
                 </span>

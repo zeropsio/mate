@@ -241,7 +241,7 @@ const ACTIONS = {
 
 function Rows() {
   return (
-    <section className="grid w-180 gap-1 rounded-2xl border bg-card p-3" data-harness="rows">
+    <section className="grid w-180 gap-1 rounded-card border bg-card p-3" data-harness="rows">
       <h2 className="px-2 text-body font-medium text-muted-foreground">Repositories</h2>
       <RepoRowsView
         actions={ACTIONS}

@@ -994,7 +994,7 @@ function Frame({
     <figure className="flex flex-col gap-2" data-harness-frame={label}>
       <figcaption className="text-caption text-muted-foreground">{label}</figcaption>
       <div
-        className="flex h-[760px] flex-col overflow-hidden rounded-lg border border-border bg-background"
+        className="flex h-[760px] flex-col overflow-hidden rounded-card border border-border bg-background"
         style={{ width }}
       >
         {children}

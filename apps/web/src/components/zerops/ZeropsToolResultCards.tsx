@@ -23,7 +23,7 @@ function Placeholder({ className }: { readonly className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("block h-3 rounded-sm bg-muted", className)}
+      className={cn("block h-3 rounded-mark bg-muted", className)}
       data-zerops-read-placeholder
     />
   );
@@ -59,7 +59,7 @@ function LogsBody({ readResult }: { readonly readResult: ReadResultOf<"logs"> })
       ) : null}
       <ol
         aria-label={`Log of ${readResult.service}`}
-        className="max-h-40 space-y-0.5 overflow-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed"
+        className="max-h-40 space-y-0.5 overflow-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed"
         data-zerops-read-lines
       >
         {readResult.pending

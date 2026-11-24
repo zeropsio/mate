@@ -143,7 +143,7 @@ export function CrewChoice({
   readonly render: ReactElement;
 }) {
   return (
-    <div className={cn("rounded-xl ring-1 ring-foreground/10", disabled && "opacity-55")}>
+    <div className={cn("rounded-card ring-1 ring-foreground/10", disabled && "opacity-55")}>
       <Row
         aria-disabled={disabled || undefined}
         lead={lead}

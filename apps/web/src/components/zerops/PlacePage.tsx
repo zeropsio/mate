@@ -1512,7 +1512,7 @@ export function ZeropsStopPane({
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-releases-unrecorded"
                 >
                   {`No releases are recorded for this production; it runs ${runs}.`}
@@ -1521,7 +1521,7 @@ export function ZeropsStopPane({
             ) : nextShown ? null : (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-releases-empty"
                 >
                   No releases yet. A release puts what is merged on main live here, and each one is
@@ -1745,7 +1745,7 @@ export function ZeropsStopPane({
               {servicesWaiting || table.length > 0 || missingSlots.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-services-empty"
                 >
                   Nothing runs here yet. Its services appear as its first deploy lands.
@@ -1806,7 +1806,7 @@ export function ZeropsStopPane({
 }
 
 /** A card of the place's page: a hairline and the card ground. */
-const PLACE_CARD_CLASS = "min-w-0 rounded-xl border border-border/70 bg-card";
+const PLACE_CARD_CLASS = "min-w-0 rounded-card border border-border/70 bg-card";
 
 /**
  * One section of the place's page: its label hugging its card, every section well apart from the

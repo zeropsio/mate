@@ -92,7 +92,7 @@ export function PlaceNextCard({
   const line = facts.filter((fact) => fact !== undefined && fact !== "").join(" · ");
   return (
     <div
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.06]"
+      className="flex min-w-0 flex-col overflow-hidden rounded-card border border-primary/20 bg-primary/[0.06]"
       data-zerops-next-block=""
     >
       <div

@@ -683,7 +683,7 @@ export function ZeropsDataPanel({
   const errorLine =
     errorText !== undefined ? (
       <p
-        className="rounded-xl bg-muted/35 px-2 py-1 text-foreground text-caption"
+        className="rounded-control bg-muted/35 px-2 py-1 text-foreground text-caption"
         data-zerops-data-error
         role="alert"
       >

@@ -41,7 +41,7 @@ export function MateStatusMarker({
       "inline-flex min-w-0 items-center gap-1.5 text-caption font-medium",
       status.severity === "danger" ? "text-error" : "text-status-attention-text",
       onOpen !== undefined &&
-        "cursor-pointer rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer rounded-mark underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
     ),
     "data-agent-admission-summary": status.admission?.key,
     "data-mate-status": status.kind,

@@ -1124,7 +1124,7 @@ function RepositoryList({
   return (
     <div
       aria-label="Repository"
-      className="grid max-h-64 overflow-y-auto rounded-lg border"
+      className="grid max-h-64 overflow-y-auto rounded-card border"
       role="radiogroup"
     >
       {created === null ? null : (
@@ -1624,7 +1624,7 @@ function progressStep(
   return {
     body: (
       <>
-        <p className="rounded-lg bg-muted px-3.5 py-2.5 text-body">
+        <p className="rounded-card bg-muted px-3.5 py-2.5 text-body">
           {repo} → <span className="font-mono">{shownAs}</span>
         </p>
         <ol aria-live="polite" className="grid gap-2.5">

@@ -316,7 +316,7 @@ function Harness() {
       <div className="flex min-h-screen gap-8 bg-background p-8 text-foreground">
         <div
           style={{ width: 435 }}
-          className="flex flex-col gap-0.5 rounded-2xl bg-sidebar p-2 text-sidebar-foreground"
+          className="flex flex-col gap-0.5 rounded-card bg-sidebar p-2 text-sidebar-foreground"
           data-harness="menu"
         >
           {projects.map((project) => (

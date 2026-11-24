@@ -55,7 +55,7 @@ export function stopLinkOf(
  * it: no underline at rest, one on hover, the ring on focus.
  */
 const STOP_LINK_CLASS =
-  "rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
+  "rounded-mark underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 interface ZeropsEnvironmentRowProps {
   /** The Zerops project — what the Zerops GUI calls it. */

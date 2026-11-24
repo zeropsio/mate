@@ -71,7 +71,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
   };
 
   return (
-    <div className="vault-card rounded-xl bg-card p-px" data-vault-add>
+    <div className="vault-card rounded-card bg-card p-px" data-vault-add>
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
         New value in
         <Menu>
