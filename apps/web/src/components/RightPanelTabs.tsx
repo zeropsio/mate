@@ -46,6 +46,7 @@ import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import {
@@ -409,9 +410,8 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
     );
   };
 
-  const cardShellClass =
-    "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
-  const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
+  // What a card says: its head over its words, on the card's padding.
+  const cardBodyClass = "flex w-full min-w-0 flex-col items-start gap-1 p-3 @[22rem]:p-3.5";
   // Two lines held under every name, whether its words need one or two: every card is one height,
   // and none grows when a neighbour's words wrap. A phone's one column is wide enough for every
   // card's words on one line, so the second is not held there: nine rows fit a screen.
@@ -446,9 +446,11 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
         <div className="grid auto-rows-fr grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
             action.available ? (
-              <button
+              <Card
                 key={action.label}
-                type="button"
+                pressable
+                variant="flat"
+                className="min-w-0"
                 onClick={action.onClick}
                 // Move, not enter: a list the arrow keys scroll slides cards under a
                 // resting pointer, and an enter would take the highlight back.
@@ -459,19 +461,21 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
                   )
                 }
                 data-surface-launcher-highlighted={isHighlighted(action) ? "" : undefined}
-                className={cn(
-                  "cursor-pointer transition hover:border-border hover:bg-accent/60",
-                  cardShellClass,
-                  isHighlighted(action) && highlightedCardClass,
-                )}
+                data-highlighted={isHighlighted(action) ? "" : undefined}
               >
-                {cardHead(action)}
-                <span className={cardTextClass}>{action.description}</span>
-              </button>
+                <span className={cardBodyClass}>
+                  {cardHead(action)}
+                  <span className={cardTextClass}>{action.description}</span>
+                </span>
+              </Card>
             ) : (
-              <div key={action.label} className={cn("opacity-40", cardShellClass)}>
-                {cardHead(action)}
-                <span className={cardTextClass}>{action.unavailableHint}</span>
+              <div key={action.label} className="grid opacity-40">
+                <Card className="min-w-0" variant="flat">
+                  <span className={cardBodyClass}>
+                    {cardHead(action)}
+                    <span className={cardTextClass}>{action.unavailableHint}</span>
+                  </span>
+                </Card>
               </div>
             ),
           )}

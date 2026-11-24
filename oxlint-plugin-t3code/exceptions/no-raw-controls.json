@@ -48,14 +48,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/RightPanelTabs.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"cursor-pointer transition hover:border-border hover:bg-accent/60\", cardShellClass, isHighlighted(action) && highlightedCardClass, )}",
-    "owner": "kit pass",
-    "reason": "needs kit: Card's pressable form — a card that opens what it names, lit under the pointer or by the keyboard's highlight",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/ServiceBrowserLink.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
