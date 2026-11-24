@@ -1,3 +1,4 @@
+import type { HqMateState } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import { formatDayAwareTimestamp } from "../timestampFormat";
@@ -67,6 +68,28 @@ export function mateUnreachableWords(
   reconnecting = false,
 ): string {
   return `${name} ${reconnecting ? "is reconnecting" : "isn't answering"}${since === undefined ? "" : ` since ${formatDayAwareTimestamp(since, timestampFormat)}`}.`;
+}
+
+/**
+ * What a Mate's row and page say of HQ's verdict that it cannot work or never started
+ * (`hqMateState`), its time HQ's own since; undefined for every other state, one this build does
+ * not know included: those read as they did before HQ named them.
+ */
+export function mateStateWords(
+  verdict: HqMateState | null | undefined,
+  name: string,
+  timestampFormat: TimestampFormat = "locale",
+): string | undefined {
+  const since =
+    verdict?.since === undefined
+      ? ""
+      : ` since ${formatDayAwareTimestamp(verdict.since, timestampFormat)}`;
+  if (verdict?.state === "cannot_run" && verdict.why === "signed_out")
+    return `${name} can't work: nobody is signed in.`;
+  if (verdict?.state === "cannot_run" && verdict.why === "session_error")
+    return `${name} can't work${since}: its last run failed.`;
+  if (verdict?.state === "not_starting") return `${name} hasn't started${since}.`;
+  return undefined;
 }
 
 /**

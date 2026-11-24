@@ -6,6 +6,7 @@ import {
   type ContainerMachine,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
+import { mateStateWords } from "../../zerops/lastKnownMate.logic.ts";
 import { mateRestartSaid } from "../../zerops/mateMoments.logic.ts";
 import { mateRowLife, mateRowSecond, sidebarMateVerbs } from "./SidebarMateRow.logic.ts";
 
@@ -106,4 +107,24 @@ it("MN74: A Mate's row menu keeps the Continue and End HQ offers on its waiting 
   expect(
     sidebarMateVerbs(entries).flatMap((entry) => ("separator" in entry ? [] : [entry.id])),
   ).toEqual(offered);
+});
+
+// witness: apps/web/src/zerops/lastKnownMate.logic.ts | if (verdict?.state === "not_starting") return `${name} hasn't started${since}.`; → if (verdict?.state !== "online") return `${name} hasn't started${since}.`;
+it("MN+1: A Mate HQ says nobody is signed in to, whose last run failed, or that never started says so in its own words, with HQ's since where the words carry a time, and every other state HQ names, one this build does not know included, says nothing new; breaks: a signed-out Mate reads as idle, or one offline, strained or starting reads as unable to work", () => {
+  const since = "2020-06-15T12:00:00.000Z";
+  const words = (state: string, why?: string) =>
+    mateStateWords({ state, since, why }, "Ada", "24-hour");
+  expect(words("cannot_run", "signed_out")).toBe("Ada can't work: nobody is signed in.");
+  expect(words("cannot_run", "session_error")).toMatch(
+    /^Ada can't work since \S.*2020.*: its last run failed\.$/u,
+  );
+  expect(words("not_starting", "never_linked")).toMatch(/^Ada hasn't started since \S.*2020.*\.$/u);
+  expect([
+    words("online"),
+    words("offline", "no_pong"),
+    words("strained", "health_critical"),
+    words("starting"),
+    words("key_refused"),
+    words("resting", "a_new_why"),
+  ]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
 });
