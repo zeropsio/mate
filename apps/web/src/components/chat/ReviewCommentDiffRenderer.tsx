@@ -34,7 +34,7 @@ export default function ReviewCommentDiffRenderer({
   }
   if (renderablePatch?.kind === "raw") {
     return (
-      <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-xs">
+      <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-caption">
         {renderablePatch.text}
       </pre>
     );

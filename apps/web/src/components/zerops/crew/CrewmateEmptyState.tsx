@@ -143,7 +143,7 @@ export function CrewmateEmptyState({
         {model === null ? null : (
           <>
             <p
-              className="mt-1 flex max-w-md items-start gap-2 text-muted-foreground text-sm"
+              className="mt-1 flex max-w-md items-start gap-2 text-muted-foreground text-body"
               data-crewmate-whose
             >
               {mateFace === null ? null : (

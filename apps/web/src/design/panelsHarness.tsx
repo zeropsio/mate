@@ -992,7 +992,7 @@ function Frame({
 }) {
   return (
     <figure className="flex flex-col gap-2" data-harness-frame={label}>
-      <figcaption className="text-xs text-muted-foreground">{label}</figcaption>
+      <figcaption className="text-caption text-muted-foreground">{label}</figcaption>
       <div
         className="flex h-[760px] flex-col overflow-hidden rounded-lg border border-border bg-background"
         style={{ width }}
@@ -1040,7 +1040,7 @@ function HarnessPage() {
       <div className="flex flex-col gap-10">
         {widths.map((width) => (
           <section className="flex flex-col gap-3" key={width}>
-            <h1 className="text-sm font-medium">{`${String(width)} px`}</h1>
+            <h1 className="text-body font-medium">{`${String(width)} px`}</h1>
             <div className="flex flex-wrap items-start gap-6">
               {SCENARIOS.filter((scenario) => only === null || scenario.id === only).map(
                 (scenario) => (

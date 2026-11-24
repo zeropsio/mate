@@ -394,7 +394,7 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
     return (
       <span className="flex w-full min-w-0 items-center gap-2">
         <Icon className="size-4 shrink-0" />
-        <span className="truncate font-medium text-sm">{action.label}</span>
+        <span className="truncate font-medium text-body">{action.label}</span>
         {action.badgeCount > 0 ? (
           <span
             aria-hidden
@@ -417,7 +417,8 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
   // Two lines held under every name, whether its words need one or two: every card is one height,
   // and none grows when a neighbour's words wrap. A phone's one column is wide enough for every
   // card's words on one line, so the second is not held there: nine rows fit a screen.
-  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed max-sm:min-h-0";
+  const cardTextClass =
+    "min-h-[2lh] text-muted-foreground text-caption leading-relaxed max-sm:min-h-0";
 
   return (
     <div
@@ -437,8 +438,10 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
           from its title instead of losing the top under the tab bar. */}
       <div className="m-auto w-full max-w-lg">
         <div className="mb-4 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a page</h3>
-          <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
+          <h3 className="font-medium text-foreground text-body">Open a page</h3>
+          <p className="mt-1 text-muted-foreground text-caption">
+            Choose what to show beside the chat.
+          </p>
         </div>
         {/* Rows of one height, the tallest card's: words that need a third line in a narrow panel
             raise every card with them. */}

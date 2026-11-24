@@ -113,5 +113,7 @@ export function useArrived<T>(value: T): boolean {
 
 /** A heading over one of the tab's groups: 12/500, muted. */
 export function CrewHeading({ children }: { readonly children: ReactNode }) {
-  return <div className="px-4 font-medium text-muted-foreground text-xs leading-4">{children}</div>;
+  return (
+    <div className="px-4 font-medium text-muted-foreground text-caption leading-4">{children}</div>
+  );
 }

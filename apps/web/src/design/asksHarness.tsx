@@ -108,7 +108,7 @@ function Specimen(props: {
         // The composer's own frame, the ask at its top.
         <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
           {props.children}
-          <div className="px-4 pt-3 pb-10 text-placeholder text-sm">Ask anything...</div>
+          <div className="px-4 pt-3 pb-10 text-placeholder text-body">Ask anything...</div>
         </div>
       ) : (
         props.children

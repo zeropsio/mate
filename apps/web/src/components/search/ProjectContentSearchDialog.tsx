@@ -92,7 +92,7 @@ export function EmptyContentSearchDialog() {
       testId="project-content-search"
       value=""
     >
-      <p className="m-auto px-6 text-center text-muted-foreground text-sm">
+      <p className="m-auto px-6 text-center text-muted-foreground text-body">
         Open a project to search its files.
       </p>
     </CommandPaletteContent>
@@ -224,7 +224,7 @@ function OpenContentSearchDialog(props: {
       value={query}
     >
       {showSearchStatus ? (
-        <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
+        <div className="flex h-9 shrink-0 items-center border-b px-3 text-caption text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
               <LoaderCircle className="size-3.5 animate-spin" /> Searching…
@@ -240,7 +240,7 @@ function OpenContentSearchDialog(props: {
       ) : null}
 
       {matches.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-muted-foreground">
           {search.hasQuery && !search.isPending && !search.error
             ? "No results found."
             : "Type to search across your project."}
@@ -252,7 +252,7 @@ function OpenContentSearchDialog(props: {
               const path = splitPath(group.path);
               return (
                 <section className="pb-2" key={group.path}>
-                  <div className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-popover/95 px-3 text-xs backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-popover/95 px-3 text-caption backdrop-blur-sm">
                     <PierreEntryIcon
                       pathValue={group.path}
                       kind="file"
@@ -275,7 +275,7 @@ function OpenContentSearchDialog(props: {
                       key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
                       data-content-search-result={match.resultIndex}
                       className={cn(
-                        "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-xs hover:bg-accent/60 disabled:pointer-events-none",
+                        "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-caption hover:bg-accent/60 disabled:pointer-events-none",
                         match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
                       )}
                       disabled={!canOpenMatches}

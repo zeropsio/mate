@@ -125,7 +125,7 @@ export function TaskLimitsSettings() {
 
 /** Who connected it and when, as HQ holds it; nothing where HQ names nobody. */
 function ConnectedBy({ line }: { readonly line: string | null }) {
-  return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
+  return line === null ? null : <p className="text-caption text-muted-foreground">{line}</p>;
 }
 
 /**
@@ -278,7 +278,7 @@ function AppRows({
       ) : (
         apps.map((app) => (
           <li className="grid gap-2" data-zerops-task-source-app={app.id} key={app.id}>
-            <p className="text-sm font-medium text-foreground">{app.name}</p>
+            <p className="text-body font-medium text-foreground">{app.name}</p>
             {children(app)}
           </li>
         ))
@@ -397,8 +397,8 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
   const setting = channels.read.setting;
   return (
     <div className="grid gap-1.5">
-      <p className="text-sm font-medium text-foreground">Channels</p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-body font-medium text-foreground">Channels</p>
+      <p className="text-caption text-muted-foreground">
         {setting.state === "known"
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
@@ -503,7 +503,7 @@ function SlackReplaceKeys({
     >
       {secretFirst ? [secret, token] : [token, secret]}
       <div className="flex items-center gap-2">
-        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <p className="min-w-0 flex-1 text-caption text-muted-foreground">
           Every project keeps its channel.
         </p>
         <Button disabled={!ready || busy} size="sm" type="submit" variant="secondary">
@@ -586,7 +586,7 @@ function SlackSteps({
             {isCopied ? "Copied" : "Copy manifest"}
           </Button>
           {read.state === "failed" ? (
-            <span className="text-xs text-destructive-foreground" role="alert">
+            <span className="text-caption text-destructive-foreground" role="alert">
               {read.words}
             </span>
           ) : null}
@@ -808,16 +808,16 @@ function DiscordConnected({ view }: { readonly view: HqDiscordView }) {
       />
       {view.inviteUrl === null ? null : (
         <div className="grid gap-1.5">
-          <p className="text-sm font-medium text-foreground">Servers</p>
+          <p className="text-body font-medium text-foreground">Servers</p>
           <div className="flex">
             <OutButton href={view.inviteUrl}>Add the bot to a server</OutButton>
           </div>
         </div>
       )}
       <div className="grid gap-1.5" data-zerops-surface="settings-discord-askers">
-        <p className="text-sm font-medium text-foreground">Who may start and steer tasks</p>
+        <p className="text-body font-medium text-foreground">Who may start and steer tasks</p>
         {/* HQ's gate: only a Discord user who linked their account to their Zerops person asks. */}
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Anyone in this organization who linked their Discord. Someone who has not gets a private
           link the first time they type /mate task; /mate link sends one at any time.
         </p>
@@ -840,7 +840,7 @@ function ManagePanel({
     <FlowSurface>
       <div className="grid gap-4">
         {children}
-        <div className="flex items-center gap-4 border-t border-border/70 pt-3 text-xs">
+        <div className="flex items-center gap-4 border-t border-border/70 pt-3 text-caption">
           <span className="min-w-0 flex-1 text-muted-foreground">{warning}</span>
           {disconnect}
         </div>
@@ -976,7 +976,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
       surface="settings-task-limits"
     >
       {refusal === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
+        <p className="text-caption text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
@@ -1065,7 +1065,7 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
       surface="settings-monthly-budget"
     >
       {refusal === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
+        <p className="text-caption text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
@@ -1143,7 +1143,7 @@ export function AutomatedModelView({
       state={{ kind: "none" }}
       surface="settings-automated-model"
     >
-      <p className="text-xs text-muted-foreground" id={groupId}>
+      <p className="text-caption text-muted-foreground" id={groupId}>
         What automated Mates run each new task on. A task at work keeps its model.
       </p>
       <RadioGroup
@@ -1173,15 +1173,15 @@ export function AutomatedModelView({
                 <Radio value={slug} />
               </span>
               <span className="grid min-w-0 gap-0.5">
-                <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <span className="flex items-center gap-2 text-body font-medium text-foreground">
                   {offer.name}
                   <Badge>{offer.readsImages ? "Reads images" : "Text only"}</Badge>
                   {slug === current ? <Badge>Current</Badge> : null}
                 </span>
-                <span className="text-xs tabular-nums text-foreground">
+                <span className="text-caption tabular-nums text-foreground">
                   {modelPriceWords(offer)}
                 </span>
-                <span className="text-xs text-muted-foreground">{offer.why}</span>
+                <span className="text-caption text-muted-foreground">{offer.why}</span>
               </span>
             </label>
           );

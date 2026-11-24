@@ -7587,7 +7587,10 @@ function ConversationView(props: ChatViewProps) {
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <div data-over-conversation="">
                             {pendingSendNotice && (
-                              <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+                              <p
+                                role="status"
+                                className="px-4 py-2 text-body text-muted-foreground"
+                              >
                                 {pendingSendNotice}
                               </p>
                             )}

@@ -336,7 +336,7 @@ function DeployConfigLink({
   const line = file.data === null ? null : setupLine(file.data.contents, hostname);
   return (
     <button
-      className="vault-file-link inline-flex min-w-0 items-center gap-1 text-xs"
+      className="vault-file-link inline-flex min-w-0 items-center gap-1 text-caption"
       onClick={() =>
         useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
       }

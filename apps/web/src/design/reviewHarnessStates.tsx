@@ -2826,7 +2826,7 @@ export function ReviewPageStage({
 }) {
   return (
     <section className="flex flex-col gap-2" data-review-harness-state={label}>
-      <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="px-2 text-caption font-medium text-muted-foreground">{label}</span>
       <div className="h-dvh overflow-hidden rounded-xl border border-border">
         <ZeropsHostedFrame bar={false} width="column">
           {children}
@@ -2846,7 +2846,7 @@ export function ReviewStage({
 }) {
   return (
     <section className="flex flex-col gap-2" data-review-harness-state={label}>
-      <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="px-2 text-caption font-medium text-muted-foreground">{label}</span>
       <div
         className="flex justify-center rounded-xl px-5 py-9"
         style={{ background: "color-mix(in oklab, var(--background), var(--color-black) 18%)" }}

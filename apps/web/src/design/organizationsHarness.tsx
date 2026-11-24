@@ -50,7 +50,7 @@ function HarnessPage() {
         }
       />
       {picked === null ? null : (
-        <p className="fixed inset-x-0 bottom-16 text-center text-xs text-muted-foreground">
+        <p className="fixed inset-x-0 bottom-16 text-center text-caption text-muted-foreground">
           Picked {picked}
         </p>
       )}

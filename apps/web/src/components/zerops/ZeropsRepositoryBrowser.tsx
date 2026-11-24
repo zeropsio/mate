@@ -75,7 +75,7 @@ export function ZeropsRepositoryBrowser({
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
-        <p className="text-sm text-muted-foreground" role="alert">
+        <p className="text-body text-muted-foreground" role="alert">
           {allowed === true
             ? // HQ said no after the offers said yes.
               NO_LONGER_ALLOWED

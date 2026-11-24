@@ -401,7 +401,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         </div>
       )}
       {line !== null ? (
-        <p className="px-1 text-muted-foreground text-xs" data-zerops-mac-line>
+        <p className="px-1 text-muted-foreground text-caption" data-zerops-mac-line>
           {line}
         </p>
       ) : null}

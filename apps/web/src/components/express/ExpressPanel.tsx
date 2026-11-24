@@ -281,7 +281,7 @@ export function ExpressPanel({
             <ExpressMark className="size-10 shrink-0 rounded-lg shadow-xs/10" />
             <div className="flex min-w-0 flex-col">
               <h2 className="text-base font-semibold leading-6">Adobe Express</h2>
-              <p className="text-muted-foreground text-sm leading-5">
+              <p className="text-muted-foreground text-body leading-5">
                 {`Design here; what you save goes into your message to ${mate ?? "this Mate"}.`}
               </p>
             </div>
@@ -325,7 +325,9 @@ export function ExpressPanel({
 
           {history.length === 0 ? null : (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-xs font-medium">In this conversation</h3>
+              <h3 className="text-muted-foreground text-caption font-medium">
+                In this conversation
+              </h3>
               <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">
                 {history
                   .slice(0, HISTORY_SHOWN)
@@ -386,7 +388,7 @@ export function ExpressPanel({
             />
           )}
 
-          <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-xs">
+          <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-caption">
             <ExpressMark className="size-4 rounded-sm" />
             <span>Powered by Adobe Express · saving asks for your Adobe account</span>
           </footer>
@@ -412,8 +414,8 @@ function ExpressTile(props: {
         {props.icon}
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-medium leading-5">{props.title}</span>
-        <span className="text-muted-foreground text-xs leading-4">{props.line}</span>
+        <span className="text-body font-medium leading-5">{props.title}</span>
+        <span className="text-muted-foreground text-caption leading-4">{props.line}</span>
       </span>
     </button>
   );
@@ -441,7 +443,7 @@ function SavedDesign({
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
       <button
-        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-xs font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
+        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-caption font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
         data-reopening={reopening || undefined}
         disabled={reopening}
         onClick={onEdit}
@@ -469,11 +471,11 @@ function LinkedDesign({
       type="button"
     >
       <ExpressMark className="size-8 rounded-lg" />
-      <span className="line-clamp-2 text-xs font-medium leading-4">
+      <span className="line-clamp-2 text-caption font-medium leading-4">
         {entry.words ?? "Adobe Express design"}
       </span>
       {entry.words === undefined ? (
-        <span className="font-mono text-muted-foreground text-xs leading-4">
+        <span className="font-mono text-muted-foreground text-caption leading-4">
           {entry.documentId.slice(-7)}
         </span>
       ) : null}

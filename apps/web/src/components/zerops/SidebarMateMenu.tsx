@@ -435,7 +435,7 @@ export function MateRenameField({
       <input
         aria-invalid={tried && error !== undefined}
         aria-label="Mate's name"
-        className="-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-sm leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive"
+        className="-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-body leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive"
         id="sidebar-mate-rename"
         onBlur={() => {
           finish(true);
@@ -459,7 +459,7 @@ export function MateRenameField({
       />
       {tried && error !== undefined ? (
         <span
-          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-md border border-border bg-popover px-2 py-1 text-xs text-destructive-foreground shadow-md"
+          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-md border border-border bg-popover px-2 py-1 text-caption text-destructive-foreground shadow-md"
           data-zerops-surface="sidebar-mate-rename-error"
           role="alert"
         >

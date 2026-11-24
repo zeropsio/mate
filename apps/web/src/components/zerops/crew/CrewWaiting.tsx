@@ -24,7 +24,7 @@ export function CrewWaiting(props: {
       {props.members.map((member) => (
         <div className="flex min-h-8 items-center gap-2.5" key={member.handle}>
           <MateFace size={20} state="idle" tint={member.tint ?? "slate"} />
-          <span className="min-w-0 grow truncate text-sm text-muted-foreground">
+          <span className="min-w-0 grow truncate text-body text-muted-foreground">
             {crewWaitingWords(member.displayName)}
           </span>
           <CrewPress

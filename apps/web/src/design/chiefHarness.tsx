@@ -184,7 +184,7 @@ function Harness() {
           </header>
           <div className="relative min-h-0 flex-1">
             {view === null ? (
-              <p className="p-6 text-sm text-muted-foreground">
+              <p className="p-6 text-body text-muted-foreground">
                 Set up: the page is the Chief's own view while it comes up.
               </p>
             ) : (

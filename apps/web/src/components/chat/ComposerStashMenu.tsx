@@ -128,7 +128,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
         <CommandList className="max-h-64 scroll-pb-6">
           <CommandGroup>
             {entries.length === 0 ? (
-              <p className="px-3 py-1.5 text-secondary-label text-xs">
+              <p className="px-3 py-1.5 text-secondary-label text-caption">
                 Nothing stashed yet. Press ⌘S with a prompt in the composer to stash it.
               </p>
             ) : (
@@ -150,16 +150,16 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                     onRestore(entry);
                   }}
                 >
-                  <span className="min-w-0 flex-1 truncate text-xs">
+                  <span className="min-w-0 flex-1 truncate text-caption">
                     {stashEntrySnippet(entry)}
                   </span>
                   {entry.pendingImageCount ? (
-                    <span className="shrink-0 text-xs text-secondary-label">
+                    <span className="shrink-0 text-caption text-secondary-label">
                       saving {entry.pendingImageCount} image
                       {entry.pendingImageCount === 1 ? "" : "s"}…
                     </span>
                   ) : missingImageCount(entry) > 0 ? (
-                    <span className="shrink-0 text-xs text-warning-foreground">
+                    <span className="shrink-0 text-caption text-warning-foreground">
                       {missingImageCount(entry)} image
                       {missingImageCount(entry) === 1 ? "" : "s"} dropped
                     </span>
@@ -177,7 +177,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                       ))}
                     </span>
                   ) : null}
-                  <span className="shrink-0 text-secondary-label text-xs max-sm:hidden">
+                  <span className="shrink-0 text-secondary-label text-caption max-sm:hidden">
                     {formatRelativeTimeLabel(entry.createdAt)}
                   </span>
                   <Button

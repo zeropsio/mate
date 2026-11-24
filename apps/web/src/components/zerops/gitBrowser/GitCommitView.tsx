@@ -65,16 +65,16 @@ export function GitCommitSummary({
       <header className="flex min-w-0 flex-col gap-2">
         <h2 className="text-base font-medium break-words text-foreground">{commit.subject}</h2>
         {commit.body === "" ? null : (
-          <p className="text-sm break-words whitespace-pre-wrap text-muted-foreground">
+          <p className="text-body break-words whitespace-pre-wrap text-muted-foreground">
             {commit.body}
           </p>
         )}
         {commit.messageCut ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             The message is longer than 64 KiB. Its end is not shown.
           </p>
         ) : null}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
           <span>
             <span className="text-foreground">{commit.authorName}</span>
             {" · "}
@@ -122,7 +122,7 @@ export function GitCommitSummary({
           )}
         </div>
         {commit.parents.length > 1 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Showing what it brought against its first parent.
           </p>
         ) : null}
@@ -197,7 +197,7 @@ function PageState({
   if (view.state === "known") return null;
   if (view.state === "unread")
     return (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Reading the {what}…
       </p>
     );

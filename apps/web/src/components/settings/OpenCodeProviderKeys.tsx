@@ -129,7 +129,7 @@ function OpenCodeFreeModelsRow({
   return (
     <div className="grid gap-1" data-opencode-free data-free-chosen={shownChosen}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        <p className="min-w-0 text-xs leading-4">
+        <p className="min-w-0 text-caption leading-4">
           <span className="font-medium text-foreground">Free models</span>
           <span className="text-muted-foreground"> · {shownChosen ? "in use" : "no key"}</span>
         </p>
@@ -157,12 +157,12 @@ function OpenCodeFreeModelsRow({
           </Button>
         )}
       </div>
-      <p className="text-xs leading-4 text-muted-foreground">
+      <p className="text-caption leading-4 text-muted-foreground">
         {shownChosen
           ? `New conversations start on ${modelName}. Nothing is billed.`
           : `Runs OpenCode on its free models, ${modelName} first. Nothing is billed.`}
       </p>
-      {error === null ? null : <p className="text-xs leading-4 text-destructive">{error}</p>}
+      {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
     </div>
   );
 }
@@ -252,7 +252,7 @@ export function OpenCodeProviderKeyRow({
   return (
     <div className="grid gap-1" data-opencode-key={provider.id} data-key-set={shownSet}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        <p className="min-w-0 text-xs leading-4">
+        <p className="min-w-0 text-caption leading-4">
           <span className="font-medium text-foreground">{provider.name}</span>
           <span className="text-muted-foreground"> · {shownSet ? "key set" : "no key"}</span>
         </p>
@@ -297,11 +297,11 @@ export function OpenCodeProviderKeyRow({
         )}
       </div>
       {shownSet ? null : (
-        <p className="text-xs leading-4 text-muted-foreground">
+        <p className="text-caption leading-4 text-muted-foreground">
           Runs OpenCode on {provider.models}, billed to your key.
         </p>
       )}
-      {error === null ? null : <p className="text-xs leading-4 text-destructive">{error}</p>}
+      {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
     </div>
   );
 }

@@ -584,7 +584,7 @@ export const ChatHeader = memo(function ChatHeader({
         autoFocus
         aria-label="Thread title"
         className={cn(
-          "min-w-0 flex-1 text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring",
+          "min-w-0 flex-1 text-body font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring",
           over ? "h-8 rounded-lg bg-background px-2" : "rounded-sm bg-transparent",
         )}
         defaultValue={renamingTitle}

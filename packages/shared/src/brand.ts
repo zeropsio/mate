@@ -600,7 +600,7 @@ export const RADII = {
  */
 export const TYPE_SCALE = {
   caption: { fontSize: 12, lineHeight: 16 },
-  body: { fontSize: 13, lineHeight: 20 },
+  body: { fontSize: 14, lineHeight: 20 },
   emphasis: { fontSize: 15, lineHeight: 24 },
   title: { fontSize: 20, lineHeight: 28 },
   display: { fontSize: 28, lineHeight: 36 },

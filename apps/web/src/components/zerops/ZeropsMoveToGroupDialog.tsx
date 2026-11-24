@@ -110,7 +110,7 @@ export function ZeropsMoveToGroupForm({
           </div>
         ) : null}
         <div className="space-y-2">
-          <span className="text-sm">Project</span>
+          <span className="text-body">Project</span>
           <RadioGroup
             aria-label="Project"
             className="gap-2"
@@ -162,7 +162,7 @@ export function ZeropsMoveToGroupForm({
 
         {target === "none" ? null : (
           <div className="space-y-2">
-            <span className="text-sm">Role</span>
+            <span className="text-body">Role</span>
             <RadioGroup
               aria-label="Role"
               className="flex-row flex-wrap gap-2"
@@ -190,17 +190,17 @@ export function ZeropsMoveToGroupForm({
               entry.appId === target || !choices.apps.some((app) => app.id === entry.appId),
           )
           .map((entry) => (
-            <p key={`${entry.appId}:${entry.role}`} className="text-sm">
+            <p key={`${entry.appId}:${entry.role}`} className="text-body">
               {entry.appName} · {environmentRoleLabel(entry.role)}:{" "}
               {hqRefusalWords({ code: "forbidden", reason: entry.reason })}
             </p>
           ))}
-        <p className="text-sm">
+        <p className="text-body">
           Move changes placement within this HQ and organization. Moving a container to another HQ
           or organization is not supported.
         </p>
         {membership !== undefined ? (
-          <div className="space-y-2 text-sm" data-zerops-surface="move-review">
+          <div className="space-y-2 text-body" data-zerops-surface="move-review">
             <p>
               {target === "none"
                 ? `${name} leaves its project and remains available as an ungrouped Mate.`
@@ -230,7 +230,7 @@ export function ZeropsMoveToGroupForm({
             ) : null}
           </div>
         ) : null}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           Moves across HQs, organizations or physical environments are not supported. Move changes
           placement within this HQ; it cannot migrate files or credentials.
         </p>
@@ -276,7 +276,7 @@ function Choice({
 
 function FieldError({ children }: { readonly children: string }) {
   return (
-    <p className="text-xs text-status-failed-text" role="alert">
+    <p className="text-caption text-status-failed-text" role="alert">
       {children}
     </p>
   );

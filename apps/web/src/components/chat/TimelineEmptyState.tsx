@@ -26,7 +26,7 @@ export function TimelineEmptyState({
   if (whoLivesHere.kind === "nobody") {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
+        <p className="text-placeholder text-body">Send a message to start the conversation.</p>
       </div>
     );
   }

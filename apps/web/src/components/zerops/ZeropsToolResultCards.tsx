@@ -191,7 +191,7 @@ export function ZeropsReadResultBody({
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
 }) {
   return (
-    <div className="space-y-2 text-xs leading-relaxed" data-zerops-read-body={readResult.kind}>
+    <div className="space-y-2 text-caption leading-relaxed" data-zerops-read-body={readResult.kind}>
       {readResult.kind === "logs" ? (
         <LogsBody readResult={readResult} />
       ) : readResult.kind === "events" ? (

@@ -667,8 +667,8 @@ function BackgroundActivityAdvancedDialog({
           <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Shared policy</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Shared policy</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Controls whether background work may run after a subscribed interval fires.
                 </p>
               </div>
@@ -705,8 +705,8 @@ function BackgroundActivityAdvancedDialog({
 
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Git fetch interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Git fetch interval</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Refresh remote branch status in the background.
                 </p>
               </div>
@@ -737,14 +737,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase Git fetch interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Provider health interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Provider health interval</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Refresh provider availability, versions, auth state, and model metadata.
                 </p>
               </div>
@@ -775,14 +775,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase provider health interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Host power monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Host power monitor</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Poll host power state while clients are active.
                 </p>
               </div>
@@ -813,14 +813,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase active host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Idle host monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Idle host monitor</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Poll host power state when no foreground client is active.
                 </p>
               </div>
@@ -851,7 +851,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase idle host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
@@ -861,7 +861,7 @@ function BackgroundActivityAdvancedDialog({
                   key={key}
                   className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0 sm:border-r sm:even:border-r-0"
                 >
-                  <span className="text-sm font-medium">{label}</span>
+                  <span className="text-body font-medium">{label}</span>
                   <Switch
                     checked={resolvedBackgroundActivity[key]}
                     onCheckedChange={(checked) =>
@@ -970,7 +970,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="appearance-contrast"
               >
                 {settings.appearanceContrast}%
@@ -1016,7 +1016,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="glass-opacity"
               >
                 {settings.glassOpacity}%
@@ -1402,7 +1402,7 @@ function TypographySection() {
     <SettingsSection
       title="Typography"
       headerAction={
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground">
+        <label className="flex cursor-pointer items-center gap-2 text-caption font-medium text-muted-foreground">
           Advanced
           <Switch
             checked={advanced}
@@ -2452,7 +2452,7 @@ export function GeneralSettingsPanel() {
           }
           control={
             !hasTextGenerationProvider ? (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-body text-muted-foreground">
                 No text generation providers available.
               </span>
             ) : (
@@ -2640,7 +2640,7 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
-      <p className="text-xs text-muted-foreground max-sm:px-3">
+      <p className="text-caption text-muted-foreground max-sm:px-3">
         Only Mates the app is connected to.
       </p>
       {archivedGroups.length === 0 ? (

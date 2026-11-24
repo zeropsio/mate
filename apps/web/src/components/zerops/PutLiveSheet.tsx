@@ -164,12 +164,12 @@ export function PutLiveSheet({
           </li>
         </ol>
         {model.later === undefined ? null : (
-          <p className="text-muted-foreground text-xs">{model.later}</p>
+          <p className="text-muted-foreground text-caption">{model.later}</p>
         )}
       </DialogPanel>
       <DialogFooter>
         {model.hold === undefined && model.refused === undefined ? null : (
-          <p className="me-auto self-center text-muted-foreground text-sm" role="status">
+          <p className="me-auto self-center text-muted-foreground text-body" role="status">
             {model.hold ?? model.refused}
           </p>
         )}

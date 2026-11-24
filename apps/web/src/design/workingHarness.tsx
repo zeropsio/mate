@@ -963,7 +963,7 @@ function StandupStates() {
           const operation = standupOp(`op:standup-${index}`, state.subject);
           return (
             <div className="grid gap-1" data-standup-state={state.label} key={operation.key}>
-              <p className="text-muted-foreground text-xs">{state.label}</p>
+              <p className="text-muted-foreground text-caption">{state.label}</p>
               <Card>
                 <RunChat
                   row={record({
@@ -1006,7 +1006,7 @@ function RelayedStandup() {
   };
   return (
     <div className="grid gap-1" data-standup-state="Relayed by its Mate">
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-caption">
         Relayed by its Mate, from Zerops Control Plane's status file
       </p>
       <Card>
@@ -1041,8 +1041,8 @@ function State({
   return (
     <section className="grid gap-2" data-harness-state={label}>
       <div>
-        <h2 className="font-medium text-foreground text-sm">{label}</h2>
-        <p className="text-muted-foreground text-xs">{caption}</p>
+        <h2 className="font-medium text-foreground text-body">{label}</h2>
+        <p className="text-muted-foreground text-caption">{caption}</p>
       </div>
       {children}
     </section>

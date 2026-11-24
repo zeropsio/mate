@@ -26,7 +26,7 @@ export function ListingNotice({
     >
       <span
         className={cn(
-          "text-xs",
+          "text-caption",
           message.tone === "alert" ? "text-status-failed-text" : "text-sidebar-muted-foreground",
         )}
       >
@@ -34,7 +34,7 @@ export function ListingNotice({
       </span>
       {affordance === null || onAct === undefined ? null : (
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={() => onAct(affordance)}
           type="button"
         >

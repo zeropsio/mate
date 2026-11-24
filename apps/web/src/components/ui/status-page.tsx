@@ -41,9 +41,9 @@ function StatusPage({
             {mark}
           </div>
         )}
-        <h1 className="m-0 text-balance font-semibold text-foreground text-xl">{title}</h1>
+        <h1 className="m-0 text-balance font-semibold text-foreground text-title">{title}</h1>
         {children === undefined || children === null ? null : (
-          <div className="flex w-full flex-col items-center gap-3 text-balance text-muted-foreground text-sm">
+          <div className="flex w-full flex-col items-center gap-3 text-balance text-muted-foreground text-body">
             {children}
           </div>
         )}

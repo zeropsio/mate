@@ -69,7 +69,7 @@ export function QueuedMessageTimelineRow({
           />
         ) : null}
         {attachmentCount > 0 || contextCount > 0 ? (
-          <div className={cn("text-secondary-label text-xs", text.length > 0 && "mt-1.5")}>
+          <div className={cn("text-secondary-label text-caption", text.length > 0 && "mt-1.5")}>
             {[
               attachmentCount > 0
                 ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
@@ -82,7 +82,7 @@ export function QueuedMessageTimelineRow({
               .join(", ")}
           </div>
         ) : null}
-        <div className="mt-2 flex items-center gap-4 text-secondary-label text-xs">
+        <div className="mt-2 flex items-center gap-4 text-secondary-label text-caption">
           {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
           {state.line === null ? (
             <Tooltip>
@@ -331,10 +331,12 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
             />
           </span>
         ) : null}
-        <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex shrink-0 items-center pb-1 text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
           <div className="flex shrink-0 items-center gap-2">
             <Tooltip>
-              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+              <TooltipTrigger
+                render={<p className="text-muted-foreground text-caption tabular-nums" />}
+              >
                 {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
               </TooltipTrigger>
               <TooltipPopup>
@@ -469,12 +471,14 @@ function MateProse({
       </div>
       {showMeta ? (
         <div
-          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
+          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
           data-mate-prose-actions
         >
           {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
           <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+            <TooltipTrigger
+              render={<p className="text-muted-foreground text-caption tabular-nums" />}
+            >
               {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
             </TooltipTrigger>
             <TooltipPopup>

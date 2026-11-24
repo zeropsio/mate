@@ -1253,9 +1253,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-sidebar-muted-foreground">No Mate yet</span>
+        <span className="text-caption text-sidebar-muted-foreground">No Mate yet</span>
         <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-caption font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
           type="button"
         >
@@ -2600,7 +2600,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       ref={treeRef}
     >
       {structureView.updateRequired ? (
-        <div className="px-4 pb-3 text-xs text-sidebar-muted-foreground" role="status">
+        <div className="px-4 pb-3 text-caption text-sidebar-muted-foreground" role="status">
           HQ needs an update to show all navigation facts.
         </div>
       ) : null}
@@ -2673,7 +2673,7 @@ export function SidebarAccountLine({
 }) {
   return (
     <div
-      className="flex h-10 shrink-0 items-center gap-1 ps-4 pe-2 py-1 text-xs text-sidebar-muted-foreground"
+      className="flex h-10 shrink-0 items-center gap-1 ps-4 pe-2 py-1 text-caption text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
@@ -2815,7 +2815,7 @@ export function SidebarHqStatus({
           {kind === "syncing" ? null : (
             <span
               aria-hidden="true"
-              className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
+              className="line-clamp-2 text-left text-caption leading-tight text-sidebar-muted-foreground"
             >
               {line}
             </span>
@@ -4243,7 +4243,7 @@ function MateRowView<T extends RosterCandidate>({
       {outsideHq || retainedReply === undefined ? null : (
         <span className="absolute end-2 bottom-2.5">
           <a
-            className="shrink-0 text-xs text-muted-foreground underline"
+            className="shrink-0 text-caption text-muted-foreground underline"
             href={zeropsProjectUrl(candidate.project.id)}
             target="_blank"
             rel="noreferrer"

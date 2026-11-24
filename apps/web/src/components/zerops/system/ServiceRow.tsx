@@ -79,7 +79,7 @@ export function ServiceRow({
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
             {/* Its hostname, a real thing's own name: the mono face (`.real-name`). */}
-            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+            <span className="min-w-0 truncate text-body font-medium text-foreground">
               <span className="real-name">{row.hostname}</span>
             </span>
             {kind === undefined || kind === "" ? null : (

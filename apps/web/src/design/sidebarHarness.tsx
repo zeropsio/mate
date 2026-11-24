@@ -1947,7 +1947,7 @@ function ConversationPane({ open }: { readonly open: string }) {
         </div>
       </WorkspacePageHeader>
       <div className="flex justify-center p-10">
-        <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
+        <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
       </div>
     </main>
   );

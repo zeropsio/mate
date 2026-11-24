@@ -168,7 +168,7 @@ export function VaultRow(props: VaultRowProps) {
           <span className="truncate text-line text-foreground max-sm:max-w-full">
             {props.label}
           </span>
-          <code className="min-w-0 truncate font-mono text-2xs text-muted-foreground max-sm:max-w-full max-sm:text-xs">
+          <code className="min-w-0 truncate font-mono text-2xs text-muted-foreground max-sm:max-w-full max-sm:text-caption">
             {value.key}
           </code>
         </span>
@@ -211,7 +211,7 @@ export function VaultRow(props: VaultRowProps) {
       </button>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
-          className="px-3.5 pb-2.5 -mt-1 text-xs leading-4 text-muted-foreground"
+          className="px-3.5 pb-2.5 -mt-1 text-caption leading-4 text-muted-foreground"
           data-vault-impact
         >
           {activity.line}
@@ -403,7 +403,7 @@ function RowBody(props: VaultRowProps) {
         </Button>
       </div>
 
-      <div className="grid gap-1 text-xs leading-4.5 text-muted-foreground" data-vault-readers>
+      <div className="grid gap-1 text-caption leading-4.5 text-muted-foreground" data-vault-readers>
         {value.sensitive ? (
           <p className="flex items-center gap-1.5">
             <LockIcon aria-hidden="true" className="size-3 shrink-0" />
@@ -603,12 +603,12 @@ function VaultManagedRow({
         <CopyReference text={reference} />
       </span>
       {refusal === null ? null : (
-        <p className="w-full pb-1.5 text-xs text-destructive-foreground" role="alert">
+        <p className="w-full pb-1.5 text-caption text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
       {stepUp ? (
-        <div className="w-full pb-1.5 text-xs text-muted-foreground">
+        <div className="w-full pb-1.5 text-caption text-muted-foreground">
           <VaultStepUp onConfirmed={() => void show()} />
         </div>
       ) : null}

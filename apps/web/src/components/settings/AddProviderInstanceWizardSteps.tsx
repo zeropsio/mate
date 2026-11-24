@@ -46,7 +46,7 @@ export function AddProviderInstanceWizardSteps({
           >
             <span
               className={cn(
-                "grid size-5 shrink-0 place-items-center rounded-full text-sm font-medium ring-1",
+                "grid size-5 shrink-0 place-items-center rounded-full text-body font-medium ring-1",
                 index < currentStep
                   ? "bg-primary text-primary-foreground ring-primary"
                   : index === currentStep
@@ -59,7 +59,7 @@ export function AddProviderInstanceWizardSteps({
             </span>
             <span
               className={cn(
-                "min-w-0 truncate text-sm font-medium max-sm:hidden",
+                "min-w-0 truncate text-body font-medium max-sm:hidden",
                 index === currentStep ? "text-foreground" : "text-muted-foreground",
               )}
             >

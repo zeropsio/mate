@@ -40,7 +40,7 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
         <OpenCodeIcon className="size-4" />
       </span>
       <div className="grid min-w-0 flex-1 gap-1">
-        <span className="text-sm leading-5 font-medium text-foreground">OpenCode</span>
+        <span className="text-body leading-5 font-medium text-foreground">OpenCode</span>
         <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
       </div>
     </div>

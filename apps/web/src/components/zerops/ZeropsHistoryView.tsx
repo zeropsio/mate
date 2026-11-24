@@ -107,7 +107,7 @@ export function ZeropsHistoryView({
         ))}
       </ul>
       {earlier === undefined ? null : (
-        <p className="py-2 pl-7.5 text-xs text-muted-foreground">{earlier}</p>
+        <p className="py-2 pl-7.5 text-caption text-muted-foreground">{earlier}</p>
       )}
     </>
   );
@@ -167,12 +167,12 @@ function HistoryRow({
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
         <span className="flex min-w-0 items-baseline gap-2">
           {onOpenChange === undefined || change === null ? (
-            <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">
+            <span className="min-w-0 flex-1 truncate text-body leading-5 font-medium">
               {entry.subject}
             </span>
           ) : (
             <button
-              className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-sm leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+              className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-body leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
               onClick={(event) => {
                 onOpenChange(change, event.currentTarget);
               }}
@@ -218,14 +218,14 @@ function HistoryRow({
           </span>
         </span>
         {runsHere ? (
-          <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2 text-caption leading-4 text-muted-foreground">
             <Badge className="shrink-0" dot tone="success">
               {RUNNING_HERE}
             </Badge>
             {line === undefined ? null : <span className="truncate">{line}</span>}
           </span>
         ) : line === undefined ? null : (
-          <span className="truncate text-xs leading-4 text-muted-foreground">{line}</span>
+          <span className="truncate text-caption leading-4 text-muted-foreground">{line}</span>
         )}
       </span>
     </li>
@@ -233,5 +233,5 @@ function HistoryRow({
 }
 
 function HistoryNote({ children }: { readonly children: React.ReactNode }) {
-  return <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
+  return <p className="py-6 text-center text-body text-muted-foreground">{children}</p>;
 }

@@ -152,10 +152,10 @@ export function ZeropsAgentAuthCard({
   return (
     <Card className="@container overflow-hidden" data-zerops-agent-auth-card variant="flat">
       <header className="border-b border-border/60 px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-foreground">
+        <h3 className="text-body font-semibold text-foreground">
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
         </h3>
-        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
+        <p className="mt-0.5 text-caption leading-4 text-muted-foreground">
           {/* Signed in, its row says it: the header only says whose access it is. */}
           {ownSignedIn
             ? "Access is shared by this project."
@@ -440,7 +440,7 @@ function ZeropsAgentAuthRows({
       {offers.map((agent) => (
         <p
           key={agent.agentId}
-          className="flex flex-wrap items-center gap-x-2 px-4 py-2 text-xs leading-4 text-muted-foreground"
+          className="flex flex-wrap items-center gap-x-2 px-4 py-2 text-caption leading-4 text-muted-foreground"
           data-agent-id={agent.agentId}
           data-zerops-agent-offer
         >
@@ -495,7 +495,7 @@ function ZeropsAgentAuthRow({
 
   return (
     <div
-      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm @sm:flex-row @sm:items-center @sm:justify-between"
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-body @sm:flex-row @sm:items-center @sm:justify-between"
       data-agent-id={agent.agentId}
       data-agent-state={agent.state}
       data-agent-login-phase={login.kind}
@@ -512,7 +512,7 @@ function ZeropsAgentAuthRow({
               {status.label}
             </Badge>
             {label === status.label ? null : (
-              <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
+              <span className="min-w-0 text-caption leading-4 text-muted-foreground">{label}</span>
             )}
           </div>
           {/* A check that holds says nothing a clock adds; one that did not, when it ran. */}
@@ -528,8 +528,8 @@ function ZeropsAgentAuthRow({
           <p
             className={
               agentOwnershipNeedsAttention(ownership)
-                ? "text-xs leading-4 text-warning"
-                : "text-xs leading-4 text-muted-foreground"
+                ? "text-caption leading-4 text-warning"
+                : "text-caption leading-4 text-muted-foreground"
             }
             data-zerops-agent-ownership={ownership}
           >
@@ -538,7 +538,7 @@ function ZeropsAgentAuthRow({
         )}
         {agent.verification?.reason === undefined &&
         agent.registration?.reason === undefined ? null : (
-          <p className="text-xs leading-4 text-destructive">
+          <p className="text-caption leading-4 text-destructive">
             {agent.verification?.reason ?? agent.registration?.reason}
           </p>
         )}
@@ -572,7 +572,7 @@ function AuthCheckedAt({ at }: { readonly at: number | undefined }) {
   if (at === undefined) return null;
   const iso = new Date(at).toISOString();
   return (
-    <p className="text-xs leading-4 text-muted-foreground">
+    <p className="text-caption leading-4 text-muted-foreground">
       Last checked <time dateTime={iso}>{formatTimestamp(iso, "locale")}</time>
     </p>
   );
@@ -586,7 +586,7 @@ function RunsOnLine({
 }) {
   if (runsOn === undefined || runsOn.crewmates.length === 0) return null;
   return (
-    <p className="mt-0.5 text-xs leading-4 text-muted-foreground" data-zerops-login-crewmates>
+    <p className="mt-0.5 text-caption leading-4 text-muted-foreground" data-zerops-login-crewmates>
       {crewLoginRunsWord(runsOn.crewmates, runsOn.lead)}
     </p>
   );
@@ -671,7 +671,7 @@ function ZeropsLoginRow({
 
   return (
     <div
-      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-sm @sm:flex-row @sm:items-center @sm:justify-between"
+      className="flex flex-col items-stretch gap-2.5 px-4 py-2.5 text-body @sm:flex-row @sm:items-center @sm:justify-between"
       data-login-id={login.id}
       data-login-state={login.state}
       data-zerops-login-row
@@ -685,7 +685,7 @@ function ZeropsLoginRow({
               {presentation.label}
             </Badge>
             {signer === presentation.label ? null : (
-              <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
+              <span className="min-w-0 text-caption leading-4 text-muted-foreground">{signer}</span>
             )}
           </div>
           <AuthCheckedAt at={login.verification?.checkedAt} />
@@ -694,7 +694,7 @@ function ZeropsLoginRow({
       </div>
       <div className="flex min-w-0 flex-col items-start gap-1.5 ps-11 @sm:items-end @sm:ps-0">
         {someoneElses && signedIn ? (
-          <p className="text-xs leading-4 text-muted-foreground">
+          <p className="text-caption leading-4 text-muted-foreground">
             {signerName.trim().length === 0
               ? "Only their crews can use it."
               : `Only ${signerName.trim()}'s crews can use it.`}
@@ -788,11 +788,11 @@ function ZeropsLoginRow({
           )}
         </div>
         {login.verification?.reason === undefined ? null : (
-          <p className="text-xs leading-4 text-destructive">{login.verification.reason}</p>
+          <p className="text-caption leading-4 text-destructive">{login.verification.reason}</p>
         )}
         {status?.error === undefined ? null : (
           <p
-            className="w-full text-xs leading-4 text-destructive @sm:text-right"
+            className="w-full text-caption leading-4 text-destructive @sm:text-right"
             data-zerops-login-error
           >
             {status.error}
@@ -841,7 +841,7 @@ function AddLoginControl({
           + Add another login
         </Button>
         {error === undefined ? null : (
-          <p className="ps-1.5 text-xs leading-4 text-destructive">{error}</p>
+          <p className="ps-1.5 text-caption leading-4 text-destructive">{error}</p>
         )}
       </div>
     );
@@ -1149,7 +1149,9 @@ function ZeropsAgentAuthActionButton({
   if (action !== "none") return null;
 
   if (agent.state === "authorized-token") {
-    return <p className="text-xs leading-4 text-muted-foreground">Authorized by a project token</p>;
+    return (
+      <p className="text-caption leading-4 text-muted-foreground">Authorized by a project token</p>
+    );
   }
 
   if (ownership !== "mine" && ownership !== "someone-else" && ownership !== "unrecorded") {
@@ -1185,7 +1187,7 @@ function ZeropsAgentAuthActionButton({
       ) : null}
       {signOutError === undefined ? null : (
         <p
-          className="w-full text-xs leading-4 text-destructive @sm:text-right"
+          className="w-full text-caption leading-4 text-destructive @sm:text-right"
           data-zerops-agent-sign-out-error
         >
           {signOutError}

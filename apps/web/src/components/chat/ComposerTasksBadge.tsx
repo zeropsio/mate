@@ -122,7 +122,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
   return (
     <div
       className={cn(
-        "chat-composer-shoulder-tab absolute -top-7 left-4 z-0 flex h-8 items-center gap-1 rounded-t-xl border border-b-0 px-2 pb-1 text-xs leading-none text-muted-foreground",
+        "chat-composer-shoulder-tab absolute -top-7 left-4 z-0 flex h-8 items-center gap-1 rounded-t-xl border border-b-0 px-2 pb-1 text-caption leading-none text-muted-foreground",
         hasTrailingShoulder ? "right-28" : "right-4",
         allDone && "text-foreground",
       )}
@@ -185,7 +185,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
         <button
           type="button"
           aria-expanded="true"
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-left text-xs text-muted-foreground hover:text-foreground"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 self-stretch text-left text-caption text-muted-foreground hover:text-foreground"
           onClick={onCollapse}
           onPointerDown={(event) => event.preventDefault()}
         >
@@ -208,7 +208,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
       </div>
       <div className="space-y-px px-3 pb-4 sm:px-4" role="list">
         {keyedTaskSteps(steps).map(({ key, step }) => (
-          <div key={key} className="flex items-start gap-2 text-xs leading-5" role="listitem">
+          <div key={key} className="flex items-start gap-2 text-caption leading-5" role="listitem">
             <span
               aria-hidden
               className={cn(
@@ -242,7 +242,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
               {step.step}
             </span>
             <span
-              className="ml-auto w-12 shrink-0 text-right text-xs text-muted-foreground/45 tabular-nums"
+              className="ml-auto w-12 shrink-0 text-right text-caption text-muted-foreground/45 tabular-nums"
               data-composer-task-duration="true"
             >
               {step.durationMs !== undefined

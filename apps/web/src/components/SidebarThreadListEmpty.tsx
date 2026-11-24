@@ -12,7 +12,7 @@ export function SidebarThreadListEmpty({
   scopedProjectGroup: { readonly displayName: string } | null;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
+    <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-caption text-muted-foreground/60">
       {projectGroups.length === 0 ? (
         <>
           <span>No projects yet</span>
@@ -42,7 +42,7 @@ export function SidebarThreadSearchEmpty({
   threadSearch: { readonly isPending: boolean; readonly incomplete: boolean };
 }) {
   return (
-    <p role="status" className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
+    <p role="status" className="px-2 py-6 text-center text-caption text-sidebar-muted-foreground">
       {threadSearch.isPending
         ? "Searching thread messages…"
         : threadSearch.incomplete

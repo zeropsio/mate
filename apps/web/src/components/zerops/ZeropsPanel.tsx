@@ -153,7 +153,7 @@ export function ZeropsPanel({
     ) ?? false;
   const agents =
     mateIdentity?.automated === true ? (
-      <p className="text-sm text-muted-foreground" data-zerops-surface="automated-mate-agents">
+      <p className="text-body text-muted-foreground" data-zerops-surface="automated-mate-agents">
         {automatedAgentsLine(mateIdentity.name, automatedKey)}
       </p>
     ) : agentAuthCard === null ? (
@@ -319,7 +319,7 @@ export function ZeropsPanel({
  */
 export function ZeropsPanelPlaceholder() {
   return (
-    <p className="text-muted-foreground text-sm" data-zerops-panel-placeholder>
+    <p className="text-muted-foreground text-body" data-zerops-panel-placeholder>
       Reading the project…
     </p>
   );
@@ -330,7 +330,7 @@ function ZeropsAgentAuthUnknown({ message }: { readonly message: KnownMessage })
   return (
     <p
       className={cn(
-        "text-muted-foreground text-sm",
+        "text-muted-foreground text-body",
         // A placeholder waits a beat before it says anything, so a quick
         // answer never flickers "Checking…".
         message.afterMs > 0 && "animate-zerops-appear",

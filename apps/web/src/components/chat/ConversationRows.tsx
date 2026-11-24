@@ -169,7 +169,7 @@ const unconfirmedWords = (name: string) => `${name} hasn't confirmed this messag
 export function UnconfirmedMessageLine({ speakerName }: { readonly speakerName: string }) {
   return (
     <p
-      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-xs"
+      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-caption"
       data-unconfirmed-message-line=""
     >
       {unconfirmedWords(speakerName)}
@@ -194,7 +194,7 @@ export function HeldMessageLine({
 }) {
   return (
     <p
-      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-xs"
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-caption"
       data-held-message-line=""
     >
       <span>
@@ -260,7 +260,7 @@ export function Seam({
     <div
       aria-label={label}
       className={cn(
-        "flex items-center gap-3 text-xs",
+        "flex items-center gap-3 text-caption",
         fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
       )}
       data-seam={row.seam}
@@ -869,7 +869,7 @@ export function PauseBlock({
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger
-              render={<span className="shrink-0 text-muted-foreground text-xs tabular-nums" />}
+              render={<span className="shrink-0 text-muted-foreground text-caption tabular-nums" />}
             >
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>

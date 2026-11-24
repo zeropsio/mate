@@ -231,7 +231,7 @@ function UserMessageWords(props: UserMessageBodyProps) {
         }
 
         return (
-          <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-sm leading-relaxed">
+          <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-body leading-relaxed">
             {inlineNodes}
           </div>
         );
@@ -272,7 +272,7 @@ function UserMessageWords(props: UserMessageBodyProps) {
     }
 
     return (
-      <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-sm leading-relaxed">
+      <div className="whitespace-pre-wrap wrap-break-word text-message-foreground text-body leading-relaxed">
         {inlineNodes}
       </div>
     );
@@ -304,7 +304,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   return (
     <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
       <div className="space-y-1">
-        <div className="text-message-foreground text-xs font-medium">
+        <div className="text-message-foreground text-caption font-medium">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
         </div>
         <div className="text-secondary-label text-2xs">
@@ -312,7 +312,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
         </div>
       </div>
       {comment.text.length > 0 && (
-        <div className="whitespace-pre-wrap wrap-break-word text-sm">
+        <div className="whitespace-pre-wrap wrap-break-word text-body">
           <SkillInlineText text={comment.text} skills={ctx.skills} />
         </div>
       )}

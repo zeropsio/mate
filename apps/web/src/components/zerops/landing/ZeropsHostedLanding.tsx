@@ -47,7 +47,7 @@ export function ZeropsHostedLanding() {
           </Button>
         </div>
         {/* A background retry speaks here, in room the line always holds: nothing moves. */}
-        <p className="min-h-4 text-center text-xs text-muted-foreground" aria-live="polite">
+        <p className="min-h-4 text-center text-caption text-muted-foreground" aria-live="polite">
           {retrying === true ? "Trying again…" : null}
         </p>
       </ZeropsLandingShell>
@@ -102,7 +102,7 @@ function ZeropsHqSignInState({
     case "unreachable":
       return (
         <div className="space-y-4 text-center">
-          <p className="text-sm font-medium" role="alert">
+          <p className="text-body font-medium" role="alert">
             Can't reach Zerops HQ.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
@@ -119,7 +119,7 @@ function ZeropsHqSignInState({
     case "failed":
       return (
         <div className="space-y-4 text-center">
-          <p className="text-sm" role="alert">
+          <p className="text-body" role="alert">
             {prompt.failure}
           </p>
           <Button onClick={prompts.retry}>Try again</Button>

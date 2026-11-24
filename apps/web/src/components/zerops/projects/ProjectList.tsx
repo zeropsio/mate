@@ -101,7 +101,7 @@ export function OtherContainers<T>({
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
           <button
             aria-expanded={open}
-            className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-md ps-1 pe-1.5 text-sm font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-md ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => setOpen((current) => !current)}
             type="button"
           >
@@ -120,7 +120,7 @@ export function OtherContainers<T>({
             </span>
           </button>
           {/* A narrow container has room for a cut "Not in a…" only: the summary waits for width. */}
-          <span className="hidden min-w-0 flex-1 truncate text-xs text-muted-foreground @2xl/flow:block">
+          <span className="hidden min-w-0 flex-1 truncate text-caption text-muted-foreground @2xl/flow:block">
             {summary.line}
           </span>
           {summary.retry > 0 ? (

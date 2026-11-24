@@ -80,17 +80,17 @@ function SidebarUpdateReleaseNotesTooltip({
       <div className="px-1">
         {state.status === "available" ? (
           <div>
-            <div className="whitespace-nowrap text-sm leading-5 font-medium">
+            <div className="whitespace-nowrap text-body leading-5 font-medium">
               Update ready to download
             </div>
             {state.availableVersion ? (
-              <div className="mt-0.5 text-xs leading-4 text-update-foreground">
+              <div className="mt-0.5 text-caption leading-4 text-update-foreground">
                 {state.availableVersion}
               </div>
             ) : null}
           </div>
         ) : (
-          <div className="text-sm leading-5 font-medium">{tooltip}</div>
+          <div className="text-body leading-5 font-medium">{tooltip}</div>
         )}
       </div>
       <div className="max-h-[min(28rem,calc(100vh-6rem))] overflow-y-auto px-1 pt-4 pb-1">
@@ -98,10 +98,10 @@ function SidebarUpdateReleaseNotesTooltip({
           <div key={releaseNote.version}>
             {index > 0 && <Separator className="my-3 bg-border/60" />}
             <section>
-              <h3 className="text-foreground text-xs leading-4 font-semibold">
+              <h3 className="text-foreground text-caption leading-4 font-semibold">
                 {index === 0 ? "What's changed" : `Changes in ${releaseNote.version}`}
               </h3>
-              <ul className="mt-2 space-y-1.5 pl-4 text-xs leading-5 text-popover-foreground/90">
+              <ul className="mt-2 space-y-1.5 pl-4 text-caption leading-5 text-popover-foreground/90">
                 {keyReleaseNoteItems(releaseNote.items).map(({ item, key }) => (
                   <li className="list-disc break-words" key={key}>
                     {item}

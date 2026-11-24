@@ -328,7 +328,9 @@ function Harness() {
           >
             {LIMITED_PROJECTS.map((project) => (
               <div className="flex h-9 items-center gap-1" key={project.id}>
-                <span className="w-16 text-xs text-sidebar-muted-foreground">{project.name}</span>
+                <span className="w-16 text-caption text-sidebar-muted-foreground">
+                  {project.name}
+                </span>
                 <HeaderReviewDoor
                   held={false}
                   review={{
@@ -342,7 +344,7 @@ function Harness() {
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-2 text-sm">
+        <div className="flex flex-col gap-2 text-body">
           <p>Opened: {opened}</p>
           <div className="flex flex-wrap gap-2">
             <button

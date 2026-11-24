@@ -86,7 +86,7 @@ function BlameRangeRow({
   const previous = commit?.previous;
   return (
     <div
-      className="absolute inset-x-0 flex min-w-0 items-start gap-2 border-t border-border pe-2 text-xs leading-5"
+      className="absolute inset-x-0 flex min-w-0 items-start gap-2 border-t border-border pe-2 text-caption leading-5"
       style={{
         top: metrics.top + (range.start - 1) * metrics.height,
         height: range.count * metrics.height,
@@ -350,7 +350,7 @@ function BlameAt({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="me-auto text-xs text-muted-foreground">
+        <span className="me-auto text-caption text-muted-foreground">
           {answer.content === null || why !== null
             ? fileSize(answer.size)
             : `${lines(lineCount(answer.content))} · ${fileSize(answer.size)}`}
@@ -381,7 +381,7 @@ function BlameAt({
         ) : null}
       </div>
       {why !== null ? (
-        <p className="text-sm text-muted-foreground">{why}</p>
+        <p className="text-body text-muted-foreground">{why}</p>
       ) : blame.view.state !== "known" ? (
         <GitNotRead
           view={blame.view}
@@ -439,7 +439,7 @@ export function GitBlameView(props: GitRepoPageProps) {
                     onOpen={(target) => navigate(at(target))}
                   />
                   {path === "" ? (
-                    <p className="text-sm text-muted-foreground">Open a file to see its blame.</p>
+                    <p className="text-body text-muted-foreground">Open a file to see its blame.</p>
                   ) : (
                     <BlameAt
                       key={`${sha}:${path}`}

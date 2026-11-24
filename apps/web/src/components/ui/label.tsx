@@ -10,7 +10,7 @@ function Label({ className, render, ...props }: useRender.ComponentProps<"label"
     className: cn(
       // A label is read, not typed in: the app's 14 px at every width (only a field needs 16 on a
       // phone, against the zoom).
-      "inline-flex items-center gap-2 text-sm/4 font-medium text-foreground",
+      "inline-flex items-center gap-2 text-body/4 font-medium text-foreground",
       className,
     ),
     "data-slot": "label",

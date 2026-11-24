@@ -340,7 +340,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         <OverviewCardsStandIn />
       ) : (
         <>
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="text-body text-muted-foreground">
             {props.placementNotice}
           </p>
           {props.hqCard}

@@ -23,7 +23,7 @@ export function StateCensus({
   return (
     <div className="flex min-w-0 flex-col gap-8">
       {chosen}
-      <p className="m-0 text-sm">
+      <p className="m-0 text-body">
         <span className="font-medium">Home-made, still in the app:</span> {count}{" "}
         <span className="text-muted-foreground">Kit atom: {atom}.</span>
       </p>
@@ -49,7 +49,7 @@ export function CensusLook({
   return (
     <SpecimenBlock title={`${name} · ${uses}`}>
       <SpecimenGrid>{children}</SpecimenGrid>
-      <details className="text-muted-foreground text-xs">
+      <details className="text-muted-foreground text-caption">
         <summary className="cursor-pointer">{places.length} places</summary>
         <ul className="m-0 mt-1 flex flex-col gap-0.5 ps-4">
           {places.map((place) => (

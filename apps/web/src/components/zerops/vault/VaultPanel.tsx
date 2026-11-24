@@ -671,7 +671,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                         <span className="truncate text-muted-foreground">{words}</span>
                       )}
                       <span className="grow" />
-                      <span className="shrink-0 text-xs text-muted-foreground">
+                      <span className="shrink-0 text-caption text-muted-foreground">
                         {scope.values.length === 1
                           ? "1 value set by Zerops"
                           : `${scope.values.length} values set by Zerops`}

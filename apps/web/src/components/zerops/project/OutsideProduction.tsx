@@ -126,7 +126,7 @@ export function OutsideProductionForm({
                   value={typed}
                 />
                 {/* One line's room, held: what is said here never moves the buttons under it. */}
-                <p className="min-h-5 text-sm text-muted-foreground">
+                <p className="min-h-5 text-body text-muted-foreground">
                   {press.kind === "refused" ? (
                     <span className="text-destructive-foreground" role="alert">
                       {press.words}

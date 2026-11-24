@@ -239,7 +239,7 @@ export function ZeropsDataTable({
           data-zerops-data-table-column-picker
         >
           {model.columns.map((column) => (
-            <label className="flex items-center gap-1 text-xs" key={column.name}>
+            <label className="flex items-center gap-1 text-caption" key={column.name}>
               <input
                 checked={column.pk || !hiddenColumns.has(column.name)}
                 data-zerops-data-table-column-toggle={column.name}
@@ -265,7 +265,7 @@ export function ZeropsDataTable({
             {notice}
           </div>
         ) : (
-          <table className="w-full caption-bottom text-xs" data-slot="table">
+          <table className="w-full caption-bottom text-caption" data-slot="table">
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 {shown.map((column) =>
@@ -343,7 +343,7 @@ export function ZeropsDataTable({
 
       {notice !== undefined ? null : (
         <div
-          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-xs"
+          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-caption"
           data-zerops-data-table-status
         >
           <span className="text-muted-foreground" data-zerops-data-table-loaded>

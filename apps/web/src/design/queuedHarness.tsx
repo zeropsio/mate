@@ -95,7 +95,7 @@ function State({
 }) {
   return (
     <section className="flex flex-col gap-2" data-harness-state={label}>
-      <h2 className="text-muted-foreground text-xs">{label}</h2>
+      <h2 className="text-muted-foreground text-caption">{label}</h2>
       <TimelineRowCtx value={{ ...SHARED, queueBlockedByAnswer: blocked }}>
         <div className="flex flex-col gap-3">{children}</div>
       </TimelineRowCtx>

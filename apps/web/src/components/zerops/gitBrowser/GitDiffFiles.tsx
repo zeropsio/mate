@@ -93,7 +93,7 @@ export function GitChangedFiles({
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <section aria-label="Changed files" className="flex min-w-0 flex-col gap-1">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         {filesTruncated
           ? `Showing ${count(files.length, "file", "files")} of ${totalFiles} changed`
           : `${count(totalFiles, "file", "files")} changed`}
@@ -108,7 +108,7 @@ export function GitChangedFiles({
         {files.map((file) => (
           <li key={file.path}>
             <button
-              className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-caption hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => onJump(file.path)}
               type="button"
             >
@@ -256,7 +256,7 @@ export function GitDiffFiles({
         if (file === undefined) return null;
         const note = fileNote(file, later.get(file.path));
         return (
-          <span className="flex items-center gap-2 font-mono text-xs">
+          <span className="flex items-center gap-2 font-mono text-caption">
             {note.kind === "words" ? (
               <span
                 className="font-sans text-muted-foreground"

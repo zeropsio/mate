@@ -163,7 +163,7 @@ export function PlaceMissingService({
       data-zerops-surface="stop-not-in-zerops"
     >
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm font-semibold text-foreground/85">{hostname}</span>
+        <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
         {answer === undefined ? (
           <span className="truncate text-caption text-muted-foreground">
             {absentWords(byRelease)}

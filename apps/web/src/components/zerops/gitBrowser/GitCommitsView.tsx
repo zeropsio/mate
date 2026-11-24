@@ -78,8 +78,8 @@ export function CommitRow({
   return (
     <div className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="truncate text-sm text-foreground">{item.subject}</p>
-        <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <p className="truncate text-body text-foreground">{item.subject}</p>
+        <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
           <span>{item.authorName}</span>
           <GitWhen at={item.committedAt}>{formatRelativeTimeLabel(item.committedAt)}</GitWhen>
           {change === undefined ? null : (
@@ -100,7 +100,7 @@ export function CommitRow({
           )}
         </p>
       </div>
-      <span className="shrink-0 font-mono text-xs">
+      <span className="shrink-0 font-mono text-caption">
         <RepoLink
           to={{ rev: item.sha, view: "commit" }}
           hrefOf={hrefOf}
@@ -110,7 +110,7 @@ export function CommitRow({
           {item.sha.slice(0, 7)}
         </RepoLink>
       </span>
-      <span className="shrink-0 text-xs">
+      <span className="shrink-0 text-caption">
         <RepoLink to={{ rev: item.sha, view: "code" }} hrefOf={hrefOf} navigate={navigate}>
           Browse files
         </RepoLink>
@@ -136,7 +136,7 @@ function ListEnd({
   if (last === undefined) return null;
   if (last.state === "unread")
     return (
-      <p className="px-4 py-3 text-sm text-muted-foreground" role="status">
+      <p className="px-4 py-3 text-body text-muted-foreground" role="status">
         Reading the history…
       </p>
     );
@@ -157,15 +157,17 @@ function ListEnd({
         </div>
       )}
       {page.next === null && page.addsPath ? (
-        <p className="text-xs text-muted-foreground">History before a rename is not followed.</p>
+        <p className="text-caption text-muted-foreground">
+          History before a rename is not followed.
+        </p>
       ) : null}
       {page.stopped ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           The history shown here stops after 10,000 commits. Clone the repository to read the rest.
         </p>
       ) : null}
       {page.next === null && page.items.length === 0 && path !== "" ? (
-        <p className="text-sm text-muted-foreground">No commits changed {path}.</p>
+        <p className="text-body text-muted-foreground">No commits changed {path}.</p>
       ) : null}
     </div>
   );
@@ -209,7 +211,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   );
   const renderRow = (row: HistoryRow) =>
     row.kind === "day" ? (
-      <h3 className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">{row.day}</h3>
+      <h3 className="px-4 pt-3 pb-1 text-caption font-medium text-muted-foreground">{row.day}</h3>
     ) : (
       <CommitRow {...props} item={row.item} changes={changes} />
     );
@@ -255,7 +257,7 @@ export function GitCommitsView(props: GitRepoPageProps) {
     );
   if (home.state === "unread")
     return (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Reading the repository…
       </p>
     );

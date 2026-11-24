@@ -2352,7 +2352,7 @@ function Pane() {
           />
         </div>
         <p
-          className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-xs tabular-nums"
+          className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-caption tabular-nums"
           data-live-harness-clock
         >
           {SCRIPT} · {seconds.toFixed(1)} s
@@ -2370,11 +2370,11 @@ function Harness() {
         className="flex shrink-0 flex-col gap-1 border-border border-r p-4 max-md:hidden"
         style={{ width: 435 }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">The live card · {SCRIPT}</p>
+        <p className="pb-2 text-muted-foreground text-caption">The live card · {SCRIPT}</p>
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-sm"
+          className="relative bg-background font-medium text-body"
           data-chat-header
         >
           Nova

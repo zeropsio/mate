@@ -290,7 +290,7 @@ export function BrowserStrip({
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-muted-foreground text-xs leading-4">
+          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-muted-foreground text-caption leading-4">
             {caption}
           </span>
         </span>
@@ -326,7 +326,7 @@ export function BrowserStrip({
       {running && onStage === latest ? (
         // Live is busy, never failure: the blue its take pulses in the
         // list. A hairline, not a shadow, keeps it off the page under it.
-        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-xs leading-5">
+        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-caption leading-5">
           <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
           Live
         </span>
@@ -717,7 +717,7 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
     >
       <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
       {device === "desktop" && reason !== null ? (
-        <span className="line-clamp-3 break-words text-status-failed-text text-xs leading-4">
+        <span className="line-clamp-3 break-words text-status-failed-text text-caption leading-4">
           {reason}
         </span>
       ) : null}

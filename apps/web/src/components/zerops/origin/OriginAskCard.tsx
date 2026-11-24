@@ -109,7 +109,7 @@ export function OriginAskCard({ ask, state, mateName, github, onAnswer }: Origin
 function Refusal({ words }: { readonly words: string }) {
   return (
     <p
-      className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
+      className="flex items-center gap-1.5 text-caption leading-4 text-destructive-foreground"
       role="alert"
     >
       <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />

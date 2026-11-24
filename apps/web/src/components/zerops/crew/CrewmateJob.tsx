@@ -261,7 +261,7 @@ function JobForm({
       </CrewViewField>
       {lead ? null : (
         <div className="mt-6 flex flex-col" data-crew-job-does>
-          <span className="font-medium text-sm leading-5">{CREW_JOB_WORDS.does}</span>
+          <span className="font-medium text-body leading-5">{CREW_JOB_WORDS.does}</span>
           <div className="mt-2.5">
             <RadioGroup
               aria-label={CREW_JOB_WORDS.does}
@@ -271,7 +271,7 @@ function JobForm({
               <label className="flex cursor-pointer items-start gap-2.5">
                 <Radio className="mt-0.5" value="builds" />
                 <span className="flex flex-col">
-                  <span className="text-sm">{CREW_JOB_WORDS.builds}</span>
+                  <span className="text-body">{CREW_JOB_WORDS.builds}</span>
                   <span className="text-line leading-4.5 text-muted-foreground">
                     {crewBuildsLine(mateName)}
                   </span>
@@ -280,7 +280,7 @@ function JobForm({
               <label className="flex cursor-pointer items-start gap-2.5">
                 <Radio className="mt-0.5" value="reviews" />
                 <span className="flex flex-col">
-                  <span className="text-sm">{CREW_JOB_WORDS.reviews}</span>
+                  <span className="text-body">{CREW_JOB_WORDS.reviews}</span>
                   <span className="text-line leading-4.5 text-muted-foreground">
                     {CREW_JOB_WORDS.reviewsLine}
                   </span>
@@ -299,7 +299,7 @@ function JobForm({
         type="button"
       >
         <span className="flex min-w-0 flex-col">
-          <span className="font-medium text-sm leading-5">{CREW_JOB_WORDS.more}</span>
+          <span className="font-medium text-body leading-5">{CREW_JOB_WORDS.more}</span>
           {moreOpen ? null : (
             <span className="truncate text-line leading-4.5 text-muted-foreground">
               {crewMoreSummary({

@@ -29,7 +29,7 @@ export function ComposerFoldedAnswerRow({
         <button
           type="button"
           className={cn(
-            "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
+            "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body",
             customAnswer ? "text-foreground" : "text-placeholder",
             !multiSelect && "px-3 py-2",
           )}

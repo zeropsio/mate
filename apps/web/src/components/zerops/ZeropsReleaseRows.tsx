@@ -334,7 +334,7 @@ function ReleaseRow({
                 // A phone reads it whole, on two lines where one cuts it.
                 "max-w-full min-w-0 truncate max-sm:line-clamp-2 max-sm:whitespace-normal",
                 // A step under the title's size, so the mono face reads no larger than a title.
-                description.names === "primary" ? "font-mono text-body" : "text-sm",
+                description.names === "primary" ? "font-mono text-body" : "text-body",
                 // The same changes again are no news: said, and quiet.
                 titled?.kind === "again" ? "text-muted-foreground" : "text-foreground",
               )}

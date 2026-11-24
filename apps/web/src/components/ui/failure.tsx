@@ -20,12 +20,12 @@ function FailureDetails({
   return (
     <Collapsible data-slot="failure-details">
       <div className={align === "end" ? "flex justify-end" : "flex"}>
-        <CollapsibleTrigger className="text-muted-foreground text-xs underline-offset-4 hover:underline">
+        <CollapsibleTrigger className="text-muted-foreground text-caption underline-offset-4 hover:underline">
           Details
         </CollapsibleTrigger>
       </div>
       <CollapsiblePanel>
-        <p className="m-0 mt-1.5 whitespace-pre-wrap break-words text-left font-mono text-muted-foreground text-xs">
+        <p className="m-0 mt-1.5 whitespace-pre-wrap break-words text-left font-mono text-muted-foreground text-caption">
           {children}
         </p>
       </CollapsiblePanel>

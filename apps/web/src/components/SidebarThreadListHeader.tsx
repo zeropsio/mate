@@ -45,7 +45,7 @@ export function SidebarThreadSearchField({
   clearThreadSearch: () => void;
 }) {
   return (
-    <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
+    <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-body font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
       <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
       <SidebarInput
         ref={threadSearchInputRef}
@@ -78,7 +78,7 @@ export function SidebarThreadSearchField({
       threadSearch.incomplete &&
       !threadSearch.isPending &&
       threadSearchResults.length > 0 ? (
-        <p role="status" className="px-2 text-xs text-sidebar-muted-foreground">
+        <p role="status" className="px-2 text-caption text-sidebar-muted-foreground">
           Some conversations could not be searched.
         </p>
       ) : null}
@@ -222,7 +222,7 @@ export function SidebarProjectScopeRow({
               className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
             >
               <FolderIcon className="size-4 shrink-0" />
-              <span className="min-w-0 truncate text-sm">All projects</span>
+              <span className="min-w-0 truncate text-body">All projects</span>
             </MenuRadioItem>
             {projectGroups.map((project) => {
               const scopeKey = project.projectKey;
@@ -239,7 +239,7 @@ export function SidebarProjectScopeRow({
                     faviconPath={project.faviconPath}
                     className="size-4 shrink-0"
                   />
-                  <span className="min-w-0 truncate text-sm">{project.displayName}</span>
+                  <span className="min-w-0 truncate text-body">{project.displayName}</span>
                   <Button
                     size="icon-sm"
                     variant="ghost"

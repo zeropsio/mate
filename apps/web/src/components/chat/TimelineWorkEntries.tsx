@@ -64,7 +64,7 @@ function TimelineRowTimestamp({
         render={
           <span
             className={cn(
-              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
+              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-caption tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
               className,
             )}
           />
@@ -501,9 +501,9 @@ function QuestionAnswerHistory({
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-sm text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <p className="text-body text-muted-foreground">{answer.questionTextById[questionId]}</p>
           ) : null}
-          <p className="whitespace-pre-wrap text-sm">
+          <p className="whitespace-pre-wrap text-body">
             {[answer.answers[questionId]]
               .flat()
               .filter((value): value is string => typeof value === "string")
@@ -518,7 +518,7 @@ function QuestionAnswerHistory({
                   key={attachment.id}
                   source={url ?? ""}
                   download={attachment.type === "file" ? attachment.name : undefined}
-                  className="text-sm underline"
+                  className="text-body underline"
                   target={attachment.type === "image" ? "_blank" : undefined}
                   rel="noopener noreferrer"
                 >

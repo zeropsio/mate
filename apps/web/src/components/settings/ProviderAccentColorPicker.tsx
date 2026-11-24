@@ -159,7 +159,7 @@ function ProviderCustomColorPanel(props: {
             setHsv(hexToHsv(nextColor));
             props.onCommit(nextColor);
           }}
-          className="h-8 rounded-md border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-xs"
+          className="h-8 rounded-md border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-caption"
           aria-label="Custom hex accent color"
           spellCheck={false}
         />
@@ -282,7 +282,7 @@ export function ProviderAccentColorPicker(props: {
 
   return (
     <div className="grid gap-2">
-      <span className="text-xs font-medium text-foreground">Accent color</span>
+      <span className="text-caption font-medium text-foreground">Accent color</span>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ProviderCustomColorPicker
           displayName={displayName}
@@ -314,7 +314,9 @@ export function ProviderAccentColorPicker(props: {
           <XIcon className="size-3.5" aria-hidden />
         </Button>
       </div>
-      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+      {description ? (
+        <span className="text-caption text-muted-foreground">{description}</span>
+      ) : null}
     </div>
   );
 }

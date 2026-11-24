@@ -68,12 +68,12 @@ function UsageLimitsBody({
         return (
           <div key={account.id} className="flex min-w-0 flex-col gap-1">
             {report.accounts.length > 1 ? (
-              <span className="truncate text-xs text-muted-foreground">
+              <span className="truncate text-caption text-muted-foreground">
                 {[accountLabel(account), account.plan].filter(Boolean).join(" · ")}
               </span>
             ) : null}
             {notice ? (
-              <span className="text-xs text-muted-foreground">{notice}</span>
+              <span className="text-caption text-muted-foreground">{notice}</span>
             ) : (
               <LimitWindows
                 compact
@@ -94,7 +94,7 @@ function UsageLimitsBody({
         );
       })}
       {report.notices.map((notice) => (
-        <span key={notice} className="text-xs text-muted-foreground">
+        <span key={notice} className="text-caption text-muted-foreground">
           {notice}
         </span>
       ))}

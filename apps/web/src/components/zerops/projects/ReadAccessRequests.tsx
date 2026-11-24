@@ -90,7 +90,7 @@ export function ReadAccessRequests({
           );
         return [
           <li className="flex flex-wrap items-center gap-2" key={request.id}>
-            <span className="text-sm text-foreground">
+            <span className="text-body text-foreground">
               {name ?? "Someone no longer in the organization"} asks for read access to{" "}
               {place.label}
               {level === undefined || level === "none" ? "." : ` (has ${CELL_WORDS[level]} now).`}
@@ -134,7 +134,7 @@ export function ReadAccessRequests({
         return name === undefined
           ? []
           : [
-              <li className="flex flex-wrap items-baseline gap-x-2 text-sm" key={change.id}>
+              <li className="flex flex-wrap items-baseline gap-x-2 text-body" key={change.id}>
                 <span className="text-foreground">{name}:</span>
                 <AccessOperationRow
                   operation={change}
@@ -192,11 +192,11 @@ function askLines(
     const asked = open.some(({ projectId }) => projectId === place.projectId);
     return (
       <li className="flex flex-wrap items-center gap-2" key={place.projectId}>
-        <span className="text-sm text-foreground">
+        <span className="text-body text-foreground">
           {place.label}: Zerops doesn’t show you this place.
         </span>
         {asked ? (
-          <span className="text-sm text-muted-foreground">Read access asked</span>
+          <span className="text-body text-muted-foreground">Read access asked</span>
         ) : (
           <Button
             disabled={asks.busy.has(place.projectId)}

@@ -3382,7 +3382,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               composerSubmissionError !== null ||
               isComposerCollapsedMobile ? null : (
                 <p
-                  className="px-3 pb-2 text-xs text-muted-foreground sm:px-4"
+                  className="px-3 pb-2 text-caption text-muted-foreground sm:px-4"
                   data-chat-composer-blocked=""
                 >
                   {providerSendBlockReason}

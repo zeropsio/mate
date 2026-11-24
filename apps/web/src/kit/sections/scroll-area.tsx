@@ -10,7 +10,7 @@ const ROWS = Array.from(
 
 function Rows() {
   return (
-    <div className="flex flex-col gap-1 p-3 text-sm">
+    <div className="flex flex-col gap-1 p-3 text-body">
       {ROWS.map((row) => (
         <span key={row}>{row}</span>
       ))}
@@ -38,7 +38,7 @@ function ScrollAreaSpecimens() {
       <Specimen label="<ScrollArea> horizontal overflow">
         <div className="h-20 w-56 rounded-lg border">
           <ScrollArea>
-            <div className="w-max p-3 font-mono text-sm">
+            <div className="w-max p-3 font-mono text-body">
               zcli push --service-id storefront --workspace-state all --verbose
             </div>
           </ScrollArea>

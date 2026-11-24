@@ -22,7 +22,7 @@ export function StopPublicAccessStatus({
   return (
     <div
       data-zerops-surface="stop-public-access-status"
-      className="flex items-center gap-2 text-xs text-muted-foreground"
+      className="flex items-center gap-2 text-caption text-muted-foreground"
     >
       <span>
         {failed
@@ -52,7 +52,7 @@ export function StopPublicAccessLinks({ access }: { readonly access: PublicAcces
       <StopPublicAccessStatus access={access} />
       {access.routes.map((route) => (
         <a
-          className="truncate text-xs underline underline-offset-2"
+          className="truncate text-caption underline underline-offset-2"
           key={route.url}
           href={route.url}
           target="_blank"

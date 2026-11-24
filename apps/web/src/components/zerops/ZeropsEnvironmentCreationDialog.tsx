@@ -214,9 +214,9 @@ function EnvironmentSheet(
       <DialogPanel>
         <div className="flex flex-col gap-6">
           <section aria-label="Where" className="flex flex-col gap-1">
-            <h3 className="text-muted-foreground text-xs">Where</h3>
-            <p className="font-medium text-foreground text-sm">{defaultName}</p>
-            <p className="text-muted-foreground text-sm">
+            <h3 className="text-muted-foreground text-caption">Where</h3>
+            <p className="font-medium text-foreground text-body">{defaultName}</p>
+            <p className="text-muted-foreground text-body">
               {/* The person's project is the application: this is a copy of it, never a second
                   project (the run's owner read "a new Zerops project" as another in the menu). */}
               {role === "prod"
@@ -240,7 +240,7 @@ function EnvironmentSheet(
                   Use a branch in your Git repository instead…
                 </Button>
                 {gitOffered ? null : (
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-caption">
                     {props.git.unavailableReason ?? "HQ has not said yet."}
                   </p>
                 )}
@@ -252,7 +252,7 @@ function EnvironmentSheet(
       <DialogFooter>
         {held === undefined ? null : (
           <div className="me-auto flex flex-col items-start self-center" role="status">
-            <p className="text-muted-foreground text-sm">{held}</p>
+            <p className="text-muted-foreground text-body">{held}</p>
             {submit.kind === "held" &&
             submit.action === "setup-change" &&
             props.onSetupChange !== undefined ? (
@@ -356,12 +356,14 @@ function EnvironmentForm({
           <>
             <div className="space-y-3">
               <label
-                className="flex items-center justify-between gap-3 text-sm"
+                className="flex items-center justify-between gap-3 text-body"
                 htmlFor={`${id}-agent`}
               >
                 <span className="flex flex-col gap-0.5">
                   <span>Has its own Mate</span>
-                  <span className="text-xs text-muted-foreground">{agentSwitchNote(role)}</span>
+                  <span className="text-caption text-muted-foreground">
+                    {agentSwitchNote(role)}
+                  </span>
                 </span>
                 <Switch
                   checked={withAgent}
@@ -374,7 +376,7 @@ function EnvironmentForm({
             </div>
 
             <div className="space-y-2">
-              <span className="text-sm">Starts with</span>
+              <span className="text-body">Starts with</span>
               <RadioGroup
                 aria-label="Starts with"
                 className="gap-2"
@@ -396,7 +398,7 @@ function EnvironmentForm({
                     <Radio className="mt-0.5" value={option.id} />
                     <span className="flex min-w-0 flex-col gap-0.5">
                       <span>{option.label}</span>
-                      <span className="text-xs text-muted-foreground">{option.detail}</span>
+                      <span className="text-caption text-muted-foreground">{option.detail}</span>
                     </span>
                   </label>
                 ))}
@@ -405,7 +407,7 @@ function EnvironmentForm({
                     className="flex items-center justify-between gap-3 px-3 py-2.5"
                     role="status"
                   >
-                    <span className="text-xs text-muted-foreground">{held}</span>
+                    <span className="text-caption text-muted-foreground">{held}</span>
                     {recipe === "unreadable" && onRecipeRetry !== undefined ? (
                       <Button
                         aria-busy={recipeRereading === true || undefined}
@@ -458,7 +460,7 @@ function agentSwitchNote(role: ZeropsEnvironmentRole): string {
 
 export function FieldError({ children }: { readonly children: string }) {
   return (
-    <p className="text-xs text-status-failed-text" role="alert">
+    <p className="text-caption text-status-failed-text" role="alert">
       {children}
     </p>
   );

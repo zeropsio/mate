@@ -103,7 +103,7 @@ export function PipelineSegments({
             data-zerops-segment="step"
             key={step.id}
           >
-            <span className="min-w-0 break-words font-medium text-xs leading-4">
+            <span className="min-w-0 break-words font-medium text-caption leading-4">
               <StepGlyph
                 className="me-1 inline size-3 align-[-1px]"
                 state={SEGMENT_GLYPH[step.state]}
@@ -111,7 +111,7 @@ export function PipelineSegments({
               {step.label}
             </span>
             {footnote !== undefined ? (
-              <span className="text-muted-foreground text-xs tabular-nums">{footnote}</span>
+              <span className="text-muted-foreground text-caption tabular-nums">{footnote}</span>
             ) : (
               <span className="sr-only">{step.stateLabel}</span>
             )}
@@ -135,7 +135,7 @@ export function CheckChips({
         const { Icon, className } = STEP_GLYPH[step.state];
         return (
           <li
-            className="inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-foreground text-xs"
+            className="inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-foreground text-caption"
             data-zerops-process-state={step.state}
             key={step.id}
           >

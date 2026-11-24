@@ -275,7 +275,7 @@ export function CrewSetup(props: CrewSetupProps) {
 
       {/* The goal reads the same before and after a roster lands: data arriving never moves what
           the person just wrote (the onboarding run, 2026-10-16). */}
-      <span className="mt-6 font-medium text-sm leading-5">{CREW_SETUP_WORDS.goal}</span>
+      <span className="mt-6 font-medium text-body leading-5">{CREW_SETUP_WORDS.goal}</span>
       <span className="mt-0.5 text-line leading-4.5 text-muted-foreground">
         {CREW_SETUP_WORDS.goalLine}
       </span>
@@ -295,13 +295,15 @@ export function CrewSetup(props: CrewSetupProps) {
         />
       </div>
 
-      <span className="mt-7 font-medium text-sm leading-5">{CREW_SETUP_WORDS.whosOnIt}</span>
+      <span className="mt-7 font-medium text-body leading-5">{CREW_SETUP_WORDS.whosOnIt}</span>
       {members === null ? null : members.length === 0 ? (
         <div className="mt-2 flex flex-col gap-2" data-crew-setup-start>
           {proposal.state.kind === "proposing" ? (
             <div className="crew-option" data-crew-proposing data-live="" role="status">
               <MateFace shape={mate.shape} size={24} state="working" tint={mate.tint ?? "amber"} />
-              <span className="font-medium text-sm leading-5">{crewProposingWord(mate.name)}</span>
+              <span className="font-medium text-body leading-5">
+                {crewProposingWord(mate.name)}
+              </span>
               <CrewTextButton label={CREW_SETUP_WORDS.stopProposing} onPress={proposal.cancel} />
             </div>
           ) : proposal.state.kind === "failed" ? (
@@ -329,7 +331,9 @@ export function CrewSetup(props: CrewSetupProps) {
             >
               <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
               <span className="flex min-w-0 flex-col">
-                <span className="font-medium text-sm leading-5">{crewSuggestWord(mate.name)}</span>
+                <span className="font-medium text-body leading-5">
+                  {crewSuggestWord(mate.name)}
+                </span>
                 <span className="text-line leading-4.5 text-muted-foreground">
                   {suggestPress.reason ?? crewSuggestLine(mate.name)}
                 </span>
@@ -345,7 +349,7 @@ export function CrewSetup(props: CrewSetupProps) {
           >
             <TrioFaces mateTint={mate.tint} />
             <span className="flex min-w-0 flex-col">
-              <span className="font-medium text-sm leading-5">{CREW_SETUP_WORDS.leadAndTwo}</span>
+              <span className="font-medium text-body leading-5">{CREW_SETUP_WORDS.leadAndTwo}</span>
               <span className="text-line leading-4.5 text-muted-foreground">
                 {CREW_SETUP_WORDS.leadAndTwoLine}
               </span>
@@ -527,7 +531,7 @@ function SetupRow({
     >
       <MateFace size={24} state={readying ? "working" : "idle"} tint={member.tint ?? "slate"} />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate font-medium text-sm leading-5">
+        <span className="truncate font-medium text-body leading-5">
           {member.displayName}
           {tag === null ? null : (
             <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>

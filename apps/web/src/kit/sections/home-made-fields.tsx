@@ -140,7 +140,7 @@ function FieldSpecimens() {
                 replying={state.replying}
                 sending={state.sending}
               >
-                <span className="text-sm">Which region should stage run in?</span>
+                <span className="text-body">Which region should stage run in?</span>
               </Replying>
             </div>
           </Specimen>

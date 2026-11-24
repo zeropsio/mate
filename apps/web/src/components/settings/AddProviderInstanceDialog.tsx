@@ -241,7 +241,7 @@ export function AddProviderInstanceDialog({
         <DialogPanel className="space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5">
           <AnimatedHeight>
             <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
-              <div id="add-instance-driver-label" className="text-sm font-medium text-foreground">
+              <div id="add-instance-driver-label" className="text-body font-medium text-foreground">
                 Driver
               </div>
               <RadioGroup
@@ -259,7 +259,7 @@ export function AddProviderInstanceDialog({
                       className="relative flex cursor-pointer items-center gap-3 rounded-lg bg-card px-3 py-3 text-left text-muted-foreground outline-none ring-1 ring-black/5 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-primary/8 data-checked:text-foreground data-checked:ring-2 data-checked:ring-primary data-checked:hover:bg-primary/8 dark:bg-white/3 dark:ring-white/5 dark:hover:bg-white/5 dark:data-checked:bg-primary/15 dark:data-checked:ring-primary dark:data-checked:hover:bg-primary/15"
                     >
                       <IconComponent className="size-4 shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                      <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground">
                         {option.label}
                       </span>
                       <RadioPrimitive.Indicator
@@ -291,7 +291,7 @@ export function AddProviderInstanceDialog({
                         className="size-4 shrink-0 text-muted-foreground"
                         aria-hidden
                       />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                      <span className="min-w-0 flex-1 truncate text-body font-medium text-foreground">
                         {option.label}
                       </span>
                       <Badge tone="warning" size="sm">
@@ -304,7 +304,7 @@ export function AddProviderInstanceDialog({
             </div>
 
             <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-              <span className="text-xs font-medium text-foreground">Label</span>
+              <span className="text-caption font-medium text-foreground">Label</span>
               <Input
                 placeholder="e.g. Work"
                 value={label}
@@ -316,7 +316,7 @@ export function AddProviderInstanceDialog({
             </label>
 
             <label className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-              <span className="text-xs font-medium text-foreground">Instance ID</span>
+              <span className="text-caption font-medium text-foreground">Instance ID</span>
               <Input
                 placeholder={`${driver}_work`}
                 value={instanceId}
@@ -335,7 +335,7 @@ export function AddProviderInstanceDialog({
             </label>
 
             <div className={cn("grid gap-2", wizardStep !== 1 && "hidden")}>
-              <span className="text-xs font-medium text-foreground">Accent color</span>
+              <span className="text-caption font-medium text-foreground">Accent color</span>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <input
                   type="color"
@@ -392,7 +392,7 @@ export function AddProviderInstanceDialog({
               </div>
             ) : wizardStep === 2 ? (
               <div className="grid gap-2">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   This driver has no required configuration. You can add the instance now.
                 </p>
               </div>

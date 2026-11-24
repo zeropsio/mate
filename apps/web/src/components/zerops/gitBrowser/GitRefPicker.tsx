@@ -170,7 +170,7 @@ export function GitRefPicker({
         <ComboboxList>
           {sections.map((section) => (
             <Fragment key={section.name}>
-              <div className="px-2 pt-2 pb-1 text-xs font-medium text-muted-foreground">
+              <div className="px-2 pt-2 pb-1 text-caption font-medium text-muted-foreground">
                 {section.name}
               </div>
               {section.rows.map((row) => (
@@ -183,12 +183,12 @@ export function GitRefPicker({
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate">{row.label}</span>
                     {row.detail === null ? null : (
-                      <span className="truncate font-mono text-xs text-muted-foreground">
+                      <span className="truncate font-mono text-caption text-muted-foreground">
                         {row.detail}
                       </span>
                     )}
                     {row.commit === undefined ? null : (
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span className="truncate text-caption text-muted-foreground">
                         {row.commit.subject ?? "Commit metadata pending"}
                         {row.commit.committedAt === null ? null : (
                           <>

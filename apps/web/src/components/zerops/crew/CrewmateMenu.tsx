@@ -81,7 +81,7 @@ export function CrewmateMenuPopup({
             <span className="flex min-w-0 flex-col px-0.75 py-0.75">
               <span>{item.label}</span>
               {item.line === null ? null : (
-                <span className="text-xs text-muted-foreground">{item.line}</span>
+                <span className="text-caption text-muted-foreground">{item.line}</span>
               )}
             </span>
           </MenuItem>

@@ -53,7 +53,7 @@ const VALUELESS_OPS: ReadonlySet<DataConsoleFilterOp> = new Set(["isNull", "notN
 
 /** Borderless inside the chip: the chip's own border is the group's outline. */
 const CHIP_SELECT_CLASS =
-  "cursor-pointer bg-transparent px-1 py-0.5 text-xs outline-none focus-visible:bg-accent";
+  "cursor-pointer bg-transparent px-1 py-0.5 text-caption outline-none focus-visible:bg-accent";
 
 interface ZeropsDataFiltersProps {
   /** Which half to render: the toolbar button group, or the chips and raw input under it. */

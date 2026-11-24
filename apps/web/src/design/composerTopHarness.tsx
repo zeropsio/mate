@@ -423,14 +423,14 @@ function Composer({
 }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2" data-composer-top-harness={state}>
-      <span className="text-xs font-medium text-muted-foreground">{name}</span>
+      <span className="text-caption font-medium text-muted-foreground">{name}</span>
       <div
         className="w-full max-w-3xl overflow-hidden rounded-3xl border border-border bg-card"
         data-chat-composer-main-surface="true"
       >
         <div data-chat-composer-surface="true">
           {top}
-          <div className="px-4 pt-3 pb-12 text-placeholder text-sm">Ask anything...</div>
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">Ask anything...</div>
         </div>
       </div>
     </section>

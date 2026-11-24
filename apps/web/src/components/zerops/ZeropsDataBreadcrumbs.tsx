@@ -30,7 +30,7 @@ export function ZeropsDataBreadcrumbs({
   return (
     <nav
       aria-label="Data path"
-      className="flex min-w-0 flex-wrap items-center gap-1 text-xs"
+      className="flex min-w-0 flex-wrap items-center gap-1 text-caption"
       data-zerops-data-breadcrumbs
     >
       {crumbs.map((crumb, index) => {

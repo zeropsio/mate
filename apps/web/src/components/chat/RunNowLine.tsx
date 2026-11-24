@@ -563,7 +563,7 @@ function BrokeOffLine({
     >
       <p
         className={cn(
-          "min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5",
+          "min-h-0 min-w-0 overflow-hidden pt-0.5 text-body leading-5",
           brokeOff.quiet === true ? "text-muted-foreground" : "text-status-failed-text",
         )}
       >

@@ -25,7 +25,7 @@ import { ZeropsLandingShell } from "./landing/ZeropsLandingShell";
 /** While the organization chosen last is read back: in the app's frame, a line. */
 export function ZeropsOrganizationWait() {
   return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="flex items-center gap-2 text-body text-muted-foreground">
       <Spinner size="md" />
       Restoring your Zerops organization…
     </div>
@@ -88,7 +88,7 @@ export function ZeropsOrganizationChoice({
         title="No organization yet"
       >
         <div className="space-y-4 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             Ask an organization's owner to invite {email ?? "this account"}, then reload this page.
           </p>
           <Button onClick={() => window.location.reload()} variant="secondary">
@@ -124,10 +124,10 @@ export function ZeropsOrganizationChoice({
                 {organization.name.trim().charAt(0).toLocaleUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm leading-5 font-semibold text-foreground">
+                <span className="block truncate text-body leading-5 font-semibold text-foreground">
                   {organization.name}
                 </span>
-                <span className="block text-xs leading-4 text-muted-foreground">
+                <span className="block text-caption leading-4 text-muted-foreground">
                   {zeropsOrganizationRoleLabel(organization)}
                 </span>
               </span>
@@ -166,7 +166,7 @@ export function ZeropsOrganizationSwitcher({
         <SelectValue>
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="truncate">{activeOrganization.name}</span>
-            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+            <span className="hidden shrink-0 text-caption text-muted-foreground sm:inline">
               {zeropsOrganizationRoleLabel(activeOrganization)}
             </span>
           </span>
@@ -177,7 +177,7 @@ export function ZeropsOrganizationSwitcher({
           <SelectItem key={organization.membershipId} value={organization.membershipId}>
             <span className="flex min-w-0 items-baseline justify-between gap-4">
               <span className="truncate">{organization.name}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="shrink-0 text-caption text-muted-foreground">
                 {zeropsOrganizationRoleLabel(organization)}
               </span>
             </span>

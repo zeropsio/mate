@@ -91,7 +91,7 @@ function EmptyMedia({
 
 function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("font-semibold text-xl", className)} data-slot="empty-title" {...props} />
+    <div className={cn("font-semibold text-title", className)} data-slot="empty-title" {...props} />
   );
 }
 
@@ -99,7 +99,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <div
       className={cn(
-        "text-muted-foreground text-sm [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4 [[data-slot=empty-title]+&]:mt-1 [[data-slot=empty-description]+&]:mt-1",
+        "text-muted-foreground text-body [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4 [[data-slot=empty-title]+&]:mt-1 [[data-slot=empty-description]+&]:mt-1",
         className,
       )}
       data-slot="empty-description"
@@ -112,7 +112,7 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "flex w-full min-w-0 max-w-sm flex-col items-center gap-4 text-balance text-sm",
+        "flex w-full min-w-0 max-w-sm flex-col items-center gap-4 text-balance text-body",
         className,
       )}
       data-slot="empty-content"
@@ -143,7 +143,7 @@ function EmptyState({
   if (size === "row") {
     return (
       <div
-        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-sm [&_svg]:size-4 [&_svg]:shrink-0"
+        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-body [&_svg]:size-4 [&_svg]:shrink-0"
         data-size="row"
         data-slot="empty"
       >

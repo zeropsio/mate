@@ -69,7 +69,7 @@ export function CrewViewField({
   return (
     <div className={`${FIELD_GAP[gap]} flex flex-col`}>
       <span className="flex items-baseline gap-1.5">
-        <span className="font-medium text-sm leading-5">{label}</span>
+        <span className="font-medium text-body leading-5">{label}</span>
         {optional ? (
           <span className="text-line leading-4.5 text-muted-foreground">
             {CREW_VIEW_WORDS.optional}

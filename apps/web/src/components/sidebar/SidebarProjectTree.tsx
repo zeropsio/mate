@@ -193,7 +193,9 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
           }`}
         />
         <FolderIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold">{projectDisplayName}</span>
+        <span className="min-w-0 flex-1 truncate text-body font-semibold">
+          {projectDisplayName}
+        </span>
         <span className="shrink-0 text-[11px] tabular-nums text-sidebar-muted-foreground">
           {project.members.length} {project.members.length === 1 ? "workspace" : "workspaces"}
         </span>
@@ -248,7 +250,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                       className="size-3.5 shrink-0 text-sidebar-muted-foreground"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
+                      <span className="block truncate text-body font-medium">
                         {memberDisplayName}
                       </span>
                       {workspaceIsDistinct ? (

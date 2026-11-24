@@ -54,7 +54,7 @@ export function ZeropsDeleteProjectForm({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <p className="min-h-4 text-xs text-status-failed-text" role="alert">
+        <p className="min-h-4 text-caption text-status-failed-text" role="alert">
           {error}
         </p>
       </DialogPanel>

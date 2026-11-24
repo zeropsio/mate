@@ -145,7 +145,7 @@ function MateChatsMenu({
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="min-w-0 truncate">{chat.title}</span>
                 {chat.main ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">main</span>
+                  <span className="shrink-0 text-caption text-muted-foreground">main</span>
                 ) : null}
               </span>
             </MenuRadioItem>
@@ -405,7 +405,7 @@ function SeatName({ name, leaving }: { readonly name: string; readonly leaving: 
     >
       <span className="min-w-0 overflow-hidden" data-conversation-name="">
         <span
-          className="block truncate text-sm leading-5 font-medium text-foreground"
+          className="block truncate text-body leading-5 font-medium text-foreground"
           data-conversation-name-text=""
         >
           {name}

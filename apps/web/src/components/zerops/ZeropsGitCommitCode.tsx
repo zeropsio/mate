@@ -91,8 +91,8 @@ export default function ZeropsGitCommitCode({
       ) : null}
       {patch?.kind === "raw" ? (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <p className="text-xs text-muted-foreground">{patch.reason}</p>
-          <pre className="overflow-auto whitespace-pre-wrap text-xs">{patch.text}</pre>
+          <p className="text-caption text-muted-foreground">{patch.reason}</p>
+          <pre className="overflow-auto whitespace-pre-wrap text-caption">{patch.text}</pre>
         </div>
       ) : (
         <AnnotatableCodeView

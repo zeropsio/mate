@@ -81,7 +81,7 @@ function SidebarSpecimens() {
                 </SidebarFooter>
               </Sidebar>
               <SidebarInset>
-                <div className="flex items-center gap-2 p-3 text-sm">
+                <div className="flex items-center gap-2 p-3 text-body">
                   <SidebarTrigger />
                   <span>SidebarInset: the page beside the menu</span>
                 </div>

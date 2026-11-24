@@ -179,7 +179,7 @@ function Sent() {
         }}
       />
       <pre
-        className="whitespace-pre-wrap font-mono text-muted-foreground text-xs"
+        className="whitespace-pre-wrap font-mono text-muted-foreground text-caption"
         data-agent-context
       >
         {mateMentionNotes(SENT, MATES).join("\n")}

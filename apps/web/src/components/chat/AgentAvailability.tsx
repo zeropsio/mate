@@ -58,7 +58,7 @@ export function AvailabilityNote({
 }) {
   return (
     <div
-      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-xs leading-snug"
+      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-caption leading-snug"
       data-agent-availability=""
     >
       <span

@@ -46,7 +46,7 @@ export function AutomationSettings({
     <SettingsPageContainer>
       <SettingsSection title="Automation" id="automation">
         {activeOrganization === null ? (
-          <p className="px-3 text-sm text-muted-foreground sm:px-4">
+          <p className="px-3 text-body text-muted-foreground sm:px-4">
             Choose an organization in Settings › Zerops to set up automated Mates.
           </p>
         ) : admin ? (

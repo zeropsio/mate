@@ -61,7 +61,7 @@ export function ExplanationBlock({
     <div className="space-y-1.5" data-zerops-operation-explanation>
       <p className="text-[13px] text-foreground">{explanation.reason}</p>
       {earlier.length > 0 ? (
-        <details className="text-muted-foreground text-xs">
+        <details className="text-muted-foreground text-caption">
           <summary className="w-fit cursor-pointer list-none select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
             Earlier lines
           </summary>

@@ -26,11 +26,11 @@ function Harness() {
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: 435 }} />
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-6" data-harness-composer>
-        <p className="text-muted-foreground text-sm">In the message ({attached.length}):</p>
+        <p className="text-muted-foreground text-body">In the message ({attached.length}):</p>
         {attached.map((file) => (
           <figure className="flex flex-col gap-1" key={file.url}>
             <img alt={file.name} className="max-h-60 self-start rounded-lg border" src={file.url} />
-            <figcaption className="text-muted-foreground text-xs">{file.name}</figcaption>
+            <figcaption className="text-muted-foreground text-caption">{file.name}</figcaption>
           </figure>
         ))}
       </div>

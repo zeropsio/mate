@@ -1440,13 +1440,13 @@ export function ZeropsStopPane({
             )}
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
-            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
+            <p className="mt-1.5 px-3 text-body text-status-failed-text">{runAgain.refused}</p>
           )}
           {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
-            <p className="mt-1.5 px-3 text-sm text-muted-foreground">{runAgain.held}</p>
+            <p className="mt-1.5 px-3 text-body text-muted-foreground">{runAgain.held}</p>
           )}
           {down || renewing?.kind !== "failed" ? null : (
-            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{renewing.words}</p>
+            <p className="mt-1.5 px-3 text-body text-status-failed-text">{renewing.words}</p>
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.
@@ -1649,7 +1649,7 @@ export function ZeropsStopPane({
                     routes={routes}
                   />
                   {routeTrouble === null || routeTrouble === undefined ? null : (
-                    <p className="text-sm text-status-failed-text">{routeTrouble}</p>
+                    <p className="text-body text-status-failed-text">{routeTrouble}</p>
                   )}
                 </PlaceSection>
               )}
@@ -1761,7 +1761,7 @@ export function ZeropsStopPane({
               {stopsUnverified.length === 0 ? null : (
                 // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
                 <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-body text-muted-foreground">
                     Stop not confirmed:{" "}
                     {[
                       ...new Set(
@@ -1787,7 +1787,9 @@ export function ZeropsStopPane({
         </div>
       </div>
       {/* A verb that refused says so under the card it was pressed in. */}
-      {trouble === null ? null : <p className="mt-2 text-sm text-status-failed-text">{trouble}</p>}
+      {trouble === null ? null : (
+        <p className="mt-2 text-body text-status-failed-text">{trouble}</p>
+      )}
       {vault === undefined || projectId === undefined ? null : (
         <StopVaultDrawer
           body={vault.body}

@@ -49,14 +49,14 @@ function Composer({
 }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-caption font-medium text-muted-foreground">{label}</span>
       <div className="pt-6">
         <ComposerBannerStack className="relative z-0" items={items} />
         <div
           className="relative z-10 w-full overflow-hidden rounded-3xl border border-border bg-card"
           data-chat-composer-main-surface="true"
         >
-          <div className="px-4 pt-3 pb-12 text-placeholder text-sm">
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">
             Describe what you want to build or change…
           </div>
         </div>

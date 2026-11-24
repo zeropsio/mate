@@ -119,7 +119,7 @@ export function CrewHead({
                 >
                   <span className="flex min-w-0 flex-col px-0.75 py-0.75">
                     <span>{item.label}</span>
-                    <span className="text-xs text-muted-foreground">{item.line}</span>
+                    <span className="text-caption text-muted-foreground">{item.line}</span>
                   </span>
                 </MenuItem>
               ))}

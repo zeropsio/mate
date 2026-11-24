@@ -241,9 +241,11 @@ export function ZeropsRuntimeStops({
           const says = stopRowSays(stop.tier, view);
           const words = (
             <>
-              <span className="text-sm font-medium">{environmentTitle(stop.tier, stop.name)}</span>
+              <span className="text-body font-medium">
+                {environmentTitle(stop.tier, stop.name)}
+              </span>
               {says.version === undefined ? null : (
-                <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                <span className="font-mono text-caption text-muted-foreground tabular-nums">
                   {says.version}
                 </span>
               )}
@@ -369,7 +371,7 @@ function GitStopLine({
   const navigate = useNavigate();
   return (
     <button
-      className="py-2 text-sm font-medium"
+      className="py-2 text-body font-medium"
       data-zerops-environment-id={environment.id}
       type="button"
       onClick={() => {
@@ -430,10 +432,10 @@ function ZeropsStopLine({
   if (notice !== null) {
     return (
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
-        <span className="shrink-0 text-sm font-medium text-foreground">
+        <span className="shrink-0 text-body font-medium text-foreground">
           {environmentTitle(environment.tier, environment.tier)}
         </span>
-        <span className="truncate text-xs text-muted-foreground">{notice}</span>
+        <span className="truncate text-caption text-muted-foreground">{notice}</span>
         {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       </li>
     );
@@ -449,8 +451,8 @@ function ZeropsStopLine({
         onClick={open}
         type="button"
       >
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
-        <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
+        <span className="min-w-0 truncate text-body font-medium text-foreground">{title}</span>
+        <span className="truncate text-end font-mono text-caption text-muted-foreground tabular-nums">
           {says.version}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
@@ -458,9 +460,9 @@ function ZeropsStopLine({
         {/* The dot carries the state; the word supports it. Unsized, it
             inherited 16px and came out larger than the name it annotates. */}
         {dotTone === undefined ? (
-          <span className="text-xs text-muted-foreground">{word}</span>
+          <span className="text-caption text-muted-foreground">{word}</span>
         ) : (
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span className="shrink-0 text-caption text-muted-foreground">
             <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
               {word}
             </Badge>
@@ -470,7 +472,7 @@ function ZeropsStopLine({
       </button>
       {/* An application of several parts: how many, and each that differs from the version. */}
       {environment.parts === undefined ? null : (
-        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
+        <span className="block truncate px-2 pb-2 text-caption text-muted-foreground">
           {environment.parts}
         </span>
       )}
@@ -561,7 +563,7 @@ function Section({
 }
 
 export function Note({ children }: { readonly children: React.ReactNode }) {
-  return <p className="text-sm text-muted-foreground">{children}</p>;
+  return <p className="text-body text-muted-foreground">{children}</p>;
 }
 
 /** What a page says in place of a project it cannot read (`unreadFlowWords`). */
@@ -569,7 +571,7 @@ export function UnreadNote({ words }: { readonly words: UnreadFlowWords }) {
   if (typeof words === "string") return <Note>{words}</Note>;
   return (
     <div className="flex flex-col gap-0.5">
-      <p className="text-sm font-medium text-foreground">{words.title}</p>
+      <p className="text-body font-medium text-foreground">{words.title}</p>
       <Note>{words.why}</Note>
     </div>
   );

@@ -393,7 +393,7 @@ function Harness() {
         <Menu candidates={matesWith(quinnDeletion)} />
       </SidebarProvider>
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-        <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
+        <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
       </main>
       {dialog && open ? (
         <ZeropsDeleteMateDialog

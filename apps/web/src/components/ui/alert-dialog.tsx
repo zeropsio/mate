@@ -127,7 +127,7 @@ function AlertDialogFooter({
 function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Props) {
   return (
     <AlertDialogPrimitive.Title
-      className={cn("wrap-anywhere pe-8 font-semibold text-xl leading-none", className)}
+      className={cn("wrap-anywhere pe-8 font-semibold text-title leading-none", className)}
       data-slot="alert-dialog-title"
       {...props}
     />
@@ -137,7 +137,7 @@ function AlertDialogTitle({ className, ...props }: AlertDialogPrimitive.Title.Pr
 function AlertDialogDescription({ className, ...props }: AlertDialogPrimitive.Description.Props) {
   return (
     <AlertDialogPrimitive.Description
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-body", className)}
       data-slot="alert-dialog-description"
       {...props}
     />

@@ -155,7 +155,7 @@ function RestartLine(props: {
       {asking ? (
         <div
           aria-label={`Restart ${props.hostname}`}
-          className="flex flex-wrap items-center gap-2 text-xs text-foreground"
+          className="flex flex-wrap items-center gap-2 text-caption text-foreground"
           role="alertdialog"
         >
           <span className="grow">{RESTART_CONFIRM(props.hostname)}</span>

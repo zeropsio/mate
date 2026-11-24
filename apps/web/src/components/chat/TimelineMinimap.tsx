@@ -228,12 +228,12 @@ export function TimelineMinimap({
                 }}
               >
                 <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
-                  <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-sm font-medium leading-5">
+                  <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-body font-medium leading-5">
                     {activeItem.userText ?? "User message"}
                   </span>
                   {(activeItem.assistantText ?? activeItem.note) ? (
                     <span
-                      className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-sm leading-5"
+                      className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-body leading-5"
                       style={{
                         display: "-webkit-box",
                         WebkitBoxOrient: "vertical",

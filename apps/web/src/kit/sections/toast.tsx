@@ -18,7 +18,7 @@ const COPY: Record<(typeof TYPES)[number], { title: string; description: string 
 };
 
 const SLOW_REQUESTS = (
-  <ul className="m-0 ps-4 text-xs">
+  <ul className="m-0 ps-4 text-caption">
     <li>project.list</li>
     <li>service.logs</li>
     <li>deploy.status</li>

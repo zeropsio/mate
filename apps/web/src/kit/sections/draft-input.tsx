@@ -10,7 +10,7 @@ function Sample() {
   return (
     <div className="flex w-64 flex-col gap-2">
       <DraftInput aria-label="Name" onCommit={setCommitted} value={committed} />
-      <span className="text-muted-foreground text-xs">Committed: {committed}</span>
+      <span className="text-muted-foreground text-caption">Committed: {committed}</span>
     </div>
   );
 }

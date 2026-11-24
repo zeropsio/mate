@@ -154,7 +154,7 @@ function Harness() {
                   unknown={null}
                 />
               ) : (
-                <p className="m-auto text-sm text-muted-foreground">Fen's conversation</p>
+                <p className="m-auto text-body text-muted-foreground">Fen's conversation</p>
               )}
             </ConversationOpeningWaits>
             <ConversationOpeningStage

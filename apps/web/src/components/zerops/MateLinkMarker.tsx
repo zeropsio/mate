@@ -18,7 +18,7 @@ export function MateLinkMarker({
   readonly onTryNow?: (() => void) | undefined;
 }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-caption font-medium text-muted-foreground">
       <Tooltip>
         <TooltipTrigger
           render={

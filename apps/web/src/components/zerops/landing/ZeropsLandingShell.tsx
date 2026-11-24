@@ -39,13 +39,13 @@ export function ZeropsLandingShell({
         <MateMark playful className="mx-auto h-20 w-auto" />
         <div className="space-y-1.5 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-body text-muted-foreground">{description}</p>
         </div>
 
         <div className={cn(LANDING_CARD, "px-6 py-6")}>{children}</div>
 
         {foot === undefined ? null : (
-          <p className="text-center text-xs text-muted-foreground">{foot}</p>
+          <p className="text-center text-caption text-muted-foreground">{foot}</p>
         )}
       </div>
     </ZeropsHostedFrame>
@@ -111,7 +111,7 @@ export function ZeropsHqSignInFrame({
 export function ZeropsByline() {
   return (
     <a
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      className="inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-foreground"
       data-zerops-byline="true"
       href="https://zerops.io"
       rel="noreferrer"
@@ -177,7 +177,7 @@ export function FormError({ message }: { readonly message: string | null }) {
   return (
     <p
       role="alert"
-      className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-sm text-foreground"
+      className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-body text-foreground"
     >
       {message}
     </p>
@@ -202,7 +202,7 @@ export function ZeropsSignInActions({
         <ZeropsMark className="size-4" tone="current" />
         Continue with your Zerops account
       </Button>
-      <p className="text-center text-xs text-muted-foreground">
+      <p className="text-center text-caption text-muted-foreground">
         No account yet?{" "}
         <InlineButton tone="muted" onClick={onCreateAccount}>
           Create one on Zerops

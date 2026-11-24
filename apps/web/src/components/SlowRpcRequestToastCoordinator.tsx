@@ -15,7 +15,7 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
   return (
-    <ul className="space-y-2.5 text-xs text-muted-foreground">
+    <ul className="space-y-2.5 text-caption text-muted-foreground">
       {requests.map((request) => (
         <li
           className="min-w-0 border-border/50 border-b pb-2 last:border-b-0 last:pb-0"

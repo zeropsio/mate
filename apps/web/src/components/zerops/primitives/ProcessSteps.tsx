@@ -130,7 +130,7 @@ function ProcessSteps({
                 ) : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                <span className="shrink-0 text-muted-foreground text-caption tabular-nums">
                   {formatStepDuration(step.durationMs)}
                 </span>
               ) : null}
@@ -158,7 +158,7 @@ function ProcessSteps({
             </span>
             <span className="flex min-w-0 items-start justify-between gap-2">
               <span className="min-w-0">
-                <span className="block text-sm text-foreground">
+                <span className="block text-body text-foreground">
                   {step.label}
                   {step.note !== undefined ? (
                     <span className="text-muted-foreground"> · {step.note}</span>

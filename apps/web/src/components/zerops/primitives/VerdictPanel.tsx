@@ -64,7 +64,7 @@ function VerdictPanel({ children, className, detail, text, tone, ...props }: Ver
       className={cn(VERDICT_PANEL_CLASS, VERDICT_BORDER_CLASS[tone], className)}
       data-zerops-primitive="verdict-panel"
     >
-      <span className="flex min-w-0 flex-col gap-y-0.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+      <span className="flex min-w-0 flex-col gap-y-0.5 text-body sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
         <span className="min-w-0 text-foreground">
           <Badge dot tone={STATUS_BADGE_TONE[tone]}>
             {text}

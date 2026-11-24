@@ -73,7 +73,7 @@ function SidePanelStrip() {
         surfaces={surfaces}
         terminalLabelsById={new Map()}
       >
-        <p className="m-0 p-4 text-muted-foreground text-sm">The open tab's panel.</p>
+        <p className="m-0 p-4 text-muted-foreground text-body">The open tab's panel.</p>
       </RightPanelTabs>
     </div>
   );

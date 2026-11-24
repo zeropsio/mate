@@ -1024,7 +1024,7 @@ export function OpenCommandPaletteDialog(props: {
           icon: <Icon className={ITEM_ICON_CLASS} />,
           titleTrailingContent:
             appearanceMode === mode ? (
-              <span className="text-xs text-muted-foreground/70">Current</span>
+              <span className="text-caption text-muted-foreground/70">Current</span>
             ) : undefined,
           run: async () => {
             if (!setAppearanceMode(mode)) notifyThemeSaveFailure();
@@ -1226,7 +1226,7 @@ export function OpenCommandPaletteDialog(props: {
       value={query}
     >
       {threadSearch.incomplete && !threadSearch.isPending ? (
-        <p role="status" className="px-3 pb-2 text-xs text-muted-foreground">
+        <p role="status" className="px-3 pb-2 text-caption text-muted-foreground">
           Some conversations could not be searched.
         </p>
       ) : null}

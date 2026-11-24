@@ -26,7 +26,7 @@ export function ZeropsGitCredentialsView({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-start gap-3">
-        <pre className="min-w-0 flex-1 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs text-foreground">
+        <pre className="min-w-0 flex-1 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-caption text-foreground">
           <code>git clone {cloneUrl}</code>
         </pre>
         <Button
@@ -43,11 +43,11 @@ export function ZeropsGitCredentialsView({
         </Button>
       </div>
       {commandCopy === null ? null : (
-        <p className="text-xs text-muted-foreground" role="status">
+        <p className="text-caption text-muted-foreground" role="status">
           {commandCopy}
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
+      <p className="text-body text-muted-foreground">
         Use <code>person</code> as the username and your Git password when Git asks. It lasts 12
         hours and uses your current Zerops permissions.
       </p>
@@ -66,13 +66,13 @@ export function ZeropsGitCredentialsView({
         </Button>
       </div>
       {state.action.kind === "failed" || state.action.kind === "unresolved" ? (
-        <p role="alert" className="text-sm text-status-failed">
+        <p role="alert" className="text-body text-status-failed">
           {state.action.words}
         </p>
       ) : null}
       {state.action.kind === "issued" ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             Copy this password now. It is only shown once.
           </p>
           <div className="flex items-center gap-2">
@@ -91,7 +91,9 @@ export function ZeropsGitCredentialsView({
         </div>
       ) : null}
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-foreground">Your Git passwords for this project</h3>
+        <h3 className="text-body font-medium text-foreground">
+          Your Git passwords for this project
+        </h3>
         <Button
           variant="ghost"
           size="sm"
@@ -104,18 +106,20 @@ export function ZeropsGitCredentialsView({
       {state.credentials.state === "known" ? (
         <>
           {state.credentials.partial ? (
-            <p className="text-sm text-muted-foreground">Read again to see all your passwords.</p>
+            <p className="text-body text-muted-foreground">Read again to see all your passwords.</p>
           ) : null}
           {state.credentials.stale ? (
-            <p className="text-sm text-status-failed">HQ could not read the password list again.</p>
+            <p className="text-body text-status-failed">
+              HQ could not read the password list again.
+            </p>
           ) : null}
           {state.credentials.records.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No Git password yet.</p>
+            <p className="text-body text-muted-foreground">No Git password yet.</p>
           ) : (
             <ul className="divide-y divide-border">
               {state.credentials.records.map((record) => (
                 <li key={record.id} className="flex items-center justify-between gap-3 py-2">
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     Created{" "}
                     <time dateTime={record.createdAt}>
                       {formatDayAwareTimestamp(record.createdAt, "locale")}
@@ -139,15 +143,15 @@ export function ZeropsGitCredentialsView({
           )}
         </>
       ) : state.credentials.state === "withheld" ? (
-        <p role="alert" className="text-sm text-status-failed">
+        <p role="alert" className="text-body text-status-failed">
           Git password access is unavailable. Read again to check your access.
         </p>
       ) : state.credentials.state === "failed" ? (
-        <p role="alert" className="text-sm text-status-failed">
+        <p role="alert" className="text-body text-status-failed">
           {state.credentials.words}
         </p>
       ) : (
-        <p className="text-sm text-muted-foreground">Reading your Git passwords…</p>
+        <p className="text-body text-muted-foreground">Reading your Git passwords…</p>
       )}
     </div>
   );
@@ -165,12 +169,12 @@ export function ZeropsGitCredentials({
     .repos.get(appId)
     ?.find((r) => r.name === repo)?.url;
   if (cloneUrl === undefined)
-    return <p className="text-sm text-muted-foreground">Waiting for HQ…</p>;
+    return <p className="text-body text-muted-foreground">Waiting for HQ…</p>;
   return (
     <>
       <ZeropsGitCredentialsView {...credentials} cloneUrl={cloneUrl} />
       {credentials.copied === null ? null : (
-        <p className="text-xs text-muted-foreground" role="status">
+        <p className="text-caption text-muted-foreground" role="status">
           {credentials.copied}
         </p>
       )}

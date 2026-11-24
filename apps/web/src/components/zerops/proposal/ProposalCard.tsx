@@ -275,7 +275,7 @@ function proposalBody({
   if (proposal.kind === "access.set") {
     if (access === undefined) return null;
     return (
-      <div className="grid min-w-0 gap-1.5 text-xs">
+      <div className="grid min-w-0 gap-1.5 text-caption">
         <ul className="grid min-w-0 gap-1 rounded-md bg-muted px-3 py-2" data-proposal-access>
           {access.lines.map((line) => (
             <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
@@ -299,7 +299,7 @@ function proposalBody({
     const { key, value, secret } = proposal.params;
     return (
       <div
-        className="flex min-w-0 items-baseline gap-2 rounded-md bg-muted px-3 py-2 font-mono text-xs"
+        className="flex min-w-0 items-baseline gap-2 rounded-md bg-muted px-3 py-2 font-mono text-caption"
         data-proposal-value
       >
         <span className="shrink-0 font-medium text-foreground">{key}</span>
@@ -319,7 +319,7 @@ function proposalBody({
     return (
       <div className="grid min-w-0 gap-2">
         {chiefTarget !== undefined && chiefTarget.kind !== "chief" ? null : (
-          <div className="flex min-w-0 items-center gap-2 text-xs" data-proposal-recipient>
+          <div className="flex min-w-0 items-center gap-2 text-caption" data-proposal-recipient>
             <MateMark className="h-4 w-3.5 shrink-0" />
             <span className="min-w-0 truncate font-medium text-foreground">Ask your Chief</span>
           </div>
@@ -340,7 +340,7 @@ function proposalBody({
   const { to, words, attachment } = proposal.params;
   return (
     <div className="grid min-w-0 gap-2">
-      <div className="flex min-w-0 items-center gap-2 text-xs" data-proposal-recipient>
+      <div className="flex min-w-0 items-center gap-2 text-caption" data-proposal-recipient>
         <span className="text-muted-foreground">To</span>
         {recipient === undefined ? null : (
           // The Mate it goes to wears its own face, even where every face is the mark.
@@ -366,7 +366,7 @@ function proposalBody({
 function Words({ words }: { readonly words: string }) {
   return (
     <p
-      className="min-w-0 rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere text-foreground"
+      className="min-w-0 rounded-md bg-muted px-3 py-2 text-body whitespace-pre-wrap wrap-anywhere text-foreground"
       data-proposal-words
     >
       {words}
@@ -381,7 +381,7 @@ export function Attachment({ title, text }: { readonly title: string; readonly t
     <div className="grid min-w-0 gap-1.5" data-proposal-attachment>
       <button
         aria-expanded={open}
-        className="flex min-w-0 items-center gap-1 text-start text-xs text-muted-foreground hover:text-foreground"
+        className="flex min-w-0 items-center gap-1 text-start text-caption text-muted-foreground hover:text-foreground"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
@@ -392,7 +392,7 @@ export function Attachment({ title, text }: { readonly title: string; readonly t
         <span className="min-w-0 truncate">{title}</span>
       </button>
       {open ? (
-        <pre className="max-h-60 min-w-0 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-xs leading-4.5 whitespace-pre text-foreground">
+        <pre className="max-h-60 min-w-0 overflow-auto rounded-md bg-muted px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
           {text}
         </pre>
       ) : null}

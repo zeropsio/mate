@@ -411,7 +411,7 @@ function AccessChangeLines({
     <ul aria-label="Access changes" className="flex flex-col gap-1.5 px-1.5 pt-2">
       {lines.map(({ change, person }) => (
         <li
-          className="flex flex-wrap items-baseline gap-x-2 text-sm"
+          className="flex flex-wrap items-baseline gap-x-2 text-body"
           data-person={person.key}
           key={change.id}
         >
@@ -692,7 +692,7 @@ export function ProjectPeopleRowView({
                 {more > 0 ? <span className="pp-faces-more">+{more}</span> : null}
               </span>
             )}
-            <span className="text-sm text-foreground">{summary}</span>
+            <span className="text-body text-foreground">{summary}</span>
           </>
         )}
       </div>
@@ -975,7 +975,7 @@ export function ProjectAccessDraft({
     );
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm">{label}</span>
+      <span className="text-body">{label}</span>
       <ProjectAccessChips heading={false} label={label} onAdd={add} onChoose={choose} view={view} />
     </div>
   );

@@ -114,7 +114,7 @@ export function GitCommitsFold({
             );
             return (
               <li
-                className="flex min-w-0 text-xs"
+                className="flex min-w-0 text-caption"
                 data-zerops-surface="git-commit"
                 key={commit.sha}
               >

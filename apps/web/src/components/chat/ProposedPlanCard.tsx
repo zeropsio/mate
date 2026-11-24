@@ -152,7 +152,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <Badge tone="neutral">Plan</Badge>
           {/* Same heading level as the message author headings in the timeline,
               so a plan's own headings nest beneath it in the outline. */}
-          <h3 className="truncate text-sm font-medium text-foreground">{title}</h3>
+          <h3 className="truncate text-body font-medium text-foreground">{title}</h3>
         </div>
         <Menu>
           <MenuTrigger
@@ -213,7 +213,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           </DialogHeader>
           <DialogPanel>
             <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
+              <span className="text-caption font-medium text-foreground">Workspace path</span>
               <Input
                 id={savePathInputId}
                 value={savePath}

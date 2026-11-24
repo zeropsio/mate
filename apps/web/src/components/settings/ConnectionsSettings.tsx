@@ -15,11 +15,11 @@ export function ConnectionsSettings() {
     <SettingsPageContainer>
       <SettingsSection title="Zerops environments">
         {/* On a phone its words stand at the heading's edge, in the app's size. */}
-        <p className="max-sm:px-3 max-sm:text-sm">
+        <p className="max-sm:px-3 max-sm:text-body">
           Mate uses your Zerops account to connect to projects you can operate.
         </p>
         <Link
-          className="max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3 max-sm:text-sm"
+          className="max-sm:inline-flex max-sm:min-h-10 max-sm:items-center max-sm:px-3 max-sm:text-body"
           to="/zerops"
         >
           Open your projects
@@ -27,7 +27,7 @@ export function ConnectionsSettings() {
         {/* Nothing listed until HQ's structure is read, as before: an unread one is no empty one. */}
         {navigation?.structure?.apps !== undefined &&
           sharedEnvironmentRows(navigation.structure.apps).map((row) => (
-            <div className="max-sm:px-3 max-sm:text-sm" key={row.environmentId}>
+            <div className="max-sm:px-3 max-sm:text-body" key={row.environmentId}>
               <h3>
                 <Link
                   params={{ groupId: row.appId, projectId: row.environmentId }}

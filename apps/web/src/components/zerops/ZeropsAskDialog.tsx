@@ -67,11 +67,11 @@ export function ZeropsAskConfirm({
             <MateFace shape={shape} size={24} state="idle" tint={tint} />
           )}
           {/* Quoted, not paraphrased: this is the text being authorised. */}
-          <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm wrap-anywhere text-foreground">
+          <p className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-body wrap-anywhere text-foreground">
             {ask}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           It is sent straight away and {who} starts working; you can stop it in the conversation.
         </p>
       </DialogPanel>

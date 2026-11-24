@@ -44,7 +44,7 @@ function Opener({
           </DialogHeader>
           <DialogPanel>
             {long ? (
-              <div className="flex flex-col gap-2 text-sm">
+              <div className="flex flex-col gap-2 text-body">
                 {LONG.map((line) => (
                   <p className="m-0" key={line}>
                     {line}

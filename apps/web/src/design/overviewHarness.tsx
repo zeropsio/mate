@@ -1386,7 +1386,7 @@ function HarnessPage() {
           ) : null}
           {PAGE === null ? (
             <div className="flex items-center justify-between">
-              <h1 className="text-xl font-medium text-foreground">Overview</h1>
+              <h1 className="text-title font-medium text-foreground">Overview</h1>
               <Button variant="secondary">New project</Button>
             </div>
           ) : null}

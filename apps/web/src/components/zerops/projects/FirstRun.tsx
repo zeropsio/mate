@@ -202,7 +202,7 @@ function FirstRunForm({
           </div>
         </>
       ) : (
-        <p className="text-sm text-muted-foreground">{form.input.closed}</p>
+        <p className="text-body text-muted-foreground">{form.input.closed}</p>
       )}
     </NewProjectFormFrame>
   );

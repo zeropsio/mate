@@ -89,7 +89,7 @@ function LabelSpecimens() {
           source="apps/web/src/components/ThreadCommandSubtitle.tsx"
         >
           <Specimen label="between two words">
-            <span className="flex items-center gap-1 text-xs">
+            <span className="flex items-center gap-1 text-caption">
               main
               <CommandPaletteMetaDot />
               2m

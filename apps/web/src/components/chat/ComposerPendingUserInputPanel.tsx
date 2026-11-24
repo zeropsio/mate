@@ -387,7 +387,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         <CollapsiblePanel className="-ms-[11px]">
           <div className="p-px">
             {activeQuestion.multiSelect ? (
-              <p className="ps-2.5 pb-1 text-secondary-label text-xs">
+              <p className="ps-2.5 pb-1 text-secondary-label text-caption">
                 Select one or more options.
               </p>
             ) : null}
@@ -433,7 +433,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     ) : shortcutKey !== null ? (
                       <kbd
                         className={cn(
-                          "flex size-5 shrink-0 items-center justify-center text-xs font-medium text-muted-foreground tabular-nums",
+                          "flex size-5 shrink-0 items-center justify-center text-caption font-medium text-muted-foreground tabular-nums",
                         )}
                       >
                         {shortcutKey}
@@ -472,7 +472,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                 data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="font-medium text-sm">Other</span>
+                  <span className="font-medium text-body">Other</span>
                   <span className="text-line">
                     {customAnswerActive
                       ? progress.customAnswer
@@ -498,7 +498,7 @@ function PendingUserInputOptionLabel({
 }) {
   return (
     <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-      <span className="text-sm font-medium">{option.label}</span>
+      <span className="text-body font-medium">{option.label}</span>
       {option.description && option.description !== option.label ? (
         <span className="text-secondary-label text-line">{option.description}</span>
       ) : null}

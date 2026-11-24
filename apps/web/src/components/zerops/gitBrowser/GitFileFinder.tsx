@@ -135,14 +135,14 @@ export function GitFileFinder({
         }}
       />
       {view.state === "known" && view.answer.truncated ? (
-        <p className="text-xs text-muted-foreground" role="status">
+        <p className="text-caption text-muted-foreground" role="status">
           The finder sees the first {PATHS_LIMIT.toLocaleString("en-US")} files. Search the content
           to reach the rest.
         </p>
       ) : null}
       {found !== null ? (
         found.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="text-body text-muted-foreground" role="status">
             {paths?.length === 0 ? "No files here." : "No file at this commit matches that name."}
           </p>
         ) : (
@@ -153,7 +153,7 @@ export function GitFileFinder({
                   to={open(row)}
                   hrefOf={hrefOf}
                   navigate={navigate}
-                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <PierreEntryIcon
                     pathValue={row.path}
@@ -165,7 +165,7 @@ export function GitFileFinder({
                     <Marked value={row.name} indices={row.nameMatchIndices} />
                   </span>
                   {row.path === row.name ? null : (
-                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate text-caption text-muted-foreground">
                       <Marked value={row.path} indices={row.pathMatchIndices} />
                     </span>
                   )}
@@ -176,7 +176,7 @@ export function GitFileFinder({
         )
       ) : view.state === "unread" ? (
         slow ? (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="text-body text-muted-foreground" role="status">
             Reading the files…
           </p>
         ) : null

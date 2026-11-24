@@ -84,7 +84,7 @@ export function ZeropsAssignMateForm({
           <select
             aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
-            className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            className="h-9 w-full rounded-md border border-border bg-background px-3 text-body text-foreground"
             disabled={pending || readingOrganization !== undefined || readFailed !== undefined}
             id={`${id}-member`}
             onChange={(event) => {
@@ -106,7 +106,7 @@ export function ZeropsAssignMateForm({
         </div>
         {readFailed === undefined ? null : (
           <div className="mt-3 flex flex-col items-start gap-3">
-            <p className="text-sm text-foreground" role="alert">
+            <p className="text-body text-foreground" role="alert">
               Couldn't read {readFailed.organization}'s members from Zerops.
             </p>
             <Button onClick={readFailed.onReadAgain} size="sm" type="button" variant="secondary">

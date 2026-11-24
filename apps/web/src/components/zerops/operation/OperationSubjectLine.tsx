@@ -16,7 +16,10 @@ export function OperationSubjectLine({
   readonly subject: OperationSubject;
 }) {
   return (
-    <p className="min-h-5 text-xs leading-5 [overflow-wrap:anywhere]" data-zerops-operation-subject>
+    <p
+      className="min-h-5 text-caption leading-5 [overflow-wrap:anywhere]"
+      data-zerops-operation-subject
+    >
       {subject.kind === "named" ? (
         <>
           <span

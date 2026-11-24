@@ -124,7 +124,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 onError={() => setFailedImageSrc(item.src)}
               />
             )}
-            <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
+            <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-caption text-muted-foreground/80">
               {item.name}
               {reference !== null && original.read.kind === "ready" && original.url ? (
                 <a

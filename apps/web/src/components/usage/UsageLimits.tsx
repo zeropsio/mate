@@ -200,14 +200,14 @@ export function LimitWindows({
         const resetsIn = formatResetsIn(window, now);
         return (
           <Fragment key={window.id}>
-            <span className="flex min-w-0 items-center gap-2 text-xs">
+            <span className="flex min-w-0 items-center gap-2 text-caption">
               <span className="truncate text-muted-foreground">{window.label}</span>
               <span className="ms-auto shrink-0 font-medium text-foreground tabular-nums">
                 {remainingPercent(window)}% left
               </span>
             </span>
             <WindowBar color={color} window={window} now={now} />
-            <span className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
+            <span className="flex items-center gap-2 text-caption whitespace-nowrap text-muted-foreground tabular-nums">
               {pace ? <PaceIcon pace={pace} /> : null}
               <span className="ms-auto shrink-0">{resetsIn ?? ""}</span>
             </span>
@@ -266,7 +266,7 @@ function AccountHeading({
   readonly accentColor?: string | undefined;
 }) {
   return (
-    <h2 className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-foreground">
+    <h2 className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-body font-medium text-foreground">
       <ProviderInstanceIcon
         driverKind={driver}
         displayName={instanceLabel}
@@ -278,7 +278,7 @@ function AccountHeading({
       />
       <span className="truncate">{label}</span>
       {instanceLabel !== label ? (
-        <span className="min-w-0 truncate text-xs font-normal text-muted-foreground">
+        <span className="min-w-0 truncate text-caption font-normal text-muted-foreground">
           ·{" "}
           {instanceLabel.includes("@") ? (
             <RedactedSensitiveText
@@ -335,7 +335,7 @@ function PlaceChips({ places }: { readonly places: readonly LimitsPlace[] }) {
       {places.map((place) => (
         <li
           key={place.environmentId}
-          className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+          className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-caption text-muted-foreground"
         >
           {place.owner ? (
             <PersonAvatar name={place.owner.name} picture={place.owner.avatarUrl} size={16} />
@@ -380,7 +380,9 @@ function AccountLimits({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <PlaceChips places={places} />
           {places.length > 1 ? (
-            <span className="text-xs text-muted-foreground">newest of {places.length} reads</span>
+            <span className="text-caption text-muted-foreground">
+              newest of {places.length} reads
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -453,7 +455,7 @@ export function ResetCredits({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
       <span className="tabular-nums">{summary}</span>
       {credits.availableCount > 0 ? (
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
@@ -504,7 +506,7 @@ function SourceAccountLimits({
         email={account.email}
       />
       {notice ? (
-        <span className="text-xs text-muted-foreground">{notice}</span>
+        <span className="text-caption text-muted-foreground">{notice}</span>
       ) : (
         <LimitWindows driver={account.driver} windows={account.usageLimits.windows} now={now} />
       )}
@@ -532,9 +534,9 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
   return (
     <div className="flex flex-col gap-6">
       {source.error ? (
-        <span className="text-xs text-muted-foreground">{source.error}</span>
+        <span className="text-caption text-muted-foreground">{source.error}</span>
       ) : source.accounts.length === 0 ? (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           {source.hiddenAccountCount > 0
             ? "All accounts are shown by connected providers."
             : "No accounts reported."}
@@ -627,7 +629,7 @@ export function UsageLimitsSection({
   }
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-body text-muted-foreground">
         Subscription limits could not be read from every Mate.
         {onRetry === undefined ? null : (
           <>
@@ -641,7 +643,7 @@ export function UsageLimitsSection({
   if (state === "none") {
     return (
       <div className="flex flex-col gap-8">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           No coding agent on your connected Mates reports subscription limits.
         </p>
         {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
@@ -654,7 +656,10 @@ export function UsageLimitsSection({
         block.kind === "notices" ? (
           <div className="flex flex-col gap-1" key={block.key}>
             {block.notices.map((group) => (
-              <p key={`${group.driver}:${group.notice}`} className="text-xs text-muted-foreground">
+              <p
+                key={`${group.driver}:${group.notice}`}
+                className="text-caption text-muted-foreground"
+              >
                 {limitsNoticeLine({
                   driverLabel: getDriverOption(group.driver)?.label ?? String(group.driver),
                   notice: group.notice,
@@ -677,7 +682,7 @@ export function UsageLimitsSection({
         ) : null,
       )}
       {page.unread.length > 0 || unavailableNames.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Limits unavailable from{" "}
           {[...unavailableNames, ...placesOf(page.unread).map((place) => place.name)].join(", ")}.
           Values from these Mates are not included.

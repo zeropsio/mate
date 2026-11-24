@@ -66,8 +66,8 @@ export function BillingSettings(): JSX.Element {
 function PageNote({ title, words }: { readonly title: string; readonly words: string }) {
   return (
     <div className="flex flex-col items-center gap-1 px-6 py-24 text-center">
-      <p className="font-medium text-foreground text-sm">{title}</p>
-      <p className="max-w-sm text-muted-foreground text-sm">{words}</p>
+      <p className="font-medium text-foreground text-body">{title}</p>
+      <p className="max-w-sm text-muted-foreground text-body">{words}</p>
     </div>
   );
 }
@@ -108,7 +108,7 @@ function OrganizationBillingPage({
       <SpendingSection billing={billing} daily={daily} />
       <ProjectsSection billing={billing} />
       <section className="flex flex-col items-start justify-between gap-3 rounded-xl bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body">
           Invoices, payment cards, automatic top-up and billing details are in HQ.
         </p>
         <HqButton href={hq} variant="secondary">
@@ -157,7 +157,7 @@ function Figure({ usd, size }: { readonly usd: number; readonly size: "hero" | "
       <span
         className={cn(
           "font-medium text-muted-foreground",
-          size === "hero" ? "text-xl" : "text-emphasis",
+          size === "hero" ? "text-title" : "text-emphasis",
         )}
       >
         {cents}
@@ -187,13 +187,13 @@ function BalanceCard({
     >
       <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="font-medium text-muted-foreground text-sm">Balance</h2>
+          <h2 className="font-medium text-muted-foreground text-body">Balance</h2>
           {balance === null || total === null ? (
             <Skeleton className="h-10 w-48" />
           ) : (
             <Figure size="hero" usd={total} />
           )}
-          <p className="min-h-5 text-muted-foreground text-sm">
+          <p className="min-h-5 text-muted-foreground text-body">
             <Keeps billing={billing} />
           </p>
         </div>
@@ -202,7 +202,7 @@ function BalanceCard({
             Top up in HQ
           </HqButton>
         ) : (
-          <p className="max-w-56 text-muted-foreground text-sm sm:text-right">
+          <p className="max-w-56 text-muted-foreground text-body sm:text-right">
             Owners and members who manage billing top up. Ask an owner.
           </p>
         )}
@@ -279,7 +279,7 @@ function Split({ credit, promo }: { readonly credit: number; readonly promo: num
           </>
         ) : null}
       </div>
-      <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+      <dl className="flex flex-wrap gap-x-8 gap-y-2 text-body">
         <SplitPart dot="bg-spend-compute" label="Topped up" usd={credit} />
         <SplitPart dot="bg-spend-compute/55" label="Promo credit" usd={promo} />
       </dl>
@@ -378,16 +378,16 @@ function SpendingSection({
     >
       <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
-          <h2 className="font-medium text-muted-foreground text-sm">Spending</h2>
+          <h2 className="font-medium text-muted-foreground text-body">Spending</h2>
           {cost.kind === "known" ? (
             <>
               <Figure size="title" usd={cost.value.organization[period]} />
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-caption">
                 {periodWords(period, cost.value.organization)}
               </p>
             </>
           ) : cost.kind === "refused" ? (
-            <p className="text-muted-foreground text-sm">Spending isn't shared with you.</p>
+            <p className="text-muted-foreground text-body">Spending isn't shared with you.</p>
           ) : (
             <>
               <Skeleton className="h-9 w-40" />
@@ -482,15 +482,17 @@ function ProjectsSection({
       data-zerops-surface="billing-projects"
     >
       <div className="flex items-baseline justify-between gap-4 px-1">
-        <h2 className="font-medium text-muted-foreground text-sm">This month by project</h2>
+        <h2 className="font-medium text-muted-foreground text-body">This month by project</h2>
         {projects.length === 0 ? null : (
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground text-caption tabular-nums">
             {projects.length} {projects.length === 1 ? "project" : "projects"}
           </span>
         )}
       </div>
       {projects.length === 0 ? (
-        <p className="px-1 text-muted-foreground text-sm">Nothing has cost anything this month.</p>
+        <p className="px-1 text-muted-foreground text-body">
+          Nothing has cost anything this month.
+        </p>
       ) : (
         <ol className="flex flex-col divide-y divide-border/60">
           {shown.map(([projectId, period]) => (
@@ -535,7 +537,7 @@ function ProjectRow({
       {/* A project the person no longer sees, or one deleted since, still cost what it cost. */}
       <span
         className={cn(
-          "min-w-0 flex-1 truncate text-sm",
+          "min-w-0 flex-1 truncate text-body",
           project === null ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -550,10 +552,10 @@ function ProjectRow({
           style={{ width: `${top > 0 ? Math.max(2, (usd / top) * 100) : 0}%` }}
         />
       </span>
-      <span className="w-20 shrink-0 text-right text-foreground text-sm tabular-nums">
+      <span className="w-20 shrink-0 text-right text-foreground text-body tabular-nums">
         {formatUsd(usd)}
       </span>
-      <span className="w-9 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
+      <span className="w-9 shrink-0 text-right text-muted-foreground text-caption tabular-nums">
         {share < 1 ? "<1%" : `${String(share)}%`}
       </span>
     </li>

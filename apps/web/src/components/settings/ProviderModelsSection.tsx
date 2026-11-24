@@ -198,8 +198,8 @@ export function ProviderModelsSection({
 
   return (
     <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
-      <div className="text-xs font-medium text-foreground">Models</div>
-      <div className="mt-1 text-xs text-muted-foreground">
+      <div className="text-caption font-medium text-foreground">Models</div>
+      <div className="mt-1 text-caption text-muted-foreground">
         {models.length} model{models.length === 1 ? "" : "s"} available.
       </div>
       <div
@@ -253,7 +253,7 @@ export function ProviderModelsSection({
                 <div className="flex min-w-0 items-center gap-1">
                   <span
                     className={cn(
-                      "min-w-0 truncate text-xs",
+                      "min-w-0 truncate text-caption",
                       isHidden ? "text-muted-foreground line-through" : "text-foreground/90",
                     )}
                   >
@@ -454,7 +454,7 @@ export function ProviderModelsSection({
       )}
 
       {driverKind !== "antigravity" && error ? (
-        <p className="mt-2 text-xs text-destructive">{error}</p>
+        <p className="mt-2 text-caption text-destructive">{error}</p>
       ) : null}
     </div>
   );

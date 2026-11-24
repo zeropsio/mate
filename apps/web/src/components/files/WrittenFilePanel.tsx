@@ -74,7 +74,7 @@ export default function WrittenFilePanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <div
-        className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 text-xs"
+        className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 text-caption"
         data-surface-subheader
       >
         <Tooltip>
@@ -96,7 +96,7 @@ export default function WrittenFilePanel({
         <div className="min-h-0 flex-1" />
       ) : read.state === "refused" ? (
         <div
-          className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-muted-foreground"
+          className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-caption leading-relaxed text-muted-foreground"
           data-written-file-refused={read.reason ?? "unavailable"}
         >
           {writtenFileRefusalWords(read.reason, mate)}

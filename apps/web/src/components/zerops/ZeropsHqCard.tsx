@@ -93,7 +93,7 @@ export function ZeropsHqCardView({
       data-hq-state={view.state?.kind ?? "unknown"}
       data-zerops-surface="hq-card"
     >
-      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-caption">
         {view.opens ? (
           <button
             aria-expanded={open}
@@ -127,7 +127,10 @@ export function ZeropsHqCardView({
         )}
       </div>
       {view.troubles.length === 0 ? null : (
-        <ul className="flex flex-col gap-0.5 pb-1 text-xs text-status-attention-text" role="status">
+        <ul
+          className="flex flex-col gap-0.5 pb-1 text-caption text-status-attention-text"
+          role="status"
+        >
           {view.troubles.map((trouble) => (
             <li data-hq-trouble key={trouble}>
               {trouble}
@@ -136,7 +139,7 @@ export function ZeropsHqCardView({
         </ul>
       )}
       {open && view.opens ? (
-        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-xs">
+        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-caption">
           {view.core === null ? null : (
             <DetailRow label="Version">
               <span>{view.core}</span>

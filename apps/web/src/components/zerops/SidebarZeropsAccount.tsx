@@ -312,13 +312,13 @@ export function SidebarZeropsAccountMenu({
           size={32}
         />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate text-body font-medium text-foreground">
             {account.fullName ?? account.name}
           </p>
           {/* What they are in the organization the list shows, as the prototype
               said it; the address where no organization is known yet. */}
           {(sidebarAccountRoleLine(activeOrganization) ?? account.email) === null ? null : (
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="truncate text-caption text-muted-foreground">
               {sidebarAccountRoleLine(activeOrganization) ?? account.email}
             </p>
           )}
@@ -418,7 +418,7 @@ export function SidebarZeropsAccountMenu({
         <MenuItem data-zerops-account-chief="" onClick={chief.onSetUp}>
           {chief.icon}
           <span className="min-w-0 flex-1 truncate">Set up Chief</span>
-          <span className="text-xs text-muted-foreground">One Mate for every project</span>
+          <span className="text-caption text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
       {SIDEBAR_ACCOUNT_DESTINATIONS.filter(

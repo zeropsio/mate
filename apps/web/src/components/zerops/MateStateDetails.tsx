@@ -14,7 +14,7 @@ export function MateStateDetails({
   return (
     <div className="arrival-failure-details w-full">
       <Collapsible>
-        <CollapsibleTrigger className="group inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+        <CollapsibleTrigger className="group inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-body text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
           {label}
           <ChevronDownIcon
             aria-hidden="true"

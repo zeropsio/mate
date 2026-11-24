@@ -103,22 +103,22 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
       <SheetHeader {...props} />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-1.5 pb-10">
         {props.place.state === "failed" ? (
-          <p className="py-6 text-muted-foreground text-sm">
+          <p className="py-6 text-muted-foreground text-body">
             You can't see {props.placeName}'s addresses.
           </p>
         ) : runsNothing ? (
-          <p className="py-6 text-muted-foreground text-sm">
+          <p className="py-6 text-muted-foreground text-body">
             Nothing runs in {props.placeName} yet.
           </p>
         ) : props.place.state === "reading" && props.place.domains.length === 0 ? (
-          <p className="flex items-center gap-2 py-6 text-muted-foreground text-sm">
+          <p className="flex items-center gap-2 py-6 text-muted-foreground text-body">
             <Spinner aria-hidden="true" size="sm" tone="muted" />
             Reading {props.placeName}'s addresses…
           </p>
         ) : (
           <div className="grid gap-8">
             {ctx.hold ? (
-              <p className="flex items-center gap-2 text-muted-foreground text-sm">
+              <p className="flex items-center gap-2 text-muted-foreground text-body">
                 <Spinner aria-hidden="true" size="sm" tone="muted" />
                 Still reading {props.placeName}'s addresses. Changes wait until it's read.
               </p>
@@ -189,7 +189,7 @@ function MoreAddresses({
         className="group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-lg text-left text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         data-addresses-more=""
       >
-        <span className="shrink-0 font-medium text-sm">
+        <span className="shrink-0 font-medium text-body">
           {open ? "Hide" : "Show"} direct connections and IP addresses
         </span>
         <ChevronDownIcon
@@ -198,7 +198,7 @@ function MoreAddresses({
         />
         {/* A phone has room for the press alone, which says it. */}
         {open ? null : (
-          <span className="min-w-0 flex-1 truncate text-end text-xs max-sm:invisible">
+          <span className="min-w-0 flex-1 truncate text-end text-caption max-sm:invisible">
             For database tools and DNS records
           </span>
         )}
@@ -250,14 +250,14 @@ function SheetHeader({
               >
                 {place.label}
                 {place.owner === undefined ? null : (
-                  <span className="text-muted-foreground text-xs">· {place.owner}'s</span>
+                  <span className="text-muted-foreground text-caption">· {place.owner}'s</span>
                 )}
               </MenuItem>
             ))}
           </MenuPopup>
         </Menu>
       ) : current === projectName ? null : (
-        <span className="truncate text-muted-foreground text-sm">{current}</span>
+        <span className="truncate text-muted-foreground text-body">{current}</span>
       )}
       <span className="grow" />
       <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
@@ -395,11 +395,11 @@ function IpSection({
               credit; promo credit doesn't count. To stop renewing it, turn it off in Zerops.
             </p>
           )}
-          <p className="text-xs">Only admins can buy it.</p>
+          <p className="text-caption">Only admins can buy it.</p>
         </Confirm>
       ) : null}
       {ips.ownV4 === undefined ? null : (
-        <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
+        <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-caption">
           Your own IPv4 renews on its own; turn it off in Zerops to stop it.
           <OpenInZerops url={zeropsUrl} />
         </p>

@@ -87,7 +87,7 @@ export function ZeropsDeleteMateForm({
       <DialogPanel>
         {application !== undefined ? (
           <div className="mb-4 space-y-3" data-zerops-surface="delete-mate-application">
-            <p className="text-sm">{`${name} is the last Mate of ${application.name}.`}</p>
+            <p className="text-body">{`${name} is the last Mate of ${application.name}.`}</p>
             <RadioGroup
               aria-label={`What happens to ${application.name}`}
               onValueChange={(value) => {
@@ -96,7 +96,7 @@ export function ZeropsDeleteMateForm({
               }}
               value={also}
             >
-              <label className="flex items-start gap-2 text-sm">
+              <label className="flex items-start gap-2 text-body">
                 <Radio disabled={pending} value="keep" />
                 <span>
                   <span className="block">{`Keep ${application.name}`}</span>
@@ -105,7 +105,7 @@ export function ZeropsDeleteMateForm({
                   </span>
                 </span>
               </label>
-              <label className="flex items-start gap-2 text-sm">
+              <label className="flex items-start gap-2 text-body">
                 <Radio disabled={pending} value="delete" />
                 <span>{`Delete ${application.name} too`}</span>
               </label>
@@ -115,7 +115,7 @@ export function ZeropsDeleteMateForm({
         ) : null}
         {failed === undefined ? null : (
           <div className="mb-4 min-w-0 [&_.arrival-failure-details]:text-left!">
-            <p className="text-xs text-status-failed-text">{failed.line}</p>
+            <p className="text-caption text-status-failed-text">{failed.line}</p>
             {failed.details === null ? null : <ZeropsAnswerDetails text={failed.details} />}
           </div>
         )}
@@ -135,7 +135,11 @@ export function ZeropsDeleteMateForm({
             spellCheck={false}
             value={typed}
           />
-          <p className="min-h-4 text-xs text-status-failed-text" id={`${id}-reason`} role="alert">
+          <p
+            className="min-h-4 text-caption text-status-failed-text"
+            id={`${id}-reason`}
+            role="alert"
+          >
             {error}
           </p>
         </div>

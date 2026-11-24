@@ -23,7 +23,7 @@ export function ZeropsCreditForecast({ organizationId }: { readonly organization
 export function CreditForecastLine({ organizationId }: { readonly organizationId: string }) {
   const { addCredit } = useCreditOffers();
   return (
-    <p className="text-sm text-muted-foreground" data-zerops-credit-forecast="">
+    <p className="text-body text-muted-foreground" data-zerops-credit-forecast="">
       {CREDIT_FORECAST_LINE}{" "}
       {addCredit ? (
         <InlineButton

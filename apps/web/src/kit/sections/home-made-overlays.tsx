@@ -129,7 +129,7 @@ function ReviewDialogOpener() {
           <h2 className="m-0 font-semibold text-lg" id="kit-review-title">
             Add the changelog page
           </h2>
-          <p className="m-0 text-muted-foreground text-sm">
+          <p className="m-0 text-muted-foreground text-body">
             The review's own pages fill this shell: the change, its comments, its release steps.
           </p>
         </div>
@@ -202,7 +202,7 @@ const FEN = KIT_MENU_MATES[0]!;
 function MateMenuOpener() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex w-64 items-center justify-between rounded-md border border-border bg-sidebar px-3 py-2 text-sidebar-foreground text-sm">
+    <div className="flex w-64 items-center justify-between rounded-md border border-border bg-sidebar px-3 py-2 text-sidebar-foreground text-body">
       <span>Fen</span>
       <MateMenu
         actions={kitMateActions(FEN)}
@@ -305,7 +305,7 @@ function SteppingDialogOpener() {
         </DialogHeader>
         {done ? null : (
           <DialogPanel>
-            <p className="m-0 text-muted-foreground text-sm">
+            <p className="m-0 text-muted-foreground text-body">
               The sign-in page opens in a new tab; this dialog waits for its code.
             </p>
           </DialogPanel>

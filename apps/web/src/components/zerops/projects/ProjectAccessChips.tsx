@@ -490,7 +490,7 @@ export function AddAccessPicker({
       )}
       <dl
         aria-label="What Read and Full give"
-        className="grid gap-1 px-3 pt-2 text-xs text-muted-foreground"
+        className="grid gap-1 px-3 pt-2 text-caption text-muted-foreground"
       >
         {(["read", "full"] as const).map((level) => (
           <div key={level}>

@@ -223,7 +223,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
         "wrap-anywhere",
         size === "sm"
           ? "font-medium text-emphasis leading-8"
-          : "font-semibold text-xl leading-none",
+          : "font-semibold text-title leading-none",
         className,
       )}
       data-slot="dialog-title"
@@ -235,7 +235,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props) {
   return (
     <DialogPrimitive.Description
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-body", className)}
       data-slot="dialog-description"
       {...props}
     />

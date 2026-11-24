@@ -79,13 +79,13 @@ function ActivityPage({
     return <Skeleton className="mx-3 h-24" />;
   if (read.state === "withheld")
     return (
-      <p className="px-3 text-sm text-muted-foreground">
+      <p className="px-3 text-body text-muted-foreground">
         Only the organization's owners and admins see its activity.
       </p>
     );
   if (read.state === "failed")
     return (
-      <div className="flex items-center gap-3 px-3 text-sm text-muted-foreground">
+      <div className="flex items-center gap-3 px-3 text-body text-muted-foreground">
         <span>{read.words}</span>
         <Button size="sm" variant="secondary" onClick={again}>
           Try again
@@ -94,11 +94,11 @@ function ActivityPage({
     );
   const lines = read.page.entries.map((entry) => activityLine(entry, names));
   if (before === null && lines.length === 0)
-    return <p className="px-3 text-sm text-muted-foreground">Nothing has happened here yet.</p>;
+    return <p className="px-3 text-body text-muted-foreground">Nothing has happened here yet.</p>;
   return (
     <>
       {read.stale ? (
-        <p className="px-3 text-xs text-muted-foreground">
+        <p className="px-3 text-caption text-muted-foreground">
           HQ could not be read again; this is what it said before.
         </p>
       ) : null}
@@ -106,21 +106,24 @@ function ActivityPage({
         {lines.map((line) => (
           <li
             key={line.key}
-            className="flex flex-col gap-0.5 px-3 py-2 text-sm"
+            className="flex flex-col gap-0.5 px-3 py-2 text-body"
             data-activity-entry={line.key}
           >
             <div className="flex items-baseline gap-2">
               <span className="font-medium text-foreground">{line.who}</span>
               <span className="text-foreground">{line.what}</span>
               {line.outcome !== null ? (
-                <span className="text-xs text-warning-foreground">{line.outcome}</span>
+                <span className="text-caption text-warning-foreground">{line.outcome}</span>
               ) : null}
-              <time className="ml-auto shrink-0 text-xs text-muted-foreground" dateTime={line.at}>
+              <time
+                className="ml-auto shrink-0 text-caption text-muted-foreground"
+                dateTime={line.at}
+              >
                 {when(line.at)}
               </time>
             </div>
             {line.subject !== null ? (
-              <span className="truncate text-xs text-muted-foreground">{line.subject}</span>
+              <span className="truncate text-caption text-muted-foreground">{line.subject}</span>
             ) : null}
           </li>
         ))}

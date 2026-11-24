@@ -33,7 +33,7 @@ export function WhatHappensNext({
       className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 py-2.5"
       data-zerops-surface="what-happens-next"
     >
-      <h3 className="text-xs leading-4 font-medium text-muted-foreground" id={id}>
+      <h3 className="text-caption leading-4 font-medium text-muted-foreground" id={id}>
         What happens next
       </h3>
       <div className="grid">

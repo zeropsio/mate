@@ -47,12 +47,12 @@ export function ConnectCard({
       >
         <ol className="grid gap-5">{children}</ol>
         {problem ? (
-          <p className="text-xs text-destructive-foreground" role="alert">
+          <p className="text-caption text-destructive-foreground" role="alert">
             {problem}
           </p>
         ) : null}
         <div className="flex items-center gap-2 border-t border-border/70 pt-4">
-          <p className="min-w-0 flex-1 text-xs text-muted-foreground">{note}</p>
+          <p className="min-w-0 flex-1 text-caption text-muted-foreground">{note}</p>
           <Button onClick={onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
@@ -92,11 +92,11 @@ export function ConnectStep({
       </span>
       <div className="grid min-w-0 gap-3">
         <div className="grid gap-0.5">
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-body font-medium text-foreground">
             <span className="sr-only">{`Step ${String(n)}: `}</span>
             {title}
           </p>
-          {help ? <p className="text-xs text-muted-foreground">{help}</p> : null}
+          {help ? <p className="text-caption text-muted-foreground">{help}</p> : null}
         </div>
         {children}
       </div>
@@ -149,11 +149,11 @@ export function KeyField({
         value={value}
       />
       {problem === null ? (
-        <p className="text-xs text-muted-foreground" id={`${id}-hint`}>
+        <p className="text-caption text-muted-foreground" id={`${id}-hint`}>
           {hint}
         </p>
       ) : (
-        <p className="text-xs text-destructive-foreground" id={`${id}-hint`} role="alert">
+        <p className="text-caption text-destructive-foreground" id={`${id}-hint`} role="alert">
           {problem}
         </p>
       )}
@@ -175,9 +175,9 @@ export function AddressField({
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="grid gap-1.5">
-      <p className="text-sm font-medium text-foreground">{label}</p>
+      <p className="text-body font-medium text-foreground">{label}</p>
       <div className="flex min-w-0 items-center gap-2">
-        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-md border border-input bg-background px-2.5 font-mono text-xs text-foreground sm:h-6.5">
+        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-md border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
           {value}
         </code>
         <Button
@@ -196,7 +196,7 @@ export function AddressField({
           </span>
         </Button>
       </div>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -213,11 +213,11 @@ export function PendingAddress({
 }) {
   return (
     <div className="grid gap-1.5">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      <p className="flex h-7.5 items-center rounded-md border border-dashed border-input px-2.5 text-xs text-muted-foreground sm:h-6.5">
+      <p className="text-body font-medium text-foreground">{label}</p>
+      <p className="flex h-7.5 items-center rounded-md border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
         {words}
       </p>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

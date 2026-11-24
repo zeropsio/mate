@@ -20,7 +20,7 @@ function MiddleTruncateSpecimens() {
           key={`${value}-${tail}`}
           label={`${specimenLabel({ value, tail })} · ${width === "w-40" ? "160" : "224"}px box`}
         >
-          <div className={width === "w-40" ? "flex w-40 text-sm" : "flex w-56 text-sm"}>
+          <div className={width === "w-40" ? "flex w-40 text-body" : "flex w-56 text-body"}>
             <MiddleTruncate value={value} {...(tail === undefined ? {} : { tail })} />
           </div>
         </Specimen>

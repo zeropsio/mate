@@ -38,7 +38,7 @@ function OpenChanges({
       <h2 className="text-base font-medium text-foreground">Open changes</h2>
       {changesFailure === undefined ? null : (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-status-failed" role="alert">
+          <p className="text-body text-status-failed" role="alert">
             {changesFailure}
           </p>
           <Button variant="ghost" size="sm" onClick={onReadChanges}>
@@ -47,9 +47,9 @@ function OpenChanges({
         </div>
       )}
       {repository === undefined || repository.coverage === "unread" ? (
-        <p className="text-sm text-muted-foreground">Changes not read yet.</p>
+        <p className="text-body text-muted-foreground">Changes not read yet.</p>
       ) : repository.coverage === "failed" ? (
-        <p className="text-sm text-muted-foreground">Showing the last read changes.</p>
+        <p className="text-body text-muted-foreground">Showing the last read changes.</p>
       ) : null}
       {repository !== undefined && repository.changes.length > 0 ? (
         <Card variant="flat">
@@ -68,7 +68,7 @@ function OpenChanges({
           </div>
         </Card>
       ) : repository?.coverage === "complete" ? (
-        <p className="text-sm text-muted-foreground">No open changes.</p>
+        <p className="text-body text-muted-foreground">No open changes.</p>
       ) : null}
     </section>
   );
@@ -99,7 +99,7 @@ function HomeAt({
   return (
     <>
       <Card variant="flat">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-body text-muted-foreground">
           <GitWhen at={about.updatedAt}>Updated {formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
           <span>{count(about.branchCount, "branch", "branches")}</span>
           <span>{count(about.tagCount, "tag", "tags")}</span>
@@ -111,7 +111,7 @@ function HomeAt({
           <div className="flex min-w-0 flex-col gap-3 p-4">
             {top.state === "known" && top.failed ? (
               <div className="flex flex-wrap items-center gap-3">
-                <p className="text-sm text-status-failed" role="alert">
+                <p className="text-body text-status-failed" role="alert">
                   HQ could not read this repository again. Showing the last read source.
                 </p>
                 <Button variant="ghost" size="sm" disabled={top.busy} onClick={again}>
@@ -141,7 +141,7 @@ function HomeAt({
         <section aria-label="README" className="flex min-w-0 flex-col gap-2">
           <Card variant="flat">
             <div className="flex min-w-0 flex-col gap-3 p-4">
-              <h2 className="font-mono text-xs text-muted-foreground">{readme.path}</h2>
+              <h2 className="font-mono text-caption text-muted-foreground">{readme.path}</h2>
               <RepoMarkdown
                 appId={appId}
                 repo={repo}
@@ -152,7 +152,7 @@ function HomeAt({
                 onOpen={(target) => navigate(atCommit(target))}
               />
               {readme.truncated ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   Only the first 256 KiB are shown. Clone to read the whole file.
                 </p>
               ) : null}

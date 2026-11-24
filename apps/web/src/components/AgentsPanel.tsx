@@ -335,9 +335,9 @@ function WorkflowScriptView({
             {result.value.truncated ? "\n… (truncated)" : ""}
           </pre>
         ) : result._tag === "Failure" ? (
-          <p className="text-xs text-destructive-foreground">Could not load the script.</p>
+          <p className="text-caption text-destructive-foreground">Could not load the script.</p>
         ) : (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <p className="text-caption text-muted-foreground">Loading…</p>
         )}
       </div>
     </div>
@@ -531,7 +531,7 @@ function CollapsedWorkflowSection({
         aria-expanded={false}
       >
         <StatusDot status={failed > 0 ? "failed" : group.workflow.status} />
-        <span className="truncate text-sm">
+        <span className="truncate text-body">
           {group.workflow.workflowName ?? group.workflow.title}
         </span>
         <span className="ml-auto flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
@@ -754,8 +754,8 @@ export function AgentsPanel({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <Bot aria-hidden className="size-6 text-muted-foreground/60" />
-        <p className="text-sm font-medium">No helpers yet</p>
-        <p className="max-w-56 text-xs text-muted-foreground">
+        <p className="text-body font-medium">No helpers yet</p>
+        <p className="max-w-56 text-caption text-muted-foreground">
           When {mate?.name ?? "this Mate"} starts helpers, each shows here with what it does now,
           and opens onto its own work.
         </p>

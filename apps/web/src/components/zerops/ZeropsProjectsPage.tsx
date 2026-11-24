@@ -531,7 +531,7 @@ export function creationCovers(
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
-  return <p className="text-sm text-muted-foreground">{message}</p>;
+  return <p className="text-body text-muted-foreground">{message}</p>;
 }
 
 /**
@@ -561,7 +561,7 @@ export function ZeropsProjectsHeader({
         data-zerops-project-scope="true"
       >
         <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-xl font-medium text-foreground">Overview</h1>
+          <h1 className="text-title font-medium text-foreground">Overview</h1>
           {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -588,7 +588,7 @@ function ProjectsFreshness({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 text-xs text-muted-foreground",
+        "flex items-center gap-2 text-caption text-muted-foreground",
         // It waits a beat before it says anything, so a quick answer never flickers it.
         notice.message.afterMs > 0 && "animate-zerops-appear",
       )}
@@ -2389,14 +2389,14 @@ export function ZeropsProjectsContent({
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (
-        <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+        <p className="py-16 text-center text-body text-muted-foreground" role="status">
           {troubleView.empty}
         </p>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
       {withheldProjectNotices(inventory).map((notice) => (
-        <p className="text-xs text-muted-foreground" key={notice} role="status">
+        <p className="text-caption text-muted-foreground" key={notice} role="status">
           {notice}
         </p>
       ))}
@@ -2819,7 +2819,7 @@ export function ZeropsProjectsContent({
           />
         ),
       )}
-      {trouble === null ? null : <p className="text-sm text-status-failed-text">{trouble}</p>}
+      {trouble === null ? null : <p className="text-body text-status-failed-text">{trouble}</p>}
     </div>
   );
   return (

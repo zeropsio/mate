@@ -134,7 +134,7 @@ export function CodeChangesToolbar({
                       >
                         <span className="flex w-full items-center gap-3">
                           <span>{choice.label}</span>
-                          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                          <span className="ml-auto text-caption tabular-nums text-muted-foreground">
                             {diffChoiceCount(choice)}
                           </span>
                         </span>
@@ -278,7 +278,7 @@ export function CodeCompare({
 }) {
   return (
     <div
-      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
+      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-caption text-muted-foreground"
       aria-label={`Comparing ${head} against ${base}`}
     >
       <Tooltip>

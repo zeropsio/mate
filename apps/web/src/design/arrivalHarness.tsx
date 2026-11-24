@@ -777,7 +777,7 @@ function FixtureSignIn({
       onStart={onStart}
       onSubmitCode={onSubmitCode}
       terminal={(agentId) => (
-        <pre className="h-full overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-xs leading-4">
+        <pre className="h-full overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-caption leading-4">
           {TERMINAL[agentId]}
         </pre>
       )}
@@ -1187,7 +1187,7 @@ function Header({ state }: { readonly state: HarnessState }) {
         </span>
       ) : null}
       {state.crew === true ? (
-        <span className="ms-6 flex items-center gap-4 text-muted-foreground text-sm">
+        <span className="ms-6 flex items-center gap-4 text-muted-foreground text-body">
           <span>Conversation</span>
           <span className="font-medium text-foreground">Crew</span>
         </span>
@@ -1217,7 +1217,7 @@ function Harness() {
         className="flex shrink-0 flex-col gap-1 overflow-y-auto border-border border-r p-4"
         style={{ width: 435 }}
       >
-        <p className="pb-1 text-muted-foreground text-xs">
+        <p className="pb-1 text-muted-foreground text-caption">
           A Mate's arrival — Direction A, sign-in S1
         </p>
         <div className="pb-2">
@@ -1228,7 +1228,7 @@ function Harness() {
         {STATES.map((candidate) => (
           <button
             aria-current={candidate.id === current ? "true" : undefined}
-            className="rounded-lg px-3 py-1.5 text-left text-sm aria-[current=true]:bg-accent"
+            className="rounded-lg px-3 py-1.5 text-left text-body aria-[current=true]:bg-accent"
             data-harness-state={candidate.id}
             key={candidate.id}
             onClick={() => setCurrent(candidate.id)}

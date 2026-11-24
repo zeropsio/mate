@@ -7,14 +7,14 @@ function SeparatorSpecimens() {
   return (
     <SpecimenGrid>
       <Specimen label='<Separator> (orientation="horizontal")'>
-        <div className="flex w-64 flex-col gap-2 text-sm">
+        <div className="flex w-64 flex-col gap-2 text-body">
           <span>Above</span>
           <Separator />
           <span>Below</span>
         </div>
       </Specimen>
       <Specimen label='<Separator orientation="vertical">'>
-        <div className="flex h-6 items-center gap-3 text-sm">
+        <div className="flex h-6 items-center gap-3 text-body">
           <span>Left</span>
           <Separator orientation="vertical" />
           <span>Right</span>

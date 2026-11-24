@@ -21,7 +21,7 @@ export function VaultPartName({
     // One run of text, so a heading that lays its children out in a row keeps the words together.
     <span>
       {/* A step under the words beside it: the mono face reads no larger than they do. */}
-      <span className={size === "heading" ? "font-mono text-sm" : "font-mono text-caption"}>
+      <span className={size === "heading" ? "font-mono text-body" : "font-mono text-caption"}>
         {scope.hostname}
       </span>{" "}
       vault

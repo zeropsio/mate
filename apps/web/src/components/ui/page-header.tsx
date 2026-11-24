@@ -58,20 +58,20 @@ function PageHeader({
             <Title
               className={cn(
                 "m-0 min-w-0 truncate font-semibold text-foreground",
-                panel ? "text-emphasis" : "text-xl leading-7",
+                panel ? "text-emphasis" : "text-title leading-7",
               )}
             >
               {title}
             </Title>
             {count === undefined || count === null ? null : (
-              <span className="shrink-0 text-muted-foreground text-sm tabular-nums">{count}</span>
+              <span className="shrink-0 text-muted-foreground text-body tabular-nums">{count}</span>
             )}
           </span>
           {line === undefined || line === null ? null : (
             <span
               className={cn(
                 "min-w-0 text-muted-foreground",
-                panel ? "truncate text-body" : "text-sm",
+                panel ? "truncate text-body" : "text-body",
               )}
               data-slot="page-header-line"
             >

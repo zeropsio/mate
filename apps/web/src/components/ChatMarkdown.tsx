@@ -691,7 +691,7 @@ function MarkdownDetails({
         data-markdown-details-open={isOpen ? "true" : "false"}
       >
         <CollapsibleTrigger
-          className="flex w-full items-center gap-2 py-2 text-left text-sm font-medium text-foreground data-panel-open:[&_svg]:rotate-90"
+          className="flex w-full items-center gap-2 py-2 text-left text-body font-medium text-foreground data-panel-open:[&_svg]:rotate-90"
           data-markdown-details-summary=""
         >
           <ChevronRightIcon
@@ -1394,7 +1394,7 @@ function ChatMarkdownImageFallback(props: {
   readonly reason?: string | undefined;
 }) {
   return (
-    <span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+    <span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
       {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
       {props.reason ? ` · ${props.reason}` : null}
@@ -2845,7 +2845,7 @@ function ChatMarkdown({
         // The log's body is these utilities. An answer's is the stylesheet's
         // `[data-variant="answer"]` rule, which no utility can override.
         variant === "log" &&
-          "text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
+          "text-body leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
         className,
       )}
       data-variant={variant}

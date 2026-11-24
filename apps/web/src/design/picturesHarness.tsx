@@ -300,8 +300,8 @@ function State(props: {
   return (
     <section className="grid gap-2" data-harness-state={props.label}>
       <div>
-        <h2 className="font-medium text-foreground text-sm">{props.label}</h2>
-        <p className="text-muted-foreground text-xs">{props.note}</p>
+        <h2 className="font-medium text-foreground text-body">{props.label}</h2>
+        <p className="text-muted-foreground text-caption">{props.note}</p>
       </div>
       {props.children}
     </section>
@@ -427,14 +427,17 @@ function LiveComposer() {
           }}
         />
       </div>
-      <pre className="whitespace-pre-wrap font-mono text-muted-foreground text-xs" data-live-wire>
+      <pre
+        className="whitespace-pre-wrap font-mono text-muted-foreground text-caption"
+        data-live-wire
+      >
         {materializePicturePrompt(draft.prompt, draft.images, draft.files)}
       </pre>
       <LiveSent
         text={materializePicturePrompt(draft.prompt, draft.images, draft.files)}
         attachments={[...optimisticFileAttachments(draft.files), ...draft.images]}
       />
-      <p className="text-muted-foreground text-xs" data-live-status>
+      <p className="text-muted-foreground text-caption" data-live-status>
         {error ?? pictures.blockReason ?? "Ready to send"}
       </p>
       {pictures.view}
@@ -469,11 +472,13 @@ function Wire(props: { readonly parts: ReadonlyArray<PictureContentPart>; readon
           className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2 border-border border-t px-3.5 py-2 first:border-t-0"
           data-wire-part={part.kind}
         >
-          <span className="font-mono text-muted-foreground text-xs uppercase">{part.kind}</span>
+          <span className="font-mono text-muted-foreground text-caption uppercase">
+            {part.kind}
+          </span>
           {part.kind === "text" ? (
-            <pre className="whitespace-pre-wrap font-mono text-xs leading-5">{part.text}</pre>
+            <pre className="whitespace-pre-wrap font-mono text-caption leading-5">{part.text}</pre>
           ) : (
-            <span className="text-sm tabular-nums">
+            <span className="text-body tabular-nums">
               Picture {part.index + 1} ·{" "}
               {pictureDims(props.made.image.picture.width, props.made.image.picture.height)} ·{" "}
               {pictureTypeName(props.made.image.mimeType)} ·{" "}
@@ -598,7 +603,7 @@ function Harness() {
                 onPaste={() => undefined}
               />
             ) : (
-              <p className="text-muted-foreground text-sm">Drawing the screenshot…</p>
+              <p className="text-muted-foreground text-body">Drawing the screenshot…</p>
             )}
           </div>
         </State>

@@ -515,13 +515,13 @@ function ComposerSlot({ current }: { readonly current: HarnessState }) {
                 className="relative z-10 flex h-28 flex-col justify-between px-4 pt-3.5 pb-3"
                 data-chat-composer-main-surface="true"
               >
-                <span className="text-placeholder text-sm">
+                <span className="text-placeholder text-body">
                   {seat === null
                     ? `Ask ${FEN.name} anything…`
                     : crewMessagePlaceholder(seat.displayName)}
                 </span>
                 {seat === null ? null : (
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground text-caption">
                     {crewRunsOnWord({ login: "Claude Code", model: null, effort: null })}
                   </span>
                 )}
@@ -701,11 +701,11 @@ function Harness() {
         className="flex shrink-0 flex-col gap-1 border-border border-e bg-sidebar p-4"
         style={{ width: MENU }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">A crewmate's empty conversation</p>
+        <p className="pb-2 text-muted-foreground text-caption">A crewmate's empty conversation</p>
         {STATES.map((each) => (
           <button
             aria-current={each.id === current.id ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-sm aria-[current=true]:bg-accent"
+            className="rounded-lg px-3 py-2 text-left text-body aria-[current=true]:bg-accent"
             data-harness-state={each.id}
             key={each.id}
             onClick={() => {

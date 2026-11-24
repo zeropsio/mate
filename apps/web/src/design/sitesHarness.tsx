@@ -419,7 +419,9 @@ function Row({ fixture, face }: { readonly fixture: Fixture; readonly face: Reac
                 </span>
               </span>
             </span>
-            <span className="truncate text-sm text-sidebar-muted-foreground">{fixture.title}</span>
+            <span className="truncate text-body text-sidebar-muted-foreground">
+              {fixture.title}
+            </span>
           </span>
         </div>
       )}

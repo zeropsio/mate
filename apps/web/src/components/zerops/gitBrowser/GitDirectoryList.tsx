@@ -37,7 +37,7 @@ function Row({
   return (
     <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border">
       {entry.type === "submodule" ? (
-        <span className="flex min-w-0 items-center gap-3 text-sm text-foreground">
+        <span className="flex min-w-0 items-center gap-3 text-body text-foreground">
           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="truncate">
             {entry.name} · submodule {entry.sha.slice(0, 7)}
@@ -45,7 +45,7 @@ function Row({
         </span>
       ) : (
         <a
-          className="flex min-w-0 items-center gap-3 rounded-sm text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 items-center gap-3 rounded-sm text-body text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
           href={hrefOf(entry)}
           onClick={(event) => {
             if (!plainClick(event)) return;
@@ -57,7 +57,7 @@ function Row({
           <span className="truncate">{entry.name}</span>
         </a>
       )}
-      <span className="flex shrink-0 items-center gap-4 text-xs text-muted-foreground">
+      <span className="flex shrink-0 items-center gap-4 text-caption text-muted-foreground">
         {entry.size === undefined ? null : <span>{fileSize(entry.size)}</span>}
         <span>{entryLabel(entry.type)}</span>
       </span>
@@ -69,7 +69,7 @@ export function GitDirectoryList({ entries, truncated, hrefOf, onOpen }: GitDire
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {entries.length === 0 && !truncated ? (
-        <p className="text-sm text-muted-foreground">No files here.</p>
+        <p className="text-body text-muted-foreground">No files here.</p>
       ) : entries.length > PLAIN_ROWS ? (
         <LegendList<GitTreeEntry>
           data={entries as Array<GitTreeEntry>}
@@ -86,7 +86,7 @@ export function GitDirectoryList({ entries, truncated, hrefOf, onOpen }: GitDire
         </div>
       )}
       {truncated ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           Only the first entries are shown. Clone the repository to read the whole folder.
         </p>
       ) : null}

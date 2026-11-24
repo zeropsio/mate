@@ -96,14 +96,14 @@ const noop = () => {};
 function Composer({ name, top }: { readonly name: string; readonly top: ReactNode }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2" data-put-live-harness={name}>
-      <span className="text-xs font-medium text-muted-foreground">{name}</span>
+      <span className="text-caption font-medium text-muted-foreground">{name}</span>
       <div
         className="w-full max-w-3xl overflow-hidden rounded-3xl border border-border bg-card"
         data-chat-composer-main-surface="true"
       >
         <div data-chat-composer-surface="true">
           {top}
-          <div className="px-4 pt-3 pb-12 text-placeholder text-sm">Ask anything...</div>
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">Ask anything...</div>
         </div>
       </div>
     </section>
@@ -154,7 +154,7 @@ function Harness() {
         {/* A run is its project's production's: drawn there, never above a composer. */}
         {ROWS.map(({ name, standing }) => (
           <section className="grid max-w-md gap-2" key={name}>
-            <h3 className="text-xs text-muted-foreground">{name}</h3>
+            <h3 className="text-caption text-muted-foreground">{name}</h3>
             <PutLiveRow
               onAgain={noop}
               onContinue={noop}

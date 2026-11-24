@@ -254,7 +254,7 @@ function ProviderEnvironmentSection(props: {
   return (
     <div className="grid gap-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-foreground">Environment variables</span>
+        <span className="text-caption font-medium text-foreground">Environment variables</span>
         <Button
           type="button"
           size="sm"
@@ -276,7 +276,7 @@ function ProviderEnvironmentSection(props: {
         </Button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
         </p>
       ) : (
@@ -359,7 +359,7 @@ function ProviderEnvironmentSection(props: {
           </Table>
         </div>
       )}
-      <span className="text-xs text-muted-foreground">
+      <span className="text-caption text-muted-foreground">
         Sensitive values are stored separately and are not returned to the app after saving.
       </span>
     </div>
@@ -672,7 +672,7 @@ export function ProviderInstanceCard({
   );
 
   const versionCodeNode = versionLabel ? (
-    <code className="text-xs text-muted-foreground">{versionLabel}</code>
+    <code className="text-caption text-muted-foreground">{versionLabel}</code>
   ) : null;
 
   if (mode === "list") {
@@ -696,7 +696,7 @@ export function ProviderInstanceCard({
           {titleIconNode}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-medium text-foreground">{displayName}</span>
+              <span className="truncate text-body font-medium text-foreground">{displayName}</span>
               {versionCodeNode}
             </span>
             <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -759,12 +759,12 @@ export function ProviderInstanceCard({
                 <PopoverPopup side="bottom" align="start" width="md">
                   <div className="grid min-w-0 gap-3">
                     <div className="grid gap-0.5">
-                      <p className="text-sm font-semibold leading-tight text-foreground">
+                      <p className="text-body font-semibold leading-tight text-foreground">
                         {versionAdvisory.title}
                       </p>
                       <p
                         className={cn(
-                          "text-xs leading-snug",
+                          "text-caption leading-snug",
                           versionAdvisory.emphasis === "strong"
                             ? "text-warning"
                             : "text-muted-foreground",
@@ -830,7 +830,7 @@ export function ProviderInstanceCard({
             {titleTailNode}
           </div>
           {showEditorStatus ? (
-            <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-caption text-muted-foreground">
               <span>{summary.headline}</span>
               {summary.detail ? <span>· {summary.detail}</span> : null}
             </p>
@@ -883,7 +883,7 @@ export function ProviderInstanceCard({
         >
           {authEmail?.trim() ? (
             <div className="min-w-0">
-              <div className="text-xs font-medium text-foreground">Account email</div>
+              <div className="text-caption font-medium text-foreground">Account email</div>
               <div className="mt-1.5 flex min-h-8 min-w-0 items-center">
                 <ProviderAuthEmail email={authEmail} />
               </div>
@@ -894,7 +894,7 @@ export function ProviderInstanceCard({
 
           <div>
             <label htmlFor={`provider-instance-${instanceId}-display-name`} className="block">
-              <span className="text-xs font-medium text-foreground">Display name</span>
+              <span className="text-caption font-medium text-foreground">Display name</span>
               <DraftInput
                 id={`provider-instance-${instanceId}-display-name`}
                 className="mt-1.5"
@@ -903,7 +903,7 @@ export function ProviderInstanceCard({
                 placeholder={driverOption?.label ?? "Instance label"}
                 spellCheck={false}
               />
-              <span className="mt-1 block text-xs text-muted-foreground">
+              <span className="mt-1 block text-caption text-muted-foreground">
                 Optional label shown in the provider list.
               </span>
             </label>
@@ -938,7 +938,7 @@ export function ProviderInstanceCard({
 
           {driverOption === undefined ? (
             <div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 This instance uses a driver (
                 <code className="text-foreground">{String(instance.driver)}</code>) that is not
                 shipped with the current build. Configuration values are preserved but cannot be

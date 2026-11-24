@@ -521,7 +521,7 @@ function AdminAutomation({
             if (missing !== null)
               return (
                 <div className="grid gap-3">
-                  <p className="text-sm text-foreground">{missing}</p>
+                  <p className="text-body text-foreground">{missing}</p>
                   <div>
                     <Button onClick={openSettings} size="sm" variant="secondary">
                       Open Settings › Automation
@@ -785,7 +785,7 @@ function AutomationBody({
             )}
           </span>
         )}
-        <span className="pa-head-words text-sm">{poolSummary(pool, held)}</span>
+        <span className="pa-head-words text-body">{poolSummary(pool, held)}</span>
         {admin?.onAddMate === undefined ? null : (
           <span className="pa-head-add">
             <Button aria-label="Add a Mate" onClick={admin.onAddMate} size="sm" variant="link">

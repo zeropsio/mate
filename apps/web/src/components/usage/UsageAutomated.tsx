@@ -70,7 +70,7 @@ function TaskNote({
 }) {
   return (
     <tr className={ROW}>
-      <td className={cn("py-2 text-xs text-muted-foreground", taskIndent(nested))} colSpan={3}>
+      <td className={cn("py-2 text-caption text-muted-foreground", taskIndent(nested))} colSpan={3}>
         {children}
       </td>
     </tr>
@@ -153,7 +153,7 @@ export function UsageMateTaskRowsView({
       </TaskNote>
     );
   const listed = rows.map((row) => (
-    <tr key={row.id} className={cn(ROW, "text-xs")}>
+    <tr key={row.id} className={cn(ROW, "text-caption")}>
       <td className={cn("py-2", taskIndent(nested))}>
         <span className="flex min-w-0 items-baseline gap-2">
           <TaskTitle row={row} />
@@ -183,7 +183,7 @@ export function UsageAutomatedBudget() {
   const budget = automatedBudget(read.setting.state === "known" ? read.setting.held : null);
   if (budget === null) return null;
   return (
-    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+    <p className="flex items-center gap-2 text-caption text-muted-foreground">
       <AutomatedMatesMark />
       <span>
         Automated Mates spent{" "}

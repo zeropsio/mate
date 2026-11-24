@@ -348,7 +348,7 @@ interface StepParts {
 
 /** A step's running words: a dialog's are its own size; in an ask card they are the card's body. */
 const stepWords = (density: "full" | "compact") =>
-  density === "compact" ? "text-body" : "text-sm";
+  density === "compact" ? "text-body" : "text-body";
 
 /** A footer press's size: a dialog's are small, an ask card's the size of every ask's. */
 const pressSize = (density: "full" | "compact") => (density === "compact" ? "md" : "sm");
@@ -715,7 +715,7 @@ function refusalWords(cause: unknown): string {
 
 function Refusal({ words }: { readonly words: string | null }) {
   return words === null ? null : (
-    <p className="text-sm text-destructive-foreground" role="alert">
+    <p className="text-body text-destructive-foreground" role="alert">
       {words}
     </p>
   );
@@ -796,7 +796,7 @@ function pickStep(
   const size = pressSize(input.density);
   const words = stepWords(input.density);
   const tokenLink = (
-    <div className="me-auto self-center text-sm">
+    <div className="me-auto self-center text-body">
       <InlineButton onClick={input.onToken}>
         {accounts.length === 0 ? "GitLab or another host? Connect with a token" : "Use a token"}
       </InlineButton>
@@ -852,7 +852,7 @@ function pickStep(
   const notes = (
     <>
       {unanswered === 0 ? null : (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           GitHub didn't answer about {several}, so {unanswered === 1 ? "its" : "their"} repositories
           aren't listed. {tryAgain}
         </p>
@@ -942,7 +942,7 @@ function pickStep(
       <>
         {returnedNote}
         {freshHere === 0 || account === null ? null : (
-          <p className="rounded-md bg-status-ok-surface px-3 py-2 text-sm text-status-ok-text">
+          <p className="rounded-md bg-status-ok-surface px-3 py-2 text-body text-status-ok-text">
             {account.account} is added ·{" "}
             {freshHere === 1 ? "1 new repository" : `${String(freshHere)} new repositories`}
           </p>
@@ -952,7 +952,7 @@ function pickStep(
             <button
               aria-pressed={each.account === account?.account}
               className={cn(
-                "inline-flex h-8 items-center gap-2 rounded-full border bg-background ps-1.5 pe-3 text-sm outline-none transition-[background-color,box-shadow] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex h-8 items-center gap-2 rounded-full border bg-background ps-1.5 pe-3 text-body outline-none transition-[background-color,box-shadow] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
                 each.account === account?.account
                   ? "border-primary ring-1 ring-primary"
                   : "border-border",
@@ -964,12 +964,14 @@ function pickStep(
               <AccountFace account={each.account} />
               {each.account}
               {addedWords(each, nameOf) === null ? null : (
-                <span className="text-xs text-muted-foreground">{addedWords(each, nameOf)}</span>
+                <span className="text-caption text-muted-foreground">
+                  {addedWords(each, nameOf)}
+                </span>
               )}
             </button>
           ))}
           <button
-            className="inline-flex h-8 items-center rounded-full border border-dashed border-input px-3 text-sm text-primary outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            className="inline-flex h-8 items-center rounded-full border border-dashed border-input px-3 text-body text-primary outline-none transition-colors duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
             disabled={input.authority !== null}
             onClick={input.onAdd}
             type="button"
@@ -990,7 +992,7 @@ function pickStep(
               />
             ) : null}
             {rows.length === 0 && input.offer === null ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-body text-muted-foreground">
                 Mate may not use any repository on {account.account} yet.
               </p>
             ) : (
@@ -1011,7 +1013,7 @@ function pickStep(
                 rows={shown}
               />
             )}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               Not listed?{" "}
               <span onClickCapture={actions.leaving}>
                 <OutLink href={account.installation.manageUrl}>
@@ -1062,7 +1064,7 @@ function pickStep(
 /** What GitHub said on the way back from its page, where the account is not usable yet. */
 function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting" | null }) {
   return returned === null ? null : (
-    <p className="rounded-md bg-status-busy-surface px-3 py-2 text-sm text-status-busy-text">
+    <p className="rounded-md bg-status-busy-surface px-3 py-2 text-body text-status-busy-text">
       {returned === "requested"
         ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
         : "What you added on GitHub waits for an Owner or Admin's OK in Settings › Automation."}
@@ -1072,7 +1074,7 @@ function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting"
 
 function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string> }) {
   return accounts.length === 0 ? null : (
-    <p className="text-xs text-muted-foreground">
+    <p className="text-caption text-muted-foreground">
       {accounts.join(", ")} {accounts.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
       Settings › Automation.
     </p>
@@ -1185,13 +1187,13 @@ function RepositoryList({
             <span className="grid min-w-0 gap-px">
               <span
                 className={cn(
-                  "font-mono text-sm wrap-anywhere",
+                  "font-mono text-body wrap-anywhere",
                   disabled ? "text-muted-foreground/70" : "text-foreground",
                 )}
               >
                 {name}
               </span>
-              <span className="text-xs text-muted-foreground">{row.taken ?? words}</span>
+              <span className="text-caption text-muted-foreground">{row.taken ?? words}</span>
             </span>
             {row.fresh ? (
               <Badge tone="info">New</Badge>
@@ -1267,7 +1269,7 @@ function NewRepositoryRow({
         {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
       </span>
       <span className="grid min-w-0 gap-px">
-        <span className="flex h-5 min-w-0 items-center font-mono text-sm text-foreground">
+        <span className="flex h-5 min-w-0 items-center font-mono text-body text-foreground">
           <span className="shrink-0 text-muted-foreground">{account}/</span>
           {checked ? (
             <input
@@ -1292,7 +1294,7 @@ function NewRepositoryRow({
             <span className="truncate">{created.name}</span>
           )}
         </span>
-        <span className="text-xs text-muted-foreground">Mate creates it on GitHub, empty</span>
+        <span className="text-caption text-muted-foreground">Mate creates it on GitHub, empty</span>
       </span>
       <Badge tone="info">New · private</Badge>
     </div>
@@ -1342,7 +1344,7 @@ function explainStep(
     </Button>
   );
   const start = opens ? (
-    <div className="me-auto self-center text-sm">
+    <div className="me-auto self-center text-body">
       <InlineButton onClick={input.onToken}>
         GitLab or another host? Connect with a token
       </InlineButton>
@@ -1437,7 +1439,7 @@ function explainStep(
               value={input.makeOwner}
             />
           ) : null}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             {trip.kind === "install" ? `GitHub's page calls Mate “${trip.app.name}”. ` : null}
             No repository yet? {newRepository} first.
             {trip.kind === "make" && input.makeOwner === null ? (
@@ -1491,7 +1493,7 @@ function ExplainStep({ n, children }: { readonly n: number; readonly children: R
     <li className="grid grid-cols-[1.375rem_minmax(0,1fr)] gap-2.5">
       <span
         aria-hidden="true"
-        className="flex size-5.5 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+        className="flex size-5.5 items-center justify-center rounded-full bg-muted text-caption font-medium text-muted-foreground"
       >
         {n}
       </span>
@@ -1529,13 +1531,13 @@ function progressStep(
     return {
       body: (
         <div className="grid justify-items-start gap-2.5 pt-3" data-github-connect-paused="">
-          <p className="text-sm">
+          <p className="text-body">
             <Badge dot tone="warning">
               Paused
             </Badge>
           </p>
           <p className="text-lg font-medium">{repo} is connected, and the two mains differ</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
             commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
             project's Mate to bring them back in step: it opens one change that holds both. Merge it
@@ -1582,18 +1584,18 @@ function progressStep(
     return {
       body: (
         <div className="grid justify-items-start gap-2.5 pt-3">
-          <p className="text-sm">
+          <p className="text-body">
             <Badge dot tone="success">
               In sync
             </Badge>
           </p>
           <p className="text-lg font-medium">{repo} is on GitHub</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.
           </p>
           {gate === undefined || governance === "governed" ? null : (
-            <p className="text-xs text-muted-foreground">{gate}</p>
+            <p className="text-caption text-muted-foreground">{gate}</p>
           )}
         </div>
       ),
@@ -1620,14 +1622,14 @@ function progressStep(
   return {
     body: (
       <>
-        <p className="rounded-lg bg-muted px-3.5 py-2.5 text-sm">
+        <p className="rounded-lg bg-muted px-3.5 py-2.5 text-body">
           {repo} → <span className="font-mono">{shownAs}</span>
         </p>
         <ol aria-live="polite" className="grid gap-2.5">
           {steps.map(([name, words], index) => (
             <li
               className={cn(
-                "flex items-center gap-2.5 text-sm",
+                "flex items-center gap-2.5 text-body",
                 index < at ? "text-foreground" : "text-muted-foreground",
               )}
               key={name}
@@ -1649,7 +1651,7 @@ function progressStep(
       </>
     ),
     foot: (
-      <p className="me-auto text-xs text-muted-foreground">
+      <p className="me-auto text-caption text-muted-foreground">
         You can close this. The project page shows the same steps.
       </p>
     ),

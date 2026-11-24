@@ -194,7 +194,7 @@ function HostLink({
       target="_blank"
     >
       {/* Its size is set here, around the mono face's own: every address of a service is one size. */}
-      <span className="min-w-0 truncate text-sm max-sm:text-xs">
+      <span className="min-w-0 truncate text-body max-sm:text-caption">
         <span className="real-name">
           <span className="font-medium">{named ? service : host.host}</span>
           {named ? (

@@ -206,23 +206,23 @@ export function GitEnvironmentForm({
                 setNotice(undefined);
               }}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {repository
                 ? `${repository.guide.hostLabel} · a token comes next`
                 : "A token comes next"}
             </p>
             {address.trim() !== "" && repos !== undefined && repository === undefined ? (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-body text-destructive">
                 {gitSetupRepositoryHint(address)}
               </p>
             ) : null}
             {repos === undefined ? (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 Reading the application’s repositories…
               </p>
             ) : null}
             {connected ? (
-              <p className="text-sm">
+              <p className="text-body">
                 {address} is already connected to {groupName}.
               </p>
             ) : null}
@@ -232,7 +232,7 @@ export function GitEnvironmentForm({
           <div className="space-y-3">
             {repository.guide.host === "github" ? (
               <>
-                <p className="text-sm">
+                <p className="text-body">
                   Create a fine-grained token on GitHub for {repository.guide.repository} only. The
                   link fills in the name, owner, expiry and permissions.
                 </p>
@@ -244,12 +244,12 @@ export function GitEnvironmentForm({
                 >
                   Create the token on GitHub
                 </a>
-                <p className="text-sm">
+                <p className="text-body">
                   On GitHub, under Repository access choose Only select repositories and pick{" "}
                   {repository.guide.repository} — the link cannot do it for you.
                 </p>
-                <p className="text-sm font-medium">On GitHub, check that it says</p>
-                <ul className="space-y-1 text-sm">
+                <p className="text-body font-medium">On GitHub, check that it says</p>
+                <ul className="space-y-1 text-body">
                   <li>Resource owner: {repository.guide.owner}</li>
                   <li>
                     Repository access: Only select repositories → {repository.guide.repository}
@@ -258,13 +258,13 @@ export function GitEnvironmentForm({
                   <li>Workflows: Read and write (optional)</li>
                   <li>Expiration: 366 days</li>
                 </ul>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   Your organization may require approval or limit the token’s lifetime.
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm">
+                <p className="text-body">
                   Create a personal access token with {repository.guide.permission}. Check{" "}
                   {repository.guide.hostLabel}’s settings; other hosts may use different permission
                   names.
@@ -318,21 +318,21 @@ export function GitEnvironmentForm({
             >
               Test
             </Button>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               Mate keeps it in HQ. Agents and containers never see it.
             </p>
             {pending === "connect" ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 Testing the token against {repository.guide.repository}…
               </p>
             ) : null}
             {tested && !connected ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 Token verified. Waiting for HQ’s repository record.
               </p>
             ) : null}
             {connected ? (
-              <ul aria-label="Token test results" className="space-y-1 text-sm">
+              <ul aria-label="Token test results" className="space-y-1 text-body">
                 <li>Sees {repository.guide.repository}</li>
                 <li>Can push to {repository.guide.repository}</li>
                 <li className="text-muted-foreground">
@@ -346,7 +346,7 @@ export function GitEnvironmentForm({
         ) : null}
         {step === "branch" ? (
           <div className="space-y-3">
-            <p className="break-all text-sm">{repository?.url}</p>
+            <p className="break-all text-body">{repository?.url}</p>
             <Label htmlFor={`${id}-branch`}>Branch</Label>
             <Input
               id={`${id}-branch`}
@@ -365,32 +365,35 @@ export function GitEnvironmentForm({
               }}
             />
             {!gitSetupBranchValid(branch) ? (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-body text-destructive">
                 Enter an unreserved Git branch name. The mate/ prefix is reserved.
               </p>
             ) : null}
-            <p className="text-sm font-medium">How Mate hands over</p>
-            <p className="text-sm">
+            <p className="text-body font-medium">How Mate hands over</p>
+            <p className="text-body">
               Push directly to {branch || "the branch"} — Mate must be the only one that writes to
               it.
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               A commit made on {branch || "the branch"} any other way stops Mate’s pushes until you
               settle it.
             </p>
             {reading ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 Reading the remote branch and HQ main…
               </p>
             ) : null}
             {review === "ready"
               ? adoption?.map((entry) => (
-                  <div key={entry.repo} className="space-y-1 text-sm">
+                  <div key={entry.repo} className="space-y-1 text-body">
                     {entry.branchRules === "none_on_plan" ? (
                       <p>No branch rules on this plan</p>
                     ) : null}
                     {entry.ci ? (
-                      <ul aria-label="Reads to show CI" className="text-xs text-muted-foreground">
+                      <ul
+                        aria-label="Reads to show CI"
+                        className="text-caption text-muted-foreground"
+                      >
                         <li>Optional, to show CI:</li>
                         {gitCiAccessRows(entry.ci).map((row) => (
                           <li key={row}>{row}</li>
@@ -404,7 +407,7 @@ export function GitEnvironmentForm({
                   </div>
                 ))
               : null}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {tier === "production"
                 ? "Adding production pushes nothing. It starts with the next Release."
                 : "Adoption before attachment pushes nothing to this stage. Its first push follows the next main move."}{" "}
@@ -413,35 +416,35 @@ export function GitEnvironmentForm({
           </div>
         ) : null}
         {preview?.key === previewKey && preview?.error ? (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="text-body text-muted-foreground">
             {preview.error}
           </p>
         ) : null}
         {step === "branch" && name === undefined ? (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="text-body text-muted-foreground">
             {takenNames === undefined
               ? "Reading this project's environment names…"
               : "This project has used all generated names. Remove an unused environment before adding another."}
           </p>
         ) : null}
         {notice ? (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="text-body text-muted-foreground">
             {notice}
           </p>
         ) : null}
         {uncertain ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             HQ may have accepted setup. Close this form and check the environment and repository
             records before trying again.
           </p>
         ) : null}
         {pending === "add" ? (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="text-body text-muted-foreground">
             Adding environment… HQ may accept it even if you close this form.
           </p>
         ) : null}
         {!offered.add ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             {unavailableReason ?? "HQ has not said yet."}
           </p>
         ) : null}

@@ -86,7 +86,7 @@ export function ZeropsRenameForm({
             value={value}
           />
           {submitted && error !== undefined ? (
-            <p className="text-xs text-status-failed-text" role="alert">
+            <p className="text-caption text-status-failed-text" role="alert">
               {error}
             </p>
           ) : null}

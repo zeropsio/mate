@@ -196,7 +196,7 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
 const TAB_STRIP_GAP = 4;
 
 const tabVariants = cva(
-  "group/tab flex shrink-0 cursor-pointer items-center gap-1 rounded-md text-xs outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
+  "group/tab flex shrink-0 cursor-pointer items-center gap-1 rounded-md text-caption outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring",
   {
     defaultVariants: { size: "sm" },
     variants: {
@@ -206,7 +206,7 @@ const tabVariants = cva(
        */
       size: {
         sm: "h-6 max-w-36 px-1.5 pointer-coarse:h-8",
-        md: "h-7 px-2.5 text-sm",
+        md: "h-7 px-2.5 text-body",
       },
     },
   },

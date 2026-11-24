@@ -144,7 +144,7 @@ interface RepoRowsViewProps {
 export function RepoRowsView(props: RepoRowsViewProps) {
   const listed = props.repos?.filter((entry) => entry.name !== RECIPE_REPO);
   if (listed === undefined)
-    return <p className="px-2 text-xs text-muted-foreground">Reading repositories…</p>;
+    return <p className="px-2 text-caption text-muted-foreground">Reading repositories…</p>;
   const someUnconnected = listed.some((entry) => entry.remote == null);
   // The ⋯ seat is held in every row where any row may fill it: the verbs end at one edge.
   const seat = listed.some(
@@ -161,7 +161,7 @@ export function RepoRowsView(props: RepoRowsViewProps) {
         ))}
       </ul>
       {someUnconnected && props.authority !== null ? (
-        <p className="px-2 pt-1 text-xs text-muted-foreground">{props.authority}</p>
+        <p className="px-2 pt-1 text-caption text-muted-foreground">{props.authority}</p>
       ) : null}
     </div>
   );
@@ -266,7 +266,7 @@ function RepoRow({
   return (
     // Wide, the name stands in its own column as the board's rows do, on line one's baseline;
     // narrow, it leads the line.
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 text-sm/5 first:border-transparent @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 text-body/5 first:border-transparent @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
       <span className="real-name hidden self-start truncate text-foreground @lg:block">
         {entry.name}
       </span>
@@ -299,7 +299,7 @@ function RepoRow({
         </p>
         <StateLine state={state} />
         {said === null ? null : (
-          <p className="text-xs text-destructive-foreground" role="status">
+          <p className="text-caption text-destructive-foreground" role="status">
             {said.words}{" "}
             <InlineButton onClick={said.dismiss} tone="muted">
               Dismiss
@@ -485,7 +485,7 @@ function StateLine({ state }: { readonly state: RepoState }) {
   return (
     <p
       className={cn(
-        "min-w-0 text-xs",
+        "min-w-0 text-caption",
         state.tone === "warn"
           ? "text-status-attention-text"
           : state.tone === "bad"
@@ -546,7 +546,7 @@ function FixButton({
 
 function HowToFix() {
   return (
-    <div className="grid gap-2 text-sm">
+    <div className="grid gap-2 text-body">
       <p className="font-medium">GitHub's main has commits Mate's main doesn't</p>
       <p className="text-muted-foreground">
         Mate stopped pushing so it overwrites nothing. Ask this project's Mate to bring the two back
@@ -574,8 +574,8 @@ function Confirm({
 }) {
   return (
     <div className="grid gap-2.5">
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-sm text-muted-foreground">{children}</p>
+      <p className="text-body font-medium">{title}</p>
+      <p className="text-body text-muted-foreground">{children}</p>
       <div className="flex justify-end gap-2">
         <Button disabled={busy} onClick={onCancel} size="sm" variant="ghost">
           Cancel
@@ -632,10 +632,10 @@ function ReplaceToken({
   };
   return (
     <div className="grid gap-3">
-      <p className="text-sm font-medium">Replace the token for {repo}</p>
+      <p className="text-body font-medium">Replace the token for {repo}</p>
       <GithubTokenFields onToken={setToken} projectName={projectName} token={token} url={url} />
       {refusal === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
+        <p className="text-caption text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
@@ -668,8 +668,8 @@ function DeleteFromMate({
   const id = useId();
   return (
     <div className="grid gap-2.5">
-      <p className="text-sm font-medium">Delete {repo}?</p>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-body font-medium">Delete {repo}?</p>
+      <p className="text-body text-muted-foreground">
         Its code and history kept by Mate are deleted: main, its changes, and what releases build
         from. The files in its Mate's workspace stay.
         {destination === null ? "" : ` ${destination} on GitHub stays as it is.`}

@@ -107,7 +107,7 @@ function LogPane({
   const live = status === "live";
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+      <div className="flex items-center gap-2 text-muted-foreground text-caption">
         <span className="min-w-0 flex-1 truncate">
           {kind === "service"
             ? "The service's own lines, a minute either side of the failure"
@@ -126,7 +126,7 @@ function LogPane({
       </div>
       {lines.length === 0 ? (
         <p
-          className="flex h-96 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground text-sm md:h-140"
+          className="flex h-96 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground text-body md:h-140"
           data-zerops-pipeline-log-empty
         >
           {kind === "service" && status === "ended"
@@ -175,7 +175,7 @@ function LogLines({
     <ol
       aria-label="Log"
       aria-live={live ? "polite" : undefined}
-      className="h-96 overflow-y-auto rounded-lg bg-muted/60 py-2 font-mono text-xs leading-5 md:h-140"
+      className="h-96 overflow-y-auto rounded-lg bg-muted/60 py-2 font-mono text-caption leading-5 md:h-140"
       data-zerops-pipeline-log
       onScroll={(event) => {
         const scroller = event.currentTarget;
@@ -249,7 +249,7 @@ function ConfigPane({
   }, [copied]);
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+      <div className="flex items-center gap-2 text-muted-foreground text-caption">
         <span className="min-w-0 flex-1 truncate">
           {setup === null ? "As the pipeline ran it" : `As the pipeline ran it, setup ${setup}`}
         </span>
@@ -268,7 +268,7 @@ function ConfigPane({
         </Button>
       </div>
       <pre
-        className="h-96 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-xs leading-5 md:h-140"
+        className="h-96 overflow-auto rounded-lg bg-muted/60 px-3 py-2 font-mono text-caption leading-5 md:h-140"
         data-zerops-pipeline-config
       >
         {config}

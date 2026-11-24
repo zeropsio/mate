@@ -96,7 +96,7 @@ export function ZeropsEnvironmentCreation({
       data-zerops-surface="environment-creation"
       data-zerops-creation-outcome={standing.kind}
     >
-      <h2 className="text-sm font-semibold text-foreground">
+      <h2 className="text-body font-semibold text-foreground">
         {standing.kind === "failed" ? `${name} didn’t come up` : `Setting up ${name}`}
       </h2>
       <Progress
@@ -118,7 +118,7 @@ export function ZeropsEnvironmentCreation({
         }
       />
       {standing.kind === "waiting" ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {standing.yours ? standing.line : waitingFor}
         </p>
       ) : null}

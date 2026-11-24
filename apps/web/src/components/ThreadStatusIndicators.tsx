@@ -72,7 +72,8 @@ export function LinkedPullRequestLink(props: {
       onPointerDown={(event) => event.stopPropagation()}
       onClick={props.onClick}
       className={
-        props.className ?? "shrink-0 text-muted-foreground text-xs tabular-nums hover:underline"
+        props.className ??
+        "shrink-0 text-muted-foreground text-caption tabular-nums hover:underline"
       }
       aria-label={props.indicator.tooltip}
     >

@@ -38,7 +38,7 @@ export function MateStatusMarker({
   const { label, cause } = mateStatusWords(status, mateName, timestampFormat, ask);
   const marks = {
     className: cn(
-      "inline-flex min-w-0 items-center gap-1.5 text-xs font-medium",
+      "inline-flex min-w-0 items-center gap-1.5 text-caption font-medium",
       status.severity === "danger" ? "text-error" : "text-status-attention-text",
       onOpen !== undefined &&
         "cursor-pointer rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",

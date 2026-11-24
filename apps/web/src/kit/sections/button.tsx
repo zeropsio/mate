@@ -148,7 +148,7 @@ function ButtonSpecimens() {
         <SpecimenGrid>
           {INLINE_TONES.map((tone) => (
             <Specimen key={tone} label={`<InlineButton ${specimenLabel({ tone })}>`}>
-              <span className="text-sm">
+              <span className="text-body">
                 Changes wait for review. <InlineButton tone={tone}>Open them</InlineButton>
               </span>
             </Specimen>

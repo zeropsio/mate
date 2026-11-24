@@ -22,12 +22,12 @@ export function RecordedStageHistory({
   return (
     <div data-zerops-surface="recorded-stage-history">
       {changes === undefined ? (
-        <p className="py-2 text-sm text-muted-foreground">Reading recorded changes…</p>
+        <p className="py-2 text-body text-muted-foreground">Reading recorded changes…</p>
       ) : (
         <ul>
           {changes.map((change) => (
             <li
-              className="flex items-center gap-2 py-2 text-sm"
+              className="flex items-center gap-2 py-2 text-body"
               key={`${change.repository}-${String(change.number)}`}
             >
               <button
@@ -43,7 +43,7 @@ export function RecordedStageHistory({
         </ul>
       )}
       {publication?.mainHead == null ? null : (
-        <p className="py-2 text-xs text-muted-foreground">
+        <p className="py-2 text-caption text-muted-foreground">
           Latest recorded main: {publication.mainHead.slice(0, 7)} ·{" "}
           <ChangeAge at={publication.updatedAt} />
         </p>

@@ -161,7 +161,7 @@ function Harness() {
   if (landed !== null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <p className="text-sm text-muted-foreground" data-harness-landed>
+        <p className="text-body text-muted-foreground" data-harness-landed>
           Arrived at {landed}
         </p>
       </div>

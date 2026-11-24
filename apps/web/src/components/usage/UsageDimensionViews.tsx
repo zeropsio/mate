@@ -163,7 +163,7 @@ export function UsagePeopleSplit({
         {people.map((person, index) => (
           <li
             key={person.owner?.id ?? person.ownerState}
-            className="flex items-center justify-between gap-3 text-sm"
+            className="flex items-center justify-between gap-3 text-body"
           >
             <span className="flex min-w-0 items-center gap-2 text-foreground">
               <span
@@ -176,7 +176,7 @@ export function UsagePeopleSplit({
             </span>
             <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
               <span className="font-medium text-foreground">{amount(metric, person)}</span>
-              <span className="text-xs text-muted-foreground">{share(metric, person)}</span>
+              <span className="text-caption text-muted-foreground">{share(metric, person)}</span>
             </span>
           </li>
         ))}
@@ -350,14 +350,14 @@ export function UsageDimensionTable({
     period !== null && mates.some((mate) => taskSource(mate) !== null);
 
   return (
-    <table className="w-full table-fixed text-sm">
+    <table className="w-full table-fixed text-body">
       <colgroup>
         <col className="w-3/5" />
         <col className="w-1/5" />
         <col className="w-1/5" />
       </colgroup>
       <thead>
-        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+        <tr className="border-b border-border text-left text-caption text-muted-foreground">
           <th className="py-2 font-normal">{DIMENSION_HEADING[dimension]}</th>
           <th className="py-2 text-right font-normal">
             {metric === "cost" ? "Priced cost" : "Tokens"}

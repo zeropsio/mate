@@ -158,7 +158,7 @@ export function LimitField(props: {
 }) {
   return (
     <div className="flex h-9 items-center gap-2">
-      <span className="grow text-sm">{props.label}</span>
+      <span className="grow text-body">{props.label}</span>
       <label className="crew-limit" data-off={props.kind === "unlimited" ? "" : undefined}>
         {props.prefix === undefined ? null : (
           <span className="text-muted-foreground">{props.prefix}</span>
@@ -266,11 +266,11 @@ export function CrewStartBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              <span className="text-sm">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
+              <span className="text-body">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
             </Choice>
           </div>
           <Hairline />
-          <span className="font-medium text-sm">{CREW_RUN_WORDS.whenDone}</span>
+          <span className="font-medium text-body">{CREW_RUN_WORDS.whenDone}</span>
           <div className="mt-2.5">
             <RadioGroup
               aria-label={CREW_RUN_WORDS.whenDone}
@@ -283,7 +283,7 @@ export function CrewStartBody(props: {
                 <Choice key={option.mode}>
                   <Radio className="mt-0.5" value={option.mode} />
                   <span className="flex flex-col">
-                    <span className="text-sm">{option.label}</span>
+                    <span className="text-body">{option.label}</span>
                     <span className="text-line leading-4.5 text-muted-foreground">
                       {option.line}
                     </span>
@@ -301,7 +301,7 @@ export function CrewStartBody(props: {
                   className="mt-0.5"
                   onCheckedChange={(checked) => setDraft({ ...draft, leadMayStart: checked })}
                 />
-                <span className="text-sm">{CREW_RUN_WORDS.leadMayStart}</span>
+                <span className="text-body">{CREW_RUN_WORDS.leadMayStart}</span>
               </Choice>
             ) : null}
             <Choice>
@@ -310,7 +310,7 @@ export function CrewStartBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, devGrant: checked })}
               />
-              <span className="text-sm">{crewDevGrantWord(props.mateName)}</span>
+              <span className="text-body">{crewDevGrantWord(props.mateName)}</span>
             </Choice>
           </div>
         </div>
@@ -397,7 +397,7 @@ export function CrewResumeBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              <span className="flex flex-wrap items-center gap-1.5 text-sm">
+              <span className="flex flex-wrap items-center gap-1.5 text-body">
                 {CREW_RUN_WORDS.usageFurther}
                 <label className="crew-limit" data-narrow="">
                   <input

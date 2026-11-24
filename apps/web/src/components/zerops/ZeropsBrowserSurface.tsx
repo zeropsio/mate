@@ -53,8 +53,10 @@ export function BrowserSites({
                   onClick={(event) => openMateAddress(threadRef, address, event)}
                   type="button"
                 >
-                  <span className="text-foreground text-sm">{name}</span>
-                  <span className="truncate text-muted-foreground text-xs">{address.host}</span>
+                  <span className="text-foreground text-body">{name}</span>
+                  <span className="truncate text-muted-foreground text-caption">
+                    {address.host}
+                  </span>
                 </button>
                 <MateAddressExternalLink address={address} className="me-1" />
               </li>

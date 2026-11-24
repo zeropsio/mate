@@ -1436,7 +1436,7 @@ function State({
         <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
         </span>
-        <p className="text-xs text-muted-foreground/78">{note}</p>
+        <p className="text-caption text-muted-foreground/78">{note}</p>
       </div>
       <div className="overflow-hidden rounded-lg border border-border bg-background">
         {children}

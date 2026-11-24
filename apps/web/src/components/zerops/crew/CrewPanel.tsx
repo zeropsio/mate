@@ -153,7 +153,7 @@ export function CrewPanelBody({
   if (crew.status === null) return null;
   if (!hasCrewSurface(crew.status) || crew.snapshot === null) {
     return (
-      <p className="p-4 text-muted-foreground text-sm" data-crew-panel="off">
+      <p className="p-4 text-muted-foreground text-body" data-crew-panel="off">
         {crewRefusalSentence("unavailable", null)}
       </p>
     );

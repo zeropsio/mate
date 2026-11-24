@@ -34,7 +34,7 @@ import { MateFace } from "./primitives";
 function PreviewLink({ url }: { readonly url: string }) {
   return (
     <a
-      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-status-busy-text underline-offset-2 hover:underline"
+      className="relative z-[1] inline-flex w-fit items-center gap-1 text-caption text-status-busy-text underline-offset-2 hover:underline"
       data-zerops-surface="mate-preview"
       href={url}
       rel="noreferrer"
@@ -124,7 +124,7 @@ export function ZeropsMateVerb({
       // verb read as a link out, and the one that mattered (Release) was
       // quieter than the amber chip counting what it would ship.
       className={cn(
-        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-xs leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
+        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-caption leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
         tone === undefined
           ? "border-input bg-popover text-foreground hover:bg-accent/50"
           : VERB_TONE_CLASS[tone],
@@ -277,7 +277,7 @@ export function ZeropsMateCard({
           {onSelect ? (
             <button
               className={cn(
-                "min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
+                "min-w-0 flex-1 truncate rounded-sm text-left text-body leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
                 LAYOUT[layout].hit,
                 LAYOUT[layout].name,
               )}
@@ -290,7 +290,7 @@ export function ZeropsMateCard({
           ) : (
             <span
               className={cn(
-                "min-w-0 flex-1 truncate text-sm leading-5 font-medium text-foreground",
+                "min-w-0 flex-1 truncate text-body leading-5 font-medium text-foreground",
                 LAYOUT[layout].name,
               )}
             >
@@ -314,7 +314,7 @@ export function ZeropsMateCard({
         </div>
         {line === undefined || line === null ? null : (
           <div
-            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-line"
           >
             {line}
@@ -322,7 +322,7 @@ export function ZeropsMateCard({
         )}
         {layout === "row" || snippet === undefined || snippet.length === 0 ? null : (
           <div
-            className="min-w-0 truncate text-xs leading-4 text-muted-foreground"
+            className="min-w-0 truncate text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-snippet"
           >
             {snippet}
@@ -330,7 +330,7 @@ export function ZeropsMateCard({
         )}
         {updateLine === undefined || updateLine === null ? null : (
           <div
-            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-update-line"
           >
             {updateLine}

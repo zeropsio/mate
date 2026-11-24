@@ -109,12 +109,12 @@ export function ZeropsChangeLinkChip({
         <span className="inline-flex flex-wrap items-baseline gap-1">
           {children}
           {landed.kind === "gone" ? (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-body text-muted-foreground">
               {`${link?.repo ?? ""} has no change #${String(link?.number ?? 0)}`}
             </span>
           ) : (
             <Tooltip>
-              <TooltipTrigger render={<span className="text-sm text-muted-foreground" />}>
+              <TooltipTrigger render={<span className="text-body text-muted-foreground" />}>
                 This change could not be read
               </TooltipTrigger>
               <TooltipPopup>{landed.reason}</TooltipPopup>
@@ -172,7 +172,7 @@ export function ZeropsChangeLinkChip({
         : GitPullRequestArrow;
   const chip = (
     <a
-      className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-sm no-underline"
+      className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-body no-underline"
       data-zerops-change-state={state === undefined ? "reading" : state.kind}
       data-zerops-change-since={landedSince ? "landed" : undefined}
       data-zerops-change-chip={`${pull?.repository ?? link?.repo ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}

@@ -318,7 +318,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
             })}
           </TabStrip>
         </div>
-        <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
+        <p className="px-3 pt-2 text-caption text-muted-foreground sm:px-4">
           Only Mates the app is connected to.
         </p>
       </>
@@ -916,7 +916,7 @@ export function EnvironmentProviderSettings({
         headerAction={
           <div className="flex min-w-0 items-center gap-2">
             {readOnly ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
+              <span className="min-w-0 truncate text-caption text-muted-foreground">
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
               </span>
             ) : (
@@ -1018,7 +1018,7 @@ export function EnvironmentProviderSettings({
               {selectedRow ? (
                 renderProviderInstance(selectedRow, "editor")
               ) : (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-body text-muted-foreground">
                   {editorEmpty === "missing"
                     ? "This provider instance is no longer available on this device."
                     : editorEmpty === "none"
@@ -1047,7 +1047,7 @@ export function EnvironmentProviderSettings({
               onOpenChange={setAdvancedOpen}
               className="mt-2 border-t border-border/70"
             >
-              <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-xs text-muted-foreground hover:text-foreground sm:px-4">
+              <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-caption text-muted-foreground hover:text-foreground sm:px-4">
                 <ChevronDownIcon
                   className={cn("size-3 transition-transform", advancedVisible && "rotate-180")}
                 />
@@ -1111,7 +1111,7 @@ export function EnvironmentProviderSettings({
                           <NumberFieldIncrement aria-label="Increase provider health check interval" />
                         </NumberFieldGroup>
                       </NumberField>
-                      <span className="text-xs text-muted-foreground">seconds</span>
+                      <span className="text-caption text-muted-foreground">seconds</span>
                     </div>
                   }
                 />

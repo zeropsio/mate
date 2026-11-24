@@ -210,7 +210,7 @@ const HOOK = {
 function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
     <section className="grid gap-2">
-      <h2 className="text-xs font-medium text-muted-foreground uppercase">{title}</h2>
+      <h2 className="text-caption font-medium text-muted-foreground uppercase">{title}</h2>
       {children}
     </section>
   );

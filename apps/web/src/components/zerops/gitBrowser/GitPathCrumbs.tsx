@@ -44,7 +44,7 @@ export function GitPathCrumbs({
           index === 0 ? null : <WorkspaceBreadcrumbSeparator key={`/${step.path}`} />,
           <WorkspaceBreadcrumbItem key={step.path} current={last}>
             <a
-              className="flex min-w-0 font-mono text-xs underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex min-w-0 font-mono text-caption underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               href={hrefOf(step)}
               aria-current={last ? "page" : undefined}
               onClick={(event) => {

@@ -88,12 +88,12 @@ function MenuItem({
   return (
     <MenuPrimitive.Item
       className={cn(
-        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1 text-sm text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
         variant === "ghost" &&
           buttonVariants({
             variant: "ghost",
             size: "sm",
-            className: "h-auto min-h-7 w-full sm:text-xs",
+            className: "h-auto min-h-7 w-full sm:text-caption",
           }),
         density === "touch" && "min-h-10 sm:min-h-10",
         className,
@@ -140,7 +140,7 @@ function MenuItemText({
     <span className="flex min-w-0 flex-col py-0.5" data-slot="menu-item-text">
       <span className="min-w-0 truncate">{label}</span>
       <span
-        className="text-muted-foreground text-xs leading-4"
+        className="text-muted-foreground text-caption leading-4"
         data-slot="menu-item-description"
         id={descriptionId}
       >
@@ -163,7 +163,7 @@ function MenuCheckboxItem({
     <MenuPrimitive.CheckboxItem
       checked={checked}
       className={cn(
-        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-sm py-1 ps-2 text-sm text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-sm py-1 ps-2 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         variant === "switch"
           ? "grid-cols-[1fr_auto] gap-4 pe-1.5"
           : "grid-cols-[1rem_minmax(0,1fr)] pe-4",
@@ -220,13 +220,13 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
 type MenuRadioItemVariant = "fill" | "check" | "segment";
 
 const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
-  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-sm px-2 py-1 text-sm text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-sm px-2 py-1 text-body text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   check:
-    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-sm text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-sm py-1 ps-2 pe-4 text-body text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   segment:
     // Half the track, two to a row (`MenuSwitch`): four choices keep their
     // words whole within the menu's width, "Creation date" never cut.
-    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+    "flex min-h-6 items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-caption pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({
@@ -295,7 +295,7 @@ function MenuSwitch({
       data-slot="menu-switch"
       {...props}
     >
-      <MenuPrimitive.GroupLabel className="w-11 shrink-0 text-muted-foreground text-xs">
+      <MenuPrimitive.GroupLabel className="w-11 shrink-0 text-muted-foreground text-caption">
         {label}
       </MenuPrimitive.GroupLabel>
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-0.5 rounded-lg bg-foreground/6 p-0.5">
@@ -315,7 +315,7 @@ function MenuGroupLabel({
   return (
     <MenuPrimitive.GroupLabel
       className={cn(
-        "px-2 py-1.5 font-medium text-muted-foreground text-xs data-inset:ps-9 sm:data-inset:ps-8",
+        "px-2 py-1.5 font-medium text-muted-foreground text-caption data-inset:ps-9 sm:data-inset:ps-8",
         className,
       )}
       data-inset={inset}
@@ -340,7 +340,7 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
     <kbd
       className={cn(
         // A key's hint means nothing under a finger.
-        "ms-auto font-medium font-sans text-secondary-label text-xs tracking-widest pointer-coarse:hidden",
+        "ms-auto font-medium font-sans text-secondary-label text-caption tracking-widest pointer-coarse:hidden",
         className,
       )}
       data-slot="menu-shortcut"
@@ -371,7 +371,7 @@ function MenuSubTrigger({
         // with theirs. Scoped away from the last child because the chevron is
         // also a direct svg — on a sub-trigger with no leading icon it is the
         // only one, and these rules would take away its `ms-auto` alignment.
-        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-sm text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-accent data-popup-open:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-popup-open:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-body text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-accent data-popup-open:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-popup-open:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
         density === "touch" && "min-h-10 sm:min-h-10",
         className,
       )}

@@ -404,7 +404,7 @@ function JumpFindView({
     >
       {groups.length === 0 ? (
         <div
-          className="px-4 py-10 text-center text-sm text-muted-foreground"
+          className="px-4 py-10 text-center text-body text-muted-foreground"
           data-zerops-surface="jump-empty"
         >
           {searching ? "Searching conversations…" : emptyLine(value)}
@@ -489,7 +489,7 @@ function JumpWriteView({
             aria-describedby="jump-write-hint"
             aria-label={`Write to ${target.name}`}
             autoComplete="off"
-            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-sm"
+            className="h-full min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-placeholder sm:text-body"
             data-zerops-surface="jump-write-input"
             onChange={(event) => {
               setText(event.currentTarget.value);
@@ -648,9 +648,9 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
         {lead}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm leading-5 text-foreground">{title}</span>
+        <span className="truncate text-body leading-5 text-foreground">{title}</span>
         {sub === "" ? null : (
-          <span className="truncate text-xs leading-4 text-muted-foreground">{sub}</span>
+          <span className="truncate text-caption leading-4 text-muted-foreground">{sub}</span>
         )}
       </span>
     </span>

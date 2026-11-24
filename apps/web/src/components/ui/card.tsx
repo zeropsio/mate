@@ -82,7 +82,7 @@ function CardFrameHeader({ className, render, ...props }: useRender.ComponentPro
 
 function CardFrameTitle({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("font-semibold text-sm", className),
+    className: cn("font-semibold text-body", className),
     "data-slot": "card-frame-title",
   };
 
@@ -95,7 +95,7 @@ function CardFrameTitle({ className, render, ...props }: useRender.ComponentProp
 
 function CardFrameDescription({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("text-muted-foreground text-sm", className),
+    className: cn("text-muted-foreground text-body", className),
     "data-slot": "card-frame-description",
   };
 
@@ -150,7 +150,7 @@ function CardTitle({ className, render, ...props }: useRender.ComponentProps<"di
 
 function CardDescription({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("text-muted-foreground text-sm", className),
+    className: cn("text-muted-foreground text-body", className),
     "data-slot": "card-description",
   };
 

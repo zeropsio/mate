@@ -104,7 +104,7 @@ export function ZeropsEnvironmentRow({
   leading,
   expansion,
 }: ZeropsEnvironmentRowProps) {
-  const nameClass = "min-w-0 truncate text-sm text-foreground";
+  const nameClass = "min-w-0 truncate text-body text-foreground";
   return (
     <li
       aria-busy={busy || undefined}
@@ -130,7 +130,7 @@ export function ZeropsEnvironmentRow({
         {tag === null ? null : <ZeropsRoleTag label={tag} />}
       </span>
       <span
-        className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1"
+        className="col-span-2 min-w-0 truncate text-caption text-muted-foreground sm:col-span-1"
         data-zerops-surface="environment-summary"
       >
         {summary}
@@ -140,7 +140,7 @@ export function ZeropsEnvironmentRow({
             `sentence` StatusDot has no size of its own and would inherit the
             page's 16px here, next to a 14px name. */}
         {status === undefined ? null : (
-          <span className="text-xs text-muted-foreground">{status}</span>
+          <span className="text-caption text-muted-foreground">{status}</span>
         )}
         {/* The menu before the verb: hidden, it still takes its width, and
             the verb keeps the content edge every other verb on the page ends on. */}

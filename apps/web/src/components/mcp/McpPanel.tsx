@@ -306,7 +306,7 @@ export function McpPanelBody(props: {
 
         {shown.map((group) => (
           <section className="flex flex-col gap-2" data-mcp-group={group.id} key={group.id}>
-            <h3 className="flex items-center gap-2 font-medium text-xs text-muted-foreground">
+            <h3 className="flex items-center gap-2 font-medium text-caption text-muted-foreground">
               {MCP_WORDS.groups[group.id]}
               <span className="tabular-nums" data-mcp-group-count>
                 {group.count}
@@ -352,7 +352,7 @@ function Tile({ letters }: { readonly letters: string }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted font-medium text-muted-foreground text-xs"
+      className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted font-medium text-muted-foreground text-caption"
     >
       {letters}
     </span>
@@ -379,7 +379,7 @@ function AgentMarks({ marks }: { readonly marks: McpServerRow["marks"] }) {
               }
             >
               {Icon === null ? (
-                <span className="text-xs">{agentDisplayName(mark.driver)}</span>
+                <span className="text-caption">{agentDisplayName(mark.driver)}</span>
               ) : (
                 <Icon aria-hidden className="size-3.5" />
               )}
@@ -419,7 +419,7 @@ function RowHead(props: {
       {props.tile}
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex h-5 min-w-0 items-center gap-2">{props.title}</span>
-        <span className="flex h-4.5 min-w-0 items-center gap-2 text-xs text-muted-foreground">
+        <span className="flex h-4.5 min-w-0 items-center gap-2 text-caption text-muted-foreground">
           {props.meta}
         </span>
       </span>
@@ -461,7 +461,7 @@ function ProposalRowView(props: {
           tile={<Tile letters={mcpTileInitials(proposal.name, false)} />}
           title={
             <>
-              <span className="min-w-0 truncate font-medium text-sm">{proposal.name}</span>
+              <span className="min-w-0 truncate font-medium text-body">{proposal.name}</span>
               <Badge>{MCP_WORDS.proposedBy(props.mate)}</Badge>
             </>
           }
@@ -597,7 +597,7 @@ function ToolRow(props: {
   const rightColumn =
     right.kind === "state" ? (
       <Badge dot tone={STATUS_BADGE_TONE[right.tone]}>
-        <span className="text-xs text-muted-foreground" data-mcp-state-words>
+        <span className="text-caption text-muted-foreground" data-mcp-state-words>
           {right.words}
         </span>
       </Badge>
@@ -659,13 +659,13 @@ function ToolRow(props: {
             <>
               <span
                 className={cn(
-                  "min-w-0 shrink truncate font-medium text-sm",
+                  "min-w-0 shrink truncate font-medium text-body",
                   row.state === "disabled" && "text-muted-foreground",
                 )}
               >
                 {row.name}
               </span>
-              <span className="min-w-0 shrink-[2] truncate text-xs text-muted-foreground">
+              <span className="min-w-0 shrink-[2] truncate text-caption text-muted-foreground">
                 {row.runs}
               </span>
               {row.managed ? <Badge className="shrink-0">{MCP_WORDS.builtIn}</Badge> : null}
@@ -683,7 +683,7 @@ function ToolRow(props: {
             />
 
             {signing === null ? null : signing.landing === "mate" ? (
-              <p className="text-xs text-muted-foreground" data-mcp-signing="mate">
+              <p className="text-caption text-muted-foreground" data-mcp-signing="mate">
                 {MCP_WORDS.signInMate}{" "}
                 <InlineButton onClick={() => void openSignInPage(null, signing.url)} tone="muted">
                   {MCP_WORDS.signInOpenAgain}
@@ -698,7 +698,7 @@ function ToolRow(props: {
                   void finishSignIn(signing);
                 }}
               >
-                <span className="text-xs text-muted-foreground">{MCP_WORDS.signInPaste}</span>
+                <span className="text-caption text-muted-foreground">{MCP_WORDS.signInPaste}</span>
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Input
@@ -760,9 +760,9 @@ function ToolRow(props: {
                     value={editing}
                   />
                 </FieldLine>
-                <span className="text-xs text-muted-foreground">{MCP_WORDS.editHint}</span>
+                <span className="text-caption text-muted-foreground">{MCP_WORDS.editHint}</span>
                 {editError === null ? null : (
-                  <span className="text-xs text-destructive-foreground" role="alert">
+                  <span className="text-caption text-destructive-foreground" role="alert">
                     {editError}
                   </span>
                 )}
@@ -793,7 +793,7 @@ function ToolRow(props: {
               run={run}
             />
             {failure === null ? null : (
-              <p className="text-xs text-destructive-foreground" role="alert">
+              <p className="text-caption text-destructive-foreground" role="alert">
                 {failure}
               </p>
             )}
@@ -808,8 +808,8 @@ function ToolRow(props: {
 function Fact(props: { readonly label: string; readonly children: ReactNode }) {
   return (
     <>
-      <dt className="text-xs leading-5 text-muted-foreground">{props.label}</dt>
-      <dd className="m-0 min-w-0 text-xs leading-5">{props.children}</dd>
+      <dt className="text-caption leading-5 text-muted-foreground">{props.label}</dt>
+      <dd className="m-0 min-w-0 text-caption leading-5">{props.children}</dd>
     </>
   );
 }
@@ -825,7 +825,7 @@ function ToolNames({ tools }: { readonly tools: ReadonlyArray<McpServerRow["tool
     <span className="flex flex-wrap items-center gap-1" data-mcp-tools>
       {shown.map((tool) => {
         const chip = (
-          <span className="rounded-md border border-border px-1.5 font-mono text-xs leading-5">
+          <span className="rounded-md border border-border px-1.5 font-mono text-caption leading-5">
             {tool.name}
           </span>
         );
@@ -949,7 +949,7 @@ function ToolFoot(props: {
   if (props.armed) {
     return (
       <div className="flex min-h-7 flex-wrap items-center gap-2" data-mcp-actions>
-        <span className="text-xs">{MCP_WORDS.removeAsk(row.name)}</span>
+        <span className="text-caption">{MCP_WORDS.removeAsk(row.name)}</span>
         <Button
           disabled={busy}
           onClick={() => void props.run("remove", { kind: "remove", name: row.name })}
@@ -1042,7 +1042,7 @@ function FieldLine(props: {
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="flex items-baseline gap-2 text-xs">
+      <span className="flex items-baseline gap-2 text-caption">
         <span className="font-medium">{props.label}</span>
         {props.hint === undefined ? null : (
           <span className="text-muted-foreground">{props.hint}</span>
@@ -1050,7 +1050,7 @@ function FieldLine(props: {
       </span>
       {props.children}
       {props.error === undefined ? null : (
-        <span className="text-xs text-destructive-foreground" role="alert">
+        <span className="text-caption text-destructive-foreground" role="alert">
           {props.error}
         </span>
       )}
@@ -1100,7 +1100,7 @@ function SignInFields(props: {
   return (
     <div className="flex flex-col gap-3" data-mcp-sign-in={fields.choice}>
       <div className="flex flex-col gap-1">
-        <span className="font-medium text-xs">{MCP_WORDS.signInHow}</span>
+        <span className="font-medium text-caption">{MCP_WORDS.signInHow}</span>
         <ToggleGroup
           aria-label={MCP_WORDS.signInHow}
           className="self-start"
@@ -1141,7 +1141,7 @@ function SignInFields(props: {
           )}
           {text(MCP_WORDS.scopes, "scopes", MCP_WORDS.scopesHint)}
           {props.redirects.length === 0 ? null : (
-            <div className="flex flex-col gap-0.5 text-xs" data-mcp-redirects>
+            <div className="flex flex-col gap-0.5 text-caption" data-mcp-redirects>
               <span className="text-muted-foreground">{MCP_WORDS.redirects}</span>
               {props.redirects.map((redirect) => (
                 <span className="flex min-w-0 gap-2" key={redirect.agent}>
@@ -1154,7 +1154,7 @@ function SignInFields(props: {
         </>
       ) : null}
       {props.error === undefined ? null : (
-        <span className="text-xs text-destructive-foreground" role="alert">
+        <span className="text-caption text-destructive-foreground" role="alert">
           {props.error}
         </span>
       )}

@@ -86,7 +86,7 @@ function StorageLimit({
       <PopoverPopup align="start" width="md">
         {capGiB === null ? (
           <p
-            className="text-sm text-muted-foreground"
+            className="text-body text-muted-foreground"
             role={view.state === "unread" ? undefined : "alert"}
           >
             {view.state === "refused" || view.state === "failed"
@@ -97,10 +97,10 @@ function StorageLimit({
           </p>
         ) : (
           <form className="flex flex-col gap-2" noValidate onSubmit={submit}>
-            <label className="text-sm font-medium text-foreground" htmlFor={id}>
+            <label className="text-body font-medium text-foreground" htmlFor={id}>
               Storage limit
             </label>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               In whole GiB, from 1 to 100. It is {capGiB} GiB now.
             </p>
             <div className="flex items-center gap-2">
@@ -116,13 +116,13 @@ function StorageLimit({
                 disabled={pending}
                 onChange={(event) => setDraft(event.currentTarget.value)}
               />
-              <span className="text-xs text-muted-foreground">GiB</span>
+              <span className="text-caption text-muted-foreground">GiB</span>
               <Button type="submit" size="sm" disabled={whole === null || pending}>
                 {pending ? "Saving…" : "Save"}
               </Button>
             </div>
             {error === null ? null : (
-              <p className="text-xs text-destructive-foreground" role="alert">
+              <p className="text-caption text-destructive-foreground" role="alert">
                 {error}
               </p>
             )}

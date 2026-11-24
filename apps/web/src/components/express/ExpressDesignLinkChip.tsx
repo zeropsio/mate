@@ -83,10 +83,10 @@ function ExpressDesignCard({
         </span>
       )}
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium leading-5 text-foreground">
+        <span className="truncate text-body font-medium leading-5 text-foreground">
           {words ?? "Adobe Express design"}
         </span>
-        <span className="text-xs leading-4 text-muted-foreground">
+        <span className="text-caption leading-4 text-muted-foreground">
           {words === undefined ? (
             <>
               Open in the side panel · <span className="font-mono">{shortId}</span>

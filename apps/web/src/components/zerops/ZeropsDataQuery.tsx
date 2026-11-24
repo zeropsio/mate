@@ -36,7 +36,7 @@ export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryPr
       className="shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2"
       data-zerops-data-query
     >
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         One SELECT statement · 100 rows per page · 10 second timeout. Comments and escape syntax are
         not supported.
       </p>

@@ -90,14 +90,14 @@ function ContentResults({
   const unreadable = view.state === "refused" && view.reason === "invalid" && regex;
   return answer !== null ? (
     <>
-      <p className="text-xs text-muted-foreground" role="status">
+      <p className="text-caption text-muted-foreground" role="status">
         {answer.matches.length === 0
           ? "No line at this commit matches."
           : `${answer.matches.length.toLocaleString("en-US")} matching ${answer.matches.length === 1 ? "line" : "lines"} in ${fileCount.toLocaleString("en-US")} ${fileCount === 1 ? "file" : "files"}`}
       </p>
       {answer.deadlineHit ? (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-status-attention" role="alert">
+          <p className="text-body text-status-attention" role="alert">
             The search stopped after 10 seconds. Narrow it to a folder.
           </p>
           <Button variant="ghost" size="sm" onClick={again}>
@@ -105,7 +105,7 @@ function ContentResults({
           </Button>
         </div>
       ) : answer.truncated ? (
-        <p className="text-sm text-status-attention" role="alert">
+        <p className="text-body text-status-attention" role="alert">
           The search stops at {GREP_MATCH_LIMIT} matches. Narrow the search.
         </p>
       ) : null}
@@ -118,7 +118,7 @@ function ContentResults({
                 to={fileAt(sha, file.path)}
                 hrefOf={hrefOf}
                 navigate={navigate}
-                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <PierreEntryIcon
                   pathValue={file.path}
@@ -135,7 +135,7 @@ function ContentResults({
                   to={fileAt(sha, match.path, match.line)}
                   hrefOf={hrefOf}
                   navigate={navigate}
-                  className="flex h-7 min-w-0 items-center gap-3 rounded-md px-2 font-mono text-xs hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-7 min-w-0 items-center gap-3 rounded-md px-2 font-mono text-caption hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
                     {match.line}
@@ -168,7 +168,7 @@ function ContentResults({
     </>
   ) : view.state === "unread" ? (
     slow ? (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Searching…
       </p>
     ) : null
@@ -285,16 +285,16 @@ function ContentSearch({
         </Button>
       </form>
       {tooShort || (!asked && q !== "" && !outside) ? (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="text-body text-muted-foreground" role="status">
           Type at least {GREP_QUERY_MIN} characters to search.
         </p>
       ) : null}
       {outside ? (
-        <p className="text-sm text-status-failed" role="alert">
+        <p className="text-body text-status-failed" role="alert">
           This folder is outside the repository. Name it from the top, like src/app.
         </p>
       ) : !asked ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           Search every text file at this commit. Binary files are not searched.
         </p>
       ) : (
@@ -364,7 +364,7 @@ export function GitSearchView(props: GitRepoPageProps) {
         )
       ) : home.state === "unread" ? (
         slow ? (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="text-body text-muted-foreground" role="status">
             Reading the repository…
           </p>
         ) : null

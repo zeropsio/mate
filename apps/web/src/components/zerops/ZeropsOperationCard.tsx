@@ -204,14 +204,16 @@ function CardHeader({
           role="status"
         >
           <KindGlyph kind={operation.kind} />
-          <span className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}>
+          <span
+            className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-caption")}
+          >
             <Badge dot pulse={dotTone === "busy"} tone={STATUS_BADGE_TONE[dotTone]}>
               {status?.word ?? operation.statusWord}
             </Badge>
           </span>
           <OperationSubjectLine running={running} subject={subject} />
         </div>
-        <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
+        <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption">
           <HeaderMeta durationText={durationText} led={false} running={running} />
         </span>
       </header>
@@ -219,7 +221,7 @@ function CardHeader({
   }
   return (
     <header className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground text-sm">
+      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground text-body">
         <KindGlyph kind={operation.kind} />
         <span className="min-w-0" data-zerops-voice-source={operation.voiceSource}>
           {operation.voice}
@@ -227,7 +229,7 @@ function CardHeader({
       </div>
       <span
         aria-label="Result status"
-        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs"
+        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption"
         role="status"
       >
         <Badge dot pulse={tone === "busy"} tone={STATUS_BADGE_TONE[tone]}>
@@ -404,7 +406,7 @@ export function UrlChip({ label, url }: { readonly label: string; readonly url: 
   return (
     <ServiceBrowserLink
       aria-label={`Open ${url}`}
-      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
+      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-1 font-medium text-info-foreground text-caption hover:underline"
       data-zerops-chip-kind="url"
       href={url}
       rel="noreferrer"
@@ -578,7 +580,7 @@ function BrowserCard({
         onOpenPanel={onOpenPanel}
         subject={operation.subject}
       />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs" data-zerops-browser-body>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-caption" data-zerops-browser-body>
         {header}
         {operation.phase === "running" ? (
           <p className="text-muted-foreground" data-zerops-browser-live-caption>
@@ -607,7 +609,7 @@ function BrowserCard({
         ) : null}
         {visibleSteps.length > 0 ? (
           <details data-zerops-browser-steps-expander>
-            <summary className="w-fit cursor-pointer list-none select-none text-info-foreground text-xs hover:underline [&::-webkit-details-marker]:hidden">
+            <summary className="w-fit cursor-pointer list-none select-none text-info-foreground text-caption hover:underline [&::-webkit-details-marker]:hidden">
               Show steps
             </summary>
             <div className="mt-1.5">
@@ -699,7 +701,7 @@ function StepsBody({
         ? null
         : (observed?.log ?? null)}
       {observed !== undefined && observed.provenance.length > 0 ? (
-        <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
+        <p className="text-muted-foreground text-caption" data-zerops-operation-provenance>
           {observed.provenance}
         </p>
       ) : null}
@@ -861,7 +863,7 @@ export function ZeropsOperationCard(props: {
           )}
           {hasResultRow ? (
             <div
-              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-caption"
               data-zerops-result-row
             >
               {closing !== undefined ? (
@@ -892,7 +894,7 @@ export function ZeropsOperationCard(props: {
               )}
               {version !== undefined ? (
                 <span
-                  className="flex items-baseline gap-1.5 text-muted-foreground text-xs"
+                  className="flex items-baseline gap-1.5 text-muted-foreground text-caption"
                   data-zerops-operation-version
                 >
                   <MicroLabel>Version</MicroLabel>

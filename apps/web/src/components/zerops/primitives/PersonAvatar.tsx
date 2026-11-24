@@ -12,7 +12,7 @@ const SIZE_CLASS: Record<PersonAvatarSize, string> = {
   16: "size-4 text-4xs",
   20: "size-5 text-3xs",
   24: "size-6 text-2xs",
-  32: "size-8 text-sm",
+  32: "size-8 text-body",
   64: "size-16 text-2xl",
 };
 

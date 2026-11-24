@@ -50,8 +50,8 @@ const LEAD_CLASS: Record<RowSize, string> = {
 };
 
 const HEAD_CLASS: Record<RowSize, string> = {
-  sm: "h-5 text-sm leading-5",
-  md: "h-5 text-sm leading-5",
+  sm: "h-5 text-body leading-5",
+  md: "h-5 text-body leading-5",
   lg: "h-5.5 text-[15px] leading-5.25",
   "lg-line": "h-5.5 text-[15px] leading-5.25",
 };
@@ -64,7 +64,7 @@ const BADGES_CLASS: Record<RowSize, string> = {
 };
 
 const LINE_CLASS: Record<RowSize, string> = {
-  sm: "text-xs leading-4",
+  sm: "text-caption leading-4",
   md: "text-line leading-5",
   lg: "text-prose leading-5.5",
   "lg-line": "text-prose leading-5.5",
@@ -163,7 +163,7 @@ function Row({
             </span>
             {meta === undefined || meta === null ? null : (
               <span
-                className="flex shrink-0 items-center whitespace-nowrap text-muted-foreground text-xs tabular-nums"
+                className="flex shrink-0 items-center whitespace-nowrap text-muted-foreground text-caption tabular-nums"
                 data-slot="row-meta"
               >
                 {meta}

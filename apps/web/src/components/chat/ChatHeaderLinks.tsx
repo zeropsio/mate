@@ -124,7 +124,9 @@ export function ChatHeaderLinks({
                 >
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-foreground">{name}</span>
-                    <span className="truncate text-muted-foreground text-xs">{address.host}</span>
+                    <span className="truncate text-muted-foreground text-caption">
+                      {address.host}
+                    </span>
                   </span>
                   <MateAddressExternalLink address={address} />
                 </MenuItem>

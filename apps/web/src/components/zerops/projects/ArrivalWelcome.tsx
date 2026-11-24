@@ -86,13 +86,13 @@ export function ArrivalWelcome({
         data-zerops-surface="arrival-welcome"
       >
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="text-sm font-medium text-foreground">{welcome.line}</p>
+          <p className="text-body font-medium text-foreground">{welcome.line}</p>
           {welcome.detail === null ? null : (
-            <p className="text-sm text-muted-foreground">{welcome.detail}</p>
+            <p className="text-body text-muted-foreground">{welcome.detail}</p>
           )}
         </div>
         {start === null ? null : start.kind === "waits" ? (
-          <p className="text-sm text-muted-foreground" data-welcome-start="waits">
+          <p className="text-body text-muted-foreground" data-welcome-start="waits">
             {start.line}
           </p>
         ) : (

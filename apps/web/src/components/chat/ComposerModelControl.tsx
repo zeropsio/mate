@@ -86,9 +86,9 @@ function ChoiceGroup(props: {
 }) {
   return (
     <div className="flex flex-col" role="radiogroup" aria-label={props.label}>
-      <p className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-xs">{props.label}</p>
+      <p className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-caption">{props.label}</p>
       {props.note === undefined ? null : (
-        <p className="px-2 pb-1 text-muted-foreground text-xs">{props.note}</p>
+        <p className="px-2 pb-1 text-muted-foreground text-caption">{props.note}</p>
       )}
       {props.children}
     </div>
@@ -119,13 +119,13 @@ function Choice(props: {
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate">{props.children}</span>
         {props.description === undefined ? null : (
-          <span className="text-pretty font-normal text-muted-foreground text-xs">
+          <span className="text-pretty font-normal text-muted-foreground text-caption">
             {props.description}
           </span>
         )}
       </span>
       {props.isDefault ? (
-        <span className="shrink-0 font-normal text-muted-foreground text-xs">Default</span>
+        <span className="shrink-0 font-normal text-muted-foreground text-caption">Default</span>
       ) : null}
       <CheckIcon
         aria-hidden="true"
@@ -156,7 +156,7 @@ function TraitsChoices({ traits }: { readonly traits: ComposerTraitsInput }) {
       if (!value) return null;
       return (
         <div className="flex flex-col px-2 py-1" key={descriptor.id}>
-          <span className="font-medium text-muted-foreground text-xs">{descriptor.label}</span>
+          <span className="font-medium text-muted-foreground text-caption">{descriptor.label}</span>
           <span className="text-foreground text-line">{value}</span>
         </div>
       );
@@ -239,7 +239,7 @@ export const ComposerModelChoices = memo(function ComposerModelChoices(props: {
             {COMPOSER_ACCESS[mode].label}
           </Choice>
         ))}
-        <p className="px-2 pt-1 pb-1.5 text-pretty text-muted-foreground text-xs">
+        <p className="px-2 pt-1 pb-1.5 text-pretty text-muted-foreground text-caption">
           {COMPOSER_ACCESS[props.runtimeMode].description}
         </p>
       </ChoiceGroup>
@@ -286,7 +286,7 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
                       <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       {option.label}
                     </span>
-                    <span className="text-muted-foreground text-xs leading-4">
+                    <span className="text-muted-foreground text-caption leading-4">
                       {option.description}
                     </span>
                   </div>

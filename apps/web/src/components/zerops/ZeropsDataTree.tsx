@@ -115,7 +115,7 @@ function renderNodeList({
     if (failedKeys.has(key)) return <></>;
     return (
       <p
-        className="text-muted-foreground text-xs"
+        className="text-muted-foreground text-caption"
         data-zerops-data-tree-loading={key}
         style={{ paddingLeft: depth * 12 }}
       >
@@ -129,7 +129,7 @@ function renderNodeList({
   return (
     <ul className="space-y-0.5" data-zerops-data-tree-list={key}>
       {visibleNodes.length === 0 ? (
-        <li className="text-muted-foreground text-xs" style={{ paddingLeft: depth * 12 }}>
+        <li className="text-muted-foreground text-caption" style={{ paddingLeft: depth * 12 }}>
           {emptyLabel}
         </li>
       ) : null}
@@ -212,7 +212,7 @@ function renderContainerNode({
       <span className="inline-flex items-center gap-1">
         <button
           aria-expanded={expanded}
-          className="text-xs"
+          className="text-caption"
           data-zerops-data-tree-toggle={key}
           onClick={() => onToggleNode(node)}
           type="button"
@@ -220,12 +220,12 @@ function renderContainerNode({
           {expanded ? "▾" : "▸"}
         </button>
         {onSelectContainer === undefined ? (
-          <span className="text-xs">{node.name}</span>
+          <span className="text-caption">{node.name}</span>
         ) : (
           <button
             aria-selected={selected}
             className={cn(
-              "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1 text-left text-xs hover:bg-accent",
+              "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1 text-left text-caption hover:bg-accent",
               selected && "bg-accent font-semibold text-foreground",
             )}
             data-zerops-data-tree-container={key}
@@ -273,7 +273,7 @@ function renderLeafNode({
     <button
       aria-selected={selected}
       className={cn(
-        "flex w-full items-start justify-between gap-3 rounded px-1 py-1 text-left text-xs hover:bg-accent",
+        "flex w-full items-start justify-between gap-3 rounded px-1 py-1 text-left text-caption hover:bg-accent",
         selected && "bg-accent font-semibold text-foreground",
       )}
       data-zerops-data-tree-node={key}

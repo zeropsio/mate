@@ -1023,7 +1023,7 @@ function Harness() {
         className="flex shrink-0 flex-col gap-1 border-border border-r p-4"
         style={{ width: 435 }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">
+        <p className="pb-2 text-muted-foreground text-caption">
           Switching Mates · first open waits {LATENCY_MS} ms
         </p>
         {THREADS.map((candidate) => (
@@ -1032,7 +1032,7 @@ function Harness() {
             type="button"
             data-harness-thread={candidate.key}
             aria-current={candidate.key === current ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-sm aria-[current=true]:bg-accent"
+            className="rounded-lg px-3 py-2 text-left text-body aria-[current=true]:bg-accent"
             onClick={() => setCurrent(candidate.key)}
           >
             {candidate.name} · {candidate.turns} turns
@@ -1043,7 +1043,7 @@ function Harness() {
         {/* The app's own top bar (`WorkspacePageHeader`), so the conversation
             under it stands where ChatView's does. */}
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-sm"
+          className="relative bg-background font-medium text-body"
           data-chat-header
         >
           {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}

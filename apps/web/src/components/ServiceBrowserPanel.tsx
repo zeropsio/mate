@@ -99,7 +99,7 @@ function ServiceBrowserPanel({
       >
         <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         <a
-          className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-xs hover:text-foreground"
+          className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-caption hover:text-foreground"
           href={url}
           target="_blank"
           rel="noreferrer"
@@ -193,7 +193,7 @@ export function ServiceBrowserPanels({
             }
           />
         ) : (
-          <p className="p-4 text-sm text-muted-foreground">
+          <p className="p-4 text-body text-muted-foreground">
             Preview is available only for known service domains.{" "}
             <a className="underline" href={surface.url} target="_blank" rel="noreferrer">
               Open in new tab

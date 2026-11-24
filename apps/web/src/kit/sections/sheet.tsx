@@ -35,7 +35,7 @@ function Opener({
             <SheetTitle>Addresses</SheetTitle>
             <SheetDescription>Where people reach the project.</SheetDescription>
           </SheetHeader>
-          <div className="flex flex-col gap-2 px-6 pb-6 text-sm">
+          <div className="flex flex-col gap-2 px-6 pb-6 text-body">
             <span>shop.example.com</span>
             <span>storefront-1a2b.prg1.zerops.app</span>
           </div>

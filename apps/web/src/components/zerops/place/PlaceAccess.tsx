@@ -47,7 +47,7 @@ export function PlaceAccessCard({
             )}
           </span>
           <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-sm text-foreground">{words.count}</span>
+            <span className="text-body text-foreground">{words.count}</span>
             {words.split === "" ? null : (
               <span className="truncate text-caption text-muted-foreground">{words.split}</span>
             )}

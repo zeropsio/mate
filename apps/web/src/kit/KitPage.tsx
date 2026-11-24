@@ -99,7 +99,7 @@ function KitFrame({
       <Sidebar collapsible="none">
         <SidebarHeader>
           <div className="flex items-center justify-between gap-2 px-2 pt-1">
-            <h1 className="m-0 font-semibold text-sm">Kit</h1>
+            <h1 className="m-0 font-semibold text-body">Kit</h1>
             <Badge tone="neutral">{sections.length} sections</Badge>
           </div>
         </SidebarHeader>
@@ -109,7 +109,7 @@ function KitFrame({
       </Sidebar>
       <SidebarInset className="min-h-0">
         <header className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-3">
-          <p className="m-0 text-muted-foreground text-sm">
+          <p className="m-0 text-muted-foreground text-body">
             Every component, every variant and size, with the props it renders with.
           </p>
           <ToggleGroup
@@ -184,13 +184,13 @@ function KitIndex({
         if (inGroup.length === 0) return [];
         return [
           <SidebarGroup key={group}>
-            <h2 className="m-0 px-2 pb-1 font-semibold text-xs">{group}</h2>
+            <h2 className="m-0 px-2 pb-1 font-semibold text-caption">{group}</h2>
             {KIT_KINDS.flatMap((kind) => {
               const inKind = inGroup.filter((section) => section.kind === kind);
               if (inKind.length === 0) return [];
               return [
                 <div className="flex flex-col gap-0.5 pb-2" key={kind}>
-                  <h3 className="m-0 px-2 py-1 font-medium text-muted-foreground text-xs">
+                  <h3 className="m-0 px-2 py-1 font-medium text-muted-foreground text-caption">
                     {kind}
                   </h3>
                   <SidebarMenu>
@@ -219,7 +219,7 @@ function KitSections({ sections }: { readonly sections: readonly KitSection[] })
         <Separator />
         <div className="flex flex-col gap-1">
           <h2 className="m-0 font-semibold text-lg">Not shown</h2>
-          <p className="m-0 text-muted-foreground text-sm">
+          <p className="m-0 text-muted-foreground text-body">
             Components the page leaves out, and why.
           </p>
         </div>
@@ -235,10 +235,12 @@ function KitSections({ sections }: { readonly sections: readonly KitSection[] })
             {KIT_OMISSIONS.map((omission) => (
               <TableRow key={omission.name}>
                 <TableCell>
-                  <code className="font-mono text-xs">{omission.name}</code>
+                  <code className="font-mono text-caption">{omission.name}</code>
                 </TableCell>
                 <TableCell>
-                  <code className="font-mono text-muted-foreground text-xs">{omission.source}</code>
+                  <code className="font-mono text-muted-foreground text-caption">
+                    {omission.source}
+                  </code>
                 </TableCell>
                 <TableCell>{omission.reason}</TableCell>
               </TableRow>
@@ -267,8 +269,8 @@ function KitSectionView({ section }: { readonly section: KitSection }) {
           <Badge tone="neutral">{section.group}</Badge>
           <Badge tone="neutral">{section.kind}</Badge>
         </div>
-        <p className="m-0 text-muted-foreground text-sm">{section.purpose}</p>
-        <code className="font-mono text-muted-foreground/70 text-xs">{section.source}</code>
+        <p className="m-0 text-muted-foreground text-body">{section.purpose}</p>
+        <code className="font-mono text-muted-foreground/70 text-caption">{section.source}</code>
       </div>
       <RenderErrorBoundary
         fallback={

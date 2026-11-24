@@ -152,7 +152,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
           </CommandList>
         ) : (
           <div className="px-5 pt-3.5 pb-7">
-            <p className="text-secondary-label text-xs">
+            <p className="text-secondary-label text-caption">
               {props.isLoading
                 ? props.triggerKind === "skill"
                   ? "Searching workspace skills..."
@@ -231,7 +231,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
         <MateFace size={16} state="idle" tint={props.item.tint} shape={props.item.shape} />
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-xs font-medium">
+        <span className="min-w-0 max-w-[45%] shrink-0 truncate font-sans text-caption font-medium">
           {isSlashSkill ? (
             <>
               <span className="text-secondary-label">/skill:</span>
@@ -247,7 +247,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
             render={
               <span
                 ref={descriptionRef}
-                className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs"
+                className="min-w-0 flex-1 truncate text-left text-secondary-label text-caption"
               />
             }
           >
