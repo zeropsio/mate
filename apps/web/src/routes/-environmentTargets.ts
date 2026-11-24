@@ -30,6 +30,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import {
   hqIndexWord,
+  hqMateStateAtom,
   listedProjectAtom,
   rosterAnswered,
   routePreviewAtom,
@@ -235,6 +236,8 @@ export interface RouteGateInputs {
   readonly serviceId?: string | undefined;
   /** The owner's verdict on the route's Mate (`mateRecovery`). */
   readonly recovery: MateRecovery;
+  /** HQ says the route's Mate is not answering (`useRouteMate`). */
+  readonly offline: boolean;
 }
 
 /**
@@ -263,13 +266,18 @@ export function useRouteMateProject(environmentId: EnvironmentId | null): {
   };
 }
 
-/** The owner's verdict on a route's Mate (`mateRecovery`), and whether it says it is stopped. */
+/**
+ * The owners' word on a route's Mate: the container's verdict (`mateRecovery`), whether HQ says it
+ * is not answering (`hqMateState` `offline`), and whether either speaks for it (`openingMayEnd`):
+ * its container stopped, or HQ's offline.
+ */
 export function useRouteMate(
   projectId: string | null,
   serviceId: string | undefined,
-): { readonly recovery: MateRecovery; readonly stopped: boolean } {
+): { readonly recovery: MateRecovery; readonly offline: boolean; readonly speaks: boolean } {
   const recovery = useMateRecovery(projectId, serviceId);
-  return { recovery, stopped: recovery.status === "STOPPED" };
+  const offline = useAtomValue(hqMateStateAtom(projectId ?? ""))?.state === "offline";
+  return { recovery, offline, speaks: offline || recovery.status === "STOPPED" };
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -368,20 +376,20 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           content,
         });
   const { projectId, serviceId } = useRouteMateProject(environmentId);
-  const { recovery, stopped } = useRouteMate(projectId, serviceId);
+  const { recovery, offline, speaks } = useRouteMate(projectId, serviceId);
   // The route's one deadline, the listings' patience: it runs while, but for it, the route would
   // wait without end (`routeDeadlineRuns`) — on HQ to name its environment, on the environment to
   // be found, or on a Mate's quiet verdict over nothing to show. Past it HQ's waits say so and a
   // quiet wait ends, saying why (`routeTargetPastDeadline`). Resolving, a verdict with words, a
-  // stopped Mate, saying the conversation is absent, or leaving the route ends the wait and clears
+  // Mate an owner speaks for, saying the conversation is absent, or leaving the route ends the wait and clears
   // its window.
   const waiting = targetOf(false);
   const overdue = usePatienceSpent(
-    routeDeadlineRuns(waiting, stopped) ? routeKey : null,
+    routeDeadlineRuns(waiting, speaks) ? routeKey : null,
     STILL_READING_PATIENCE_MS,
   );
   const pastDeadline = overdue ? targetOf(true) : null;
-  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, stopped);
+  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, speaks);
   // The absence the route says on HQ's answer, held while the route stays on this environment.
   if (
     hqProject === null &&
@@ -396,13 +404,14 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     return () => account.setRoute(null);
   }, [account, environmentId]);
   if (environmentId === null)
-    return { target: null, projectId: null, mateName: "This Mate", recovery };
+    return { target: null, projectId: null, mateName: "This Mate", recovery, offline: false };
   return {
     target,
     serviceId,
     projectId,
     mateName: mate.kind === "mate" ? mate.mate.name : "This Mate",
     recovery,
+    offline,
   };
 }
 

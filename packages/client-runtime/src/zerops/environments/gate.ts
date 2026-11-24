@@ -81,12 +81,13 @@ export type RouteTarget =
 /**
  * Whether a wait over this verdict may end a route's opening, wherever its deadline runs (the
  * route gate, the thread route): only a verdict with no words of its own (`opensQuietly`), or a
- * ready Mate whose conversation is not found, and never a Mate the owner's reads say is stopped.
- * Every other verdict says its cause with its verbs for as long as it holds.
+ * ready Mate whose conversation is not found, and never where an owner speaks for the Mate
+ * (`mateSpeaks`): the owner's reads say it is stopped, or HQ says it is offline. Every other
+ * verdict says its cause with its verbs for as long as it holds.
  */
-export function openingMayEnd(reachability: Reachability | null, mateStopped: boolean): boolean {
+export function openingMayEnd(reachability: Reachability | null, mateSpeaks: boolean): boolean {
   return (
-    !mateStopped &&
+    !mateSpeaks &&
     (reachability === null || reachability.kind === "ready" || opensQuietly(reachability))
   );
 }
@@ -94,11 +95,11 @@ export function openingMayEnd(reachability: Reachability | null, mateStopped: bo
 /**
  * Whether the route's deadline runs for this target: while it would wait for its environment to
  * be found, or hold its opening over a verdict with no words of its own (`opensQuietly`) and
- * nothing to show. Every other wait says its cause with its verbs, a Mate the owner's reads say is
- * stopped (`mateStopped`) too: Start to whoever may operate it, its access and Go to projects to
- * anyone else (`mateNoticeDecision`), never that it isn't answering.
+ * nothing to show. Every other wait says its cause with its verbs, a Mate an owner speaks for
+ * (`mateSpeaks`, `openingMayEnd`) too: Start to whoever may operate it, its access and Go to
+ * projects to anyone else, HQ's since and Restart where it is offline (`mateNoticeDecision`).
  */
-export function routeDeadlineRuns(target: RouteTarget | null, mateStopped: boolean): boolean {
+export function routeDeadlineRuns(target: RouteTarget | null, mateSpeaks: boolean): boolean {
   if (target === null || target.kind === "overdue") return false;
   if (target.kind === "unresolved")
     return target.discovery === "pending" || target.discovery === "hq";
@@ -106,7 +107,7 @@ export function routeDeadlineRuns(target: RouteTarget | null, mateStopped: boole
   return (
     target.content === "empty" &&
     target.reachability.kind !== "ready" &&
-    openingMayEnd(target.reachability, mateStopped)
+    openingMayEnd(target.reachability, mateSpeaks)
   );
 }
 
@@ -114,10 +115,10 @@ export function routeDeadlineRuns(target: RouteTarget | null, mateStopped: boole
  * The target once the route's deadline passed: a quiet wait ends, saying why; HQ's own waits say
  * their overdue words (`RouteHqWait`), and every other target stands.
  */
-export function routeTargetPastDeadline(target: RouteTarget, mateStopped: boolean): RouteTarget {
+export function routeTargetPastDeadline(target: RouteTarget, mateSpeaks: boolean): RouteTarget {
   if (target.kind === "unresolved")
     return target.discovery === "pending" ? { kind: "overdue", end: "not-found" } : target;
-  if (target.kind !== "resolved" || !routeDeadlineRuns(target, mateStopped)) return target;
+  if (target.kind !== "resolved" || !routeDeadlineRuns(target, mateSpeaks)) return target;
   const refusal = reachabilityRefusalWords(target.reachability);
   return refusal === undefined
     ? { kind: "overdue", end: "not-answering" }
@@ -149,8 +150,13 @@ export type RouteGate =
 
 const OUTLET: RouteGate = { kind: "outlet", banner: null, composer: "enabled" };
 
-/** DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1). */
-export function selectRouteGate(target: RouteTarget | null): RouteGate {
+/**
+ * DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1).
+ * `hqOffline`: HQ's verdict that the Mate is not answering (`hqMateState` `offline`), the one owner
+ * of that fact. While its link is not live it takes the stage from a conversation already open, so
+ * its since and its way back show in place of the link's own reconnecting line.
+ */
+export function selectRouteGate(target: RouteTarget | null, hqOffline: boolean): RouteGate {
   if (target === null) return OUTLET;
   if (target.kind === "overdue")
     return target.refusal === undefined
@@ -170,6 +176,7 @@ export function selectRouteGate(target: RouteTarget | null): RouteGate {
   }
   const { reachability, content } = target;
   if (isTerminalReachability(reachability)) return { kind: "unavailable", reachability };
+  if (hqOffline && reachability.kind !== "ready") return { kind: "wait", reachability };
   if (reachability.kind === "ready") {
     return reachability.notice === null
       ? OUTLET

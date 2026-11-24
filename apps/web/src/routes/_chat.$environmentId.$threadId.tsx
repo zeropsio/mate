@@ -99,11 +99,12 @@ function ChatThreadRouteView() {
   const directoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
   // The route's Mate by the same project the root's gate reads (`useRouteMateProject`).
   const mateProject = useRouteMateProject(threadRef?.environmentId ?? null);
-  const { stopped } = useRouteMate(mateProject.projectId, mateProject.serviceId);
+  const { speaks } = useRouteMate(mateProject.projectId, mateProject.serviceId);
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
-  // A verdict with words of its own (not answering, restarting, stopped) keeps saying them with
-  // its way out: only a wait the gate says may end runs the deadline (`openingMayEnd`).
+  // A verdict with words of its own (not answering, restarting, stopped, HQ's offline) keeps
+  // saying them with its way out: only a wait the gate says may end runs the deadline
+  // (`openingMayEnd`).
   const named = serverThreadShell !== null || serverThreadDetail !== null;
   const awaited = named
     ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
@@ -111,7 +112,7 @@ function ChatThreadRouteView() {
       : null
     : renderState === "loading" &&
         routeMate.kind !== "nobody" &&
-        openingMayEnd(reachability, stopped)
+        openingMayEnd(reachability, speaks)
       ? "find"
       : null;
   const patienceSpent = usePatienceSpent(
