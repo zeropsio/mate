@@ -23,6 +23,7 @@ import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
@@ -85,13 +86,13 @@ export function ZeropsMateVerb({
 }
 
 /**
- * The card's surface: the one white card on the page. The height fits a
- * name, a line and a snippet whether or not the socket has answered yet: a
- * card that grows when the conversation lands would push every card below it
- * down the page.
+ * The card's inside: the surface is the kit's flat Card around it. The height
+ * fits a name, a line and a snippet whether or not the socket has answered
+ * yet: a card that grows when the conversation lands would push every card
+ * below it down the page.
  */
 const CARD_SURFACE_CLASS =
-  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-card border border-border/60 bg-card py-2.5 ps-3 pe-2";
+  "relative flex min-h-18 w-full min-w-0 items-center gap-3 rounded-card py-2.5 ps-3 pe-2";
 
 /**
  * The row: the Mate as one entry of a list inside another surface (a project
@@ -104,8 +105,7 @@ const ROW_SURFACE_CLASS =
 const LAYOUT = {
   card: {
     surface: CARD_SURFACE_CLASS,
-    opens:
-      "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
+    opens: "hover:bg-accent/40",
     lineOne: "",
     name: "",
     time: "",
@@ -192,12 +192,12 @@ export function ZeropsMateCard({
   busy = false,
   className,
 }: ZeropsMateCardProps) {
-  return (
+  const body = (
     <div
       aria-busy={busy || undefined}
       className={cn(
         LAYOUT[layout].surface,
-        "group/card transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
+        "group/card transition-colors duration-150 motion-reduce:transition-none",
         onSelect && LAYOUT[layout].opens,
         className,
       )}
@@ -275,6 +275,13 @@ export function ZeropsMateCard({
       )}
       {layout === "card" ? <CardMenu menu={menu} /> : null}
     </div>
+  );
+  return layout === "card" ? (
+    <Card className="w-full min-w-0" variant="flat">
+      {body}
+    </Card>
+  ) : (
+    body
   );
 }
 
