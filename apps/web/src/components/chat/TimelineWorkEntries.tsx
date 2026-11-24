@@ -21,6 +21,7 @@ import {
   WrenchIcon,
   XIcon,
   ZapIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrlStates } from "../../assets/assetUrls";
@@ -138,37 +139,27 @@ type WorkEntryIconName =
   | "x"
   | "zap";
 
+const WORK_ENTRY_ICONS: Record<WorkEntryIconName, LucideIcon> = {
+  bot: BotIcon,
+  brain: BrainIcon,
+  check: CheckIcon,
+  "circle-alert": CircleAlertIcon,
+  eye: EyeIcon,
+  globe: GlobeIcon,
+  hammer: HammerIcon,
+  "message-circle": MessageCircleIcon,
+  search: SearchIcon,
+  "square-pen": SquarePenIcon,
+  terminal: TerminalIcon,
+  wrench: WrenchIcon,
+  x: XIcon,
+  zap: ZapIcon,
+};
+
+// A work line's glyph is drawn a touch lighter than lucide's 2, so it sits under the line's words.
 function WorkEntryIconSvg({ name, className }: { name: WorkEntryIconName; className: string }) {
-  switch (name) {
-    case "bot":
-      return <BotIcon className={className} aria-hidden />;
-    case "brain":
-      return <BrainIcon className={className} aria-hidden />;
-    case "check":
-      return <CheckIcon className={className} aria-hidden />;
-    case "circle-alert":
-      return <CircleAlertIcon className={className} aria-hidden />;
-    case "eye":
-      return <EyeIcon className={className} aria-hidden />;
-    case "globe":
-      return <GlobeIcon className={className} aria-hidden />;
-    case "hammer":
-      return <HammerIcon className={className} aria-hidden />;
-    case "message-circle":
-      return <MessageCircleIcon className={className} aria-hidden />;
-    case "search":
-      return <SearchIcon className={className} aria-hidden />;
-    case "square-pen":
-      return <SquarePenIcon className={className} aria-hidden />;
-    case "terminal":
-      return <TerminalIcon className={className} aria-hidden />;
-    case "wrench":
-      return <WrenchIcon className={className} aria-hidden />;
-    case "x":
-      return <XIcon className={className} aria-hidden />;
-    case "zap":
-      return <ZapIcon className={className} aria-hidden />;
-  }
+  const Icon = WORK_ENTRY_ICONS[name];
+  return <Icon className={className} strokeWidth={1.8} aria-hidden />;
 }
 
 function workToneIcon(tone: TimelineWorkEntry["tone"]): {
@@ -417,10 +408,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           aria-label={showFailedIndicator ? "Tool call failed" : undefined}
           aria-hidden={!showEntryIcon}
         >
-          <WorkEntryIconSvg
-            name={entryIconName}
-            className="block size-3.5 shrink-0 stroke-[1.8] opacity-70"
-          />
+          <WorkEntryIconSvg name={entryIconName} className="block size-3.5 shrink-0 opacity-70" />
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">

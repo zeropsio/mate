@@ -177,18 +177,20 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                   <span className="shrink-0 text-secondary-label text-caption max-sm:hidden">
                     {formatRelativeTimeLabel(entry.createdAt)}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                    aria-label="Delete stashed prompt"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(entry);
-                    }}
-                  >
-                    <XIcon className="size-3.5 stroke-2" />
-                  </Button>
+                  {/* The delete press shows on the row's hover or focus, always under a coarse pointer. */}
+                  <span className="pointer-events-none flex shrink-0 opacity-0 transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete stashed prompt"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(entry);
+                      }}
+                    >
+                      <XIcon className="size-3.5 stroke-2 text-foreground" />
+                    </Button>
+                  </span>
                 </CommandItem>
               ))
             )}

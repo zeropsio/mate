@@ -400,46 +400,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/chat/PanelLayoutControls.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in PanelLayoutControls awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderInstanceIcon.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-(--provider-accent) text-white\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ProviderInstanceIcon awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/chat/SkillInlineText.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"border-fuchsia-500/25 bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in SkillInlineText awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/TraitsPicker.tsx",
     "kind": "Literal",
     "fingerprint": "\"text-[#d97757]\"",

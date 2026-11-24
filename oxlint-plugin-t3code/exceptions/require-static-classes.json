@@ -1,18 +1,1 @@
-[
-  {
-    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
-    "kind": "MemberExpression",
-    "fingerprint": "<Alert> in item.className",
-    "owner": "web-intake",
-    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
-    "kind": "MemberExpression",
-    "fingerprint": "<AlertAction> in item.actionClassName",
-    "owner": "web-intake",
-    "reason": "runtime-built className on a components/ui export that predates the ui-kit pass; upstream has no counterpart call site",
-    "expires": "F6"
-  }
-]
+[]

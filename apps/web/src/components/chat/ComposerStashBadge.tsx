@@ -45,15 +45,17 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
         data-prompt-stash-badge="true"
         aria-label={`Stashed prompts: ${props.count}. Open stash.`}
         aria-expanded={props.menuOpen}
-        className={cn(
-          "shrink-0",
-          (props.menuOpen || props.pulsing) &&
-            "[--control-icon-color:currentColor] text-foreground",
-        )}
+        className="shrink-0"
         onPointerDown={(event) => event.preventDefault()}
         onClick={props.onToggleMenu}
       >
-        <BookmarkIcon className="size-3 shrink-0" aria-hidden="true" />
+        {/* Open or just saved, the bookmark takes the foreground ink beside the count. */}
+        <BookmarkIcon
+          className={
+            props.menuOpen || props.pulsing ? "size-3 shrink-0 text-foreground" : "size-3 shrink-0"
+          }
+          aria-hidden="true"
+        />
         {count}
       </Button>
     );

@@ -456,6 +456,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-update-role: var(--zerops-update-role);
   --color-rail: var(--zerops-rail);
   --color-mate-face-ink: var(--zerops-mate-face-ink);
+  --color-fill-ink: var(--zerops-fill-ink);
+  --color-skill-edge: var(--zerops-skill-edge);
+  --color-skill-surface: var(--zerops-skill-surface);
+  --color-skill-text: var(--zerops-skill-text);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--contrast-sidebar-foreground);
   --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
@@ -1658,6 +1662,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      the ground alone sets it apart. */
   --zerops-well: var(--color-secondary);
   --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
+  /* The ink on a vivid fill that is no theme's own (a person's accent, a count's dot): white in
+     both appearances. */
+  --zerops-fill-ink: var(--color-white);
+  /* A skill named in a message: a fuchsia chip, its words darker in light and lighter in dark. */
+  --zerops-skill-edge: color-mix(in oklab, var(--color-fuchsia-500) 25%, transparent);
+  --zerops-skill-surface: color-mix(in oklab, var(--color-fuchsia-500) 12%, transparent);
+  --zerops-skill-text: var(--color-fuchsia-700);
   /* A Mate's colour: one of eight per agent, none of them the brand teal
      (brand.ts MATE_TINT_IDS); the eyes are ink on these light discs. */
   --zerops-mate-tint-coral: #ef8f78;
@@ -1751,6 +1762,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-ground-clip: border-box;
     --zerops-well: color-mix(in oklab, var(--color-input) 32%, transparent);
     --zerops-well-edge: transparent;
+    --zerops-skill-text: var(--color-fuchsia-300);
     --zerops-mate-tint-coral: #b85f4b;
     --zerops-mate-tint-amber: #9c7420;
     --zerops-mate-tint-olive: #6f8436;
