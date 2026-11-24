@@ -55,6 +55,11 @@ function BadgeSpecimens() {
           <Specimen label='dot aria-label="Running" (a row too narrow for words)'>
             <Badge aria-label="Running" dot tone="success" />
           </Specimen>
+          <Specimen label="dot hollow (nothing there yet, or stopped on purpose)">
+            <Badge dot hollow>
+              Stopped
+            </Badge>
+          </Specimen>
           <Specimen label='tone="success" + icon'>
             <Badge tone="success">
               <CircleCheckIcon />
