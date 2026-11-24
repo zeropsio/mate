@@ -22,6 +22,7 @@ import { XIcon } from "lucide-react";
 
 import { LeaveForGitContext } from "../gitBrowser/GitBrowserLink";
 import { ZeropsReviewDialog } from "./ZeropsReviewDialog";
+import { Button } from "~/components/ui/button";
 import { Loading } from "~/components/ui/loading";
 import {
   ReviewContext,
@@ -210,9 +211,9 @@ function ReviewBody({
                 Review
               </h2>
               <div className="absolute end-2 top-2">
-                <button aria-label="Close" className="rv-x" onClick={close} type="button">
-                  <XIcon aria-hidden="true" />
-                </button>
+                <Button aria-label="Close" onClick={close} size="icon-sm" variant="ghost-muted">
+                  <XIcon aria-hidden="true" className="size-4" />
+                </Button>
               </div>
               <Loading label="The review" shape="room" />
             </div>

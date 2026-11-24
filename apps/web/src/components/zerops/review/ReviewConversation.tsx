@@ -266,9 +266,7 @@ function SayBox({
           onPress={() => {
             void comment();
           }}
-          verb={
-            <button className="rv-say-comment" data-zerops-primary-action="Comment" type="button" />
-          }
+          verb={<Button data-zerops-primary-action="Comment" size="sm" variant="ghost" />}
         >
           Comment
         </SayVerb>
@@ -279,7 +277,7 @@ function SayBox({
             onPress={() => {
               void ask();
             }}
-            verb={<button className="rv-say-ask" type="button" />}
+            verb={<Button size="sm" variant="secondary" />}
           >
             {asker.tint === undefined ? null : (
               <MateFace shape={asker.shape} size={16} state="idle" tint={asker.tint} />

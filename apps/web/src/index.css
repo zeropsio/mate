@@ -9997,29 +9997,6 @@ button.ov-change {
     animation-duration: 1ms;
   }
 }
-/* Try it: the Mate's preview, a soft pill that opens a tab. */
-.rv-try {
-  display: inline-flex;
-  max-width: 100%;
-  height: 32px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 12px 0 10px;
-  border-radius: 10px;
-  font-size: 14px;
-  color: var(--foreground);
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  transition: background-color 150ms ease;
-}
-.rv-try:hover {
-  background: color-mix(in oklab, var(--foreground) 10%, transparent);
-}
-.rv-try svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  color: var(--muted-foreground);
-}
 .rv-try-part {
   min-width: 0;
   overflow: hidden;
@@ -10044,29 +10021,6 @@ button.ov-change {
   flex: none;
   font-weight: 500;
 }
-/* A folded section: its label, what it counts, and a chevron on the right edge. */
-.rv-fold-row {
-  display: flex;
-  width: 100%;
-  height: 28px;
-  align-items: center;
-  gap: 10px;
-  margin: -6px 0;
-  color: var(--muted-foreground);
-  text-align: left;
-  cursor: pointer;
-}
-/* A finger's 44 px on a row 28 px tall. */
-@media (pointer: coarse) {
-  .rv-fold-row {
-    position: relative;
-  }
-  .rv-fold-row::after {
-    position: absolute;
-    inset: -8px 0;
-    content: "";
-  }
-}
 .rv-fold-aside {
   font-size: var(--text-body);
   font-weight: 400;
@@ -10078,17 +10032,8 @@ button.ov-change {
   margin-left: auto;
   transition: rotate 200ms var(--ease-out-strong);
 }
-.rv-fold-row[aria-expanded="true"] .rv-fold-chev {
+[aria-expanded="true"] > .rv-fold-chev {
   rotate: 180deg;
-}
-.rv-fold-row:hover {
-  color: var(--foreground);
-}
-.rv-fold-body {
-  margin-top: 12px;
-}
-.rv-fold-body[hidden] {
-  display: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .rv-fold-chev {
@@ -12725,46 +12670,6 @@ a.message-file:focus-visible {
   height: 15px;
   flex: none;
 }
-.rv-x {
-  display: flex;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-.rv-x:last-child {
-  margin-right: -6px;
-}
-/* A finger's 44 px, upward and downward: its neighbour keeps its own. */
-@media (pointer: coarse) {
-  .rv-x {
-    position: relative;
-  }
-  .rv-x::after {
-    position: absolute;
-    inset: -7px 0;
-    content: "";
-  }
-}
-.rv-x:hover {
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-  color: var(--foreground);
-}
-.rv-x:focus-visible,
-.rv-file:focus-visible,
-.rv-link:focus-visible,
-.rv-fold-row:focus-visible,
-.rv-try:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 /* A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
    rest on hover — what it does is said below, in its own words. */
 .rv-title {
@@ -12942,17 +12847,6 @@ a.message-file:focus-visible {
 }
 .rv-del {
   color: var(--diff-deletion-foreground);
-}
-
-/* Blue is only for what can be clicked. */
-.rv-link {
-  color: var(--info-foreground);
-  text-decoration: none;
-  cursor: pointer;
-}
-.rv-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 .rv-body {
@@ -13252,25 +13146,8 @@ a.message-file:focus-visible {
   border-radius: 12px;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
 }
-.rv-file {
-  display: grid;
-  width: 100%;
-  height: 36px;
-  grid-template-columns: 16px minmax(0, 1fr) auto 16px;
-  column-gap: 10px;
-  align-items: center;
-  padding: 0 12px;
-  text-align: start;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-file:hover {
-  background: color-mix(in oklab, var(--foreground) 4%, transparent);
-}
-.rv-files > :where(:not(:first-child)) {
+.rv-files > :where(:not(:first-child)),
+.rv-files > * > :where(:not(:first-child)) {
   border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 .rv-file-name {
@@ -13319,7 +13196,7 @@ a.message-file:focus-visible {
   width: 14px;
   height: 14px;
 }
-.rv-file[aria-expanded="true"] .rv-chev {
+[aria-expanded="true"] > .rv-chev {
   rotate: 180deg;
 }
 .rv-file-skeleton {
@@ -13604,41 +13481,6 @@ a.message-file:focus-visible {
     font-size: var(--field-phone-size);
   }
 }
-.rv-say-comment,
-.rv-say-ask {
-  display: inline-flex;
-  height: 30px;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border-radius: 9px;
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--foreground);
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.rv-say-ask {
-  padding-left: 8px;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
-}
-.rv-say-comment:hover:not([aria-disabled]),
-.rv-say-ask:hover:not([aria-disabled]) {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-}
-.rv-say-comment[aria-disabled],
-.rv-say-ask[aria-disabled] {
-  color: var(--muted-foreground);
-  cursor: default;
-}
-.rv-say-comment:focus-visible,
-.rv-say-ask:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 .rv-say-trouble {
   margin: 6px 0 0;
   font-size: var(--text-body);
@@ -13704,7 +13546,7 @@ a.message-file:focus-visible {
    Mate on the right. */
 .rv-rel {
   display: grid;
-  margin: 0 -8px;
+  margin: 0 -12px;
 }
 .rv-relrow {
   display: grid;
@@ -13755,34 +13597,6 @@ a.message-file:focus-visible {
 .rv-on[data-mark="failed-on-stage"] {
   color: var(--zerops-status-failed-text);
 }
-
-/* p26/release */
-/* A change row opens its review in place: the whole row presses, the menu's way — a wash under
-   the pointer, a deeper one pressed, its Mate's face looking up — with a › at its end. */
-.rv-rel[data-opens] .rv-relrow {
-  grid-template-columns: 18px minmax(0, 1fr) 14px;
-  grid-template-areas:
-    "face title go"
-    "face sub go";
-}
-:is(button, a).rv-relrow {
-  width: 100%;
-  color: inherit;
-  text-decoration: none;
-  text-align: left;
-  cursor: pointer;
-  outline: none;
-  transition: background-color 150ms ease;
-}
-:is(button, a).rv-relrow:hover {
-  background: color-mix(in oklab, var(--foreground) 4%, transparent);
-}
-:is(button, a).rv-relrow:active {
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-:is(button, a).rv-relrow:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--ring);
-}
 .rv-relrow-go {
   grid-area: go;
   align-self: center;
@@ -13795,7 +13609,7 @@ a.message-file:focus-visible {
     color 150ms ease,
     translate 200ms var(--ease-out-strong);
 }
-:is(button, a).rv-relrow:hover .rv-relrow-go {
+[data-release-row]:hover .rv-relrow-go {
   color: var(--foreground);
   opacity: 1;
   translate: 2px 0;
@@ -13816,13 +13630,13 @@ a.message-file:focus-visible {
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  :is(button, a).rv-relrow:hover [data-mate-face-look] {
+  [data-release-row]:hover [data-mate-face-look] {
     translate: 0 -5%;
   }
-  :is(button, a).rv-relrow [data-mate-face-hop] {
+  [data-release-row] [data-mate-face-hop] {
     transition: scale 220ms var(--ease-spring);
   }
-  :is(button, a).rv-relrow:active [data-mate-face-hop] {
+  [data-release-row]:active [data-mate-face-hop] {
     scale: 0.92;
     transition-duration: 90ms;
   }

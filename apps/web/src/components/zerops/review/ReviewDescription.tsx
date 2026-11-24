@@ -215,9 +215,9 @@ function ReviewPicture({
   const where = descriptionPicture(picture.uri, hqAddress);
   if (where.kind === "elsewhere") {
     return (
-      <a className="rv-link" href={where.url} rel="noopener noreferrer" target="_blank">
+      <InlineButton render={<a href={where.url} rel="noopener noreferrer" target="_blank" />}>
         {picture.alt.length > 0 ? picture.alt : where.url}
-      </a>
+      </InlineButton>
     );
   }
   if (where.kind === "none") return <PictureLine alt={picture.alt} />;
