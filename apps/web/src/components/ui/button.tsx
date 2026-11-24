@@ -68,9 +68,10 @@ const controlVariants = cva(
         /**
          * A ghost on the menu: under the pointer or while its popup is open, a step of the menu's ink
          * over whatever it stands on, so a row's verb still shows on the row's own hover ground.
+         * A press for the page on view (`aria-current="page"`) stands on the menu's selected ground.
          */
         sidebar:
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-foreground/8 [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
+          "[--control-icon-color:currentColor] border-transparent text-muted-foreground aria-[current=page]:bg-sidebar-row-selected aria-[current=page]:text-sidebar-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-foreground/8 [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
         /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
         "destructive-ghost":
           "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",

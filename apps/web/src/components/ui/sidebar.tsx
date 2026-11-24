@@ -370,7 +370,7 @@ function Sidebar({
               // one did, the same size.
               // Up-and-down pans stay the browser's (the list scrolls); a sideways push is the
               // sheet's own (`useSheetSwipeClose`).
-              "w-(--sidebar-width) max-w-none touch-pan-y bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
+              "w-(--sidebar-width) max-w-none touch-pan-y border-sidebar-border bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
               className,
             )}
             data-mobile="true"
@@ -440,10 +440,11 @@ function Sidebar({
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-            // Adjust the padding for floating and inset variants.
+            // Adjust the padding for floating and inset variants; the plain menu draws its edge
+            // line toward the page in the menu's own border ink, as its phone sheet does.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              : "border-sidebar-border group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           data-slot="sidebar-container"
@@ -704,10 +705,29 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   );
 }
 
-function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * The menu's head. `bar` is its top bar: one row at the workspace top bar's height with no gutter
+ * of its own, so what stands in it lines up with the page header beside it. `dragRegion` lets a
+ * desktop window be dragged by it, its presses excepted.
+ */
+function SidebarHeader({
+  className,
+  variant = "default",
+  dragRegion = false,
+  ...props
+}: React.ComponentProps<"div"> & {
+  variant?: "default" | "bar";
+  dragRegion?: boolean;
+}) {
   return (
     <div
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn(
+        variant === "bar"
+          ? "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2"
+          : "flex flex-col gap-2 p-2",
+        dragRegion && "drag-region",
+        className,
+      )}
       data-sidebar="header"
       data-slot="sidebar-header"
       {...props}
@@ -766,11 +786,23 @@ function SidebarContent({
   );
 }
 
-function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * A block of the menu on the menu's inset. `list` is the menu's list under its head: flush under
+ * the head, which keeps the room above it; its start a pixel deeper than its end, so its rows stand
+ * centred between the menu's two edges once the edge line takes its pixel; close under its last row.
+ */
+function SidebarGroup({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"div"> & { variant?: "default" | "list" }) {
   return (
     <div
       className={cn(
-        "relative flex w-full min-w-0 flex-col p-[var(--sidebar-content-inset)]",
+        "relative flex w-full min-w-0 flex-col",
+        variant === "list"
+          ? "ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pt-0 pb-1"
+          : "p-[var(--sidebar-content-inset)]",
         className,
       )}
       data-sidebar="group"
