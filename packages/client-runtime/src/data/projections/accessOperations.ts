@@ -1,8 +1,8 @@
 /**
- * The access changes the viewer started at HQ, as HQ's `access:<id>` navigation keys show them to
- * their maker (`hqAccessOperation`), each as a person's row reads it: running, waiting for its
- * maker's fresh sign-in, or failed, in words. A change HQ ended without failure has no key, so no
- * row; nothing here is the tab's copy.
+ * The access changes HQ's `access:<id>` navigation keys show the viewer (`hqAccessOperation`): their
+ * own, and for an Owner or Admin another maker's while it waits, each as a person's row reads it:
+ * running, waiting for its maker's fresh sign-in, or failed, in words. A change HQ ended without
+ * failure has no key, so no row; nothing here is the tab's copy.
  *
  * @module data/projections/accessOperations
  */
@@ -15,7 +15,7 @@ import { sameValue } from "./equal.ts";
 import {
   operationFailureDetails,
   operationFailureWords,
-  waitingPress,
+  waitingWords,
   type WaitingPress,
 } from "./operationFailure.ts";
 
@@ -51,6 +51,17 @@ export interface AccessOperationRow {
   readonly press?: WaitingPress;
   /** Waiting for the viewer: Continue is theirs. */
   readonly mine: boolean;
+  /** Waiting for another maker: HQ shows it to this reader only as an Owner or Admin who may end it. */
+  readonly endable?: true;
+}
+
+/** How the reader may withdraw a change: its maker's Delete, an Owner's or Admin's End, or not. */
+export function accessOperationWithdrawal(
+  row: Pick<AccessOperationRow, "state" | "mine" | "endable">,
+): "delete" | "end" | null {
+  if (row.state === "running") return null;
+  if (row.state === "waiting" && !row.mine) return row.endable === true ? "end" : null;
+  return "delete";
 }
 
 const KIND_WORDS: { readonly [K in ChangeKind]: string } = {
@@ -119,8 +130,10 @@ export function accessOperationRows(
           ...stopped,
           state: "waiting",
           continueBy,
-          press: waitingPress(failure.code),
+          failure: operationFailureWords(failure),
+          press: waitingWords(failure.code).press,
           mine: continueBy === viewer,
+          ...(viewer !== null && continueBy !== viewer ? { endable: true as const } : {}),
         };
       return { ...stopped, state: "failed", mine: false };
     });

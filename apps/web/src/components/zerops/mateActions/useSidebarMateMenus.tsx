@@ -29,7 +29,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { SharedBirthRow } from "~/components/zerops/SidebarComingEnds";
-import type { ZeropsMenuAction, ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
+import { sidebarMateVerbs } from "~/components/zerops/SidebarMateRow.logic";
+import type { ZeropsMenuAction } from "~/components/zerops/ZeropsProjectMenu";
 import { toastManager } from "~/lib/toasts";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqMatesAtom } from "~/state/zerops";
@@ -43,28 +44,6 @@ import { useMutedMates } from "~/zerops/mutedMates";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { sharedBirthPresentation } from "~/zerops/sharedBirths";
-
-/** The shared verbs this menu carries, relabelled for a Mate's own menu. */
-const SHARED_VERBS: Readonly<Record<string, string | null>> = {
-  continue: null,
-  start: null,
-  restart: null,
-  assign: "Hand over…",
-  access: null,
-  move: "Move to project…",
-  delete: null,
-};
-
-/** `useMateActions`' entries this menu offers, in its words; the rest are the projects screen's. */
-export function sidebarMateVerbs(
-  entries: ReadonlyArray<ZeropsMenuEntry>,
-): ReadonlyArray<ZeropsMenuEntry> {
-  return entries.flatMap((entry) => {
-    if ("separator" in entry || !(entry.id in SHARED_VERBS)) return [];
-    const label = SHARED_VERBS[entry.id];
-    return [label === null || label === undefined ? entry : { ...entry, label }];
-  });
-}
 
 /** What a Mate's menu reads of HQ's word of it (`MateLiveView`): its environment, its main chat. */
 interface MenuTold {

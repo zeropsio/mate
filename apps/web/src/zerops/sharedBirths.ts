@@ -3,7 +3,7 @@ import {
   birthStopped,
   operationFailureWords,
   platformErrorLine,
-  waitingPress,
+  waitingWords,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
@@ -38,6 +38,7 @@ const FAILURE_STEP = {
   key: "Creating project key",
   import: "Importing services",
   restart: "Restarting the Mate service",
+  zerops: "Reaching Zerops",
 };
 
 /** A birth HQ holds for its maker's Continue: to them, and to everyone else. */
@@ -123,7 +124,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     stopped,
     attention,
     waitsOnMaker: waits && !continues,
-    press: waitingPress(birth.failure?.code ?? ""),
+    press: waitingWords(birth.failure?.code ?? "").press,
     actions: [
       ...(continues ? ["continue-operation" as const] : []),
       ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")

@@ -14,6 +14,8 @@ import {
   PROPOSAL_EFFECT,
   proposalEffectMoved,
   proposalEffectOf,
+  proposalOperationOf,
+  type ProposalOperation,
 } from "@t3tools/client-runtime/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import { productionRelease } from "@t3tools/client-runtime/zerops";
@@ -29,7 +31,7 @@ import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useProjection } from "~/zerops/accountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { useProjectFlows } from "~/zerops/projectFlows";
-import { useProposalDecision } from "~/zerops/proposalRecord";
+import { useProposalDecision, useProposalOperationId } from "~/zerops/proposalRecord";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
@@ -55,11 +57,13 @@ import {
   ServiceCreateAskCard,
   type ReleaseOfferChange,
 } from "./ProductionAskCards";
+import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
 import { approveAuthority } from "./proposal.logic";
 import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 const NO_EFFECT = Atom.make<HqOperation | undefined>(undefined);
+const NO_OWN_EFFECT = Atom.make<ProposalOperation | undefined>(undefined);
 /** HQ refused the approval: the plan this person read no longer creates every named service. */
 const SERVICE_NOT_PLANNED = "service_not_planned";
 const NO_APPS: ReadonlyArray<string> = [];
@@ -113,11 +117,18 @@ function planRead(
 function useAskDecision(proposal: ZeropsProposal, environmentId: EnvironmentId) {
   const home = useZeropsEnvironmentProject(environmentId);
   const effect = useProjection(proposalEffectOf, home ?? null, NO_EFFECT);
+  // The operation that is this proposal's own, on production for a creation.
+  const ownId = useProposalOperationId(proposal.id);
+  const own = useProjection(
+    proposalOperationOf,
+    home === undefined || ownId === undefined ? null : { orgId: home.orgId, operationId: ownId },
+    NO_OWN_EFFECT,
+  );
   const handle = useProposalDecision(
     proposal.id,
     home?.projectId,
     proposal.kind,
-    proposalEffectMoved(effect),
+    `${proposalEffectMoved(effect)}/${proposalEffectMoved(own?.operation)}`,
   );
   const nameOf = usePersonNames(home?.orgId);
   const viewer = useZeropsSessionOptional()?.user?.id;
@@ -149,8 +160,9 @@ function useAskDecision(proposal: ZeropsProposal, environmentId: EnvironmentId) 
     known: handle.known && !handle.unreachable,
     sending: handle.sending,
     /** HQ's operation carrying the approval out, as it stands for the viewer. */
-    effect: hqOperationOf(effect, PROPOSAL_EFFECT),
-    effectId: effect?.id,
+    effect: hqOperationOf(own?.operation, PROPOSAL_EFFECT),
+    effectId: own?.operation.id,
+    effectProjectId: own?.projectId,
     decide,
     approve,
     refusal,
@@ -228,21 +240,34 @@ export function ServiceCreateAsk({
   };
 
   const continueId = view.resume ? ask.effectId : undefined;
+  const effectProjectId = ask.effectProjectId;
   const onContinue =
-    continueId === undefined || operations === null || home === undefined
+    continueId === undefined ||
+    operations === null ||
+    home === undefined ||
+    effectProjectId === undefined
       ? undefined
       : () =>
           void operations.submit({
             kind: "continue-operation",
             orgId: home.orgId,
             id: continueId,
-            projectId: home.projectId,
+            projectId: effectProjectId,
           });
+  const endIntent =
+    home === undefined || effectProjectId === undefined
+      ? undefined
+      : endProjectOperationIntent(ask.effect, home.orgId, effectProjectId);
+  const onEnd =
+    endIntent === undefined || operations === null
+      ? undefined
+      : () => void operations.submit(endIntent);
 
   return (
     <ServiceCreateAskCard
       mateName={ask.mateName}
       onContinue={onContinue}
+      onEnd={onEnd}
       onCreate={() => void create()}
       onNotNow={() => void ask.decide({ state: "declined", at: new Date().toISOString() })}
       proposal={proposal}

@@ -22,6 +22,8 @@ import { FailureDetails } from "../ui/failure";
 import { useGroupName } from "./review/reviewReads";
 import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 
 /**
  * The run's step: a spinner and its words. Its clock says how long the step has run, so a long
@@ -62,6 +64,8 @@ export interface PutLiveRowProps {
   readonly onReview: () => void;
   /** Its maker's Continue on their fresh sign-in; absent for anyone else. */
   readonly onContinue: (() => void) | undefined;
+  /** Ends the waiting run, where HQ offers this reader its End. */
+  readonly onEnd?: (() => void) | undefined;
 }
 
 /** The run on production: under way, or stopped with its one action. */
@@ -98,11 +102,16 @@ export function PutLiveRow(props: PutLiveRowProps) {
         {progress.step}
         {details === null ? null : <FailureDetails>{details}</FailureDetails>}
       </div>
-      {action === undefined ? null : (
+      {action === undefined && props.onEnd === undefined ? null : (
         <p className="ov-run-acts">
-          <Button onClick={action.onPress} size="sm">
-            {action.label}
-          </Button>
+          {action === undefined ? null : (
+            <Button onClick={action.onPress} size="sm">
+              {action.label}
+            </Button>
+          )}
+          {props.onEnd === undefined ? null : (
+            <ZeropsOperationEnd kind="put_live" name={props.project} onEnd={props.onEnd} />
+          )}
         </p>
       )}
     </div>
@@ -129,6 +138,7 @@ function ProductionRunRead({
   const openReview = useOpenReview();
   const operations = useAccountOperationsOptional();
   const orgId = useZeropsSession().activeOrganization?.id;
+  const end = endOperationIntent(standing, orgId, groupId);
   return (
     <PutLiveRow
       onAgain={() => {
@@ -145,6 +155,13 @@ function ProductionRunRead({
               });
             }
           : undefined
+      }
+      onEnd={
+        end === undefined || operations === null
+          ? undefined
+          : () => {
+              void operations.submit(end);
+            }
       }
       onReview={() => {
         openReview({ kind: "release", groupId });

@@ -144,10 +144,19 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
 import { useBirthActions } from "~/zerops/useBirthActions";
 import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
+import { ZeropsOperationEndDialog } from "../ZeropsOperationEnd";
+import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
   | { readonly kind: "restart"; readonly candidate: ZeropsCandidatePresentation }
+  /** The End HQ offers on its waiting operation `id` of `operationKind`. */
+  | {
+      readonly kind: "end-operation";
+      readonly candidate: ZeropsCandidatePresentation;
+      readonly id: string;
+      readonly operationKind: string;
+    }
   | { readonly kind: "redeploy"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | {
@@ -970,13 +979,36 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     ): MateMenuActions => {
       // HQ's deletion of it waiting for its maker's fresh token: Continue, to its maker alone;
       // nothing else, as a Mate on its way off Zerops offers nothing.
+      const endOn = (
+        id: string,
+        operationKind: string,
+        standing: Parameters<typeof endProjectOperationIntent>[0],
+      ) => {
+        const intent = endProjectOperationIntent(
+          standing,
+          activeOrganization?.id,
+          candidate.project.id,
+        );
+        return intent === undefined
+          ? []
+          : [
+              {
+                id,
+                label: "End",
+                variant: "destructive" as const,
+                disabled: busyKey === candidate.key,
+                onSelect: () =>
+                  setDialog({ kind: "end-operation", candidate, id: intent.id, operationKind }),
+              },
+            ];
+      };
       const deletion = mateDeletionOfProject(candidate.project);
       if (deletion.kind === "waiting") {
         const orgId = activeOrganization?.id;
         return {
           setupOnly: true,
-          entries:
-            deletion.yours && orgId !== undefined
+          entries: [
+            ...(deletion.yours && orgId !== undefined
               ? [
                   {
                     id: "continue-operation",
@@ -996,7 +1028,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                     },
                   },
                 ]
-              : [],
+              : []),
+            ...endOn("end-deletion", "mate_deletion", deletion),
+          ],
         };
       }
       const { menu, verbs } = stateOf(candidate);
@@ -1031,11 +1065,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const restarting = mateRestartOf(candidate.project);
       const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
       const orgId = activeOrganization?.id;
-      const continueOn = (id: string, label: string, standing: typeof restarting) =>
+      const continueOn = (id: string, standing: typeof restarting) =>
         standing.kind === "waiting" && standing.yours && orgId !== undefined
           ? {
               id,
-              label,
+              label: standing.press,
               disabled: busy,
               onSelect: () => {
                 void write(candidate.key, async () => {
@@ -1052,10 +1086,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             }
           : undefined;
       const continueMove =
-        moving.kind === "renamed-since"
-          ? undefined
-          : continueOn("continue-move", "Continue moving", moving);
-      const continueRestart = continueOn("continue-restart", "Continue restarting", restarting);
+        moving.kind === "renamed-since" ? undefined : continueOn("continue-move", moving);
+      const continueRestart = continueOn("continue-restart", restarting);
       const deleteAction = verbs.delete
         ? {
             id: "delete",
@@ -1147,7 +1179,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             ]
           : []),
         ...(continueMove === undefined ? [] : [continueMove]),
+        ...endOn("end-move", "project_move", moving),
         ...(continueRestart === undefined ? [] : [continueRestart]),
+        ...endOn("end-restart", "mate_restart", restarting),
         ...(verbs.move !== "no"
           ? [
               {
@@ -1254,6 +1288,30 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     movingCandidate === undefined ? undefined : readZeropsMembership(movingCandidate.project);
   const dialogs = (
     <>
+      {dialog?.kind === "end-operation" ? (
+        <ZeropsOperationEndDialog
+          kind={dialog.operationKind}
+          name={projectNameInApp(dialog.candidate.project)}
+          onEnd={() => {
+            const orgId = activeOrganization?.id;
+            if (orgId === undefined) return;
+            void write(dialog.candidate.key, async () => {
+              const { progress, evidence } = await operations.submit({
+                kind: "end-operation",
+                orgId,
+                id: dialog.id,
+                projectId: dialog.candidate.project.id,
+              });
+              const trouble = writeTrouble(progress, evidence);
+              if (trouble !== null) throw new Error(trouble);
+            });
+          }}
+          onOpenChange={(open) => {
+            if (!open) close();
+          }}
+          open
+        />
+      ) : null}
       {dialog?.kind === "redeploy" ? (
         <MateDeployConfirmation candidate={dialog.candidate} onClose={close} />
       ) : null}

@@ -33,7 +33,12 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
  * (their Zerops user id), where it is known.
  */
 export type ProposalDecision = (
-  | { readonly state: "running"; readonly at: string }
+  | {
+      readonly state: "running";
+      readonly at: string;
+      /** The operation carrying it out, where this tab knows it. */
+      readonly operationId?: string;
+    }
   | {
       readonly state: "done";
       readonly at: string;
@@ -85,7 +90,9 @@ export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
   if (record.decision === "declined") return { state: "declined", at, by };
   switch (record.outcome) {
     case null:
-      return { state: "running", at, by };
+      return record.operation
+        ? { state: "running", at, by, operationId: record.operation.id }
+        : { state: "running", at, by };
     case "done":
       return record.words === null || record.words.trim() === ""
         ? { state: "done", at, by }
@@ -127,6 +134,9 @@ export function furtherDecision(
   answered: ProposalDecision,
 ): ProposalDecision {
   if (before === undefined) return answered;
+  // Still running, HQ's answer is what names the operation carrying it out.
+  if (before.state === "running" && answered.state === "running")
+    return answered.operationId === undefined ? before : answered;
   return REACH[answered.state] > REACH[before.state] ? answered : before;
 }
 
@@ -327,6 +337,7 @@ export function makeProposalRecord() {
         decisions = recordDecision(decisions, id, {
           state: "running",
           at: new Date().toISOString(),
+          operationId: approval.id,
         });
         return null;
       } catch (cause) {
@@ -449,6 +460,13 @@ interface ProposalDecisionHandle extends ProposalRecordEntry {
     id: string,
     effect: HqProposalApproval["effect"],
   ) => Promise<ApprovalRefusal | null>;
+}
+
+/** The operation carrying out the approval of `id`, while it runs and this tab knows it. */
+export function useProposalOperationId(id: string): string | undefined {
+  const drawn = useSyncExternalStore(record.subscribe, record.drawing, record.drawing);
+  const decision = drawn.entry(id).decision;
+  return decision?.state === "running" ? decision.operationId : undefined;
 }
 
 /**

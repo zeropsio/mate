@@ -165,8 +165,10 @@ export {
   operationFailureDetails,
   operationFailureWords,
   platformErrorLine,
-  waitingPress,
+  PRESSING,
+  waitingWords,
   type WaitingPress,
+  type WaitingWords,
 } from "./projections/operationFailure.ts";
 export { hqOperationOf, type HqOperationStanding } from "./projections/hqOperation.ts";
 export {
@@ -181,6 +183,8 @@ export {
   PROPOSAL_EFFECT,
   proposalEffectMoved,
   proposalEffectOf,
+  proposalOperationOf,
+  type ProposalOperation,
 } from "./projections/proposalEffect.ts";
 export {
   creationStepId,
@@ -298,6 +302,7 @@ export { makeBrowserHqApi } from "./adapters/hqBrowser.ts";
 
 export {
   accessOperations,
+  accessOperationWithdrawal,
   NO_ACCESS_OPERATIONS,
   type AccessOperationRow,
 } from "./projections/accessOperations.ts";
