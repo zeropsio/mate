@@ -7,8 +7,7 @@
  * pointer, the heading naming it as its name is typed, one sentence on what a Mate is. The New
  * project form is the page itself (`useNewProjectAnswer`, `useNewProjectForm`): the project's name,
  * then the Mate's name and look, whose colour and shape the face above turns into as they are
- * picked. Under the words, what happens after Create, in the words the New project dialog ends
- * with (`newProjectNext`) — under the form where the window is narrow, so the form comes first. Create carries the face onto the first Mate's own page (`mate-birth`), and
+ * picked. Under the words, what happens after Create (`newProjectNext`) — under the form where the window is narrow, so the form comes first. Create carries the face onto the first Mate's own page (`mate-birth`), and
  * the menu comes with that page.
  *
  * One who may not start a project is told why the page is empty, under a face that waits.
@@ -67,7 +66,7 @@ function FirstRunStart({
   readonly account: ReactNode;
   readonly reachesEveryProject: boolean;
 }) {
-  const answer = useNewProjectAnswer({});
+  const answer = useNewProjectAnswer();
   // The organization is chosen before a first run is: its read back is never awaited here.
   if (answer.kind !== "form") return null;
   return (
@@ -194,7 +193,7 @@ function FirstRunForm({
             <ProjectNameField form={form} inputRef={nameField} size="xl" />
             <FirstMateField form={form} label="Your first Mate" look="apart" size="xl" />
             {access === undefined ? null : access(form.setUserRoles)}
-            <NewProjectLocation form={form} tiles />
+            <NewProjectLocation form={form} />
           </NewProjectFields>
           <div className="first-run-create">
             <CreateProjectButton form={form} size="lg" />
@@ -209,7 +208,7 @@ function FirstRunForm({
   );
 }
 
-/** What happens after Create, as the New project dialog says it, as a line of steps. */
+/** What happens after Create, as a line of steps. */
 function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
   const next = newProjectNext({ projectName: form.name, botName: form.botName });
   return (

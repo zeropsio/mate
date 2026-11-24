@@ -1,13 +1,12 @@
 /**
- * The New Mate dialog: who the new Mate is, and what happens once it is added.
- *
- * It asks three things — a name, a colour and a shape — and shows the face they make, big, while
- * they are picked: the person sees who they are making. Everything else is decided for them. The
- * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
- * the group repo's `main`), runs its agent, and is called what the project calls its Mates
- * (`proposedEnvironmentName`). A project with no recipe on main and no Mate yet still gets its
- * first, with nothing in it yet. The dialog ends with what happens next, with honest times
- * (`newMateNext`, board D1): the family New project belongs to (`ZeropsNewProjectForm`).
+ * The New Mate dialog: who the new Mate is, as the New project page's Mate step asks it
+ * (`ZeropsNewProjectPage`, pen.dev v4WZU): its face big, the colours and shapes opening as a ring
+ * around it (*Edit style*, `MateFaceRing`), its name, typed in place (`MateNameText`), *Shuffle style* rolling a new face and name, and
+ * Add. *Mate access & persona setup* opens how it works with its person (`NewMatePersona`) and who can
+ * work with it, under the rest, the dialog scrolling down to them. Everything else is decided for them. The Mate gets its own copy of the project
+ * with the project's recipe deployed (the tier read from the group repo's `main`), runs its agent,
+ * and is called what the project calls its Mates (`proposedEnvironmentName`). A project with no
+ * recipe on main and no Mate yet still gets its first, with nothing in it yet.
  *
  * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
  * read (`newMateDoor`) — gets no form: the description says why, and the one thing to do about it
@@ -24,17 +23,20 @@ import type { MatePersona } from "@t3tools/contracts";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
-
-import { Button, InlineButton } from "../ui/button";
+import { CheckIcon, ChevronDownIcon, PencilIcon, ShuffleIcon } from "lucide-react";
 import {
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogTitle,
-} from "../ui/dialog";
-import { Label } from "../ui/label";
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { Button } from "../ui/button";
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import {
   faceName,
@@ -51,11 +53,10 @@ import {
   type NewMateRecipe,
 } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { NewMatePersona } from "../persona/NewMatePersona";
-import { MateFacePicker } from "./MateFacePicker";
-import { MateNameInput } from "./MateNameInput";
+import { MateFaceRing } from "./MateFacePicker";
+import { MateNameText } from "./MateNameText";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
-import { WhatHappensNext } from "./WhatHappensNext";
-import { newMateCost, newMateNext, ZEROPS_PRICING_URL } from "./whatHappensNext.logic";
+import { useMateShuffle } from "./useMateShuffle";
 
 /** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
 interface NewMateChoice {
@@ -227,21 +228,42 @@ export function ZeropsNewMateForm({
     if (goes) go();
   }, [goes]);
 
+  // *Mate access & persona setup* open: the persona and who can work with it, under the Mate.
+  const [options, setOptions] = useState(false);
+  // *Edit style* open: the colours and shapes stand as a ring around the face.
+  const [styling, setStyling] = useState(false);
+  const optionsRoom = useOptionsGlide(options);
+  const shuffle = useMateShuffle({
+    name: bot,
+    pickTint: (tint) => {
+      setPicked((current) => ({ ...current, tint }));
+    },
+    pickShape: (shape) => {
+      setPicked((current) => ({ ...current, shape }));
+    },
+    // A rolled name is a proposal, as the die's was: never the person's typed one.
+    setName: (next) => {
+      setProposal(next);
+      setTyped(null);
+      setPressedFor(null);
+    },
+    // Until every name is read no proposal is offered, so the roll keeps the name.
+    proposeAnotherName: takenBotNames.complete ? proposeAnotherName : undefined,
+  });
+
   return (
     <form
       className="flex min-h-0 flex-col"
+      data-options={options ? "" : undefined}
       data-zerops-surface="new-mate-form"
       onSubmit={(event) => {
         event.preventDefault();
-        press();
+        if (!shuffle.rolling) press();
       }}
     >
       <DialogHeader>
         {/* Refused, it leads with why: never a title promising a form it then takes back. */}
         <DialogTitle>{newMateDoorTitle(groupName, closed)}</DialogTitle>
-        {closed === undefined ? (
-          <p className="text-sm text-muted-foreground">Works on this project only.</p>
-        ) : null}
       </DialogHeader>
       {/* Why the project takes no Mate now, where it takes none: its room opens as the form
           gives its own back below, so the dialog's height follows in one move. */}
@@ -264,23 +286,21 @@ export function ZeropsNewMateForm({
       {/* While the project takes no Mate the form gives its room back, easing shut rather than
           leaving a blank under the reason: a grid row from 1fr to 0fr, so the dialog's height
           follows without a measurement. It stays mounted, out of sight and out of reach, keeping
-          what was typed and picked for a door that opens again. */}
+          what was picked for a door that opens again. */}
       <div
         className={ROOM_CLASS}
         style={{ gridTemplateRows: closed === undefined ? ROOM_OPEN : "0fr" }}
       >
         <div className="min-h-0 overflow-hidden">
-          <DialogPanel>
-            <div
-              className={cn(
-                "flex flex-col gap-5 transition-[opacity,visibility] ease-out",
-                closed === undefined
-                  ? "delay-100 duration-200"
-                  : "invisible opacity-0 duration-100",
-              )}
-              inert={closed !== undefined}
-            >
-              <MateFacePicker
+          <div
+            className={cn(
+              "new-mate-body transition-[opacity,visibility] ease-out",
+              closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
+            )}
+            inert={closed !== undefined}
+          >
+            <div className="new-mate-creator">
+              <MateFaceRing
                 face={face}
                 onPickShape={(shape) => {
                   setPicked((current) => ({ ...current, shape }));
@@ -288,103 +308,163 @@ export function ZeropsNewMateForm({
                 onPickTint={(tint) => {
                   setPicked((current) => ({ ...current, tint }));
                 }}
-              >
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor={`${id}-name`}>Name</Label>
-                  <MateNameInput
-                    describedBy={`${id}-line`}
-                    id={`${id}-name`}
-                    invalid={refused !== undefined}
-                    label="Name"
-                    onAnother={
-                      proposeAnotherName === undefined || !takenBotNames.complete
-                        ? undefined
-                        : () => {
-                            setProposal(proposeAnotherName(bot));
-                            setTyped(null);
-                            setPressedFor(null);
-                          }
-                    }
-                    onValueChange={name}
-                    value={botName}
-                  />
-                </div>
-              </MateFacePicker>
-              <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
-              {/* What happens once it is added, both ways the project may read: learning it has
-                  nothing to deploy changes the words and moves nothing. */}
-              <WhatHappensNext
-                versions={[
-                  {
-                    key: "recipe",
-                    next: newMateNext({ groupName, botName, recipe: "recipe" }),
-                    shown: recipe !== "none",
-                  },
-                  {
-                    key: "none",
-                    next: newMateNext({ groupName, botName, recipe: "none" }),
-                    shown: recipe === "none",
-                  },
-                ]}
+                open={styling}
               />
-              {access === undefined ? null : access(setUserRoles)}
-              {forecast}
-              <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">
-                {newMateCost(botName)}{" "}
-                <InlineButton
-                  render={<a href={ZEROPS_PRICING_URL} rel="noreferrer" target="_blank" />}
-                >
-                  Zerops pricing
-                </InlineButton>
+              <p className="new-mate-name">
+                <MateNameText
+                  describedBy={`${id}-line`}
+                  invalid={refused !== undefined}
+                  onValueChange={name}
+                  value={botName}
+                />
               </p>
+              <div className="new-mate-acts">
+                <Button
+                  aria-busy={shuffle.rolling || undefined}
+                  onClick={shuffle.roll}
+                  size="md"
+                  type="button"
+                  variant="secondary"
+                >
+                  <ShuffleIcon aria-hidden />
+                  Shuffle style
+                </Button>
+                <Button
+                  aria-expanded={styling}
+                  onClick={() => {
+                    setStyling(!styling);
+                  }}
+                  size="md"
+                  type="button"
+                  variant="secondary"
+                >
+                  {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+                  {styling ? "Confirm style" : "Edit style"}
+                </Button>
+              </div>
             </div>
-          </DialogPanel>
+            <div
+              className="new-mate-options-room"
+              data-open={options ? "" : undefined}
+              ref={optionsRoom}
+            >
+              <div className="min-h-0 overflow-hidden" inert={!options}>
+                <div className="new-mate-options">
+                  <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
+                  {access === undefined ? null : access(setUserRoles, bot)}
+                </div>
+              </div>
+            </div>
+            {forecast}
+          </div>
         </div>
       </div>
-      <DialogFooter>
-        {/* The one quiet line, beside the button it is about: what Add waits on, or why it
-            refused. The footer holds its room. */}
-        <p
-          aria-live="polite"
-          className={cn(
-            // On a phone the footer stacks from its foot: the line stands over the button it is about.
-            "me-auto min-h-4 self-center text-line leading-4 max-sm:order-1 max-sm:me-0",
-            error === undefined ? "text-muted-foreground" : "text-status-failed-text",
-          )}
-          id={`${id}-line`}
-        >
-          {line}
-        </p>
-        {closed === undefined ? (
-          <>
-            <Button onClick={onCancel} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <Button aria-busy={waiting || undefined} disabled={waiting} type="submit">
-              {words.button}
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button onClick={onCancel} type="button" variant="ghost">
-              Close
-            </Button>
-            {/* Where Add stood: the one thing to do about it, where there is one. */}
-            {action === undefined ? null : (
-              <Button
-                aria-busy={(action.kind === "retry" && action.busy) || undefined}
-                disabled={action.kind === "retry" && action.busy}
-                onClick={() => {
-                  onDoorAction?.(action);
-                }}
-                type="button"
-              >
-                {action.label}
-              </Button>
+      {closed === undefined ? (
+        <div className="new-mate-foot">
+          <Button
+            aria-busy={waiting || undefined}
+            className="w-full"
+            disabled={waiting || shuffle.rolling}
+            size="lg"
+            type="submit"
+          >
+            {words.button}
+          </Button>
+          {/* The one quiet line under the button it is about: what Add waits on, or why it
+              refused. */}
+          <p
+            aria-live="polite"
+            className={cn(
+              "new-mate-line",
+              error === undefined ? "text-muted-foreground" : "text-status-failed-text",
             )}
-          </>
-        )}
-      </DialogFooter>
+            id={`${id}-line`}
+          >
+            {line}
+          </p>
+          <Button
+            aria-expanded={options}
+            className="w-full"
+            onClick={() => {
+              setStyling(false);
+              setOptions(!options);
+            }}
+            size="lg"
+            type="button"
+            variant="ghost-muted"
+          >
+            {options ? "Close" : "Mate access & persona setup"}
+            <ChevronDownIcon aria-hidden className="new-mate-chevron" />
+          </Button>
+        </div>
+      ) : (
+        <DialogFooter>
+          <Button onClick={onCancel} type="button" variant="ghost">
+            Close
+          </Button>
+          {/* Where Add stood: the one thing to do about it, where there is one. */}
+          {action === undefined ? null : (
+            <Button
+              aria-busy={(action.kind === "retry" && action.busy) || undefined}
+              disabled={action.kind === "retry" && action.busy}
+              onClick={() => {
+                onDoorAction?.(action);
+              }}
+              type="button"
+            >
+              {action.label}
+            </Button>
+          )}
+          {line === undefined ? null : (
+            <p aria-live="polite" className="sr-only" id={`${id}-line`}>
+              {line}
+            </p>
+          )}
+        </DialogFooter>
+      )}
     </form>
   );
+}
+
+/**
+ * The options' room opening and shutting as one glide of the dialog. It grows only as far as the
+ * dialog can (the window's room), then lets go, the rest scrolled to: a glide to the options' whole
+ * height would spend its first frames reaching the window's edge and stand still after, a jump.
+ * Shutting, it leaves from what shows.
+ */
+function useOptionsGlide(open: boolean) {
+  const room = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const element = room.current;
+    if (element === null) return;
+    if (first.current || prefersReducedMotion()) {
+      first.current = false;
+      element.style.maxHeight = open ? "none" : "0px";
+      return;
+    }
+    const body = element.parentElement;
+    const popup = element.closest<HTMLElement>("[data-slot=dialog-popup]");
+    let to: number;
+    if (open) {
+      const free = window.innerHeight - (popup?.getBoundingClientRect().height ?? 0) - 48;
+      to = Math.max(0, Math.min(element.scrollHeight, free));
+      element.style.maxHeight = "0px";
+    } else {
+      body?.scrollTo({ top: 0 });
+      const shown =
+        (body?.getBoundingClientRect().bottom ?? 0) - element.getBoundingClientRect().top;
+      element.style.maxHeight = `${String(Math.max(0, Math.min(element.offsetHeight, shown)))}px`;
+      to = 0;
+    }
+    void element.offsetHeight;
+    element.style.maxHeight = `${String(to)}px`;
+    const settle = (event: TransitionEvent) => {
+      if (event.target !== element || event.propertyName !== "max-height") return;
+      if (open) element.style.maxHeight = "none";
+    };
+    element.addEventListener("transitionend", settle);
+    return () => element.removeEventListener("transitionend", settle);
+  }, [open]);
+  return room;
 }

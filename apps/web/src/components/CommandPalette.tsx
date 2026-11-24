@@ -198,7 +198,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     [],
   );
   const navigate = useNavigate();
-  // New project opens its dialog over whatever is on screen (`ZeropsNewProjectHost`).
+  // New project opens its page beside the menu (`ZeropsNewProjectHost`).
   const openAddProject = useCallback(
     (_environmentId?: EnvironmentId) => {
       setOpen(false);

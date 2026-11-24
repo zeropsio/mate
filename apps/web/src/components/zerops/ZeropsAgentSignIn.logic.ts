@@ -26,12 +26,6 @@ import type {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-/** What the one agent the project's other Mates are signed in with is called on its card. */
-export const USUAL_AGENT_WORD = "Usual";
-
-/** Why the card says so. */
-export const USUAL_AGENT_TITLE = "The agent this project's other Mates are signed in with";
-
 const RUNNING_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
   "starting",
   "menu",
@@ -235,6 +229,8 @@ export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null
   const it = mateName ?? "It";
   const them = mateName ?? "the sign-in";
   return {
+    // The open card's title: Claude and ChatGPT are subscriptions, the rest accounts.
+    connect: `Connect your ${brand} ${agentId === "claude-code" || agentId === "codex" ? "subscription" : "account"}`,
     // The account is named only where the site's name does not already say it (OpenAI, xAI).
     open:
       agentId === "claude-code"
@@ -267,7 +263,6 @@ export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null
     copied: "Copied",
     tryAgain: "Try again",
     signedIn: `Signed in with ${name}.`,
-    switchTo: "Use another agent",
   };
 }
 

@@ -16,7 +16,7 @@
  *
  * A Mate nobody has signed in has no crew to set up yet: the tab shows the one
  * "no agent yet" screen its conversation shows, word for word — its face,
- * "Sign Fen in to start." and the sign-in itself (`ZeropsMateEmptyState`).
+ * "Connect your AI provider" and the sign-in itself (`ZeropsMateEmptyState`).
  */
 import {
   zeropsAgentAuthView,

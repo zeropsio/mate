@@ -50,7 +50,7 @@ import { environmentShell } from "~/state/shell";
  * left, and the Mate's own steps in the slot as one progress row (`arrivalSteps`). A Mate that did
  * not come says so, with the page's *Remove*; a step past its cap, with its *Keep waiting*. Once
  * it is up — connected, its main conversation and the agents' sign-in read — the words hand over
- * in place: the face wakes, "Sign Quinn in to start." takes the headline's place and the sign-in
+ * in place: the face wakes, "Connect your AI provider" takes the headline's place and the sign-in
  * takes the steps' (`ZeropsAgentSignIn`). Then the conversation takes the route, painting that
  * same frame at once, so the person never sees a page change.
  *

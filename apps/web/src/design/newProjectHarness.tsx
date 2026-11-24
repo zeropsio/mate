@@ -1,21 +1,22 @@
 /**
- * The New project dialog (board D1): New Mate with the project's name on top — the project's
- * name, then its first Mate's name, colour and shape beside the face they make, then what
- * happens next — over the page it was asked from.
+ * The New project page (the owner, 2026-11-23), in the main column beside the left menu, in two
+ * steps: "What do you want to build?", the project's name and *Start a project*, with its region
+ * and who can open it folded under *Project access & region setup*; then its first Mate, its face large over its
+ * name, *Shuffle*, *Change style* opening the colours and shapes as a ring around the face, and
+ * *Add <name> to your project*.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
- * it opens, the Mate's name proposed; `picked` — a project named, the Mate called Mira, Rose and
- * Seal picked; `refused` — the Mate named as another already is, Create pressed; `checking` — the
- * account's Mates' names still being read; `creating` — Create pressed, the first Mate's view on
- * its way; `closed` — the person may not add projects here, the reason in the form's place;
- * `pressing` — Create pressed: the dialog gives way to the first Mate's page at once, the steps
- * this tab runs advancing under the project's row (`pressPage.tsx`, `&fail=` stops one);
- * `&locations=2` offers two locations, at the footer's start; `&git=none` is the account's first
- * project, Git hosting coming along, its step first in what happens next). Its *Project access*
- * holds eighteen people of nineteen, one line until *Change who can open it*. The die at the name's
- * end rolls another name. The dialog stands over the page beside the left menu at the owner's
- * 435 px, as it does in the app. Open it at 1786 × 1000. `window.__newProjectHarness.created`
- * holds what Create handed over.
+ * it opens; `advanced` — *Project access & region setup* open; `adding` — its *Add people* card
+open; `found` — "ka" typed there; `ticked` — the first found given Full; `unnamed` — Start pressed with no name;
+ * `mate` — the Mate's step; `style` — its ring open; `picked` — Rose and Seal picked on the ring,
+ * then confirmed; `checking` — the account's Mates' names still being read; `creating` — the
+ * Mate's press made, the first Mate's view on its way; `closed` — the person may not add projects
+ * here, the reason in the form's place; `pressing` — the Mate's press made: the page gives way to
+ * the first Mate's page at once, the steps this tab runs advancing under the project's row
+ * (`pressPage.tsx`, `&fail=` stops one); `&locations=1` offers one region, which is then no
+ * choice). Its *Project access* lists eighteen people of twenty-one, the rest
+ * found by *Add people*. The menu beside it is the owner's 435 px, as in the app. Open it at 1786 × 1000.
+ * `window.__newProjectHarness.created` holds what Create handed over.
  *
  * Fixtures only. Nothing here ships — `design-newproject.html` is not `index.html`, and no route
  * imports this module.
@@ -28,25 +29,15 @@ import {
 } from "@tanstack/react-router";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
-  ZeropsNewProjectDialog,
+  ZeropsNewProjectPage,
   type NewProjectChoice,
 } from "~/components/zerops/ZeropsNewProjectForm";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import {
-  draftChoose,
-  draftSummary,
-  draftView,
-  type DraftInput,
-} from "~/components/zerops/projects/accessDraft.logic";
-import {
-  AccessDraftFold,
-  ProjectAccessChips,
-} from "~/components/zerops/projects/ProjectAccessChips";
+import { HarnessAccess } from "./accessFixtures";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { AppRouter } from "~/router";
@@ -76,93 +67,15 @@ function mate(bot: string): ZeropsCandidate {
 /** The account's Mates: the proposed face walks past the tints they wear. */
 const MATES = [mate("Fen"), mate("Ada"), mate("Nova")];
 const LOCATIONS =
-  params.get("locations") === "2"
-    ? [
-        { id: "prg1", name: "Prague" },
-        { id: "fra1", name: "Frankfurt" },
-      ]
-    : [{ id: "prg1", name: "Prague" }];
+  params.get("locations") === "1"
+    ? [{ id: "prg1", name: "EU Central (prg1)" }]
+    : [
+        { id: "prg1", name: "EU Central (prg1)", latencyMs: 54 },
+        { id: "ny1", name: "US East (ny1)", latencyMs: 145 },
+        { id: "sea1", name: "US West (sea1)", latencyMs: 214 },
+      ];
 /** What the die rolls, in turn: never the name it was rolled from. */
 const ROLLS = ["Vera", "Wren", "Milo"];
-
-/** Eighteen people, as the owner's organization has: you, sixteen admins, one developer. */
-const PEOPLE = [
-  ["me", "Mia Moss", "ADMIN"],
-  ["ada", "Ada Lind", "ADMIN"],
-  ["bo", "Bo Hale", "ADMIN"],
-  ["cy", "Cyril Nord", "ADMIN"],
-  ["di", "Dita Park", "ADMIN"],
-  ["ed", "Edo Moon", "ADMIN"],
-  ["fay", "Fay Linn", "ADMIN"],
-  ["gus", "Gus Orr", "ADMIN"],
-  ["hal", "Hal Pike", "ADMIN"],
-  ["ivy", "Ivy Rowe", "ADMIN"],
-  ["jo", "Jo Sand", "ADMIN"],
-  ["kit", "Kit Tate", "ADMIN"],
-  ["lu", "Lu Vale", "ADMIN"],
-  ["mo", "Mo West", "ADMIN"],
-  ["ned", "Ned Yoke", "ADMIN"],
-  ["ola", "Ola Zorn", "ADMIN"],
-  ["pia", "Pia Ames", "ADMIN"],
-  ["rex", "Rex", "BASIC_USER"],
-  ["sal", "Sal Quill", "NO_ACCESS"],
-] as const;
-const MEMBERS = PEOPLE.map(([id, fullName, roleCode]) => ({
-  id: `cu-${id}`,
-  status: "ACTIVE",
-  roleCode,
-  user: { id: `u-${id}`, fullName },
-}));
-const DRAFT: Omit<DraftInput, "list"> = {
-  members: { known: true, status: "ready", refused: false, list: MEMBERS },
-  kind: "mate",
-  app: { projects: [], grants: {}, owners: {} },
-  pictures: {},
-  creator: { membershipId: "cu-me", userId: "u-me" },
-};
-
-/** *Project access* as the host draws it, from the fixtures: one line, the chips to change it. */
-function HarnessAccess({
-  onChange,
-}: {
-  readonly onChange: (list: ReadonlyArray<ProjectGrant>) => void;
-}) {
-  const [list, setList] = useState<ReadonlyArray<ProjectGrant>>([]);
-  const view = useMemo(() => draftView({ ...DRAFT, list }), [list]);
-  useEffect(() => onChange(list), [list, onChange]);
-  const summary = draftSummary({ view, organization: "Mate s.r.o.", prefill: [], list });
-  if (summary === null) return null;
-  return (
-    <AccessDraftFold label="Project access" summary={summary}>
-      <ProjectAccessChips
-        heading={false}
-        label="Project access"
-        onAdd={(picks) =>
-          setList((held) =>
-            picks.reduce(
-              (next, { candidate, level }) =>
-                draftChoose(next, MEMBERS, candidate.clientUserId, level),
-              held,
-            ),
-          )
-        }
-        onChoose={(person, choice) => {
-          const change = person.change;
-          if (change === null) return;
-          setList((held) =>
-            draftChoose(
-              held,
-              MEMBERS,
-              change.clientUserId,
-              choice === "withdraw" ? "remove" : choice,
-            ),
-          );
-        }}
-        view={view}
-      />
-    </AccessDraftFold>
-  );
-}
 
 declare global {
   interface Window {
@@ -173,8 +86,8 @@ declare global {
 const created: Array<NewProjectChoice> = [];
 
 /** Types into a field as a person would: React hears the input. */
-function typeInto(id: string, value: string): void {
-  const input = document.getElementById(id);
+function typeInto(selector: string, value: string): void {
+  const input = document.querySelector(selector);
   if (!(input instanceof HTMLInputElement)) return;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -185,31 +98,37 @@ function click(selector: string): void {
 }
 
 function Harness() {
-  const [open, setOpen] = useState(true);
-  // Create pressed: the dialog gives way to the first Mate's page, at once.
+  const [locationId, setLocationId] = useState("prg1");
+  // Create pressed: the page gives way to the first Mate's page, at once.
   const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newProjectHarness = { created };
-    if (STATE === "idle" || STATE === "checking" || STATE === "closed") return;
-    // Reached the way a person reaches them: the project named, the Mate named and picked.
-    const filling = window.setTimeout(() => {
-      typeInto("zerops-new-project", "Acme CRM");
-      if (STATE === "picked") {
-        typeInto("zerops-new-project-mate", "Mira");
-        click('[role="radio"][aria-label="Rose"]');
-        click('[role="radio"][aria-label="Seal"]');
-      }
-      if (STATE === "refused") typeInto("zerops-new-project-mate", "Fen");
-    }, 200);
-    const pressing =
-      STATE === "refused" || STATE === "pressing"
-        ? window.setTimeout(() => {
-            click('[data-zerops-new-project="create"]');
-          }, 450)
-        : undefined;
+    // Reached the way a person reaches them, a step at a time.
+    const steps: Array<() => void> = [];
+    if (["advanced", "adding", "found", "ticked"].includes(STATE))
+      steps.push(() => click('.new-project-advanced [data-slot="collapsible-trigger"]'));
+    if (["adding", "found", "ticked"].includes(STATE))
+      steps.push(() => click('[data-zerops-surface="add-access"]'));
+    if (["found", "ticked"].includes(STATE))
+      steps.push(() => typeInto(".np-add-search input", "ka"));
+    if (STATE === "ticked")
+      steps.push(() => click('.np-add-row [data-slot="toggle-group"] > :last-child'));
+    if (STATE === "unnamed") steps.push(() => click('[data-zerops-new-project="start"]'));
+    if (["mate", "style", "picked", "creating", "pressing"].includes(STATE)) {
+      steps.push(() => typeInto("#zerops-new-project", "Acme CRM"));
+      steps.push(() => click('[data-zerops-new-project="start"]'));
+    }
+    if (STATE === "style" || STATE === "picked")
+      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+    if (STATE === "picked") {
+      steps.push(() => click('[role="radio"][aria-label="Rose"]'));
+      steps.push(() => click('[role="radio"][aria-label="Seal"]'));
+      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+    }
+    if (STATE === "pressing") steps.push(() => click('[data-zerops-new-project="create"]'));
+    const timers = steps.map((run, index) => window.setTimeout(run, 150 + index * 250));
     return () => {
-      window.clearTimeout(filling);
-      if (pressing !== undefined) window.clearTimeout(pressing);
+      for (const timer of timers) window.clearTimeout(timer);
     };
   }, []);
 
@@ -221,47 +140,45 @@ function Harness() {
           data-sidebar="sidebar"
           style={{ width: MENU_WIDTH }}
         />
-        <main className="min-w-0 flex-1">
-          {landed === null ? null : <HarnessPressPage birthId={landed} />}
+        <main className="h-screen min-w-0 flex-1">
+          {landed === null ? (
+            <ZeropsNewProjectPage
+              access={(onChange) => <HarnessAccess onChange={onChange} />}
+              closed={
+                STATE === "closed"
+                  ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
+                  : undefined
+              }
+              creating={STATE === "creating"}
+              defaultBotName="Quinn"
+              defaultTintFor={(name) => newMateTint(MATES, name)}
+              locationError={null}
+              locationId={locationId}
+              loading={false}
+              locations={LOCATIONS}
+              onCreate={(choice) => {
+                created.push(choice);
+                setLanded(
+                  beginHarnessPress({
+                    flow: "new-project",
+                    project: choice.name,
+                    botName: choice.botName,
+                    face: choice.face,
+                  }),
+                );
+              }}
+              onLocation={setLocationId}
+              proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
+              takenBotNames={{
+                names: ["Fen", "Ada", "Nova"],
+                complete: STATE !== "checking",
+              }}
+            />
+          ) : (
+            <HarnessPressPage birthId={landed} />
+          )}
         </main>
       </SidebarProvider>
-      {landed !== null || !open ? null : (
-        <ZeropsNewProjectDialog
-          access={(onChange) => <HarnessAccess onChange={onChange} />}
-          closed={
-            STATE === "closed"
-              ? "Only the organization's owners and admins add projects. You can open every project of Mate s.r.o. you have been given."
-              : undefined
-          }
-          creating={STATE === "creating"}
-          defaultBotName="Quinn"
-          defaultTintFor={(name) => newMateTint(MATES, name)}
-          locationError={null}
-          locationId="prg1"
-          loading={false}
-          locations={LOCATIONS}
-          onCancel={() => setOpen(false)}
-          onCreate={(choice) => {
-            created.push(choice);
-            setLanded(
-              beginHarnessPress({
-                flow: "new-project",
-                project: choice.name,
-                botName: choice.botName,
-                face: choice.face,
-              }),
-            );
-          }}
-          onLocation={() => {}}
-          onOpenChange={setOpen}
-
-          proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
-          takenBotNames={{
-            names: ["Fen", "Ada", "Nova"],
-            complete: STATE !== "checking",
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * What happens after the press, as the New Mate and New project dialogs end (board D1, the
+ * What happens after the press, as the New Mate dialog and an account's first run end (board D1, the
  * owner, 2026-09-30): one quiet block — its heading, the steps numbered with their times on the
  * right edge, and one line on whether the person can leave meanwhile (`whatHappensNext.logic.ts`).
  *

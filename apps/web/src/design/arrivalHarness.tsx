@@ -781,7 +781,6 @@ function FixtureSignIn({
           {TERMINAL[agentId]}
         </pre>
       )}
-      usual={state.id === "colleague" ? null : "claude-code"}
       viewerSubject={ZeropsUserId.make("u-harness")}
       watching={state.watching === true}
     />

@@ -2,7 +2,7 @@
  * The overview, a project's page and a place's page are one place at three depths. Going among
  * them, by a card's name, a place's line, a crumb or Back, is one view transition in which the
  * page's content cross-fades and nothing else changes (`index.css`, "pages"). A New project's
- * Create is one too: the New project dialog, or an account's first run, gives way to its first
+ * Create is one too: the New project page, or an account's first run, gives way to its first
  * Mate's view, and the Mate's face goes from the one to the other (`mate-birth`). Every other
  * navigation, a conversation's included, cuts as it always has.
  *

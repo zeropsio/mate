@@ -394,8 +394,8 @@ export function offeredBotName(input: {
 export const READING_RECIPE = "Reading the project's setup files…";
 
 /**
- * What the Mate's dialog says: what the button does, and the one quiet line beside it, for what
- * Add waits on. What happens once it is added is its closing block's (`newMateNext`).
+ * What the Mate's dialog says: what the button does, and the one quiet line under it, for what
+ * Add waits on.
  */
 export function newMateWords(input: {
   readonly groupName: string;
@@ -423,7 +423,7 @@ export function newMateWords(input: {
  * state — never a title promising a form the dialog then refuses (run 2).
  */
 export function newMateDoorTitle(groupName: string, closed: NewMateDoorClosed | undefined): string {
-  if (closed === undefined) return `Add a project Mate to ${groupName}`;
+  if (closed === undefined) return `Adding Mate to ${groupName}`;
   return closed.action?.kind === "retry"
     ? `Can't add a Mate to ${groupName} right now`
     : `${groupName} isn't ready for new Mates yet`;

@@ -87,7 +87,7 @@
 }
 
 /* A first Mate's face is one element as Create lands on its page (`mate-birth`, the router's): from
-   the New project dialog, or from an account's first run, where it is the screen's hero, to the
+   the New project page, or from an account's first run, where it is the screen's hero, to the
    page's seat. The rest of the window cross-fades under it, the menu arriving with the page. A
    dialog over the first run holds the face that goes. */
 @media (prefers-reduced-motion: no-preference) {
@@ -3433,6 +3433,83 @@ code {
 
   .mate-face-option:active {
     scale: 0.92;
+  }
+}
+
+/* The face with its options as a ring around it (`MateFaceRing`): shut, the face alone at its
+   full size; open, the face a touch smaller and each option travelling out from the middle to its
+   place on the ring, one after another; shutting, they travel back into the middle and fade, and
+   the face grows back. Reduced motion keeps the fades. */
+.mate-face-ring-stage {
+  --ring-radius: 112px;
+  position: relative;
+  display: grid;
+  width: 264px;
+  height: 250px;
+  place-items: center;
+}
+
+.mate-face-ring-face {
+  display: grid;
+  place-items: center;
+  transition: scale 320ms var(--ease-out-strong);
+}
+
+.mate-face-ring-stage[data-open] .mate-face-ring-face {
+  scale: 0.6;
+}
+
+.mate-face-ring-hero {
+  width: 200px;
+  height: 200px;
+}
+
+.mate-face-ring-options {
+  position: absolute;
+  inset: 0;
+}
+
+.mate-face-ring-options .mate-face-option {
+  position: absolute;
+  top: calc(50% - 17px);
+  left: calc(50% - 17px);
+  width: 34px;
+  height: 34px;
+  opacity: 0;
+  transform: rotate(var(--ring-angle)) translateY(0) rotate(calc(-1 * var(--ring-angle))) scale(0.4);
+  transition:
+    transform 260ms var(--ease-in-out-strong) calc(var(--ring-turn) * 12ms),
+    opacity 200ms ease calc(var(--ring-turn) * 12ms),
+    scale 150ms var(--ease-out-strong);
+}
+
+/* Each option's mark fills its box, so every option is drawn around the very point it travels
+   to: never off to one side of the ring it makes. */
+.mate-face-ring-options .mate-face-option svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mate-face-ring-stage[data-open] .mate-face-ring-options .mate-face-option {
+  opacity: 1;
+  transform: rotate(var(--ring-angle)) translateY(calc(-1 * var(--ring-radius)))
+    rotate(calc(-1 * var(--ring-angle))) scale(1);
+  transition:
+    transform 420ms var(--ease-out-strong) calc(var(--ring-turn) * 24ms),
+    opacity 240ms ease calc(var(--ring-turn) * 24ms),
+    scale 150ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mate-face-ring-face,
+  .mate-face-ring-options .mate-face-option,
+  .mate-face-ring-stage[data-open] .mate-face-ring-options .mate-face-option {
+    transition: opacity 200ms ease;
+  }
+
+  .mate-face-ring-options .mate-face-option {
+    transform: rotate(var(--ring-angle)) translateY(calc(-1 * var(--ring-radius)))
+      rotate(calc(-1 * var(--ring-angle)));
   }
 }
 
@@ -15482,32 +15559,44 @@ a.message-file:focus-visible {
   gap: 8px;
 }
 
-/* Where the project lives, one tile per place: its name and this browser's latency to it, the one
-   chosen outlined (the owner, 2026-11-20). */
+/* Where a new project runs (`NewProjectLocation`): a tile a region, all alike, centred: its name,
+   the city it stands in and this browser's latency to it, the chosen one outlined; then why to
+   choose one over another. */
+.region {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .region-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  display: flex;
   gap: 8px;
 }
 
 .region-tile {
   display: flex;
   min-width: 0;
+  flex: 1 1 0;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  align-items: center;
+  padding: 14px 12px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
   cursor: pointer;
-  text-align: start;
+  text-align: center;
   transition:
     background-color 120ms,
     border-color 120ms;
 }
 
+.region-tile[aria-checked="true"] {
+  border-color: var(--foreground);
+  background: var(--card);
+}
+
 .region-tile:hover:not(:disabled, [aria-checked="true"]) {
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
 }
 
 .region-tile:focus-visible {
@@ -15520,36 +15609,753 @@ a.message-file:focus-visible {
   opacity: 0.64;
 }
 
-.region-tile[aria-checked="true"] {
-  border-color: var(--primary);
-  background: var(--card);
-  box-shadow: 0 0 0 1px var(--primary);
-}
-
-.region-tile-name {
+.region-tile-name,
+.region-tile-city,
+.region-tile-latency {
+  max-width: 100%;
   overflow: hidden;
-  color: var(--foreground);
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.region-tile-latency {
-  display: inline-flex;
-  min-height: 16px;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted-foreground);
-  font-size: var(--text-caption);
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
+.region-tile-name {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
-.region-tile-latency svg {
-  width: 13px;
-  height: 13px;
+.region-tile-city,
+.region-tile-latency {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.region-tile-city {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.region-tile-city svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Holds its line while unmeasured, so a sample coming in moves nothing. */
+.region-tile-latency {
+  min-height: 18px;
+  margin-top: 8px;
+}
+
+.region-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+  list-style: none;
+}
+
+.region-notes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.region-notes svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* New project, as a page beside the menu (the owner, 2026-11-23, to the design's measures), in two
+   steps: the question in the column's middle, the name and *Start a project* under it, the region
+   and the people folded under *Project access & region setup*; then the first Mate, its face large
+   over its name. The project's step is 464 px wide and stands in the middle while folded (about
+   250 px tall); opening the options grows it downward, the question staying where it was. */
+.new-project-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  justify-content: center;
+  padding: 0 var(--workspace-gutter-end) 40px var(--workspace-gutter-start);
+  /* A scrollbar coming as the options open takes no width from the column: nothing moves. */
+  scrollbar-gutter: stable both-edges;
+}
+
+.new-project-stage {
+  display: flex;
+  width: 100%;
+  max-width: 44rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  /* As tall as what it holds, so the page scrolls to its end and the padding under it shows. */
+  align-self: flex-start;
+  padding-top: max(3rem, calc(50dvh - 125px));
+}
+
+.new-project-page:not([data-centered]) .new-project-stage {
+  max-width: 480px;
+  gap: 10px;
+  padding-inline: 8px;
+}
+
+/* The Mate's step stands in the column's middle, both ways; taller than the window, it scrolls. */
+.new-project-page[data-centered] {
+  padding-bottom: 0;
+}
+
+.new-project-page[data-centered] .new-project-stage {
+  margin-block: auto;
+  padding-block: 48px;
+}
+
+.new-project-heading {
+  margin: 0;
+  color: var(--foreground);
+  /* The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
+  font-size: var(--text-2xl);
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-2xl--line-height);
+  text-align: center;
+  text-wrap: balance;
+}
+
+@media (min-width: 40rem) {
+  .new-project-heading {
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+  }
+}
+
+.new-project-form {
+  display: flex;
+  width: 100%;
+  max-width: 28rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.new-project-form[data-zerops-surface="new-project-form"]:not(.new-project-mate) {
+  max-width: none;
+  gap: 0;
+  padding-top: 24px;
+}
+
+/* The name and its press: 48 px each, the press in the foreground's ink. */
+.new-project-primary {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.new-project-primary [data-slot="input-control"] {
+  border-radius: 10px;
+}
+
+.new-project-primary [data-slot="input-control"]::before {
+  border-radius: 9px;
+}
+
+.new-project-primary [data-slot="input"] {
+  height: 46px;
+  padding-inline: 15px;
+  font-size: 16px;
+  line-height: 46px;
+}
+
+.new-project-mate [data-zerops-new-project="create"],
+.new-project-mate [data-zerops-new-project="back"] {
+  width: 320px;
+}
+
+.new-project-advanced {
+  align-self: stretch;
+  padding-top: 20px;
+}
+
+/* The Mate's step, to the design's measures: the face 200 px (120 px with the ring open) in a
+   264 × 250 stage with 16 px over and under it, its name, its two pill presses 16 px under the
+   name and 32 px over the 320 px wide press, then *Back to project options*. */
+.new-project-mate {
+  align-items: center;
+  gap: 10px;
+}
+
+.new-project-mate .mate-face-ring-stage {
+  margin-block: 16px;
+}
+
+.new-project-mate-acts {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  margin-bottom: 22px;
+}
+
+.new-project-mate-acts > [data-slot="button"] {
+  min-height: 0;
+  gap: 6px;
+  padding: 5px 11px;
+  border-color: var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.new-project-mate-acts > [data-slot="button"]:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.new-project-mate-acts > [data-slot="button"] svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The quiet line under the press says nothing most of the time, and then takes no room. */
+.new-project-mate > p[aria-live]:empty {
+  min-height: 0;
+  margin-top: -10px;
+}
+
+.new-project-unnamed {
+  min-height: 1rem;
+  margin: 0;
+}
+
+/* Says nothing until the name is missing, and then stands under the press. */
+.new-project-unnamed:empty {
+  min-height: 0;
+  margin-top: -16px;
+}
+
+.new-project-unnamed {
+  color: var(--color-status-failed-text);
+  font-size: var(--text-line);
+  line-height: 1rem;
+  text-align: center;
+}
+
+.new-project-advanced > [data-slot="collapsible"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.new-project-advanced [data-slot="collapsible-trigger"] {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.new-project-advanced [data-slot="collapsible-trigger"]:hover {
+  color: var(--foreground);
+}
+
+.new-project-advanced [data-slot="collapsible-trigger"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.new-project-advanced [data-slot="collapsible-trigger"] svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 200ms var(--ease-out-strong);
+}
+
+.new-project-advanced [data-slot="collapsible-trigger"][data-panel-open] svg {
+  transform: rotate(180deg);
+}
+
+.new-project-advanced-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding: 10px 1px 2px;
+  text-align: start;
+}
+
+/* The region opens the fields, 24 px below *Project access & region setup*. */
+.new-project-page [data-zerops-surface="region"] {
+  padding-top: 24px;
+}
+
+/* The region's and project access's names. */
+.new-project-page [data-zerops-surface="region"] > h3,
+.np-access-name {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/* The add-Mate dialog (`ZeropsNewMateForm`, pen.dev SOrKZ and jHpVk): 400 px wide, 24 px in
+   from its edges (the header 16 px from top and bottom); the face ring a 200 × 189 stage 12 px from what is around it, the face 152 px
+   and two thirds of that open, options 26 px; the name, the two presses 16 px under it and 32 px
+   over the options or the foot. *Mate access & persona setup* opens the persona and who can work
+   with the Mate under it, the dialog scrolling down to them over a rule at the foot. */
+[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) {
+  max-width: 400px;
+}
+
+[data-zerops-surface="new-mate-form"] [data-slot="dialog-header"] {
+  padding: 16px 64px 16px 24px;
+}
+
+/* As tall as the close press, so the two share a middle. */
+[data-zerops-surface="new-mate-form"] [data-slot="dialog-title"] {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 32px;
+}
+
+[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) > button[aria-label="Close"] {
+  top: 16px;
+  inset-inline-end: 24px;
+}
+
+[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"])
+  > button[aria-label="Close"]
+  svg {
+  width: 20px;
+  height: 20px;
+}
+
+.new-mate-body {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The scrollbar the open options bring takes no width from the dialog: nothing moves sideways. */
+  scrollbar-gutter: stable both-edges;
+}
+
+/* The options open as a glide, the dialog growing with them, their words fading in behind it. */
+.new-mate-options-room {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 380ms var(--ease-in-out-strong);
+}
+
+.new-mate-options-room .new-mate-options {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.new-mate-options-room[data-open] .new-mate-options {
+  opacity: 1;
+  transition: opacity 280ms ease 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-mate-options-room {
+    transition: none;
+  }
+}
+
+.new-mate-creator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 24px 32px;
+}
+
+.new-mate-creator .mate-face-ring-stage {
+  --ring-radius: 84px;
+  width: 200px;
+  height: 189px;
+  margin-block: 12px;
+}
+
+.new-mate-creator .mate-face-ring-hero {
+  width: 152px;
+  height: 152px;
+}
+
+/* Open, the face keeps most of its size and the options stay small, so the ring has air
+   between each option and around the face. */
+.new-mate-creator .mate-face-ring-stage[data-open] .mate-face-ring-face {
+  scale: 0.66;
+}
+
+.new-mate-creator .mate-face-ring-options .mate-face-option {
+  top: calc(50% - 13px);
+  left: calc(50% - 13px);
+  width: 26px;
+  height: 26px;
+}
+
+.new-mate-name {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-3xl--line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A Mate's name, typed where it stands (`MateNameText`): the line's own type, no field around it
+   and no focus ring, only the caret; as wide as what it holds, centred. */
+.mate-name-text {
+  field-sizing: content;
+  min-width: 1ch;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: center;
+  outline: none;
+  caret-color: var(--foreground);
+}
+
+.new-mate-acts {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+/* 24 px from the dialog's edges whatever the scrollbar's gutter takes: the form is as wide as
+   the dialog (100cqw), the options as wide as the body inside its two gutters (100%). */
+[data-zerops-surface="new-mate-form"] {
+  container-type: inline-size;
+}
+
+.new-mate-options {
+  padding: 0 calc(24px - (100cqw - 100%) / 2) 8px;
+}
+
+/* The persona: its name, a line, *Add persona*, over a rule. */
+.new-mate-persona {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.new-mate-persona h3 {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.new-mate-persona p {
+  margin: 0 0 8px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+
+/* Who can work with it: 20 px under the rule, its press 20 px under its line. */
+.new-mate-options .np-access {
+  gap: 20px;
+  padding-top: 20px;
+}
+
+.new-mate-options .np-access-add > [data-slot="button"] {
+  height: 32px;
+  padding-inline: 11px;
+  border-radius: var(--radius-lg);
+}
+
+.new-mate-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 24px;
+}
+
+[data-zerops-surface="new-mate-form"][data-options] .new-mate-foot {
+  border-top: 1px solid var(--border);
+}
+
+.new-mate-line {
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.new-mate-line:empty {
+  display: none;
+}
+
+.new-mate-chevron {
+  transition: rotate 200ms var(--ease-out-strong);
+}
+
+[data-zerops-surface="new-mate-form"][data-options] .new-mate-chevron {
+  rotate: 180deg;
+}
+
+/* Project access on the page: its name over one line of who can open it, then *Add people to
+   this project* (or its card), then one person a row. */
+.np-access {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.np-access-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.np-access-line {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+
+.np-access-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.np-access-body > .ov-access {
+  padding-bottom: 0;
+}
+
+.np-access-add > [data-slot="button"] {
+  height: 34px;
+  padding-inline: 13px;
+  border-radius: 9px;
+  font-weight: 500;
+}
+
+.ov-chips[data-rows] {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.ov-chips[data-rows] > .ov-chip {
+  column-gap: 8px;
+  height: 38px;
+  padding: 0 10px 0 6px;
+  background: transparent;
+}
+
+.ov-chips[data-rows] > .ov-chip[data-menu] {
+  padding-right: 4px;
+}
+
+.ov-chips[data-rows] > .ov-chip:hover {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+
+.ov-chips[data-rows] .ov-chip-who {
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.ov-chips[data-rows] .ov-chip-text {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+}
+
+/* *Add people*: a card in the section's place for the button, a search, the people found with
+   Read or Full each, what those give, and its two presses. */
+.np-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.np-add-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.np-add-title {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.np-add-head > [data-slot="button"] {
+  width: 24px;
+  height: 24px;
+  margin: -2px -2px -2px 0;
+  border-radius: 6px;
+}
+
+.np-add-search {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--muted-foreground);
+  cursor: text;
+}
+
+.np-add-search:focus-within {
+  border-color: var(--primary);
+}
+
+.np-add-search svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.np-add-search input {
+  min-width: 0;
+  flex: 1;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.np-add-search input::placeholder {
+  color: var(--placeholder);
+}
+
+.np-add-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.np-add-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.np-add-row {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+
+.np-add-row [data-slot="toggle"] {
+  height: 22px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.np-add-row[data-picked] {
+  background: color-mix(in oklab, var(--primary) 5%, transparent);
+}
+
+.np-add-who {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.np-add-name,
+.np-add-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.np-add-name {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.np-add-role {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.np-add-empty {
+  margin: 0;
+  padding: 4px 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.np-add-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.np-add-hints dt {
+  display: inline;
+  margin-inline-end: 4px;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.np-add-hints dd {
+  display: inline;
+  margin: 0;
+  color: var(--muted-foreground);
+}
+
+.np-add-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.new-project-closed {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+  text-align: center;
 }
 
 /* A stop's one way on, and a stage's press: centred under the sentence. */
@@ -15875,9 +16681,54 @@ a.message-file:focus-visible {
   height: 14px;
 }
 
-/* ---- the sign-in (`ZeropsAgentSignIn`), S1: two cards, one opens ---- */
+/* The stage while it asks for a sign-in, to the owner's design (2026-11-23): the face 120 px, the
+   headline 28 px semibold 20 px under it, the cards 36 px under that. */
+.arrival-face > * {
+  transition:
+    width 320ms var(--ease-out-strong),
+    height 320ms var(--ease-out-strong);
+}
+
+/* A scrollbar coming as the options unfold takes no width from the stage: nothing moves. */
+[data-mate-stage-area] {
+  scrollbar-gutter: stable both-edges;
+}
+
+[data-arrival^="sign-in"] .arrival-face > * {
+  width: 120px;
+  height: 120px;
+}
+
+[data-arrival^="sign-in"] [data-arrival-headline] {
+  margin-top: 20px;
+}
+
+/* The Chief's face is the product's mark, drawn edge to edge in its box: it stands further off. */
+[data-arrival^="sign-in"]:has(.arrival-face [data-mate-mark]) [data-arrival-headline] {
+  margin-top: 32px;
+}
+
+[data-arrival^="sign-in"] [data-arrival-slot] {
+  margin-top: 36px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-face > * {
+    transition: none;
+  }
+}
+
+/* ---- the sign-in (`ZeropsAgentSignIn`), to the owner's design (2026-11-23): cards 352 px wide one
+   under another, the first two then *Show N more options*; the chosen one opens in place, the
+   others dimmed ---- */
 .arrival-sign-in {
   position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 352px;
+  margin-inline: auto;
+  flex-direction: column;
+  align-items: center;
   container-type: inline-size;
   /* A card of its own in the stage's slot: its words start on their line, never the stage's
      centred text (the owner, 2026-10-13: "once again misaligned"). */
@@ -15889,62 +16740,90 @@ a.message-file:focus-visible {
 }
 
 .arrival-cards {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.arrival-cards:has(> :only-child) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-/* More agents than a pair: still two by two, closer together (the owner, 2026-11-20: "all the
-   major agents access buttons in two columns"). */
-.arrival-cards:has(> :nth-child(3)) {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
   gap: 8px;
 }
 
-.arrival-cards:has(> :nth-child(3)) > .arrival-card {
-  padding-block: 10px;
+/* An option's slot: its height glides while its card opens or folds (`OptionSlot`), the card's
+   ring still drawn past the clip. */
+.arrival-option {
+  display: flex;
+  flex-direction: column;
+  overflow-clip-margin: 2px;
 }
 
-/* Too narrow for two cards to say whose account each needs (a panel, a phone): one over the
-   other. */
-@container (max-width: 460px) {
-  .arrival-cards {
-    grid-template-columns: minmax(0, 1fr);
+/* The options past the first two: they unfold under them in 320 ms and fold back. */
+.arrival-cards-rest {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -8px;
+  opacity: 0;
+  transition:
+    grid-template-rows 320ms var(--ease-out-strong),
+    margin-top 320ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+}
+
+.arrival-cards-rest[data-open] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+
+.arrival-cards-rest-inner {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow: clip;
+  overflow-clip-margin: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-cards-rest {
+    transition: none;
   }
-}
-
-.arrival-cards[data-leaving] {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-  pointer-events: none;
-  animation: arrival-fade-out 140ms var(--ease-out-strong) both;
 }
 
 .arrival-card,
 .arrival-open {
-  border-radius: 14px;
-  background: var(--card);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--border);
 }
 
 .arrival-card {
   display: flex;
+  height: 62px;
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 14px;
+  padding: 10px 16px 10px 10px;
   color: var(--foreground);
   text-align: left;
   cursor: pointer;
   transition:
     box-shadow 150ms var(--ease-out-strong),
+    opacity 200ms var(--ease-out-strong),
     scale 150ms var(--ease-out-strong);
+}
+
+/* Another card stands open: this one steps back, and comes forward under the pointer. */
+.arrival-card[data-dim] {
+  opacity: 0.5;
+}
+
+.arrival-card[data-dim]:is(:hover, :focus-visible) {
+  opacity: 1;
+}
+
+.arrival-card-go {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
 }
 
 @media (hover: hover) {
@@ -15971,34 +16850,21 @@ a.message-file:focus-visible {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  background: var(--muted);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 75%, transparent);
-}
-
-.arrival-logo[data-small] {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .arrival-card-words {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  gap: 1px;
   min-width: 0;
 }
 
 .arrival-card-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 15px;
   line-height: 20px;
-  font-weight: 500;
-}
-
-.arrival-open-head .arrival-card-name {
-  font-size: 14px;
+  font-weight: 600;
 }
 
 .arrival-card-account {
@@ -16010,20 +16876,6 @@ a.message-file:focus-visible {
   text-overflow: ellipsis;
 }
 
-.arrival-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--muted-foreground);
-  font-size: 11.5px;
-  line-height: 1;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
 .arrival-open {
   overflow: hidden;
 }
@@ -16032,26 +16884,111 @@ a.message-file:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  /* "Use another agent" takes the account line's size, not the page's. */
-  font-size: 13px;
+  padding: 10px 12px 10px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.arrival-open-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.arrival-open-fold {
+  display: grid;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+}
+
+.arrival-open-fold:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.arrival-open-fold:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.arrival-open-fold svg {
+  width: 16px;
+  height: 16px;
 }
 
 .arrival-open-body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 4px 14px 16px;
+  padding: 16px 16px 18px;
 }
 
+/* *Show N more options*: a quiet pill under the cards. */
+.arrival-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.arrival-more:hover {
+  color: var(--foreground);
+}
+
+.arrival-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.arrival-more svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 200ms var(--ease-out-strong);
+}
+
+.arrival-more[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+/* A step: its number, its words, and under the words what it asks for — a press, a field. */
 .arrival-open-step {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   column-gap: 12px;
-  row-gap: 6px;
+  row-gap: 10px;
   /* "Open again" takes the account line's size, not the page's. */
   font-size: 13px;
+}
+
+.arrival-open-step > :nth-child(3) {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.arrival-open-step > span:empty:not(:first-child) {
+  display: none;
+}
+
+.arrival-open-step-then {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  margin-top: 4px;
 }
 
 .arrival-open-step-words {
@@ -16086,8 +17023,8 @@ a.message-file:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   border-radius: 9999px;
   background: var(--muted);
   box-shadow: inset 0 0 0 1px var(--border);
@@ -16114,9 +17051,9 @@ a.message-file:focus-visible {
 /* Claude's code: pasted here, sent on paste. */
 .arrival-input {
   width: 100%;
-  height: 36px;
+  height: 40px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--card);
   box-shadow: inset 0 0 0 1px var(--input);
   color: var(--foreground);
