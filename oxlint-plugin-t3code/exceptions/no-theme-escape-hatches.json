@@ -714,14 +714,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#211E1E\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (OpenCodeIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#24bfa5\"",
     "owner": "karel",
     "reason": "vendor icon path colour (VisualStudioCodeInsiders)",
@@ -786,14 +778,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#4B4646\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (OpenCodeIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#62A0EA\"",
     "owner": "karel",
     "reason": "vendor icon path colour (VSCodium)",
@@ -826,14 +810,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#CFCECD\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (OpenCodeIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#DE4C36\"",
     "owner": "karel",
     "reason": "vendor icon path colour (GitIcon)",
@@ -850,14 +826,6 @@
   {
     "path": "apps/web/src/components/Icons.tsx",
     "kind": "Literal",
-    "fingerprint": "\"#F1ECEC\"",
-    "owner": "karel",
-    "reason": "vendor icon path colour (OpenCodeIcon)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
     "fingerprint": "\"#F6C013\"",
     "owner": "karel",
     "reason": "vendor icon path colour (Gemini)",
@@ -966,38 +934,6 @@
     "owner": "karel",
     "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dark:hidden\"",
-    "owner": "karel",
-    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dark:hidden\"",
-    "owner": "karel",
-    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fill-[#0F0F0F] dark:fill-[#F5F5F5]\"",
-    "owner": "karel",
-    "reason": "Grok icon foreground toggle awaiting a semantic icon token",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fill-[#26251E] dark:fill-[#EDECEC]\"",
-    "owner": "karel",
-    "reason": "Cursor icon foreground toggle awaiting a semantic icon token",
-    "expires": "F4"
   },
   {
     "path": "apps/web/src/components/Icons.tsx",
@@ -1006,46 +942,6 @@
     "owner": "karel",
     "reason": "vendor icon path colour (Claude)",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fill-black dark:fill-white\"",
-    "owner": "karel",
-    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fill-black dark:fill-white\"",
-    "owner": "karel",
-    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"fill-black dark:fill-white\"",
-    "owner": "karel",
-    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"hidden dark:block\"",
-    "owner": "karel",
-    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/Icons.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"hidden dark:block\"",
-    "owner": "karel",
-    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
-    "expires": "F4"
   },
   {
     "path": "apps/web/src/components/Icons.tsx",
@@ -1913,38 +1809,6 @@
   },
   {
     "path": "apps/web/src/components/Sidebar.logic.ts",
-    "kind": "Literal",
-    "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-emerald-600 dark:text-emerald-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-red-600 dark:text-red-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"text-teal-600 dark:text-teal-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
     "kind": "Literal",
     "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
     "owner": "karel",

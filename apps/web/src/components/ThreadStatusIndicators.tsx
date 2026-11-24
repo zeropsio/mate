@@ -105,7 +105,7 @@ export function prStatusIndicator(
   if (pr.state === "open") {
     return {
       label: `${presentation.shortName} open`,
-      colorClass: "text-emerald-600 dark:text-emerald-300/90",
+      colorClass: "text-status-busy-text",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -115,7 +115,7 @@ export function prStatusIndicator(
   if (pr.state === "closed") {
     return {
       label: `${presentation.shortName} closed`,
-      colorClass: "text-red-600 dark:text-red-300/90",
+      colorClass: "text-muted-foreground",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -125,7 +125,7 @@ export function prStatusIndicator(
   if (pr.state === "merged") {
     return {
       label: `${presentation.shortName} merged`,
-      colorClass: "text-violet-600 dark:text-violet-300/90",
+      colorClass: "text-status-ok-text",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -361,7 +361,7 @@ export function terminalStatusFromRunningIds(
   }
   return {
     label: "Terminal process running",
-    colorClass: "text-teal-600 dark:text-teal-300/90",
+    colorClass: "text-status-busy-text",
     pulse: true,
   };
 }
