@@ -5351,34 +5351,6 @@ code {
 
 /* ==== Project sites (the menu by project): the globe, the environment tag, their popover ==== */
 
-/* The globe: a 20 px row action, as the row's ■ and ··· are. Dimmed — still pressable — where
-   nothing anywhere has an address yet. */
-.zerops-sites-globe,
-.menu-row-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-control);
-  color: var(--sidebar-muted-foreground);
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong),
-    opacity 150ms var(--ease-out-strong);
-}
-
-.menu-row-action {
-  color: var(--sidebar-muted-foreground);
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
 /* A row whose places' tag stands before its time (`.menu-row-tags`): its verbs come in before the
    tag under the pointer, never over it, and the time stays beside it. Unlayered, over the
    utilities that swap the time for the verbs on a row without one. */
@@ -5401,40 +5373,11 @@ code {
   }
 }
 
-/* On a row already lit by its own hover, a verb's hover needs a ground of its own. */
-.zerops-sites-globe:hover,
-.menu-row-action:hover {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
-  color: var(--sidebar-foreground);
-}
-
-.menu-row-action:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.zerops-sites-globe:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.zerops-sites-globe[data-popup-open],
-.menu-row-action[data-popup-open] {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 12%, transparent);
-  color: var(--sidebar-foreground);
-}
-
-.zerops-sites-globe[data-empty]:not(:hover, [data-popup-open]) {
-  opacity: 0.45;
-}
-
 /* Under a finger nothing hovers, so a row's verbs stand at rest: only its ···, at the end of the
    line under the name, where the time above it keeps its place. The project's page and its
    addresses are in that menu ("Open project", "Addresses"), so their own doors step aside, and
    the line stops short of the ···. */
 @media (pointer: coarse) {
-  .menu-row-verbs > :is([data-zerops-surface="sidebar-project-page"], .zerops-sites-globe) {
-    display: none;
-  }
-
   .menu-row-box:has(> .menu-row-verbs) .menu-line2:not(.menu-line2 .menu-line2) {
     padding-inline-end: 32px;
   }
@@ -5656,40 +5599,6 @@ code {
 
 .zerops-sites-whose {
   color: var(--muted-foreground);
-}
-
-.zerops-sites-zerops {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-control);
-  color: var(--muted-foreground);
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.zerops-sites-zerops:is(:hover, :focus-visible) {
-  background-color: var(--accent);
-  color: var(--foreground);
-}
-
-/* The mark repeats down the list: quiet until pointed at, then in its own colour. */
-.zerops-sites-zerops > svg {
-  opacity: 0.5;
-  filter: grayscale(1);
-  transition:
-    opacity 150ms var(--ease-out-strong),
-    filter 150ms var(--ease-out-strong);
-}
-
-.zerops-sites-zerops:is(:hover, :focus-visible) > svg {
-  opacity: 1;
-  filter: none;
 }
 
 .zerops-sites-note {
@@ -6172,35 +6081,6 @@ code {
 }
 
 @layer components {
-  /* The foot: the viewer's photo, name and role, one ···, across the whole row up to the
-     collapse button after it (the owner, 2026-10-12: "not done well at all, the way its only like
-     30% width" — a button sizes to its content where nothing stretches it). */
-  .menu-foot-who {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    min-width: 0;
-    height: 52px;
-    margin-block: 6px;
-    padding-inline: 8px 4px;
-    border-radius: var(--radius-card);
-    text-align: start;
-    cursor: pointer;
-    outline: none;
-    transition: background-color 150ms var(--ease-out-strong);
-  }
-
-  .menu-foot-who:hover,
-  .menu-foot-who[data-popup-open] {
-    background: var(--sidebar-row-hover);
-  }
-
-  .menu-foot-who:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
   .menu-foot-lines {
     display: grid;
     flex: 1 1 auto;
@@ -6291,28 +6171,6 @@ code {
     transition:
       background-color 150ms var(--ease-out-strong),
       color 150ms var(--ease-out-strong);
-  }
-
-  .menu-foot-who:hover .menu-foot-button,
-  .menu-foot-who[data-popup-open] .menu-foot-button {
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-foot-photo:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .menu-foot-photo {
-    display: flex;
-    border-radius: 9999px;
-    cursor: pointer;
-    outline: none;
-    transition: box-shadow 150ms var(--ease-out-strong);
-  }
-
-  .menu-foot-photo:hover,
-  .menu-foot-photo[data-popup-open] {
-    box-shadow: 0 0 0 3px var(--sidebar-row-hover);
   }
 }
 
@@ -7603,21 +7461,6 @@ a.ov-acc-face:hover [data-part="name"] {
   cursor: default;
 }
 
-.ov-acc-cell[data-editable] {
-  cursor: pointer;
-  transition: background-color 150ms var(--ease-out-strong);
-}
-
-.ov-acc-cell[data-editable]:hover,
-.ov-acc-cell[data-editable][data-popup-open] {
-  background: var(--ov-hover);
-}
-
-.ov-acc-cell[data-editable]:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
 .ov-acc-caret {
   width: 14px;
   height: 14px;
@@ -7626,9 +7469,6 @@ a.ov-acc-face:hover [data-part="name"] {
   transition: opacity 150ms var(--ease-out-strong);
 }
 
-.ov-acc-cell:hover .ov-acc-caret,
-.ov-acc-cell:focus-visible .ov-acc-caret,
-.ov-acc-cell[data-popup-open] .ov-acc-caret,
 [data-acc-open] .ov-acc-caret {
   opacity: 1;
 }
@@ -10837,40 +10677,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 /* C3: the one blue button on the composer's top — Review, Approve, Save to
    vault — blue is for what can be clicked (S3), and the ask around it stays
    neutral. */
-/* The strip's ×: quiet beside Review, the one button that asks for anything. */
-.composer-top-dismiss {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-control);
-  color: var(--color-muted-foreground);
-  cursor: pointer;
-  outline: none;
-  transition:
-    color 120ms ease,
-    background-color 120ms ease;
-}
-
-.composer-top-dismiss svg {
-  width: 14px;
-  height: 14px;
-}
-
-.composer-top-dismiss:hover:not(:disabled) {
-  color: var(--color-foreground);
-  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-}
-
-.composer-top-dismiss:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.composer-top-dismiss:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
 /*
  * Full screen (`fullComposer.logic.ts`): the composer's text grows over the
  * conversation to a measured height, the conversation behind a backdrop, and
@@ -15427,62 +15233,8 @@ a.message-file:focus-visible {
     color: var(--foreground);
   }
 
-  /* A ···: the tab's, and a row's in place of its time. */
-  .crew-menu-btn {
-    display: flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: var(--radius-control);
-    color: var(--muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition: background-color 150ms ease;
-  }
-
-  /* At a phone's width the crew's ··· is a finger's 32. */
-  @container (width < 28rem) {
-    [data-crew-head] .crew-menu-btn {
-      width: 32px;
-      height: 32px;
-    }
-  }
-
-  @media (hover: hover) {
-    .crew-menu-btn:hover {
-      background: var(--sidebar-row-hover);
-    }
-  }
-
-  .crew-menu-btn[data-popup-open] {
-    background: var(--sidebar-row-active);
-    color: var(--foreground);
-  }
-
-  .crew-menu-btn:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .crew-row-menu {
-    display: none;
-    margin: -4px -6px -4px 0;
-  }
-
-  /* The ··· stands in the time's place on hover, and for the keyboard once
-     it reaches the row — never while an answer is typed in it. */
-  .crew-row:hover .crew-row-menu,
-  .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-menu,
-  .crew-row-menu:focus-visible,
-  .crew-row-menu[data-popup-open] {
-    display: flex;
-  }
-
   .crew-row:hover .crew-row-time,
-  .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-time,
-  .crew-row:has(.crew-row-menu:focus-visible) .crew-row-time,
-  .crew-row:has(.crew-row-menu[data-popup-open]) .crew-row-time {
+  .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-time {
     display: none;
   }
 

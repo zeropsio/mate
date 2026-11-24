@@ -505,12 +505,15 @@ function Cell({
           disabled={busy}
           render={
             <TooltipTrigger
-              render={<button className="ov-acc-cell" data-editable="" type="button" />}
+              render={<Button className="group/cell -ms-2.5" size="sm" variant="ghost" />}
             />
           }
         >
           <Level busy={busy} cell={cell} />
-          <ChevronDownIcon aria-hidden="true" className="ov-acc-caret" />
+          <ChevronDownIcon
+            aria-hidden="true"
+            className="size-3.5 text-muted-foreground opacity-0 transition-opacity duration-150 ease-out-strong group-hover/cell:opacity-100 group-focus-visible/cell:opacity-100 group-data-popup-open/cell:opacity-100"
+          />
         </MenuTrigger>
         <TooltipPopup side="top">{tip}</TooltipPopup>
       </Tooltip>

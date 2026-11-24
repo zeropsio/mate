@@ -2813,15 +2813,15 @@ export function SidebarHqStatus({
         ) : (
           <TooltipTrigger
             render={
-              <button
-                className={cn("inline-flex cursor-pointer items-center gap-1.5", fit)}
+              <Button
+                className={kind === "syncing" ? "flex shrink-0" : "flex min-w-0"}
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={onAgain}
-                type="button"
+                variant="bare"
               />
             }
           >
-            {words}
+            <span className={cn("inline-flex items-center gap-1.5", fit)}>{words}</span>
           </TooltipTrigger>
         )}
         <TooltipPopup side="bottom">
@@ -3399,12 +3399,6 @@ function typedIntoField(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
-
-/** The row's stop, armed: its confirm in red words, as tall as the ■ it replaces. */
-const ROW_STOP_ARMED_CLASS =
-  "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const ROW_ACTION_CLASS = "menu-row-action";
 
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
@@ -4271,15 +4265,16 @@ function MateRowView<T extends RosterCandidate>({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
+                  // Armed, its confirm in red words where the ■ stood.
+                  <Button
                     aria-label={armed ? `Confirm stop ${name}` : `Stop ${name}`}
-                    className={armed ? ROW_STOP_ARMED_CLASS : ROW_ACTION_CLASS}
                     data-armed={armed ? "" : undefined}
                     data-zerops-surface="sidebar-mate-stop"
                     onClick={() => {
                       stepStop({ kind: "press", at: Date.now() });
                     }}
-                    type="button"
+                    size={armed ? "xs" : "icon-sm"}
+                    variant={armed ? "destructive-ghost" : "sidebar"}
                   />
                 }
               >

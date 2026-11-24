@@ -284,13 +284,20 @@ function RowTime({ slot }: { readonly slot: CrewRowSlot }) {
       return null;
     case "clock":
       return (
-        <span className="crew-row-time" data-working="">
+        <span
+          className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden"
+          data-working=""
+        >
           {formatWorkingTime(nowMs - Date.parse(slot.since))}
         </span>
       );
     case "age": {
       const when = compactSidebarTimeLabel(formatRelativeTimeLabel(slot.at));
-      return when === "" ? null : <span className="crew-row-time">{when}</span>;
+      return when === "" ? null : (
+        <span className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden">
+          {when}
+        </span>
+      );
     }
   }
 }
@@ -330,7 +337,7 @@ function CrewRow(
   const open = model.threadId;
   return (
     <div
-      className="crew-row"
+      className="crew-row group/crewrow"
       data-crew-row={model.handle}
       data-needs={model.needsYou || model.plan ? "" : undefined}
     >
@@ -365,10 +372,13 @@ function CrewRow(
             <Menu>
               <MenuTrigger
                 render={
-                  <button
+                  // In the time's place on hover, and for the keyboard once it reaches the row.
+                  <Button
                     aria-label={crewMenuOfWord(model.name)}
-                    className="crew-menu-btn crew-row-menu crew-row-above"
-                    type="button"
+                    className="relative z-1 -my-1 -me-1.5 hidden group-[:hover]/crewrow:flex group-has-[[data-crew-row-open]:focus-visible]/crewrow:flex focus-visible:flex data-popup-open:flex"
+                    data-crew-row-menu=""
+                    size="icon-sm"
+                    variant="sidebar"
                   />
                 }
               >

@@ -21,7 +21,7 @@ import type { CrewSummary } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
-import { InlineButton } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
 import { crewGoalTitle, type CrewModeLine, type CrewModePressKind } from "./CrewHead.logic";
@@ -101,10 +101,12 @@ export function CrewHead({
           <Menu>
             <MenuTrigger
               render={
-                <button
+                // At a phone's width a finger's 32.
+                <Button
                   aria-label={CREW_MENU_LABEL}
-                  className="crew-menu-btn -me-1.5 @max-md:-me-2"
-                  type="button"
+                  className="-me-1.5 @max-md:-me-2 @max-md:size-8"
+                  size="icon-sm"
+                  variant="sidebar"
                 />
               }
             >

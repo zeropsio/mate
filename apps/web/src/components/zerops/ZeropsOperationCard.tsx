@@ -520,27 +520,30 @@ function BrowserThumbnail({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={label}
-            className="block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-foreground/5 p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
+            className="block w-full shrink-0 cursor-zoom-in overflow-hidden max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
             data-zerops-browser-viewport
             {...intent}
             onClick={image !== undefined ? onOpenImage : onOpenPanel}
             style={{ aspectRatio }}
-            type="button"
+            variant="bare"
           />
         }
       >
-        {image !== undefined ? (
-          <AssetImage
-            loading="lazy"
-            decoding="async"
-            alt={live ? `Live view of ${subject}` : "Screenshot"}
-            className="block size-full object-cover object-top"
-            data-zerops-browser-image
-            src={image.src}
-          />
-        ) : null}
+        {/* The picture is the press's look: its ground stands while it loads, or with none. */}
+        <span className="block size-full bg-foreground/5">
+          {image !== undefined ? (
+            <AssetImage
+              loading="lazy"
+              decoding="async"
+              alt={live ? `Live view of ${subject}` : "Screenshot"}
+              className="block size-full object-cover object-top"
+              data-zerops-browser-image
+              src={image.src}
+            />
+          ) : null}
+        </span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>

@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { useCreation, useCreationEnds } from "~/zerops/creations";
 import { creationEnds, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
+import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 
@@ -20,9 +21,6 @@ export interface SharedBirthRow {
   readonly waitsOnMaker?: boolean;
   readonly entries: ReadonlyArray<ZeropsMenuAction>;
 }
-
-const ROW_ACTION_CLASS =
-  "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
 /** What a stopped creation's ⋯ offers, in order: none for one with nothing to end. */
 export function comingEndsEntries(
@@ -90,9 +88,7 @@ export function SidebarBirthMenu({
       >
         <Menu>
           <MenuTrigger
-            render={
-              <button aria-label={`More for ${name}`} className={ROW_ACTION_CLASS} type="button" />
-            }
+            render={<Button aria-label={`More for ${name}`} size="icon-2xs" variant="sidebar" />}
           >
             <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
           </MenuTrigger>

@@ -34,6 +34,7 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from "../ui/menu";
+import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
@@ -78,8 +79,6 @@ export interface MenuPoint {
   readonly x: number;
   readonly y: number;
 }
-
-const ROW_ACTION_CLASS = "menu-row-action";
 
 /** The crew's door (`mateCrewItem`): its conversation on the Crew tab, set up or not. */
 interface MateCrewEntry {
@@ -273,11 +272,11 @@ export function MateMenu({
     <Menu onOpenChange={onOpenChange} open={open}>
       <MenuTrigger
         render={
-          <button
+          <Button
             aria-label={`More for ${name}`}
-            className={ROW_ACTION_CLASS}
             data-zerops-surface="sidebar-mate-more"
-            type="button"
+            size="icon-sm"
+            variant="sidebar"
           />
         }
       >
@@ -363,11 +362,11 @@ export function ProjectMenu({
     <Menu onOpenChange={onOpenChange} open={open}>
       <MenuTrigger
         render={
-          <button
+          <Button
             aria-label={`More for ${name}`}
-            className={ROW_ACTION_CLASS}
             data-zerops-surface="sidebar-project-more"
-            type="button"
+            size="icon-sm"
+            variant="sidebar"
           />
         }
       >

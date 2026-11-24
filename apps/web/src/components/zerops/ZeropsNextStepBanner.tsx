@@ -368,7 +368,7 @@ export function ZeropsNextStepStrip({
             {REVIEW_ALL_LABEL}
           </Button>
         )}
-        {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
+        {dismissButton(strip.target, onDismiss, true)}
         {lines.map((line) => (
           <div
             className="col-start-2 col-end-4 grid grid-cols-subgrid items-center"
@@ -516,24 +516,24 @@ function actMark(act: ChangeAct | undefined): ReactNode {
 function dismissButton(
   target: ZeropsNextStepStripModel["target"],
   onDismiss: ((target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void) | undefined,
-  className?: string,
+  /** At the end of a grid's line, a line's height lent to the line it shares. */
+  atLineEnd = false,
 ) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label="Dismiss"
-            className={
-              className === undefined ? "composer-top-dismiss" : `composer-top-dismiss ${className}`
-            }
+            className={atLineEnd ? "-my-1 justify-self-end" : undefined}
             onClick={(event) => {
               onDismiss?.(target, event.currentTarget);
             }}
-            type="button"
+            size="icon-sm"
+            variant="ghost-muted"
           >
             <XIcon aria-hidden="true" />
-          </button>
+          </Button>
         }
       />
       <TooltipPopup side="top">Hide until another change waits</TooltipPopup>

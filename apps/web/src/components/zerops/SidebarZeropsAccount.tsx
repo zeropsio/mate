@@ -51,6 +51,7 @@ import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
 import { fadeFillIn, useLoadFilled } from "~/lib/loadFills";
+import { Button } from "../ui/button";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -187,11 +188,11 @@ export function SidebarZeropsAccount({
       <Menu {...menuState}>
         <MenuTrigger
           render={
-            <button
+            <Button
               aria-label={`Account: ${account.name}`}
-              className="menu-foot-photo"
+              className="flex"
               data-zerops-surface="sidebar-account"
-              type="button"
+              variant="bare"
             />
           }
         >
@@ -212,7 +213,7 @@ export function SidebarZeropsAccount({
     <Menu {...menuState}>
       <MenuTrigger
         render={
-          <button
+          <Button
             // The button's name replaces its content for a screen reader: the balance and how it
             // stands are said here, as the colour says them on the line.
             aria-label={
@@ -220,9 +221,12 @@ export function SidebarZeropsAccount({
                 ? `Account: ${account.name}`
                 : `Account: ${account.name}, credit ${credit.amount}${credit.words === null ? "" : `, ${credit.words}`}`
             }
-            className="menu-foot-who"
+            // Across the whole row up to the collapse button after it: a button sizes to its
+            // content where nothing stretches it.
+            className="group/foot my-1.5 h-13 w-full min-w-0 flex-1 justify-start text-start"
             data-zerops-surface="sidebar-account"
-            type="button"
+            size="lg"
+            variant="sidebar"
           />
         }
       >
@@ -245,7 +249,10 @@ export function SidebarZeropsAccount({
           )}
         </span>
         {credit === null ? null : <AccountCredit credit={credit} />}
-        <span aria-hidden="true" className="menu-foot-button">
+        <span
+          aria-hidden="true"
+          className="menu-foot-button group-hover/foot:text-sidebar-foreground group-data-popup-open/foot:text-sidebar-foreground"
+        >
           <EllipsisIcon className="size-4" />
         </span>
       </MenuTrigger>
@@ -616,7 +623,7 @@ function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
       data-zerops-surface="sidebar-account-credit"
       ref={fadeFillIn}
     >
-      <WalletIcon />
+      <WalletIcon className="size-3.5" />
       <span>
         <span className="menu-foot-credit-sign">{credit.amount.slice(0, sign)}</span>
         {credit.amount.slice(sign)}

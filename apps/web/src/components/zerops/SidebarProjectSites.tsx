@@ -237,18 +237,28 @@ export function ProjectSites(
               openProduction();
             }}
             render={
-              <button
+              <Button
                 aria-label={`Addresses of ${projectName}`}
-                className="zerops-sites-globe"
+                // A finger never hovers: the row's ··· holds its addresses ("Addresses").
+                className="group/globe pointer-coarse:hidden"
                 data-empty={none ? "" : undefined}
                 data-zerops-surface="sidebar-project-sites"
-                type="button"
+                size="icon-sm"
+                variant="sidebar"
               />
             }
           />
         }
       >
-        <GlobeIcon aria-hidden="true" className="size-3.5" />
+        {/* Dimmed, still pressable, where nothing anywhere has an address yet. */}
+        <GlobeIcon
+          aria-hidden="true"
+          className={
+            none
+              ? "size-3.5 opacity-45 transition-opacity group-hover/globe:opacity-100 group-data-popup-open/globe:opacity-100"
+              : "size-3.5"
+          }
+        />
       </TooltipTrigger>
       {open ? null : <TooltipPopup side="bottom">{globeTip}</TooltipPopup>}
     </Tooltip>
@@ -309,12 +319,14 @@ export function ProjectSites(
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    <Button
                       aria-label={`${projectName}'s page`}
-                      className="menu-row-action"
+                      // A finger never hovers: the row's ··· holds it ("Open project").
+                      className="pointer-coarse:hidden"
                       data-zerops-surface="sidebar-project-page"
                       onClick={props.onOpenPage}
-                      type="button"
+                      size="icon-sm"
+                      variant="sidebar"
                     />
                   }
                 >
@@ -1033,17 +1045,18 @@ function ZeropsDoor({ projectId, name }: { readonly projectId: string; readonly 
     <Tooltip>
       <TooltipTrigger
         render={
-          <a
+          <Button
             aria-label={`Open ${name} in Zerops`}
-            className="zerops-sites-zerops"
+            className="group/zerops"
             data-zerops-surface="sidebar-project-sites-zerops"
-            href={zeropsProjectUrl(projectId)}
-            rel="noreferrer"
-            target="_blank"
+            render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
+            size="icon-sm"
+            variant="ghost-muted"
           />
         }
       >
-        <ZeropsMark className="size-3.5" />
+        {/* The mark repeats down the list: quiet until pointed at, then in its own colour. */}
+        <ZeropsMark className="size-3.5 opacity-50 grayscale transition-[opacity,filter] duration-150 ease-out-strong group-hover/zerops:opacity-100 group-hover/zerops:grayscale-0 group-focus-visible/zerops:opacity-100 group-focus-visible/zerops:grayscale-0" />
       </TooltipTrigger>
       <TooltipPopup side="left">Open in Zerops</TooltipPopup>
     </Tooltip>
