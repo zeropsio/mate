@@ -151,7 +151,7 @@ function Harness() {
           }
         />
         {TOP === "none" ? null : (
-          <div className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)]">
+          <div className="ps-3.25 pe-3">
             <SidebarChiefRow
               current={current}
               face={top.face}
