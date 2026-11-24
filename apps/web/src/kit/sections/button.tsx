@@ -22,6 +22,7 @@ const SIZES = variantsOf<ButtonSize>({
   sm: true,
   md: true,
   lg: true,
+  "icon-xs": true,
   "icon-sm": true,
   "icon-md": true,
 });

@@ -15763,21 +15763,6 @@ a.message-file:focus-visible {
   gap: 16px;
 }
 
-.new-project-primary [data-slot="input-control"] {
-  border-radius: var(--radius-control);
-}
-
-.new-project-primary [data-slot="input-control"]::before {
-  border-radius: calc(var(--radius-control) - 1px);
-}
-
-.new-project-primary [data-slot="input"] {
-  height: 46px;
-  padding-inline: 15px;
-  font-size: var(--text-emphasis);
-  line-height: 46px;
-}
-
 .new-project-mate [data-zerops-new-project="create"],
 .new-project-mate [data-zerops-new-project="back"] {
   width: 320px;
@@ -15808,29 +15793,6 @@ a.message-file:focus-visible {
   margin-bottom: 22px;
 }
 
-.new-project-mate-acts > [data-slot="button"] {
-  min-height: 0;
-  gap: 6px;
-  padding: 5px 11px;
-  border-color: var(--border);
-  border-radius: 999px;
-  background: var(--surface-raised);
-  box-shadow: none;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.new-project-mate-acts > [data-slot="button"]:hover:not(:disabled) {
-  color: var(--foreground);
-}
-
-.new-project-mate-acts > [data-slot="button"] svg {
-  width: 16px;
-  height: 16px;
-}
-
 /* The quiet line under the press says nothing most of the time, and then takes no room. */
 .new-project-mate > p[aria-live]:empty {
   min-height: 0;
@@ -15853,43 +15815,6 @@ a.message-file:focus-visible {
   font-size: var(--text-line);
   line-height: 1rem;
   text-align: center;
-}
-
-.new-project-advanced > [data-slot="collapsible"] {
-  display: flex;
-  flex-direction: column;
-}
-
-.new-project-advanced [data-slot="collapsible-trigger"] {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.new-project-advanced [data-slot="collapsible-trigger"]:hover {
-  color: var(--foreground);
-}
-
-.new-project-advanced [data-slot="collapsible-trigger"]:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.new-project-advanced [data-slot="collapsible-trigger"] svg {
-  width: 16px;
-  height: 16px;
-  transition: transform 200ms var(--ease-out-strong);
-}
-
-.new-project-advanced [data-slot="collapsible-trigger"][data-panel-open] svg {
-  transform: rotate(180deg);
 }
 
 .new-project-advanced-fields {
@@ -15920,33 +15845,6 @@ a.message-file:focus-visible {
    and two thirds of that open, options 26 px; the name, the two presses 16 px under it and 32 px
    over the options or the foot. *Mate access & persona setup* opens the persona and who can work
    with the Mate under it, the dialog scrolling down to them over a rule at the foot. */
-[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) {
-  max-width: 400px;
-}
-
-[data-zerops-surface="new-mate-form"] [data-slot="dialog-header"] {
-  padding: 16px 64px 16px 24px;
-}
-
-/* As tall as the close press, so the two share a middle. */
-[data-zerops-surface="new-mate-form"] [data-slot="dialog-title"] {
-  font-size: var(--text-emphasis);
-  font-weight: 500;
-  line-height: 32px;
-}
-
-[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) > button[aria-label="Close"] {
-  top: 16px;
-  inset-inline-end: 24px;
-}
-
-[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"])
-  > button[aria-label="Close"]
-  svg {
-  width: 20px;
-  height: 20px;
-}
-
 .new-mate-body {
   max-height: 100%;
   overflow-y: auto;
@@ -16086,12 +15984,6 @@ a.message-file:focus-visible {
   padding-top: 20px;
 }
 
-.new-mate-options .np-access-add > [data-slot="button"] {
-  height: 32px;
-  padding-inline: 11px;
-  border-radius: var(--radius-lg);
-}
-
 .new-mate-foot {
   display: flex;
   flex-direction: column;
@@ -16153,13 +16045,6 @@ a.message-file:focus-visible {
   padding-bottom: 0;
 }
 
-.np-access-add > [data-slot="button"] {
-  height: 34px;
-  padding-inline: 13px;
-  border-radius: var(--radius-control);
-  font-weight: 500;
-}
-
 .ov-chips[data-rows] {
   display: flex;
   flex-direction: column;
@@ -16218,13 +16103,6 @@ a.message-file:focus-visible {
   line-height: 18px;
 }
 
-.np-add-head > [data-slot="button"] {
-  width: 24px;
-  height: 24px;
-  margin: -2px -2px -2px 0;
-  border-radius: var(--radius-control);
-}
-
 .np-add-search {
   display: flex;
   height: 32px;
@@ -16278,12 +16156,6 @@ a.message-file:focus-visible {
   gap: 10px;
   padding: 0 6px;
   border-radius: 8px;
-}
-
-.np-add-row [data-slot="toggle"] {
-  height: 22px;
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .np-add-row[data-picked] {

@@ -5,11 +5,9 @@
  */
 import type { MatePersona } from "@t3tools/contracts";
 import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
-import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { ChevronDownIcon, PlusIcon, type LucideIcon } from "lucide-react";
 import { useId, useMemo } from "react";
 
-import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import {
   Select,
@@ -17,6 +15,7 @@ import {
   SelectGroupLabel,
   SelectItem,
   SelectPopup,
+  SelectTrigger,
   SelectValue,
 } from "../ui/select";
 import { useOrgPersonaTemplates } from "~/zerops/usePersonaTemplates";
@@ -93,11 +92,12 @@ export function NewMatePersona(props: {
         }}
         value={value}
       >
-        <SelectPrimitive.Trigger
+        <SelectTrigger
           aria-describedby={`${id}-line`}
           aria-labelledby={`${id}-label ${id}-pick`}
+          icon={props.persona === null ? null : <ChevronDownIcon aria-hidden="true" />}
           id={`${id}-pick`}
-          render={<Button size="md" variant="secondary" />}
+          variant="button"
         >
           {props.persona === null ? (
             <>
@@ -108,10 +108,9 @@ export function NewMatePersona(props: {
             <>
               <Glyph icon={personaIcon(ref)} />
               <SelectValue />
-              <ChevronDownIcon aria-hidden="true" />
             </>
           )}
-        </SelectPrimitive.Trigger>
+        </SelectTrigger>
         <SelectPopup alignItemWithTrigger={false}>
           <SelectItem value={NONE}>No persona</SelectItem>
           {groups.map((group) => (

@@ -23,6 +23,7 @@ const SIZES = variantsOf<ToggleSize>({
   lg: true,
   compact: true,
   segmented: true,
+  "segmented-sm": true,
 });
 
 function ToggleSpecimens() {

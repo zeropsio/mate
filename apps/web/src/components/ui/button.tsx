@@ -13,7 +13,7 @@ import { cn } from "~/lib/utils";
  * `link` reads as a word.
  * Sizes: `md` by default, `sm` in dense rows, `xs` for a row's verb within its line (a change's
  * Review, everywhere it stands), `lg` only for a page's one hero action; `icon-sm` and
- * `icon-md` are the square forms of `sm` and `md`. A button is a rectangle on the control radius;
+ * `icon-md` are the square forms of `sm` and `md`, `icon-xs` a 24 px one in a card's head. A button is a rectangle on the control radius;
  * a label is a Badge pill, so an action never reads as a tag.
  */
 const buttonVariants = cva(
@@ -29,6 +29,7 @@ const buttonVariants = cva(
         sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         lg: "h-fit min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",
+        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-sm": "size-7 [&_svg:not([class*='size-'])]:size-3.5",
         "icon-md": "size-8",
       },

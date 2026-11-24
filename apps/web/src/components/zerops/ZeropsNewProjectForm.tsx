@@ -494,6 +494,13 @@ export function CreateProjectButton({
 }
 
 /** The page's one field: the project's name, its placeholder the label it needs. */
+/**
+ * The Mate step's quiet presses under its name (Shuffle, Change style): pills, so they read as
+ * tools on the Mate rather than the page's next step, which the create button is.
+ */
+const MATE_ACT_CLASS =
+  "inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-surface-raised px-2.75 py-1.25 font-medium text-body text-muted-foreground leading-4.5 outline-none transition-colors hover:not-disabled:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 [&_svg]:size-4 [&_svg]:shrink-0";
+
 function NewProjectNameInput({
   form,
   inputRef,
@@ -514,7 +521,7 @@ function NewProjectNameInput({
       placeholder="Project name…"
       readOnly={form.input.creating}
       ref={inputRef}
-      size="xl"
+      size="hero"
       spellCheck={false}
       value={form.name}
     />
@@ -568,30 +575,28 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             />
           </h1>
           <div className="new-project-mate-acts">
-            <Button
+            <button
               aria-busy={shuffle.rolling || undefined}
+              className={MATE_ACT_CLASS}
               disabled={creating}
               onClick={shuffle.roll}
-              size="sm"
               type="button"
-              variant="secondary"
             >
               <ShuffleIcon aria-hidden />
               Shuffle
-            </Button>
-            <Button
+            </button>
+            <button
               aria-expanded={styling}
+              className={MATE_ACT_CLASS}
               disabled={creating}
               onClick={() => {
                 setStyling(!styling);
               }}
-              size="sm"
               type="button"
-              variant="secondary"
             >
               {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
               {styling ? "Confirm style" : "Change style"}
-            </Button>
+            </button>
           </div>
           <CreateProjectButton
             buttonRef={addMate}
@@ -644,10 +649,13 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           </p>
         </div>
         <div className="new-project-advanced">
-          <Collapsible>
-            <CollapsibleTrigger>
+          <Collapsible className="flex flex-col">
+            <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1.5 self-center rounded-full px-4 py-2 font-medium text-body text-muted-foreground leading-4.5 outline-ring outline-offset-2 hover:text-foreground focus-visible:outline-2 ">
               Project access & region setup
-              <ChevronDownIcon aria-hidden />
+              <ChevronDownIcon
+                aria-hidden
+                className="size-4 transition-transform duration-200 ease-out-strong in-data-panel-open:rotate-180"
+              />
             </CollapsibleTrigger>
             <CollapsiblePanel>
               <div className="new-project-advanced-fields">

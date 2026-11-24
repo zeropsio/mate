@@ -18,7 +18,7 @@ import { variantsOf } from "../specimenLabel";
 type TriggerVariant = NonNullable<ComponentProps<typeof SelectTrigger>["variant"]>;
 type TriggerSize = NonNullable<ComponentProps<typeof SelectTrigger>["size"]>;
 
-const VARIANTS = variantsOf<TriggerVariant>({ default: true, ghost: true });
+const VARIANTS = variantsOf<TriggerVariant>({ default: true, ghost: true, button: true });
 const SIZES = variantsOf<TriggerSize>({
   xs: true,
   sm: true,

@@ -487,8 +487,10 @@ export function ZeropsEnvironmentCreationDialog({
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup
-        className="max-w-lg"
+        // The add-Mate form is a narrow one: 400 px wide, its header the small dialog's.
+        className={form.role === "dev" ? "max-w-100" : "max-w-lg"}
         placement="center"
+        size={form.role === "dev" ? "sm" : "default"}
         // Refused, the footer's Close is its one way out: never a second one in its corner.
         showCloseButton={form.closed === undefined}
         finalFocus={() => {

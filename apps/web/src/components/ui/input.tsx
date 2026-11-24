@@ -6,7 +6,7 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 type InputProps = Omit<InputPrimitive.Props & React.RefAttributes<HTMLInputElement>, "size"> & {
-  size?: "sm" | "compact" | "default" | "lg" | "xl" | number;
+  size?: "sm" | "compact" | "default" | "lg" | "xl" | "hero" | number;
   /** Monospace with tabular digits, for paths, commands, colors and numbers. */
   font?: "default" | "mono";
   unstyled?: boolean;
@@ -51,6 +51,9 @@ function Input({
     size === "lg" && "h-9.5 leading-9.5 sm:h-8.5 sm:leading-8.5",
     // A form that is the page's hero: a large button's height, typed at prose size.
     size === "xl" && "h-10 leading-10 sm:h-10 sm:text-prose sm:leading-10",
+    // A page that is this one field: 46 px tall, typed at the emphasis step.
+    size === "hero" &&
+      "h-11.5 px-[calc(--spacing(4)-1px)] text-emphasis leading-11.5 sm:h-11.5 sm:text-emphasis sm:leading-11.5",
     props.type === "search" &&
       "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none",
     // Number fields are typed into; browser spin buttons crowd narrow fields and step by 1.

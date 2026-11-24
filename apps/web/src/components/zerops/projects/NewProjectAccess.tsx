@@ -68,17 +68,16 @@ export function NewProjectAccess({
             onClose={() => setAdding(false)}
           />
         ) : (
-          <span className="np-access-add">
-            <Button
-              data-zerops-surface="add-access"
-              onClick={() => setAdding(true)}
-              size="sm"
-              variant="secondary"
-            >
-              <PlusIcon aria-hidden="true" />
-              {addLabel}
-            </Button>
-          </span>
+          <Button
+            className="self-start"
+            data-zerops-surface="add-access"
+            onClick={() => setAdding(true)}
+            size="md"
+            variant="secondary"
+          >
+            <PlusIcon aria-hidden="true" />
+            {addLabel}
+          </Button>
         )}
         <ProjectAccessChips heading={false} label={label} onChoose={onChoose} rows view={view} />
       </div>
@@ -132,7 +131,13 @@ function AddPeopleCard({
         <span className="np-add-title" id={titleId}>
           Add people
         </span>
-        <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
+        <Button
+          aria-label="Close"
+          className="-my-0.5 -me-0.5"
+          onClick={onClose}
+          size="icon-xs"
+          variant="ghost"
+        >
           <XIcon aria-hidden="true" />
         </Button>
       </div>
@@ -175,6 +180,7 @@ function AddPeopleCard({
                       next === "read" || next === "full" ? next : undefined,
                     );
                   }}
+                  size="segmented-sm"
                   value={level === undefined ? [] : [level]}
                   variant="segmented"
                 >

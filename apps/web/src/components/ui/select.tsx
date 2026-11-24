@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import type * as React from "react";
 
+import { buttonVariants } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
@@ -41,6 +42,10 @@ const selectTriggerVariants = cva(
   },
 );
 
+/**
+ * A field by default. `button` is a secondary Button that opens the list, for a choice offered as
+ * a press (*Add persona*); its children carry their own icons. `icon={null}` drops the trailing one.
+ */
 function SelectTrigger({
   className,
   size = "default",
@@ -49,17 +54,27 @@ function SelectTrigger({
   icon,
   ...props
 }: SelectPrimitive.Trigger.Props &
-  VariantProps<typeof selectTriggerVariants> & { icon?: React.ReactNode }) {
+  Omit<VariantProps<typeof selectTriggerVariants>, "variant"> & {
+    variant?: VariantProps<typeof selectTriggerVariants>["variant"] | "button";
+    icon?: React.ReactNode;
+  }) {
   return (
     <SelectPrimitive.Trigger
-      className={cn(selectTriggerVariants({ size, variant }), className)}
+      className={cn(
+        variant === "button"
+          ? buttonVariants({ size: "md", variant: "secondary" })
+          : selectTriggerVariants({ size, variant }),
+        className,
+      )}
       data-slot="select-trigger"
       {...props}
     >
       {children}
-      <SelectPrimitive.Icon data-slot="select-icon">
-        {icon ?? <ChevronDownIcon className="-me-1 size-3 opacity-50" />}
-      </SelectPrimitive.Icon>
+      {icon === null ? null : (
+        <SelectPrimitive.Icon data-slot="select-icon">
+          {icon ?? <ChevronDownIcon className="-me-1 size-3 opacity-50" />}
+        </SelectPrimitive.Icon>
+      )}
     </SelectPrimitive.Trigger>
   );
 }

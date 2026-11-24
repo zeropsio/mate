@@ -4,7 +4,7 @@ import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
-const SIZES = ["sm", "compact", "default", "lg"] as const;
+const SIZES = ["sm", "compact", "default", "lg", "xl", "hero"] as const;
 
 function InputSpecimens() {
   return (

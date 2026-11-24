@@ -25,7 +25,9 @@ function Opener({
   footer = "default",
   showCloseButton = true,
   long = false,
+  size = "default",
 }: {
+  readonly size?: "default" | "sm";
   readonly label: string;
   readonly footer?: "default" | "bare";
   readonly showCloseButton?: boolean;
@@ -35,7 +37,7 @@ function Opener({
     <Specimen label={label}>
       <Dialog>
         <DialogTrigger render={<Button variant="secondary" />}>Open</DialogTrigger>
-        <DialogPopup showCloseButton={showCloseButton}>
+        <DialogPopup showCloseButton={showCloseButton} size={size}>
           <DialogHeader>
             <DialogTitle>Rename the project</DialogTitle>
             <DialogDescription>Its address stays the same.</DialogDescription>
@@ -76,6 +78,7 @@ export default defineKitSection({
       <Opener footer="bare" label='<DialogFooter variant="bare">' />
       <Opener label="<DialogPopup showCloseButton={false}>" showCloseButton={false} />
       <Opener label="long body in <DialogPanel>" long />
+      <Opener label='<DialogPopup size="sm">' size="sm" />
     </SpecimenGrid>
   ),
 });
