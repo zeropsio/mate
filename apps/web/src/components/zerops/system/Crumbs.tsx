@@ -10,6 +10,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../../WorkspaceBreadcrumb";
+import { InlineButton } from "../../ui/button";
 import { pageTrail } from "./Crumbs.logic";
 
 /** One step of a trail: its words, and the press that opens its page; none on the page itself. */
@@ -66,13 +67,9 @@ export function Crumbs({ trail }: { readonly trail: ReadonlyArray<Crumb> }) {
                 {crumb.label}
               </span>
             ) : (
-              <button
-                className="min-w-0 cursor-pointer truncate rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={crumb.onClick}
-                type="button"
-              >
-                {crumb.label}
-              </button>
+              <InlineButton className="min-w-0" onClick={crumb.onClick} tone="muted">
+                <span className="min-w-0 truncate">{crumb.label}</span>
+              </InlineButton>
             )}
           </WorkspaceBreadcrumbItem>
         </Fragment>

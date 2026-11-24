@@ -281,15 +281,17 @@ function StationName({
     );
   if (!held && station.kind === "mates" && onOpenMates !== undefined)
     return (
-      <button
-        className="ln-name rounded-sm"
-        onClick={(event) => {
-          onOpenMates(event.currentTarget);
-        }}
-        type="button"
-      >
-        {station.name}
-      </button>
+      <span className="ln-name">
+        <InlineButton
+          className="max-w-full"
+          onClick={(event) => {
+            onOpenMates(event.currentTarget);
+          }}
+          tone="plain"
+        >
+          <span className="truncate font-semibold">{station.name}</span>
+        </InlineButton>
+      </span>
     );
   return (
     <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>

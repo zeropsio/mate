@@ -7639,27 +7639,8 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
-.ov-mate-open {
-  border-radius: 4px;
-  cursor: pointer;
-  text-decoration: underline 1px transparent;
-  text-underline-offset: 3px;
-  transition: text-decoration-color 150ms var(--ease-out-strong);
-}
-
-.ov-mate-open::after {
-  position: absolute;
-  inset: 0;
-  content: "";
-}
-
-.ov-mate:not([data-lift]):has(.ov-mate-open:hover) {
+.ov-mate:not([data-lift]):has([data-ov-mate-open]:hover) {
   background: var(--ov-hover);
-}
-
-.ov-mate-open:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 /* A row's end, past its words: a Mate still coming's ⋯. A column of its own only on the rows
@@ -9653,12 +9634,9 @@ button.ov-change {
   gap: 2px;
   margin-block-start: calc(var(--ov-change-pad-y) + 2px);
   margin-inline-start: var(--ov-change-gap);
-  border-radius: var(--radius-control);
-  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 18px;
   font-variant-numeric: tabular-nums;
-  transition: color 150ms var(--ease-out-strong);
 }
 
 /* A phone's row is its title, read whole on two lines, and when it last moved. Where the row
@@ -9675,15 +9653,6 @@ button.ov-change {
   .ov-change-row:not(:has(> .ov-change[data-plain])) .ov-change-pr {
     display: none;
   }
-}
-
-.ov-change-pr:hover {
-  color: var(--foreground);
-}
-
-.ov-change-pr:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 .ov-change-row:has(> .ov-change[data-open]) > .ov-change-pr {
@@ -9836,7 +9805,9 @@ button.ov-change {
   flex: 1 1 0;
   flex-wrap: wrap;
   min-width: 0;
-  column-gap: 2px;
+  column-gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 /* A part's chip, named by the part — `API ↗`, `Web ↗` — 12/16 muted like the time (the owner,
@@ -9862,16 +9833,6 @@ button.ov-change {
 .ov-mate-preview[data-off] {
   color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
   cursor: default;
-}
-
-.ov-mate-preview:not([data-off]):hover {
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-  color: var(--foreground);
-}
-
-.ov-mate-preview:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
 }
 
 /* Under the cards: the projects without a Mate, a line each, then HQ. */

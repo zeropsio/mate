@@ -1242,90 +1242,42 @@
   {
     "path": "apps/web/src/components/zerops/system/ChangeRow.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"ov-change-pr\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/ChangeRow.tsx",
-    "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"ov-change\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/Crumbs.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"min-w-0 cursor-pointer truncate rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Row `columns` — a pressable row whose cells sit in its list's subgrid columns, so its facts run down the list as columns (the changes ledger); the kit's Row is one flex line",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/system/MateCard.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/system/MateCard.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button>",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/system/MateCard.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"tm-card mc-add\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<a> className=\"ov-mate-preview\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-mate-name ov-mate-open\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/MateRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ov-mate-name ov-mate-open\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/ProjectLineFull.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ln-name rounded-sm\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/system/ProjectLineParts.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"ln-bead\"",
     "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
+    "reason": "a bead on the project line is the press itself: a drawn mark in its change's tint and state, the line's own picture, which no kit press draws",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",

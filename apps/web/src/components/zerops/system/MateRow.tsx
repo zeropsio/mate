@@ -8,6 +8,7 @@ import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { MateDot } from "../MateDot";
 import { drawn } from "../projects/flowSteps";
@@ -71,14 +72,18 @@ export function MateRow({
           {onOpen === undefined ? (
             <span className="ov-mate-name">{name}</span>
           ) : (
-            <button
-              aria-label={`Open ${name}`}
-              className="ov-mate-name ov-mate-open"
-              onClick={onOpen}
-              type="button"
-            >
-              {name}
-            </button>
+            <span className="ov-mate-name">
+              {/* The name opens the Mate: its press spans the row, under the row's own presses. */}
+              <InlineButton
+                aria-label={`Open ${name}`}
+                className="max-w-full after:absolute after:inset-0"
+                data-ov-mate-open=""
+                onClick={onOpen}
+                tone="plain"
+              >
+                <span className="truncate">{name}</span>
+              </InlineButton>
+            </span>
           )}
           {mark}
           {parts.length === 0 ? null : (
@@ -142,14 +147,18 @@ export function ComingMateRow({
           {onOpen === undefined ? (
             <span className="ov-mate-name">{name}</span>
           ) : (
-            <button
-              aria-label={`Open ${name}`}
-              className="ov-mate-name ov-mate-open"
-              onClick={onOpen}
-              type="button"
-            >
-              {name}
-            </button>
+            <span className="ov-mate-name">
+              {/* The name opens the Mate: its press spans the row, under the row's own presses. */}
+              <InlineButton
+                aria-label={`Open ${name}`}
+                className="max-w-full after:absolute after:inset-0"
+                data-ov-mate-open=""
+                onClick={onOpen}
+                tone="plain"
+              >
+                <span className="truncate">{name}</span>
+              </InlineButton>
+            </span>
           )}
         </span>
         <span className="ov-mate-l2" data-tone={stopped ? "attention" : undefined}>
@@ -179,12 +188,11 @@ function MateRowPart({ mate, part }: { readonly mate: string; readonly part: Mat
           url === undefined ? (
             <span className="ov-mate-preview" data-off="" />
           ) : (
-            <a
+            <InlineButton
               aria-label={`Open ${mate}'s ${service}`}
-              className="ov-mate-preview"
-              href={url}
-              rel="noreferrer"
-              target="_blank"
+              className="relative z-1 h-5.5"
+              render={<a href={url} rel="noreferrer" target="_blank" />}
+              tone="muted"
             />
           )
         }
