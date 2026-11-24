@@ -1,5 +1,5 @@
 import { usePublicAccess, type PublicAccessView } from "~/zerops/usePublicAccess";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 
 /**
  * Address failures are independent of whether the deployed version is healthy. An address put in
@@ -51,15 +51,14 @@ export function StopPublicAccessLinks({ access }: { readonly access: PublicAcces
     <div className="flex min-w-0 flex-col gap-1">
       <StopPublicAccessStatus access={access} />
       {access.routes.map((route) => (
-        <a
-          className="truncate text-caption underline underline-offset-2"
-          key={route.url}
-          href={route.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {route.host}
-        </a>
+        <span className="flex min-w-0 text-caption" key={route.url}>
+          <InlineButton
+            className="min-w-0 shrink"
+            render={<a href={route.url} rel="noreferrer" target="_blank" />}
+          >
+            <span className="truncate">{route.host}</span>
+          </InlineButton>
+        </span>
       ))}
     </div>
   );

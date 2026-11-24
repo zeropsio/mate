@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import { Input } from "~/components/ui/input";
@@ -78,16 +79,16 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
                   </>
                 )}
                 <p>
-                  <a
-                    className="text-primary underline underline-offset-2"
-                    href={guide.tokenUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Button
+                    className="-ms-2.5"
+                    render={<a href={guide.tokenUrl} rel="noopener noreferrer" target="_blank" />}
+                    size="sm"
+                    variant="link"
                   >
                     {guide.host === "unknown"
                       ? "Open likely token settings"
                       : `Create ${guide.host === "github" ? "GitHub fine-grained" : "GitLab personal access"} token`}
-                  </a>
+                  </Button>
                 </p>
               </>
             )}

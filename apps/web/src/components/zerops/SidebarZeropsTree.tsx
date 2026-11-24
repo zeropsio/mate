@@ -249,6 +249,7 @@ import {
   type ProjectReviewItem,
 } from "./SidebarProjectReview";
 import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
+import { InlineButton } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
@@ -2544,18 +2545,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           {onShowPlatformProjects === undefined ? null : (
             <>
               <span aria-hidden="true">·</span>
-              <button
+              <InlineButton
                 aria-expanded={showPlatformProjects}
-                className="menu-show-everyone"
                 data-zerops-surface="sidebar-platform-projects-toggle"
                 onClick={() => {
                   setPlatformMotion(showPlatformProjects ? "closing" : "opening");
                   onShowPlatformProjects(!showPlatformProjects);
                 }}
-                type="button"
               >
                 {showPlatformProjects ? "Hide" : "Show"}
-              </button>
+              </InlineButton>
             </>
           )}
         </span>
@@ -2621,14 +2620,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             >
               <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
               <span aria-hidden="true">·</span>
-              <button
-                className="menu-show-everyone"
-                data-zerops-surface="sidebar-show-everyone"
-                onClick={onShowEveryone}
-                type="button"
-              >
+              <InlineButton data-zerops-surface="sidebar-show-everyone" onClick={onShowEveryone}>
                 Show everyone
-              </button>
+              </InlineButton>
             </span>
           )}
           {platformSection}
@@ -4242,15 +4236,15 @@ function MateRowView<T extends RosterCandidate>({
         </span>
       )}
       {outsideHq || retainedReply === undefined ? null : (
-        <span className="absolute end-2 bottom-2.5">
-          <a
-            className="shrink-0 text-caption text-muted-foreground underline"
-            href={zeropsProjectUrl(candidate.project.id)}
-            target="_blank"
-            rel="noreferrer"
+        <span className="absolute end-2 bottom-2.5 text-caption">
+          <InlineButton
+            render={
+              <a href={zeropsProjectUrl(candidate.project.id)} rel="noreferrer" target="_blank" />
+            }
+            tone="muted"
           >
             Open in Zerops
-          </a>
+          </InlineButton>
         </span>
       )}
       {!menuShown && globe === undefined ? null : (

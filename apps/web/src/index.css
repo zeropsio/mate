@@ -3772,24 +3772,6 @@ code {
     color: var(--foreground);
   }
 
-  .mac-ready-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    color: var(--info-foreground);
-    font-weight: 500;
-  }
-
-  .mac-ready-link:hover {
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  .mac-ready-link > svg {
-    width: 13px;
-    height: 13px;
-  }
-
   .mac-ready-item > .mac-command {
     background: var(--background);
   }
@@ -4682,21 +4664,6 @@ code {
     border-radius: 10px;
     font-size: 14px;
     line-height: 20px;
-  }
-
-  /* The verb on a line of what the list leaves out (*Show everyone*, *Show* / *Hide*): the one
-     word on it that does something. */
-  .menu-show-everyone {
-    color: var(--sidebar-foreground);
-    font-weight: 500;
-    text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
-    text-underline-offset: 3px;
-    cursor: pointer;
-    transition: text-decoration-color 150ms var(--ease-out-strong);
-  }
-
-  .menu-show-everyone:hover {
-    text-decoration-color: currentColor;
   }
 
   /* The words' second ink: what the person asked, and the crew's one fact.
@@ -8226,17 +8193,6 @@ a.ov-acc-face:hover [data-part="name"] {
 
 .ov-reach > li[data-pending] > :not(.ov-acc-level) {
   opacity: 0.55;
-}
-
-.ov-acc-link {
-  justify-self: start;
-  color: var(--primary);
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-
-.ov-acc-link:hover {
-  text-decoration: underline;
 }
 
 /* *Add access*: a search, the organization's people with Read and Full to tick, *Add people*. */
@@ -17703,16 +17659,6 @@ a.message-file:focus-visible {
 /* A service Zerops runs, unfolded: its values under its line. */
 .vault-made-rows {
   border-top: 1px solid var(--vault-hairline);
-}
-
-.vault-file-link {
-  color: var(--muted-foreground);
-  text-underline-offset: 2px;
-}
-
-.vault-file-link:hover {
-  color: var(--foreground);
-  text-decoration: underline;
 }
 
 /* A `${name}` inside a value: a quiet chip in the line. */

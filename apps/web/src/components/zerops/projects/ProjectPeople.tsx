@@ -98,6 +98,7 @@ import {
   type CellChoice,
 } from "./accessTable.logic";
 import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccessTable";
+import { InlineButton } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
@@ -741,15 +742,20 @@ export function PlaceAccess({
   return (
     <PlaceAccessSummary
       change={
-        <Link
-          className="ov-acc-link"
-          hash={`access-${projectId}`}
-          onClick={onLeave}
-          params={{ groupId }}
-          to="/group/$groupId/flow"
-        >
-          {placeLinkWords(groupName, view.kind === "table" && view.editable)}
-        </Link>
+        <span className="justify-self-start text-body">
+          <InlineButton
+            render={
+              <Link
+                hash={`access-${projectId}`}
+                onClick={onLeave}
+                params={{ groupId }}
+                to="/group/$groupId/flow"
+              />
+            }
+          >
+            {placeLinkWords(groupName, view.kind === "table" && view.editable)}
+          </InlineButton>
+        </span>
       }
       line={line}
       summary={summary}

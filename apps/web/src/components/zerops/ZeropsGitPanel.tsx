@@ -281,16 +281,17 @@ function Destination({ to }: { readonly to: RepoState["destination"] }) {
   if (to === null) return null;
   const Mark = to.href.startsWith("https://github.com/") ? GitHubIcon : GitBranchIcon;
   return (
-    <a
-      className="inline-flex min-w-0 items-center gap-1 rounded-sm text-caption text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-      data-zerops-surface="git-destination"
-      href={to.href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <Mark aria-hidden="true" className="size-3 shrink-0" />
-      <span className="truncate">{to.label}</span>
-    </a>
+    <span className="flex min-w-0 text-caption">
+      <InlineButton
+        className="min-w-0 shrink"
+        data-zerops-surface="git-destination"
+        render={<a href={to.href} rel="noreferrer" target="_blank" />}
+        tone="muted"
+      >
+        <Mark aria-hidden="true" className="size-3 shrink-0" />
+        <span className="truncate">{to.label}</span>
+      </InlineButton>
+    </span>
   );
 }
 

@@ -12,6 +12,7 @@ import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
+import { InlineButton } from "~/components/ui/button";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
@@ -107,17 +108,16 @@ export function PlaceLine({
       {address === undefined ? null : (
         <>
           <Sep />
-          <a
+          <InlineButton
             aria-label={`Open ${view.title} at ${address.host}`}
-            className="relative z-10 inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground outline-none underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative z-10 min-w-0 shrink"
             data-zerops-place-address=""
-            href={address.url}
-            rel="noreferrer"
-            target="_blank"
+            render={<a href={address.url} rel="noreferrer" target="_blank" />}
+            tone="muted"
           >
             <span className="truncate">{address.host}</span>
             <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
-          </a>
+          </InlineButton>
         </>
       )}
     </>

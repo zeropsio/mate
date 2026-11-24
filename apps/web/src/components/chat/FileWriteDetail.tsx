@@ -12,6 +12,7 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { FileWrite, ScopedThreadRef } from "@t3tools/contracts";
 import { Fragment, type ReactNode, use, useEffect, useEffectEvent, useState } from "react";
 
+import { InlineButton } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { threadFileWritesCommands } from "../../state/threadFileWritesCommands";
@@ -167,14 +168,13 @@ export function FileWriteDetail({
                 {shown}
               </span>
               {target !== null && threadRef !== null ? (
-                <button
-                  className="shrink-0 cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+                <InlineButton
                   data-open-in-files={target.kind}
                   onClick={() => useRightPanelStore.getState().openFile(threadRef, target.path)}
-                  type="button"
+                  tone="muted"
                 >
                   Open in Files
-                </button>
+                </InlineButton>
               ) : null}
             </div>
             {box(`write:${index}`, <WrittenChanges write={write} />)}

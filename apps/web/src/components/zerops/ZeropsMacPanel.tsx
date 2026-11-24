@@ -27,7 +27,7 @@ import { useMateMacView } from "../../zerops/macViewLinks";
 import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { Badge } from "~/components/ui/badge";
 
 /** How long a copy button says so. */
@@ -95,10 +95,10 @@ function SetupCommand({ command }: { readonly command: string }) {
 /** A page to install from, opened beside the app. */
 function InstallLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
   return (
-    <a className="mac-ready-link" href={href} rel="noreferrer" target="_blank">
+    <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
       {children}
-      <ArrowUpRightIcon aria-hidden="true" />
-    </a>
+      <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+    </InlineButton>
   );
 }
 

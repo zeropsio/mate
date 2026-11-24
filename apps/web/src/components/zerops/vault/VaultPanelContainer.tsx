@@ -26,6 +26,7 @@ import { Atom } from "effect/reactivity";
 import { FileCodeIcon } from "lucide-react";
 import { useCallback, useMemo, useRef } from "react";
 
+import { InlineButton } from "~/components/ui/button";
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useRightPanelStore } from "~/rightPanelStore";
 
@@ -335,15 +336,17 @@ function DeployConfigLink({
   if (path === null) return null;
   const line = file.data === null ? null : setupLine(file.data.contents, hostname);
   return (
-    <button
-      className="vault-file-link inline-flex min-w-0 items-center gap-1 text-caption"
-      onClick={() =>
-        useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
-      }
-      type="button"
-    >
-      <FileCodeIcon aria-hidden="true" className="size-3 shrink-0" />
-      <span className="truncate">{path}</span>
-    </button>
+    <span className="flex min-w-0 text-caption">
+      <InlineButton
+        className="min-w-0 shrink"
+        onClick={() =>
+          useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
+        }
+        tone="muted"
+      >
+        <FileCodeIcon aria-hidden="true" className="size-3 shrink-0" />
+        <span className="truncate">{path}</span>
+      </InlineButton>
+    </span>
   );
 }

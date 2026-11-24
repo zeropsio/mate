@@ -266,12 +266,14 @@ export function ZeropsGitOverview({
           <p className="text-body text-muted-foreground">
             No repositories yet. Repositories appear here after a project is set up.
           </p>
-          <a
-            className="text-body text-primary underline-offset-2 hover:underline"
-            href={`${appBasePath()}/zerops`}
+          <Button
+            className="-ms-2.5 self-start"
+            render={<a href={`${appBasePath()}/zerops`} />}
+            size="sm"
+            variant="link"
           >
             Open Projects
-          </a>
+          </Button>
         </div>
       ) : (
         <p className="text-body text-muted-foreground">No open changes.</p>

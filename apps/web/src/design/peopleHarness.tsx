@@ -17,6 +17,7 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
+import { InlineButton } from "~/components/ui/button";
 import { accessTable, columnPeople } from "~/components/zerops/projects/accessTable.logic";
 import { draftView } from "~/components/zerops/projects/accessDraft.logic";
 import {
@@ -158,9 +159,11 @@ function HarnessPage() {
           <article className="ov-card" data-harness="place" style={{ maxWidth: 560 }}>
             <PlaceAccessSummary
               change={
-                <a className="ov-acc-link" href="#access-stage">
-                  Change on kite.works’s page
-                </a>
+                <span className="justify-self-start text-body">
+                  <InlineButton render={<a href="#access-stage" />}>
+                    Change on kite.works’s page
+                  </InlineButton>
+                </span>
               }
               line={null}
               summary={columnPeople(stage, "stage")}

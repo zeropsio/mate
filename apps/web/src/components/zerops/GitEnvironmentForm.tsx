@@ -236,14 +236,16 @@ export function GitEnvironmentForm({
                   Create a fine-grained token on GitHub for {repository.guide.repository} only. The
                   link fills in the name, owner, expiry and permissions.
                 </p>
-                <a
-                  className="text-primary underline underline-offset-2"
-                  href={repository.guide.tokenUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Button
+                  className="-ms-2.5"
+                  render={
+                    <a href={repository.guide.tokenUrl} rel="noopener noreferrer" target="_blank" />
+                  }
+                  size="sm"
+                  variant="link"
                 >
                   Create the token on GitHub
-                </a>
+                </Button>
                 <p className="text-body">
                   On GitHub, under Repository access choose Only select repositories and pick{" "}
                   {repository.guide.repository} — the link cannot do it for you.
@@ -269,16 +271,18 @@ export function GitEnvironmentForm({
                   {repository.guide.hostLabel}’s settings; other hosts may use different permission
                   names.
                 </p>
-                <a
-                  className="text-primary underline underline-offset-2"
-                  href={repository.guide.tokenUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Button
+                  className="-ms-2.5"
+                  render={
+                    <a href={repository.guide.tokenUrl} rel="noopener noreferrer" target="_blank" />
+                  }
+                  size="sm"
+                  variant="link"
                 >
                   {repository.guide.host === "unknown"
                     ? "Open likely token settings"
                     : `Create ${repository.guide.hostLabel} token`}
-                </a>
+                </Button>
               </>
             )}
             <Label htmlFor={`${id}-token`}>Token</Label>

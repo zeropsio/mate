@@ -15,6 +15,8 @@ import { classifyBlob, canDownloadBlob } from "@t3tools/client-runtime/zerops/da
 import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
+import { Button } from "../ui/button";
+
 interface ZeropsDataBlobProps {
   readonly blob: ZeropsDataConsoleBlob;
   /** The browsed node's name, used as an image's alt text. */
@@ -123,14 +125,20 @@ export function ZeropsDataBlob({ blob, name }: ZeropsDataBlobProps) {
   return (
     <div className="space-y-2 p-3" data-zerops-data-blob data-zerops-data-blob-kind={preview.kind}>
       {canDownloadBlob(blob) ? (
-        <a
+        <Button
+          className="-ms-2"
           data-zerops-data-download
-          className="text-caption text-primary"
-          download={name ?? "preview"}
-          href={`data:application/octet-stream;base64,${blob.data}`}
+          render={
+            <a
+              download={name ?? "preview"}
+              href={`data:application/octet-stream;base64,${blob.data}`}
+            />
+          }
+          size="xs"
+          variant="link"
         >
           Download preview
-        </a>
+        </Button>
       ) : (
         <p className="text-caption text-muted-foreground">Preview limited · download unavailable</p>
       )}

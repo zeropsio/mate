@@ -3,7 +3,7 @@ import { useMateImage, useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { ExpressMark } from "../express/ExpressMark";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -127,13 +127,15 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-caption text-muted-foreground/80">
               {item.name}
               {reference !== null && original.read.kind === "ready" && original.url ? (
-                <a
-                  className="ml-3 underline"
-                  href={original.url}
-                  download={original.read.occurrence?.name ?? item.name}
+                <InlineButton
+                  className="ml-3"
+                  render={
+                    <a download={original.read.occurrence?.name ?? item.name} href={original.url} />
+                  }
+                  tone="muted"
                 >
                   Download original
-                </a>
+                </InlineButton>
               ) : null}
               {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
             </p>

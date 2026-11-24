@@ -26,6 +26,7 @@ import {
 import type { ZeropsDataConsoleNode, ZeropsDataConsolePath } from "@t3tools/contracts";
 import type { ReactElement } from "react";
 
+import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 
 interface ZeropsDataTreeProps {
@@ -156,15 +157,16 @@ function renderNodeList({
       ))}
       {entry.nextCursor !== undefined ? (
         <li style={{ paddingLeft: depth * 12 }}>
-          <button
-            className="text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 disabled:opacity-50"
+          <Button
+            className="-ms-2"
             data-zerops-data-tree-load-more={key}
             disabled={loadingKeys.has(key)}
             onClick={() => onLoadMore(path, entry.nextCursor as string)}
-            type="button"
+            size="xs"
+            variant="link"
           >
             Load more
-          </button>
+          </Button>
         </li>
       ) : null}
     </ul>

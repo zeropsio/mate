@@ -24,6 +24,7 @@ import ChatMarkdown, {
   type MarkdownFileElsewhere,
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
+import { InlineButton } from "~/components/ui/button";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
@@ -112,9 +113,7 @@ export function ReviewDescription({
     <ReviewSection
       aside={
         onOpenRun === undefined ? undefined : (
-          <button className="rv-link" onClick={onOpenRun} type="button">
-            The run that made it
-          </button>
+          <InlineButton onClick={onOpenRun}>The run that made it</InlineButton>
         )
       }
       title={WHAT_IT_DOES}
