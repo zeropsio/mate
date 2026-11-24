@@ -17,7 +17,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { createPortal } from "react-dom";
 
 import type { ComposerImageAttachment } from "~/composerDraftStore";
 import {
@@ -33,6 +32,7 @@ import { pictureFitSize } from "~/lib/imageCompression";
 import { drawPictureMarks, pictureMarkMetrics } from "~/lib/pictureDrawing";
 import { randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
@@ -107,6 +107,9 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
 
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  // The stage as it mounts: the dialog draws its popup a beat after the view, so it is measured
+  // once it is there rather than on the view's first commit.
+  const [stageNode, setStageNode] = useState<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
   const marksRef = useRef<HTMLCanvasElement>(null);
@@ -176,7 +179,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
 
   // The stage's size decides the frame's.
   useLayoutEffect(() => {
-    const element = stageRef.current;
+    const element = stageNode;
     if (!element) return;
     const measure = () => {
       const rect = element.getBoundingClientRect();
@@ -190,7 +193,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [stageNode]);
 
   const frameWidth = layout?.width ?? 0;
   const frameHeight = layout?.height ?? 0;
@@ -312,10 +315,6 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
     note.style.left = `${clamp(x, 8, Math.max(8, stageRect.width - note.offsetWidth - 8))}px`;
     note.style.top = `${clamp(offset.y + anchor.y - 22, 8, Math.max(8, stageRect.height - note.offsetHeight - 8))}px`;
   });
-
-  useEffect(() => {
-    doneRef.current?.focus({ preventScroll: true });
-  }, []);
 
   const change = (next: Partial<ComposerPicture>) => {
     undoRef.current.push(picture);
@@ -585,192 +584,207 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
       : " · preparing…";
   const source = picture.source;
 
-  return createPortal(
-    <div
-      ref={rootRef}
-      className="picture-view"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Picture: ${source?.name ?? image.name}`}
-      onKeyDown={onKeyDown}
+  return (
+    <Dialog
+      onOpenChange={(open, details) => {
+        // Escape is the view's own, a layer at a time (a note, the crop, then the view).
+        if (!open && details.reason !== "escape-key") close();
+      }}
+      open
     >
-      <div className="picture-view-top">
-        <span className="picture-view-name">{source?.name ?? image.name}</span>
-        <span className="picture-view-dims">
-          {source
-            ? `${pictureDims(picture.sourceWidth, picture.sourceHeight)} · ${formatPictureBytes(source.size)}`
-            : pictureDims(picture.width, picture.height)}
-        </span>
-        <Button
-          variant="scrim"
-          size="icon-md"
-          className="ms-auto"
-          aria-label="Close picture"
-          onClick={close}
-        >
-          <XIcon aria-hidden="true" className="size-4.5" />
-        </Button>
-      </div>
-      <div ref={stageRef} className="picture-view-stage">
-        {layout ? (
+      <DialogMediaPopup
+        aria-label={`Picture: ${source?.name ?? image.name}`}
+        initialFocus={doneRef}
+      >
+        <div ref={rootRef} className="picture-view" onKeyDown={onKeyDown}>
+          <div className="picture-view-top">
+            <span className="picture-view-name">{source?.name ?? image.name}</span>
+            <span className="picture-view-dims">
+              {source
+                ? `${pictureDims(picture.sourceWidth, picture.sourceHeight)} · ${formatPictureBytes(source.size)}`
+                : pictureDims(picture.width, picture.height)}
+            </span>
+            <Button
+              variant="scrim"
+              size="icon-md"
+              className="ms-auto"
+              aria-label="Close picture"
+              onClick={close}
+            >
+              <XIcon aria-hidden="true" className="size-4.5" />
+            </Button>
+          </div>
           <div
-            ref={frameRef}
-            className="picture-view-frame"
-            data-mode={mode}
-            data-editable={editable ? "true" : undefined}
-            data-over-mark={hoverMark ? "true" : undefined}
-            style={{ width: layout.width, height: layout.height }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerCancel}
+            ref={(node) => {
+              stageRef.current = node;
+              setStageNode(node);
+            }}
+            className="picture-view-stage"
           >
-            <canvas ref={baseRef} className="picture-view-canvas" />
-            <canvas ref={marksRef} className="picture-view-canvas" />
-            {mode === "mark"
-              ? marks.map((mark, index) =>
-                  index === noteFor || mark.note.length === 0 ? null : (
-                    <button
-                      key={mark.id}
-                      ref={(element) => {
-                        if (element) chipRefs.current.set(index, element);
-                        else chipRefs.current.delete(index);
-                      }}
-                      type="button"
-                      className="picture-chip"
-                      data-selected={index === selected ? "true" : undefined}
-                      aria-label={`Note ${index + 1}: ${mark.note}. Edit it`}
-                      onClick={() => {
-                        commitNote();
-                        openNote(index);
-                      }}
-                    >
-                      {mark.note}
-                    </button>
-                  ),
-                )
-              : null}
-            {cropping ? (
+            {layout ? (
               <div
-                className="picture-crop"
-                style={{
-                  left: (cropDraft.x - view.x) * layout.scale,
-                  top: (cropDraft.y - view.y) * layout.scale,
-                  width: cropDraft.w * layout.scale,
-                  height: cropDraft.h * layout.scale,
-                }}
+                ref={frameRef}
+                className="picture-view-frame"
+                data-mode={mode}
+                data-editable={editable ? "true" : undefined}
+                data-over-mark={hoverMark ? "true" : undefined}
+                style={{ width: layout.width, height: layout.height }}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerCancel}
               >
-                {CROP_HANDLES.map((handle) => (
-                  <span key={handle} className="picture-crop-handle" data-handle={handle} />
-                ))}
+                <canvas ref={baseRef} className="picture-view-canvas" />
+                <canvas ref={marksRef} className="picture-view-canvas" />
+                {mode === "mark"
+                  ? marks.map((mark, index) =>
+                      index === noteFor || mark.note.length === 0 ? null : (
+                        <button
+                          key={mark.id}
+                          ref={(element) => {
+                            if (element) chipRefs.current.set(index, element);
+                            else chipRefs.current.delete(index);
+                          }}
+                          type="button"
+                          className="picture-chip"
+                          data-selected={index === selected ? "true" : undefined}
+                          aria-label={`Note ${index + 1}: ${mark.note}. Edit it`}
+                          onClick={() => {
+                            commitNote();
+                            openNote(index);
+                          }}
+                        >
+                          {mark.note}
+                        </button>
+                      ),
+                    )
+                  : null}
+                {cropping ? (
+                  <div
+                    className="picture-crop"
+                    style={{
+                      left: (cropDraft.x - view.x) * layout.scale,
+                      top: (cropDraft.y - view.y) * layout.scale,
+                      width: cropDraft.w * layout.scale,
+                      height: cropDraft.h * layout.scale,
+                    }}
+                  >
+                    {CROP_HANDLES.map((handle) => (
+                      <span key={handle} className="picture-crop-handle" data-handle={handle} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {noteFor >= 0 ? (
+              <div ref={noteRef} className="picture-note">
+                <div className="picture-note-head">
+                  <span className="picture-note-number">{noteFor + 1}</span>
+                  <span>Note</span>
+                </div>
+                <Textarea
+                  ref={noteTextRef}
+                  unstyled
+                  size="sm"
+                  rows={2}
+                  value={noteDraft}
+                  placeholder="What should change here?"
+                  aria-label="Note text"
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      !event.nativeEvent.isComposing
+                    ) {
+                      event.preventDefault();
+                      commitNote();
+                      doneRef.current?.focus({ preventScroll: true });
+                    }
+                  }}
+                />
+                <div className="picture-note-foot">
+                  <span>↵ to save, empty is fine</span>
+                  {editable ? (
+                    <Button
+                      variant="destructive-ghost"
+                      size="xs"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => removeMark(noteFor)}
+                    >
+                      <Trash2Icon aria-hidden="true" />
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </div>
-        ) : null}
-        {noteFor >= 0 ? (
-          <div ref={noteRef} className="picture-note">
-            <div className="picture-note-head">
-              <span className="picture-note-number">{noteFor + 1}</span>
-              <span>Note</span>
-            </div>
-            <Textarea
-              ref={noteTextRef}
-              unstyled
-              size="sm"
-              rows={2}
-              value={noteDraft}
-              placeholder="What should change here?"
-              aria-label="Note text"
-              onChange={(event) => setNoteDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  commitNote();
-                  doneRef.current?.focus({ preventScroll: true });
-                }
-              }}
-            />
-            <div className="picture-note-foot">
-              <span>↵ to save, empty is fine</span>
+          <div className="picture-view-bar">
+            <div className="picture-tools">
               {editable ? (
-                <Button
-                  variant="destructive-ghost"
-                  size="xs"
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => removeMark(noteFor)}
-                >
-                  <Trash2Icon aria-hidden="true" />
-                  Remove
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    aria-pressed={cropping}
+                    data-pressed={cropping || undefined}
+                    onClick={() => (cropping ? leaveCrop(true) : enterCrop())}
+                  >
+                    <CropIcon aria-hidden="true" />
+                    Crop
+                  </Button>
+                  <span className="picture-tools-rule" />
+                </>
               ) : null}
+              {cropping ? (
+                <span className="picture-tools-info">
+                  <span>{pictureDims(cropDraft.w, cropDraft.h)}</span>
+                  <Button
+                    variant="ghost-muted"
+                    size="xs"
+                    onClick={() => setCropDraft(fullPictureCrop(sourceSize.w, sourceSize.h))}
+                  >
+                    Reset
+                  </Button>
+                </span>
+              ) : (
+                <span className="picture-tools-hint">
+                  {editable
+                    ? "Click to pin a note, drag to box an area"
+                    : "Its marks and crop stay as they were before the reload"}
+                </span>
+              )}
+              <span className="picture-tools-rule" />
+              <span className="picture-tools-out" aria-live="polite">
+                Sends <b>{pictureDims(sends.width, sends.height)}</b>
+                {tail}
+                {picture.keepOriginal && source ? (
+                  <span className="picture-tools-plus">
+                    {" "}
+                    + original {formatPictureBytes(source.size)}
+                  </span>
+                ) : null}
+              </span>
+              {props.canKeepOriginal && source ? (
+                <label className="picture-tool picture-keep">
+                  <Switch
+                    checked={picture.keepOriginal}
+                    onCheckedChange={(checked) => change({ keepOriginal: checked })}
+                    aria-describedby="picture-keep-why"
+                  />
+                  <span>Keep original</span>
+                  <span id="picture-keep-why" className="sr-only">
+                    {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
+                  </span>
+                </label>
+              ) : null}
+              <Button ref={doneRef} onClick={close}>
+                Done
+              </Button>
             </div>
           </div>
-        ) : null}
-      </div>
-      <div className="picture-view-bar">
-        <div className="picture-tools">
-          {editable ? (
-            <>
-              <Button
-                variant="ghost"
-                aria-pressed={cropping}
-                data-pressed={cropping || undefined}
-                onClick={() => (cropping ? leaveCrop(true) : enterCrop())}
-              >
-                <CropIcon aria-hidden="true" />
-                Crop
-              </Button>
-              <span className="picture-tools-rule" />
-            </>
-          ) : null}
-          {cropping ? (
-            <span className="picture-tools-info">
-              <span>{pictureDims(cropDraft.w, cropDraft.h)}</span>
-              <Button
-                variant="ghost-muted"
-                size="xs"
-                onClick={() => setCropDraft(fullPictureCrop(sourceSize.w, sourceSize.h))}
-              >
-                Reset
-              </Button>
-            </span>
-          ) : (
-            <span className="picture-tools-hint">
-              {editable
-                ? "Click to pin a note, drag to box an area"
-                : "Its marks and crop stay as they were before the reload"}
-            </span>
-          )}
-          <span className="picture-tools-rule" />
-          <span className="picture-tools-out" aria-live="polite">
-            Sends <b>{pictureDims(sends.width, sends.height)}</b>
-            {tail}
-            {picture.keepOriginal && source ? (
-              <span className="picture-tools-plus">
-                {" "}
-                + original {formatPictureBytes(source.size)}
-              </span>
-            ) : null}
-          </span>
-          {props.canKeepOriginal && source ? (
-            <label className="picture-tool picture-keep">
-              <Switch
-                checked={picture.keepOriginal}
-                onCheckedChange={(checked) => change({ keepOriginal: checked })}
-                aria-describedby="picture-keep-why"
-              />
-              <span>Keep original</span>
-              <span id="picture-keep-why" className="sr-only">
-                {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
-              </span>
-            </label>
-          ) : null}
-          <Button ref={doneRef} onClick={close}>
-            Done
-          </Button>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </DialogMediaPopup>
+    </Dialog>
   );
 }

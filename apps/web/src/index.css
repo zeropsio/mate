@@ -10630,25 +10630,15 @@ button:hover > .run-result-tile::after {
 }
 
 /* The open picture: its stage, its marks and notes, and the bar that says what goes. */
+/* The picture's stage, filling the kit's media dialog (`DialogMediaPopup`), which fades it in. */
 .picture-view {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
   display: flex;
+  width: 100%;
+  height: 100%;
   flex-direction: column;
   background: var(--picture-stage);
   color: var(--picture-stage-ink);
   font-family: var(--font-sans);
-  animation: picture-view-in 140ms ease-out;
-}
-
-@keyframes picture-view-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .picture-view-top {
