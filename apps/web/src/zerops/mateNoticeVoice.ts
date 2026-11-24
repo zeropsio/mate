@@ -193,6 +193,10 @@ export function mateNoticeVoice(
     readonly operates?: boolean | undefined;
     /** HQ's verdict on the Mate (`hqMateState`). */
     readonly mateState?: HqMateState | null | undefined;
+    /** HQ's restart of the Mate is open (`mateNoticeDecision`). */
+    readonly restartOpen?: boolean | undefined;
+    /** HQ holds the Mate in its relink grace (`mateNoticeDecision`). */
+    readonly relinking?: boolean | undefined;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -252,6 +256,15 @@ export function mateNoticeVoice(
       restarting: true,
       restartLines: RESTART_LINES.map((line) => line(name)),
     };
+  // HQ's relink grace: its link closed and HQ waits for the next; nothing restarts. Over a shown
+  // conversation it is the header's reconnecting line, as a lost link's is.
+  if (decision.phase === "relinking")
+    return surface === "banner"
+      ? { ...say(`Reconnecting to ${name}…`, ""), surface: "header", severity: "info" }
+      : say(
+          `Reconnecting to ${name}…`,
+          input.lastKnown ?? "The conversation will open when the connection returns.",
+        );
   if (decision.phase === "updating")
     return surface === "banner"
       ? say(`${name} is updating to the new version.`, "Back in a moment.", "waking")

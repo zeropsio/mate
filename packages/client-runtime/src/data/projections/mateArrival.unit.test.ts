@@ -226,3 +226,47 @@ it("PJ+3: A Mate HQ says is offline, its link not live, says HQ's verdict with O
     expect({ reachability, phase: decide(reachability).phase }).toEqual({ reachability, phase });
   expect(decide({ kind: "reconnecting" })).toEqual(said);
 });
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | : input.restartOpen === true → : false
+it("PJ+4: While HQ's restart of a Mate is open its page says one stage, restarting, with no verb, whatever its container, its link or HQ's verdict say, and in HQ's relink grace its link says only that it reconnects; breaks: a restart pressed flips between not answering, stopped and starting with Restart offered again, and a Mate whose link closed reads as restarting while nothing restarts", () => {
+  const offline = { state: "offline", since: "2026-11-24T10:06:56.977Z", why: "link_closed" };
+  const stopped = { standing: { kind: "unknown" }, status: "STOPPED", process: undefined } as const;
+  const starting = {
+    standing: { kind: "unknown" },
+    status: "ACTIVE",
+    process: undefined,
+    lifecycle: { state: "running", verb: "start", cause: "", actions: [] },
+  } as const;
+  const announced: Reachability = {
+    kind: "container",
+    container: { level: "restarting", by: "announced", overdue: false },
+  };
+  const lost: Reachability = { kind: "reconnecting" };
+  const ready: Reachability = { kind: "ready", notice: null };
+  const gone: Reachability = { kind: "gone", because: "direct-not-found" };
+  const on = { mateName: "Basil", conversationShown: false, nowMs: 0 };
+  type Input = Partial<Parameters<typeof mateNoticeDecision>[0]>;
+  // HQ's open restart × HQ's grace × the container, link and verdict: the stage and its verbs.
+  const table: ReadonlyArray<readonly [Input, phase: string, actions: ReadonlyArray<string>]> = [
+    [{ restartOpen: true, reachability: lost, mateState: offline }, "restarting", []],
+    [{ restartOpen: true, reachability: lost, recovery: stopped }, "restarting", []],
+    [{ restartOpen: true, reachability: lost, recovery: starting }, "restarting", []],
+    [{ restartOpen: true, reachability: announced }, "restarting", []],
+    [{ restartOpen: true, reachability: ready, conversationShown: true }, "restarting", []],
+    [{ restartOpen: true, reachability: gone }, "reachability", ["go-to-projects"]],
+    [{ restartOpen: false, reachability: lost, mateState: offline }, "offline", ["open-in-zerops"]],
+    [{ relinking: true, reachability: announced }, "relinking", []],
+    [{ relinking: true, reachability: lost }, "relinking", []],
+    [{ relinking: true, reachability: announced, conversationShown: true }, "relinking", []],
+    [{ relinking: true, reachability: ready, conversationShown: true }, "none", []],
+    [{ relinking: true, restartOpen: true, reachability: announced }, "restarting", []],
+  ];
+  for (const [input, phase, actions] of table) {
+    const decision = mateNoticeDecision({ ...on, reachability: null, ...input });
+    expect({ input, phase: decision.phase, actions: decision.actions }).toEqual({
+      input,
+      phase,
+      actions,
+    });
+  }
+});

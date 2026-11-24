@@ -20,6 +20,7 @@ import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
+import { mateRestartOf } from "./mateRestart.ts";
 import { scopeSlow } from "./freshness.ts";
 import { zeropsPeople } from "./zeropsPeople.ts";
 
@@ -247,6 +248,20 @@ export interface HqMateState {
   readonly since: string | undefined;
   readonly why: string | undefined;
 }
+
+/** Whether HQ's restart of the project's Mate is open (`mateRestartOf` `going`). */
+export const hqMateRestartOpen: Projection<MateProjectKey, boolean> = {
+  name: "hqMateRestartOpen",
+  keyOf: hqMateOverview.keyOf,
+  derive: (read, { projectId }) => {
+    const placement = read.fact("placement", projectId);
+    return (
+      placement.kind === "known" &&
+      mateRestartOf({ hq: { operation: placement.value.operation } }).kind === "going"
+    );
+  },
+  equals: Object.is,
+};
 
 export const hqMateState: Projection<MateProjectKey, HqMateState | null> = {
   name: "hqMateState",

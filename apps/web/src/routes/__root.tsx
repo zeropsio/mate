@@ -196,7 +196,7 @@ function SignedInRootRouteView() {
         ? draftEnvironmentId
         : EnvironmentId.make(routeEnvironmentId),
   );
-  const gate = selectRouteGate(gateInputs.target, gateInputs.offline);
+  const gate = selectRouteGate(gateInputs.target, gateInputs.hq);
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
   // none can show yet; the Mate by its own name, never its container's host.
   const routeEnvironment =
@@ -278,6 +278,8 @@ function SignedInRootRouteView() {
           linkSlow,
           hqKey,
           mateState,
+          restartOpen: gateInputs.hq === "restarting",
+          relinking: gateInputs.relinking,
           nowMs,
           mateName: speakingName,
           operates: speakingCapabilities.projectAccessKnown

@@ -803,6 +803,16 @@ export function mateNoticeDecision(input: {
    * and one HQ says is offline speaks, its link not live, in place of whatever the link says.
    */
   readonly mateState?: HqMateState | null | undefined;
+  /**
+   * HQ's restart of the Mate is open (`mateRestartOf` `going`): the one stage while it runs is
+   * that it restarts, with no verb, whatever its container, its link or HQ's verdict say meanwhile.
+   */
+  readonly restartOpen?: boolean | undefined;
+  /**
+   * HQ holds the Mate in its relink grace (`hqMateLink` `restarting`): its link closed and HQ
+   * waits for the next one; its link says it reconnects, nothing restarts.
+   */
+  readonly relinking?: boolean | undefined;
 }) {
   const { reachability } = input;
   const surface = input.conversationShown ? ("banner" as const) : ("stage" as const);
@@ -829,34 +839,38 @@ export function mateNoticeDecision(input: {
         (containerRecovery !== null || reachability?.kind === "container")));
   const recovery = access ? null : containerRecovery;
   const recovering = recovery?.recovering !== undefined;
+  const live = reachability?.kind === "ready";
+  const terminal = reachability !== null && isTerminalReachability(reachability);
   const phase =
     input.limit !== undefined
       ? "limit"
       : access
         ? "access"
-        : recovery !== null
-          ? "recovery"
-          : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
-            ? notice.level
-            : input.mateState?.state === "offline" &&
-                reachability?.kind !== "ready" &&
-                (reachability === null || !isTerminalReachability(reachability))
-              ? "offline"
-              : reachability === null || opensQuietly(reachability)
-                ? input.conversationShown
-                  ? "none"
-                  : "opening"
-                : reachability.kind === "ready" && reachability.notice === null
-                  ? // Only a connected Mate's config and HQ's verdict on it are its word now; each
-                    // speaks over the conversation, HQ's verdict that it cannot work first.
-                    !input.conversationShown
-                    ? "none"
-                    : input.mateState?.state === "cannot_run"
-                      ? "cannot-run"
-                      : input.hqKey === undefined
+        : input.restartOpen === true && !terminal
+          ? "restarting"
+          : recovery !== null
+            ? "recovery"
+            : input.relinking === true && !live && !terminal
+              ? "relinking"
+              : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
+                ? notice.level
+                : input.mateState?.state === "offline" && !live && !terminal
+                  ? "offline"
+                  : reachability === null || opensQuietly(reachability)
+                    ? input.conversationShown
+                      ? "none"
+                      : "opening"
+                    : reachability.kind === "ready" && reachability.notice === null
+                      ? // Only a connected Mate's config and HQ's verdict on it are its word now; each
+                        // speaks over the conversation, HQ's verdict that it cannot work first.
+                        !input.conversationShown
                         ? "none"
-                        : "hq-key"
-                  : "reachability";
+                        : input.mateState?.state === "cannot_run"
+                          ? "cannot-run"
+                          : input.hqKey === undefined
+                            ? "none"
+                            : "hq-key"
+                      : "reachability";
   const actions: ReadonlyArray<ReachabilityAction> =
     phase === "access"
       ? ["go-to-projects"]

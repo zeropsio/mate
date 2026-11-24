@@ -24,12 +24,15 @@ import {
   type MateLink,
   type Reachability,
   type RouteContent,
+  type RouteHqHold,
   type RouteHqWait,
   type RouteTarget,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
   hqIndexWord,
+  hqMateLinkAtom,
+  hqMateRestartOpenAtom,
   hqMateStateAtom,
   listedProjectAtom,
   rosterAnswered,
@@ -236,8 +239,10 @@ export interface RouteGateInputs {
   readonly serviceId?: string | undefined;
   /** The owner's verdict on the route's Mate (`mateRecovery`). */
   readonly recovery: MateRecovery;
-  /** HQ says the route's Mate is not answering (`useRouteMate`). */
-  readonly offline: boolean;
+  /** HQ's word that holds the route's stage (`useRouteMate`). */
+  readonly hq: RouteHqHold;
+  /** HQ holds the route's Mate in its relink grace (`useRouteMate`). */
+  readonly relinking: boolean;
 }
 
 /**
@@ -267,17 +272,26 @@ export function useRouteMateProject(environmentId: EnvironmentId | null): {
 }
 
 /**
- * The owners' word on a route's Mate: the container's verdict (`mateRecovery`), whether HQ says it
- * is not answering (`hqMateState` `offline`), and whether either speaks for it (`openingMayEnd`):
- * its container stopped, or HQ's offline.
+ * The owners' word on a route's Mate: the container's verdict (`mateRecovery`), HQ's word that
+ * holds its stage (`RouteHqHold`: its open restart, else its verdict that the Mate is offline),
+ * whether HQ holds it in its relink grace (`hqMateLink` `restarting`), and whether an owner speaks
+ * for it (`openingMayEnd`): its container stopped, or HQ holds its stage.
  */
 export function useRouteMate(
   projectId: string | null,
   serviceId: string | undefined,
-): { readonly recovery: MateRecovery; readonly offline: boolean; readonly speaks: boolean } {
+): {
+  readonly recovery: MateRecovery;
+  readonly hq: RouteHqHold;
+  readonly relinking: boolean;
+  readonly speaks: boolean;
+} {
   const recovery = useMateRecovery(projectId, serviceId);
   const offline = useAtomValue(hqMateStateAtom(projectId ?? ""))?.state === "offline";
-  return { recovery, offline, speaks: offline || recovery.status === "STOPPED" };
+  const restartOpen = useAtomValue(hqMateRestartOpenAtom(projectId ?? ""));
+  const relinking = useAtomValue(hqMateLinkAtom(projectId ?? "")) === "restarting";
+  const hq: RouteHqHold = restartOpen ? "restarting" : offline ? "offline" : null;
+  return { recovery, hq, relinking, speaks: hq !== null || recovery.status === "STOPPED" };
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -376,7 +390,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           content,
         });
   const { projectId, serviceId } = useRouteMateProject(environmentId);
-  const { recovery, offline, speaks } = useRouteMate(projectId, serviceId);
+  const { recovery, hq, relinking, speaks } = useRouteMate(projectId, serviceId);
   // The route's one deadline, the listings' patience: it runs while, but for it, the route would
   // wait without end (`routeDeadlineRuns`) — on HQ to name its environment, on the environment to
   // be found, or on a Mate's quiet verdict over nothing to show. Past it HQ's waits say so and a
@@ -404,14 +418,22 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     return () => account.setRoute(null);
   }, [account, environmentId]);
   if (environmentId === null)
-    return { target: null, projectId: null, mateName: "This Mate", recovery, offline: false };
+    return {
+      target: null,
+      projectId: null,
+      mateName: "This Mate",
+      recovery,
+      hq: null,
+      relinking: false,
+    };
   return {
     target,
     serviceId,
     projectId,
     mateName: mate.kind === "mate" ? mate.mate.name : "This Mate",
     recovery,
-    offline,
+    hq,
+    relinking,
   };
 }
 

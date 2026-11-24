@@ -151,12 +151,18 @@ export type RouteGate =
 const OUTLET: RouteGate = { kind: "outlet", banner: null, composer: "enabled" };
 
 /**
- * DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1).
- * `hqOffline`: HQ's verdict that the Mate is not answering (`hqMateState` `offline`), the one owner
- * of that fact. While its link is not live it takes the stage from a conversation already open, so
- * its since and its way back show in place of the link's own reconnecting line.
+ * HQ's word that holds a route's stage, HQ being the one owner of each: its open restart of the
+ * Mate (`mateRestartOf` `going`) or its verdict that the Mate is not answering (`hqMateState`
+ * `offline`); null where it says neither.
  */
-export function selectRouteGate(target: RouteTarget | null, hqOffline: boolean): RouteGate {
+export type RouteHqHold = "restarting" | "offline" | null;
+
+/**
+ * DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1).
+ * `hq` (`RouteHqHold`): while the Mate's link is not live it takes the stage from a conversation
+ * already open, so its one stage shows in place of the link's own lines.
+ */
+export function selectRouteGate(target: RouteTarget | null, hq: RouteHqHold): RouteGate {
   if (target === null) return OUTLET;
   if (target.kind === "overdue")
     return target.refusal === undefined
@@ -176,7 +182,7 @@ export function selectRouteGate(target: RouteTarget | null, hqOffline: boolean):
   }
   const { reachability, content } = target;
   if (isTerminalReachability(reachability)) return { kind: "unavailable", reachability };
-  if (hqOffline && reachability.kind !== "ready") return { kind: "wait", reachability };
+  if (hq !== null && reachability.kind !== "ready") return { kind: "wait", reachability };
   if (reachability.kind === "ready") {
     return reachability.notice === null
       ? OUTLET

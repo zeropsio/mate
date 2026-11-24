@@ -256,6 +256,7 @@ export {
   hqMateLinkAtom,
   hqMateLinkRefusalAtom,
   hqMateStateAtom,
+  hqMateRestartOpenAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,

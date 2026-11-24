@@ -6,6 +6,7 @@ import {
   routeTargetPastDeadline,
   selectRouteGate,
   type RouteGate,
+  type RouteHqHold,
   type RouteHqWait,
   type RouteTarget,
 } from "./gate.ts";
@@ -13,15 +14,15 @@ import type { Reachability } from "./reachability.ts";
 
 // witness: packages/client-runtime/src/zerops/environments/gate.ts | return { kind: "wait", reachability: null }; → return { kind: "unavailable", reachability: null };
 it("EN16: The route gate never says not in your projects while discovery is pending, no organization is chosen, or only HQ can name the environment", () => {
-  expect(selectRouteGate({ kind: "unresolved", discovery: "pending" }, false)).toEqual({
+  expect(selectRouteGate({ kind: "unresolved", discovery: "pending" }, null)).toEqual({
     kind: "wait",
     reachability: null,
   });
-  expect(selectRouteGate({ kind: "unresolved", discovery: "no-organization" }, false)).toEqual({
+  expect(selectRouteGate({ kind: "unresolved", discovery: "no-organization" }, null)).toEqual({
     kind: "choose-organization",
   });
   const hq: RouteHqWait = { kind: "outage", line: "Reconnecting…", again: false, overdue: true };
-  expect(selectRouteGate({ kind: "unresolved", discovery: "hq", hq }, false)).toEqual({
+  expect(selectRouteGate({ kind: "unresolved", discovery: "hq", hq }, null)).toEqual({
     kind: "wait",
     reachability: null,
     hq,
@@ -40,11 +41,11 @@ it("EN21: A route's Mate the owner's reads say is stopped is never said not to a
     [true, false, waits],
   ];
   for (const [stopped, runs, past] of table) {
-    expect({ stopped, before: selectRouteGate(target, false) }).toEqual({ stopped, before: waits });
+    expect({ stopped, before: selectRouteGate(target, null) }).toEqual({ stopped, before: waits });
     expect({ stopped, runs: routeDeadlineRuns(target, stopped) }).toEqual({ stopped, runs });
     expect({
       stopped,
-      past: selectRouteGate(routeTargetPastDeadline(target, stopped), false),
+      past: selectRouteGate(routeTargetPastDeadline(target, stopped), null),
     }).toEqual({ stopped, past });
   }
 });
@@ -70,29 +71,31 @@ it("EN22: An opening over a verdict with words of its own, a Mate not answering 
   }
 });
 
-// witness: packages/client-runtime/src/zerops/environments/gate.ts | hqOffline && reachability.kind !== "ready" → false && reachability.kind !== "ready"
-it("EN+1: A Mate HQ says is offline takes its route's stage from a conversation already open, its link not live, and gives it back when HQ says otherwise or its link is live again, and its opening never ends on the route's deadline; breaks: an open conversation says only Reconnecting with Try now for minutes after HQ said the Mate isn't answering", () => {
+// witness: packages/client-runtime/src/zerops/environments/gate.ts | hq !== null && reachability.kind !== "ready" → false && reachability.kind !== "ready"
+it("EN+1: A Mate HQ says is offline, or whose restart HQ holds open, takes its route's stage from a conversation already open, its link not live, and gives it back when HQ says neither or its link is live again, and its opening never ends on the route's deadline; breaks: an open conversation says only Reconnecting with Try now for minutes after HQ said the Mate isn't answering, or a restart pressed over it shows the link's own banners in turn", () => {
   const lost: Reachability = { kind: "reconnecting" };
   const quiet: Reachability = { kind: "connecting", waitingOn: "exchange" };
   const ready: Reachability = { kind: "ready", notice: null };
-  // The link's verdict × the shell's content × HQ's offline: the gate.
+  // The link's verdict × the shell's content × HQ's word on the Mate's stage: the gate.
   const table: ReadonlyArray<
-    readonly [Reachability, content: "cached" | "empty", offline: boolean, gate: RouteGate]
+    readonly [Reachability, content: "cached" | "empty", hq: RouteHqHold, gate: RouteGate]
   > = [
-    [lost, "cached", true, { kind: "wait", reachability: lost }],
-    [lost, "cached", false, { kind: "outlet", banner: lost, composer: "disabled" }],
-    [quiet, "empty", true, { kind: "wait", reachability: quiet }],
-    [ready, "cached", true, { kind: "outlet", banner: null, composer: "enabled" }],
+    [lost, "cached", "offline", { kind: "wait", reachability: lost }],
+    [lost, "cached", "restarting", { kind: "wait", reachability: lost }],
+    [lost, "cached", null, { kind: "outlet", banner: lost, composer: "disabled" }],
+    [quiet, "empty", "offline", { kind: "wait", reachability: quiet }],
+    [ready, "cached", "offline", { kind: "outlet", banner: null, composer: "enabled" }],
+    [ready, "cached", "restarting", { kind: "outlet", banner: null, composer: "enabled" }],
   ];
-  for (const [reachability, content, offline, gate] of table) {
+  for (const [reachability, content, hq, gate] of table) {
     const target: RouteTarget = { kind: "resolved", reachability, content };
-    expect({ reachability, content, offline, gate: selectRouteGate(target, offline) }).toEqual({
+    expect({ reachability, content, hq, gate: selectRouteGate(target, hq) }).toEqual({
       reachability,
       content,
-      offline,
+      hq,
       gate,
     });
   }
-  // HQ's offline speaks for the Mate as its stopped container does: the deadline never ends it.
+  // HQ's word speaks for the Mate as its stopped container does: the deadline never ends it.
   expect(openingMayEnd(quiet, true)).toBe(false);
 });
