@@ -9,6 +9,7 @@ import {
   MERMAID_SECURE_KEYS,
   type MermaidRenderResult,
 } from "./mermaidDiagram.logic";
+import { Button } from "~/components/ui/button";
 
 let mermaidModulePromise: Promise<{ mermaid: Mermaid; purify: typeof DOMPurify }> | null = null;
 let renderQueue: Promise<unknown> = Promise.resolve();
@@ -230,15 +231,12 @@ export function MermaidSvg({
     return <div className={cn(fit)} dangerouslySetInnerHTML={{ __html: fitted }} />;
   }
   return (
-    <button
-      type="button"
+    <Button
       aria-label="Open the diagram"
-      className={cn(
-        fit,
-        "cursor-zoom-in rounded-control focus-visible:outline-2 focus-visible:outline-ring",
-      )}
+      className="flex size-full cursor-zoom-in items-center justify-center"
       onClick={() => onExpand(mermaidImageUrl(svg))}
       dangerouslySetInnerHTML={{ __html: fitted }}
+      variant="bare"
     />
   );
 }

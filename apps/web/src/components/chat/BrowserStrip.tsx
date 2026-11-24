@@ -49,6 +49,7 @@ import { CheckRead } from "./CheckRead";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
 import { followScrollTo } from "~/lib/followScroll";
+import { Button } from "~/components/ui/button";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
   desktop: "Desktop",
@@ -579,27 +580,31 @@ export function BrowserTakes({
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
         return (
-          <button
+          <Button
             key={take.key}
             aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : state === "unfinished" ? ", not finished" : ""}. Open the screenshot`}
-            className={cn(
-              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-              TAKE_PICTURE_CLASS[device],
-              state === "failed"
-                ? "border-status-failed ring-1 ring-status-failed"
-                : state === "retried"
-                  ? "border-status-attention"
-                  : "border-border",
-            )}
+            className="h-20 shrink-0 cursor-zoom-in"
             {...intent}
             data-report-take={device}
             onClick={() =>
               onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
             }
-            type="button"
+            variant="bare"
           >
-            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
-          </button>
+            <span
+              className={cn(
+                "block h-full overflow-hidden rounded-lg border bg-card",
+                TAKE_PICTURE_CLASS[device],
+                state === "failed"
+                  ? "border-status-failed ring-1 ring-status-failed"
+                  : state === "retried"
+                    ? "border-status-attention"
+                    : "border-border",
+              )}
+            >
+              <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
+            </span>
+          </Button>
         );
       })}
     </div>

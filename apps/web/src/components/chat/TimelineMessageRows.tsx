@@ -36,6 +36,9 @@ import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./Conve
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 
+/** A picture sent with a message: its frame over the bubble. */
+const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-lg border border-border/80 bg-background/70";
+
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
  * actions inside it. The dashed outline and the clock carry the state; the
@@ -263,30 +266,38 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
               {imagesAbove.map((image: ChatImageAttachment) => {
                 const state = pictureStates.get(image.id);
                 return (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                  >
+                  // The frame is the press's content, not around it: a frame that clips its
+                  // picture would clip the press's focus ring too.
+                  <div key={image.id} className="grid">
                     {state?._tag === "Failure" ? (
-                      <ImageUnavailable reason={state.reason} />
+                      <div className={MESSAGE_IMAGE_FRAME}>
+                        <ImageUnavailable reason={state.reason} />
+                      </div>
                     ) : image.previewUrl ? (
-                      <button
-                        type="button"
-                        className="h-full w-full cursor-zoom-in"
+                      <Button
+                        className="block size-full cursor-zoom-in"
                         aria-label={`Preview ${image.name}`}
                         onClick={() => expandImage(image)}
+                        variant="bare"
                       >
-                        <AssetImage
-                          loading="lazy"
-                          decoding="async"
-                          src={image.previewUrl}
-                          alt={image.name}
-                          className="block max-h-[220px] w-full object-contain"
-                          style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
-                        />
-                      </button>
+                        <span className={cn("block h-full", MESSAGE_IMAGE_FRAME)}>
+                          <AssetImage
+                            loading="lazy"
+                            decoding="async"
+                            src={image.previewUrl}
+                            alt={image.name}
+                            className="block max-h-[220px] w-full object-contain"
+                            style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
+                          />
+                        </span>
+                      </Button>
                     ) : (
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                      <div
+                        className={cn(
+                          "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs",
+                          MESSAGE_IMAGE_FRAME,
+                        )}
+                      >
                         {image.name}
                       </div>
                     )}

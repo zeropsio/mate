@@ -188,11 +188,33 @@ function PictureTile({
   const known = picture.kind === "check" ? picture.ratio : size ? size.width / size.height : null;
   // A legacy file without dimensions keeps its reserved shape after decode.
   const shape: CSSProperties = { aspectRatio: tileRatio(known) };
+  const content = (
+    <>
+      {unavailable ? (
+        // The count stands alone over a picture that cannot be shown: its words never sit
+        // under it (Rhea's imported run printed "+9" over "Image unavailable").
+        more > 0 ? null : (
+          <ImageUnavailable reason={reason} />
+        )
+      ) : state._tag === "Success" ? (
+        <AssetImage
+          alt=""
+          width={size?.width}
+          height={size?.height}
+          src={state.url}
+          onError={() => setUnread({ url: state.url })}
+          onUnavailable={(why) => setUnread({ url: state.url, ...(why ? { reason: why } : {}) })}
+        />
+      ) : null}
+      {more > 0 ? <span className="run-result-more">+{more}</span> : null}
+    </>
+  );
+  const pressless = onOpen === null || (unavailable && more === 0);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          onOpen === null || (unavailable && more === 0) ? (
+          pressless ? (
             <span
               aria-label={said}
               className="run-result-tile"
@@ -202,36 +224,29 @@ function PictureTile({
               style={shape}
             />
           ) : (
-            <button
+            // The tile is the press's content: its corners, edge and fill are the picture's.
+            <Button
               aria-label={`${said}. Open ${more > 0 ? "the pictures" : "the picture"}`}
-              className="run-result-tile"
-              data-failed={failed}
-              data-result-picture={status}
+              className="block max-w-full shrink-0 cursor-zoom-in"
               {...intent}
               onClick={onOpen}
-              style={shape}
-              type="button"
+              variant="bare"
             />
           )
         }
       >
-        {unavailable ? (
-          // The count stands alone over a picture that cannot be shown: its words never sit
-          // under it (Rhea's imported run printed "+9" over "Image unavailable").
-          more > 0 ? null : (
-            <ImageUnavailable reason={reason} />
-          )
-        ) : state._tag === "Success" ? (
-          <AssetImage
-            alt=""
-            width={size?.width}
-            height={size?.height}
-            src={state.url}
-            onError={() => setUnread({ url: state.url })}
-            onUnavailable={(why) => setUnread({ url: state.url, ...(why ? { reason: why } : {}) })}
-          />
-        ) : null}
-        {more > 0 ? <span className="run-result-more">+{more}</span> : null}
+        {pressless ? (
+          content
+        ) : (
+          <span
+            className="run-result-tile"
+            data-failed={failed}
+            data-result-picture={status}
+            style={shape}
+          >
+            {content}
+          </span>
+        )}
       </TooltipTrigger>
       <TooltipPopup side="bottom">{said}</TooltipPopup>
     </Tooltip>

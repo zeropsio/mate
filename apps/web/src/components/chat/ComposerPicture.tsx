@@ -71,9 +71,9 @@ export function ComposerPicture({ id }: { readonly id: string }) {
       data-preparing={picture.preparing ? "true" : undefined}
       data-failed={picture.failed ? "true" : undefined}
     >
-      <button
-        type="button"
-        className="composer-picture-open"
+      <Button
+        className="block"
+        variant="bare"
         aria-label={`Picture ${picture.number}, ${picture.name}. Opens it to crop or add notes.`}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onOpenPicture(id)}
@@ -96,7 +96,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
             style={{ width: picture.width, height: picture.height }}
           />
         )}
-      </button>
+      </Button>
       {picture.keepOriginal ? <span className="composer-picture-tag">Original</span> : null}
       {picture.unsaved ? (
         <Tooltip>

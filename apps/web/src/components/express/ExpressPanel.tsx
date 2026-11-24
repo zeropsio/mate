@@ -476,21 +476,19 @@ function LinkedDesign({
   readonly onOpen: () => void;
 }) {
   return (
-    <button
-      className="flex aspect-square flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={onOpen}
-      type="button"
-    >
-      <ExpressMark className="size-8 rounded-lg" />
-      <span className="line-clamp-2 text-caption font-medium leading-4">
-        {entry.words ?? "Adobe Express design"}
-      </span>
-      {entry.words === undefined ? (
-        <span className="font-mono text-muted-foreground text-caption leading-4">
-          {entry.documentId.slice(-7)}
+    <Button className="block aspect-square" onClick={onOpen} variant="bare">
+      <span className="flex size-full flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center transition-colors hover:bg-accent/60">
+        <ExpressMark className="size-8 rounded-lg" />
+        <span className="line-clamp-2 text-caption font-medium leading-4">
+          {entry.words ?? "Adobe Express design"}
         </span>
-      ) : null}
-    </button>
+        {entry.words === undefined ? (
+          <span className="font-mono text-muted-foreground text-caption leading-4">
+            {entry.documentId.slice(-7)}
+          </span>
+        ) : null}
+      </span>
+    </Button>
   );
 }
 

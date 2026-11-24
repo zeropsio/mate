@@ -9,6 +9,7 @@ import { echoOfMessage } from "./messagePictures.logic";
 import type { RecordItem } from "./MessagesTimeline.logic";
 import { BUBBLE_PAD, BUBBLE_SHAPE, WORDS } from "./RunBubble";
 import { TimelineRowCtx } from "./timelineContext";
+import { Button } from "~/components/ui/button";
 
 /**
  * Where the person's words reached the Mate, on their side, in their bubble:
@@ -89,10 +90,10 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
             role="status"
           />
         ) : (
-          <button
+          <Button
             key={picture.id}
             aria-label={`Open ${picture.name}`}
-            className="block h-16 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="block h-16 w-32 cursor-zoom-in"
             onClick={() =>
               onImageExpand({
                 images: viewable,
@@ -102,16 +103,18 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
                 ),
               })
             }
-            type="button"
+            variant="bare"
           >
-            <AssetImage
-              loading="lazy"
-              decoding="async"
-              alt={picture.name}
-              className="block size-full object-contain"
-              src={src}
-            />
-          </button>
+            <span className="block size-full overflow-hidden rounded-lg border border-border/60 bg-card">
+              <AssetImage
+                loading="lazy"
+                decoding="async"
+                alt={picture.name}
+                className="block size-full object-contain"
+                src={src}
+              />
+            </span>
+          </Button>
         ),
       )}
     </span>

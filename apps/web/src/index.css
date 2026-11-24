@@ -10672,8 +10672,7 @@ button.run-bar:focus-visible {
     inset: -8px;
   }
 }
-.run-result-open:focus-visible,
-.run-result-tile:focus-visible {
+.run-result-open:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
   outline-offset: 1px;
 }
@@ -10823,10 +10822,7 @@ button.run-bar:focus-visible {
   object-fit: cover;
   object-position: top;
 }
-button.run-result-tile {
-  cursor: zoom-in;
-}
-button.run-result-tile:hover::after {
+button:hover > .run-result-tile::after {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 20%, transparent);
 }
 /* A page whose check stayed failed is broken (S3): its edge in red. */
@@ -11243,16 +11239,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   border-radius: 10px;
 }
 
-.composer-picture-open {
-  display: block;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: none;
-  cursor: pointer;
-  outline: none;
-}
-
 .composer-picture-img {
   display: block;
   max-width: 100%;
@@ -11264,13 +11250,12 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   transition: box-shadow 120ms ease;
 }
 
-.composer-picture-open:hover .composer-picture-img {
+.composer-picture > [data-slot="button"]:hover .composer-picture-img {
   box-shadow:
     0 0 0 1px var(--picture-edge),
     0 0 0 4px color-mix(in srgb, var(--color-ring) 20%, transparent);
 }
 
-.composer-picture-open:focus-visible .composer-picture-img,
 .composer-picture-slot[data-composer-chip-selected] .composer-picture-img {
   box-shadow: 0 0 0 2px var(--color-ring);
 }
@@ -11749,17 +11734,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   margin: 0;
 }
 
-.message-picture-open {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: none;
-  cursor: zoom-in;
-}
-
 .message-picture-img {
   display: block;
   max-width: 100%;
@@ -11771,10 +11745,6 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 .message-picture-pending {
   display: block;
   background: var(--color-muted);
-}
-
-.message-picture-open:focus-visible .message-picture-img {
-  box-shadow: 0 0 0 2px var(--color-ring);
 }
 
 .message-picture-notes {

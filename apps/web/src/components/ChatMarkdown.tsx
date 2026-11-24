@@ -1352,7 +1352,7 @@ function useImageRoom(
     // The room's own width stays its opener's while the picture stands in it: the picture's width
     // is a share of it, and a button that shrinks to its content gives a share nothing to be of
     // (a picture came 390 px wide where 432 fitted, its row 26 px shorter).
-    openerClassName: placeholder || current.roomed ? "w-full max-w-[30rem]" : undefined,
+    openerRoomed: placeholder || current.roomed,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
       const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
       const natural = width > 0 && height > 0 ? { width, height } : undefined;
@@ -1466,34 +1466,34 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
 function OpenableMarkdownImage({
   alt,
   block = false,
-  className,
+  roomed,
   children,
 }: {
   readonly alt: string;
   readonly block?: boolean;
-  /** The room its picture holds before it loads, when the picture cannot give it. */
-  readonly className?: string | undefined;
+  /** It holds its picture's room (30rem at most) before it loads, when the picture cannot give it. */
+  readonly roomed: boolean;
   readonly children: ReactNode;
 }) {
   const intent = useImageIntent();
   const open = use(MarkdownImageOpenerContext);
   if (open === null) return children;
   return (
-    <button
+    <Button
       aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
       className={cn(
-        "max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+        "max-w-full cursor-zoom-in align-top",
         block ? "block" : "inline-block",
-        className,
+        roomed && "w-full max-w-[30rem]",
       )}
       data-markdown-image-opener
       data-markdown-image-block={block || undefined}
       {...intent}
       onClick={(event) => openMarkdownImage(event.currentTarget, open)}
-      type="button"
+      variant="bare"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -1544,7 +1544,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     );
   }
   return (
-    <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
+    <OpenableMarkdownImage alt={props.alt} block roomed={room.openerRoomed}>
       <AssetImage
         src={assetUrl.url}
         alt={props.alt}
@@ -1583,7 +1583,7 @@ function DirectMarkdownImage({
     width > 0 && height > 0 ? { width, height } : undefined,
   );
   return (
-    <OpenableMarkdownImage alt={alt} block={mateAsset} className={room.openerClassName}>
+    <OpenableMarkdownImage alt={alt} block={mateAsset} roomed={room.openerRoomed}>
       <AssetImage
         {...props}
         src={uri}
