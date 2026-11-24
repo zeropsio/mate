@@ -8085,24 +8085,13 @@ a.ov-chip-who:focus-visible {
 
 /* The grid's last cell, the door that adds a Mate: a dashed slot, as the page's empty setups are. */
 .mc-add {
-  width: 100%;
   background: none;
   outline: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
   outline-offset: -1px;
-  cursor: pointer;
 }
 
-.mc-add:hover:not(:disabled) {
+:enabled:hover > .mc-add {
   background: var(--ov-hover);
-}
-
-.mc-add:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.mc-add:disabled {
-  cursor: default;
 }
 
 .mc-add > .tm-card-body {
@@ -8134,8 +8123,8 @@ a.ov-chip-who:focus-visible {
   text-wrap: balance;
 }
 
-.mc-add:disabled .mc-add-mark,
-.mc-add:disabled .tm-card-name {
+:disabled > .mc-add .mc-add-mark,
+:disabled > .mc-add .tm-card-name {
   opacity: 0.55;
 }
 

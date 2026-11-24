@@ -15,6 +15,8 @@
 import { GitPullRequestIcon, PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Button } from "~/components/ui/button";
+
 import { drawn } from "../projects/flowSteps";
 import { FaceCard, FaceCardLine, FaceCards } from "./FaceCard";
 import type { MateRowProps } from "./MateRow";
@@ -83,7 +85,7 @@ export function MateCard({
           ) : null
         }
         footHeld
-        press={onOpen === undefined ? undefined : <button onClick={onOpen} type="button" />}
+        press={onOpen === undefined ? undefined : <Button onClick={onOpen} variant="bare" />}
         rest="middle"
         ruled
         stamp={time}
@@ -150,7 +152,7 @@ export function ComingMateCard({
         figure={face}
         foot={drawn(menu) ? <span className="mc-foot">{menu}</span> : null}
         footHeld
-        press={onOpen === undefined ? undefined : <button onClick={onOpen} type="button" />}
+        press={onOpen === undefined ? undefined : <Button onClick={onOpen} variant="bare" />}
         rest="middle"
         ruled
         title={name}
@@ -185,21 +187,23 @@ export function AddMateCard({
 }) {
   return (
     <li className="grid" data-alone={alone || undefined}>
-      <button
-        className="tm-card mc-add"
+      <Button
+        className="grid"
         data-zerops-surface="add-mate"
         disabled={why !== null}
         onClick={onAdd}
-        type="button"
+        variant="bare"
       >
-        <span className="tm-card-body">
-          <span aria-hidden="true" className="mc-add-mark">
-            <PlusIcon />
+        <span className="tm-card mc-add">
+          <span className="tm-card-body">
+            <span aria-hidden="true" className="mc-add-mark">
+              <PlusIcon />
+            </span>
+            <span className="tm-card-name">Add a Mate</span>
+            <span className="tm-card-mail mc-add-line">{why ?? line}</span>
           </span>
-          <span className="tm-card-name">Add a Mate</span>
-          <span className="tm-card-mail mc-add-line">{why ?? line}</span>
         </span>
-      </button>
+      </Button>
     </li>
   );
 }

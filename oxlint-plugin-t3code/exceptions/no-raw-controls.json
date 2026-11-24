@@ -272,30 +272,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button>",
-    "owner": "kit pass",
-    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button>",
-    "owner": "kit pass",
-    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/MateCard.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"tm-card mc-add\"",
-    "owner": "kit pass",
-    "reason": "needs kit: Card `pressable` — a card whose whole body is one press (FaceCard's body, the Add a Mate card); the kit's Card has no press of its own",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/system/ProjectLineParts.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"ln-bead\"",
