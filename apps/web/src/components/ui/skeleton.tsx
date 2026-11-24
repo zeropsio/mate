@@ -10,8 +10,8 @@ const skeletonVariants = cva(
   {
     variants: {
       shape: {
-        block: "rounded-sm",
-        card: "rounded-lg",
+        block: "rounded-control",
+        card: "rounded-card",
         pill: "rounded-full",
       },
       // What it stands on: the page, or a card (in dark the card is the muted tone itself, so a

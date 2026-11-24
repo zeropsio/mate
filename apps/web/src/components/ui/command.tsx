@@ -131,7 +131,7 @@ function CommandPanel({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "relative min-h-0 overflow-hidden rounded-t-xl not-has-[+[data-slot=command-footer]]:rounded-b-2xl bg-transparent **:data-[slot=scroll-area-scrollbar]:mt-2 [touch-action:pan-y]",
+        "relative min-h-0 overflow-hidden rounded-t-sheet not-has-[+[data-slot=command-footer]]:rounded-b-sheet bg-transparent **:data-[slot=scroll-area-scrollbar]:mt-2 [touch-action:pan-y]",
         className,
       )}
       {...props}

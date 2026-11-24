@@ -4,26 +4,29 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-const alertVariants = cva("relative rounded-xl border px-3.5 py-3 text-card-foreground text-body", {
-  defaultVariants: {
-    surface: "default",
-    variant: "default",
-  },
-  variants: {
-    // "glass" floats the alert over content; alert-glass tints from data-variant.
-    surface: {
-      default: "",
-      glass: "alert-glass",
+const alertVariants = cva(
+  "relative rounded-card border px-3.5 py-3 text-card-foreground text-body",
+  {
+    defaultVariants: {
+      surface: "default",
+      variant: "default",
     },
-    variant: {
-      default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
-      error: "border-border bg-muted/35 [&_svg]:text-error",
-      info: "border-info/32 bg-info/4 [&_svg]:text-info",
-      success: "border-success/32 bg-success/4 [&_svg]:text-success",
-      warning: "border-border bg-muted/35 [&_svg]:text-warning",
+    variants: {
+      // "glass" floats the alert over content; alert-glass tints from data-variant.
+      surface: {
+        default: "",
+        glass: "alert-glass",
+      },
+      variant: {
+        default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
+        error: "border-border bg-muted/35 [&_svg]:text-error",
+        info: "border-info/32 bg-info/4 [&_svg]:text-info",
+        success: "border-success/32 bg-success/4 [&_svg]:text-success",
+        warning: "border-border bg-muted/35 [&_svg]:text-warning",
+      },
     },
   },
-});
+);
 
 function alertChildSlot(child: React.ReactElement): string | undefined {
   const propsSlot = (child.props as Record<string, string | undefined>)["data-slot"];

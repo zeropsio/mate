@@ -17,7 +17,7 @@ const Select = SelectPrimitive.Root;
 // `sm:text-body` stays beside the base `text-body`: a size variant's own unprefixed size (compact's
 // `text-caption`) then replaces only the phone's, and desktop keeps 14 px.
 const selectTriggerVariants = cva(
-  "relative inline-flex cursor-pointer select-none items-center justify-between gap-2 border rounded-lg text-left text-body sm:text-body outline-none transition-[color,box-shadow,background-color] data-disabled:pointer-events-none data-disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  "relative inline-flex cursor-pointer select-none items-center justify-between gap-2 border rounded-control text-left text-body sm:text-body outline-none transition-[color,box-shadow,background-color] data-disabled:pointer-events-none data-disabled:opacity-64 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   {
     defaultVariants: {
       size: "default",

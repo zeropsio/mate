@@ -453,7 +453,7 @@ function Sidebar({
             className={cn(
               "flex h-full w-full flex-col",
               !layered && "bg-sidebar surface-grain",
-              "group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5",
+              "group-data-[variant=floating]:rounded-card group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5",
             )}
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
@@ -695,7 +695,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
     <main
       className={cn(
         "relative flex max-h-full min-w-0 w-full flex-1 flex-col bg-background surface-grain",
-        "md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm/5",
+        "md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ms-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ms-0 md:peer-data-[variant=inset]:rounded-card md:peer-data-[variant=inset]:shadow-sm/5",
         className,
       )}
       data-slot="sidebar-inset"
@@ -814,8 +814,8 @@ const sidebarMenuButtonVariants = cva(
         default:
           "h-8 rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-1.5 text-body",
         icon: "size-8 justify-center rounded-[var(--control-radius)] p-0",
-        lg: "h-12 rounded-lg p-2 text-body group-data-[collapsible=icon]:p-0!",
-        sm: "h-7 rounded-lg p-2 text-caption",
+        lg: "h-12 rounded-control p-2 text-body group-data-[collapsible=icon]:p-0!",
+        sm: "h-7 rounded-control p-2 text-caption",
       },
       variant: {
         default: "font-medium text-sidebar-muted-foreground/80",
@@ -890,7 +890,7 @@ function SidebarMenuSubButton({
 }) {
   const defaultProps = {
     className: cn(
-      "-translate-x-px flex h-7 min-w-0 cursor-pointer items-center gap-2 overflow-hidden rounded-lg px-2 text-sidebar-foreground outline-hidden ring-ring hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 active:bg-sidebar-row-active active:text-sidebar-foreground disabled:pointer-events-none disabled:opacity-64 aria-disabled:pointer-events-none aria-disabled:opacity-64 [&>span:last-child]:truncate [&>svg:not([class*='size-'])]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-muted-foreground",
+      "-translate-x-px flex h-7 min-w-0 cursor-pointer items-center gap-2 overflow-hidden rounded-control px-2 text-sidebar-foreground outline-hidden ring-ring hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 active:bg-sidebar-row-active active:text-sidebar-foreground disabled:pointer-events-none disabled:opacity-64 aria-disabled:pointer-events-none aria-disabled:opacity-64 [&>span:last-child]:truncate [&>svg:not([class*='size-'])]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-muted-foreground",
       "data-[active=true]:bg-sidebar-row-selected data-[active=true]:text-sidebar-foreground",
       size === "sm" && "text-caption",
       size === "md" && "text-body",
