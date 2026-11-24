@@ -38,8 +38,10 @@ const coveredPath = (filename: string): string | undefined => {
 };
 
 /**
- * An element handed to a kit component's `render` (`<Button render={<a href=… />}>`): the kit
- * draws it, the element only names what it renders as.
+ * An element handed to a `render` prop (`<Button render={<a href=… />}>`): the holder draws it, the
+ * element only names what it renders as. One that carries its own `className` draws itself — a
+ * hand-styled press under a trigger (`<TooltipTrigger render={<button className=… />}>`) — and is
+ * reported like any other; the trigger renders the kit's Button instead.
  */
 const renderedByTheKit = (node: ESTree.JSXOpeningElement): boolean => {
   const container = node.parent?.parent;
@@ -79,7 +81,7 @@ export default defineRule({
         if (node.name.type !== "JSXIdentifier") return;
         const element = node.name.name;
         const kit = KIT_CONTROL.get(element);
-        if (kit === undefined || renderedByTheKit(node)) return;
+        if (kit === undefined) return;
         const type = attribute(node, "type");
         if (
           element === "input" &&
@@ -89,6 +91,7 @@ export default defineRule({
           return;
         }
         const className = attribute(node, "className");
+        if (className === undefined && renderedByTheKit(node)) return;
         const fingerprint = normalizeFingerprint(
           className === undefined
             ? `<${element}>`

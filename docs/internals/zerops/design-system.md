@@ -232,8 +232,8 @@ numbered steps of these. Every ask is the same card, in two densities.
 
 - **R12** — Presses, links and fields are the kit's
   - _Enforced by:_ `t3code/no-raw-controls` (a `<button>`, `<a>`, `<input>`, `<textarea>` or `<select>`
-    in the web client outside `components/ui`, the kit and the design harness); its ledger, seeded with
-    the hand-made ones the kit pass found, only shrinks
+    in the web client outside `components/ui`, the kit and the design harness, also one handed to a
+    `render` prop that carries its own `className`); its ledger only shrinks
 
 ## 6. Exceptions
 
