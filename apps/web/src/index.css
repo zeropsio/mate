@@ -6258,9 +6258,8 @@ code {
   /* The Chief (`SidebarChiefRow`): the list's first row, a Mate row's measure — its mark on the
      faces' column, its name where every project's starts. */
   .menu-chief-row {
-    /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
-       project's row (the owner, 2026-10-12: "this should look different"). */
-    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, var(--sidebar));
+    /* At rest on the menu's own ground, as every Mate's row; the mark's teal comes up on hover. */
+    --chief-ground: transparent;
     position: relative;
     isolation: isolate;
     display: flex;
