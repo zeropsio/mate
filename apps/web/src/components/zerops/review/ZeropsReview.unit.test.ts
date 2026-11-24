@@ -5,6 +5,7 @@ import {
   changeFixOptions,
   crewLandCommand,
   descriptionPicture,
+  mergeStages,
   releaseChangeRows,
 } from "./ZeropsReview.logic.ts";
 
@@ -83,7 +84,7 @@ it("RV4: Land now is pressed only for a crew task still working or sent back for
 });
 
 // witness: apps/web/src/zerops/renewDeployKey.logic.ts | return mayKeep === false ? "none" : "start"; → return mayKeep !== true ? "none" : "start";
-it("RV+2: The renewal's press is a start for whoever HQ's keep rule admits or has not answered yet, Continue only for the maker of a renewal that waits, and none for a person the rule refuses or while another person's renewal waits; breaks: a Basic user who may renew gets no press, or a person HQ refuses gets one that fails.", () => {
+it("RV6: The renewal's press is a start for whoever HQ's keep rule admits or has not answered yet, Continue only for the maker of a renewal that waits, and none for a person the rule refuses or while another person's renewal waits; breaks: a Basic user who may renew gets no press, or a person HQ refuses gets one that fails.", () => {
   const failure = { step: "key", code: "refused", at: "now", origin: "zerops" };
   const waiting = {
     kind: "waiting",
@@ -113,7 +114,7 @@ it("RV+2: The renewal's press is a start for whoever HQ's keep rule admits or ha
 });
 
 // witness: apps/web/src/zerops/renewDeployKey.logic.ts | if (failure.step !== "retire") return operationFailureWords(failure); → if (failure.step === "retire") return operationFailureWords(failure);
-it("RV+3: A renewal HQ ended at its retire step is told as a kept key whose previous token stays, with who deletes it by Zerops' code, and a stop at any other step in the operation's own words; breaks: a person whose renewal worked reads that it failed.", () => {
+it("RV7: A renewal HQ ended at its retire step is told as a kept key whose previous token stays, with who deletes it by Zerops' code, and a stop at any other step in the operation's own words; breaks: a person whose renewal worked reads that it failed.", () => {
   const owner = { step: "retire", code: "ownerRoleRequired", at: "now", origin: "zerops" };
   const other = { ...owner, code: "other" };
   const key = { ...other, step: "key" };
@@ -121,4 +122,35 @@ it("RV+3: A renewal HQ ended at its retire step is told as a kept key whose prev
   expect(keyRenewFailureWords(owner)).not.toBe(operationFailureWords(owner));
   expect(keyRenewFailureWords(other)).not.toBe(operationFailureWords(other));
   expect(keyRenewFailureWords(key)).toBe(operationFailureWords(key));
+});
+
+// witness: apps/web/src/components/zerops/review/ZeropsReview.logic.ts | runs: input.stages.filter((stage) => stage.gap === undefined).map((stage) => stage.name), → runs: input.stages.map((stage) => stage.name),
+it("RV5: A change waiting on its press promises its merge only to the stages whose deploy key works, names the first stage its key holds, and offers that key's renewal to whoever HQ's rule lets renew it and tells anyone else who does; a recipe change and a change no longer waiting say nothing of keys; breaks: a person merges on \"Stage runs it\" while the stage deploys nothing, or one who may renew is sent to look for an admin.", () => {
+  const a = { name: "a", gap: undefined };
+  const ai = { name: "a", gap: { kind: "invalid", project: "a" } } as const;
+  const am = { name: "a", gap: { kind: "missing", project: "a" } } as const;
+  const b = { name: "b", gap: undefined };
+  const bi = { name: "b", gap: { kind: "invalid", project: "b" } } as const;
+  const rows = [
+    [{ state: "ready", recipe: false, stages: [a], mayRenew: true }, ["a"], undefined, undefined],
+    [{ state: "ready", recipe: false, stages: [ai], mayRenew: true }, [], "a", "renew"],
+    [{ state: "ready", recipe: false, stages: [ai], mayRenew: false }, [], "a", "told"],
+    [{ state: "ready", recipe: false, stages: [am], mayRenew: false }, [], "a", "told"],
+    [{ state: "ready", recipe: false, stages: [ai, b], mayRenew: true }, ["b"], "a", "renew"],
+    [{ state: "ready", recipe: false, stages: [ai, bi], mayRenew: true }, [], "a", "renew"],
+    [
+      { state: "github-checks-failed", recipe: false, stages: [ai], mayRenew: true },
+      [],
+      "a",
+      "renew",
+    ],
+    [{ state: "merged", recipe: false, stages: [ai], mayRenew: true }, ["a"], undefined, undefined],
+    [{ state: "ready", recipe: true, stages: [ai], mayRenew: true }, ["a"], undefined, undefined],
+  ] as const;
+  for (const [input, runs, held, offer] of rows) {
+    const answer = mergeStages(input);
+    expect(answer.runs).toEqual(runs);
+    expect(answer.held?.stage.name).toBe(held);
+    expect(answer.held?.offer).toBe(offer);
+  }
 });

@@ -21,6 +21,9 @@ import {
   type ZeropsPublicRoute,
   PRODUCTION_OUTSIDE_DECIDES,
 } from "@t3tools/client-runtime/zerops";
+import { keyRenewedBy, stopKeyGap } from "@t3tools/client-runtime/zerops/flow";
+import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
+import type { KeyRenewal } from "~/zerops/renewDeployKey.logic";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeReceipt } from "@t3tools/shared/hqChanges";
@@ -600,6 +603,57 @@ const listed = (names: ReadonlyArray<string>): string =>
 /** An environment's name as a sentence names it: "Stage", a shared place, capitalised. */
 const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 
+/** The main-following stages with the deploy-key gap HQ's facts reveal. */
+export interface MergeStage {
+  readonly name: string;
+  readonly environment?: string | undefined;
+  readonly projectId?: string | undefined;
+  readonly gap: ReturnType<typeof stopKeyGap>;
+}
+
+/** Shape the flow's stages for the review without adding another key-state decision. */
+export function mergeStageInputs(
+  entries: ReadonlyArray<{
+    readonly name: string;
+    readonly environment: string;
+    readonly target: HqEnvironmentTarget;
+    readonly keyHeld: boolean;
+    readonly keyInvalid: boolean;
+  }>,
+  mayKeep: (projectId: string) => boolean | undefined,
+): ReadonlyArray<MergeStage> {
+  return entries.map((entry) => {
+    if (entry.target.kind !== "zerops") return { name: entry.name, gap: undefined };
+    const projectId = entry.target.projectId;
+    return {
+      name: entry.name,
+      environment: entry.environment,
+      projectId,
+      gap: stopKeyGap({ ...entry, mayKeep: mayKeep(projectId), project: entry.name }),
+    };
+  });
+}
+
+/** Which stages run a merge, and the first one whose key holds it. */
+export function mergeStages(input: {
+  readonly state: ReviewState;
+  readonly recipe: boolean;
+  readonly stages: ReadonlyArray<MergeStage>;
+  readonly mayRenew: boolean;
+}): {
+  readonly runs: ReadonlyArray<string>;
+  readonly held: { readonly stage: MergeStage; readonly offer: "renew" | "told" } | undefined;
+} {
+  if (!WAITING_ON_PRESS.has(input.state) || input.recipe)
+    return { runs: input.stages.map((stage) => stage.name), held: undefined };
+  const held = input.stages.find((stage) => stage.gap !== undefined);
+  return {
+    runs: input.stages.filter((stage) => stage.gap === undefined).map((stage) => stage.name),
+    held:
+      held === undefined ? undefined : { stage: held, offer: input.mayRenew ? "renew" : "told" },
+  };
+}
+
 /**
  * What merging does, said under the buttons: a merge is added to `main`, each stage that deploys
  * merges from it runs it (`stageDeploysMerges`) — no other is promised one — and production
@@ -611,8 +665,10 @@ const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${na
 export function mergeFoot(input: {
   readonly state: ReviewState;
   readonly consequence: string;
-  /** The stages that deploy what merges into `main`, by name; none, one or several. */
-  readonly stages: ReadonlyArray<string>;
+  /** The stages that deploy what merges into `main`, with their key gaps. */
+  readonly stages: ReadonlyArray<MergeStage>;
+  readonly mayRenew: boolean;
+  readonly renewal?: KeyRenewal | undefined;
   /** The release production runs. */
   readonly live: string | undefined;
   /** {@link changeReceipt}'s warning: parts not tried at the change. */
@@ -634,12 +690,32 @@ export function mergeFoot(input: {
       : input.productionOutside === true
         ? ` ${PRODUCTION_OUTSIDE_DECIDES}`
         : "";
+  const stages = mergeStages({
+    state: input.state,
+    recipe: false,
+    stages: input.stages,
+    mayRenew: input.mayRenew,
+  });
   // Each by its title, as its row reads it: "demo-app-stage" is Stage.
-  const stages = input.stages.map((name) => environmentTitle("stage", name));
+  const runs = stages.runs.map((name) => environmentTitle("stage", name));
+  const held = stages.held;
+  const gap = held?.stage.gap;
+  const stopped =
+    held === undefined || gap === undefined
+      ? ""
+      : `${environmentTitle("stage", held.stage.name)} does not run it: ${gap.kind === "missing" ? "it has no deploy key yet" : "its deploy key no longer works"}.`;
+  const repair =
+    gap === undefined
+      ? ""
+      : input.renewal?.kind === "failed"
+        ? ` ${input.renewal.words}`
+        : held?.offer === "told"
+          ? ` ${keyRenewedBy(`the ${gap.project} project`, gap.kind)}`
+          : "";
   const foot =
-    stages.length === 0
+    held === undefined && runs.length === 0
       ? input.consequence
-      : `Adds it to main; ${listed(stages)} ${stages.length === 1 ? "runs" : "run"} it.${keeps}`;
+      : `Adds it to main; ${runs.length === 0 ? "" : `${listed(runs)} ${runs.length === 1 ? "runs" : "run"} it.${held === undefined ? "" : " "}`}${stopped}${keeps}${repair}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
 }
 

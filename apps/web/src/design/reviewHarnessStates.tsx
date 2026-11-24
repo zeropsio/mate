@@ -586,6 +586,8 @@ function Change({
   under,
   nothingLive,
   mayRelease,
+  stages,
+  keyRenewal,
   mateOpenChanges,
   mateWorkingOn,
   queue,
@@ -598,6 +600,8 @@ function Change({
   readonly nothingLive?: boolean;
   /** `false`: HQ's rule refused the person the release. */
   readonly mayRelease?: boolean;
+  readonly stages?: ChangeReviewViewProps["stages"];
+  readonly keyRenewal?: ChangeReviewViewProps["keyRenewal"];
   /** How many open changes its Mate holds. */
   readonly mateOpenChanges?: number;
   /** Asking for the merge, or taking the ask back, as pressed. */
@@ -658,7 +662,13 @@ function Change({
       onOpenPage={frame === "page" ? undefined : noop}
       previews={PREVIEWS}
       project="Beviro"
-      stages={environments.some((entry) => entry.tier === "stage") ? ["stage"] : []}
+      stages={
+        stages ??
+        (environments.some((entry) => entry.tier === "stage")
+          ? [{ name: "stage", gap: undefined }]
+          : [])
+      }
+      keyRenewal={keyRenewal}
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -2071,6 +2081,23 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
   {
+    id: "ready-stage-key",
+    label: "Ready to merge · stage's key no longer works",
+    node: (
+      <Change
+        stages={[
+          {
+            name: "stage",
+            environment: "stage",
+            projectId: "stage",
+            gap: { kind: "invalid", project: "stage" },
+          },
+        ]}
+        keyRenewal={{ run: { kind: "none" }, onRenew: noop }}
+      />
+    ),
+  },
+  {
     id: "core-push",
     label: "HQ brought main in after the change under it merged",
     node: (
@@ -2924,7 +2951,7 @@ export function ReviewDialogTry({
             }}
             previews={PREVIEWS}
             project="Beviro"
-            stages={["stage"]}
+            stages={[{ name: "stage", gap: undefined }]}
             remarks={read ? remarksOf(TALKING) : []}
             onClose={() => {
               setOpen(false);
