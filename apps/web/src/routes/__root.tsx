@@ -5,7 +5,11 @@ import { useThreadDetail } from "~/state/entities";
 import { useMateHandOverDestination } from "~/zerops/useMateHandOverDestination";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateHeld } from "../zerops/accountEnvironments";
-import { recoveryNotice, mateProjectUnavailable } from "@t3tools/client-runtime/data";
+import {
+  hqMateStateAtom,
+  recoveryNotice,
+  mateProjectUnavailable,
+} from "@t3tools/client-runtime/data";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import {
   scopedProjectKey,
@@ -236,6 +240,8 @@ function SignedInRootRouteView() {
   );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const hqKey = useAtomValue(serverEnvironment.hqKeyValueAtom(speaksFor));
+  // HQ's verdict on the speaking Mate: one that cannot work says so over its conversation.
+  const mateState = useAtomValue(hqMateStateAtom(speakingProjectId ?? ""));
   const conversationShown = gate.kind === "outlet" && conversation.kind === "shown";
   // One stretch however the lost link alternates between reconnecting and retrying, and only
   // while the tab is shown: a link lost while the person was away is not slow when they return,
@@ -271,6 +277,7 @@ function SignedInRootRouteView() {
           linkHeld,
           linkSlow,
           hqKey,
+          mateState,
           nowMs,
           mateName: speakingName,
           operates: speakingCapabilities.projectAccessKnown

@@ -111,8 +111,8 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
 export const comingSentenceOf = (input: MateArrivalNoticeInput) =>
   mateArrivalNotice(input).secondary;
 
-import type { MateRecovery } from "@t3tools/client-runtime/data";
-import { mateUnreachableWords } from "./lastKnownMate.logic";
+import type { HqMateState, MateRecovery } from "@t3tools/client-runtime/data";
+import { mateStateWords, mateUnreachableWords } from "./lastKnownMate.logic";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { mateNoticeDecision } from "@t3tools/client-runtime/data";
 import { restartLine, RESTART_LINES } from "./restartLine";
@@ -191,6 +191,8 @@ export function mateNoticeVoice(
     readonly hqKey?: MateHqKey | undefined;
     /** Whether the viewer may operate the Mate's project; undefined while unread. */
     readonly operates?: boolean | undefined;
+    /** HQ's verdict on the Mate (`hqMateState`). */
+    readonly mateState?: HqMateState | null | undefined;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -264,6 +266,14 @@ export function mateNoticeVoice(
       "You can see the project, but can't operate its Mate.",
       "sleep",
       decision.actions,
+    );
+  if (decision.phase === "cannot-run")
+    return say(
+      mateStateWords(input.mateState, name, input.timestampFormat) ?? `${name} can't work.`,
+      input.mateState?.why === "signed_out"
+        ? "Sign in to its coding agent to let it work."
+        : "Send it a message to try again.",
+      "idle",
     );
   if (decision.phase === "hq-key" && input.hqKey !== undefined) {
     const words = hqKeyWords(input.hqKey, name);

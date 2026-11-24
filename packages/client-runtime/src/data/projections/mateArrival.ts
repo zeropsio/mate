@@ -16,6 +16,7 @@ import {
 } from "../../zerops/environments/reachability.ts";
 import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
+import type { HqMateState } from "./hqMates.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 
@@ -797,6 +798,8 @@ export function mateNoticeDecision(input: {
    * while their access is unread.
    */
   readonly operates?: boolean | undefined;
+  /** HQ's verdict on the Mate (`hqMateState`): one that cannot work speaks over its conversation. */
+  readonly mateState?: HqMateState | null | undefined;
 }) {
   const { reachability } = input;
   const surface = input.conversationShown ? ("banner" as const) : ("stage" as const);
@@ -837,10 +840,15 @@ export function mateNoticeDecision(input: {
                 ? "none"
                 : "opening"
               : reachability.kind === "ready" && reachability.notice === null
-                ? // Only a connected Mate's config is its word now; it speaks over the conversation.
-                  input.hqKey === undefined || !input.conversationShown
+                ? // Only a connected Mate's config and HQ's verdict on it are its word now; each
+                  // speaks over the conversation, HQ's verdict that it cannot work first.
+                  !input.conversationShown
                   ? "none"
-                  : "hq-key"
+                  : input.mateState?.state === "cannot_run"
+                    ? "cannot-run"
+                    : input.hqKey === undefined
+                      ? "none"
+                      : "hq-key"
                 : "reachability";
   const actions: ReadonlyArray<ReachabilityAction> =
     phase === "access"
@@ -859,6 +867,7 @@ export function mateNoticeDecision(input: {
   const severity =
     phase === "limit" ||
     phase === "access" ||
+    phase === "cannot-run" ||
     (phase === "hq-key" && input.hqKey?.state === "refused")
       ? ("attention" as const)
       : phase === "recovery"

@@ -180,3 +180,25 @@ it("PJ139: A Mate whose project holds no container reads as having none while no
     expect([status, pressed.page?.kind]).toEqual([status, "coming"]);
   }
 });
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | input.mateState?.state === "cannot_run" → input.mateState != null
+it("PJ+2: A connected Mate HQ says cannot work speaks one notice over its conversation, ahead of its key's word, and HQ's other verdicts, or a Mate not connected, keep their own; breaks: a signed-out Mate's page says nothing while it cannot answer, or a Mate HQ calls online or offline is told it cannot work", () => {
+  const ready = { kind: "ready", notice: null } as const;
+  const on = { mateName: "Ada", conversationShown: true, nowMs: 0 };
+  const verdict = (state: string) => ({ state, since: undefined, why: "signed_out" });
+  const phase = (input: Partial<Parameters<typeof mateNoticeDecision>[0]>) =>
+    mateNoticeDecision({ ...on, reachability: ready, ...input }).phase;
+  expect(phase({ mateState: verdict("cannot_run") })).toBe("cannot-run");
+  expect(phase({ mateState: verdict("cannot_run"), hqKey: { state: "unresolved" } })).toBe(
+    "cannot-run",
+  );
+  expect(phase({ mateState: verdict("cannot_run"), conversationShown: false })).toBe("none");
+  expect(phase({ mateState: verdict("cannot_run"), reachability: { kind: "reconnecting" } })).toBe(
+    "reachability",
+  );
+  expect([
+    phase({ mateState: verdict("online") }),
+    phase({ mateState: verdict("offline") }),
+    phase({ mateState: null }),
+  ]).toEqual(["none", "none", "none"]);
+});
