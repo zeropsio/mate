@@ -181,7 +181,7 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
       data-open={open ? "" : undefined}
       style={{ "--helper-depth": depth } as CSSProperties}
     >
-      <div className={cn("rounded-lg", open && "bg-foreground/4")}>
+      <div className={cn("rounded-control", open && "bg-foreground/4")}>
         <Row
           size="sm"
           pressable
@@ -269,7 +269,7 @@ function PhaseRail({ group }: { group: AgentPanelWorkflowGroup }) {
           ) : null}
           <div
             className={cn(
-              "flex items-center gap-1 rounded-sm border px-1.5 py-0.5",
+              "flex items-center gap-1 rounded-mark border px-1.5 py-0.5",
               phase.state === "running"
                 ? "border-info/40"
                 : phase.state === "done"
@@ -457,7 +457,7 @@ function ExpandedWorkflowSection({
   const scriptPath = group.workflow.runHandles?.scriptPath;
   const canShowScript = scriptPath !== undefined && environmentId !== null && threadId !== null;
   return (
-    <section className="rounded-lg border border-border/50 bg-card/30 p-1.5">
+    <section className="rounded-card border border-border/50 bg-card/30 p-1.5">
       <div className="flex items-center gap-2 px-1.5 pt-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
         <StatusDot status={group.workflow.status} />
         <span className="min-w-0 truncate">

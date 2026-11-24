@@ -62,7 +62,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
   return (
     <div
       className={cn(
-        "chat-composer-shoulder-tab absolute -top-7 right-4 z-0 flex h-8 items-center rounded-t-xl border border-b-0 px-1 pb-1",
+        "chat-composer-shoulder-tab absolute -top-7 right-4 z-0 flex h-8 items-center rounded-t-control border border-b-0 px-1 pb-1",
         props.menuOpen && "pointer-events-none",
       )}
     >

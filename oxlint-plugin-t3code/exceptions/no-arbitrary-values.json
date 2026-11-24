@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/BranchToolbar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> px-[calc(--spacing(2)-1px)] in \"inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-md border border-transparent px-[calc(--spacing(2)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
     "kind": "Literal",
     "fingerprint": "<> ease-[cubic-bezier(0.32,0.72,0,1)] in \"flex w-full max-w-[240px] origin-left transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity\"",
@@ -130,22 +122,6 @@
   {
     "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
     "kind": "Literal",
-    "fingerprint": "<> focus-visible:ring-[3px] in \"inline-flex size-4.5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> focus-visible:ring-[3px] in \"inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
     "fingerprint": "<> text-[10px] in \"text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -192,54 +168,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Input> text-[12px] in \"h-7 w-44 rounded-md text-[12px] sm:h-7\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> focus-visible:ring-[3px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> text-[12px] in \"inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProjectSettingsPanel.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[11px] in \"shrink-0 rounded-sm border border-border/60 px-1.5 py-px text-[11px] font-normal text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.35)] in \"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
@@ -251,14 +179,6 @@
     "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
     "kind": "Literal",
     "fingerprint": "<> shadow-[0_0_0_1px_rgb(0_0_0/0.35)] in \"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[10px] in \"truncate rounded bg-muted/60 px-1 py-0.5 text-[10px] text-muted-foreground\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

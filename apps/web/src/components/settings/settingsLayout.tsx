@@ -168,7 +168,7 @@ export function SettingsRow({
       {...rowProps}
       ref={targetRef}
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
-      className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
+      className={cn("rounded-control", children ? "pb-1" : undefined, className)}
       data-settings-row=""
     >
       <Row

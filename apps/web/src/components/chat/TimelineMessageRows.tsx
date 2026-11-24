@@ -37,7 +37,7 @@ import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 
 /** A picture sent with a message: its frame over the bubble. */
-const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-lg border border-border/80 bg-background/70";
+const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
 
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
@@ -62,7 +62,7 @@ export function QueuedMessageTimelineRow({
   });
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
-      <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
+      <div className="max-w-[80%] rounded-card border border-dashed border-border p-3 text-message-foreground/80">
         {text.length > 0 ? (
           <UserMessageBody
             text={text}
@@ -257,7 +257,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
         {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
         <div
-          className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
+          className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground"
           data-message-aside={row.aside ? "true" : undefined}
         >
           <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>

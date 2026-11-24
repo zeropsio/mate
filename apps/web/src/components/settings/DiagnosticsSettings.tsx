@@ -541,7 +541,7 @@ function ProcessResourceHistoryChart({
 
   return (
     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-      <div className="flex h-28 items-end gap-1 overflow-hidden rounded-sm bg-muted/10 p-2">
+      <div className="flex h-28 items-end gap-1 overflow-hidden rounded-control bg-muted/10 p-2">
         {buckets.map((bucket) => {
           const peakHeight = Math.max(2, (bucket.maxCpuPercent / maxCpuPercent) * 100);
           const averageHeight = Math.max(2, (bucket.avgCpuPercent / maxCpuPercent) * 100);
@@ -555,11 +555,11 @@ function ProcessResourceHistoryChart({
                       aria-label={`Average CPU ${bucket.avgCpuPercent.toFixed(1)}%, peak CPU ${bucket.maxCpuPercent.toFixed(1)}%`}
                     >
                       <div
-                        className="absolute inset-x-0 bottom-0 rounded-t-sm bg-foreground/15 transition-colors"
+                        className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/15 transition-colors"
                         style={{ height: `${peakHeight}%` }}
                       />
                       <div
-                        className="absolute inset-x-0 bottom-0 rounded-t-sm bg-foreground/60 transition-colors"
+                        className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/60 transition-colors"
                         style={{ height: `${averageHeight}%` }}
                       />
                     </div>
@@ -1280,7 +1280,7 @@ export function DiagnosticsSettingsPanel() {
                       {formatRelativeNoWrap(event.seenAt)}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <span className="inline-flex rounded bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
+                      <span className="inline-flex rounded-mark bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
                         {event.level}
                       </span>
                     </td>

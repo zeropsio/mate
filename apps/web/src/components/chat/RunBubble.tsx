@@ -13,7 +13,7 @@ import { cn } from "~/lib/utils";
  * one bubble in it, in its tint, 12 px in and 8 px down; the person's own
  * words keep their bubble on their side.
  */
-export const BUBBLE_SHAPE = "rounded-2xl";
+export const BUBBLE_SHAPE = "rounded-card";
 export const BUBBLE_PAD = "px-3.5 py-2.5";
 /** The Mate's words: one round of 12 px, hugging what it says. */
 const SPEECH_SHAPE = "w-fit max-w-full rounded-card";

@@ -7,8 +7,8 @@ export function DiffPanelHeaderSkeleton() {
         <Skeleton shape="card" className="h-8 w-32" />
       </div>
       <div className="flex shrink-0 gap-1">
-        <Skeleton className="size-7 rounded-md" />
-        <Skeleton className="size-7 rounded-md" />
+        <Skeleton className="size-7" />
+        <Skeleton className="size-7" />
       </div>
     </>
   );

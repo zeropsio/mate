@@ -375,7 +375,7 @@ function AskPicture({
       className={
         size === "sm"
           ? "inline-block size-8 shrink-0 overflow-hidden rounded-control bg-muted"
-          : "inline-block size-18 shrink-0 overflow-hidden rounded-lg bg-muted"
+          : "inline-block size-18 shrink-0 overflow-hidden rounded-control bg-muted"
       }
     >
       {url === undefined ? null : (

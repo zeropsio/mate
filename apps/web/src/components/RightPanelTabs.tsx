@@ -238,7 +238,7 @@ type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
  * menu glyph's size itself, and a card's own class replaces it.
  */
 function ExpressLauncherMark({ className }: { readonly className?: string }) {
-  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-sm")} />;
+  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-mark")} />;
 }
 
 /** A launcher card's mark: a lucide glyph, or a product's own mark (Adobe Express's). */
@@ -563,7 +563,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "persona":
       return <PersonaIcon className="size-3 shrink-0" />;
     case "express":
-      return <ExpressMark className="size-3.5 shrink-0 rounded-xs" />;
+      return <ExpressMark className="size-3.5 shrink-0 rounded-mark" />;
     case "vault":
       return <KeyRound className="size-3 shrink-0" />;
     case "overview":

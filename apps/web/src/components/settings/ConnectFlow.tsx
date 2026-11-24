@@ -67,7 +67,7 @@ export function ConnectCard({
 
 /** The surface a row's press unfolds: edged in both themes, a step in from the row. */
 export function FlowSurface({ children }: { readonly children: ReactNode }) {
-  return <div className="rounded-xl border border-border bg-muted/40 p-4">{children}</div>;
+  return <div className="rounded-card border border-border bg-muted/40 p-4">{children}</div>;
 }
 
 /** One step: its number, a short title, one line of help, and what it takes. */

@@ -22,7 +22,7 @@ export function ComposerFoldedAnswerRow({
       <div
         data-chat-composer-mobile-pending-compact="true"
         className={cn(
-          "flex min-w-0 items-center gap-2 rounded-lg border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
+          "flex min-w-0 items-center gap-2 rounded-card border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
           !multiSelect && "p-0",
         )}
       >

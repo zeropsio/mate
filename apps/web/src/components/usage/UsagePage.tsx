@@ -668,7 +668,7 @@ export function UsagePage({
                     </div>
                     {settling || sections.periods.kind !== "read" ? (
                       <div className="ml-16 flex flex-col gap-1" aria-hidden>
-                        <div className="h-56 rounded-sm bg-muted/35" />
+                        <div className="h-56 rounded-control bg-muted/35" />
                         <span className="text-3xs">&nbsp;</span>
                       </div>
                     ) : metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
@@ -698,7 +698,7 @@ export function UsagePage({
                   </p>
                   <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
-                      <div className="h-5 w-36 rounded-sm bg-muted" />
+                      <div className="h-5 w-36 rounded-mark bg-muted" />
                     ) : costsHidden ? (
                       <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
@@ -770,7 +770,7 @@ export function UsagePage({
                     </p>
                   ) : null}
                   {settling ? (
-                    <div className="h-44 rounded-sm bg-muted/35" />
+                    <div className="h-44 rounded-control bg-muted/35" />
                   ) : breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}
@@ -992,7 +992,7 @@ function UsageTotals({
             label={label}
             value={
               totals === null ? (
-                <span aria-hidden className="block h-6 w-16 rounded-sm bg-muted" />
+                <span aria-hidden className="block h-6 w-16 rounded-mark bg-muted" />
               ) : unknown && key !== "totalTokens" ? (
                 "Unknown"
               ) : (
@@ -1205,13 +1205,13 @@ export function UsageSummarySkeleton() {
   return (
     <div className="flex min-h-44 flex-col gap-5" aria-hidden>
       <div className="flex flex-col gap-1">
-        <div className="h-10 w-36 rounded-sm bg-muted" />
-        <div className="h-4 w-32 rounded-sm bg-muted" />
+        <div className="h-10 w-36 rounded-mark bg-muted" />
+        <div className="h-4 w-32 rounded-mark bg-muted" />
       </div>
-      <div className="h-5 w-40 rounded-sm bg-muted" />
+      <div className="h-5 w-40 rounded-mark bg-muted" />
       <div className="flex flex-col gap-1">
-        <div className="h-5 w-36 rounded-sm bg-muted" />
-        <div className="h-4 w-32 rounded-sm bg-muted" />
+        <div className="h-5 w-36 rounded-mark bg-muted" />
+        <div className="h-4 w-32 rounded-mark bg-muted" />
       </div>
     </div>
   );

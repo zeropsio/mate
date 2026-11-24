@@ -887,7 +887,7 @@ export function PauseBlock({
         // Resumed, the same block goes quiet — history, not a state to act
         // on: a line like an event's — and keeps
         // its height: newer rows may already sit under it.
-        "relative grid gap-3 rounded-xl border py-3 text-center",
+        "relative grid gap-3 rounded-card border py-3 text-center",
         history
           ? "border-x-0 border-transparent text-muted-foreground"
           : "border-border bg-muted/35 px-3.5",

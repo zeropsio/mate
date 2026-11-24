@@ -111,7 +111,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 decoding="async"
                 src={item.src}
                 alt={item.name}
-                className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+                className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-card border border-border/70 bg-background object-contain shadow-2xl"
                 draggable={false}
               />
             ) : (
@@ -153,7 +153,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                   size="sm"
                   variant="secondary"
                 >
-                  <ExpressMark className="size-4 rounded-sm" />
+                  <ExpressMark className="size-4 rounded-mark" />
                   Edit in Adobe Express
                 </Button>
               </div>

@@ -253,7 +253,7 @@ function UnknownWhenVariableWarning({
           <span
             tabIndex={focusable ? 0 : undefined}
             aria-label={label}
-            className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25"
+            className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-mark text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-warning/25"
           >
             <TriangleAlertIcon className="size-3.5" />
           </span>
@@ -281,7 +281,7 @@ function KeybindingConflictWarning({ labels }: { labels: ReadonlyArray<string> }
           <span
             tabIndex={0}
             aria-label={description}
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25"
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-mark text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-warning/25"
           >
             <TriangleAlertIcon className="size-3.5" />
           </span>
@@ -386,7 +386,7 @@ function WhenExpressionNodeEditor({
     return (
       <div
         className={cn(
-          "space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2",
+          "space-y-2 rounded-card border border-border/70 bg-muted/20 p-2",
           depth > 0 && "border-border/50 bg-background/50",
         )}
       >
@@ -493,7 +493,7 @@ function WhenExpressionNodeEditor({
   return (
     <div
       className={cn(
-        "space-y-2 rounded-lg border border-border/60 bg-muted/10 p-2",
+        "space-y-2 rounded-card border border-border/60 bg-muted/10 p-2",
         depth > 0 && "border-border/70 bg-background/55",
       )}
     >
@@ -674,7 +674,7 @@ function WhenExpressionBuilder({
           </div>
         )}
         {parseError ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border border-destructive/30 bg-background/75 p-4 text-center text-caption text-destructive backdrop-blur-xs">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-card border border-destructive/30 bg-background/75 p-4 text-center text-caption text-destructive backdrop-blur-xs">
             Fix the expression above to continue editing visually.
           </div>
         ) : null}
@@ -809,7 +809,8 @@ function KeybindingTableRow({
             aria-label={`Keybinding for ${commandLabel(row.command)}`}
             value={isRecording ? "" : keyDraft}
             placeholder={isRecording ? "Press shortcut" : "Unassigned"}
-            className="h-7 w-44 rounded-md text-[12px] sm:h-7"
+            className="w-44"
+            size="compact"
             onFocus={() => setDraft({ isRecording: true })}
             onBlur={() => setDraft({ isRecording: false })}
             onChange={(event) => setDraft({ keyDraft: event.currentTarget.value })}
@@ -829,13 +830,17 @@ function KeybindingTableRow({
       <div className="pr-4">
         <Popover>
           <PopoverTrigger
-            className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
-              !whenDraftExpression && "text-muted-foreground",
-            )}
             aria-label={`Edit when clause for ${commandLabel(row.command)}`}
+            render={<Button className="w-full justify-between" size="sm" variant="secondary" />}
           >
-            <span className="truncate">{whenDraftExpression || "Always"}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate font-mono text-caption",
+                !whenDraftExpression && "text-muted-foreground",
+              )}
+            >
+              {whenDraftExpression || "Always"}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>
@@ -987,13 +992,17 @@ function NewKeybindingTableRow({
       <div className="pr-4">
         <Popover>
           <PopoverTrigger
-            className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
-              !whenDraftExpression && "text-muted-foreground",
-            )}
             aria-label={`Edit when clause for ${commandLabelText}`}
+            render={<Button className="w-full justify-between" size="sm" variant="secondary" />}
           >
-            <span className="truncate">{whenDraftExpression || "Always"}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate font-mono text-caption",
+                !whenDraftExpression && "text-muted-foreground",
+              )}
+            >
+              {whenDraftExpression || "Always"}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>

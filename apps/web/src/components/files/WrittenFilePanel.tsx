@@ -103,7 +103,7 @@ export default function WrittenFilePanel({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <div className="rounded-xl bg-foreground/4">
+          <div className="rounded-card bg-foreground/4">
             <WrittenChanges write={read.file.write} />
           </div>
         </div>

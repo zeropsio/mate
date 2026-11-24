@@ -3,7 +3,7 @@ import { PaperclipIcon } from "lucide-react";
 export function WorkspaceFileDropOverlay() {
   return (
     <div
-      className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
+      className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-sheet border-2 border-dashed border-primary/60 bg-primary/[0.035]"
       data-chat-workspace-drop-overlay="true"
     >
       <div

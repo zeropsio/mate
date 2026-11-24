@@ -530,7 +530,7 @@ function QuestionAnswerHistory({
                       decoding="async"
                       src={url}
                       alt={attachment.name}
-                      className="h-20 w-32 rounded object-contain"
+                      className="h-20 w-32 rounded-control object-contain"
                     />
                   ) : (
                     attachment.name

@@ -118,7 +118,7 @@ function StepPicture({
     return (
       <span
         aria-label="Loading the picture"
-        className="block h-20 w-32 rounded-lg bg-foreground/5"
+        className="block h-20 w-32 rounded-control bg-foreground/5"
         role="status"
       />
     );
@@ -133,7 +133,7 @@ function StepPicture({
       onClick={() => onOpen({ images: [{ src: asset.url, name }], index: 0 })}
       variant="bare"
     >
-      <span className="block size-full overflow-hidden rounded-lg border border-border/60 bg-card">
+      <span className="block size-full overflow-hidden rounded-control border border-border/60 bg-card">
         <AssetImage
           loading="lazy"
           decoding="async"

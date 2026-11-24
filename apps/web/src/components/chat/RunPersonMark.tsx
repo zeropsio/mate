@@ -86,7 +86,7 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
           <span
             key={picture.id}
             aria-label={`Loading ${picture.name}`}
-            className="block h-16 w-24 rounded-lg bg-foreground/5"
+            className="block h-16 w-24 rounded-control bg-foreground/5"
             role="status"
           />
         ) : (
@@ -105,7 +105,7 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
             }
             variant="bare"
           >
-            <span className="block size-full overflow-hidden rounded-lg border border-border/60 bg-card">
+            <span className="block size-full overflow-hidden rounded-control border border-border/60 bg-card">
               <AssetImage
                 loading="lazy"
                 decoding="async"

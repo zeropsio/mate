@@ -227,7 +227,7 @@ export function TimelineMinimap({
                   transform: `translateY(${activeTooltipTranslate})`,
                 }}
               >
-                <span className="dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25">
+                <span className="dropdown-glass block rounded-card p-3 text-left text-popover-foreground shadow-popup">
                   <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-body font-medium leading-5">
                     {activeItem.userText ?? "User message"}
                   </span>

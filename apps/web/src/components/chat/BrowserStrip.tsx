@@ -300,7 +300,7 @@ export function BrowserStrip({
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-muted-foreground text-caption leading-4">
+          <span className="ms-2 min-w-0 flex-1 truncate rounded-mark bg-foreground/8 px-2 text-start text-muted-foreground text-caption leading-4">
             {caption}
           </span>
         </span>
@@ -353,7 +353,7 @@ export function BrowserStrip({
         // A light share of the ink, both palettes show it: `muted` all but
         // vanishes on the dark card, and a surface this large sits a step
         // under the Mate's bubble.
-        !bare && "rounded-2xl bg-foreground/5 p-3",
+        !bare && "rounded-card bg-foreground/5 p-3",
       )}
       data-browser-strip
       data-browser-strip-device={device}
@@ -612,7 +612,7 @@ export function BrowserTakes({
           >
             <span
               className={cn(
-                "block h-full overflow-hidden rounded-lg border bg-card",
+                "block h-full overflow-hidden rounded-control border bg-card",
                 TAKE_PICTURE_CLASS[device],
                 state === "failed"
                   ? "border-status-failed ring-1 ring-status-failed"
@@ -665,7 +665,7 @@ function LiveTake({
     <span
       aria-label={`Checking ${browserCheckCaption(take)}`}
       className={cn(
-        "relative block h-20 shrink-0 overflow-hidden rounded-lg border border-border bg-background",
+        "relative block h-20 shrink-0 overflow-hidden rounded-control border border-border bg-background",
         TAKE_PICTURE_CLASS[device],
       )}
       data-report-take={device}
@@ -734,7 +734,7 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
     <span
       aria-label={`${browserCheckCaption(take)} failed${reason === null ? "" : `: ${reason}`}`}
       className={cn(
-        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
+        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-control border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
         TAKE_PICTURE_CLASS[device],
       )}
       data-report-take={device}

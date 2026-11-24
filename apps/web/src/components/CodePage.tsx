@@ -307,7 +307,7 @@ export function CodeChangesEmpty({
 }) {
   return (
     <div
-      className="flex flex-col items-start gap-0.5 rounded-xl border border-dashed border-border px-4 py-3.5 text-body"
+      className="flex flex-col items-start gap-0.5 rounded-card border border-dashed border-border px-4 py-3.5 text-body"
       role={alert ? "alert" : undefined}
     >
       <p className="text-foreground">{title}</p>

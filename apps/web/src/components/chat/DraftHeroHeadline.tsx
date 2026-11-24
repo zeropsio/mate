@@ -156,10 +156,17 @@ export function DraftHeroHeadline({
             // project title) so the hero sentence reads naturally: an
             // aria-label here would replace the title with an action phrase
             // mid-sentence and baffle screen-reader users.
-            <MenuTrigger className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-baseline text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" />
+            <MenuTrigger
+              render={
+                <InlineButton
+                  className="pointer-events-auto min-w-0 max-w-64 align-baseline"
+                  tone="picker"
+                />
+              }
+            />
           }
         >
-          {selectorLabel ?? "Choose a project"}
+          <span className="min-w-0 truncate">{selectorLabel ?? "Choose a project"}</span>
         </TooltipTrigger>
         {selectorLabel ? <TooltipPopup side="top">{selectorLabel}</TooltipPopup> : null}
       </Tooltip>

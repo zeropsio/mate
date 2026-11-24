@@ -416,14 +416,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/TimelineMinimap.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in MessagesTimeline awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/PanelLayoutControls.tsx",
     "kind": "Literal",
     "fingerprint": "\"absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
@@ -2429,14 +2421,6 @@
     "fingerprint": "@utility dialog-glass{box-shadow:0 24px 64px -24px rgb(0 0 0 / 65%)}",
     "owner": "karel",
     "reason": "dialog glass shadow outside semantic roles",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in __root awaiting semantic roles",
     "expires": "F4"
   },
   {

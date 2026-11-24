@@ -35,7 +35,7 @@ export function PromptFontPreview() {
     setCursor(nextCursor);
   }, []);
   return (
-    <div className="mt-1 mb-2 rounded-lg border border-border bg-background px-3 py-2">
+    <div className="mt-1 mb-2 rounded-control border border-border bg-background px-3 py-2">
       <ComposerPromptEditor
         editorRef={editorRef}
         value={prompt}
@@ -268,7 +268,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
   return (
     <div
       ref={mountRef}
-      className="relative mt-1 mb-2 h-52 overflow-hidden rounded-lg border border-border"
+      className="relative mt-1 mb-2 h-52 overflow-hidden rounded-card border border-border"
       aria-label="Terminal font preview"
     />
   );

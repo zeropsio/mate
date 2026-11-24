@@ -58,21 +58,21 @@ function ExpressDesignCard({
   // The design's own id, its last characters: two unnamed designs never read the same.
   const shortId = documentId.slice(-7);
   return (
-    <span className="my-1 flex w-fit max-w-full rounded-xl border border-border bg-card shadow-xs/5">
+    <span className="my-1 flex w-fit max-w-full rounded-card border border-border bg-card shadow-xs/5">
       <Row
         className="group/express"
         data-express-design-chip
         lead={
           preview === undefined ? (
-            <ExpressMark className="size-8 rounded-lg" />
+            <ExpressMark className="size-8 rounded-control" />
           ) : (
             <>
               <img
                 alt=""
-                className="size-8 rounded-lg border border-border object-cover"
+                className="size-8 rounded-control border border-border object-cover"
                 src={preview}
               />
-              <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-sm ring-2 ring-card" />
+              <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-mark ring-2 ring-card" />
             </>
           )
         }

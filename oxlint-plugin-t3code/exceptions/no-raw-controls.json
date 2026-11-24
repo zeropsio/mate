@@ -48,14 +48,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5\"",
-    "owner": "kit pass",
-    "reason": "the edge of the notice stacked behind the front one, drawn as that card's edge; a press only so the stack opens from it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body\", customAnswer ? \"text-foreground\" : \"text-placeholder\", !multiSelect && \"px-3 py-2\", )}",

@@ -107,7 +107,7 @@ function OrganizationBillingPage({
       />
       <SpendingSection billing={billing} daily={daily} />
       <ProjectsSection billing={billing} />
-      <section className="flex flex-col items-start justify-between gap-3 rounded-xl bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
+      <section className="flex flex-col items-start justify-between gap-3 rounded-card bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
         <p className="text-muted-foreground text-body">
           Invoices, payment cards, automatic top-up and billing details are in HQ.
         </p>
@@ -182,7 +182,7 @@ function BalanceCard({
   return (
     <section
       aria-label="Balance"
-      className="overflow-hidden rounded-2xl border border-border/70 bg-card"
+      className="overflow-hidden rounded-card border border-border/70 bg-card"
       data-zerops-surface="billing-balance"
     >
       <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:justify-between">

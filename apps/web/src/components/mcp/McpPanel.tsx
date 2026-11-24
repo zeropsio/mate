@@ -312,7 +312,7 @@ export function McpPanelBody(props: {
                 {group.count}
               </span>
             </h3>
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-card border border-border bg-card">
               {group.id === "waiting"
                 ? proposals.map((proposal) => (
                     <ProposalRowView
@@ -352,7 +352,7 @@ function Tile({ letters }: { readonly letters: string }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted font-medium text-muted-foreground text-caption"
+      className="flex size-7 shrink-0 items-center justify-center rounded-control border border-border bg-muted font-medium text-muted-foreground text-caption"
     >
       {letters}
     </span>

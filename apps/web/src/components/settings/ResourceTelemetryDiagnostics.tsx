@@ -406,7 +406,7 @@ function ResourceHistoryChart({
           <span className="h-1.5 w-3 rounded-full bg-warning/80" /> I/O writes
         </span>
       </div>
-      <div className="flex h-32 items-end gap-1 overflow-hidden rounded-lg border border-border/40 bg-muted/8 px-2 pt-3 pb-2">
+      <div className="flex h-32 items-end gap-1 overflow-hidden rounded-control border border-border/40 bg-muted/8 px-2 pt-3 pb-2">
         {buckets.map((bucket) => {
           const cpuHeight = resourceHistoryBarHeight({
             value: bucket.avgCpuPercent,
@@ -429,15 +429,15 @@ function ResourceHistoryChart({
                 render={
                   <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
                     <span
-                      className="block rounded-t-sm bg-foreground/65"
+                      className="block rounded-t-mark bg-foreground/65"
                       style={{ height: `${cpuHeight}%` }}
                     />
                     <span
-                      className="block rounded-t-sm bg-info/70"
+                      className="block rounded-t-mark bg-info/70"
                       style={{ height: `${readHeight}%` }}
                     />
                     <span
-                      className="block rounded-t-sm bg-warning/80"
+                      className="block rounded-t-mark bg-warning/80"
                       style={{ height: `${writeHeight}%` }}
                     />
                   </div>
@@ -960,7 +960,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm/5">
+        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-sm/5">
           <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-muted/45 via-muted/20 to-transparent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -1069,7 +1069,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           ) : null
         }
       >
-        <div className="grid overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
+        <div className="grid overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
           <div className="px-4 py-4 sm:px-5">
             <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
               <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
@@ -1127,7 +1127,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
                 />
               </>
             ) : (
-              <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 px-4 py-5">
+              <div className="rounded-card border border-dashed border-border/70 bg-muted/20 px-4 py-5">
                 <div className="text-body font-medium text-foreground">
                   Desktop host signals not connected
                 </div>
@@ -1206,7 +1206,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.buckets, {
               loading: "Loading resource history...",
@@ -1238,7 +1238,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           ) : null
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
             presentation={resourceTelemetryProcessPresentation(telemetry)}
             emptyLabel="No processes"
@@ -1261,7 +1261,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           <span className="text-3xs text-muted-foreground/55">Logical bytes by operation</span>
         }
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
+        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
           <div className="bg-muted/15 px-4 py-3 text-2xs leading-relaxed text-muted-foreground sm:px-5">
             Native counters identify which process is reading or writing. These application-level
             counters identify known Zerops Mate operations so process spikes can be correlated with

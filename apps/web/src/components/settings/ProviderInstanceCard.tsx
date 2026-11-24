@@ -608,7 +608,7 @@ export function ProviderInstanceCard({
         {displayName}
       </h3>
       {String(instanceId) !== String(instance.driver) ? (
-        <code className="truncate rounded bg-muted/60 px-1 py-0.5 text-[10px] text-muted-foreground">
+        <code className="truncate rounded-mark bg-muted/60 px-1 py-0.5 text-caption text-muted-foreground">
           {instanceId}
         </code>
       ) : null}

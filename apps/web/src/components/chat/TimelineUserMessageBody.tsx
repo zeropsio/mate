@@ -302,7 +302,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   const fenceLanguage = comment.fenceLanguage ?? "diff";
 
   return (
-    <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
+    <div className="space-y-2 rounded-card border border-border/70 bg-background/70 p-3">
       <div className="space-y-1">
         <div className="text-message-foreground text-caption font-medium">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}

@@ -744,7 +744,10 @@ function MarkdownCodeBlockTitleContent({
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="inline-flex shrink-0 rounded-sm" aria-label={`Language: ${language}`} />
+          <span
+            className="inline-flex shrink-0 rounded-mark"
+            aria-label={`Language: ${language}`}
+          />
         }
       >
         <PierreEntryIcon pathValue={fileName} kind="file" theme={theme} className="size-3.5" />
@@ -1256,7 +1259,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
           loading="eager"
           decoding="async"
           draggable={false}
-          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
+          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-mark")}
           onError={() => {
             failedFaviconHosts.add(host);
             setFailedHost(host);
@@ -1347,7 +1350,7 @@ function useImageRoom(
           },
     className: cn(
       // Its room stands at its size while its bytes come, nothing painted in it.
-      placeholder && "aspect-video w-full rounded-lg",
+      placeholder && "aspect-video w-full rounded-control",
     ),
     // The room's own width stays its opener's while the picture stands in it: the picture's width
     // is a share of it, and a button that shrinks to its content gives a share nothing to be of
@@ -1386,7 +1389,7 @@ function useImageRoom(
 // rule, keeping workspace images on the same block layout as their placeholder.
 const CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME = cn(
   CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
-  "my-1 block! rounded-lg border border-border/40",
+  "my-1 block! rounded-control border border-border/40",
 );
 
 function ChatMarkdownImageFallback(props: {
@@ -1528,7 +1531,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
       <span
         {...(reading ? { role: "status", "aria-label": "Loading image" } : {})}
         className={cn(
-          "my-1 block max-w-full rounded-lg",
+          "my-1 block max-w-full rounded-control",
           room.width === undefined && "aspect-video w-full max-w-[30rem]",
         )}
         style={

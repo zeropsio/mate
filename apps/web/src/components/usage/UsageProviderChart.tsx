@@ -324,7 +324,7 @@ export function UsageProviderChart({
           {hoveredPeriod === undefined ? null : (
             <div
               ref={tooltipRef}
-              className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-xl border border-border/50 px-2.5 py-2 text-caption shadow-lg"
+              className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-card border border-border/50 px-2.5 py-2 text-caption shadow-lg"
               style={{
                 left: "var(--usage-tooltip-left, 0px)",
                 top: "var(--usage-tooltip-top, 0px)",

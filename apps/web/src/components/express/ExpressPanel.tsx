@@ -281,7 +281,7 @@ export function ExpressPanel({
       {editing ? null : (
         <div className="@container flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pt-5 pb-4">
           <header className="flex items-center gap-3">
-            <ExpressMark className="size-10 shrink-0 rounded-lg shadow-xs/10" />
+            <ExpressMark className="size-10 shrink-0 rounded-control shadow-xs/10" />
             <div className="flex min-w-0 flex-col">
               <h2 className="text-base font-semibold leading-6">Adobe Express</h2>
               <p className="text-muted-foreground text-body leading-5">
@@ -392,7 +392,7 @@ export function ExpressPanel({
           )}
 
           <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-caption">
-            <ExpressMark className="size-4 rounded-sm" />
+            <ExpressMark className="size-4 rounded-mark" />
             <span>Powered by Adobe Express · saving asks for your Adobe account</span>
           </footer>
         </div>
@@ -412,7 +412,7 @@ function ExpressTile(props: {
       <Row
         className="@lg:flex-col"
         lead={
-          <span className="flex size-8 items-center justify-center rounded-lg bg-muted text-foreground [&_svg]:size-4">
+          <span className="flex size-8 items-center justify-center rounded-control bg-muted text-foreground [&_svg]:size-4">
             {props.icon}
           </span>
         }
@@ -444,7 +444,7 @@ function SavedDesign({
       : { environmentId, resource: entry.picture, rendition: TILE_PICTURE },
   );
   return (
-    <figure className="group/saved relative aspect-square overflow-hidden rounded-lg border border-border bg-muted">
+    <figure className="group/saved relative aspect-square overflow-hidden rounded-control border border-border bg-muted">
       {url === undefined ? null : (
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
@@ -477,8 +477,8 @@ function LinkedDesign({
 }) {
   return (
     <Button className="block aspect-square" onClick={onOpen} variant="bare">
-      <span className="flex size-full flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center transition-colors hover:bg-accent/60">
-        <ExpressMark className="size-8 rounded-lg" />
+      <span className="flex size-full flex-col items-center justify-center gap-2 rounded-control border border-border bg-muted p-3 text-center transition-colors hover:bg-accent/60">
+        <ExpressMark className="size-8 rounded-control" />
         <span className="line-clamp-2 text-caption font-medium leading-4">
           {entry.words ?? "Adobe Express design"}
         </span>
