@@ -12,7 +12,7 @@
 import { PROJECT_GOING_STATUSES } from "../../zerops/mateEnvironments.ts";
 import type { HqOperation } from "../../zerops/hq/client.ts";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
-import type { WaitingPress } from "./operationFailure.ts";
+import type { WaitingWords } from "./operationFailure.ts";
 import { hqOperationOf } from "./hqOperation.ts";
 
 /** HQ's kind of a Mate's deletion. */
@@ -24,16 +24,16 @@ export type MateDeletion =
   /** HQ's deletion runs, or Zerops deletes its project: it opens nowhere and offers nothing. */
   | { readonly kind: "deleting" }
   /**
-   * HQ's deletion `id` stopped open because its maker's token lapsed: it waits for their Continue
+   * HQ's deletion `id` stopped open for its maker: it waits for their Continue
    * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue.
    */
-  | {
+  | (WaitingWords & {
       readonly kind: "waiting";
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
-      readonly press: WaitingPress;
-    }
+      readonly endable?: true;
+    })
   /**
    * HQ's deletion stopped with a failure: the Mate stands, Delete again. The failure is HQ's as
    * sent, including who stopped it and Zerops' answer where it refused.

@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 
 import { AskCard, AskFacts, AskFooter } from "../../ask/AskCard";
 import { Button } from "../../ui/button";
+import { ZeropsOperationEnd } from "../ZeropsOperationEnd";
 import {
   releaseOfferCardTitle,
   releaseOfferSummary,
@@ -51,6 +52,8 @@ interface ServiceCreateAskCardProps {
   readonly onNotNow: () => void;
   /** HQ's creation waits for the viewer's fresh sign-in (`view.resume`): gives it to HQ. */
   readonly onContinue?: (() => void) | undefined;
+  /** Ends the waiting effect; given only where HQ offers this reader its end. */
+  readonly onEnd?: (() => void) | undefined;
   /** Why the person's last decision was not kept, in HQ's words. */
   readonly refusal?: string | undefined;
 }
@@ -66,10 +69,21 @@ export function ServiceCreateAskCard(props: ServiceCreateAskCardProps) {
         footer={
           <AskFooter
             action={
-              view.resume && props.onContinue !== undefined ? (
-                <Button onClick={props.onContinue} variant="secondary">
-                  {view.press ?? "Continue"}
-                </Button>
+              (view.resume && props.onContinue !== undefined) || props.onEnd !== undefined ? (
+                <>
+                  {view.resume && props.onContinue !== undefined ? (
+                    <Button onClick={props.onContinue} variant="secondary">
+                      {view.press ?? "Continue"}
+                    </Button>
+                  ) : null}
+                  {props.onEnd === undefined ? null : (
+                    <ZeropsOperationEnd
+                      kind="proposal_effect"
+                      name="this approved action"
+                      onEnd={props.onEnd}
+                    />
+                  )}
+                </>
               ) : undefined
             }
             density="full"

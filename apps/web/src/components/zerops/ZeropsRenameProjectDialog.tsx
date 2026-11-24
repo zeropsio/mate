@@ -145,7 +145,7 @@ export function ZeropsRenameProjectDialog({
             <div className="flex items-center gap-2 text-muted-foreground">
               <span className="me-auto">
                 {standing.yours || orgId === undefined ? (
-                  "Renaming stopped: your Zerops sign-in ran out"
+                  `Renaming stopped: ${standing.why}`
                 ) : (
                   <RenameWaitingWords orgId={orgId} userId={standing.continueBy} />
                 )}

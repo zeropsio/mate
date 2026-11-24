@@ -1,0 +1,228 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
+    "steps": [
+      "On a prepared test environment run the manual journey: journey run --manual put-it-live --env \u003cenv\u003e --out \u003cjourney receipts\u003e. It makes what it needs and removes it.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads put-it-live/test-rw-hq-frames.json and takes the navigation delivery showing the run's first put_live operation put-live.ended.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
+    ],
+    "recordedAt": "2026-11-23T23:30:25Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "222797b8-1ab9-47f1-b670-9d5259060994:1",
+    "revision": 23,
+    "values": [
+      {
+        "key": "app:v1",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v2",
+          "environments": [
+            {
+              "birth": null,
+              "id": "v3",
+              "jobs": [],
+              "keyHeld": true,
+              "keyId": "v4",
+              "keyInvalid": false,
+              "name": "v5",
+              "order": 1,
+              "release": null,
+              "sources": [
+                "v6"
+              ],
+              "state": "v7",
+              "target": {
+                "kind": "zerops",
+                "projectId": "v3"
+              },
+              "tier": "stage"
+            },
+            {
+              "birth": {
+                "ended": true
+              },
+              "deleteProjectOnRemoval": true,
+              "id": "v8",
+              "jobs": [
+                {
+                  "id": "v9",
+                  "kind": "v10",
+                  "service": "v11",
+                  "sha": "v12",
+                  "state": "v13",
+                  "cause": "v14",
+                  "ref": "v15",
+                  "reason": null,
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": null,
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": "v16",
+                  "at": "v17",
+                  "endedAt": null,
+                  "supersededBy": null
+                },
+                {
+                  "id": "v18",
+                  "kind": "v19",
+                  "service": null,
+                  "services": [
+                    "v11"
+                  ],
+                  "sha": "v12",
+                  "state": "v13",
+                  "cause": "v14",
+                  "ref": "v15",
+                  "reason": null,
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": null,
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": "v16",
+                  "at": "v17",
+                  "endedAt": null,
+                  "supersededBy": null
+                }
+              ],
+              "keyHeld": true,
+              "keyId": "v20",
+              "keyInvalid": false,
+              "name": "v21",
+              "order": 2,
+              "release": {
+                "id": "v22",
+                "tag": "v15",
+                "planned": true,
+                "ended": false,
+                "landed": false,
+                "endedAt": null,
+                "leftOut": [],
+                "target": "v23",
+                "releaseTarget": {
+                  "environmentId": "v8",
+                  "createdAt": "v24",
+                  "target": {
+                    "kind": "v23",
+                    "projectId": "v8"
+                  }
+                }
+              },
+              "sources": [
+                "v14"
+              ],
+              "state": "v7",
+              "target": {
+                "kind": "zerops",
+                "projectId": "v8"
+              },
+              "tier": "production"
+            }
+          ],
+          "id": "v1",
+          "intake": null,
+          "name": "v25",
+          "problems": [
+            {
+              "code": "v26",
+              "what": "v27",
+              "where": {
+                "appId": "v1",
+                "projectId": "v8",
+                "tier": "v28",
+                "operationId": "v29"
+              },
+              "rule": {
+                "source": "v30",
+                "code": "v31"
+              },
+              "next": {
+                "actor": "v32",
+                "action": "v33"
+              }
+            },
+            {
+              "code": "v26",
+              "what": "v27",
+              "where": {
+                "appId": "v1",
+                "projectId": "v8",
+                "tier": "v28",
+                "operationId": "v34"
+              },
+              "rule": {
+                "source": "v30",
+                "code": "v31"
+              },
+              "next": {
+                "actor": "v32",
+                "action": "v33"
+              }
+            }
+          ],
+          "projectIds": [
+            "v35",
+            "v3",
+            "v8"
+          ],
+          "releaseOffer": {
+            "head": "v12",
+            "suggestion": "v36",
+            "summary": {
+              "subjects": [
+                "v37"
+              ],
+              "total": 1,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 1
+            },
+            "releaseTarget": {
+              "environmentId": "v8",
+              "createdAt": "v24",
+              "target": {
+                "kind": "v23",
+                "projectId": "v8"
+              }
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v38"
+            },
+            "inFlight": "v15"
+          },
+          "rollouts": [
+            {
+              "id": "v22",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v39",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      }
+    ],
+    "removals": []
+  }
+}
