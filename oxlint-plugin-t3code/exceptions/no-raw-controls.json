@@ -416,46 +416,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"arrival-card\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"arrival-card\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"arrival-more\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"arrival-open-fold\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"arrival-input\"",
-    "owner": "kit pass",
-    "reason": "a hand-made press, link or field that predates the kit's no-raw-controls guard: move it onto components/ui, or name why it must stay hand-made",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<select> className=\"h-9 w-full rounded-control border border-border bg-background px-3 text-body text-foreground\"",

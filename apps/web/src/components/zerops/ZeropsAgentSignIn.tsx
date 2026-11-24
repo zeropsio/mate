@@ -58,6 +58,8 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
 import { Spinner } from "../ui/spinner";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import {
   Dialog,
   DialogHeader,
@@ -238,25 +240,27 @@ export function AgentSignInView(props: AgentSignInViewProps) {
           <div className="arrival-open-body">{props.openCode}</div>
         </div>
       ) : (
-        <button
+        <div
           className="arrival-card"
           data-agent-id={OPENCODE}
           data-dim={dimmed ? "" : undefined}
-          disabled={props.available === false}
           key={OPENCODE}
-          onClick={() => {
-            fold();
-            setKeysOpen(true);
-          }}
-          type="button"
         >
-          <OpenCodeLogoTile />
-          <span className="arrival-card-words">
-            <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
-            <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
-          </span>
-          <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
-        </button>
+          <Row
+            aria-disabled={props.available === false || undefined}
+            lead={<OpenCodeLogoTile />}
+            line={OPENCODE_CARD.account}
+            meta={<ArrowRightIcon aria-hidden="true" className="size-4" />}
+            onClick={() => {
+              fold();
+              setKeysOpen(true);
+            }}
+            pressable
+            render={<button disabled={props.available === false} type="button" />}
+            size="lg"
+            title={OPENCODE_CARD.name}
+          />
+        </div>
       );
     if (openAgent !== undefined && option === openAgent.agentId && opened === option)
       return (
@@ -316,16 +320,17 @@ export function AgentSignInView(props: AgentSignInViewProps) {
         )}
       </div>
       {fixed || hidden <= 0 || (all && !more) ? null : (
-        <button
+        <Button
           aria-expanded={more}
-          className="arrival-more"
+          className="mt-4"
           data-sign-in-more
           onClick={() => setMore(!more)}
-          type="button"
+          shape="round"
+          variant="ghost-muted"
         >
           {more ? "Show fewer options" : `Show ${String(hidden)} more options`}
           <ChevronDownIcon aria-hidden="true" />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -334,15 +339,15 @@ export function AgentSignInView(props: AgentSignInViewProps) {
 /** The open card's close button: it folds the card back into the list. */
 function FoldPress({ onFold }: { readonly onFold: () => void }) {
   return (
-    <button
+    <Button
       aria-label="Close"
-      className="arrival-open-fold"
       data-sign-in-fold
       onClick={onFold}
-      type="button"
+      size="icon-sm"
+      variant="ghost-muted"
     >
       <XIcon aria-hidden="true" />
-    </button>
+    </Button>
   );
 }
 
@@ -372,25 +377,23 @@ function AgentCard({
   readonly agentId: ZeropsAgentId;
   /** Another card stands open: this one steps back. */
   readonly dim: boolean;
-  readonly onChoose: (event: MouseEvent<HTMLButtonElement>) => void;
+  readonly onChoose: () => void;
 }) {
   const card = AGENT_SIGN_IN_CARDS[agentId];
   return (
-    <button
-      disabled={disabled}
-      className="arrival-card"
-      data-agent-id={agentId}
-      data-dim={dim ? "" : undefined}
-      onClick={onChoose}
-      type="button"
-    >
-      <AgentLogoTile agentId={agentId} />
-      <span className="arrival-card-words">
-        <span className="arrival-card-name">{card.name}</span>
-        <span className="arrival-card-account">{card.account}</span>
-      </span>
-      <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
-    </button>
+    <div className="arrival-card" data-agent-id={agentId} data-dim={dim ? "" : undefined}>
+      <Row
+        aria-disabled={disabled || undefined}
+        lead={<AgentLogoTile agentId={agentId} />}
+        line={card.account}
+        meta={<ArrowRightIcon aria-hidden="true" className="size-4" />}
+        onClick={onChoose}
+        pressable
+        render={<button disabled={disabled} type="button" />}
+        size="lg"
+        title={card.name}
+      />
+    </div>
   );
 }
 
@@ -800,12 +803,12 @@ function PasteCodeStep({
       {terminal ? null : (
         <span className="arrival-open-step-field">
           {checking === null ? (
-            <input
+            <Input
               disabled={disabled}
               aria-label={words.paste}
               autoComplete="one-time-code"
-              className="arrival-input"
               data-sign-in-code
+              nativeInput
               onChange={(event) => setValue(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") onSubmit(value);
@@ -819,6 +822,7 @@ function PasteCodeStep({
               }}
               placeholder={words.pastePlaceholder}
               ref={field}
+              size="xl"
               spellCheck={false}
               value={value}
             />

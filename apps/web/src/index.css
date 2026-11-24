@@ -15518,16 +15518,8 @@ a.message-file:focus-visible {
   box-shadow: 0 0 0 1px var(--border);
 }
 
+/* An agent's card: its ground and ring around the row that chooses it. */
 .arrival-card {
-  display: flex;
-  height: 62px;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 10px 16px 10px 10px;
-  color: var(--foreground);
-  text-align: left;
-  cursor: pointer;
   transition:
     box-shadow 150ms var(--ease-out-strong),
     opacity 200ms var(--ease-out-strong),
@@ -15539,15 +15531,8 @@ a.message-file:focus-visible {
   opacity: 0.5;
 }
 
-.arrival-card[data-dim]:is(:hover, :focus-visible) {
+.arrival-card[data-dim]:is(:hover, :focus-within) {
   opacity: 1;
-}
-
-.arrival-card-go {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  color: var(--muted-foreground);
 }
 
 @media (hover: hover) {
@@ -15562,11 +15547,6 @@ a.message-file:focus-visible {
   scale: 0.985;
 }
 
-.arrival-card:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .arrival-logo {
   display: flex;
   flex: none;
@@ -15575,29 +15555,6 @@ a.message-file:focus-visible {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-control);
-}
-
-.arrival-card-words {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.arrival-card-name {
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 600;
-}
-
-.arrival-card-account {
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  line-height: 18px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .arrival-open {
@@ -15621,31 +15578,6 @@ a.message-file:focus-visible {
   line-height: 20px;
 }
 
-.arrival-open-fold {
-  display: grid;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--muted-foreground);
-}
-
-.arrival-open-fold:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-
-.arrival-open-fold:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.arrival-open-fold svg {
-  width: 16px;
-  height: 16px;
-}
-
 .arrival-open-body {
   display: flex;
   flex-direction: column;
@@ -15654,35 +15586,11 @@ a.message-file:focus-visible {
 }
 
 /* *Show N more options*: a quiet pill under the cards. */
-.arrival-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 16px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.arrival-more:hover {
-  color: var(--foreground);
-}
-
-.arrival-more:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.arrival-more svg {
-  width: 16px;
-  height: 16px;
+[data-sign-in-more] svg {
   transition: transform 200ms var(--ease-out-strong);
 }
 
-.arrival-more[aria-expanded="true"] svg {
+[data-sign-in-more][aria-expanded="true"] svg {
   transform: rotate(180deg);
 }
 
@@ -15771,37 +15679,6 @@ a.message-file:focus-visible {
 }
 
 /* A quiet press inside the sign-in: muted, underlined, 13 px. */
-
-/* Claude's code: pasted here, sent on paste. */
-.arrival-input {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: var(--radius-control);
-  background: var(--card);
-  box-shadow: inset 0 0 0 1px var(--input);
-  color: var(--foreground);
-  font-size: 14px;
-  outline: none;
-  transition: box-shadow 150ms var(--ease-out-strong);
-}
-
-.arrival-input::placeholder {
-  color: var(--placeholder);
-}
-
-/* Below 640 px a typed field is 16 px: a smaller one makes iOS zoom the page onto it. */
-@media (max-width: 39.999rem) {
-  .arrival-input {
-    font-size: var(--field-phone-size);
-  }
-}
-
-.arrival-input:focus {
-  box-shadow:
-    inset 0 0 0 1px var(--ring),
-    0 0 0 3px color-mix(in oklab, var(--ring) 20%, transparent);
-}
 
 /* Claude's code while it is checked: the field's own box, the code's ends and the check. */
 .arrival-field {
