@@ -19,9 +19,14 @@ const VARIANTS = variantsOf<ButtonVariant>({
   "destructive-ghost": true,
   link: true,
   sidebar: true,
+  bare: true,
+  send: true,
+  scrim: true,
+  warning: true,
 });
 
 const SIZES = variantsOf<ButtonSize>({
+  "2xs": true,
   xs: true,
   sm: true,
   md: true,
