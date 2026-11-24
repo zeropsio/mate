@@ -37,7 +37,7 @@ export function ZeropsAccountControl({
       <MenuTrigger
         aria-label={`Account: ${account.name}`}
         render={<Button size="sm" variant="ghost" />}
-        className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
+        className="min-w-0"
         data-zerops-account-control="true"
       >
         <PersonAvatar

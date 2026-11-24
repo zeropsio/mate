@@ -28,9 +28,8 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Radio, RadioGroup } from "../ui/radio-group";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { Switch } from "../ui/switch";
-import { cn } from "~/lib/utils";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
   creationRecipeHold,
@@ -338,99 +337,90 @@ function EnvironmentForm({
             : `A separate copy of ${groupName}. It takes a few minutes to come up.`}
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel className="flex flex-col gap-5 space-y-0">
-        <div className="space-y-1.5">
-          <Label htmlFor={`${id}-name`}>Environment</Label>
-          <Input
-            aria-invalid={showErrors && errors.name !== undefined ? true : undefined}
-            id={`${id}-name`}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-            value={name}
-          />
-          {showErrors && errors.name !== undefined ? <FieldError>{errors.name}</FieldError> : null}
-        </div>
+      <DialogPanel>
+        <div className="flex flex-col gap-5">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-name`}>Environment</Label>
+            <Input
+              aria-invalid={showErrors && errors.name !== undefined ? true : undefined}
+              id={`${id}-name`}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+              value={name}
+            />
+            {showErrors && errors.name !== undefined ? (
+              <FieldError>{errors.name}</FieldError>
+            ) : null}
+          </div>
 
-        {role === "prod" ? null : (
-          <>
-            <div className="space-y-3">
-              <label
-                className="flex items-center justify-between gap-3 text-body"
-                htmlFor={`${id}-agent`}
-              >
-                <span className="flex flex-col gap-0.5">
-                  <span>Has its own Mate</span>
-                  <span className="text-caption text-muted-foreground">
-                    {agentSwitchNote(role)}
-                  </span>
-                </span>
-                <Switch
-                  checked={withAgent}
-                  id={`${id}-agent`}
-                  onCheckedChange={(checked) => {
-                    setWithAgent(checked);
-                  }}
-                />
-              </label>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-body">Starts with</span>
-              <RadioGroup
-                aria-label="Starts with"
-                className="gap-2"
-                onValueChange={(value) => {
-                  setChosenRecipeId(String(value));
-                }}
-                value={recipeId}
-              >
-                {options.map((option) => (
-                  <label
-                    className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-card border border-border/55 px-3 py-2.5 text-sm transition-colors",
-                      option.id === recipeId
-                        ? "border-primary/40 bg-primary/5"
-                        : "hover:bg-accent/50",
-                    )}
-                    key={option.id}
-                  >
-                    <Radio className="mt-0.5" value={option.id} />
-                    <span className="flex min-w-0 flex-col gap-0.5">
-                      <span>{option.label}</span>
-                      <span className="text-caption text-muted-foreground">{option.detail}</span>
+          {role === "prod" ? null : (
+            <>
+              <div className="space-y-3">
+                <label
+                  className="flex items-center justify-between gap-3 text-body"
+                  htmlFor={`${id}-agent`}
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span>Has its own Mate</span>
+                    <span className="text-caption text-muted-foreground">
+                      {agentSwitchNote(role)}
                     </span>
-                  </label>
-                ))}
-                {held === undefined ? null : (
-                  <div
-                    className="flex items-center justify-between gap-3 px-3 py-2.5"
-                    role="status"
-                  >
-                    <span className="text-caption text-muted-foreground">{held}</span>
-                    {recipe === "unreadable" && onRecipeRetry !== undefined ? (
-                      <Button
-                        aria-busy={recipeRereading === true || undefined}
-                        disabled={recipeRereading === true}
-                        onClick={onRecipeRetry}
-                        type="button"
-                        variant="secondary"
-                      >
-                        Try again
-                      </Button>
-                    ) : null}
-                  </div>
-                )}
-              </RadioGroup>
-              {showErrors && held === undefined && errors.recipe !== undefined ? (
-                <FieldError>{errors.recipe}</FieldError>
-              ) : null}
-            </div>
-          </>
-        )}
+                  </span>
+                  <Switch
+                    checked={withAgent}
+                    id={`${id}-agent`}
+                    onCheckedChange={(checked) => {
+                      setWithAgent(checked);
+                    }}
+                  />
+                </label>
+              </div>
 
-        {access === undefined ? null : access(setUserRoles)}
-        {forecast}
+              <div className="space-y-2">
+                <span className="text-body">Starts with</span>
+                <RadioGroup
+                  aria-label="Starts with"
+                  onValueChange={(value) => {
+                    setChosenRecipeId(String(value));
+                  }}
+                  value={recipeId}
+                >
+                  {options.map((option) => (
+                    <RadioCard key={option.id} title={option.label} value={option.id}>
+                      {option.detail}
+                    </RadioCard>
+                  ))}
+                  {held === undefined ? null : (
+                    <div
+                      className="flex items-center justify-between gap-3 px-3 py-2.5"
+                      role="status"
+                    >
+                      <span className="text-caption text-muted-foreground">{held}</span>
+                      {recipe === "unreadable" && onRecipeRetry !== undefined ? (
+                        <Button
+                          aria-busy={recipeRereading === true || undefined}
+                          disabled={recipeRereading === true}
+                          onClick={onRecipeRetry}
+                          type="button"
+                          variant="secondary"
+                        >
+                          Try again
+                        </Button>
+                      ) : null}
+                    </div>
+                  )}
+                </RadioGroup>
+                {showErrors && held === undefined && errors.recipe !== undefined ? (
+                  <FieldError>{errors.recipe}</FieldError>
+                ) : null}
+              </div>
+            </>
+          )}
+
+          {access === undefined ? null : access(setUserRoles)}
+          {forecast}
+        </div>
       </DialogPanel>
 
       <DialogFooter>

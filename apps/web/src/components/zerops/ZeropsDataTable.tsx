@@ -45,7 +45,6 @@ import type { ZeropsDataConsoleColumn } from "@t3tools/contracts";
 import { Columns3Icon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 import { useRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
-import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -266,7 +265,7 @@ export function ZeropsDataTable({
           </div>
         ) : (
           <table className="w-full caption-bottom text-caption" data-slot="table">
-            <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableHeader sticky>
               <TableRow>
                 {shown.map((column) =>
                   column.sortable ? (
@@ -314,7 +313,7 @@ export function ZeropsDataTable({
               {model.rows.map((row, rowIndex) => (
                 <TableRow
                   aria-selected={focusedRowIndex === rowIndex}
-                  className={cn(focusedRowIndex === rowIndex && "bg-accent")}
+                  data-state={focusedRowIndex === rowIndex ? "selected" : undefined}
                   data-zerops-data-table-row={String(rowIndex)}
                   key={rowKey(model, row, rowIndex)}
                   onClick={() => onOpenRow?.(rowIndex)}

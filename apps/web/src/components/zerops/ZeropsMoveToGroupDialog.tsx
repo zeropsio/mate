@@ -19,8 +19,7 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Radio, RadioGroup } from "../ui/radio-group";
-import { cn } from "~/lib/utils";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { environmentRoleLabel } from "./ZeropsGroupTree.logic";
 import {
   initialMoveForm,
@@ -98,143 +97,137 @@ export function ZeropsMoveToGroupForm({
         <DialogTitle>Move {name}</DialogTitle>
       </DialogHeader>
 
-      <DialogPanel className="flex flex-col gap-5 space-y-0">
-        {reading ? <p role="status">Reading destinations from HQ…</p> : null}
-        {readError !== undefined ? (
-          <div>
-            <p role="alert">{readError}</p>
-            {onReadAgain !== undefined ? (
-              <Button onClick={onReadAgain} type="button" variant="secondary">
-                Try again
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="space-y-2">
-          <span className="text-body">Project</span>
-          <RadioGroup
-            aria-label="Project"
-            className="gap-2"
-            disabled={pending || reading || readError !== undefined}
-            onValueChange={(value) => {
-              const next = String(value);
-              setTarget(next);
-              setRole(roleWithin(choices, next, role));
-              setAcknowledged(false);
-            }}
-            value={target}
-          >
-            {choices.apps.map((group) => (
-              <Choice key={group.id} selected={target === group.id} value={group.id}>
-                {group.name}
-              </Choice>
-            ))}
-            {choices.newApp.length > 0 ? (
-              <Choice selected={target === "new"} value="new">
-                New project
-              </Choice>
-            ) : null}
-            {choices.none ? (
-              <Choice selected={target === "none"} value="none">
-                No project
-              </Choice>
-            ) : null}
-          </RadioGroup>
-          {target === "new" ? (
-            <div className="space-y-1.5 pt-1">
-              <Label htmlFor={`${id}-group`}>Project name</Label>
-              <Input
-                aria-invalid={showErrors && errors.newGroupName !== undefined ? true : undefined}
-                autoFocus
-                id={`${id}-group`}
-                onChange={(event) => {
-                  setNewGroupName(event.target.value);
-                  setAcknowledged(false);
-                }}
-                value={newGroupName}
-                disabled={pending}
-              />
-              {showErrors && errors.newGroupName !== undefined ? (
-                <FieldError>{errors.newGroupName}</FieldError>
+      <DialogPanel>
+        <div className="flex flex-col gap-5">
+          {reading ? <p role="status">Reading destinations from HQ…</p> : null}
+          {readError !== undefined ? (
+            <div>
+              <p role="alert">{readError}</p>
+              {onReadAgain !== undefined ? (
+                <Button onClick={onReadAgain} type="button" variant="secondary">
+                  Try again
+                </Button>
               ) : null}
             </div>
           ) : null}
-        </div>
-
-        {target === "none" ? null : (
           <div className="space-y-2">
-            <span className="text-body">Role</span>
+            <span className="text-body">Project</span>
             <RadioGroup
-              aria-label="Role"
-              className="flex-row flex-wrap gap-2"
+              aria-label="Project"
               disabled={pending || reading || readError !== undefined}
               onValueChange={(value) => {
-                setRole(value as ZeropsEnvironmentRole);
+                const next = String(value);
+                setTarget(next);
+                setRole(roleWithin(choices, next, role));
                 setAcknowledged(false);
               }}
-              value={role}
+              value={target}
             >
-              {moveRolesFor(choices, target).map((entry) => (
-                <Choice compact key={entry} selected={role === entry} value={entry}>
-                  {environmentRoleLabel(entry) ?? entry}
-                </Choice>
+              {choices.apps.map((group) => (
+                <RadioCard key={group.id} title={group.name} value={group.id} />
               ))}
+              {choices.newApp.length > 0 ? <RadioCard title="New project" value="new" /> : null}
+              {choices.none ? <RadioCard title="No project" value="none" /> : null}
             </RadioGroup>
-            {showErrors && errors.role !== undefined ? (
-              <FieldError>{errors.role}</FieldError>
+            {target === "new" ? (
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor={`${id}-group`}>Project name</Label>
+                <Input
+                  aria-invalid={showErrors && errors.newGroupName !== undefined ? true : undefined}
+                  autoFocus
+                  id={`${id}-group`}
+                  onChange={(event) => {
+                    setNewGroupName(event.target.value);
+                    setAcknowledged(false);
+                  }}
+                  value={newGroupName}
+                  disabled={pending}
+                />
+                {showErrors && errors.newGroupName !== undefined ? (
+                  <FieldError>{errors.newGroupName}</FieldError>
+                ) : null}
+              </div>
             ) : null}
           </div>
-        )}
-        {(choices.refused ?? [])
-          .filter(
-            (entry) =>
-              entry.appId === target || !choices.apps.some((app) => app.id === entry.appId),
-          )
-          .map((entry) => (
-            <p key={`${entry.appId}:${entry.role}`} className="text-body">
-              {entry.appName} · {environmentRoleLabel(entry.role)}:{" "}
-              {hqRefusalWords({ code: "forbidden", reason: entry.reason })}
-            </p>
-          ))}
-        <p className="text-body">
-          Move changes placement within this HQ and organization. Moving a container to another HQ
-          or organization is not supported.
-        </p>
-        {membership !== undefined ? (
-          <div className="space-y-2 text-body" data-zerops-surface="move-review">
-            <p>
-              {target === "none"
-                ? `${name} leaves its project and remains available as an ungrouped Mate.`
-                : `${name} becomes ${environmentRoleLabel(role || undefined) ?? role} in ${destination}.`}
-            </p>
-            <p>
-              Its container stays in place. Its conversations and change history stay with {name}.
-              Open changes stay with their repository.
-            </p>
-            {changesRole ? (
-              <>
-                <p>
-                  Source-project credentials, keys and jobs must be revoked and re-issued for the
-                  destination by the move operation. The destination environment needs its own setup
-                  and access.
-                </p>
-                <label className="flex items-start gap-2">
-                  <Checkbox
-                    checked={acknowledged}
-                    disabled={pending}
-                    onCheckedChange={(checked) => setAcknowledged(checked)}
+
+          {target === "none" ? null : (
+            <div className="space-y-2">
+              <span className="text-body">Role</span>
+              <RadioGroup
+                aria-label="Role"
+                layout="row"
+                disabled={pending || reading || readError !== undefined}
+                onValueChange={(value) => {
+                  setRole(value as ZeropsEnvironmentRole);
+                  setAcknowledged(false);
+                }}
+                value={role}
+              >
+                {moveRolesFor(choices, target).map((entry) => (
+                  <RadioCard
+                    align="center"
+                    key={entry}
+                    title={environmentRoleLabel(entry) ?? entry}
+                    value={entry}
                   />
-                  I understand the role and access changes for {name}.
-                </label>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-        <p className="text-body text-muted-foreground">
-          Moves across HQs, organizations or physical environments are not supported. Move changes
-          placement within this HQ; it cannot migrate files or credentials.
-        </p>
-        {error !== null ? <p role="alert">{error}</p> : null}
+                ))}
+              </RadioGroup>
+              {showErrors && errors.role !== undefined ? (
+                <FieldError>{errors.role}</FieldError>
+              ) : null}
+            </div>
+          )}
+          {(choices.refused ?? [])
+            .filter(
+              (entry) =>
+                entry.appId === target || !choices.apps.some((app) => app.id === entry.appId),
+            )
+            .map((entry) => (
+              <p key={`${entry.appId}:${entry.role}`} className="text-body">
+                {entry.appName} · {environmentRoleLabel(entry.role)}:{" "}
+                {hqRefusalWords({ code: "forbidden", reason: entry.reason })}
+              </p>
+            ))}
+          <p className="text-body">
+            Move changes placement within this HQ and organization. Moving a container to another HQ
+            or organization is not supported.
+          </p>
+          {membership !== undefined ? (
+            <div className="space-y-2 text-body" data-zerops-surface="move-review">
+              <p>
+                {target === "none"
+                  ? `${name} leaves its project and remains available as an ungrouped Mate.`
+                  : `${name} becomes ${environmentRoleLabel(role || undefined) ?? role} in ${destination}.`}
+              </p>
+              <p>
+                Its container stays in place. Its conversations and change history stay with {name}.
+                Open changes stay with their repository.
+              </p>
+              {changesRole ? (
+                <>
+                  <p>
+                    Source-project credentials, keys and jobs must be revoked and re-issued for the
+                    destination by the move operation. The destination environment needs its own
+                    setup and access.
+                  </p>
+                  <label className="flex items-start gap-2">
+                    <Checkbox
+                      checked={acknowledged}
+                      disabled={pending}
+                      onCheckedChange={(checked) => setAcknowledged(checked)}
+                    />
+                    I understand the role and access changes for {name}.
+                  </label>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          <p className="text-body text-muted-foreground">
+            Moves across HQs, organizations or physical environments are not supported. Move changes
+            placement within this HQ; it cannot migrate files or credentials.
+          </p>
+          {error !== null ? <p role="alert">{error}</p> : null}
+        </div>
       </DialogPanel>
 
       <DialogFooter>
@@ -246,31 +239,6 @@ export function ZeropsMoveToGroupForm({
         </Button>
       </DialogFooter>
     </form>
-  );
-}
-
-function Choice({
-  value,
-  selected,
-  compact = false,
-  children,
-}: {
-  readonly value: string;
-  readonly selected: boolean;
-  readonly compact?: boolean;
-  readonly children: string;
-}) {
-  return (
-    <label
-      className={cn(
-        "flex cursor-pointer items-center gap-3 rounded-card border border-border/55 text-sm transition-colors",
-        compact ? "px-3 py-2" : "px-3 py-2.5",
-        selected ? "border-primary/40 bg-primary/5" : "hover:bg-accent/50",
-      )}
-    >
-      <Radio value={value} />
-      <span className="min-w-0 truncate">{children}</span>
-    </label>
   );
 }
 

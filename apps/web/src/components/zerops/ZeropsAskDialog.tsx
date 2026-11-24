@@ -61,19 +61,21 @@ export function ZeropsAskConfirm({
           {what} Nobody reading this is going to do it by hand, so {who} is asked to.
         </DialogDescription>
       </DialogHeader>
-      <DialogPanel className="space-y-0">
-        <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
-          {tint === undefined ? null : (
-            <MateFace shape={shape} size={24} state="idle" tint={tint} />
-          )}
-          {/* Quoted, not paraphrased: this is the text being authorised. */}
-          <p className="min-w-0 flex-1 rounded-control bg-muted px-3 py-2 text-body wrap-anywhere text-foreground">
-            {ask}
+      <DialogPanel>
+        <div>
+          <div className="my-2 flex min-w-0 items-start gap-3" data-zerops-surface="ask-confirm">
+            {tint === undefined ? null : (
+              <MateFace shape={shape} size={24} state="idle" tint={tint} />
+            )}
+            {/* Quoted, not paraphrased: this is the text being authorised. */}
+            <p className="min-w-0 flex-1 rounded-control bg-muted px-3 py-2 text-body wrap-anywhere text-foreground">
+              {ask}
+            </p>
+          </div>
+          <p className="text-caption text-muted-foreground">
+            It is sent straight away and {who} starts working; you can stop it in the conversation.
           </p>
         </div>
-        <p className="text-caption text-muted-foreground">
-          It is sent straight away and {who} starts working; you can stop it in the conversation.
-        </p>
       </DialogPanel>
       <DialogFooter>
         <DialogClose
