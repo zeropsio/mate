@@ -1,6 +1,18 @@
-import { ArrowRightIcon, ArrowUpIcon, PlusIcon, SearchIcon, ShuffleIcon } from "lucide-react";
+import {
+  ArrowRightIcon,
+  ArrowUpIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ImageIcon,
+  PlusIcon,
+  SearchIcon,
+  ShuffleIcon,
+  XIcon,
+} from "lucide-react";
 
 import { Button, InlineButton, type ButtonSize, type ButtonVariant } from "~/components/ui/button";
+import { Group } from "~/components/ui/group";
 import { Spinner } from "~/components/ui/spinner";
 
 import { defineKitSection } from "../kitSection";
@@ -16,9 +28,17 @@ const VARIANTS = variantsOf<ButtonVariant>({
   link: true,
   "destructive-ghost": true,
   sidebar: true,
+  send: true,
+  scrim: true,
+  warning: true,
+  bare: true,
 });
 
+/** Drawn on a ground of their own (`scrim` on the picture stage) or by their content (`bare`). */
+const MATRIX_VARIANTS = VARIANTS.filter((variant) => variant !== "scrim" && variant !== "bare");
+
 const SIZES = variantsOf<ButtonSize>({
+  "2xs": true,
   xs: true,
   sm: true,
   md: true,
@@ -87,10 +107,92 @@ function ButtonSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
+      <SpecimenBlock title="Composer, picture and count presses">
+        <SpecimenGrid>
+          <Specimen label="send: the composer's send, held, and its pills">
+            <div className="flex items-center gap-2">
+              <Button aria-label="Send" shape="round" size="icon-md" variant="send">
+                <ArrowUpIcon />
+              </Button>
+              <Button aria-label="Send" disabled shape="round" size="icon-md" variant="send">
+                <ArrowUpIcon />
+              </Button>
+              <Button shape="round" variant="send">
+                Refine
+              </Button>
+              <Group>
+                <Button shape="round" variant="send">
+                  Implement
+                </Button>
+                <Button
+                  aria-label="Implementation actions"
+                  shape="round"
+                  size="icon-md"
+                  variant="send"
+                >
+                  <ChevronDownIcon />
+                </Button>
+              </Group>
+            </div>
+          </Specimen>
+          <Specimen label="scrim: on a picture's dark stage">
+            <div
+              className="flex items-center gap-2 rounded-card p-3"
+              style={{ background: "var(--picture-stage)" }}
+            >
+              <Button aria-label="The picture before" size="icon-md" variant="scrim">
+                <ChevronLeftIcon />
+              </Button>
+              <Button aria-label="The picture after" size="icon-md" variant="scrim">
+                <ChevronRightIcon />
+              </Button>
+              <Button aria-label="Close picture" data-pressed="" size="icon-md" variant="scrim">
+                <XIcon />
+              </Button>
+            </div>
+          </Specimen>
+          <Specimen label="warning, round: a count that opens what waits (2xs on a tile, sm in a row)">
+            <div className="flex items-center gap-3">
+              <Button aria-label="3 waiting on you" shape="round" size="2xs" variant="warning">
+                3
+              </Button>
+              <Button aria-label="12 waiting on you" shape="round" size="2xs" variant="warning">
+                12
+              </Button>
+              <Button aria-label="2 waiting on you" shape="round" size="sm" variant="warning">
+                2
+              </Button>
+              <Button
+                aria-label="2 waiting on you"
+                data-pressed=""
+                shape="round"
+                size="sm"
+                variant="warning"
+              >
+                2
+              </Button>
+            </div>
+          </Specimen>
+          <Specimen label="bare: a press whose picture or tile is its look">
+            <div className="flex items-center gap-3">
+              <Button aria-label="Open the screenshot" className="cursor-zoom-in" variant="bare">
+                <span className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-card text-muted-foreground">
+                  <ImageIcon className="size-6" />
+                </span>
+              </Button>
+              <Button className="block aspect-square w-28" variant="bare">
+                <span className="flex size-full flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center text-caption font-medium transition-colors hover:bg-accent/60">
+                  <ImageIcon className="size-6" />A design
+                </span>
+              </Button>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
       <SpecimenBlock title="Variants × text sizes">
         <SpecimenMatrix
           rowProp="variant"
-          rows={VARIANTS}
+          rows={MATRIX_VARIANTS}
           columnProp="size"
           columns={TEXT_SIZES}
           render={(variant, size) => (
@@ -103,7 +205,7 @@ function ButtonSpecimens() {
       <SpecimenBlock title="Variants × icon sizes">
         <SpecimenMatrix
           rowProp="variant"
-          rows={VARIANTS}
+          rows={MATRIX_VARIANTS}
           columnProp="size"
           columns={ICON_SIZES}
           render={(variant, size) => (
@@ -116,7 +218,7 @@ function ButtonSpecimens() {
       <SpecimenBlock title="States, per variant (data-pressed is the hover look)">
         <SpecimenMatrix
           rowProp="variant"
-          rows={VARIANTS}
+          rows={MATRIX_VARIANTS}
           columnProp="state"
           columns={["rest", "data-pressed", "disabled", "aria-disabled", "loading"] as const}
           render={(variant, state) => {
@@ -186,7 +288,7 @@ export default defineKitSection({
   id: "button",
   title: "Button",
   purpose:
-    "The one action: primary for the single next step, secondary beside it, ghost for quiet tools, destructive only for what deletes, link inside text. A rectangle on the control radius; md by default, sm in dense rows, lg for a page's one hero action.",
+    "The one action: primary for the single next step, secondary beside it, ghost for quiet tools, destructive only for what deletes, link inside text; send in the composer's ink, scrim on a picture's stage, warning for a count that opens what waits, bare around a picture or tile. A rectangle on the control radius; md by default, sm in dense rows, lg for a page's one hero action.",
   group: "Chosen",
   kind: "Actions",
   source: "apps/web/src/components/ui/button.tsx",

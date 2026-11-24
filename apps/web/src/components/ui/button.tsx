@@ -10,13 +10,16 @@ import { cn } from "~/lib/utils";
 /**
  * The one action. `primary` is the single next step on a surface (blue acts), `secondary` sits
  * beside it, `ghost` is a quiet tool, `destructive` only deletes, stops or acts on Production,
- * `link` reads as a word, `sidebar` is a ghost on the menu's own ground.
+ * `link` reads as a word, `sidebar` is a ghost on the menu's own ground, `send` the composer's
+ * message-action ink, `scrim` a ghost on a picture's dark stage, `warning` a count that opens what
+ * waits, `bare` a press whose content is its look.
  * Sizes: `md` by default, `sm` in dense rows, `xs` for a row's verb within its line (a change's
- * Review, everywhere it stands), `lg` only for a page's one hero action; `icon-sm` and
- * `icon-md` are the square forms of `sm` and `md`, `icon-xs` a 24 px one in a card's head. A button is a rectangle on the control radius;
+ * Review, everywhere it stands), `2xs` a count on a tile's corner, `lg` only for a page's one hero
+ * action; `icon-sm` and `icon-md` are the square forms of `sm` and `md`, `icon-xs` a 24 px one in
+ * a card's head. A button is a rectangle on the control radius;
  * a label is a Badge pill, so an action never reads as a tag.
  */
-const buttonVariants = cva(
+const controlVariants = cva(
   "[--control-icon-color:currentColor] relative inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-control border font-medium outline-none transition-[background-color,border-color,color,box-shadow] duration-150 ease-out-strong pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 aria-disabled:cursor-not-allowed aria-disabled:opacity-64 [&_svg:not([class*='text-'])]:text-[var(--control-icon-color)] [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     defaultVariants: {
@@ -34,6 +37,9 @@ const buttonVariants = cva(
         round: "rounded-full",
       },
       size: {
+        /** A count on a tile's corner (the rail's Waiting count): 20 px, the Badge pill's height. */
+        "2xs":
+          "h-5 min-w-5 gap-1 px-[calc(--spacing(1.5)-1px)] py-0 text-2xs [&_svg:not([class*='size-'])]:size-3",
         xs: "h-fit min-h-6 gap-1 px-[calc(--spacing(2)-1px)] py-0 text-line [&_svg:not([class*='size-'])]:size-3",
         sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
@@ -64,14 +70,50 @@ const buttonVariants = cva(
         /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
         "destructive-ghost":
           "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",
+        /**
+         * The composer's message-action ink: its send (`shape="round"`) and its Answer, Refine and
+         * Implement pills. Blue only while it can be pressed: held, it is the toolbar's grey.
+         */
+        send: "border-message-action bg-message-action text-message-action-foreground shadow-xs shadow-message-action/24 transition-[scale,background-color,border-color,color,box-shadow] not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed],[data-popup-open]]:bg-message-action-hover [:hover,[data-pressed],[data-popup-open]]:border-message-action-hover disabled:border-transparent disabled:bg-foreground/9 disabled:text-muted-foreground disabled:opacity-100",
+        /** A ghost in light ink on a picture's always-dark stage (a viewer's Close and arrows). */
+        scrim:
+          "[--control-icon-color:currentColor] border-transparent text-[var(--picture-stage-ink)] [:hover,[data-pressed]]:bg-[var(--picture-stage-hover)]",
+        /**
+         * A count that opens what it counts, in the warning tone (what waits on the person): the
+         * Badge's warning pill as a press, its figures tabular. With `shape="round"`.
+         */
+        warning:
+          "border-transparent bg-status-attention-surface font-semibold text-status-attention-text tabular-nums [:hover,[data-pressed],[data-popup-open]]:bg-[color-mix(in_oklab,var(--color-status-attention)_22%,var(--color-status-attention-surface))]",
+        /** Drawn by `bareButtonClassName` instead: none of the control's look applies. */
+        bare: "",
       },
     },
   },
 );
 
-type ButtonVariant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
-type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
-type ButtonShape = NonNullable<VariantProps<typeof buttonVariants>["shape"]>;
+type ButtonVariant = NonNullable<VariantProps<typeof controlVariants>["variant"]>;
+type ButtonSize = NonNullable<VariantProps<typeof controlVariants>["size"]>;
+type ButtonShape = NonNullable<VariantProps<typeof controlVariants>["shape"]>;
+
+/**
+ * `bare`: a press around a picture, a tile or a card body that draws its own look — no ground,
+ * border, padding or type of its own, nor any size; the picture's corner and the focus ring's ink
+ * and weight (an outline, so it never covers the picture's own edge). Unpositioned, so a holder's
+ * stretched press (a face card's body) still reaches the holder's edge. Its content draws its
+ * disabled look.
+ */
+const bareButtonClassName =
+  "cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default";
+
+function buttonVariants({
+  variant,
+  className,
+  ...props
+}: VariantProps<typeof controlVariants> & { readonly className?: string | undefined }): string {
+  return variant === "bare"
+    ? cn(bareButtonClassName, className)
+    : controlVariants({ className, variant, ...props });
+}
 
 interface ButtonProps extends useRender.ComponentProps<"button"> {
   variant?: ButtonVariant;
