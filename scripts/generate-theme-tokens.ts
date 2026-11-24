@@ -9,7 +9,6 @@ import {
   type MobileThemeVariables,
 } from "@t3tools/shared/mobileThemeVariables";
 import {
-  BUILT_IN_THEMES,
   THEME_COLOR_ROLES,
   ZEROPS_THEME,
   type ThemeAppearance,
@@ -175,40 +174,16 @@ const renderBootPaletteProperties = (palette: BootPalette, indentation: string):
     `${indentation}sidebar: ${JSON.stringify(palette.sidebar)},`,
   ].join("\n");
 
-const renderSplashColors = (): string => {
-  const lines = ["        const SPLASH_COLORS = {"];
+const renderThemePalettes = (): string => {
+  const lines = ["        const THEME_PALETTES = {"];
   for (const appearance of APPEARANCES) {
-    const colors = colorsForTheme(ZEROPS_THEME, appearance);
+    lines.push(`          ${appearance}: {`);
     lines.push(
-      `          ${appearance}: {`,
-      `            background: ${JSON.stringify(themeColorToNativeColor(colors.canvas))},`,
-      `            foreground: ${JSON.stringify(themeColorToNativeColor(colors.text))},`,
-      `            accent: ${JSON.stringify(themeColorToNativeColor(colors.accent))},`,
-      `            sidebar: ${JSON.stringify(themeColorToNativeColor(colors.sidebar))},`,
-      "          },",
+      renderBootPaletteProperties(
+        bootPalette(colorsForTheme(ZEROPS_THEME, appearance)),
+        "            ",
+      ),
     );
-  }
-  lines.push("        };");
-  return lines.join("\n");
-};
-
-const propertyName = (value: string): string =>
-  /^[a-z_$][\w$]*$/iu.test(value) ? value : JSON.stringify(value);
-
-const renderBuiltInThemePalettes = (): string => {
-  const lines = ["        const BUILT_IN_THEME_PALETTES = {"];
-  for (const theme of BUILT_IN_THEMES) {
-    lines.push(`          ${propertyName(theme.id)}: {`);
-    for (const appearance of APPEARANCES) {
-      lines.push(`            ${appearance}: {`);
-      lines.push(
-        renderBootPaletteProperties(
-          bootPalette(colorsForTheme(theme, appearance)),
-          "              ",
-        ),
-      );
-      lines.push("            },");
-    }
     lines.push("          },");
   }
   lines.push("        };");
@@ -225,12 +200,10 @@ const renderWebThemeTokens = (): string =>
     "      (() => {",
     '        const LIGHT_BACKGROUND = "#ffffff";',
     '        const DARK_BACKGROUND = "#0a0a0a";',
-    '        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";',
     '        const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";',
-    renderSplashColors(),
-    "        // This generated boot-time copy makes the selected theme visible before",
-    "        // the app has mounted.",
-    renderBuiltInThemePalettes(),
+    "        // This generated boot-time copy of the Zerops palette paints the first",
+    "        // frame in the colours the app then paints.",
+    renderThemePalettes(),
   ].join("\n");
 
 // The splash is the still, open mark — the same one the favicon and the

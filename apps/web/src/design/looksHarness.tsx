@@ -30,15 +30,15 @@ import { RunChat } from "~/components/chat/RunChat";
 import { setRunFold } from "~/components/chat/runCard.logic";
 import { stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
-import { writeThemePreference } from "~/hooks/useTheme";
+import { writeAppearanceModePreference } from "~/hooks/useTheme";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const unit = params.get("unit") ?? "mermaid";
-// The answer's code and diagrams follow the app's theme setting, not the root class.
-writeThemePreference(appearance);
+// The answer's code and diagrams follow the app's appearance setting, not the root class.
+writeAppearanceModePreference(appearance);
 
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();

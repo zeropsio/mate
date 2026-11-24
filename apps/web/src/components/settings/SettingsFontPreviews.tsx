@@ -185,7 +185,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
   const mountRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<GhosttyTerminalSurface | null>(null);
   const fontRef = useRef({ family, size });
-  const { theme, resolvedTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     const current = fontRef.current;
@@ -194,14 +194,13 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
     void surfaceRef.current?.setFont(previewTerminalFont(family, size));
   }, [family, size]);
 
-  // Re-read the terminal tokens on any theme change — switching between two
-  // palettes can leave resolvedTheme (light/dark) untouched.
+  // Re-read the terminal tokens when the appearance flips.
   useEffect(() => {
     const mount = mountRef.current;
     const surface = surfaceRef.current;
     if (!mount || !surface) return;
     surface.setTheme(terminalThemeFromApp(mount));
-  }, [theme, resolvedTheme]);
+  }, [resolvedTheme]);
 
   useEffect(() => {
     const mount = mountRef.current;

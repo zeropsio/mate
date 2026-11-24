@@ -51,7 +51,7 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { readAppearanceModePreference, readThemePreference, useTheme } from "../../hooks/useTheme";
+import { readAppearanceModePreference, useTheme } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { expressLabNote } from "../express/expressGate.logic";
@@ -447,7 +447,7 @@ function AboutVersionSection() {
 }
 
 export function useSettingsRestore(onRestored?: () => void) {
-  const { theme, setTheme, followSystem, setFollowSystem } = useTheme();
+  const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -465,8 +465,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
   const changedSettingLabels = useMemo(
     () => [
-      ...(theme !== "system" ? ["Theme"] : []),
-      ...(!followSystem ? ["Follow system"] : []),
+      ...(appearanceMode !== "system" ? ["Color scheme"] : []),
       ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
         ? ["Contrast"]
         : []),
@@ -559,8 +558,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.inAppNotificationsEnabled,
       settings.sendShortcut,
       settings.wordWrap,
-      followSystem,
-      theme,
+      appearanceMode,
     ],
   );
 
@@ -575,37 +573,17 @@ export function useSettingsRestore(onRestored?: () => void) {
     );
     if (!confirmed) return;
 
-    // Only touch the theme keys that are actually dirty, so a theme-storage
-    // failure cannot block restoring unrelated settings. Preferences are
-    // re-read after the confirmation dialog: they may have changed (another
-    // tab, an OS flip) while it was open, and rollback must restore the live
-    // values rather than the ones captured at render time.
-    let previousTheme = theme;
-    try {
-      previousTheme = readThemePreference();
-    } catch {
-      // Storage is unreadable; the render-time value is the best rollback.
-    }
-    const needsThemeReset = previousTheme !== "system";
-    // Same for the appearance mode: trusting the render-time value would skip
-    // the reset and report success while a non-system mode stayed in storage.
-    const needsFollowSystemReset = readAppearanceModePreference(previousTheme) !== "system";
-    const notifyThemeRestoreFailure = () => {
+    // The stored scheme is re-read after the confirmation dialog: another tab
+    // or this one may have changed it while the dialog was open. A failed
+    // write leaves the other settings unrestored too.
+    if (readAppearanceModePreference() !== "system" && !setAppearanceMode("system")) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Couldn’t restore theme settings",
+          title: "Couldn’t restore the color scheme",
           description: "Try again.",
         }),
       );
-    };
-    if (needsThemeReset && !setTheme("system")) {
-      notifyThemeRestoreFailure();
-      return;
-    }
-    if (needsFollowSystemReset && !setFollowSystem(true)) {
-      if (needsThemeReset) setTheme(previousTheme);
-      notifyThemeRestoreFailure();
       return;
     }
     updateSettings({
@@ -644,7 +622,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
     });
     onRestored?.();
-  }, [changedSettingLabels, onRestored, setFollowSystem, setTheme, theme, updateSettings]);
+  }, [changedSettingLabels, onRestored, setAppearanceMode, updateSettings]);
 
   return {
     changedSettingLabels,

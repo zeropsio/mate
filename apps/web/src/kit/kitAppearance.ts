@@ -1,7 +1,7 @@
 import { useLayoutEffect } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import { applyThemePalette, type ThemeAppearance } from "~/themePalette";
+import { applyThemePalette, ZEROPS_THEME_ID, type ThemeAppearance } from "~/themePalette";
 
 /** How the kit page shows its sections: one appearance, or both side by side. */
 export type KitView = ThemeAppearance | "both";
@@ -25,16 +25,16 @@ export function validateKitSearch(raw: Readonly<Record<string, unknown>>): KitSe
 }
 
 /**
- * Paints the page in one appearance of the person's own theme, the way the app paints itself
+ * Paints the page in one appearance of the theme, the way the app paints itself
  * (`applyThemePalette` and the root `dark` class), without writing their preference: leaving the
  * page puts their own appearance back.
  */
 export function useKitAppearance(appearance: ThemeAppearance | null): void {
-  const { theme, refreshTheme } = useTheme();
+  const { refreshTheme } = useTheme();
   useLayoutEffect(() => {
     if (appearance === null) return;
-    applyThemePalette(theme, appearance);
+    applyThemePalette(ZEROPS_THEME_ID, appearance);
     document.documentElement.classList.toggle("dark", appearance === "dark");
     return refreshTheme;
-  }, [appearance, refreshTheme, theme]);
+  }, [appearance, refreshTheme]);
 }
