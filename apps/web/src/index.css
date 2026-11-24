@@ -10627,36 +10627,15 @@ html[data-theme-id] [data-chat-header] [data-conversation-crewmate][data-current
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: var(--radius-control);
-  color: var(--color-muted-foreground);
   opacity: 0;
-  cursor: pointer;
-  outline: none;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    background-color 120ms ease;
-}
-
-.composer-full-toggle svg {
-  width: 14px;
-  height: 14px;
+  transition: opacity 120ms ease;
 }
 
 [data-chat-composer-surface]:hover .composer-full-toggle,
 [data-chat-composer-surface]:focus-within .composer-full-toggle,
 [data-composer-full="on"] .composer-full-toggle,
-.composer-full-toggle:focus-visible {
+.composer-full-toggle:focus-within {
   opacity: 1;
-}
-
-.composer-full-toggle:hover {
-  color: var(--color-foreground);
-  background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
-}
-
-.composer-full-toggle:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
 }
 
 @media (hover: none) {
