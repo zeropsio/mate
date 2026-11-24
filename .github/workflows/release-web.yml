@@ -1,0 +1,48 @@
+name: Release hosted web
+
+on:
+  workflow_dispatch:
+    inputs:
+      minor:
+        description: Cut a minor release instead of a patch
+        type: boolean
+        default: false
+      sha:
+        description: Full main commit SHA (empty selects the current main head)
+        type: string
+        required: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Install release dependencies
+        run: vp install --frozen-lockfile --filter=@t3tools/scripts...
+
+      - name: Release the hosted web
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MINOR: ${{ inputs.minor }}
+          RELEASE_SHA: ${{ inputs.sha }}
+        run: |
+          args=()
+          if [[ "$RELEASE_MINOR" == "true" ]]; then args+=(--minor); fi
+          if [[ -n "$RELEASE_SHA" ]]; then args+=(--from-sha "$RELEASE_SHA"); fi
+          node scripts/release-web.ts "${args[@]}"
