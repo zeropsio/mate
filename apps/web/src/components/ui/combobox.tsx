@@ -245,11 +245,20 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
 /**
  * A variant of `ComboboxList` without `ScrollArea`, for use when
  * an external virtualizer (e.g. LegendList) owns the scroll container.
+ * `flush` drops the list's own inset, for a virtualizer that pads its own content and runs its
+ * scrollbar to the list's edge.
  */
-function ComboboxListVirtualized({ className, ...props }: ComboboxPrimitive.List.Props) {
+function ComboboxListVirtualized({
+  className,
+  flush = false,
+  ...props
+}: ComboboxPrimitive.List.Props & { flush?: boolean }) {
   return (
     <ComboboxPrimitive.List
-      className={cn("size-full min-w-0 not-empty:px-1 not-empty:py-1", className)}
+      className={cn(
+        flush ? "size-full min-w-0" : "size-full min-w-0 not-empty:px-1 not-empty:py-1",
+        className,
+      )}
       data-slot="combobox-list"
       {...props}
     />
