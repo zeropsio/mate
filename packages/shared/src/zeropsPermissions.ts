@@ -252,8 +252,8 @@ export function changePermission(
 }
 
 /**
- * An environment's deploys: keeping its deploy token takes Full access on its project or the
- * structure; deploying again, Basic user or above on it — and, on a production whose application
+ * An environment's deploys: keeping its deploy token takes Basic user or above on its project or
+ * the structure; deploying again, Basic user or above on it — and, on a production whose application
  * limits who merges (`productionMergers`), a place inside that limit: the same people release.
  * A stage passes none.
  */
@@ -268,7 +268,7 @@ export function deployPermission(
   const listed = facts.project(projectId) !== undefined;
   if (verb === "keep_deploy_token") {
     if (writer(member)) return listed ? ALLOW : refuse("project_gone");
-    return administers(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_project_admin");
+    return listed && works(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_app_developer");
   }
   if (!(listed && works(roleOn(facts, member, projectId)))) return refuse("not_app_developer");
   return productionMergers != null && !mergesWithin(member, productionMergers)

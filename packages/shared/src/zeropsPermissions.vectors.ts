@@ -716,13 +716,13 @@ export const permissionVectors: ReadonlyArray<PermissionVector> = [
     OWNER      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
     ADMIN      ACTIVE  project_gone      allow             allow             allow             allow             allow             allow             allow
     ADMIN      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    BASIC_USER ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    BASIC_USER ACTIVE  not_app_developer allow             not_app_developer not_app_developer allow             allow             allow             not_app_developer
     BASIC_USER INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    READ_ONLY  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    READ_ONLY  ACTIVE  not_app_developer not_app_developer not_app_developer not_app_developer allow             allow             allow             not_app_developer
     READ_ONLY  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    NO_ACCESS  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    NO_ACCESS  ACTIVE  not_app_developer not_app_developer not_app_developer not_app_developer allow             allow             allow             not_app_developer
     NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    SUPERUSER  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    SUPERUSER  ACTIVE  not_app_developer not_app_developer not_app_developer not_app_developer allow             allow             allow             not_app_developer
     SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
 `,
   },
