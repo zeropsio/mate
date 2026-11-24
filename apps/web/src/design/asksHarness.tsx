@@ -58,7 +58,6 @@ import {
   vaultAskState,
   vaultAskView,
 } from "~/components/zerops/vault/vaultRequest.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 import "../index.css";
 
@@ -1164,7 +1163,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

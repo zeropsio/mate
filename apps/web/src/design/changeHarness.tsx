@@ -25,7 +25,6 @@ import { createRoot } from "react-dom/client";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 
@@ -116,11 +115,10 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-// The app sets the theme on the document element (`themePalette.ts`), so the harness does the
-// same, in the Zerops palette a fresh install wears.
+// The app sets the appearance on the document element (`useTheme.ts`), so the harness does the
+// same.
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 // The review dialog reads the location (a pipeline opened over it), so the harness stands in a
 // router of its own.

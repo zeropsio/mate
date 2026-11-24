@@ -49,7 +49,6 @@ import { ResultStates } from "./resultFixtures";
 import { foldSteps, stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { StandupReadings } from "~/zerops/activity/useStandupReading";
@@ -1559,13 +1558,11 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-// The app sets the theme on the document element (`themePalette.ts`), so the
+// The app sets the appearance on the document element (`useTheme.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
-// reach — in the Zerops palette a fresh install wears, whose card and muted
-// fill sit closer than the fallback tokens'.
+// reach.
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

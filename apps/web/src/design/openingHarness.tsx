@@ -30,7 +30,6 @@ const HQ_SAID_READ_ONLY = {
 };
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   ConversationOpeningProvider,
   ConversationOpeningStage,
@@ -247,7 +246,6 @@ requestAnimationFrame(sample);
 (window as unknown as { __opening: { frames: FooterFrame[] } }).__opening = { frames };
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

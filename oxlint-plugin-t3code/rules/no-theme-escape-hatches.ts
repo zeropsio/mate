@@ -97,7 +97,6 @@ const STATUS_CONSUMER_MODULES = [
 const THEME_SOURCE_MODULES = [
   "/packages/shared/src/brand.ts",
   "/packages/shared/src/themePalettes.ts",
-  "/apps/web/src/themePalette.ts",
   "/apps/mobile/src/lib/mobileTheme.ts",
 ] as const;
 

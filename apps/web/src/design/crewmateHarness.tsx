@@ -70,7 +70,6 @@ import { crewCardOrigin } from "~/components/zerops/crew/CrewTaskCard.logic";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -732,7 +731,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

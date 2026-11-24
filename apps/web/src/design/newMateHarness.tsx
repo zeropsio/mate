@@ -35,7 +35,6 @@ import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import { proposedEnvironmentName } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { newMateDoor } from "@t3tools/client-runtime/zerops/newMateDoor";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 import { HarnessAccess } from "./accessFixtures";
@@ -259,7 +258,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

@@ -119,7 +119,6 @@ import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
 import { resolveInitialThreadSidebarWidth } from "~/lib/threadSidebarWidth";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { spokenUpcomingTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/components/zerops/jumpSlash";
 import { useSidebarJump } from "~/components/zerops/sidebarJump";
@@ -2051,21 +2050,13 @@ function Harness() {
   );
 }
 
-// The app sets the theme on the document element (`themePalette.ts`), so the
+// The app sets the appearance on the document element (`useTheme.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
 // reach — which is exactly how the first pass produced two identical light panels.
 document.documentElement.classList.toggle(
   "dark",
   new URLSearchParams(location.search).get("theme") === "dark",
 );
-// The app's own palette with `?palette=zerops`, so a capture reads in the
-// colours the app paints — the base tokens are not the owner's menu.
-if (new URLSearchParams(location.search).get("palette") === "zerops") {
-  applyThemePalette(
-    ZEROPS_THEME_ID,
-    new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light",
-  );
-}
 
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it,

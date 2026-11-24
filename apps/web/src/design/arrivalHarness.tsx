@@ -63,7 +63,6 @@ import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/Mat
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import type { Spoken } from "~/components/zerops/MateLinkLine";
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { type ArrivalService, type ArrivalStepInput } from "~/zerops/mateArrival";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -1247,7 +1246,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

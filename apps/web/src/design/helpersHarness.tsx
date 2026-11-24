@@ -27,7 +27,6 @@ import {
 
 import { AgentsPanel } from "~/components/AgentsPanel";
 import { showHelper } from "~/components/chat/helperFocus";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const NOW = Date.now();
@@ -248,7 +247,6 @@ const ACTIVITIES: OrchestrationThreadActivity[] = [
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 const width = Number(params.get("width") ?? 520);
 const open = params.get("open");
 

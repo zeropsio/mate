@@ -37,7 +37,6 @@ import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { MateComingHeader } from "~/components/zerops/ZeropsMateComingPage";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -202,7 +201,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const router = createRouter({
   routeTree: createRootRoute({

@@ -2,13 +2,12 @@ import { writeBrowserStorage } from "../lib/storage";
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import * as Schema from "effect/Schema";
+import type { ThemeAppearance } from "@t3tools/shared/themePalettes";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import {
-  applyThemePalette,
-  THEME_APPEARANCE_MODE_STORAGE_KEY,
-  ZEROPS_THEME_ID,
-  type ThemePreferenceMode,
-} from "../themePalette";
+
+export const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
+
+export type ThemePreferenceMode = ThemeAppearance | "system";
 
 type ThemeSnapshot = {
   systemDark: boolean;
@@ -141,9 +140,9 @@ function resolveBrowserChromeSurface(): HTMLElement {
 export function syncBrowserChromeTheme() {
   if (typeof document === "undefined" || typeof getComputedStyle === "undefined") return;
   const rootStyles = getComputedStyle(document.documentElement);
-  const themeChromeColor = document.documentElement.dataset.themeId
-    ? normalizeThemeColor(rootStyles.getPropertyValue("--app-chrome-background"))
-    : null;
+  const themeChromeColor = normalizeThemeColor(
+    rootStyles.getPropertyValue("--app-chrome-background"),
+  );
   const surfaceColor = normalizeThemeColor(
     getComputedStyle(resolveBrowserChromeSurface()).backgroundColor,
   );
@@ -192,7 +191,6 @@ function applyTheme(suppressTransitions = false) {
     document.documentElement.classList.add("no-transitions");
   }
   const resolvedAppearance = resolveAppearance(snapshot);
-  applyThemePalette(ZEROPS_THEME_ID, resolvedAppearance);
   document.documentElement.classList.toggle("dark", resolvedAppearance === "dark");
   lastAppliedTheme = snapshot;
   syncBrowserChromeTheme();

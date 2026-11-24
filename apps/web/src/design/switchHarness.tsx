@@ -55,7 +55,6 @@ import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
 import type { TimelineEntry } from "~/session-logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
@@ -1086,7 +1085,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
 
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

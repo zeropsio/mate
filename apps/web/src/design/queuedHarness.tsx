@@ -15,7 +15,6 @@ import { createRoot } from "react-dom/client";
 import { QueuedMessageTimelineRow } from "~/components/chat/TimelineMessageRows";
 import { TimelineRowCtx, type TimelineRowSharedState } from "~/components/chat/timelineContext";
 import type { QueuedComposerMessage } from "~/queuedMessageStore";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const SHARED: TimelineRowSharedState = {
@@ -132,7 +131,6 @@ function Harness() {
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

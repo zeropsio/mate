@@ -97,7 +97,6 @@ import {
   vaultFixtureImpact,
 } from "~/components/zerops/vault/vaultFixture";
 import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
@@ -2306,7 +2305,6 @@ function HarnessStates() {
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 /** A failed deploy's log reads the account's projects: stand-ins that hold none. */
 function Standins({ children }: { readonly children: ReactNode }) {

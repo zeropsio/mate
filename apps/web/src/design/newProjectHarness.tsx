@@ -39,7 +39,6 @@ import {
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { HarnessAccess } from "./accessFixtures";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { AppRouter } from "~/router";
 import "../index.css";
 
@@ -184,7 +183,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const router = createRouter({
   routeTree: createRootRoute({ component: Harness }),

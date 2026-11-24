@@ -18,7 +18,6 @@ import { createRoot } from "react-dom/client";
 
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { ServiceBrowserScope } from "~/components/ServiceBrowserLink";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -78,7 +77,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

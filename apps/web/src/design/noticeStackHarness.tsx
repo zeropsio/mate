@@ -14,7 +14,6 @@ import {
   type ComposerBannerStackItem,
 } from "~/components/chat/ComposerBannerStack";
 import { Button } from "~/components/ui/button";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
@@ -74,7 +73,7 @@ function Harness() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
+document.documentElement.classList.toggle("dark", appearance === "dark");
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

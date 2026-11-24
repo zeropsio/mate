@@ -46,7 +46,6 @@ import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { deriveLatestContextWindowSnapshot } from "~/lib/contextWindow";
 import { deriveProviderInstanceEntries } from "~/providerInstances";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -379,11 +378,10 @@ function sample(which: keyof typeof TRIGGERS, frames = 45) {
 
 (window as unknown as { __pickerHarness: unknown }).__pickerHarness = { sample };
 
-// The app sets the theme on the document element (`themePalette.ts`), so the
+// The app sets the appearance on the document element (`useTheme.ts`), so the
 // harness does the same.
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

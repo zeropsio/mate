@@ -29,7 +29,6 @@ import {
   type GithubConnectPickerViewProps,
 } from "~/components/zerops/github/GithubConnectPicker";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type {
   GitMirrorAppEntry,
   GitMirrorApps,
@@ -435,7 +434,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

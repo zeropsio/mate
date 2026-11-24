@@ -11,6 +11,7 @@ import {
   THEME_COLOR_ROLES,
   ZEROPS_THEME,
   type ThemeColorRole,
+  WEB_THEME_ROLE_TOKENS,
 } from "@t3tools/shared/themePalettes";
 import { PlayIcon } from "lucide-react";
 import { useState } from "react";
@@ -27,7 +28,6 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { APP_THEME_VARIABLES } from "~/themePalette";
 
 import type { FoundationId } from "../shell/kitPages";
 import { KitDocument } from "./KitDocument";
@@ -109,7 +109,7 @@ function ColourPage() {
                         <span className="flex flex-col">
                           <code className="font-mono font-medium text-caption">{role}</code>
                           <code className="font-mono text-caption text-muted-foreground">
-                            {APP_THEME_VARIABLES[role]}
+                            {WEB_THEME_ROLE_TOKENS[role].join(", ") || "native clients only"}
                           </code>
                         </span>
                       </TableCell>

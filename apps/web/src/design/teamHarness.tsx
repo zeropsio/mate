@@ -42,7 +42,6 @@ import {
   type TeamInput,
   type TeamPlace,
 } from "~/components/settings/teamSettings.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -319,7 +318,6 @@ const router = createRouter({
   history: createMemoryHistory(),
 });
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

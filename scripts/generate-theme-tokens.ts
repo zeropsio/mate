@@ -10,6 +10,7 @@ import {
 } from "@t3tools/shared/mobileThemeVariables";
 import {
   THEME_COLOR_ROLES,
+  WEB_THEME_ROLE_TOKENS,
   ZEROPS_THEME,
   type ThemeAppearance,
   type ThemeColors,
@@ -43,6 +44,11 @@ export const MOBILE_THEME_TOKEN_MARKERS = {
 export const WEB_SCALE_TOKEN_MARKERS = {
   start: "/* generated:scale-tokens start */",
   end: "/* generated:scale-tokens end */",
+} as const;
+
+export const WEB_THEME_COLOR_MARKERS = {
+  start: "/* generated:theme-colors start */",
+  end: "/* generated:theme-colors end */",
 } as const;
 
 export const WEB_MOTION_TOKEN_MARKERS = {
@@ -278,17 +284,42 @@ const renderWebMotionTokens = (): string =>
     `  --ease-in-out-strong: ${MOTION.easing.inOut};`,
   ].join("\n");
 
+// The Zerops palette as the stylesheet's semantic custom properties: light on the root, dark
+// under its `dark` variant. This is the only place the web's role colours are written.
+const renderWebThemeColors = (): string => {
+  const declarations = (appearance: ThemeAppearance, indentation: string): Array<string> => {
+    const colors = colorsForTheme(ZEROPS_THEME, appearance);
+    return THEME_COLOR_ROLES.flatMap((role) =>
+      WEB_THEME_ROLE_TOKENS[role].map((token) => `${indentation}${token}: ${colors[role]};`),
+    );
+  };
+  return [
+    ":root {",
+    ...declarations("light", "  "),
+    "",
+    "  @variant dark {",
+    ...declarations("dark", "    "),
+    "  }",
+    "}",
+  ].join("\n");
+};
+
 const projectWebStylesheetTokens = (source: string): string =>
   replaceGeneratedRegion(
     replaceGeneratedRegion(
-      source,
-      renderWebScaleTokens(),
+      replaceGeneratedRegion(
+        source,
+        renderWebScaleTokens(),
+        "apps/web/src/index.css",
+        WEB_SCALE_TOKEN_MARKERS,
+      ),
+      renderWebMotionTokens(),
       "apps/web/src/index.css",
-      WEB_SCALE_TOKEN_MARKERS,
+      WEB_MOTION_TOKEN_MARKERS,
     ),
-    renderWebMotionTokens(),
+    renderWebThemeColors(),
     "apps/web/src/index.css",
-    WEB_MOTION_TOKEN_MARKERS,
+    WEB_THEME_COLOR_MARKERS,
   );
 
 const renderVariant = (name: ThemeAppearance, variables: MobileThemeVariables): string => {

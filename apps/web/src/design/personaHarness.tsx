@@ -26,7 +26,6 @@ import {
 import { RightPanelPage } from "~/components/RightPanelPage";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -199,7 +198,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

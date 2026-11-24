@@ -103,33 +103,13 @@ const selectorList = (selector: string): ReadonlyArray<string> => {
 const isRootSelector = (header: string): boolean =>
   selectorList(header).some((selector) => /^:root(?:$|[.#[\]:])/u.test(selector));
 
-const THEME_ID_SELECTOR_PATTERN = /^html\[data-theme-id(?:[^\]]*)\](?::[^\s>+~]+)*$/u;
-
-const isThemeIdBlockSelector = (header: string): boolean => {
-  const selector = header.trim();
-  if (THEME_ID_SELECTOR_PATTERN.test(selector)) return true;
-  const list = /^:is\(([\s\S]*)\)$/u.exec(selector);
-  return (
-    list !== null &&
-    selectorList(list[1]!).every((candidate) => THEME_ID_SELECTOR_PATTERN.test(candidate))
+const isPaletteSource = (stack: ReadonlyArray<string>): boolean =>
+  stack.some(
+    (header) =>
+      isRootSelector(header) ||
+      /^@theme(?:\s|$)/u.test(header) ||
+      /^@layer\s+(?:base|theme)(?:\s|$)/u.test(header),
   );
-};
-
-const isPaletteSource = (stack: ReadonlyArray<string>): boolean => {
-  if (
-    stack.some(
-      (header) =>
-        isRootSelector(header) ||
-        /^@theme(?:\s|$)/u.test(header) ||
-        /^@layer\s+(?:base|theme)(?:\s|$)/u.test(header),
-    )
-  ) {
-    return true;
-  }
-
-  const ownSelector = stack.findLast((header) => !header.startsWith("@"));
-  return ownSelector !== undefined && isThemeIdBlockSelector(ownSelector);
-};
 
 const declarationFinding = ({
   path,

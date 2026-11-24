@@ -31,7 +31,6 @@ import { setRunFold } from "~/components/chat/runCard.logic";
 import { stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import { writeAppearanceModePreference } from "~/hooks/useTheme";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -292,7 +291,6 @@ class Shows extends Component<{ readonly children: ReactNode }, { readonly error
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Shows>

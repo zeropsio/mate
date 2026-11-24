@@ -75,6 +75,73 @@ export const THEME_COLOR_ROLES = [
 ] as const;
 
 export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
+
+/**
+ * The web stylesheet's custom properties each role paints, projected into `apps/web/src/index.css`
+ * by `scripts/generate-theme-tokens.ts`; a role with none is painted only by the native clients
+ * and the boot frame.
+ */
+export const WEB_THEME_ROLE_TOKENS: Readonly<Record<ThemeColorRole, ReadonlyArray<string>>> = {
+  canvas: ["--background"],
+  chrome: ["--app-chrome-background"],
+  toolbar: ["--toolbar-background"],
+  toolbarForeground: ["--toolbar-foreground"],
+  toolbarBorder: ["--toolbar-border"],
+  toolbarControl: ["--toolbar-control"],
+  toolbarControlForeground: ["--toolbar-control-foreground"],
+  toolbarControlHover: ["--toolbar-control-hover"],
+  surface: ["--card"],
+  surfaceRaised: ["--surface-raised"],
+  surfaceOverlay: ["--popover"],
+  text: ["--foreground", "--card-foreground", "--popover-foreground"],
+  textMuted: [],
+  border: ["--border"],
+  input: ["--input"],
+  focus: ["--ring"],
+  accent: [],
+  accentForeground: [],
+  secondary: ["--secondary"],
+  secondaryForeground: ["--secondary-foreground"],
+  muted: ["--muted"],
+  mutedForeground: ["--muted-foreground"],
+  placeholder: ["--placeholder"],
+  secondaryLabel: ["--secondary-label"],
+  iconMuted: ["--icon-muted"],
+  error: ["--error"],
+  errorForeground: ["--error-foreground"],
+  errorSurface: ["--error-surface"],
+  warning: ["--warning"],
+  warningForeground: ["--warning-foreground"],
+  warningSurface: ["--warning-surface"],
+  update: ["--update"],
+  updateForeground: ["--update-foreground"],
+  updateSurface: ["--update-surface"],
+  accentSurface: ["--accent"],
+  accentSurfaceForeground: ["--accent-foreground"],
+  messageSurface: ["--message-surface"],
+  messageForeground: ["--message-foreground"],
+  // Solid controls (CTAs, switches, the send button) share the message action's colour, so every
+  // "act now" affordance reads the same; the accent surface drives selection and hover.
+  messageAction: ["--primary", "--message-action"],
+  messageActionForeground: ["--primary-foreground", "--message-action-foreground"],
+  messageActionHover: ["--message-action-hover"],
+  codeBackground: ["--code-background"],
+  codeForeground: ["--code-foreground"],
+  sidebar: ["--sidebar"],
+  sidebarForeground: ["--sidebar-foreground"],
+  sidebarMutedForeground: ["--sidebar-muted-foreground"],
+  sidebarControlSurface: ["--sidebar-control-surface"],
+  sidebarRowHover: ["--sidebar-row-hover"],
+  sidebarRowActive: ["--sidebar-row-active"],
+  sidebarRowSelected: ["--sidebar-row-selected"],
+  sidebarBorder: ["--sidebar-border"],
+  terminalBackground: ["--terminal-background"],
+  terminalForeground: ["--terminal-foreground"],
+  terminalCursor: ["--terminal-cursor"],
+  terminalSelection: ["--terminal-selection-background"],
+  terminalScrollbar: [],
+  terminalScrollbarHover: [],
+};
 export type ThemeColors = Readonly<Record<ThemeColorRole, string>>;
 export type ThemeVariants = Readonly<Partial<Record<ThemeAppearance, ThemeColors>>>;
 export type ThemeDefinition = Readonly<{

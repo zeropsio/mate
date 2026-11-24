@@ -80,7 +80,6 @@ import {
   type RightPanelKind,
 } from "~/rightPanelKinds";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(window.location.search);
@@ -1116,7 +1115,6 @@ function HarnessPage() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own, so a place's name and the project's page link as they do in the app.
 const router = createRouter({

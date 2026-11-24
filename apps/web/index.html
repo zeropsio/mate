@@ -65,7 +65,6 @@
                 ? "dark"
                 : "light";
           const palette = THEME_PALETTES[mode];
-          document.documentElement.dataset.themeId = "zerops";
           document.documentElement.dataset.themeSelected = "true";
           document.documentElement.classList.toggle("dark", mode === "dark");
           document.documentElement.style.backgroundColor = palette.chrome;
@@ -82,7 +81,6 @@
           } catch {
             // Keep the dark default when even matchMedia is unavailable.
           }
-          delete document.documentElement.dataset.themeId;
           delete document.documentElement.dataset.themeSelected;
           document.documentElement.classList.toggle("dark", prefersDark);
           const fallbackColor = prefersDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;

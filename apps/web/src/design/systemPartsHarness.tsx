@@ -45,7 +45,6 @@ import {
 } from "~/components/zerops/system";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -530,7 +529,6 @@ function Harness() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own, so a place's name opens its page as it does in the app.
 const router = createRouter({

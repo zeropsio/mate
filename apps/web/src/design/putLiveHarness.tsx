@@ -17,7 +17,6 @@ import { PutLiveSheet } from "~/components/zerops/PutLiveSheet";
 import { ZeropsNextStepStrip } from "~/components/zerops/ZeropsNextStepBanner";
 import { Dialog } from "~/components/ui/dialog";
 import { TooltipProvider } from "~/components/ui/tooltip";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   putLiveServices,
   putLiveShapes,
@@ -179,7 +178,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

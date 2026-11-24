@@ -40,7 +40,6 @@ import {
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
 import { SectionLabel } from "~/components/zerops/system";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
@@ -775,7 +774,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

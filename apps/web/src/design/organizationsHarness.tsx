@@ -12,7 +12,6 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ZeropsOrganizationChoice } from "~/components/zerops/ZeropsOrganizationScope";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -58,7 +57,6 @@ function HarnessPage() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

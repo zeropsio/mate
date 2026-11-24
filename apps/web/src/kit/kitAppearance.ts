@@ -1,7 +1,7 @@
+import type { ThemeAppearance } from "@t3tools/shared/themePalettes";
 import { useLayoutEffect } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
-import { applyThemePalette, ZEROPS_THEME_ID, type ThemeAppearance } from "~/themePalette";
 
 /** How the kit page shows its sections: one appearance, or both side by side. */
 export type KitView = ThemeAppearance | "both";
@@ -112,15 +112,13 @@ export function kitSearchQuery(search: KitSearch): string {
 }
 
 /**
- * Paints the page in one appearance of the theme, the way the app paints itself
- * (`applyThemePalette` and the root `dark` class), without writing their preference: leaving the
- * page puts their own appearance back.
+ * Paints the page in one appearance, the way the app paints itself (the root `dark` class),
+ * without writing their preference: leaving the page puts their own appearance back.
  */
 export function useKitAppearance(appearance: ThemeAppearance | null): void {
   const { refreshTheme } = useTheme();
   useLayoutEffect(() => {
     if (appearance === null) return;
-    applyThemePalette(ZEROPS_THEME_ID, appearance);
     document.documentElement.classList.toggle("dark", appearance === "dark");
     return refreshTheme;
   }, [appearance, refreshTheme]);

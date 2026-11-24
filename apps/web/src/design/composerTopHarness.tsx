@@ -47,7 +47,6 @@ import {
   type ZeropsNextStepStripModel,
 } from "~/components/zerops/ZeropsNextStepBanner";
 import { TooltipProvider } from "~/components/ui/tooltip";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import "../index.css";
 
@@ -481,7 +480,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

@@ -58,7 +58,6 @@ import type { MateStatusAsk } from "~/zerops/mateStatus.logic";
 import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
 import { crewmateMenuModel } from "~/components/zerops/crew/CrewmateMenu.logic";
 import { crewTryOf, crewTryPress, crewTryStops } from "@t3tools/client-runtime/zerops/crew/crewTry";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -840,7 +839,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

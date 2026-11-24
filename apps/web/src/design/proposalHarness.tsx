@@ -49,7 +49,6 @@ import {
   type RevealAuthority,
   type RevealPhase,
 } from "~/components/zerops/proposal/reveal.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { ProductionAsks } from "./productionAskHarness";
 import "../index.css";
 
@@ -710,7 +709,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {
