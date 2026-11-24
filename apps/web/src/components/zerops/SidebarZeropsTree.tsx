@@ -157,6 +157,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
+import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
@@ -2748,7 +2749,7 @@ export function SidebarHqStatus({
 }) {
   // Catching up or slow, HQ is working: its spinner turns.
   const working = kind === "syncing" || kind === "slow";
-  const spinner = <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />;
+  const spinner = <Spinner aria-hidden="true" size="xs" tone="muted" />;
   if (compact && kind !== "syncing") {
     return (
       <Tooltip>

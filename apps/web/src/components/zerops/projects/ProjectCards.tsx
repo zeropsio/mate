@@ -284,7 +284,7 @@ const PLACE_DOT: Readonly<
 
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLineData["dot"] }) {
-  if (dot === "none") return <i aria-hidden="true" className="ov-dot" data-dot="none" />;
+  if (dot === "none") return <Badge aria-label="Nothing there yet" dot hollow />;
   const { tone, word } = PLACE_DOT[dot];
   return <Badge aria-label={word} dot tone={tone} />;
 }

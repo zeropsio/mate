@@ -42,16 +42,16 @@ const ENV_DOT_TONE = {
   attention: "warning",
   failed: "danger",
   off: "neutral",
+  spinner: "info",
 } as const satisfies Partial<Record<ChipDot, BadgeTone>>;
 
 /**
  * A stop's dot in its place's head, and the same mark wherever a stop is listed (the jump box),
- * named by the stop's word. A stop at rest on purpose is hollow and one on its way a small spinner,
- * which no status dot draws.
+ * named by the stop's word. A stop at rest on purpose is hollow, one on its way the busy tone.
  */
 export function EnvDot({ dot, label }: { readonly dot: ChipDot; readonly label: string }) {
-  return dot === "hollow" || dot === "spinner" ? (
-    <span aria-label={label} className="zerops-envdot" data-dot={dot} role="img" />
+  return dot === "hollow" ? (
+    <Badge aria-label={label} dot hollow />
   ) : (
     <Badge aria-label={label} dot tone={ENV_DOT_TONE[dot]} />
   );

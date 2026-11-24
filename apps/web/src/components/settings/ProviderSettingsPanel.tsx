@@ -4,7 +4,10 @@ import { zeropsMateAt } from "../../zerops/mateIdentities";
 import { useOpenMate } from "../../zerops/useOpenMate";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useAtomValue } from "@effect/atom-react";
-import { connectionStatusText } from "@t3tools/client-runtime/connection";
+import {
+  connectionStatusText,
+  type EnvironmentConnectionPhase,
+} from "@t3tools/client-runtime/connection";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
@@ -55,15 +58,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { getRelativeTimeState } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
 import {
-  ConnectionStatusDot,
-  connectionPhaseDotClassName,
-  connectionPhasePingClassName,
-} from "../ConnectionStatusDot";
-import {
   isProviderSettingsUpdateCandidate,
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -110,6 +109,16 @@ import {
 } from "./ProviderSettingsPanel.logic";
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
+
+/** An environment's connection as its tab's dot: work under way while it connects. */
+const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
+  connected: "success",
+  connecting: "info",
+  reconnecting: "info",
+  error: "danger",
+  available: "neutral",
+  offline: "neutral",
+};
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -302,13 +311,12 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                   >
                     <Icon className="size-3.5 shrink-0" aria-hidden />
                     <span className="max-w-40 truncate">{environment.label}</span>
-                    <ConnectionStatusDot
-                      dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                      pingClassName={connectionPhasePingClassName(environment.connection.phase)}
+                    <span className="sr-only">{detail}</span>
+                    <Badge
+                      aria-label={statusText}
+                      dot
+                      tone={CONNECTION_TONE[environment.connection.phase]}
                     />
-                    <span className="sr-only">
-                      {detail}, {statusText}
-                    </span>
                   </TooltipTrigger>
                   <TooltipPopup side="top">
                     {detail} · {statusText}

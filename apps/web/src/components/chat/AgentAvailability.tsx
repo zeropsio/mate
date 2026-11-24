@@ -27,26 +27,14 @@ export function AvailabilityDot({
   /** On an icon's top-right corner, rather than in the line. */
   readonly corner?: boolean;
 }) {
+  const tone = availability.tone === "error" ? "danger" : "warning";
   if (!corner)
-    return (
-      <Badge
-        aria-label={availability.title}
-        className="me-2 align-middle"
-        dot
-        tone={availability.tone === "error" ? "danger" : "warning"}
-      />
-    );
-  // Ringed on an icon's corner, the size of the icon's own badges: a mark on a thing, not a label.
+    return <Badge aria-label={availability.title} className="me-2 align-middle" dot tone={tone} />;
+  // On an icon's top-right corner, ringed by the control's ground: a mark on a thing, not a label.
   return (
-    <span
-      role="img"
-      aria-label={availability.title}
-      data-tone={availability.tone}
-      className={cn(
-        "absolute -top-0.5 -right-0.5 size-1.5 shrink-0 rounded-full ring-2 ring-(--contrast-input)",
-        availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-      )}
-    />
+    <span className="absolute -top-1 -right-1 flex rounded-full ring-2 ring-(--contrast-input)">
+      <Badge aria-label={availability.title} dot tone={tone} />
+    </span>
   );
 }
 
