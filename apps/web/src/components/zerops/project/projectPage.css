@@ -1,13 +1,11 @@
-/* A project's own page: its header, then what changes day to day and, under it, what is set up
-   once, all in one centred column no wider than reads well. A label hugs its card; sections stand
-   three times further apart. */
+/* A project's own page: its header, then a main column for what changes day to day and a side
+   column for what is set up once, the place page's frame. Side by side once both have room, the
+   side column under the main one below that. A label hugs its card; sections stand three times
+   further apart. */
 .pp {
   display: grid;
-  width: 100%;
   min-width: 0;
-  max-width: 880px;
   gap: 32px;
-  margin-inline: auto;
 }
 
 .pp-head {
@@ -38,7 +36,13 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 30px;
+  gap: 30px 40px;
+}
+
+@container flow (min-width: 980px) {
+  .pp-cols {
+    grid-template-columns: minmax(0, 1fr) 392px;
+  }
 }
 
 /* The label's own line box holds 7 px over and under its words: these gaps read as 36 and 32. */
