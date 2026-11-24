@@ -511,7 +511,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
 
   /**
    * Stops every running service of the Mate's project — its computer and every service beside
-   * it — until Start. The dialog stays open until Zerops took them all: a refusal is said there.
+   * it — until Start. The dialog stays open until Zerops stopped its computer: a refusal is said there.
    */
   const stop = useCallback(
     (candidate: ZeropsCandidatePresentation) => {

@@ -59,7 +59,8 @@ export async function submitZeropsWrite(
 
 /**
  * One service write per service, in order (`mateServicesToWrite`), each its own operation: the
- * first one Zerops does not take ends it, said as its refusal, and the rest stay unsent.
+ * first one Zerops does not take ends it, said as its refusal, and the rest stay unsent. Resolves
+ * with the last one's request, where any was sent.
  */
 export async function submitServiceWrites(
   operations: AccountOperations,
@@ -67,9 +68,15 @@ export async function submitServiceWrites(
   kind: "stop-service" | "start-service",
   projectId: string,
   serviceIds: ReadonlyArray<string>,
-): Promise<void> {
+): Promise<string | undefined> {
+  let last: string | undefined;
   for (const serviceId of serviceIds)
-    await submitZeropsWrite(operations, orgId, { kind, projectId, serviceId });
+    ({ requestId: last } = await submitZeropsWrite(operations, orgId, {
+      kind,
+      projectId,
+      serviceId,
+    }));
+  return last;
 }
 
 /** A Mate as its Stop and Start need it: its project, and its container where it has one. */
@@ -110,18 +117,25 @@ export async function startMate(
     );
 }
 
-/** A Mate's Stop: every running service of its project, its container last. */
-export function stopMate(
+/**
+ * A Mate's Stop: every running service of its project, its container last. It ends once Zerops
+ * stopped that container: until then its row still reads it running, so its press says Stopping….
+ */
+export async function stopMate(
   operations: AccountOperations,
   orgId: string | null,
   mate: MateTarget,
   services: ProjectServiceList,
 ): Promise<void> {
-  return submitServiceWrites(
+  const last = await submitServiceWrites(
     operations,
     orgId,
     "stop-service",
     mate.project.id,
     mateServiceIds("stop", mate, services),
   );
+  if (last === undefined || orgId === null) return;
+  const end = await operations.untilEnd(last, orgId);
+  const trouble = end.stage === "unobserved" ? null : writeTrouble(end, null);
+  if (trouble !== null) throw new Error(trouble);
 }

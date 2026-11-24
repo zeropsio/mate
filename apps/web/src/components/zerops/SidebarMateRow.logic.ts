@@ -1443,7 +1443,8 @@ export function mateRestartLine(
   }
 }
 
-const STOP_LINES: Readonly<Record<MateStopStanding, string>> = {
+/** What a Mate's row, card and projects-screen line say of its computer's stop and start. */
+export const MATE_STOP_WORDS: Readonly<Record<MateStopStanding, string>> = {
   stopping: "Stopping…",
   stopped: "Stopped",
   starting: "Starting…",
@@ -1451,7 +1452,7 @@ const STOP_LINES: Readonly<Record<MateStopStanding, string>> = {
 
 /** What a Mate's row and card say of its computer's stop and start, where it says anything. */
 export function mateStopLine(stop: MateStopStanding | undefined): MateRowSecond | undefined {
-  return stop === undefined ? undefined : { kind: "stop", text: STOP_LINES[stop] };
+  return stop === undefined ? undefined : { kind: "stop", text: MATE_STOP_WORDS[stop] };
 }
 
 export function mateRowSecond(input: {

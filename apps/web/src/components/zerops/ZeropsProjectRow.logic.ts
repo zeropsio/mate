@@ -40,7 +40,9 @@ import {
   type MateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
+import { startsAgain } from "@t3tools/client-runtime/zerops/mateState";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { MATE_STOP_WORDS } from "./SidebarMateRow.logic";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -473,6 +475,13 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         status: { label: "Restarting", pulse: true, tone: "busy" },
         // The container already exists; "Coming up" would say it is being made.
         detail: RESTARTING_PHRASE,
+      };
+    }
+    // A container that ran before starts again, as its menu row says it: never "Coming up".
+    if (startsAgain(candidate.service)) {
+      return {
+        status: { label: "Starting", pulse: true, tone: "busy" },
+        detail: MATE_STOP_WORDS.starting,
       };
     }
     return {
