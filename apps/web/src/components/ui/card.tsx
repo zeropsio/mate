@@ -10,12 +10,14 @@ import { cn } from "~/lib/utils";
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
  * inside another, set apart by a deeper tint instead of a second border — depth shows as tint.
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
- * list or a conversation, `md` for a card that stands alone on a page.
+ * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
+ * card one press.
  */
 const cardVariants = cva("", {
   defaultVariants: {
     variant: "default",
     size: "none",
+    pressable: false,
   },
   variants: {
     variant: {
@@ -29,22 +31,33 @@ const cardVariants = cva("", {
       sm: "gap-2 px-3.5 py-3",
       md: "gap-3 p-4",
     },
+    /**
+     * A card whose whole body is one press (a launcher's page, a thing it opens): a `<button>`, or
+     * a link through `render`. Lit under the pointer, by keyboard focus, and while `data-highlighted`
+     * (a list's arrow keys stepping through cards that keep focus on the list).
+     */
+    pressable: {
+      true: "cursor-pointer text-start outline-none transition-colors duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:bg-accent/60",
+      false: "",
+    },
   },
 });
 
 interface CardProps extends useRender.ComponentProps<"div"> {
   variant?: VariantProps<typeof cardVariants>["variant"];
   size?: VariantProps<typeof cardVariants>["size"];
+  pressable?: boolean;
 }
 
-function Card({ className, render, variant, size, ...props }: CardProps) {
+function Card({ className, render, variant, size, pressable = false, ...props }: CardProps) {
   const defaultProps = {
-    className: cn(cardVariants({ className, variant, size })),
+    className: cn(cardVariants({ className, variant, size, pressable })),
     "data-slot": "card",
+    ...(pressable && render === undefined ? { type: "button" as const } : {}),
   };
 
   return useRender({
-    defaultTagName: "div",
+    defaultTagName: pressable ? "button" : "div",
     props: mergeProps<"div">(defaultProps, props),
     render,
   });

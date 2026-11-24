@@ -1,4 +1,4 @@
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -54,6 +54,28 @@ function CardSpecimens() {
       <Specimen label='<Card variant="flat">'>
         <div className="w-80">
           <SampleCard variant="flat" />
+        </div>
+      </Specimen>
+      <Specimen label="<Card pressable>: the whole card one press (hover, focus, data-highlighted)">
+        <div className="grid w-96 grid-cols-2 gap-2">
+          <Card pressable>
+            <span className="flex flex-col items-start gap-1 p-3">
+              <span className="flex items-center gap-2 font-medium text-body">
+                <PanelRightIcon className="size-4" />
+                Files
+              </span>
+              <span className="text-caption text-muted-foreground">Browse the Mate's code.</span>
+            </span>
+          </Card>
+          <Card data-highlighted="" pressable>
+            <span className="flex flex-col items-start gap-1 p-3">
+              <span className="flex items-center gap-2 font-medium text-body">
+                <PanelRightIcon className="size-4" />
+                Terminal
+              </span>
+              <span className="text-caption text-muted-foreground">A shell in the container.</span>
+            </span>
+          </Card>
         </div>
       </Specimen>
       <Specimen label="<Card> title only">
