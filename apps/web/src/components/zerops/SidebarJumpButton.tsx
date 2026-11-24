@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function SidebarJumpButton({
@@ -30,13 +31,13 @@ export function SidebarJumpButton({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-keyshortcuts={shortcut === undefined ? "/" : `${ariaShortcut(shortcut)} /`}
             aria-label="Search"
-            className="menu-round-button"
             data-zerops-surface="sidebar-jump"
             onClick={onJump}
-            type="button"
+            size="icon-md"
+            variant="sidebar"
           />
         }
       >

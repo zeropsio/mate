@@ -6130,37 +6130,6 @@ code {
 
 /* ==== Pass 41 · the menu's chrome: the top row, Overview, Waiting on you, the foot, the rail ==== */
 @layer components {
-  /* The top row's round buttons (search, +): 34 px, a hairline ring, the glyph muted until the
-     pointer or the open menu wakes it. */
-  /* The top row's controls are the menu's own (the owner, 2026-10-11: "straight up stolen from
-     grok bot"): Search a field that fills the row and says its key, New beside it a square of the
-     same surface — 34 px, 10 px corners, no outlined circles. */
-  /* The logo row's two verbs, search and New: quiet 32 px squares on the row's end — not a
-     field across the row, not round outlined buttons (the owner, 2026-10-11: "the huge add search
-     is a waste of space"). */
-  .menu-round-button {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    background-color: transparent;
-    color: var(--muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong),
-      scale 160ms var(--ease-out-strong);
-  }
-
-  .menu-round-button:hover,
-  .menu-round-button[data-popup-open] {
-    background: var(--sidebar-row-hover);
-    color: var(--sidebar-foreground);
-  }
-
   /* The search key, said in its tooltip: drawn modifiers and the key in the tip's own ink. */
   .menu-search-key {
     display: inline-flex;
@@ -6169,16 +6138,6 @@ code {
     margin-left: 8px;
     opacity: 0.7;
     font-variant-numeric: tabular-nums;
-  }
-
-  .menu-round-button:active {
-    scale: 0.96;
-  }
-
-  .menu-round-button:focus-visible {
-    box-shadow:
-      inset 0 0 0 1px var(--sidebar-border),
-      0 0 0 2px var(--ring);
   }
 }
 
@@ -7229,10 +7188,6 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .menu-round-button:active {
-    scale: none;
-  }
-
   .menu-wait-list[data-starting-style],
   .menu-wait-list[data-ending-style] {
     scale: none;
