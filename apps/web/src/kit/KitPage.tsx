@@ -3,6 +3,7 @@ import { useRef } from "react";
 import { RenderErrorBoundary } from "~/components/RenderErrorBoundary";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
+import { InlineButton } from "~/components/ui/button";
 import { Separator } from "~/components/ui/separator";
 import {
   Sidebar,
@@ -26,9 +27,9 @@ import {
 import { AnchoredToastProvider, ToastProvider } from "~/components/ui/toast";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { useTheme } from "~/hooks/useTheme";
-import { appBasePathHref } from "~/basePath";
 
 import { type KitView, useKitAppearance } from "./kitAppearance";
+import type { KitFlow } from "./kitFlows";
 import { KIT_GROUPS, KIT_KINDS, type KitSection } from "./kitSection";
 import { KIT_OMISSIONS } from "./omissions";
 import { KIT_SECTIONS } from "./registry";
@@ -38,19 +39,27 @@ const VIEWS: readonly KitView[] = ["light", "dark", "both"];
 
 /**
  * Every component the app is built from, on one page: the shared kit beside the home-made versions
- * features built instead. Static fixtures only; it reads no account, project or Mate.
+ * features built instead, and, where the build carries the design harness, its flows: whole
+ * surfaces in their states. Static fixtures only; it reads no account, project or Mate.
  */
 export function KitPage({
   view,
   pane,
   onViewChange,
   sections = KIT_SECTIONS,
+  flows = [],
+  flow,
+  onFlowChange,
 }: {
   /** Unset shows the person's own appearance. */
   readonly view: KitView | undefined;
   readonly pane: boolean;
   readonly onViewChange: (view: KitView) => void;
   readonly sections?: readonly KitSection[];
+  readonly flows?: readonly KitFlow[];
+  /** The flow shown instead of the components, by its id. */
+  readonly flow?: string | undefined;
+  readonly onFlowChange?: (flow: string | undefined) => void;
 }) {
   const { resolvedTheme } = useTheme();
   const shown = view ?? resolvedTheme;
@@ -71,7 +80,14 @@ export function KitPage({
   return (
     <ToastProvider>
       <AnchoredToastProvider>
-        <KitFrame sections={sections} view={shown} onViewChange={onViewChange} />
+        <KitFrame
+          flow={flows.find((candidate) => candidate.id === flow)}
+          flows={flows}
+          sections={sections}
+          view={shown}
+          onFlowChange={onFlowChange ?? (() => {})}
+          onViewChange={onViewChange}
+        />
       </AnchoredToastProvider>
     </ToastProvider>
   );
@@ -79,11 +95,17 @@ export function KitPage({
 
 function KitFrame({
   sections,
+  flows,
+  flow,
   view,
+  onFlowChange,
   onViewChange,
 }: {
   readonly sections: readonly KitSection[];
+  readonly flows: readonly KitFlow[];
+  readonly flow: KitFlow | undefined;
   readonly view: KitView;
+  readonly onFlowChange: (flow: string | undefined) => void;
   readonly onViewChange: (view: KitView) => void;
 }) {
   const panes = useRef<Array<HTMLIFrameElement | null>>([]);
@@ -100,18 +122,39 @@ function KitFrame({
         <SidebarHeader>
           <div className="flex items-center justify-between gap-2 px-2 pt-1">
             <h1 className="m-0 font-semibold text-body">Kit</h1>
-            <Badge tone="neutral">{sections.length} sections</Badge>
+            <Badge tone="neutral">
+              {sections.length} sections{flows.length > 0 ? ` · ${flows.length} flows` : ""}
+            </Badge>
           </div>
         </SidebarHeader>
         <SidebarContent>
-          <KitIndex sections={sections} onJump={view === "both" ? jump : null} />
+          <KitIndex
+            sections={sections}
+            onJump={view === "both" && flow === undefined ? jump : null}
+            onLeaveFlow={flow === undefined ? null : () => onFlowChange(undefined)}
+          />
+          {flows.length > 0 ? (
+            <KitFlowIndex flows={flows} shown={flow?.id} onPick={onFlowChange} />
+          ) : null}
         </SidebarContent>
       </Sidebar>
       <SidebarInset className="min-h-0">
         <header className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-3">
-          <p className="m-0 text-muted-foreground text-body">
-            Every component, every variant and size, with the props it renders with.
-          </p>
+          {flow === undefined ? (
+            <p className="m-0 text-muted-foreground text-body">
+              Every component, every variant and size, with the props it renders with.
+            </p>
+          ) : (
+            <p className="m-0 flex items-center gap-2 text-body">
+              <span className="font-medium">{flow.title}</span>
+              <InlineButton
+                render={<a href={flow.href} rel="noreferrer" target="_blank" />}
+                tone="muted"
+              >
+                Open the page
+              </InlineButton>
+            </p>
+          )}
           <ToggleGroup
             aria-label="Appearance"
             value={[view]}
@@ -125,7 +168,22 @@ function KitFrame({
             <Toggle value="both">Both</Toggle>
           </ToggleGroup>
         </header>
-        {view === "both" ? (
+        {flow !== undefined ? (
+          // A flow is a whole surface, laid out for a window's width: both appearances stack.
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {(view === "both" ? (["light", "dark"] as const) : [view]).map((appearance) => (
+              // oxlint-disable-next-line react/iframe-missing-sandbox -- the flow is this build's own page
+              <iframe
+                className={
+                  view === "both" ? "min-h-svh w-full shrink-0 border-0" : "w-full flex-1 border-0"
+                }
+                key={`${flow.id}-${appearance}`}
+                src={`${flow.href}?theme=${appearance}`}
+                title={`${flow.title}, ${appearance}`}
+              />
+            ))}
+          </div>
+        ) : view === "both" ? (
           <div className="flex min-h-0 flex-1">
             {(["light", "dark"] as const).map((appearance, index) => (
               // oxlint-disable-next-line react/iframe-missing-sandbox -- the frame is this page itself
@@ -135,7 +193,7 @@ function KitFrame({
                 ref={(frame) => {
                   panes.current[index] = frame;
                 }}
-                src={`${appBasePathHref()}kit?appearance=${appearance}&pane=true`}
+                src={`${location.pathname}?appearance=${appearance}&pane=true`}
                 title={`Kit, ${appearance}`}
               />
             ))}
@@ -153,10 +211,13 @@ function KitFrame({
 function KitIndex({
   sections,
   onJump,
+  onLeaveFlow,
 }: {
   readonly sections: readonly KitSection[];
   /** In the side-by-side view the sections live in the two frames; a jump scrolls both. */
   readonly onJump: ((id: string) => void) | null;
+  /** While a flow is shown, a section's link first brings the components back. */
+  readonly onLeaveFlow: (() => void) | null;
 }) {
   const link = (id: string, title: string) => (
     <SidebarMenuItem key={id}>
@@ -165,6 +226,15 @@ function KitIndex({
           <a
             href={`#${id}`}
             onClick={(event) => {
+              if (onLeaveFlow !== null) {
+                // The sections draw once the flow leaves; the jump waits for them.
+                event.preventDefault();
+                onLeaveFlow();
+                requestAnimationFrame(() => {
+                  document.getElementById(id)?.scrollIntoView({ block: "start" });
+                });
+                return;
+              }
               if (onJump === null) return;
               event.preventDefault();
               onJump(id);
@@ -206,6 +276,32 @@ function KitIndex({
         <SidebarMenu>{link(OMISSIONS_ID, "Not shown")}</SidebarMenu>
       </SidebarGroup>
     </>
+  );
+}
+
+/** The design harness's pages, each a surface in its states; picking one shows it in place. */
+function KitFlowIndex({
+  flows,
+  shown,
+  onPick,
+}: {
+  readonly flows: readonly KitFlow[];
+  readonly shown: string | undefined;
+  readonly onPick: (flow: string) => void;
+}) {
+  return (
+    <SidebarGroup>
+      <h2 className="m-0 px-2 pb-1 font-semibold text-caption">Flows</h2>
+      <SidebarMenu>
+        {flows.map((flow) => (
+          <SidebarMenuItem key={flow.id}>
+            <SidebarMenuButton isActive={flow.id === shown} onClick={() => onPick(flow.id)}>
+              <span>{flow.title}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))}
+      </SidebarMenu>
+    </SidebarGroup>
   );
 }
 

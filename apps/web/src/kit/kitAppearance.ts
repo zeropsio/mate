@@ -10,6 +10,8 @@ interface KitSearch {
   readonly appearance?: KitView;
   /** Set on the two frames of the "both" view: the sections alone, without the index. */
   readonly pane?: true;
+  /** The flow shown instead of the components, by its id. */
+  readonly flow?: string;
 }
 
 export function validateKitSearch(raw: Readonly<Record<string, unknown>>): KitSearch {
@@ -18,9 +20,11 @@ export function validateKitSearch(raw: Readonly<Record<string, unknown>>): KitSe
       ? raw.appearance
       : undefined;
   const pane = raw.pane === true || raw.pane === "true";
+  const flow = typeof raw.flow === "string" && raw.flow !== "" ? raw.flow : undefined;
   return {
     ...(appearance === undefined ? {} : { appearance }),
     ...(pane ? { pane: true } : {}),
+    ...(flow === undefined ? {} : { flow }),
   };
 }
 

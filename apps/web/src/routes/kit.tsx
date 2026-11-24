@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { validateKitSearch } from "../kit/kitAppearance";
 import { KitPage } from "../kit/KitPage";
+import { KIT_FLOWS } from "../kit/kitFlows";
 
 // Unlisted: nothing links here. It renders before the account (`-accountGate.ts`), fixtures only.
 export const Route = createFileRoute("/kit")({
@@ -18,6 +19,15 @@ function KitRouteView() {
       pane={search.pane === true}
       onViewChange={(appearance) =>
         void navigate({ search: (previous) => ({ ...previous, appearance }), replace: true })
+      }
+      flows={KIT_FLOWS}
+      flow={search.flow}
+      onFlowChange={(flow) =>
+        void navigate({
+          search: ({ flow: _shown, ...previous }) =>
+            flow === undefined ? previous : { ...previous, flow },
+          replace: true,
+        })
       }
     />
   );

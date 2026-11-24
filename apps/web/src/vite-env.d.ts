@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_WS_URL: string;
   readonly VITE_HOSTED_APP_URL: string;
   readonly VITE_HOSTED_APP_CHANNEL: string;
+  /** `beside` or `alone` where the build carries the design harness; empty in production. */
+  readonly VITE_DESIGN_HARNESS: string;
   readonly VITE_RELAY_OTLP_TRACES_URL: string;
   readonly VITE_RELAY_OTLP_TRACES_DATASET: string;
   readonly VITE_RELAY_OTLP_TRACES_TOKEN: string;

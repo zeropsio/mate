@@ -661,6 +661,7 @@ export default defineConfig(({ command }) => {
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
       "import.meta.env.APP_COMMIT": JSON.stringify(builtCommit),
       "import.meta.env.VITE_APP_SHELL_WORKER": JSON.stringify(configuredAppShellWorker),
+      "import.meta.env.VITE_DESIGN_HARNESS": JSON.stringify(designHarness ?? ""),
     },
     resolve: {
       tsconfigPaths: true,
