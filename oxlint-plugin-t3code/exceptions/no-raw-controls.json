@@ -64,14 +64,6 @@
     "expires": "surface:kit"
   },
   {
-    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-control px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\", check === onStage ? \"bg-accent/70 text-foreground\" : \"text-muted-foreground\", )}",
-    "owner": "kit pass",
-    "reason": "needs kit: a Row lead for a thumbnail — a take's picture in its device's shape, wider than the mark slot (52 × 32), on a picked row",
-    "expires": "surface:kit"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<button> className=\"chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5\"",

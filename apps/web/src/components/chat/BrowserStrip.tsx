@@ -32,6 +32,7 @@ import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Badge } from "../ui/badge";
+import { Row } from "../ui/row";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -445,27 +446,21 @@ export function BrowserStrip({
                         : ""
               }`;
               return (
-                <button
+                <Row
                   key={check.key}
                   aria-label={label}
                   aria-pressed={check === onStage}
-                  className={cn(
-                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-control px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                    check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
-                  )}
                   data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
-                  onClick={() => (live ? openPanel() : setPickedKey(check.key))}
-                  type="button"
-                >
-                  {/* Every take's words start on one edge: its thumbnail, in its
-                      device's shape, sits in a slot as wide as a desktop's. */}
-                  <span className="flex w-13 shrink-0 justify-center" data-browser-strip-take-slot>
+                  lead={
+                    // Every take's words start on one edge: its thumbnail, in its device's shape,
+                    // sits in a slot as wide as a desktop's.
                     <span
                       className={cn(
                         "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
                         TAKE_CLASS[takeDevice],
                         TAKE_FRAME[state],
                       )}
+                      data-browser-strip-take-slot
                     >
                       {check.screenshot ? (
                         <TakeThumbnail
@@ -483,26 +478,38 @@ export function BrowserStrip({
                         <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
                       ) : null}
                     </span>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{takeWords}</span>
-                  {live ? (
-                    <Badge aria-label="Live" dot tone="info" />
-                  ) : state === "failed" ? (
-                    <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
-                  ) : state === "retried" ? (
-                    <RotateCcwIcon
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-status-attention"
-                    />
-                  ) : state === "unfinished" ? (
-                    <MinusIcon
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                    />
-                  ) : (
-                    <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
-                  )}
-                </button>
+                  }
+                  meta={
+                    live ? (
+                      <Badge aria-label="Live" dot tone="info" />
+                    ) : state === "failed" ? (
+                      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
+                    ) : state === "retried" ? (
+                      <RotateCcwIcon
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-status-attention"
+                      />
+                    ) : state === "unfinished" ? (
+                      <MinusIcon
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                      />
+                    ) : (
+                      <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+                    )
+                  }
+                  onClick={() => (live ? openPanel() : setPickedKey(check.key))}
+                  picked={check === onStage}
+                  pressable
+                  render={<button type="button" />}
+                  size="xs"
+                  thumbnail
+                  title={
+                    <span className={check === onStage ? undefined : "text-muted-foreground"}>
+                      {takeWords}
+                    </span>
+                  }
+                />
               );
             })}
           </div>
