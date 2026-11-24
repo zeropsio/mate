@@ -6296,6 +6296,16 @@ code {
     transition: background-color 150ms var(--ease-out-strong);
   }
 
+  /* 8 px under the headline, and the projects straight under it: the list's own 16 px above its
+     first row is the Chief's room. */
+  .menu-list-chief {
+    padding-top: 8px;
+  }
+
+  .menu-list-chief + [data-zerops-surface="sidebar-environments"] {
+    padding-top: 0;
+  }
+
   .menu-chief-row:hover {
     --chief-ground: var(--sidebar-row-hover);
   }

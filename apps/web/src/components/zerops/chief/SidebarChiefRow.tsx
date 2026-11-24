@@ -68,7 +68,7 @@ export function SidebarChiefRow({
   const account = useSignedInAccount();
   const shown = line ?? null;
   return (
-    <div data-zerops-surface="sidebar-chief">
+    <div className="menu-list-chief" data-zerops-surface="sidebar-chief">
       <button
         aria-current={current ? "page" : undefined}
         className="menu-chief-row"

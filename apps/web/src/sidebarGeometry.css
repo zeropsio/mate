@@ -1,7 +1,7 @@
 /* Loaded by the document before its first frame, shared with the rendered menu. */
 :root {
   --sidebar-content-inset: 0.75rem;
-  --sidebar-chief-row-height: 52px;
+  --sidebar-chief-row-height: 48px;
   --sidebar-menu-header-height: calc(
     var(--sidebar-content-inset) + 1px + var(--sidebar-chief-row-height)
   );
