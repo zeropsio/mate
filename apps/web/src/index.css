@@ -315,8 +315,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
      (composer context, pills). */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  /* The system's scale (packages/shared/src/brand.ts): five type steps, three
-     nested radii, two easings. */
+  /* The system's scale (packages/shared/src/brand.ts): five type steps, four
+     nested radii, two easings. The radius namespace starts empty, so the scale's
+     radii are the only ones a class can name (rounded-full and rounded-none stay). */
+  --radius-*: initial;
   /* generated:scale-tokens start */
   --text-caption: 0.75rem;
   --text-caption--line-height: 1rem;
@@ -468,13 +470,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
   @keyframes skeleton {
     /* Transform-only so the highlight sweep stays on the compositor, then a
        long hold with the band parked off-screen instead of a constant shimmer. */
@@ -1579,7 +1574,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
   --background: var(--color-zinc-25);
   --app-chrome-background: var(--background);
   --toolbar-background: var(--app-chrome-background);
