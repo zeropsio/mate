@@ -393,7 +393,7 @@ export function ZeropsNewMateForm({
             type="button"
             variant="ghost-muted"
           >
-            Mate access &amp; persona setup
+            {options ? "Close" : "Mate access & persona setup"}
             <ChevronDownIcon aria-hidden className="new-mate-chevron" />
           </Button>
         </div>
