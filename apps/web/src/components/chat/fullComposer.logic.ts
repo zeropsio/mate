@@ -1,3 +1,5 @@
+import { MOTION } from "@t3tools/shared/brand";
+
 /**
  * The composer at full screen: it fills the chat column, a gap short of its
  * edges, with whatever stands with it (its banners, strips, the composer).
@@ -11,7 +13,7 @@
 const FULL_COMPOSER_GAP = 16;
 
 /** How long the composer takes to grow or to go back. */
-export const FULL_COMPOSER_MS = 240;
+export const FULL_COMPOSER_MS = MOTION.duration.slow;
 
 /** The composer's text never gets shorter than at rest (`4.375rem`). */
 const FULL_COMPOSER_MIN_HEIGHT = 70;

@@ -37,7 +37,7 @@ export function StatusBar({
         <span
           key={segment.key}
           className={cn(
-            "h-full min-w-0 flex-1 rounded-full transition-colors duration-500",
+            "h-full min-w-0 flex-1 rounded-full transition-colors duration-260 ease-out-strong",
             BAR_TONE[segment.tone],
           )}
           data-status-bar-segment={segment.tone}

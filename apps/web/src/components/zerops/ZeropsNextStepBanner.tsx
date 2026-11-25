@@ -554,7 +554,7 @@ function foldAway(top: HTMLElement | null, done: () => void): void {
   top.style.overflow = "hidden";
   void top.offsetHeight;
   top.style.transition =
-    "height 200ms cubic-bezier(0.23, 1, 0.32, 1), padding 200ms cubic-bezier(0.23, 1, 0.32, 1), border-width 200ms cubic-bezier(0.23, 1, 0.32, 1), opacity 120ms ease-out";
+    "height var(--duration-base) var(--ease-out-strong), padding var(--duration-base) var(--ease-out-strong), border-width var(--duration-base) var(--ease-out-strong), opacity var(--duration-quick) var(--ease-out-strong)";
   top.style.height = "0px";
   top.style.paddingBlock = "0px";
   top.style.borderBottomWidth = "0px";

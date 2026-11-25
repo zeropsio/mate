@@ -1,4 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { MOTION } from "@t3tools/shared/brand";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
@@ -252,9 +253,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   );
 });
 
-const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
-const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-
 /**
  * The width a label takes when shown, clipped parts included.
  *
@@ -382,8 +380,8 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
           { transform: "translate3d(0, 0, 0)" },
         ],
         {
-          duration: COMPOSER_CONTEXT_MOTION_DURATION_MS,
-          easing: COMPOSER_CONTEXT_MOTION_EASING,
+          duration: MOTION.duration.base,
+          easing: MOTION.easing.out,
           fill: "backwards",
         },
       );

@@ -52,18 +52,18 @@
   }
 
   html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
-    animation: zerops-page-out 150ms ease-out both;
+    animation: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
   }
 
   html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
-    animation: zerops-page-in 200ms ease-out both;
+    animation: zerops-page-in var(--duration-base) var(--ease-out-strong) both;
   }
 
   /* The trail's two drawings fade over the same 200 ms, so what both hold never dims; each keeps
      its own size at the row's start, so a longer trail is never a stretched one. */
   html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
     animation-duration: 200ms;
-    animation-timing-function: ease-out;
+    animation-timing-function: var(--ease-out-strong);
   }
 
   html:active-view-transition-type(pages)::view-transition-old(zerops-page-crumbs),
@@ -118,8 +118,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-new(root) {
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-group(t3-mobile-composer) {
-  animation-duration: 180ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-in-out-strong);
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-image-pair(t3-mobile-composer) {
@@ -127,12 +127,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-image-pair(t
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobile-composer) {
-  animation: t3-mobile-composer-old 180ms linear both;
+  animation: t3-mobile-composer-old var(--duration-slow) var(--ease-in-out-strong) both;
   mix-blend-mode: normal;
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-new(t3-mobile-composer) {
-  animation: t3-mobile-composer-new 180ms linear both;
+  animation: t3-mobile-composer-new var(--duration-slow) var(--ease-in-out-strong) both;
   mix-blend-mode: normal;
 }
 
@@ -162,11 +162,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-new(t3-mobil
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-group(t3-mobile-draft-headline) {
-  animation-duration: 130ms;
+  animation-duration: var(--duration-quick);
 }
 
 html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobile-draft-headline) {
-  animation: t3-mobile-draft-headline-exit 130ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: t3-mobile-draft-headline-exit var(--duration-quick) var(--ease-out-strong) both;
   mix-blend-mode: normal;
 }
 
@@ -286,9 +286,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @theme inline {
-  /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
-     (composer context, pills). */
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* The system's scale (packages/shared/src/brand.ts): the type steps, four
      nested radii, two easings. The text and radius namespaces start empty, so the
      scale's steps are the only sizes and radii a class can name (rounded-full and
@@ -334,20 +331,23 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-status-pulse: status-pulse 2s infinite;
   --animate-ghost-pulse: ghost-pulse 2.4s infinite;
   /* A verb arriving in a row: it fades into the place a skeleton held, once. */
-  --animate-zerops-appear: zerops-appear 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  --animate-zerops-appear: zerops-appear var(--duration-base) var(--ease-out-strong) backwards;
   /* The Mate at work. Its panel after the turn rises in once; a status bar
      arriving opens its room; the result settles where the bars were. All
-     once. */
+     once, and the one motion longer than the scale's steps: a measured
+     choreography the run's height steps follow in JS (`stepHeight`'s
+     `drawerEase`), on a curve gentler at the start than ease-out-strong so a
+     room opening never leaps on its first frame. */
   --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
   /* Reduced motion's arrival: a fade only (`run-fade`). */
-  --animate-run-fade: run-fade 200ms ease backwards;
+  --animate-run-fade: run-fade var(--duration-base) var(--ease-out-strong) backwards;
   --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
   /* The run's chat. A bubble that arrives while the person watches rises in
      from the spine, once — quick, since one arrives every few seconds; what
      a bar or a bubble holds opens its room at the pace of a click. */
-  --animate-bubble-in: bubble-in 200ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
-  --animate-room-open: room-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-bubble-in: bubble-in var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-room-open: room-in var(--duration-base) var(--ease-out-strong) both;
   /* The Mate composing: three dots rising and brightening in turn, a wave
      rather than a blink — the one continuous motion on the card while it
      writes, and the thing a person watches while they wait. The later dots
@@ -357,13 +357,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-typing-second: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite;
   --animate-typing-third: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite;
   /* A status line's new words: in from just below, out of a blur, once. */
-  --animate-words-in: words-in 260ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  --animate-words-in: words-in var(--duration-slow) var(--ease-out-strong) backwards;
   /* The Mate's answer arriving while the person watches: up from just
      below, once. */
-  --animate-rise-in: rise-in 300ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  --animate-rise-in: rise-in var(--duration-slow) var(--ease-out-strong) backwards;
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
-  --animate-detail-in: detail-in 220ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  --animate-detail-in: detail-in var(--duration-base) var(--ease-out-strong) backwards;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);
@@ -1358,8 +1358,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     background: var(--background);
     box-shadow: var(--zerops-shadow-edge);
     transition:
-      transform 120ms ease,
-      box-shadow 120ms ease;
+      transform var(--duration-quick) var(--ease-out-strong),
+      box-shadow var(--duration-quick) var(--ease-out-strong);
   }
 
   .settings-slider::-moz-range-thumb {
@@ -1370,8 +1370,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     background: var(--background);
     box-shadow: var(--zerops-shadow-edge);
     transition:
-      transform 120ms ease,
-      box-shadow 120ms ease;
+      transform var(--duration-quick) var(--ease-out-strong),
+      box-shadow var(--duration-quick) var(--ease-out-strong);
   }
 
   .settings-slider:hover::-webkit-slider-thumb {
@@ -2311,7 +2311,7 @@ code {
   text-decoration-thickness: 1px;
   text-underline-offset: 0.22em;
   text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
-  transition: text-decoration-color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: text-decoration-color var(--duration-quick) var(--ease-out-strong);
 }
 
 .chat-markdown
@@ -2732,10 +2732,10 @@ code {
 /* The timeline shows a conversation once the list has put it in place (its
    rows are held at opacity 0 until then). It was a cut from nothing to the
    whole conversation in one frame on every switch between Mates; it now
-   comes in over 140 ms. Only the showing is eased: hiding stays instant, so
+   comes in over 200 ms. Only the showing is eased: hiding stays instant, so
    rows the list has not placed yet are never seen on their way out. */
 .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
-  transition: opacity 140ms ease-out;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 .timeline-legend-list .legend-list-content-container > div[style*="opacity: 0"] {
@@ -2974,28 +2974,28 @@ code {
 
 [data-mate-face-eye] {
   transition:
-    x 280ms var(--ease-out-strong),
-    y 280ms var(--ease-out-strong),
-    width 280ms var(--ease-out-strong),
-    height 280ms var(--ease-out-strong),
-    rx 280ms var(--ease-out-strong),
-    opacity 160ms ease;
+    x var(--duration-slow) var(--ease-out-strong),
+    y var(--duration-slow) var(--ease-out-strong),
+    width var(--duration-slow) var(--ease-out-strong),
+    height var(--duration-slow) var(--ease-out-strong),
+    rx var(--duration-slow) var(--ease-out-strong),
+    opacity var(--duration-slow) var(--ease-out-strong);
 }
 
 [data-mate-face-shut],
 [data-mate-face-arc],
 [data-mate-face-mouth="smile"] {
-  transition: opacity 200ms ease;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 [data-mate-face-mouth="o"] {
   transition:
-    r 260ms var(--ease-spring),
-    opacity 160ms ease;
+    r var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 [data-mate-face-look] {
-  transition: translate 240ms var(--ease-out-strong);
+  transition: translate var(--duration-slow) var(--ease-out-strong);
 }
 
 /* Thinking, it looks up and aside; writing, down along its line. */
@@ -3037,12 +3037,12 @@ code {
   }
 
   [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
-    transition: scale 220ms var(--ease-spring);
+    transition: scale var(--duration-base) var(--ease-spring);
   }
 
   [data-zerops-surface="sidebar-mate"]:active [data-mate-face-hop] {
     scale: 0.92;
-    transition-duration: 90ms;
+    transition-duration: var(--duration-quick);
   }
 }
 
@@ -3061,17 +3061,17 @@ code {
   0%,
   30% {
     translate: 0 0;
-    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+    animation-timing-function: var(--ease-in-out-strong);
   }
   36%,
   54% {
     translate: -5% 0;
-    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+    animation-timing-function: var(--ease-in-out-strong);
   }
   62%,
   80% {
     translate: 5% 0;
-    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+    animation-timing-function: var(--ease-in-out-strong);
   }
   86%,
   100% {
@@ -3108,12 +3108,12 @@ code {
 
 [data-mate-face-preview="out"] {
   opacity: 0;
-  animation: mate-face-preview-out 160ms var(--ease-out-strong);
+  animation: mate-face-preview-out var(--duration-quick) var(--ease-out-strong);
 }
 
 @media (prefers-reduced-motion: no-preference) {
   [data-mate-face-preview="in"] {
-    animation: mate-face-preview-in 220ms var(--ease-out-strong);
+    animation: mate-face-preview-in var(--duration-base) var(--ease-out-strong);
   }
 }
 
@@ -3187,8 +3187,8 @@ code {
   opacity: 0;
   transform: rotate(var(--ring-angle)) translateY(0) rotate(calc(-1 * var(--ring-angle))) scale(0.4);
   transition:
-    transform 260ms var(--ease-in-out-strong) calc(var(--ring-turn) * 12ms),
-    opacity 200ms ease calc(var(--ring-turn) * 12ms);
+    transform var(--duration-slow) var(--ease-in-out-strong) calc(var(--ring-turn) * 12ms),
+    opacity var(--duration-base) var(--ease-out-strong) calc(var(--ring-turn) * 12ms);
 }
 
 .mate-face-ring-stage[data-open] .mate-face-ring-seat {
@@ -3197,14 +3197,14 @@ code {
     rotate(calc(-1 * var(--ring-angle))) scale(1);
   transition:
     transform var(--duration-slow) var(--ease-out-strong) calc(var(--ring-turn) * 24ms),
-    opacity var(--duration-slow) ease calc(var(--ring-turn) * 24ms);
+    opacity var(--duration-slow) var(--ease-out-strong) calc(var(--ring-turn) * 24ms);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mate-face-ring-face,
   .mate-face-ring-seat,
   .mate-face-ring-stage[data-open] .mate-face-ring-seat {
-    transition: opacity 200ms ease;
+    transition: opacity var(--duration-base) var(--ease-out-strong);
   }
 
   .mate-face-ring-seat {
@@ -3687,7 +3687,7 @@ code {
   .menu-mark-release {
     color: var(--primary);
     cursor: pointer;
-    transition: background-color 150ms ease-out;
+    transition: background-color var(--duration-quick) var(--ease-out-strong);
   }
 
   .menu-mark-release:hover {
@@ -3852,8 +3852,8 @@ code {
     outline: none;
     transform-origin: var(--transform-origin);
     transition:
-      opacity 160ms var(--ease-out-strong),
-      scale 160ms var(--ease-out-strong);
+      opacity var(--duration-base) var(--ease-out-strong),
+      scale var(--duration-base) var(--ease-out-strong);
   }
 
   .menu-tagpop:is([data-starting-style], [data-ending-style]) {
@@ -3862,7 +3862,7 @@ code {
   }
 
   .menu-tagpop[data-ending-style] {
-    transition-duration: 120ms;
+    transition-duration: var(--duration-quick);
   }
 
   .menu-tagpop-list {
@@ -3888,8 +3888,8 @@ code {
     display: grid;
     grid-template-rows: 1fr;
     transition:
-      grid-template-rows 160ms var(--ease-out-strong),
-      opacity 120ms ease;
+      grid-template-rows var(--duration-base) var(--ease-out-strong),
+      opacity var(--duration-base) var(--ease-out-strong);
   }
 
   .menu-tagpop-row > * {
@@ -3961,27 +3961,27 @@ code {
     }
 
     [data-menu-tag][data-phase="enter"] > .menu-tag {
-      animation: menu-tag-in 160ms var(--ease-out-strong);
+      animation: menu-tag-in var(--duration-base) var(--ease-out-strong);
     }
 
     [data-menu-tag][data-phase="exit"] > .menu-tag {
-      animation: menu-tag-out 120ms var(--ease-out-strong) forwards;
+      animation: menu-tag-out var(--duration-quick) var(--ease-out-strong) forwards;
     }
 
     .menu-tag-digit[data-in][data-dir="up"] {
-      animation: menu-tag-digit-from-below 160ms var(--ease-out-strong);
+      animation: menu-tag-digit-from-below var(--duration-quick) var(--ease-out-strong);
     }
 
     .menu-tag-digit[data-in][data-dir="down"] {
-      animation: menu-tag-digit-from-above 160ms var(--ease-out-strong);
+      animation: menu-tag-digit-from-above var(--duration-quick) var(--ease-out-strong);
     }
 
     .menu-tag-digit[data-out][data-dir="up"] {
-      animation: menu-tag-digit-to-above 160ms var(--ease-out-strong) forwards;
+      animation: menu-tag-digit-to-above var(--duration-quick) var(--ease-out-strong) forwards;
     }
 
     .menu-tag-digit[data-out][data-dir="down"] {
-      animation: menu-tag-digit-to-below 160ms var(--ease-out-strong) forwards;
+      animation: menu-tag-digit-to-below var(--duration-quick) var(--ease-out-strong) forwards;
     }
 
     .menu-tagpop-row[data-arrive] {
@@ -3997,7 +3997,7 @@ code {
 
     .menu-tagpop,
     .menu-tagpop-row {
-      transition: opacity 120ms ease;
+      transition: opacity var(--duration-quick) var(--ease-out-strong);
     }
 
     .menu-tagpop:is([data-starting-style], [data-ending-style]) {
@@ -4205,7 +4205,7 @@ code {
 
   @media (prefers-reduced-motion: no-preference) {
     .menu-cluster-face {
-      transition: transform 220ms var(--ease-out-strong);
+      transition: transform var(--duration-base) var(--ease-out-strong);
     }
   }
 
@@ -4230,7 +4230,7 @@ code {
     height: 14px;
     font-size: var(--text-4xs);
     box-shadow: 0 0 0 1.5px var(--menu-ground);
-    transition: opacity 180ms var(--ease-out-strong);
+    transition: opacity var(--duration-base) var(--ease-out-strong);
   }
 
   /* A person stands only on the cluster's outer corner, the seat a lone Mate's wears: the face
@@ -4623,13 +4623,13 @@ code {
    reduced motion it only fades in (T8). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-in 220ms var(--ease-out-strong) backwards;
+    animation: menu-dot-in var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .menu-dot[data-arrived] {
-    animation: menu-dot-fade 220ms ease-out backwards;
+    animation: menu-dot-fade var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 
@@ -4766,10 +4766,10 @@ code {
   }
 }
 
-/* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (140 ms). */
+/* p26/row — the row's stop, armed: "Stop?" crossfades in where the ■ stood (150 ms). */
 @media (prefers-reduced-motion: no-preference) {
   .menu-stop-armed {
-    animation: zerops-appear 140ms ease-out backwards;
+    animation: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
   }
 }
 
@@ -4798,8 +4798,8 @@ code {
 @media (prefers-reduced-motion: no-preference) {
   .menu-chief-lit:not([data-travel]) {
     transition:
-      opacity 180ms var(--ease-out-strong),
-      transform 240ms var(--ease-out-strong);
+      opacity var(--duration-base) var(--ease-out-strong),
+      transform var(--duration-slow) var(--ease-out-strong);
   }
 }
 
@@ -4897,7 +4897,7 @@ code {
 
 @media (prefers-reduced-motion: no-preference) {
   .zerops-envpop-draft {
-    animation: zerops-envpop-rise 240ms var(--ease-out-strong) backwards;
+    animation: zerops-envpop-rise var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 
@@ -5021,8 +5021,8 @@ code {
   outline: none;
   transform-origin: var(--transform-origin);
   transition:
-    opacity 160ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
+    opacity var(--duration-base) var(--ease-out-strong),
+    scale var(--duration-base) var(--ease-out-strong);
 }
 
 .zerops-sites:is([data-starting-style], [data-ending-style]) {
@@ -5031,12 +5031,12 @@ code {
 }
 
 .zerops-sites[data-ending-style] {
-  transition-duration: 120ms;
+  transition-duration: var(--duration-quick);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .zerops-sites {
-    transition: opacity 120ms ease;
+    transition: opacity var(--duration-quick) var(--ease-out-strong);
   }
 
   .zerops-sites:is([data-starting-style], [data-ending-style]) {
@@ -5210,7 +5210,7 @@ code {
   display: inline-flex;
   opacity: 0;
   translate: 0 -50%;
-  transition: opacity 120ms var(--ease-out-strong);
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 .zerops-sites-linkrow:is(:hover, :focus-within) > .zerops-sites-copy,
@@ -5919,7 +5919,7 @@ code {
   .menu-stage:not([data-menu="rest"]) > .menu-stage-rail {
     opacity: 0;
     pointer-events: none;
-    transition-duration: 120ms;
+    transition-duration: var(--duration-quick);
   }
 
   .menu-stage-menu {
@@ -5933,8 +5933,8 @@ code {
     visibility: hidden;
     pointer-events: none;
     transition:
-      clip-path 180ms var(--ease-out-strong),
-      visibility 0s linear 180ms;
+      clip-path var(--duration-base) var(--ease-out-strong),
+      visibility 0s linear var(--duration-base);
   }
 
   .menu-stage-menu::before {
@@ -5951,7 +5951,7 @@ code {
     clip-path: inset(0 0 0 0);
     pointer-events: auto;
     transition:
-      clip-path 220ms var(--ease-out-strong),
+      clip-path var(--duration-slow) var(--ease-out-strong),
       visibility 0s;
   }
 
@@ -5961,7 +5961,7 @@ code {
     flex-direction: column;
     min-height: 0;
     opacity: 0;
-    transition: opacity 120ms var(--ease-out-strong);
+    transition: opacity var(--duration-quick) var(--ease-out-strong);
   }
 
   .menu-stage:not([data-menu="rest"]) > .menu-stage-menu > .menu-stage-body {
@@ -6196,8 +6196,8 @@ code {
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
+    opacity var(--duration-quick) var(--ease-out-strong),
+    scale var(--duration-quick) var(--ease-out-strong);
 }
 
 .ov-nav-left {
@@ -8453,7 +8453,7 @@ label.tm-advanced-row:not([data-disabled]) {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate {
-    transition: opacity 150ms linear;
+    transition: opacity var(--duration-quick) var(--ease-out-strong);
   }
 }
 /* A real thing's own name wherever it is printed in a line of words — a service's hostname, a
@@ -8785,7 +8785,7 @@ label.tm-advanced-row:not([data-disabled]) {
 /* p26/runcard */
 /* A change of the line's words crossfades in place: the old words leave where
    they stood, rising 3 px out, as the new ones rise 3 px in over them — on the
-   strong ease-out, in under 180 ms. What changes it is paced
+   strong ease-out, in 200 ms. What changes it is paced
    (`nowLineCalm.logic`), so a change comes at most once a second; the words'
    column is the grid's flexible one, so the clock never moves for them. A
    first paint is simply there, and under reduced motion a change is a cut. */
@@ -8800,10 +8800,10 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 @media (prefers-reduced-motion: no-preference) {
   .run-now-head[data-run-now-change] {
-    animation: run-now-in 180ms var(--ease-out-strong) backwards;
+    animation: run-now-in var(--duration-base) var(--ease-out-strong) backwards;
   }
   .run-now-leaving {
-    animation: run-now-out 140ms var(--ease-out-strong) both;
+    animation: run-now-out var(--duration-quick) var(--ease-out-strong) both;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -8981,7 +8981,7 @@ label.tm-advanced-row:not([data-disabled]) {
   width: 16px;
   height: 16px;
   color: var(--color-muted-foreground);
-  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: rotate var(--duration-quick) var(--ease-out-strong);
 }
 .run-head-chevron[data-open] {
   rotate: 180deg;
@@ -9262,7 +9262,7 @@ label.tm-advanced-row:not([data-disabled]) {
   background: linear-gradient(to right, transparent, var(--run-item-ground) 44px);
   font-style: normal;
   color: color-mix(in oklab, var(--color-foreground) 80%, transparent);
-  transition: color var(--duration-quick) cubic-bezier(0.23, 1, 0.32, 1);
+  transition: color var(--duration-quick) var(--ease-out-strong);
 }
 [data-chat-disclose]:hover > .run-item-more,
 [data-chat-disclose]:focus-visible > .run-item-more {
@@ -9446,7 +9446,7 @@ label.tm-advanced-row:not([data-disabled]) {
 /* A step done: its kind's mark takes the place its Mate's face held while it ran. */
 .run-mark-done {
   display: flex;
-  animation: run-mark-done 180ms var(--ease-out-strong) both;
+  animation: run-mark-done var(--duration-base) var(--ease-out-strong) both;
 }
 
 @keyframes run-mark-done {
@@ -9537,8 +9537,8 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--color-muted-foreground);
   cursor: pointer;
   transition:
-    color 150ms ease,
-    background-color 150ms ease;
+    color var(--duration-quick) var(--ease-out-strong),
+    background-color var(--duration-quick) var(--ease-out-strong);
 }
 .run-now-fold:hover {
   color: var(--color-foreground);
@@ -9550,7 +9550,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into
-   its place over 320 ms, once; reduced motion arrives immediately. */
+   its place over 260 ms, once; reduced motion arrives immediately. */
 @keyframes run-rise {
   from {
     translate: 0 6px;
@@ -9562,7 +9562,7 @@ label.tm-advanced-row:not([data-disabled]) {
   }
 }
 .run-rise {
-  animation: run-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  animation: run-rise var(--duration-slow) var(--ease-out-strong) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .run-rise {
@@ -9697,8 +9697,8 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: var(--radius-control);
   color: var(--color-muted-foreground);
   transition:
-    background-color 150ms ease,
-    color 150ms ease;
+    background-color var(--duration-quick) var(--ease-out-strong),
+    color var(--duration-quick) var(--ease-out-strong);
 }
 .run-result-open:hover {
   background: var(--color-accent);
@@ -9780,7 +9780,7 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: var(--radius-card);
   background-color: color-mix(in oklab, var(--color-foreground) 5%, transparent);
   /* Its fill comes with its picture, on the picture's own fade (`.asset-image-frame > img`). */
-  transition: background-color 140ms ease-out;
+  transition: background-color var(--duration-quick) var(--ease-out-strong);
 }
 /* Its edge is the card's hairline, drawn over the picture: a white page on
    the tray keeps its edge. */
@@ -9791,7 +9791,7 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: inherit;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 8%, transparent);
   pointer-events: none;
-  transition: box-shadow 150ms ease;
+  transition: box-shadow var(--duration-quick) var(--ease-out-strong);
 }
 /* Failed bytes and failed signing hold the picture's reserved room. */
 /* Fetching and decoding hold the picture's room and paint nothing in it: a filled box with no
@@ -9814,7 +9814,7 @@ label.tm-advanced-row:not([data-disabled]) {
   pointer-events: none;
 }
 .asset-image-frame > img {
-  transition: opacity 140ms ease-out;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 @media (prefers-reduced-motion: reduce) {
   .asset-image-frame > img {
@@ -9904,7 +9904,7 @@ button:hover > .run-result-tile::after {
 /* The pictures' strip does not fade in as a row: a strip rising before its pictures had pixels
    drew a pale box for 0.4 s (Milo's stress run 5). Each picture fades in as its pixels come. */
 .run-result-row[data-rising] {
-  animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  animation: run-result-rise var(--duration-base) var(--ease-out-strong) backwards;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -10042,7 +10042,7 @@ button:hover > .run-result-tile::after {
   width: 26px;
   height: 26px;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 [data-chat-composer-surface]:hover .composer-full-toggle,
@@ -10066,8 +10066,8 @@ button:hover > .run-result-tile::after {
 
 [data-chat-composer-form] [data-testid="composer-editor"] {
   transition:
-    min-height 240ms cubic-bezier(0.23, 1, 0.32, 1),
-    max-height 240ms cubic-bezier(0.23, 1, 0.32, 1);
+    min-height var(--duration-slow) var(--ease-out-strong),
+    max-height var(--duration-slow) var(--ease-out-strong);
 }
 
 [data-chat-composer-form][data-composer-full="on"] [data-testid="composer-editor"] {
@@ -10090,8 +10090,8 @@ button:hover > .run-result-tile::after {
   z-index: 0;
   background: var(--background);
   pointer-events: auto;
-  animation: composer-full-backdrop 200ms ease-out;
-  transition: opacity 200ms ease-out;
+  animation: composer-full-backdrop var(--duration-base) var(--ease-out-strong);
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 [data-chat-composer-overlay]:has([data-composer-full="leaving"])::before {
@@ -10236,7 +10236,7 @@ button:hover > .run-result-tile::after {
   object-fit: cover;
   background: var(--color-muted);
   box-shadow: 0 0 0 1px var(--picture-edge);
-  transition: box-shadow 120ms ease;
+  transition: box-shadow var(--duration-quick) var(--ease-out-strong);
 }
 
 .composer-picture > [data-slot="button"]:hover .composer-picture-img {
@@ -10268,7 +10268,7 @@ button:hover > .run-result-tile::after {
   top: -8px;
   right: -8px;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 .composer-picture-retry {
@@ -10761,7 +10761,7 @@ button:hover > .run-result-tile::after {
   line-height: normal;
   outline: none;
   cursor: default;
-  transition: box-shadow 120ms ease;
+  transition: box-shadow var(--duration-quick) var(--ease-out-strong);
 }
 
 .composer-file:focus-visible,
@@ -10806,7 +10806,7 @@ button:hover > .run-result-tile::after {
   top: -8px;
   right: -8px;
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 .composer-file:hover .composer-file-remove,
@@ -10893,7 +10893,7 @@ a.message-file:focus-visible {
   opacity: 0;
 }
 .rv-backdrop[data-ending-style] {
-  transition-duration: 160ms;
+  transition-duration: var(--duration-quick);
 }
 
 .rv-viewport {
@@ -10920,9 +10920,9 @@ a.message-file:focus-visible {
   outline: none;
   transform-origin: var(--rv-origin-x, 100%) var(--rv-origin-y, 50%);
   transition:
-    opacity 240ms var(--ease-out-strong),
-    scale 240ms var(--ease-out-strong),
-    translate 240ms var(--ease-out-strong);
+    opacity var(--duration-slow) var(--ease-out-strong),
+    scale var(--duration-slow) var(--ease-out-strong),
+    translate var(--duration-slow) var(--ease-out-strong);
 }
 /* The sheet: over the page's right edge, the window's height less its 12 px margins. */
 .rv-viewport > .rv {
@@ -10977,7 +10977,7 @@ a.message-file:focus-visible {
   translate: 24px 0;
 }
 .rv[data-ending-style] {
-  transition-duration: 160ms;
+  transition-duration: var(--duration-quick);
   translate: 16px 0;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -11354,7 +11354,7 @@ a.message-file:focus-visible {
 }
 @media (prefers-reduced-motion: no-preference) {
   .rv-pic[data-fresh] img {
-    animation: rv-pic-in 180ms var(--ease-out-strong) backwards;
+    animation: rv-pic-in var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 @keyframes rv-pic-in {
@@ -11405,7 +11405,7 @@ a.message-file:focus-visible {
   inset: 0;
   z-index: 60;
   @apply dialog-media-backdrop;
-  transition: opacity 180ms var(--ease-out-strong);
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 .rv-viewer {
   position: fixed;
@@ -11424,7 +11424,7 @@ a.message-file:focus-visible {
   align-items: center;
   gap: 12px;
   outline: none;
-  transition: opacity 180ms var(--ease-out-strong);
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 .rv-viewer-backdrop[data-starting-style],
 .rv-viewer-backdrop[data-ending-style],
@@ -11714,7 +11714,7 @@ a.message-file:focus-visible {
   border-radius: var(--radius-card);
   background: var(--card);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
-  transition: box-shadow 150ms ease;
+  transition: box-shadow var(--duration-quick) var(--ease-out-strong);
 }
 .rv-say:focus-within {
   box-shadow:
@@ -11845,9 +11845,9 @@ a.message-file:focus-visible {
   color: var(--muted-foreground);
   opacity: 0;
   transition:
-    opacity 150ms ease,
-    color 150ms ease,
-    translate 200ms var(--ease-out-strong);
+    opacity var(--duration-quick) var(--ease-out-strong),
+    color var(--duration-quick) var(--ease-out-strong),
+    translate var(--duration-base) var(--ease-out-strong);
 }
 [data-release-row]:hover .rv-relrow-go {
   color: var(--foreground);
@@ -11874,11 +11874,11 @@ a.message-file:focus-visible {
     translate: 0 -5%;
   }
   [data-release-row] [data-mate-face-hop] {
-    transition: scale 220ms var(--ease-spring);
+    transition: scale var(--duration-base) var(--ease-spring);
   }
   [data-release-row]:active [data-mate-face-hop] {
     scale: 0.92;
-    transition-duration: 90ms;
+    transition-duration: var(--duration-quick);
   }
 }
 
@@ -11902,8 +11902,8 @@ a.message-file:focus-visible {
   max-height: var(--rv-max);
   background: var(--card);
   transition:
-    translate 220ms var(--ease-out-strong),
-    opacity 220ms var(--ease-out-strong);
+    translate var(--duration-base) var(--ease-out-strong),
+    opacity var(--duration-base) var(--ease-out-strong);
 }
 .rv-step-over {
   z-index: 1;
@@ -12491,10 +12491,10 @@ a.message-file:focus-visible {
 /* A conversation is out of sight until it stands where it stays: a reading
    position put back (the list places a row from estimates first, and the
    frame after corrected it by 96 px), or the end reached and held for two
-   frames. It then eases in as the list shows a conversation (140 ms);
+   frames. It then eases in as the list shows a conversation (200 ms);
    hiding is instant. */
 [data-timeline-thread] {
-  transition: opacity 140ms ease-out;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 [data-timeline-thread][data-timeline-placing] {
@@ -12714,8 +12714,8 @@ a.message-file:focus-visible {
 
 /* A Mate's arrival and its empty conversation (`MateEmptyStateView`), the "Arrival" board's
    Direction A: the face, one headline, one sentence and one slot, each place handing over in
-   place (`ArrivalSwap`) — what leaves fades where it stood (140 ms), what comes arrives over it
-   (180–200 ms, 40–60 ms late), words travelling 6 px up, the slot only fading; the height follows
+   place (`ArrivalSwap`) — what leaves fades where it stood (the scale's quick step), what comes
+   arrives over it (its base step, 40–60 ms late), words travelling 6 px up, the slot only fading; the height follows
    in 240 ms. A first paint shows its state at once: only a change of state moves. */
 .arrival-swap {
   position: relative;
@@ -12735,11 +12735,11 @@ a.message-file:focus-visible {
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="entering"] {
-  animation: arrival-words-in 180ms var(--ease-out-strong) 40ms backwards;
+  animation: arrival-words-in var(--duration-base) var(--ease-out-strong) 40ms backwards;
 }
 
 .arrival-swap[data-arrival-swap="words"] > [data-swap-layer="leaving"] {
-  animation: arrival-words-out 140ms var(--ease-out-strong) both;
+  animation: arrival-words-out var(--duration-quick) var(--ease-out-strong) both;
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="entering"] {
@@ -12747,7 +12747,7 @@ a.message-file:focus-visible {
 }
 
 .arrival-swap[data-arrival-swap="slot"] > [data-swap-layer="leaving"] {
-  animation: arrival-fade-out 140ms var(--ease-out-strong) both;
+  animation: arrival-fade-out var(--duration-quick) var(--ease-out-strong) both;
 }
 
 @keyframes arrival-words-in {
@@ -13323,12 +13323,12 @@ a.message-file:focus-visible {
 
 .new-mate-options-room .new-mate-options {
   opacity: 0;
-  transition: opacity var(--duration-base) ease;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 .new-mate-options-room[data-open] .new-mate-options {
   opacity: 1;
-  transition: opacity var(--duration-slow) ease 80ms;
+  transition: opacity var(--duration-slow) var(--ease-out-strong) var(--duration-base);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -13847,7 +13847,7 @@ a.message-file:focus-visible {
   overflow-clip-margin: 2px;
 }
 
-/* The options past the first two: they unfold under them in 320 ms and fold back. */
+/* The options past the first two: they unfold under them in 260 ms and fold back. */
 .arrival-cards-rest {
   display: grid;
   grid-template-rows: 0fr;
@@ -14088,12 +14088,12 @@ a.message-file:focus-visible {
   user-select: all;
 }
 
-/* What the login prints, behind *Show what's happening*: unfolding under the steps in 240 ms,
+/* What the login prints, behind *Show what's happening*: unfolding under the steps in 260 ms,
    in the theme's own colours. */
 .arrival-terminal-fold {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 240ms var(--ease-out-strong);
+  transition: grid-template-rows var(--duration-slow) var(--ease-out-strong);
 }
 
 .arrival-terminal-fold[data-open] {
@@ -14150,10 +14150,10 @@ a.message-file:focus-visible {
 }
 
 /* The composer while a Mate's arrival waits on its person (`ChatView`): kept in its place, since
-   it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in 180 ms,
+   it is what sends the stand-up, but unseen; once the stand-up has gone it fades back in 200 ms,
    and nothing around it moves. */
 [data-slot="composer-shell"] {
-  transition: opacity 180ms var(--ease-out-strong);
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 [data-standup-holds-composer] [data-slot="composer-shell"] {
@@ -14196,7 +14196,7 @@ a.message-file:focus-visible {
 /* A Mate's persona arriving after its line stands fades in where it stays:
    the name before it never moves. */
 .conversation-persona[data-arrived] {
-  animation: conversation-persona-in 180ms var(--ease-out-strong) backwards;
+  animation: conversation-persona-in var(--duration-base) var(--ease-out-strong) backwards;
 }
 
 @keyframes conversation-persona-in {
@@ -14245,7 +14245,7 @@ a.message-file:focus-visible {
     margin: 0 8px;
     padding: 10px 8px;
     border-radius: var(--radius-card);
-    transition: background-color 150ms ease;
+    transition: background-color var(--duration-quick) var(--ease-out-strong);
   }
 
   .crew-row[data-needs] {
@@ -14410,7 +14410,7 @@ a.message-file:focus-visible {
   .crew-tray-out {
     display: flex;
     opacity: 0;
-    transition: opacity 150ms ease;
+    transition: opacity var(--duration-quick) var(--ease-out-strong);
   }
 
   .crew-tray-row:hover .crew-tray-out,
@@ -14467,25 +14467,25 @@ a.message-file:focus-visible {
      the box's ring, shadow and its presses' focus rings have always been cut
      there; one answer box keeps the one layer that costs. */
   .crew-reveal[data-arrived] {
-    animation: crew-reveal 220ms var(--ease-out-strong) both;
+    animation: crew-reveal var(--duration-base) var(--ease-out-strong) both;
   }
 
   /* A view slides 24 px in from the right; back, the column from the left. */
   .crew-view[data-enter="forward"] {
-    animation: crew-view-forward 220ms var(--ease-out-strong) backwards;
+    animation: crew-view-forward var(--duration-base) var(--ease-out-strong) backwards;
   }
 
   .crew-view[data-enter="back"] {
-    animation: crew-view-back 220ms var(--ease-out-strong) backwards;
+    animation: crew-view-back var(--duration-base) var(--ease-out-strong) backwards;
   }
 
   /* The mode line's words change in place: its height never moves. */
   .crew-mode[data-arrived] {
-    animation: crew-fade 180ms var(--ease-out-strong) backwards;
+    animation: crew-fade var(--duration-base) var(--ease-out-strong) backwards;
   }
 
   .crew-dot[data-arrived] {
-    animation: crew-dot-in 220ms var(--ease-out-strong) backwards;
+    animation: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 
@@ -14494,7 +14494,7 @@ a.message-file:focus-visible {
   .crew-view[data-enter],
   .crew-mode[data-arrived],
   .crew-dot[data-arrived] {
-    animation: crew-fade 180ms ease-out backwards;
+    animation: crew-fade var(--duration-base) var(--ease-out-strong) backwards;
   }
 }
 
@@ -14543,7 +14543,6 @@ a.message-file:focus-visible {
    quiet warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
    and an item travel with the content under them; reduced motion keeps only the end states. */
 .vault-panel {
-  --vault-ease: cubic-bezier(0.23, 1, 0.32, 1);
   --vault-row-hover: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
   --vault-row-open: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
   --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
@@ -14609,7 +14608,7 @@ a.message-file:focus-visible {
 }
 
 .vault-chevron {
-  transition: transform 0.2s var(--vault-ease);
+  transition: transform 0.2s var(--ease-out-strong);
 }
 
 .vault-row[data-open] .vault-chevron {
@@ -14627,7 +14626,7 @@ a.message-file:focus-visible {
   --vault-row-bg: var(--card);
   position: relative;
   background: var(--vault-row-bg);
-  transition: background-color 0.16s;
+  transition: background-color var(--duration-quick) var(--ease-out-strong);
 }
 
 .vault-row:not([data-static]):not([data-open]):hover {
@@ -14639,13 +14638,13 @@ a.message-file:focus-visible {
 }
 
 .vault-row[data-flash] {
-  animation: vault-flash 1.5s var(--vault-ease) 1;
+  animation: vault-flash 1.5s var(--ease-out-strong) 1;
 }
 
 .vault-row-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.24s var(--vault-ease);
+  transition: grid-template-rows var(--duration-slow) var(--ease-out-strong);
 }
 
 .vault-row[data-open] > .vault-row-body {
@@ -14656,16 +14655,16 @@ a.message-file:focus-visible {
   min-height: 0;
   overflow: hidden;
   opacity: 0;
-  transition: opacity 0.12s;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
 }
 
 .vault-row[data-open] > .vault-row-body > div {
   opacity: 1;
-  transition: opacity 0.22s 0.06s;
+  transition: opacity var(--duration-base) var(--ease-out-strong) 0.06s;
 }
 
 .vault-settled {
-  animation: vault-settled 1.4s var(--vault-ease) both;
+  animation: vault-settled 1.4s var(--ease-out-strong) both;
 }
 
 .vault-gutter > span {

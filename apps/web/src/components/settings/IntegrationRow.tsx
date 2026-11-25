@@ -237,7 +237,7 @@ function Reveal({ open, children }: { readonly open: boolean; readonly children:
   return (
     <div
       className={cn(
-        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        "grid transition-[grid-template-rows] duration-200 ease-out-strong motion-reduce:transition-none",
         open ? "grid-rows-[1fr] starting:grid-rows-[0fr]" : "grid-rows-[0fr]",
       )}
       inert={!open}

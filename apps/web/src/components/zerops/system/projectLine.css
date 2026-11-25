@@ -191,7 +191,7 @@
   background: var(--ln-tint, var(--ln-track));
   box-shadow: 0 0 0 2px var(--ln-ground);
   cursor: pointer;
-  transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: transform var(--duration-quick) var(--ease-out-strong);
 }
 
 /* Its press reaches the beads beside it and the track's whole height. */
@@ -311,7 +311,7 @@ span.ln-bead {
   display: grid;
   min-width: 0;
   grid-template-rows: 104px 0fr;
-  transition: grid-template-rows 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: grid-template-rows var(--duration-base) var(--ease-out-strong);
 }
 
 .ln-fold[data-open] {
@@ -323,8 +323,8 @@ span.ln-bead {
   grid-column: 1;
   grid-row: 1;
   transition:
-    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
-    visibility 200ms;
+    opacity var(--duration-base) var(--ease-out-strong),
+    visibility var(--duration-base);
 }
 
 .ln-pane[data-pane="full"] {

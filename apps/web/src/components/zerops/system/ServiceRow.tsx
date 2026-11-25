@@ -234,7 +234,7 @@ function ServiceMeter({
         {fill === undefined ? null : (
           <div
             className={cn(
-              "h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none",
+              "h-full w-full origin-left rounded-full transition-transform duration-260 ease-out-strong motion-reduce:transition-none",
               fill.high ? "bg-status-attention" : tone === "ok" ? "bg-status-ok" : "bg-info",
             )}
             data-zerops-meter-high={fill.high || undefined}

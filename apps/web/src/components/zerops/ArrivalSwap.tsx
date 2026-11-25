@@ -1,8 +1,8 @@
 /**
  * One place that holds one state at a time, and hands over between them in place — the arrival's
  * headline, its sentence and its slot (`MateEmptyStateView`), and the sign-in's cards
- * (`ZeropsAgentSignIn`). What it held leaves as it was last drawn, fading where it stood (140 ms);
- * what it holds now arrives over it (180–200 ms, on the strong ease-out); and its height follows
+ * (`ZeropsAgentSignIn`). What it held leaves as it was last drawn, fading where it stood (150 ms);
+ * what it holds now arrives over it (200 ms, on the strong ease-out); and its height follows
  * the new state's in 240 ms, so whatever stands under it moves with it instead of jumping. A first
  * paint draws its state at once: only a change of state moves. Words travel 6 px, up out and up
  * in; a slot only fades. Under reduced motion only the fades remain.

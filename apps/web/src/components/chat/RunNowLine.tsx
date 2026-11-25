@@ -1,3 +1,4 @@
+import { MOTION } from "@t3tools/shared/brand";
 import { ChevronDownIcon } from "lucide-react";
 import {
   Fragment,
@@ -199,7 +200,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
 }
 
 /** How long the words a line leaves take to go: their fade, and a frame to spare. */
-const LINE_LEAVES_MS = 160;
+const LINE_LEAVES_MS = MOTION.duration.quick + 16;
 
 /**
  * The words the now line just left, as it last drew them, while they fade

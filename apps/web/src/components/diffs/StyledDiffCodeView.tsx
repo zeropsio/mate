@@ -249,7 +249,7 @@ const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
    Departing content cuts, the same one-way rule the pull request chrome fold follows. */
 [data-diff],
 [data-file] {
-  transition: opacity 200ms ease-out;
+  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
 
 @starting-style {

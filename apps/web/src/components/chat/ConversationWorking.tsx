@@ -245,7 +245,7 @@ function Band({
       {onToggle === null ? null : (
         <ChevronDownIcon
           aria-hidden="true"
-          className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 ease-out group-hover/row:text-foreground group-aria-expanded/row:rotate-180 motion-reduce:transition-none"
+          className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 ease-out-strong group-hover/row:text-foreground group-aria-expanded/row:rotate-180 motion-reduce:transition-none"
         />
       )}
     </span>

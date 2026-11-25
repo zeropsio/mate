@@ -165,7 +165,7 @@ function DialogMediaPopup({ children, ...props }: DialogPrimitive.Popup.Props) {
           // Modal, and said so: the composer behind takes letters typed outside any field unless
           // a modal dialog is open (`typeToFocus`).
           aria-modal="true"
-          className="size-full outline-none transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 [-webkit-app-region:no-drag]"
+          className="size-full outline-none transition-opacity duration-260 ease-in-out-strong data-ending-style:opacity-0 data-starting-style:opacity-0 [-webkit-app-region:no-drag]"
           data-slot="dialog-popup"
           {...props}
         >

@@ -1242,7 +1242,7 @@ function NewRepositoryRow({
     <div
       aria-checked={checked}
       aria-label={`New repository ${account}/${created.name}`}
-      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out hover:bg-accent/60 focus-visible:bg-accent"
+      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out-strong hover:bg-accent/60 focus-visible:bg-accent"
       onClick={(event) => {
         if (!checked && event.detail > 0) typeNext.current = true;
         onPick();
