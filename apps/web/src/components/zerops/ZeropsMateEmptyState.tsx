@@ -44,7 +44,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type ReactElement,
   type RefObject,
@@ -582,12 +581,11 @@ function ArrivalComposition({
           greets="detail"
           onRestartCycle={onRestartCycle}
           cues={stoodUp === undefined ? undefined : [stoodUp]}
-          paces={pacing}
+          paces={pacing && pace}
           restarting={restarting}
           shape={mate.shape}
           size={64}
           state={state}
-          style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
           tint={mate.tint}
           tracks={tracks}
         />

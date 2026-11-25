@@ -52,6 +52,9 @@ function MateFaceSpecimens() {
           <Specimen label={specimenLabel({ restarting: true, size: 64 })}>
             <MateFace restarting size={64} state="idle" tint="rose" />
           </Specimen>
+          <Specimen label={specimenLabel({ paces: true, size: 32 })}>
+            <MateFace paces size={32} state="working" tint="sky" />
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
     </div>

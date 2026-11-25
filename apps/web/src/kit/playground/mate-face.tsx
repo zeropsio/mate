@@ -4,7 +4,6 @@ import {
   MATE_TINT_IDS,
   type MateMarkState,
 } from "@t3tools/shared/brand";
-import type { CSSProperties } from "react";
 
 import { MateFace, type MateFaceSize } from "~/components/zerops/primitives";
 import { MATE_MOMENTS } from "~/zerops/mateMoments.logic";
@@ -25,9 +24,6 @@ const SIZES = variantsOf<`${MateFaceSize}`>({
 const SHAPES = ["own", ...MATE_SHAPE_IDS] as const;
 const GAZES = ["level", "up", "down"] as const;
 const MOMENTS = ["none", ...MATE_MOMENTS] as const;
-
-/** How far a pacing face walks either way, as the arrival stage gives it. */
-const PACE: CSSProperties = { "--mate-face-pace": "48px" } as CSSProperties;
 
 export default definePlayground({
   section: "mate-face",
@@ -66,7 +62,7 @@ export default definePlayground({
     tracks: false,
   },
   render: ({ tint, shape, state, size, gaze, moment, mark, restarting, paces, tracks }) => (
-    <div className="flex size-40 items-center justify-center" style={paces ? PACE : undefined}>
+    <div className="flex size-40 items-center justify-center">
       <MateFace
         cues={moment === "none" ? undefined : [{ moment, key: moment }]}
         gaze={gaze === "level" ? undefined : gaze}
