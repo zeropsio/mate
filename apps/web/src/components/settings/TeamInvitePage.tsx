@@ -21,6 +21,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PageHeader } from "../ui/page-header";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
+import { Row } from "../ui/row";
 import { ACCESS_LEVEL_LINES } from "../zerops/projects/projectPeople.logic";
 import { noteInvitationSent } from "./invitationSent";
 import { SettingsPageContainer } from "./settingsLayout";
@@ -229,17 +230,22 @@ export function TeamInviteView({
             <ul aria-label="Projects to give" className="tm-invite-projects">
               {projects.map((project) => (
                 <li key={project.key}>
-                  <label className="tm-invite-project">
-                    <Checkbox
-                      checked={picked.includes(project.key)}
-                      disabled={sending}
-                      onCheckedChange={(on) => {
-                        const others = picked.filter((key) => key !== project.key);
-                        setOwnPicks(on === true ? [...others, project.key] : others);
-                      }}
-                    />
-                    <span className="tm-pick-name">{project.name}</span>
-                  </label>
+                  <Row
+                    lead={
+                      <Checkbox
+                        checked={picked.includes(project.key)}
+                        disabled={sending}
+                        onCheckedChange={(on) => {
+                          const others = picked.filter((key) => key !== project.key);
+                          setOwnPicks(on === true ? [...others, project.key] : others);
+                        }}
+                      />
+                    }
+                    pressable
+                    render={<label />}
+                    size="sm"
+                    title={project.name}
+                  />
                 </li>
               ))}
             </ul>

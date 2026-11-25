@@ -32,6 +32,7 @@ import {
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { EmptyState } from "../../ui/empty";
 import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -463,9 +464,13 @@ export function AddAccessPicker({
         />
       </div>
       {shown.length === 0 ? (
-        <p className="ov-pick-empty">
-          {query.trim() === "" ? "Everyone here has access." : `Nobody matches “${query.trim()}”.`}
-        </p>
+        <div className="px-2.5 pb-1">
+          <EmptyState size="row">
+            {query.trim() === ""
+              ? "Everyone here has access."
+              : `Nobody matches “${query.trim()}”.`}
+          </EmptyState>
+        </div>
       ) : (
         <ul aria-label="People in the organization" className="ov-pick-list">
           {shown.map((candidate) => (
@@ -480,10 +485,10 @@ export function AddAccessPicker({
                   <span aria-hidden="true">{level === "read" ? "Read" : "Full"}</span>
                 </span>
               ))}
-              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
               key={candidate.clientUserId}
               lead={<PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />}
               line={candidate.pending ? `${candidate.role} · invited` : candidate.role}
+              picked={ticked[candidate.clientUserId] !== undefined}
               render={<li />}
               title={candidate.name}
             />

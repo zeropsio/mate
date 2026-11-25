@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { EmptyState } from "../ui/empty";
 import { Radio, RadioGroup } from "../ui/radio-group";
 import { AccessBadge } from "../zerops/projects/ProjectAccessChips";
 import type { GivenLevel } from "../zerops/projects/projectPeople.logic";
@@ -175,10 +176,11 @@ function ProjectPicker({
         />
       </div>
       {shown.length === 0 ? (
-        <p className="ov-pick-empty">
-          <SearchIcon aria-hidden="true" className="me-1.5 inline size-3.5" />
-          Nothing matches “{query.trim()}”.
-        </p>
+        <div className="px-2.5 pb-1">
+          <EmptyState mark={<SearchIcon aria-hidden="true" />} size="row">
+            Nothing matches “{query.trim()}”.
+          </EmptyState>
+        </div>
       ) : (
         <ul aria-label="Projects" className="ov-pick-list">
           {shown.map((project) => {

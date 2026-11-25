@@ -20,6 +20,7 @@ import { useId, useState } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
+import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { advancedChoices, roleCards } from "./teamMember.logic";
@@ -100,38 +101,40 @@ export function TeamRoleEditor({
       {shown ? (
         <div className="tm-advanced" id={`${id}-advanced`}>
           <div className="tm-advanced-row">
-            <span className="tm-advanced-text">
-              <span className="tm-advanced-title" id={`${id}-zerops-role`}>
-                Zerops role
-              </span>
-              <span className="tm-advanced-desc">{current?.description}</span>
-            </span>
-            <span className="tm-advanced-control">
-              <Select
-                onValueChange={(next) => {
-                  const roleCode = next as OrgRoleCode | null;
-                  if (roleCode !== null && roleCode !== value.roleCode)
-                    onChange(withRole(editorRole, value, roleCode));
-                }}
-                value={value.roleCode}
-              >
-                <SelectTrigger aria-labelledby={`${id}-zerops-role`} size="sm">
-                  <SelectValue>{current?.label}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  {advanced.roles.map((role) => (
-                    <SelectItem
-                      disabled={role.disabled}
-                      hideIndicator
-                      key={role.roleCode}
-                      value={role.roleCode}
-                    >
-                      {role.label}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </span>
+            <Row
+              control={
+                <span className="tm-advanced-control">
+                  <Select
+                    onValueChange={(next) => {
+                      const roleCode = next as OrgRoleCode | null;
+                      if (roleCode !== null && roleCode !== value.roleCode)
+                        onChange(withRole(editorRole, value, roleCode));
+                    }}
+                    value={value.roleCode}
+                  >
+                    <SelectTrigger aria-labelledby={`${id}-zerops-role`} size="sm">
+                      <SelectValue>{current?.label}</SelectValue>
+                    </SelectTrigger>
+                    <SelectPopup align="end" alignItemWithTrigger={false}>
+                      {advanced.roles.map((role) => (
+                        <SelectItem
+                          disabled={role.disabled}
+                          hideIndicator
+                          key={role.roleCode}
+                          value={role.roleCode}
+                        >
+                          {role.label}
+                        </SelectItem>
+                      ))}
+                    </SelectPopup>
+                  </Select>
+                </span>
+              }
+              line={current?.description}
+              lineWraps
+              size="sm"
+              title={<span id={`${id}-zerops-role`}>Zerops role</span>}
+            />
           </div>
           {advanced.flags.map((flag) => (
             <label
@@ -139,22 +142,31 @@ export function TeamRoleEditor({
               data-disabled={flag.disabled || undefined}
               key={flag.flag}
             >
-              <span className="tm-advanced-text">
-                <span className="tm-advanced-title">
-                  {flag.label}
-                  {flag.reason === null ? null : (
+              <Row
+                badges={
+                  flag.reason === null ? undefined : (
                     <LockIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-                  )}
-                </span>
-                {flag.reason === null ? null : (
-                  <span className="tm-advanced-desc">{flag.reason}</span>
-                )}
-              </span>
-              <Switch
-                checked={flag.checked}
-                disabled={flag.disabled}
-                onCheckedChange={(checked) =>
-                  onChange(settledMembership(editorRole, { ...value, [flag.flag]: checked }))
+                  )
+                }
+                control={
+                  <span className="tm-advanced-control" data-switch="">
+                    <Switch
+                      checked={flag.checked}
+                      disabled={flag.disabled}
+                      onCheckedChange={(checked) =>
+                        onChange(settledMembership(editorRole, { ...value, [flag.flag]: checked }))
+                      }
+                    />
+                  </span>
+                }
+                line={flag.reason ?? undefined}
+                lineWraps
+                size="sm"
+                // A choice its role holds reads quieter than one the person may change.
+                title={
+                  <span className={flag.disabled ? "text-muted-foreground" : "text-foreground"}>
+                    {flag.label}
+                  </span>
                 }
               />
             </label>

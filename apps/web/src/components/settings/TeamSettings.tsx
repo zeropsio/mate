@@ -12,6 +12,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -314,14 +315,10 @@ function PersonCard({
     <FaceCard
       chips={
         <>
-          <span className="tm-badge" data-part="role">
+          <Badge data-part="role" tone="info">
             {person.role}
-          </span>
-          {person.you ? (
-            <span className="tm-badge" data-part="you" data-tone="muted">
-              You
-            </span>
-          ) : null}
+          </Badge>
+          {person.you ? <Badge data-part="you">You</Badge> : null}
         </>
       }
       faded={person.pending}
