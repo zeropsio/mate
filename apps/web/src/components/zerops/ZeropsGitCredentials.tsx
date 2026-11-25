@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "~/components/ui/button";
+import { EmptyState } from "~/components/ui/empty";
+import { Failure } from "~/components/ui/failure";
 import { Input } from "~/components/ui/input";
+import { Loading } from "~/components/ui/loading";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
 import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
@@ -114,7 +117,7 @@ export function ZeropsGitCredentialsView({
             </p>
           ) : null}
           {state.credentials.records.length === 0 ? (
-            <p className="text-body text-muted-foreground">No Git password yet.</p>
+            <EmptyState size="line">No Git password yet.</EmptyState>
           ) : (
             <ul className="divide-y divide-border">
               {state.credentials.records.map((record) => (
@@ -147,11 +150,9 @@ export function ZeropsGitCredentialsView({
           Git password access is unavailable. Read again to check your access.
         </p>
       ) : state.credentials.state === "failed" ? (
-        <p role="alert" className="text-body text-status-failed">
-          {state.credentials.words}
-        </p>
+        <Failure cause={state.credentials.words} role="alert" size="line" />
       ) : (
-        <p className="text-body text-muted-foreground">Reading your Git passwords…</p>
+        <Loading label="Reading your Git passwords" shape="words" />
       )}
     </div>
   );

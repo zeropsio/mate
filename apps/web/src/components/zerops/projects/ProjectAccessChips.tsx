@@ -152,7 +152,7 @@ export function ProjectAccessChips({
       {view.kind === "reading" ? (
         <Loading count={2} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
-        <p className="ov-sec-empty">{view.line}</p>
+        <Failure cause={view.line} size="line" />
       ) : (
         <ul aria-label={label} className="ov-chips" data-rows={rows || undefined}>
           {view.people.map((person) => (

@@ -73,6 +73,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "rea
 
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
+import { Loading } from "~/components/ui/loading";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
@@ -1050,7 +1051,9 @@ function OutsideCommitsList({
           </>
         ) : null}
       </p>
-      {list.state === "reading" ? <p className="rv-note">Comparing in HQ…</p> : null}
+      {list.state === "reading" ? (
+        <Loading className="mt-1.5" label="Comparing in HQ" shape="words" />
+      ) : null}
       {list.state === "failed" ? (
         <ZeropsReadFailure action="Compare again" reason={list.reason} again={list.again} />
       ) : null}

@@ -20,6 +20,7 @@ import { useMergingMembers, type AppMergers, type MergingPress } from "~/zerops/
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { Failure } from "../../ui/failure";
 import { Label } from "../../ui/label";
 import { Radio, RadioGroup } from "../../ui/radio-group";
 import { Skeleton } from "../../ui/skeleton";
@@ -215,7 +216,7 @@ export function ProjectMergingView({
           <Skeleton className="h-5 w-52" />
         </div>
       ) : choices.kind === "unreadable" ? (
-        <p className="ps-6 text-body text-muted-foreground">{choices.line}</p>
+        <Failure cause={choices.line} className="ms-6" size="line" />
       ) : (
         <ul
           aria-label="People who merge and release"

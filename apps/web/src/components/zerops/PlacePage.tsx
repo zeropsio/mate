@@ -105,8 +105,9 @@ import { Button } from "../ui/button";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
 import { Skeleton } from "../ui/skeleton";
+import { AccessUnread } from "./projects/ProjectAccessTable";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
-import type { columnPeople } from "./projects/accessTable.logic";
+import type { AccessTableView, columnPeople } from "./projects/accessTable.logic";
 import { possessive } from "./MatePanelPlaces.logic";
 import { Link } from "@tanstack/react-router";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
@@ -1026,7 +1027,7 @@ export function ZeropsStopPane({
    * or what stands for them while read; the aside's card links to the project page's section.
    */
   readonly access?:
-    | { readonly summary: ReturnType<typeof columnPeople>; readonly line: string | null }
+    | { readonly summary: ReturnType<typeof columnPeople>; readonly view: AccessTableView }
     | undefined;
   /** The project's name, for the access card's link: "Manage on Tea Shop's page". */
   readonly groupName?: string | undefined;
@@ -1703,7 +1704,10 @@ export function ZeropsStopPane({
                   </SectionLabel>
                 }
               >
-                <PlaceAccessCard line={access.line} summary={access.summary} />
+                <PlaceAccessCard
+                  summary={access.summary}
+                  unread={<AccessUnread view={access.view} />}
+                />
               </PlaceSection>
             )}
 

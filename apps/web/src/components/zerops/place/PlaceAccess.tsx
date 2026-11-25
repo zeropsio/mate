@@ -3,18 +3,22 @@
  * they are and how their access splits. Who they are by name, and changing it, is the project
  * page's access section, linked from the card's label.
  */
+import type { ReactNode } from "react";
+
+import { EmptyState } from "~/components/ui/empty";
+
 import type { columnPeople } from "../projects/accessTable.logic";
 import { PersonAvatar } from "../primitives";
 import { ACCESS_FACES, accessBreakdown } from "./place.logic";
 
 export function PlaceAccessCard({
   summary,
-  line,
+  unread,
 }: {
   /** The place's people with their level there; `null` while they are read or can't be. */
   readonly summary: ReturnType<typeof columnPeople>;
-  /** What stands for them while there are none to show: reading, unreadable. */
-  readonly line: string | null;
+  /** What stands for them while they are read or can't be (`AccessUnread`). */
+  readonly unread: ReactNode;
 }) {
   const people = summary?.people ?? [];
   const words = accessBreakdown(people);
@@ -25,9 +29,9 @@ export function PlaceAccessCard({
       data-zerops-surface="place-access"
     >
       {summary === null ? (
-        <p className="text-body text-muted-foreground">{line ?? "Nobody has access yet."}</p>
+        unread
       ) : people.length === 0 ? (
-        <p className="text-body text-muted-foreground">Nobody has access yet.</p>
+        <EmptyState size="line">Nobody has access yet.</EmptyState>
       ) : (
         <>
           <span aria-hidden="true" className="flex shrink-0 ps-2">

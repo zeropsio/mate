@@ -2012,18 +2012,6 @@ label.tm-advanced-row:not([data-disabled]) {
   display: none;
 }
 
-/* Where nothing is said yet: one quiet line where the list would be. */
-.ov-sec-empty {
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-
-/* Its place held, empty, until it is said. */
-.ov-sec-empty:empty {
-  min-height: 18px;
-}
-
 /* A Mate's parts on its name's line, between its name and its time: they wrap onto further lines
    inside the card, so neither the name nor the time gives way. */
 .ov-mate-parts {

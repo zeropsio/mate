@@ -59,6 +59,7 @@ import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectA
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
+import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
@@ -155,7 +156,7 @@ export function ProjectAccessTable({
       {view.kind === "reading" ? (
         <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
-        <p className="ov-sec-empty">{view.line}</p>
+        <Failure cause={view.line} size="line" />
       ) : phone ? (
         <ul aria-label={label} className="ov-acc-stack">
           {rows.map((row) => (
@@ -635,30 +636,35 @@ function summaryTip(
   ].join(" ");
 }
 
+/** What stands for a place's people while they are read, or where they can't be. */
+export function AccessUnread({ view }: { readonly view: AccessTableView }) {
+  if (view.kind === "reading") return <Loading label="Reading who has access" shape="words" />;
+  if (view.kind === "unreadable") return <Failure cause={view.line} size="line" />;
+  return null;
+}
+
 /**
  * Who reaches one place, read only: faces with their level there, and the way to change it on the
  * app's page — a place's own page, a Mate's *Access*.
  */
 export function PlaceAccessSummary({
   summary,
-  line,
+  unread,
   change,
 }: {
   /** The column's people; `null` while they are read or can't be. */
   readonly summary: ReturnType<typeof columnPeople>;
-  /** What stands for them while there are none to show: reading, unreadable. */
-  readonly line: string | null;
+  /** What stands for them while they are read or can't be (`AccessUnread`). */
+  readonly unread: ReactNode;
   /** The link to the column on the app's page. */
   readonly change: ReactNode;
 }) {
   return (
     <section aria-label="Who has access" className="ov-access" data-zerops-surface="place-access">
       {summary === null ? (
-        line === null ? null : (
-          <p className="ov-sec-empty">{line}</p>
-        )
+        unread
       ) : summary.people.length === 0 ? (
-        <p className="ov-sec-empty">Nobody has access yet.</p>
+        <EmptyState size="line">Nobody has access yet.</EmptyState>
       ) : (
         <ul aria-label="Who has access" className="ov-reach">
           {summary.people.map((person) => (

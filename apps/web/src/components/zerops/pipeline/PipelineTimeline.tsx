@@ -22,6 +22,7 @@ import { cn } from "~/lib/utils";
 
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { InlineButton } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
 import { StepGlyph, type StepGlyphState } from "../primitives";
 import { PipelineCalculating } from "../operation/PipelineStepList";
 
@@ -63,7 +64,7 @@ export function PipelineTimeline({
     return live ? (
       <PipelineCalculating aria-label={label} />
     ) : (
-      <p className="text-muted-foreground text-body">No steps are kept for this pipeline.</p>
+      <EmptyState size="line">No steps are kept for this pipeline.</EmptyState>
     );
   }
   return (

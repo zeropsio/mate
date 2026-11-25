@@ -12,6 +12,7 @@ import { useMemo, useState, type MouseEvent } from "react";
 import { appBasePath } from "~/basePath";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
@@ -164,7 +165,7 @@ function ListEnd({
         </p>
       ) : null}
       {page.next === null && page.items.length === 0 && path !== "" ? (
-        <p className="text-body text-muted-foreground">No commits changed {path}.</p>
+        <EmptyState size="line">No commits changed {path}.</EmptyState>
       ) : null}
     </div>
   );
