@@ -857,9 +857,10 @@ function MarkdownCodeBlock({
                 render={
                   <Button
                     type="button"
-                    variant={wrapped ? "secondary" : "ghost"}
+                    variant="ghost"
                     size="icon-sm"
                     aria-pressed={wrapped}
+                    data-pressed={wrapped ? "" : undefined}
                     onClick={() => setWrapped((value) => !value)}
                     aria-label={wrapLabel}
                   />

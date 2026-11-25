@@ -64,6 +64,7 @@ import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
 import { LogoTile } from "~/components/ui/logo-tile";
 import { Text } from "~/components/ui/text";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 
 export function ZeropsAgentAuthCard({
   snapshot,
@@ -874,28 +875,18 @@ function AddLoginControl({
       }}
     >
       {agentId === "claude-code" ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => {
-              setKind("subscription");
-            }}
-            size="sm"
-            type="button"
-            variant={kind === "subscription" ? "primary" : "secondary"}
-          >
-            Another account
-          </Button>
-          <Button
-            onClick={() => {
-              setKind("apiKey");
-            }}
-            size="sm"
-            type="button"
-            variant={kind === "apiKey" ? "primary" : "secondary"}
-          >
-            API key
-          </Button>
-        </div>
+        <ToggleGroup
+          aria-label="Sign in with"
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "subscription" || next === "apiKey") setKind(next);
+          }}
+          value={[kind]}
+          variant="segmented"
+        >
+          <Toggle value="subscription">Another account</Toggle>
+          <Toggle value="apiKey">API key</Toggle>
+        </ToggleGroup>
       ) : null}
       <div className="space-y-1">
         <Label htmlFor={labelId}>{needsKey ? "Name (optional)" : "Name"}</Label>
