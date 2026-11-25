@@ -25,6 +25,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
 import { usageCostsHidden, usageNativeCosts } from "../../state/usage.logic";
@@ -1205,13 +1206,13 @@ export function UsageSummarySkeleton() {
   return (
     <div className="flex min-h-44 flex-col gap-5" aria-hidden>
       <div className="flex flex-col gap-1">
-        <div className="h-10 w-36 rounded-mark bg-muted" />
-        <div className="h-4 w-32 rounded-mark bg-muted" />
+        <Skeleton className="h-10 w-36" />
+        <Skeleton className="h-4 w-32" />
       </div>
-      <div className="h-5 w-40 rounded-mark bg-muted" />
+      <Skeleton className="h-5 w-40" />
       <div className="flex flex-col gap-1">
-        <div className="h-5 w-36 rounded-mark bg-muted" />
-        <div className="h-4 w-32 rounded-mark bg-muted" />
+        <Skeleton className="h-5 w-36" />
+        <Skeleton className="h-4 w-32" />
       </div>
     </div>
   );

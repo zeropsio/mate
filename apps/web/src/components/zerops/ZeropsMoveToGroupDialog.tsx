@@ -17,6 +17,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+import { FieldError } from "../ui/field";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
@@ -144,7 +145,9 @@ export function ZeropsMoveToGroupForm({
                   disabled={pending}
                 />
                 {showErrors && errors.newGroupName !== undefined ? (
-                  <FieldError>{errors.newGroupName}</FieldError>
+                  <FieldError match role="alert">
+                    {errors.newGroupName}
+                  </FieldError>
                 ) : null}
               </div>
             ) : null}
@@ -173,7 +176,9 @@ export function ZeropsMoveToGroupForm({
                 ))}
               </RadioGroup>
               {showErrors && errors.role !== undefined ? (
-                <FieldError>{errors.role}</FieldError>
+                <FieldError match role="alert">
+                  {errors.role}
+                </FieldError>
               ) : null}
             </div>
           )}
@@ -239,14 +244,6 @@ export function ZeropsMoveToGroupForm({
         </Button>
       </DialogFooter>
     </form>
-  );
-}
-
-function FieldError({ children }: { readonly children: string }) {
-  return (
-    <p className="text-caption text-status-failed-text" role="alert">
-      {children}
-    </p>
   );
 }
 

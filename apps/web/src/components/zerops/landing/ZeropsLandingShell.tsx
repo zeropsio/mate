@@ -14,6 +14,7 @@ import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { cn } from "~/lib/utils";
 
+import { Failure } from "../../ui/failure";
 import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
@@ -174,14 +175,7 @@ function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | 
 
 export function FormError({ message }: { readonly message: string | null }) {
   if (!message) return null;
-  return (
-    <p
-      role="alert"
-      className="rounded-control border border-border bg-muted/35 px-3 py-2 text-body text-foreground"
-    >
-      {message}
-    </p>
-  );
+  return <Failure cause={message} />;
 }
 
 /**

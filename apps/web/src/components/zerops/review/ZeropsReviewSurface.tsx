@@ -33,7 +33,6 @@ import {
   Maximize2Icon,
   RotateCcwIcon,
   TagIcon,
-  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -47,9 +46,11 @@ import {
   type RefObject,
 } from "react";
 
+import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
 import { Row } from "~/components/ui/row";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { Failure } from "~/components/ui/failure";
 import { Button, InlineButton } from "~/components/ui/button";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
@@ -814,16 +815,19 @@ export function ReviewFailed({
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
-    <div className="rv-failed" role="status">
-      <TriangleAlertIcon aria-hidden="true" />
-      <span className="min-w-0">
-        {what} <span className="rv-failed-why">{reason}</span>
-      </span>
-      {onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="sm" variant="link">
-          Try again
-        </Button>
-      )}
+    <div className="rv-failed">
+      <Failure
+        action={
+          onRetry === undefined ? undefined : (
+            <Button onClick={onRetry} size="sm" variant="secondary">
+              Try again
+            </Button>
+          )
+        }
+        cause={what}
+      >
+        {reason}
+      </Failure>
     </div>
   );
 }
@@ -833,7 +837,12 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   return (
     <div aria-hidden="true" className="rv-skeleton">
       {Array.from({ length: lines }, (_, index) => (
-        <span key={index} />
+        <Skeleton
+          className={index === lines - 1 ? "h-3 w-[62%]" : "h-3"}
+          key={index}
+          shape="pill"
+          surface="card"
+        />
       ))}
     </div>
   );

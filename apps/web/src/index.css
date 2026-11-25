@@ -11617,14 +11617,6 @@ a.message-file:focus-visible {
   gap: 10px;
   padding: 5px 0;
 }
-.rv-skeleton span {
-  height: 12px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-.rv-skeleton span:last-child {
-  width: 62%;
-}
 
 /* The description: the change's own words, drawn as the Mate's other words are. A picture read
    stands at most the column's width, its own shape; one not drawn here — being read, or unreadable
@@ -11978,27 +11970,6 @@ a.message-file:focus-visible {
   overflow-wrap: anywhere;
   color: color-mix(in oklab, var(--foreground) 80%, transparent);
 }
-.rv-failed {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-.rv-failed svg {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--zerops-status-attention);
-}
-.rv-failed-why {
-  color: var(--muted-foreground);
-}
-.rv-failed > [data-slot="button"] {
-  margin: 0 -8px 0 auto;
-}
 .rv-files .rv-failed {
   padding: 7px 14px 7px 12px;
 }
@@ -12056,26 +12027,6 @@ a.message-file:focus-visible {
 .rv-remark-skeleton[data-fold] {
   height: 24px;
 }
-.rv-remark-skeleton span {
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-.rv-remark-skeleton span:first-child {
-  grid-row: 1 / span 2;
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-}
-.rv-remark-skeleton span:nth-child(2) {
-  width: 96px;
-  margin: 5px 0;
-}
-.rv-remark-skeleton span:nth-child(3) {
-  width: 64%;
-  margin: 6px 0;
-}
-
 /* The one box: a quiet line that grows as it is written in, its two verbs at its end. */
 .rv-say {
   display: flex;

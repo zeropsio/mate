@@ -34,6 +34,7 @@ import { toastManager } from "~/lib/toasts";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { Failure } from "../ui/failure";
 import { Spinner } from "~/components/ui/spinner";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
@@ -535,10 +536,8 @@ function initialExplorerOpen(): boolean {
 /** Why the file could not be shown, with the path it tried and the folder it looked in. */
 export function FileReadFailure({ message }: { readonly message: string }) {
   return (
-    <div role="alert" className="flex min-h-0 flex-1 flex-col overflow-auto">
-      <p className="my-auto break-words px-6 py-6 text-center text-caption leading-relaxed text-destructive">
-        {message}
-      </p>
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
+      <Failure cause="This file couldn't be read." details={message} />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import type { ZeropsOperationStep, ZeropsReadResult } from "@t3tools/client-runt
 import { cn } from "~/lib/utils";
 import { formatTimestamp } from "../../timestampFormat";
 import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
 
 type ReadResultOf<K extends ZeropsReadResult["kind"]> = Extract<ZeropsReadResult, { kind: K }>;
@@ -21,11 +22,7 @@ const PLACEHOLDER_ROWS = 3;
 
 function Placeholder({ className }: { readonly className?: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn("block h-3 rounded-mark bg-muted", className)}
-      data-zerops-read-placeholder
-    />
+    <Skeleton aria-hidden="true" className={cn("h-3", className)} data-zerops-read-placeholder />
   );
 }
 
