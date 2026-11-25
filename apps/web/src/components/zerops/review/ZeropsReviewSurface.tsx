@@ -796,7 +796,7 @@ export function ReviewTry({
           );
         })}
       </div>
-      {everything ? <p className="rv-try-note">{tryItEverything(mateName)}</p> : null}
+      {everything ? <p className="rv-note">{tryItEverything(mateName)}</p> : null}
     </ReviewSection>
   );
 }

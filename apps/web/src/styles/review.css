@@ -21,6 +21,7 @@
   transition-duration: var(--duration-quick);
 }
 
+/* The sheet's frame: the window, the sheet placed in it below. */
 .rv-viewport {
   position: fixed;
   inset: 0;
@@ -127,6 +128,7 @@
   gap: 2px;
   padding: 18px 16px 0 24px;
 }
+/* The head: the title, its one line, and why where that is not all. */
 .rv-head {
   display: grid;
   flex: none;
@@ -134,6 +136,7 @@
   padding: 6px 24px 16px;
   border-bottom: 1px solid var(--border);
 }
+/* Whose it is: where it acts, the Mate's face and its words, cut to the line. */
 .rv-kind {
   display: flex;
   flex: 1;
@@ -234,6 +237,7 @@
     content: "·";
   }
 }
+/* The verdict's words in the line, in their tone; GitHub's checks beside them, ticked once passed. */
 .rv-vt {
   display: inline-flex;
   align-items: center;
@@ -260,6 +264,7 @@
 .rv-checks[data-mark="passed"] {
   color: var(--foreground);
 }
+/* Why, under the line: quiet while all is well, a tinted box for trouble, its fix a link in it. */
 .rv-why {
   display: flex;
   flex-wrap: wrap;
@@ -328,6 +333,7 @@
     0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
     var(--zerops-shadow-drawer);
 }
+/* A change's size, its lines added green and removed red. */
 .rv-add {
   color: var(--diff-addition-foreground);
 }
@@ -335,6 +341,7 @@
   color: var(--diff-deletion-foreground);
 }
 
+/* The body: the sections, 24 apart, scrolling inside the sheet. */
 .rv-body {
   display: grid;
   flex: 1 1 auto;
@@ -357,6 +364,7 @@
 .rv-body section:has(> .rv-sec-h:only-child) {
   display: none;
 }
+/* A section's small label, its count or state at its end. */
 .rv-sec-h {
   display: flex;
   align-items: baseline;
@@ -415,12 +423,14 @@
 .rv-sec-state[data-tone="attention"] [data-release-plan-again] {
   margin-inline-start: 3px;
 }
+/* A paragraph of the review's own words. */
 .rv-words {
   margin: 0;
   font-size: var(--text-body);
   line-height: 22px;
   text-wrap: pretty;
 }
+/* Lines standing in for words still being read (the kit's Skeletons), 10 apart. */
 .rv-skeleton {
   display: grid;
   gap: 10px;
@@ -444,6 +454,7 @@
 .rv-desc .chat-markdown > :first-child {
   margin-top: 0;
 }
+/* A picture in the description: its own shape, at most the column's width, framed by a hairline. */
 .rv-pic {
   position: relative;
   display: block;
@@ -501,6 +512,7 @@
   margin: 0;
   border-radius: 0;
 }
+/* A picture not drawn here, being read or unreadable: one quiet line in a soft box. */
 .rv-pic-line {
   display: flex;
   min-height: 40px;
@@ -573,6 +585,7 @@
 .rv-files > * > :where(:not(:first-child)) {
   border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
 }
+/* A file's row: its folder dimmed, its name, its size, its status letter, its chevron. */
 .rv-file-name {
   overflow: hidden;
   white-space: nowrap;
@@ -622,6 +635,7 @@
 [aria-expanded="true"] > .rv-chev {
   rotate: 180deg;
 }
+/* A file row's place while the files are read. */
 .rv-file-skeleton {
   display: flex;
   height: 36px;
@@ -629,6 +643,7 @@
   padding: 0 12px 0 38px;
 }
 
+/* A file's diff, open under its row: numbered lines on a faint ground, mono. */
 .rv-diff {
   padding: 6px 0;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
@@ -672,6 +687,7 @@
 .rv-dl[data-kind="del"] .sg {
   color: var(--diff-deletion-foreground);
 }
+/* A quiet sentence in the diff's column, under the code's edge. */
 .rv-diff-note {
   padding: 4px 12px 4px 60px;
   font-family: var(--font-sans);
@@ -680,8 +696,6 @@
   color: var(--muted-foreground);
 }
 
-/* What could not be read, where it would have stood, with Try again: amber, it didn't go
-   through; a failure never blanks its section. */
 /* What HQ found: each finding a soft box — the statement beside its mark, who acts next under it,
    and its identifiers folded under Details. */
 .rv-findings {
@@ -759,14 +773,14 @@
   overflow-wrap: anywhere;
   color: color-mix(in oklab, var(--foreground) 80%, transparent);
 }
+/* What could not be read (the kit's Failure), where it would have stood: inset to the list's
+   rows, or to the diff's code. */
 .rv-files .rv-failed {
   padding: 7px 14px 7px 12px;
 }
 .rv-diff .rv-failed {
   padding: 0 6px 0 60px;
 }
-/* A fold's way open: its words on the edge of what it opens. */
-
 /* The conversation: marks in a 20 px column, words beside them; then the one box. */
 .rv-remarks {
   display: grid;
@@ -838,13 +852,6 @@
   line-height: 18px;
   color: var(--zerops-status-failed-text);
 }
-/* Whom a comment reaches, or why there is no box to write one in: quiet, under the conversation. */
-.rv-say-note {
-  margin: 6px 0 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-  color: var(--muted-foreground);
-}
 
 /* The commits: one line each, what it did, then its age and hash on the column's right edge. */
 .rv-commits {
@@ -891,6 +898,7 @@
   display: grid;
   margin: 0 -12px;
 }
+/* Where a change stands on stage, where that stands out: busy blue, or failed red. */
 .rv-on {
   display: flex;
   align-items: center;
@@ -903,6 +911,7 @@
 .rv-on[data-mark="failed-on-stage"] {
   color: var(--zerops-status-failed-text);
 }
+/* A change row's way in: a › that comes forward under the pointer. */
 .rv-relrow-go {
   align-self: center;
   width: 14px;
@@ -1101,6 +1110,7 @@
 .rv-btns:empty {
   display: none;
 }
+/* What happens next, under the buttons, in its tone. */
 .rv-conseq {
   display: flex;
   flex-wrap: wrap;
@@ -1153,8 +1163,6 @@
   }
 }
 
-/* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
-   each, joined down their marks. Before the press they are the plan; after it they tick in place. */
 /* Put it live's route (`PutLiveSheet`): what goes live, then where, on the release plan's card
    and marks (`.rv-plan`, `.rv-pmark`); its rows wrap, a change's title being the person's words. */
 .put-live-route {
@@ -1192,6 +1200,7 @@
   background: color-mix(in oklab, var(--foreground) 12%, transparent);
   content: "";
 }
+/* A stop's mark: a ringed icon, the release plan's marks' size. */
 .put-live-mark {
   display: flex;
   width: 22px;
@@ -1207,6 +1216,7 @@
   width: 12px;
   height: 12px;
 }
+/* A stop's words: its title and its quiet lines. */
 .put-live-stop-body {
   display: flex;
   min-width: 0;
@@ -1228,7 +1238,7 @@
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-/* Who production is for, asked in its stop: two answers, the chosen one tinted. */
+/* Who production is for, asked in its stop: its question over the kit's RadioCards. */
 .put-live-ask {
   display: grid;
   gap: 10px;
@@ -1241,6 +1251,8 @@
   line-height: 18px;
   color: var(--foreground);
 }
+/* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
+   each, joined down their marks. Before the press they are the plan; after it they tick in place. */
 .rv-plan {
   display: grid;
   margin: 0;
@@ -1292,6 +1304,7 @@
   background: color-mix(in oklab, var(--foreground) 12%, transparent);
   content: "";
 }
+/* A step's mark: its number to do, a spinner while it runs, a tinted round once it settled. */
 .rv-pmark {
   display: flex;
   grid-area: mark;
@@ -1352,6 +1365,7 @@
   height: 22px;
   margin-top: 8px;
 }
+/* A step's title and its one line, the line's first words in the step's tone. */
 .rv-pstep-t {
   grid-area: title;
   margin: 0;
@@ -1415,6 +1429,7 @@
   line-height: 16px;
   color: var(--muted-foreground);
 }
+/* A step's import, as YAML, scrolling inside its own box. */
 .rv-pstep-yaml {
   max-height: 240px;
   margin: 0;
