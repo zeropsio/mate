@@ -64,6 +64,9 @@ export const pageRead = (
 const VIEWS: Partial<Record<GitView, ComponentType<GitRepoPageProps>>> = {
   home: lazy(() => import("./GitRepoHome").then((module) => ({ default: module.GitRepoHome }))),
   code: lazy(() => import("./GitRepoCode").then((module) => ({ default: module.GitRepoCode }))),
+  changes: lazy(() =>
+    import("./GitRepoChanges").then((module) => ({ default: module.GitRepoChanges })),
+  ),
   commits: lazy(() =>
     import("./GitCommitsView").then((module) => ({ default: module.GitCommitsView })),
   ),
@@ -87,6 +90,7 @@ export const GIT_VIEW_TABS: ReadonlyArray<{
   readonly views: ReadonlyArray<GitView>;
 }> = [
   { label: "Code", views: ["home", "code", "blame"] },
+  { label: "Changes", views: ["changes"] },
   { label: "History", views: ["commits", "commit"] },
   { label: "Compare", views: ["compare"] },
   { label: "Search", views: ["search"] },

@@ -25,6 +25,7 @@ import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
 import { GitStorageFigure } from "./GitStorageFigure";
+import { GitHomeAgain } from "./GitAtCommit";
 import type { PickerChange } from "./GitRefPicker.logic";
 import { Text } from "~/components/ui/text";
 
@@ -35,6 +36,50 @@ const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
     : mirror.syncedAt === null
       ? "Not synced with GitHub yet"
       : `Synced with GitHub ${formatRelativeTimeLabel(mirror.syncedAt)}`;
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Facts supplied by the held home read; storage keeps its own existing control. */
+export function GitRepoFacts({
+  about,
+  storage,
+  again,
+}: {
+  readonly about: GitHomeAbout | null;
+  readonly storage: ReactNode;
+  readonly again?: ReactNode;
+}) {
+  const where =
+    about?.remote === null
+      ? "Only in Mate"
+      : about?.mirror
+        ? mirrorLine(about.mirror)
+        : "On GitHub";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {about === null ? null : (
+        <>
+          <Text variant="note">
+            {about.remote !== null && about.mirror?.syncedAt ? (
+              <GitWhen at={about.mirror.syncedAt}>{where}</GitWhen>
+            ) : (
+              where
+            )}
+          </Text>
+          <Text variant="note">
+            <GitWhen at={about.updatedAt}>
+              Updated {formatRelativeTimeLabel(about.updatedAt)}
+            </GitWhen>
+          </Text>
+          <Text variant="note">{count(about.branchCount, "branch", "branches")}</Text>
+          <Text variant="note">{count(about.tagCount, "tag", "tags")}</Text>
+        </>
+      )}
+      {storage}
+      {again}
+    </div>
+  );
+}
 
 /** What the picker's button says the pages read. */
 const readingLabel = (home: GitBrowseState<GitHome>, rev: string | undefined) => {
@@ -121,7 +166,9 @@ export function GitRepoFrame({
   rev,
   view,
   home,
+  onHomeAgain,
   changes,
+  openChanges,
   onBack,
   onPick,
   onTab,
@@ -132,7 +179,9 @@ export function GitRepoFrame({
   readonly rev: string | undefined;
   readonly view: GitView;
   readonly home: GitBrowseState<GitHome>;
+  readonly onHomeAgain: () => void;
   readonly changes: ReadonlyArray<PickerChange>;
+  readonly openChanges: number | undefined;
   readonly onBack: () => void;
   readonly onPick: (rev: string) => void;
   readonly onTab: (view: GitView) => void;
@@ -173,16 +222,13 @@ export function GitRepoFrame({
           </div>
         }
       />
-      <GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />
-      {about?.mirror ? (
-        <Text render={<p />} variant="note">
-          {about.mirror.syncedAt === null ? (
-            mirrorLine(about.mirror)
-          ) : (
-            <GitWhen at={about.mirror.syncedAt}>{mirrorLine(about.mirror)}</GitWhen>
-          )}
-        </Text>
-      ) : null}
+      <GitRepoFacts
+        about={about}
+        storage={<GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />}
+        again={
+          home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
+        }
+      />
       <div className="flex flex-wrap items-center gap-3">
         <GitRefPicker
           appId={appId}
@@ -206,12 +252,12 @@ export function GitRepoFrame({
           {GIT_VIEW_TABS.map((tab) => (
             <Toggle key={tab.label} value={tab.label}>
               {tab.label}
+              {tab.label === "Changes" && openChanges !== undefined
+                ? ` ${String(openChanges)}`
+                : null}
             </Toggle>
           ))}
         </ToggleGroup>
-        <Text render={<p />} variant="note">
-          Browsing source does not switch a Mate’s checkout.
-        </Text>
       </div>
     </div>
   );

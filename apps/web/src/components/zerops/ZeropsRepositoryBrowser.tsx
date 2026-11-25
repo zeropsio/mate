@@ -129,7 +129,13 @@ export function ZeropsRepositoryBrowser({
         rev={rev}
         view={view}
         home={home.view}
+        onHomeAgain={home.again}
         changes={changes}
+        openChanges={
+          repository === undefined || repository.coverage === "unread"
+            ? undefined
+            : repository.changes.filter(({ pull }) => pull.state === "open").length
+        }
         onBack={onBack}
         onPick={(next) => onNavigate({ rev: next })}
         onTab={(next) => onNavigate({ ...(rev === undefined ? {} : { rev }), view: next })}
