@@ -214,7 +214,8 @@ export function CrewAskCardView({
       why={live && ask.why !== undefined ? { who: name, words: ask.why } : null}
     >
       {live ? (
-        <>
+        // Two sections, as the setup's: the goal, then who's on it.
+        <div className="mt-1 grid min-w-0 gap-4">
           <section className="grid min-w-0 gap-1">
             <Text render={<h3 />} variant="label">
               {CREW_SETUP_WORDS.goal}
@@ -261,7 +262,7 @@ export function CrewAskCardView({
               </Text>
             ))}
           </section>
-        </>
+        </div>
       ) : null}
     </AskCard>
   );
