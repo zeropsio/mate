@@ -57,10 +57,12 @@ const cardVariants = cva("", {
     /**
      * A card whose whole body is one press (a launcher's page, a thing it opens): a `<button>`, or
      * a link through `render`. Lit under the pointer, by keyboard focus, and while `data-highlighted`
-     * (a list's arrow keys stepping through cards that keep focus on the list).
+     * (a list's arrow keys stepping through cards that keep focus on the list): it keeps its own
+     * ground and the item's hover step (`--color-item-hover`) lies over it, an inset shade, so a
+     * card lights like every pressable item, on a page, a card and a tray alike.
      */
     pressable: {
-      true: "cursor-pointer text-start outline-none transition-colors duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:bg-accent/60",
+      true: "cursor-pointer text-start outline-none transition-[background-color,box-shadow] duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:inset-shadow-[0_0_0_100vmax_var(--color-item-hover)]",
       false: "",
     },
   },

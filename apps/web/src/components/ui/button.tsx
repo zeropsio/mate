@@ -54,14 +54,23 @@ const controlVariants = cva(
         /** Black on a light page, white on a dark one: the page's own ink. */
         primary:
           "border-foreground bg-foreground text-background shadow-xs/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-foreground/85",
+        /**
+         * A press on a ground of its own: under the pointer it keeps that ground and the item's
+         * hover step (`--color-item-hover`) lies over it, an inset shade, so it lights like every
+         * pressable item and never swaps its ground for another.
+         */
         secondary:
-          "[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover text-foreground shadow-xs/5 [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-accent",
-        /** A quiet tool; as a menu's trigger it keeps its hover ground while its popup is open. */
+          "[--control-icon-color:var(--contrast-muted-foreground)] border-input bg-popover text-foreground shadow-xs/5 [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:inset-shadow-[0_0_0_100vmax_var(--color-item-hover)]",
+        /**
+         * A quiet tool: under the pointer it lights on the item's hover ground (`bg-item-hover`), a
+         * step of the ink over whatever it stands on, so it shows alike on a page, a card, a well
+         * and a menu; as a menu's trigger it keeps that ground while its popup is open.
+         */
         ghost:
-          "[--control-icon-color:var(--contrast-muted-foreground)] border-transparent text-foreground [:hover,[data-pressed],[data-popup-open]]:bg-accent",
+          "[--control-icon-color:var(--contrast-muted-foreground)] border-transparent text-foreground [:hover,[data-pressed],[data-popup-open]]:bg-item-hover",
         /** A ghost in the secondary ink, the foreground's on hover: a quiet way back or aside under a primary press. */
         "ghost-muted":
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-accent [:hover,[data-pressed],[data-popup-open]]:text-foreground",
+          "[--control-icon-color:currentColor] border-transparent text-muted-foreground [:hover,[data-pressed],[data-popup-open]]:bg-item-hover [:hover,[data-pressed],[data-popup-open]]:text-foreground",
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",

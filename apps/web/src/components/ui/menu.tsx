@@ -74,6 +74,12 @@ function MenuGroup(props: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="menu-group" {...props} />;
 }
 
+/**
+ * One row of a menu. The item under the cursor, the pointer's or the arrow keys' (one at a time),
+ * lights on the item's hover ground (`bg-item-hover`), as a pressable row does anywhere: it is
+ * where the cursor is, not a pick, so it never takes the picked ground. A sub-menu's trigger keeps
+ * that ground while its sub-menu is open. `destructive` keeps its red under the cursor.
+ */
 function MenuItem({
   className,
   inset,
@@ -88,7 +94,7 @@ function MenuItem({
   return (
     <MenuPrimitive.Item
       className={cn(
-        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-item-hover data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
         variant === "ghost" &&
           buttonVariants({
             variant: "ghost",
@@ -163,7 +169,7 @@ function MenuCheckboxItem({
     <MenuPrimitive.CheckboxItem
       checked={checked}
       className={cn(
-        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-control py-1 ps-2 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-control py-1 ps-2 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-item-hover data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         variant === "switch"
           ? "grid-cols-[1fr_auto] gap-4 pe-1.5"
           : "grid-cols-[1rem_minmax(0,1fr)] pe-4",
@@ -212,7 +218,7 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
 
 /**
  * How a radio item says it is the chosen one:
- * - `fill`: a tint behind it;
+ * - `fill`: it stands on the picked ground (`bg-item-picked`), and stays on it under the cursor;
  * - `check`: a check in front of it, as a checkbox item does — a tint alone
  *   reads as the pointer resting there;
  * - `segment`: one choice on a `MenuSwitch`'s track, the chosen one raised.
@@ -220,9 +226,9 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
 type MenuRadioItemVariant = "fill" | "check" | "segment";
 
 const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
-  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-control px-2 py-1 text-body text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-control px-2 py-1 text-body text-foreground data-checked:bg-item-picked data-highlighted:not-data-checked:bg-item-hover sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   check:
-    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-control py-1 ps-2 pe-4 text-body text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-control py-1 ps-2 pe-4 text-body text-foreground data-highlighted:bg-item-hover sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   segment:
     // Half the track, two to a row (`MenuSwitch`): four choices keep their
     // words whole within the menu's width, "Creation date" never cut.
@@ -371,7 +377,7 @@ function MenuSubTrigger({
         // with theirs. Scoped away from the last child because the chevron is
         // also a direct svg — on a sub-trigger with no leading icon it is the
         // only one, and these rules would take away its `ms-auto` alignment.
-        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-accent data-popup-open:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-popup-open:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-item-hover data-popup-open:bg-item-hover data-inset:ps-8 data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
         density === "touch" && "min-h-10 sm:min-h-10",
         className,
       )}
