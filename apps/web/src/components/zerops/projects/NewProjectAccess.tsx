@@ -147,9 +147,9 @@ function AddPeopleCard({
             <XIcon aria-hidden="true" />
           </Button>
         }
-        id={titleId}
         level={3}
-        title="Add people"
+        // The card is named by its title alone, not by the Close beside it.
+        title={<span id={titleId}>Add people</span>}
       />
       <InputGroup>
         <InputGroupAddon>

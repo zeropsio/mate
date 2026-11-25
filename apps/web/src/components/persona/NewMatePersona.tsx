@@ -8,7 +8,7 @@ import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
 import { ChevronDownIcon, PlusIcon, type LucideIcon } from "lucide-react";
 import { useId, useMemo } from "react";
 
-import { Label } from "../ui/label";
+import { SectionHeader } from "../ui/section";
 import {
   Select,
   SelectGroup,
@@ -72,14 +72,18 @@ export function NewMatePersona(props: {
       className="new-mate-persona"
       data-zerops-surface="new-mate-persona"
     >
-      <Label id={`${id}-label`} render={<h3 />}>
-        How {mateIn(mate)} works with you
-      </Label>
-      <p id={`${id}-line`}>
-        {props.persona === null
-          ? `${mateLeads(mate)} works its own way. You can give it a persona later.`
-          : (row?.template.description ?? props.persona.name)}
-      </p>
+      <SectionHeader
+        className="mb-2 self-stretch"
+        level={3}
+        line={
+          <span id={`${id}-line`}>
+            {props.persona === null
+              ? `${mateLeads(mate)} works its own way. You can give it a persona later.`
+              : (row?.template.description ?? props.persona.name)}
+          </span>
+        }
+        title={<span id={`${id}-label`}>How {mateIn(mate)} works with you</span>}
+      />
       {/* None picked, the press offers one; picked, it names it and changes it. */}
       <Select
         items={items}

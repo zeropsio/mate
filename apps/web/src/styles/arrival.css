@@ -676,7 +676,7 @@
   padding: 0 calc(24px - (100cqw - 100%) / 2) 8px;
 }
 
-/* The persona: its name, a line, *Add persona*, over a rule. */
+/* The persona: its heading (the kit's SectionHeader) and line, *Add persona*, over a rule. */
 .new-mate-persona {
   display: flex;
   flex-direction: column;
@@ -684,20 +684,6 @@
   gap: 8px;
   padding: 24px 0;
   border-bottom: 1px solid var(--border);
-}
-
-.new-mate-persona h3 {
-  font-size: var(--text-emphasis);
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.new-mate-persona p {
-  margin: 0 0 8px;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  line-height: 20px;
-  text-wrap: pretty;
 }
 
 /* Who can work with it: 20 px under the rule, its press 20 px under its line. */
