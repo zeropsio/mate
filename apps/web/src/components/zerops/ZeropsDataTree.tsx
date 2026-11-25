@@ -29,7 +29,6 @@ import type { ReactElement } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Row } from "~/components/ui/row";
-import { cn } from "~/lib/utils";
 import { Loading } from "~/components/ui/loading";
 
 interface ZeropsDataTreeProps {
@@ -228,11 +227,12 @@ function renderContainerNode({
         {onSelectContainer === undefined ? (
           <span className="text-caption">{node.name}</span>
         ) : (
-          <span className={cn("min-w-0 flex-1 rounded-control", selected && "bg-accent")}>
+          <span className="min-w-0 flex-1">
             <Row
               aria-selected={selected}
               data-zerops-data-tree-container={key}
               onClick={() => onSelectContainer(node)}
+              picked={selected}
               pressable
               render={<button type="button" />}
               size="xs"
@@ -276,28 +276,27 @@ function renderLeafNode({
   const selected = key === selectedNodeKey;
 
   return (
-    <div className={cn("rounded-control", selected && "bg-accent")}>
-      <Row
-        aria-selected={selected}
-        data-zerops-data-tree-node={key}
-        data-zerops-data-tree-node-kind={node.kind}
-        meta={
-          node.meta?.entryType
-            ? `${node.meta.entryType} · ${describeKeyExpiry(node.meta)}`
-            : node.kind === "tabular"
-              ? node.meta?.count === undefined
-                ? "Rows unknown"
-                : `${node.meta.count.toLocaleString()} rows (last count)`
-              : `${node.meta?.size === undefined ? "Size unknown" : `${node.meta.size} B`}${node.meta?.modified ? ` · ${node.meta.modified}` : ""}`
-        }
-        onClick={() => onSelectNode(node)}
-        pressable
-        render={<button type="button" />}
-        size="xs"
-        strong={selected}
-        title={node.name}
-      />
-    </div>
+    <Row
+      aria-selected={selected}
+      data-zerops-data-tree-node={key}
+      data-zerops-data-tree-node-kind={node.kind}
+      meta={
+        node.meta?.entryType
+          ? `${node.meta.entryType} · ${describeKeyExpiry(node.meta)}`
+          : node.kind === "tabular"
+            ? node.meta?.count === undefined
+              ? "Rows unknown"
+              : `${node.meta.count.toLocaleString()} rows (last count)`
+            : `${node.meta?.size === undefined ? "Size unknown" : `${node.meta.size} B`}${node.meta?.modified ? ` · ${node.meta.modified}` : ""}`
+      }
+      onClick={() => onSelectNode(node)}
+      picked={selected}
+      pressable
+      render={<button type="button" />}
+      size="xs"
+      strong={selected}
+      title={node.name}
+    />
   );
 }
 
