@@ -1,0 +1,56 @@
+"use client";
+
+import type { ComponentProps } from "react";
+
+import { cn } from "~/lib/utils";
+
+import { CopyButton } from "./copy-button";
+
+/**
+ * One value to copy, on a line of its own: a command to run, a path, an address to give another
+ * service, a secret shown once. The value in monospace on the code ground, a control's height and
+ * corner, its Copy press at the end inside the line. It is cut with an ellipsis (`truncate`, the
+ * default; the whole value is still what Copy copies and what selection takes), or wraps anywhere
+ * with `wrap` where the person reads all of it before running it (a command, a secret). A `null`
+ * value is being read: the line keeps its room and Copy waits.
+ *
+ * Its name, where it has one, stands beside or over it as the place's own label. Several lines of
+ * text are a `CodeBlock`; a literal inside a sentence is `Text variant="code"`.
+ */
+function CopyLine({
+  value,
+  label,
+  wrap = false,
+  className,
+  ...props
+}: Omit<ComponentProps<"div">, "children"> & {
+  readonly value: string | null;
+  /** What Copy copies, after "Copy": "the command", "the payload URL". */
+  readonly label: string;
+  /** Wrap anywhere instead of cutting with an ellipsis. */
+  readonly wrap?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-9 min-w-0 items-center gap-1 rounded-control border border-border/60 bg-code ps-3 pe-1 text-code-foreground",
+        className,
+      )}
+      data-slot="copy-line"
+      {...props}
+    >
+      <code
+        className={cn(
+          "min-w-0 flex-1 py-2 font-mono text-caption leading-5",
+          wrap ? "wrap-anywhere" : "truncate",
+        )}
+        data-slot="copy-line-value"
+      >
+        {value}
+      </code>
+      <CopyButton label={label} value={value} />
+    </div>
+  );
+}
+
+export { CopyLine };
