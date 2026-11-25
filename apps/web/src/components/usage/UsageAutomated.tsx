@@ -19,6 +19,7 @@ import {
   type UsageTaskRow,
 } from "./usageAutomated.logic";
 import { Text } from "~/components/ui/text";
+import { TableCell, TableRow } from "~/components/ui/table";
 
 /** In place of a face: automated Mates are nobody's own. Decorative: their name stands beside it. */
 export function AutomatedMatesMark() {
@@ -32,7 +33,6 @@ export function AutomatedMatesMark() {
   );
 }
 
-const ROW = "border-b border-border/50";
 /** A task's title starts a step in from its Mate's name, nested under a person or a project or not. */
 const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
 
@@ -77,11 +77,11 @@ function TaskNote({
   readonly children: ReactNode;
 }) {
   return (
-    <tr className={ROW}>
-      <td className={cn("py-2 text-caption text-muted-foreground", taskIndent(nested))} colSpan={3}>
-        {children}
-      </td>
-    </tr>
+    <TableRow>
+      <TableCell colSpan={3} tone="muted">
+        <span className={cn("block text-caption", taskIndent(nested))}>{children}</span>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -145,11 +145,13 @@ export function UsageMateTaskRowsView({
     return <TaskNote nested={nested}>Tasks are not shown to you.</TaskNote>;
   if (setting.state !== "known")
     return (
-      <tr aria-busy className={ROW}>
-        <td className={cn("py-2", taskIndent(nested))} colSpan={3}>
-          <Skeleton className="h-5 w-2/3" />
-        </td>
-      </tr>
+      <TableRow aria-busy>
+        <TableCell colSpan={3}>
+          <span className={cn("block", taskIndent(nested))}>
+            <Skeleton className="h-5 w-2/3" />
+          </span>
+        </TableCell>
+      </TableRow>
     );
   const rows = usageMateTasks({ tasks: setting.held, mateProjectId, since, until });
   // HQ lists only an application's newest ended tasks: never "none" where the period is older.
@@ -161,19 +163,21 @@ export function UsageMateTaskRowsView({
       </TaskNote>
     );
   const listed = rows.map((row) => (
-    <tr key={row.id} className={cn(ROW, "text-caption")}>
-      <td className={cn("py-2", taskIndent(nested))}>
-        <span className="flex min-w-0 items-baseline gap-2">
+    <TableRow key={row.id}>
+      <TableCell>
+        <span className={cn("flex min-w-0 items-baseline gap-2 text-caption", taskIndent(nested))}>
           <TaskTitle row={row} />
           <span className="shrink-0 text-muted-foreground">{row.state}</span>
           <span className="ms-auto shrink-0 text-muted-foreground tabular-nums">
             {row.worked === null ? "—" : `${row.worked} worked`}
           </span>
         </span>
-      </td>
-      <td className="py-2 text-right text-foreground tabular-nums">{row.cost ?? "—"}</td>
-      <td />
-    </tr>
+      </TableCell>
+      <TableCell align="end">
+        <span className="text-caption">{row.cost ?? "—"}</span>
+      </TableCell>
+      <TableCell />
+    </TableRow>
   ));
   return cut ? (
     <>
