@@ -9,6 +9,10 @@ import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { EmptyState } from "../../ui/empty";
+import { Row } from "../../ui/row";
+import { SectionHeader } from "../../ui/section";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { PersonAvatar } from "../primitives";
@@ -47,17 +51,20 @@ export function NewProjectAccess({
   const candidates = view.kind === "people" && view.invite ? view.candidates : [];
   return (
     <section aria-label={label} className="np-access" data-zerops-surface="new-project-access">
-      <div className="np-access-head">
-        <h3 className="np-access-name">{label}</h3>
-        {summary === null ? null : (
-          <p className="np-access-line" data-zerops-access="line">
-            {summary.line}
-            {summary.changes === null ? null : (
-              <span className="text-foreground"> · {summary.changes}</span>
-            )}
-          </p>
-        )}
-      </div>
+      <SectionHeader
+        level={3}
+        line={
+          summary === null ? undefined : (
+            <span data-zerops-access="line">
+              {summary.line}
+              {summary.changes === null ? null : (
+                <span className="text-foreground"> · {summary.changes}</span>
+              )}
+            </span>
+          )
+        }
+        title={label}
+      />
       <div className="np-access-body">
         {candidates.length === 0 ? null : adding ? (
           <AddPeopleCard
@@ -117,9 +124,8 @@ function AddPeopleCard({
       return level === undefined ? rest : { ...rest, [clientUserId]: level };
     });
   return (
-    <div
+    <Card
       aria-labelledby={titleId}
-      className="np-add"
       data-zerops-surface="add-people"
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
@@ -127,21 +133,24 @@ function AddPeopleCard({
         onClose();
       }}
       role="group"
+      size="md"
     >
-      <div className="np-add-head">
-        <span className="np-add-title" id={titleId}>
-          Add people
-        </span>
-        <Button
-          aria-label="Close"
-          className="-my-0.5 -me-0.5"
-          onClick={onClose}
-          size="icon-xs"
-          variant="ghost"
-        >
-          <XIcon aria-hidden="true" />
-        </Button>
-      </div>
+      <SectionHeader
+        action={
+          <Button
+            aria-label="Close"
+            className="-me-0.5"
+            onClick={onClose}
+            size="icon-xs"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
+        }
+        id={titleId}
+        level={3}
+        title="Add people"
+      />
       <InputGroup>
         <InputGroupAddon>
           <SearchIcon aria-hidden="true" />
@@ -156,41 +165,45 @@ function AddPeopleCard({
         />
       </InputGroup>
       {typed === "" ? null : shown.length === 0 ? (
-        <p className="np-add-empty">Nobody matches “{typed}”.</p>
+        <EmptyState size="row">Nobody matches “{typed}”.</EmptyState>
       ) : (
         <ul aria-label="People in the organization" className="np-add-list">
           {shown.map((candidate) => {
             const level = ticked[candidate.clientUserId];
             return (
-              <li
-                className="np-add-row"
-                data-picked={level !== undefined || undefined}
-                key={candidate.clientUserId}
-              >
-                <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={24} />
-                <span className="np-add-who">
-                  <span className="np-add-name">{candidate.name}</span>
-                  <span className="np-add-role">
+              <Row
+                badges={
+                  <span className="text-caption text-muted-foreground">
                     {candidate.pending ? `${candidate.role} · invited` : candidate.role}
                   </span>
-                </span>
-                <ToggleGroup
-                  aria-label={`Access for ${candidate.name}`}
-                  onValueChange={(value) => {
-                    const next = value[0];
-                    pick(
-                      candidate.clientUserId,
-                      next === "read" || next === "full" ? next : undefined,
-                    );
-                  }}
-                  size="segmented-sm"
-                  value={level === undefined ? [] : [level]}
-                  variant="segmented"
-                >
-                  <ToggleGroupItem value="read">Read</ToggleGroupItem>
-                  <ToggleGroupItem value="full">Full</ToggleGroupItem>
-                </ToggleGroup>
-              </li>
+                }
+                control={
+                  <ToggleGroup
+                    aria-label={`Access for ${candidate.name}`}
+                    onValueChange={(value) => {
+                      const next = value[0];
+                      pick(
+                        candidate.clientUserId,
+                        next === "read" || next === "full" ? next : undefined,
+                      );
+                    }}
+                    size="segmented-sm"
+                    value={level === undefined ? [] : [level]}
+                    variant="segmented"
+                  >
+                    <ToggleGroupItem value="read">Read</ToggleGroupItem>
+                    <ToggleGroupItem value="full">Full</ToggleGroupItem>
+                  </ToggleGroup>
+                }
+                key={candidate.clientUserId}
+                lead={
+                  <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={20} />
+                }
+                picked={level !== undefined}
+                render={<li />}
+                size="sm"
+                title={candidate.name}
+              />
             );
           })}
         </ul>
@@ -217,6 +230,6 @@ function AddPeopleCard({
               : `Add ${String(picks.length)} people`}
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }

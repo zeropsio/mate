@@ -36,6 +36,7 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collaps
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
+import { SectionHeader } from "../ui/section";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
@@ -379,9 +380,7 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
   const held = creating || retry !== undefined;
   return (
     <div className="region" data-zerops-surface="region">
-      <Label id={REGION_LABEL} render={<h3 />}>
-        Where the services should run
-      </Label>
+      <SectionHeader id={REGION_LABEL} level={3} title="Where the services should run" />
       <RadioGroup
         aria-labelledby={REGION_LABEL}
         disabled={held}
