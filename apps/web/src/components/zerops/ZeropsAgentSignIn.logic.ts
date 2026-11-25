@@ -238,8 +238,12 @@ export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null
         : site === brand
           ? `Open ${site} and sign in.`
           : `Open ${site} and sign in with your ${brand} account.`,
-    openPress: `Open ${site}`,
-    preparing: `Getting ${site}'s page ready`,
+    openPress: "Open authorization page",
+    // While the login on the Mate's computer has not printed the page's address yet.
+    preparing:
+      mateName === null
+        ? `Starting ${site}'s sign-in…`
+        : `Starting ${site}'s sign-in on ${mateName}'s computer…`,
     opened: `${site} is open in a new tab.`,
     openAgain: "Open again",
     // Antigravity's code shows on the page Google sends the person to once they agree.

@@ -58,6 +58,7 @@ import { Loading } from "../ui/loading";
 import { Spinner } from "../ui/spinner";
 import { StepNumber } from "../ui/step-number";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Text } from "~/components/ui/text";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
@@ -305,9 +306,11 @@ export function AgentSignInView(props: AgentSignInViewProps) {
       data-open={opened ?? undefined}
       data-zerops-surface="agent-sign-in"
     >
-      {/* Two to a line where the slot has room for two cards of their one-column width; an open
-          card keeps its cell, its neighbour its own height. */}
-      <div className="grid w-full items-start gap-2 @[40rem]:grid-cols-2">{options.map(slot)}</div>
+      {/* Two to a line where the slot has room for two cards of their one-column width. The open
+          card takes the whole line for its steps; the others close up around it. */}
+      <div className="grid w-full grid-flow-row-dense items-start gap-2 @[40rem]:grid-cols-2">
+        {options.map(slot)}
+      </div>
     </div>
   );
 }
@@ -669,7 +672,11 @@ function OptionSlot({ open, children }: { readonly open: boolean; readonly child
   }, [state]);
   return (
     // Its card's ring is still drawn past the clip while it glides.
-    <div className="flex flex-col [overflow-clip-margin:2px]" data-state={state} ref={slot}>
+    <div
+      className="flex flex-col [overflow-clip-margin:2px] data-[state=open]:col-span-full"
+      data-state={state}
+      ref={slot}
+    >
       {children}
     </div>
   );
@@ -740,20 +747,17 @@ function OpenCardSteps({
             {words.openAgain}
           </InlineButton>
         ) : page.state === "preparing" ? (
-          // Its address is not printed yet: the press waits here, saying so, and opens the page
-          // itself once it is.
-          <Button
-            aria-busy
-            aria-label={words.preparing}
-            className={STEP_PRESS_CLASS}
+          // Its address is not printed yet: what is happening stands where the press will, at the
+          // press's height, and the press takes its place once the address is there.
+          <Text
+            className={cn(STEP_PRESS_CLASS, "flex h-7 items-center gap-2")}
             data-sign-in-open={agentId}
-            disabled
-            size="sm"
-            title={words.preparing}
+            role="status"
+            variant="remark"
           >
-            {words.openPress}
-            <Spinner aria-hidden />
-          </Button>
+            <Spinner aria-hidden="true" size="sm" tone="muted" />
+            {words.preparing}
+          </Text>
         ) : (
           <Button
             className={STEP_PRESS_CLASS}
@@ -843,8 +847,9 @@ function PasteCodeStep({
           ) : (
             // Claude's code while it is checked: the field's own box, the code's ends in mono, and
             // the check.
+            // As tall as the field it replaces, its border included, so nothing under it moves.
             <span
-              className="flex h-9 items-center gap-2 rounded-control bg-card px-3 text-body whitespace-nowrap text-muted-foreground inset-ring inset-ring-input"
+              className="flex h-10.5 items-center gap-2 rounded-control bg-card px-3 text-body whitespace-nowrap text-muted-foreground inset-ring inset-ring-input"
               data-sign-in-checking
             >
               <span className="font-mono text-line text-foreground">
