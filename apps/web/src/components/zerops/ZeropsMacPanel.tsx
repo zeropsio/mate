@@ -28,6 +28,8 @@ import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
+import { Card } from "../ui/card";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
 
@@ -110,42 +112,46 @@ function InstallLink({ href, children }: { readonly href: string; readonly child
  */
 function macReady() {
   return (
-    <ul className="mac-ready" data-zerops-mac-ready>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">zcli, signed in</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
-          <InstallLink href={zeropsTokenManagementUrl()}>Make a token</InstallLink>
-          <span>
-            then <code>zcli login &lt;token&gt;</code>
+    <Card data-zerops-mac-ready variant="inset">
+      <ul className="mac-ready">
+        <li className="mac-ready-item">
+          <span className="mac-ready-name">zcli, signed in</span>
+          <span className="mac-ready-how">
+            <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
+            <InstallLink href={zeropsTokenManagementUrl()}>Make a token</InstallLink>
+            <span>
+              then <code>zcli login &lt;token&gt;</code>
+            </span>
           </span>
-        </span>
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">WireGuard tools, for the VPN</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
-          <span>then</span>
-        </span>
-        <SetupCommand command="brew install wireguard-tools" />
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">Node.js 22.12 or newer</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://nodejs.org/en/download">The nodejs.org installer</InstallLink>
-          <span>not Homebrew's: macOS keeps node's permissions across its updates</span>
-        </span>
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">
-          Xcode's command-line tools <span className="mac-ready-optional">optional</span>
-        </span>
-        <span className="mac-ready-how">
-          <span>For the smooth live view and building apps.</span>
-        </span>
-        <SetupCommand command="xcode-select --install" />
-      </li>
-    </ul>
+        </li>
+        <li className="mac-ready-item">
+          <span className="mac-ready-name">WireGuard tools, for the VPN</span>
+          <span className="mac-ready-how">
+            <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
+            <span>then</span>
+          </span>
+          <SetupCommand command="brew install wireguard-tools" />
+        </li>
+        <li className="mac-ready-item">
+          <span className="mac-ready-name">Node.js 22.12 or newer</span>
+          <span className="mac-ready-how">
+            <InstallLink href="https://nodejs.org/en/download">
+              The nodejs.org installer
+            </InstallLink>
+            <span>not Homebrew's: macOS keeps node's permissions across its updates</span>
+          </span>
+        </li>
+        <li className="mac-ready-item">
+          <span className="mac-ready-name">
+            Xcode's command-line tools <span className="mac-ready-optional">optional</span>
+          </span>
+          <span className="mac-ready-how">
+            <span>For the smooth live view and building apps.</span>
+          </span>
+          <SetupCommand command="xcode-select --install" />
+        </li>
+      </ul>
+    </Card>
   );
 }
 
@@ -157,13 +163,20 @@ function stepList(
     readonly more?: ReactNode;
   }>,
   name: string,
+  /** Its room above: 24 px under the panel's line, 12 px under *Remove this Mac*. */
+  room: "under-line" | "under-press" = "under-line",
 ) {
   return (
-    <ol className="mac-wait-steps" data-zerops-mac-steps={name}>
-      {steps.map((step, index) =>
-        macStep({ command: step.command, more: step.more, n: index + 1, words: step.words }),
-      )}
-    </ol>
+    <Card
+      className={room === "under-line" ? "mt-6 w-full" : "mt-3 w-full"}
+      data-zerops-mac-steps={name}
+    >
+      <ol className="mac-wait-steps">
+        {steps.map((step, index) =>
+          macStep({ command: step.command, more: step.more, n: index + 1, words: step.words }),
+        )}
+      </ol>
+    </Card>
   );
 }
 
@@ -210,13 +223,20 @@ function macSteps({
         status,
       )}
       {pair === undefined ? null : (
-        <details className="mac-wait-more" data-zerops-mac-again>
-          <summary>
+        <Collapsible data-zerops-mac-again render={<div className="mac-wait-more" />}>
+          <CollapsibleTrigger className="group/more ms-1 inline-flex items-center gap-1.5 rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
             Still not answering? Pair it again
-            <ChevronDownIcon aria-hidden="true" className="mac-wait-more-mark" />
-          </summary>
-          <MacCommand command={pair} />
-        </details>
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="size-3.5 transition-[rotate] duration-150 ease-out-strong group-data-panel-open/more:rotate-180 motion-reduce:transition-none"
+            />
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <div className="pt-2.5">
+              <MacCommand command={pair} />
+            </div>
+          </CollapsiblePanel>
+        </Collapsible>
       )}
     </>
   );
@@ -255,9 +275,11 @@ type MacWaitKind = "not-paired" | "unreachable" | "no-helper" | "no-app" | "unav
 function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
   const [remove, vpn] = removeCommands;
   return (
-    <details className="mac-remove" data-zerops-mac-remove>
-      <summary>Remove this Mac</summary>
-      <div className="mac-remove-body">
+    <Collapsible data-zerops-mac-remove render={<div className="mac-remove" />}>
+      <CollapsibleTrigger className="mx-auto flex rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        Remove this Mac
+      </CollapsibleTrigger>
+      <CollapsiblePanel>
         {stepList(
           [
             {
@@ -268,6 +290,7 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
             { words: "Then disconnect the VPN, if nothing else needs it.", command: vpn },
           ],
           "remove",
+          "under-press",
         )}
         <p className="mac-remove-forget">
           Mac gone, or not answering?
@@ -275,8 +298,8 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
             Forget it here
           </Button>
         </p>
-      </div>
-    </details>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 

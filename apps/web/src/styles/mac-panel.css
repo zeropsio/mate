@@ -70,16 +70,12 @@
     text-wrap: pretty;
   }
 
+  /* The person's steps on the Mac, in the kit's Card: 16 px in and apart, read from the start. */
   .mac-wait-steps {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    width: 100%;
-    margin-top: 24px;
     padding: 16px;
-    border-radius: var(--radius-card);
-    background: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
     text-align: left;
   }
 
@@ -132,14 +128,13 @@
     user-select: all;
   }
 
-  /* What the Mac needs before it pairs: each thing, how to get it, its command where it has one. */
+  /* What the Mac needs before it pairs, in the kit's inset Card: each thing, how to get it, its
+     command where it has one. */
   .mac-ready {
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 12px 14px;
-    border-radius: var(--radius-card);
-    background: color-mix(in oklab, var(--muted) 60%, transparent);
   }
 
   .mac-ready-item {
@@ -181,79 +176,23 @@
     background: var(--background);
   }
 
-  /* Pairing again, for when nothing else helps: folded under the steps. */
+  /* Pairing again, for when nothing else helps: folded under the steps (the kit's Collapsible). */
   .mac-wait-more {
     width: 100%;
     margin-top: 14px;
     text-align: left;
   }
 
-  .mac-wait-more > summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-inline-start: 4px;
-    font-size: var(--text-body);
-    color: var(--muted-foreground);
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-  }
-
-  .mac-wait-more > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .mac-wait-more > summary:hover {
-    color: var(--foreground);
-  }
-
-  .mac-wait-more-mark {
-    width: 14px;
-    height: 14px;
-    transition: rotate 150ms var(--ease-out-strong);
-  }
-
-  .mac-wait-more[open] .mac-wait-more-mark {
-    rotate: 180deg;
-  }
-
-  .mac-wait-more > .mac-command {
-    margin-top: 10px;
-  }
-
   .mac-wait-update {
     margin-top: 20px;
   }
 
-  /* The way out of a pairing, at the panel's foot: quiet until opened. */
+  /* The way out of a pairing, at the panel's foot: quiet until opened (the kit's Collapsible). */
   .mac-remove {
     width: 100%;
     max-width: 32rem;
     margin: 32px auto 0;
     padding-inline: 16px;
-  }
-
-  .mac-remove > summary {
-    width: fit-content;
-    margin-inline: auto;
-    font-size: var(--text-body);
-    color: var(--muted-foreground);
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-  }
-
-  .mac-remove > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .mac-remove > summary:hover {
-    color: var(--foreground);
-  }
-
-  .mac-remove-body .mac-wait-steps {
-    margin-top: 12px;
   }
 
   .mac-remove-forget {
