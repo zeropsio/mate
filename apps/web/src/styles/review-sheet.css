@@ -63,26 +63,6 @@
   flex: none;
   font-weight: 500;
 }
-/* A folded section's count and its chevron, turning as it opens. */
-.rv-fold-aside {
-  font-size: var(--text-body);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.rv-fold-chev {
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  transition: rotate 200ms var(--ease-out-strong);
-}
-[aria-expanded="true"] > .rv-fold-chev {
-  rotate: 180deg;
-}
-@media (prefers-reduced-motion: reduce) {
-  .rv-fold-chev {
-    transition: none;
-  }
-}
 /* A quiet sentence under a section's rows: what the try pills open, whom a comment reaches. */
 .rv-note {
   margin: 6px 0 0;

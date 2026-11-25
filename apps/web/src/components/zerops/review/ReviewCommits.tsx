@@ -45,7 +45,7 @@ export function ReviewCommits({
   const [all, setAll] = useState(false);
   if (notRecorded !== undefined) {
     return (
-      <ReviewSection aside={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
+      <ReviewSection count={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
         <p className="rv-diff-note">The commits are not known yet.</p>
         {notRecorded.onShow === undefined ? null : (
           <Button onClick={notRecorded.onShow} size="sm" variant="link">
@@ -60,7 +60,7 @@ export function ReviewCommits({
   const count = commits.kind === "read" ? commits.value.length : undefined;
   return (
     <ReviewSection
-      aside={count === undefined ? undefined : String(count)}
+      count={count === undefined ? undefined : String(count)}
       fold={fold}
       title="Commits"
     >

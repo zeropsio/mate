@@ -108,7 +108,7 @@ export function ReviewDescription({
   }
   return (
     <ReviewSection
-      aside={
+      action={
         onOpenRun === undefined ? undefined : (
           <InlineButton onClick={onOpenRun}>The run that made it</InlineButton>
         )

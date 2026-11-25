@@ -68,6 +68,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
 import { InPhoneBar } from "../system/PhoneBar";
+import { SectionLabel } from "../system/SectionLabel";
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
@@ -727,19 +728,24 @@ export interface ReviewFoldState {
 }
 
 /**
- * One section: its small label, what it counts on the right, and what it holds. Folded, its
- * label is a row that opens it — "Files 4 changed · +163 −12 ⌄" — and what it holds stays drawn,
- * hidden, so nothing it read or was typed into it is lost while it is shut.
+ * One section: its label (the kit's `SectionLabel`) with what it counts beside it and its state or
+ * press at the line's end, and what it holds. Folded, its label is the press that opens it —
+ * "Files · 4 changed · +163 −12 ⌄" — and what it holds stays drawn, hidden, so nothing it read or
+ * was typed into it is lost while it is shut.
  */
 export function ReviewSection({
   title,
-  aside,
+  count,
+  action,
   fold,
   titleShown = true,
   children,
 }: {
   readonly title: string;
-  readonly aside?: ReactNode;
+  /** What it counts, said beside its title. */
+  readonly count?: ReactNode;
+  /** Its own state or press, at its label's end. */
+  readonly action?: ReactNode;
   readonly fold?: ReviewFoldState | undefined;
   /** Whether its label is seen; one what it holds already says is kept for screen readers only. */
   readonly titleShown?: boolean | undefined;
@@ -748,13 +754,9 @@ export function ReviewSection({
   if (fold !== undefined) {
     return (
       <Collapsible onOpenChange={fold.onToggle} open={fold.open} render={<section />}>
-        <h3 className="rv-sec-h">
-          <CollapsibleTrigger className="-my-1.5 flex h-7 w-full items-center gap-2.5 text-start text-muted-foreground outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-y-2 pointer-coarse:after:inset-x-0">
-            <span>{title}</span>
-            {aside === undefined ? null : <span className="rv-fold-aside">{aside}</span>}
-            <ChevronDownIcon aria-hidden="true" className="rv-fold-chev" />
-          </CollapsibleTrigger>
-        </h3>
+        <SectionLabel action={action} count={count} folds level={3}>
+          {title}
+        </SectionLabel>
         <CollapsiblePanel className="mt-3" keepMounted>
           {children}
         </CollapsiblePanel>
@@ -763,11 +765,10 @@ export function ReviewSection({
   }
   return (
     <section>
-      {titleShown || aside !== undefined ? (
-        <h3 className={titleShown ? "rv-sec-h" : "rv-sec-h justify-end"}>
+      {titleShown || action !== undefined ? (
+        <SectionLabel action={action} count={titleShown ? count : undefined} level={3}>
           {titleShown ? title : <span className="sr-only">{title}</span>}
-          {aside === undefined ? null : <span>{aside}</span>}
-        </h3>
+        </SectionLabel>
       ) : (
         <h3 className="sr-only">{title}</h3>
       )}

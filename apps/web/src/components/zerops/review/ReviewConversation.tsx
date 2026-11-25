@@ -92,7 +92,7 @@ export function ReviewConversation({
   const { state } = comments;
   return (
     <ReviewSection
-      aside={state.kind === "read" ? changeConversationCount(remarks) : undefined}
+      count={state.kind === "read" ? changeConversationCount(remarks) : undefined}
       fold={fold}
       title="Conversation"
     >

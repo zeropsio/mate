@@ -345,41 +345,28 @@
   display: none;
 }
 /* A section with nothing under its label says nothing: it is not drawn. */
-.rv-body section:has(> .rv-sec-h:only-child) {
+.rv-body section:has(> [data-zerops-section-label]:only-child) {
   display: none;
 }
-/* A section's small label, its count or state at its end. */
-.rv-sec-h {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  /* A label hugs what it names: 10 under it, sections 24 apart. */
-  margin: 0 0 10px;
-  font-size: var(--text-caption);
-  font-weight: 500;
-  line-height: 16px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.rv-sec-h > span {
-  font-weight: 400;
+/* A section's label (the kit's SectionLabel) hugs what it names: its words 10 over it, sections
+   24 apart. */
+.rv-body section > [data-zerops-section-label] {
+  margin-bottom: 6px;
 }
 /* A section's own state at its label's end: its mark, its words and the press beside them. Every
    sentence its wait will say holds the room from the start, so the one it says next never moves
-   the label; a cause too long for the label's line takes the next one, from the label's edge. */
-.rv-sec-h:has(.rv-sec-state) {
+   the label; a cause too long for the label's line takes the next one, keeping the end edge. */
+.rv-body [data-zerops-section-label]:has(.rv-sec-state) {
   flex-wrap: wrap;
-  align-items: center;
   row-gap: 2px;
-}
-/* On a line of its own, in a narrow sheet, it keeps the end edge it has beside the label. */
-.rv-sec-h:has(.rv-sec-state) > span {
-  margin-inline-start: auto;
 }
 .rv-sec-state {
   display: grid;
   justify-items: end;
+  /* The state speaks under the label's words, in the caption type it always had. */
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--muted-foreground);
 }
 .rv-sec-state > span {
   display: inline-flex;

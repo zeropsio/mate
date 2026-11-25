@@ -1611,7 +1611,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         />
       )}
       {receipt === undefined ? null : (
-        <ReviewSection aside={String(receipt.parts.length)} title="Parts">
+        <ReviewSection count={String(receipt.parts.length)} title="Parts">
           <ul className="rv-check-list">
             {receipt.parts.map((part) => (
               <li key={part.setup}>
@@ -1622,7 +1622,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         </ReviewSection>
       )}
       <ReviewSection
-        aside={
+        count={
           read?.filesKnown === false ? (
             NOT_RECORDED_ASIDE
           ) : size === undefined ? undefined : (
@@ -1651,7 +1651,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         />
       </ReviewSection>
       {github === undefined ? null : (
-        <ReviewSection aside="1" fold={checks} title="Checks">
+        <ReviewSection count="1" fold={checks} title="Checks">
           <ul className="rv-check-list" data-zerops-surface="change-github-checks">
             <li>
               GitHub&apos;s checks ·{" "}

@@ -1348,7 +1348,7 @@ export function ReleaseReadingView({
         <ReleaseRowsSkeleton count={1} />
       </ReviewSection>
       <ReviewSection
-        aside={<PlanState id={stateId} state={READING_STARTED} />}
+        action={<PlanState id={stateId} state={READING_STARTED} />}
         title="What happens in production"
       >
         <ReleasePlanSkeleton steps={2} />
@@ -1846,7 +1846,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       untold.length === 0 &&
       props.comparisonFailure === undefined ? null : (
         <ReviewSection
-          aside={
+          count={
             counted === undefined
               ? undefined
               : [
@@ -1885,7 +1885,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       )}
       {nothing ? null : (
         <ReviewSection
-          aside={
+          action={
             planState === undefined ? undefined : (
               <PlanState id={stateId} onAgain={props.onRetryServicePlan} state={planState} />
             )
@@ -2482,7 +2482,7 @@ function RollbackListSection({
   const listed = list.state === "known" && list.rows.length > 0;
   return (
     <ReviewSection
-      aside={listed ? changesCountWords(list.count, list.atLeast) : undefined}
+      count={listed ? changesCountWords(list.count, list.atLeast) : undefined}
       title={title}
     >
       {listed ? (
