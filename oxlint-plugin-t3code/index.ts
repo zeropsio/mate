@@ -25,6 +25,7 @@ import noTestInLoop from "./rules/no-test-in-loop.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
 import noHqSessionCode from "./rules/no-hq-session-code.ts";
 import noRawControls from "./rules/no-raw-controls.ts";
+import preferItemGrounds from "./rules/prefer-item-grounds.ts";
 import preferText from "./rules/prefer-text.ts";
 import noSizedSlotIcon from "./rules/no-sized-slot-icon.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
@@ -77,6 +78,7 @@ export default definePlugin({
     "no-platform-globals": noPlatformGlobals,
     "no-hq-session-code": noHqSessionCode,
     "no-raw-controls": noRawControls,
+    "prefer-item-grounds": preferItemGrounds,
     "prefer-text": preferText,
     "no-sized-slot-icon": noSizedSlotIcon,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,

@@ -162,6 +162,7 @@ export const RATCHET_RULES = [
   "no-frame-per-tick",
   "no-remote-data-in-browser-storage",
   "no-raw-controls",
+  "prefer-item-grounds",
   "prefer-text",
   "no-sized-slot-icon",
   "no-infinite-motion",
@@ -186,6 +187,7 @@ export const RATCHET_RULES = [
 const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
   "no-frame-per-tick",
   "no-raw-controls",
+  "prefer-item-grounds",
   "prefer-text",
   "no-sized-slot-icon",
   "reduced-motion-home",
