@@ -330,18 +330,16 @@ export function ProjectNameField({
 }
 
 /**
- * Who the first Mate is: its name, with the die, and its look — folded behind *Change look* in the
- * dialog, or apart, the rows under the name, where the page draws the face as its hero.
+ * Who the first Mate is: its name, with the die, and its look — the rows under the name, where the
+ * page draws the face as its hero.
  */
 export function FirstMateField({
   form,
   label,
-  look,
   size,
 }: {
   readonly form: NewProjectForm;
   readonly label: string;
-  readonly look: "folded" | "apart";
   /** `xl` where the form is the page's hero (the first run's card). */
   readonly size?: "default" | "xl" | undefined;
 }) {
@@ -350,9 +348,8 @@ export function FirstMateField({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={MATE_FIELD}>{label}</Label>
       <MateFacePicker
-        apart={look === "apart"}
+        apart
         face={form.face}
-        folded={look === "folded"}
         onPickShape={form.pickShape}
         onPickTint={form.pickTint}
       >
