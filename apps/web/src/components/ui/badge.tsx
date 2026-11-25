@@ -12,7 +12,8 @@ import { cn } from "~/lib/utils";
  * surfaces, so it never reads as a press (a press is a Button, a rectangle). Five tones carry
  * meaning, never decoration: `neutral` for a fact, `info` for work under way, `success` for
  * done or running, `warning` for what needs the person, `danger` for what broke and for
- * Production.
+ * Production. The neutral pill's ground is a step of the ink, so it shows on the page, a card
+ * and a tinted tray alike.
  */
 const badgeVariants = cva(
   "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
@@ -33,7 +34,7 @@ const badgeVariants = cva(
       },
     },
     compoundVariants: [
-      { form: "pill", tone: "neutral", className: "bg-status-off-surface text-foreground" },
+      { form: "pill", tone: "neutral", className: "bg-foreground/6 text-foreground" },
       { form: "pill", tone: "info", className: "bg-status-busy-surface text-status-busy-text" },
       { form: "pill", tone: "success", className: "bg-status-ok-surface text-status-ok-text" },
       {
