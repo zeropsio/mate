@@ -179,6 +179,15 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   A state mark with no words of its own (a line's mark, something new on an icon's corner) is a
   `Dot` in the same tones.
 
+  `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
+  `dot` form, with its words or an accessible name.
+
+- A quantity is drawn by the kit: one amount against its limit is a `Meter`, a whole split into
+  parts a `ShareBar`, and a chart's legend, hover readout, time axis and plot ground are its chart
+  pieces (`components/ui/chart.tsx`). A series takes its colour from a token: `--color-series-1` to
+  `-8` in that order, a coding agent's `--color-agent-*`, spend's `--color-spend-*`; the words
+  beside it stay in the ink of words.
+
 ## 4. Asks
 
 An ask is one thing a Mate needs from a person: approve a prepared change, provide a value only
