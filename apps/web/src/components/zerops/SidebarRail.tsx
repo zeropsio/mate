@@ -328,7 +328,7 @@ function RailDotMark({
   if (dot === undefined) return null;
   return (
     <MateDot
-      className={kid ? "top-0.5 right-0.5 size-2" : undefined}
+      className={kid ? "top-0.5 end-0.5" : undefined}
       place="corner"
       tint={tint}
       tone={dot}
