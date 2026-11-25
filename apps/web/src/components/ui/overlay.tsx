@@ -2,16 +2,18 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
-type OverlayKind = "drop" | "hint";
+type OverlayKind = "drop" | "hint" | "veil";
 
 const OVERLAY_LAYER_CLASS: Record<OverlayKind, string> = {
   drop: "absolute inset-2 z-40 items-center rounded-sheet border-2 border-dashed border-primary/60 bg-primary/4",
   hint: "fixed inset-x-0 top-1/5 z-100",
+  veil: "absolute inset-0 z-10 items-center rounded-card bg-background/75 p-4 backdrop-blur-xs",
 };
 
 const OVERLAY_WORDS_CLASS: Record<OverlayKind, string> = {
   drop: "gap-2 px-4 py-2.5 text-body [&_svg]:size-4",
   hint: "gap-3 px-8 py-4 text-title [&_svg]:size-6",
+  veil: "gap-2 px-4 py-2.5 text-center text-body [&_svg]:size-4",
 };
 
 /**
@@ -21,6 +23,9 @@ const OVERLAY_WORDS_CLASS: Record<OverlayKind, string> = {
  * - `drop` — the surface takes what is dragged over it (files on the conversation): it covers its
  *   positioned parent, 8 px in, with a dashed edge in the primary ink and the faintest primary
  *   tint, its words in the middle.
+ * - `veil` — the surface under it cannot be used as it stands (a visual editor while the text it
+ *   edits does not parse): its card-cornered parent veiled in its own ground, blurred, what to do
+ *   in the middle.
  * - `hint` — a word about a key being held ("Hold ⌘Q to quit"): over the whole window, its words
  *   in the window's upper third, larger, to be read at a glance.
  *
