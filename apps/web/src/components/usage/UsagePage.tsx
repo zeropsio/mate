@@ -25,6 +25,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { SeriesSwatch } from "../ui/chart";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
@@ -629,13 +630,7 @@ export function UsagePage({
                           <div key={provider} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-4">
                               <span className="flex min-w-0 items-center gap-2 text-body text-foreground">
-                                <span
-                                  aria-hidden
-                                  className="size-2 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                                  }}
-                                />
+                                <SeriesSwatch color={PROVIDER_PRESENTATION[provider].color} />
                                 <ProviderMark provider={provider} className="size-4" />
                                 <span className="flex min-w-0 items-baseline gap-1.5">
                                   <span className="truncate">

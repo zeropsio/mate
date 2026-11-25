@@ -56,6 +56,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
 import { Loading } from "../ui/loading";
+import { Meter } from "../ui/meter";
 import { Skeleton } from "../ui/skeleton";
 import { WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
@@ -133,24 +134,16 @@ function WindowBar({
             role="img"
             aria-label={summary}
             tabIndex={0}
-            className="relative h-6 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="flex h-6 cursor-default items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           />
         }
       >
-        <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-muted" />
-        {remaining > 0 ? (
-          <div
-            className="absolute inset-y-1.5 left-0 rounded-full"
-            style={{ width: `${remaining}%`, backgroundColor: color }}
-          />
-        ) : null}
-        {timeLeft !== null ? (
-          <span
-            aria-hidden
-            className="absolute inset-y-0.5 w-px -translate-x-1/2 bg-foreground/60"
-            style={{ left: `${timeLeft}%` }}
-          />
-        ) : null}
+        <Meter
+          color={color}
+          marker={timeLeft === null ? null : timeLeft / 100}
+          size="lg"
+          value={remaining / 100}
+        />
       </TooltipTrigger>
       <TooltipPopup side="top">
         <div className="flex flex-col gap-0.5">
