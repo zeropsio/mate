@@ -6,7 +6,7 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 const buttonClassNames =
-  "relative flex size-(--cell-size) text-body items-center justify-center rounded-control text-foreground not-in-data-selected:hover:bg-accent disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
+  "relative flex size-(--cell-size) text-body items-center justify-center rounded-control text-foreground transition-colors duration-150 ease-out-strong not-in-data-selected:hover:bg-item-hover disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
 const defaultComponents = {
   Chevron: ({
@@ -41,6 +41,11 @@ const defaultComponents = {
   },
 };
 
+/**
+ * A month of days to pick from. A day lights on the item's hover ground (`bg-item-hover`) under
+ * the pointer; the chosen day, and a range's two ends, stand in the primary ink, the days between
+ * them on the picked ground (`bg-item-picked`); today wears a dot.
+ */
 export function Calendar({
   className,
   classNames,
@@ -56,7 +61,7 @@ export function Calendar({
     day: "size-(--cell-size) text-body py-px",
     day_button: cn(
       buttonClassNames,
-      "in-data-disabled:pointer-events-none in-[.range-middle]:rounded-none in-[.range-end:not(.range-start)]:rounded-s-none in-[.range-start:not(.range-end)]:rounded-e-none in-[.range-middle]:in-data-selected:bg-accent in-data-selected:bg-primary in-[.range-middle]:in-data-selected:text-foreground in-data-disabled:text-muted-foreground/72 in-data-outside:text-muted-foreground/72 in-data-selected:in-data-outside:text-primary-foreground in-data-selected:text-primary-foreground in-data-disabled:line-through outline-none in-[[data-selected]:not(.range-middle)]:transition-[border-radius,box-shadow] focus-visible:z-1 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      "in-data-disabled:pointer-events-none in-[.range-middle]:rounded-none in-[.range-end:not(.range-start)]:rounded-s-none in-[.range-start:not(.range-end)]:rounded-e-none in-[.range-middle]:in-data-selected:bg-item-picked in-data-selected:bg-primary in-[.range-middle]:in-data-selected:text-foreground in-data-disabled:text-muted-foreground/72 in-data-outside:text-muted-foreground/72 in-data-selected:in-data-outside:text-primary-foreground in-data-selected:text-primary-foreground in-data-disabled:line-through outline-none in-[[data-selected]:not(.range-middle)]:transition-[border-radius,box-shadow] focus-visible:z-1 focus-visible:ring-[3px] focus-visible:ring-ring/50",
     ),
     dropdown: "absolute bg-popover inset-0 opacity-0",
     dropdown_root:
@@ -69,7 +74,7 @@ export function Calendar({
       "relative mx-(--cell-size) px-1 mb-1 flex h-(--cell-size) items-center justify-center z-2",
     months: "relative flex flex-col sm:flex-row gap-2",
     nav: "absolute top-0 flex w-full justify-between z-1",
-    outside: "text-muted-foreground data-selected:bg-accent/50 data-selected:text-muted-foreground",
+    outside: "text-muted-foreground",
     range_end: "range-end",
     range_middle: "range-middle",
     range_start: "range-start",
