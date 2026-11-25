@@ -36,18 +36,30 @@ import {
   ZeropsAgentId,
   type ZeropsAgentLoginState,
   ZeropsUserId,
+  type RuntimeMode,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpIcon, ChevronDownIcon } from "lucide-react";
+import {
+  StrictMode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import { StandUpAskLine } from "~/components/chat/ConversationRows";
-import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
+import { ComposerAccessControl } from "~/components/chat/ComposerModelControl";
+import { ClaudeAI } from "~/components/Icons";
 import {
-  PersonaChosenStrip,
-  PersonaOfferStrip,
-  type PersonaOfferChoice,
-} from "~/components/persona/PersonaOffer";
+  type PersonaChoice,
+  PersonaControl,
+  PersonaSuggestions,
+  travelInto,
+} from "~/components/persona/PersonaAtComposer";
 import { personaIcon } from "~/components/persona/personaIcon";
 import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
 import { RunLine } from "~/components/chat/RunChat";
@@ -242,8 +254,11 @@ interface HarnessState {
   /** A colleague's view of it: who added the Mate, null where unnamed; absent for its person. */
   readonly setupAddedBy?: string | null;
   readonly watching?: boolean;
-  /** The composer's persona offer (`PersonaOfferStrip`): shown, answered, or put off. */
-  readonly persona?: "offer" | "chosen" | "dismissed";
+  /**
+   * The persona at the composer (`PersonaAtComposer`): suggested while the Mate holds none, picked
+   * (its control at the composer's foot names it), or its control's menu open.
+   */
+  readonly persona?: "suggested" | "picked" | "menu";
 }
 
 // Every source-backed recovery/refusal copy branch joins the same production composition.
@@ -596,41 +611,41 @@ const STATES: ReadonlyArray<HarnessState> = [
   },
   {
     id: "persona-new",
-    label: "5 Persona · a new project's first message",
+    label: "5 Persona · suggested under a new project's composer",
     mate: WREN,
     phase: null,
-    persona: "offer",
+    persona: "suggested",
   },
   {
-    id: "persona-new-chosen",
-    label: "5 Persona · chosen before the first message",
+    id: "persona-new-picked",
+    label: "5 Persona · picked: it lives at the composer's foot",
     mate: WREN,
     phase: null,
-    persona: "chosen",
+    persona: "picked",
   },
   {
     id: "persona-standup",
-    label: "5 Persona · under the setup's ask",
+    label: "5 Persona · suggested under the setup's ask",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "offer",
+    persona: "suggested",
   },
   {
-    id: "persona-chosen",
-    label: "5 Persona · chosen while it sets up",
+    id: "persona-standup-picked",
+    label: "5 Persona · picked while it sets up",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "chosen",
+    persona: "picked",
   },
   {
-    id: "persona-dismissed",
-    label: "5 Persona · not now, its name keeps the way in",
+    id: "persona-menu",
+    label: "5 Persona · changed from the composer's foot",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "dismissed",
+    persona: "menu",
   },
   {
     id: "not-created",
@@ -1109,8 +1124,8 @@ function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
   }));
 }
 
-/** The templates about the person, as the offer shows them (an organization's would come first). */
-const PERSONA_CHOICES: readonly PersonaOfferChoice[] = PREMADE_PERSONA_TEMPLATES.filter(
+/** The templates about the person, as the composer suggests them (an organization's would lead). */
+const PERSONA_CHOICES: readonly PersonaChoice[] = PREMADE_PERSONA_TEMPLATES.filter(
   (template) => template.about === "you",
 ).map((template) => ({
   key: template.id,
@@ -1119,64 +1134,89 @@ const PERSONA_CHOICES: readonly PersonaOfferChoice[] = PREMADE_PERSONA_TEMPLATES
   icon: personaIcon({ source: "premade", id: template.id, revision: template.revision }),
 }));
 
-const personaChoice = (key: string) =>
-  PERSONA_CHOICES.find((choice) => choice.key === key) ?? PERSONA_CHOICES[0]!;
+const personaChoice = (key: string | null) =>
+  PERSONA_CHOICES.find((choice) => choice.key === key) ?? null;
+
+/** How long the suggestions take to fold away once one is picked (`--duration-base`). */
+const SUGGESTIONS_FOLD_MS = 200;
 
 /**
- * The composer with its persona offer on top, answering as the product would: a template chooses
- * and the strip confirms it, *Undo* offers again, the cross puts it off. Before the Mate has
- * answered (a new project's) the choice shapes its first reply; under a setup, its next.
+ * The composer as a Mate's conversation draws it, its persona at the foot beside the model and the
+ * access, answering as the product would: a suggestion picked travels into the control and the
+ * suggestions fold away; the control's menu changes it or takes it off. A pick is the Mate's
+ * persona at once, for its next reply; a message sent writes nothing about it.
  */
-function PersonaComposer({
-  state,
-  go,
-  chosen,
-  onChoose,
-}: {
-  readonly state: HarnessState;
-  readonly go: (id: string) => void;
-  readonly chosen: string;
-  readonly onChoose: (key: string) => void;
-}) {
-  const firstReply = state.conversation !== true;
-  const top =
-    state.persona === "offer" ? (
-      <PersonaOfferStrip
-        choices={PERSONA_CHOICES}
-        firstReply={firstReply}
-        mate={state.mate}
-        onChoose={(key) => {
-          onChoose(key);
-          go(firstReply ? "persona-new-chosen" : "persona-chosen");
-        }}
-        onDismiss={() => go("persona-dismissed")}
-        onMore={() => undefined}
-      />
-    ) : state.persona === "chosen" ? (
-      <PersonaChosenStrip
-        choice={personaChoice(chosen)}
-        firstReply={firstReply}
-        mate={state.mate}
-        onUndo={() => go(firstReply ? "persona-new" : "persona-standup")}
-      />
-    ) : null;
+function PersonaComposer({ state }: { readonly state: HarnessState }) {
+  const draft = state.conversation !== true;
+  const [value, setValue] = useState<string | null>(() =>
+    state.persona === "suggested" ? null : PERSONA_CHOICES[0]!.key,
+  );
+  const [suggesting, setSuggesting] = useState(state.persona === "suggested");
+  const [folding, setFolding] = useState(false);
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("full-access");
+  const labelRef = useRef<HTMLSpanElement>(null);
+  const travelFrom = useRef<HTMLElement | null>(null);
+  // The control names the pick in this commit: start its label where the press was.
+  useLayoutEffect(() => {
+    if (travelFrom.current === null) return;
+    travelInto(travelFrom.current, labelRef.current);
+    travelFrom.current = null;
+  }, [value]);
+  const pick = (key: string, from: HTMLElement) => {
+    travelFrom.current = from;
+    setValue(key);
+    setFolding(true);
+    window.setTimeout(() => setSuggesting(false), SUGGESTIONS_FOLD_MS);
+  };
+  const suggestions = suggesting ? (
+    <PersonaSuggestions
+      choices={PERSONA_CHOICES}
+      folding={folding}
+      layout={draft ? "hero" : "docked"}
+      mateName={state.mate.name}
+      onPick={pick}
+    />
+  ) : null;
   const composer = (
     <div
-      className="w-full overflow-hidden rounded-sheet border border-border bg-card"
+      className="w-full rounded-sheet border border-border bg-card"
       data-chat-composer-main-surface="true"
     >
-      <div data-chat-composer-surface="true">
-        {top}
-        <div className="px-4 pt-3 pb-12 text-placeholder text-body">
-          Ask {state.mate.name} to do something…
-        </div>
+      <p className="px-5 pt-4 pb-2 text-muted-foreground text-prose">
+        Ask {state.mate.name} to do something…
+      </p>
+      <div className="flex items-center gap-2 pt-1.5 pe-3 pb-3 ps-3.5">
+        <PersonaControl
+          choices={PERSONA_CHOICES}
+          defaultOpen={state.persona === "menu"}
+          labelRef={labelRef}
+          mateName={state.mate.name}
+          onChange={(key) => {
+            setValue(key);
+            setSuggesting(false);
+          }}
+          onEdit={() => undefined}
+          value={personaChoice(value)}
+        />
+        {/* The model's picker as it reads at rest (`ProviderModelPicker`). */}
+        <Button className="min-w-0 shrink" size="sm" variant="ghost-muted">
+          <ClaudeAI aria-hidden="true" />
+          Opus 5.5
+          <ChevronDownIcon aria-hidden="true" />
+        </Button>
+        <ComposerAccessControl onRuntimeModeChange={setRuntimeMode} runtimeMode={runtimeMode} />
+        <span className="flex-1" />
+        <Button aria-label="Send" disabled shape="round" size="icon-md" variant="send">
+          <ArrowUpIcon aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );
-  if (firstReply) {
+  if (draft) {
     // A new project's Mate before its first message: the conversation is a draft, so the app draws
     // its hero — the composer in the column's middle, the Mate's face and question just above it
-    // (`ChatView`'s draft hero, `DraftHeroHeadline`).
+    // (`ChatView`'s draft hero, `DraftHeroHeadline`), the suggestions just under it, so neither
+    // their coming nor their going moves the composer.
     return (
       <div className="absolute inset-0 flex items-center px-6" data-harness-composer="hero">
         <div className="relative mx-auto w-full max-w-3xl">
@@ -1189,28 +1229,22 @@ function PersonaComposer({
             </div>
           </div>
           {composer}
+          <div className="absolute inset-x-0 top-full">{suggestions}</div>
         </div>
       </div>
     );
   }
   return (
     <div className="shrink-0 px-6 pb-5" data-harness-composer>
-      <div className="mx-auto max-w-3xl">{composer}</div>
+      <div className="mx-auto max-w-3xl">
+        {suggestions}
+        {composer}
+      </div>
     </div>
   );
 }
 
-function Pane({
-  state,
-  go,
-  chosen,
-  onChoose,
-}: {
-  readonly state: HarnessState;
-  readonly go: (id: string) => void;
-  readonly chosen: string;
-  readonly onChoose: (key: string) => void;
-}) {
+function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
   const [openedAt] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -1292,7 +1326,7 @@ function Pane({
         ) : state.conversation === true ? (
           <Conversation />
         ) : state.persona !== undefined ? (
-          <PersonaComposer chosen={chosen} go={go} onChoose={onChoose} state={state} />
+          <PersonaComposer key={state.id} state={state} />
         ) : (
           stage
         )}
@@ -1304,7 +1338,7 @@ function Pane({
           </div>
         </div>
       ) : state.persona !== undefined && state.conversation === true ? (
-        <PersonaComposer chosen={chosen} go={go} onChoose={onChoose} state={state} />
+        <PersonaComposer key={state.id} state={state} />
       ) : null}
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
@@ -1326,15 +1360,7 @@ function Pane({
   );
 }
 
-function Header({ state, chosen }: { readonly state: HarnessState; readonly chosen: string }) {
-  // The persona after the Mate's name: the one chosen, or "No persona" once the offer was put off,
-  // so its way in stays where the offer said it would.
-  const persona =
-    state.persona === "chosen"
-      ? personaChoice(chosen).name
-      : state.persona === "dismissed"
-        ? "No persona"
-        : null;
+function Header({ state }: { readonly state: HarnessState }) {
   return (
     <WorkspacePageHeader className="relative bg-background">
       {/* The stage under it names the Mate until its conversation takes over (the product's header). */}
@@ -1347,13 +1373,6 @@ function Header({ state, chosen }: { readonly state: HarnessState; readonly chos
             tint={state.mate.tint}
           />
           <span className="font-semibold text-emphasis">{state.mate.name}</span>
-          {persona === null ? null : (
-            <MatePersonaPress
-              mateName={state.mate.name}
-              onOpen={() => undefined}
-              persona={persona}
-            />
-          )}
         </span>
       ) : null}
       {state.crew === true ? (
@@ -1377,7 +1396,6 @@ function Harness() {
     };
   }, []);
   const state = STATES.find((candidate) => candidate.id === current) ?? STATES[0]!;
-  const [chosen, setChosen] = useState(PERSONA_CHOICES[0]!.key);
   const play = () => {
     setCurrent("coming");
     window.setTimeout(() => setCurrent("signin"), 2300);
@@ -1413,8 +1431,8 @@ function Harness() {
         </aside>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
-        <Header chosen={chosen} state={state} />
-        <Pane chosen={chosen} go={setCurrent} onChoose={setChosen} state={state} />
+        <Header state={state} />
+        <Pane go={setCurrent} state={state} />
       </main>
     </div>
   );
