@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/select";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { variantsOf } from "../specimenLabel";
 
 type TriggerVariant = NonNullable<ComponentProps<typeof SelectTrigger>["variant"]>;
@@ -62,8 +62,8 @@ function RegionSelect({
 
 function SelectSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Trigger variants × sizes">
+    <Specimens>
+      <SpecimenBlock title="Trigger variants and sizes">
         <SpecimenMatrix
           rowProp="variant"
           rows={VARIANTS}
@@ -77,18 +77,18 @@ function SelectSpecimens() {
         />
       </SpecimenBlock>
       <SpecimenBlock title="States">
-        <SpecimenGrid>
+        <SpecimenGrid size="md">
           <Specimen label="disabled">
             <div className="w-40">
               <RegionSelect disabled />
             </div>
           </Specimen>
-          <Specimen label="long value in a 160px trigger">
+          <Specimen label='value="long"' note="A long value in a 160 px trigger">
             <div className="w-40">
               <RegionSelect value="long" />
             </div>
           </Specimen>
-          <Specimen label="placeholder (no value)">
+          <Specimen label='<SelectValue placeholder="Pick a region">' note="No value yet">
             <div className="w-40">
               <Select items={REGIONS}>
                 <SelectTrigger aria-label="Region">
@@ -107,14 +107,17 @@ function SelectSpecimens() {
               </Select>
             </div>
           </Specimen>
-          <Specimen label="<SelectButton> (the look, for a Menu or Combobox trigger)">
+          <Specimen
+            label="<SelectButton>"
+            note="The look alone, for a menu's or a combobox's trigger"
+          >
             <div className="w-40">
               <SelectButton>Prague</SelectButton>
             </div>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

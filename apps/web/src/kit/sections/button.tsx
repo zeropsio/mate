@@ -16,7 +16,7 @@ import { Group } from "~/components/ui/group";
 import { Spinner } from "~/components/ui/spinner";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
 const VARIANTS = variantsOf<ButtonVariant>({
@@ -56,16 +56,22 @@ const INLINE_TONES = ["default", "muted", "plain", "destructive", "picker"] as c
 
 function ButtonSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="One next step, the rest beside it">
-        <SpecimenGrid>
-          <Specimen label="a dialog's footer: secondary, then primary">
+    <Specimens>
+      <SpecimenBlock
+        note="One primary press for the next step; the rest stand beside it, quieter."
+        title="In use"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label='variant="secondary" · (defaults)' note="A dialog's footer">
             <div className="flex items-center gap-2">
               <Button variant="secondary">Cancel</Button>
               <Button>Create project</Button>
             </div>
           </Specimen>
-          <Specimen label="a dense row: ghost tool, sm secondary">
+          <Specimen
+            label='size="icon-sm" variant="ghost" · size="sm" variant="secondary"'
+            note="A dense row's tools"
+          >
             <div className="flex items-center gap-1">
               <Button aria-label="Add" size="icon-sm" variant="ghost">
                 <PlusIcon />
@@ -75,10 +81,13 @@ function ButtonSpecimens() {
               </Button>
             </div>
           </Specimen>
-          <Specimen label="a page's one hero action: lg">
+          <Specimen label='size="lg"' note="A page's one hero action">
             <Button size="lg">Set up HQ</Button>
           </Specimen>
-          <Specimen label="round: the composer's send, a pill under a name">
+          <Specimen
+            label='shape="round" size="icon-md" · shape="round" size="sm" variant="secondary"'
+            note="The composer's send, a pill under a name"
+          >
             <div className="flex items-center gap-2">
               <Button aria-label="Send" shape="round" size="icon-md">
                 <ArrowUpIcon />
@@ -89,7 +98,10 @@ function ButtonSpecimens() {
               </Button>
             </div>
           </Specimen>
-          <Specimen label="the menu's top row: sidebar, on the menu's ground">
+          <Specimen
+            label='size="icon-md" variant="sidebar"'
+            note="The menu's top row, on the menu's ground"
+          >
             <div className="flex items-center gap-1 rounded-card bg-sidebar p-2">
               <Button aria-label="Search" size="icon-md" variant="sidebar">
                 <SearchIcon />
@@ -99,7 +111,10 @@ function ButtonSpecimens() {
               </Button>
             </div>
           </Specimen>
-          <Specimen label="what deletes: destructive, beside its way out">
+          <Specimen
+            label='variant="secondary" · variant="destructive"'
+            note="What deletes, beside its way out"
+          >
             <div className="flex items-center gap-2">
               <Button variant="secondary">Keep it</Button>
               <Button variant="destructive">Delete Fen</Button>
@@ -107,9 +122,15 @@ function ButtonSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Composer, picture and count presses">
-        <SpecimenGrid>
-          <Specimen label="send: the composer's send, held, and its pills">
+      <SpecimenBlock
+        note="Presses drawn for one place: the composer, a picture's stage, a waiting count, a tile."
+        title="Special grounds"
+      >
+        <SpecimenGrid size="md">
+          <Specimen
+            label='variant="send" · shape="round"'
+            note="The composer's send, held, and its pills"
+          >
             <div className="flex items-center gap-2">
               <Button aria-label="Send" shape="round" size="icon-md" variant="send">
                 <ArrowUpIcon />
@@ -135,7 +156,7 @@ function ButtonSpecimens() {
               </Group>
             </div>
           </Specimen>
-          <Specimen label="scrim: on a picture's dark stage">
+          <Specimen label='variant="scrim" size="icon-md"' note="On a picture's dark stage">
             <div className="flex items-center gap-2 rounded-card bg-stage p-3">
               <Button aria-label="The picture before" size="icon-md" variant="scrim">
                 <ChevronLeftIcon />
@@ -148,7 +169,10 @@ function ButtonSpecimens() {
               </Button>
             </div>
           </Specimen>
-          <Specimen label="warning, round: a count that opens what waits (2xs on a tile, sm in a row)">
+          <Specimen
+            label='variant="warning" shape="round" size="2xs" · size="sm"'
+            note="A count that opens what waits: 2xs on a tile, sm in a row"
+          >
             <div className="flex items-center gap-3">
               <Button aria-label="3 waiting on you" shape="round" size="2xs" variant="warning">
                 3
@@ -170,7 +194,7 @@ function ButtonSpecimens() {
               </Button>
             </div>
           </Specimen>
-          <Specimen label="bare: a press whose picture or tile is its look">
+          <Specimen label='variant="bare"' note="A press whose picture or tile is its look">
             <div className="flex items-center gap-3">
               <Button aria-label="Open the screenshot" className="cursor-zoom-in" variant="bare">
                 <span className="flex h-20 w-32 items-center justify-center overflow-hidden rounded-control border border-border/60 bg-card text-muted-foreground">
@@ -186,7 +210,7 @@ function ButtonSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Variants × text sizes">
+      <SpecimenBlock title="Variants and text sizes">
         <SpecimenMatrix
           rowProp="variant"
           rows={MATRIX_VARIANTS}
@@ -199,7 +223,7 @@ function ButtonSpecimens() {
           )}
         />
       </SpecimenBlock>
-      <SpecimenBlock title="Variants × icon sizes">
+      <SpecimenBlock title="Variants and icon sizes">
         <SpecimenMatrix
           rowProp="variant"
           rows={MATRIX_VARIANTS}
@@ -212,11 +236,12 @@ function ButtonSpecimens() {
           )}
         />
       </SpecimenBlock>
-      <SpecimenBlock title="States, per variant (data-pressed is the hover look)">
+      <SpecimenBlock note="data-pressed is the hover look, held still." title="States">
         <SpecimenMatrix
           rowProp="variant"
           rows={MATRIX_VARIANTS}
           columnProp="state"
+          columnLabel={(state) => (state === "rest" ? "(at rest)" : state)}
           columns={["rest", "data-pressed", "disabled", "aria-disabled", "loading"] as const}
           render={(variant, state) => {
             if (state === "loading") {
@@ -240,34 +265,37 @@ function ButtonSpecimens() {
           }}
         />
       </SpecimenBlock>
-      <SpecimenBlock title="With icons, long text">
+      <SpecimenBlock title="Icons, long words and links">
         <SpecimenGrid>
-          <Specimen label="leading icon">
+          <Specimen label="<PlusIcon /> first" note="A leading icon">
             <Button>
               <PlusIcon />
               New project
             </Button>
           </Specimen>
-          <Specimen label="trailing icon">
+          <Specimen label='variant="secondary" · <ArrowRightIcon /> last' note="A trailing icon">
             <Button variant="secondary">
               Continue
               <ArrowRightIcon />
             </Button>
           </Specimen>
-          <Specimen label="long text in a 160px box">
+          <Specimen label='variant="secondary" in a 160 px box' note="Long words">
             <div className="flex w-40">
               <Button variant="secondary">Deploy the storefront to every preview</Button>
             </div>
           </Specimen>
-          <Specimen label='render={<a href="#button" />}'>
+          <Specimen
+            label='variant="link" render={<a href="#button" />}'
+            note="A link drawn as a press"
+          >
             <Button render={<a href="#button" />} variant="link">
               A link that looks like a button
             </Button>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="InlineButton, inside a sentence">
-        <SpecimenGrid>
+      <SpecimenBlock note="A press that sits inside a sentence." title="InlineButton">
+        <SpecimenGrid size="md">
           {INLINE_TONES.map((tone) => (
             <Specimen key={tone} label={`<InlineButton ${specimenLabel({ tone })}>`}>
               <span className="text-body">
@@ -277,7 +305,7 @@ function ButtonSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

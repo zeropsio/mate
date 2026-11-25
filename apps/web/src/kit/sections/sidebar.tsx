@@ -17,80 +17,88 @@ import {
 } from "~/components/ui/sidebar";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 
 const SIZES = ["sm", "default", "lg", "icon"] as const;
 const VARIANTS = ["default", "outline"] as const;
 
 function SidebarSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title='A whole menu: <Sidebar collapsible="none"> in a 320 × 420 box'>
-        <Specimen label='<SidebarProvider> · <Sidebar collapsible="none"> · <SidebarInset>'>
-          <div className="flex h-[26rem] w-[40rem] overflow-hidden rounded-card border">
-            <SidebarProvider className="min-h-0">
-              <Sidebar collapsible="none">
-                <SidebarHeader>
-                  <SidebarInput aria-label="Search the menu" placeholder="Search" />
-                </SidebarHeader>
-                <SidebarContent>
-                  <SidebarGroup>
+    <Specimens>
+      <SpecimenBlock note="A menu beside its page, in a 640 × 416 box." title="A whole menu">
+        <SpecimenGrid size="xl">
+          <Specimen
+            align="start"
+            label='<SidebarProvider> · <Sidebar collapsible="none"> · <SidebarInset>'
+            span="row"
+          >
+            <div className="flex h-[26rem] w-full max-w-[40rem] overflow-hidden rounded-card border">
+              <SidebarProvider className="min-h-0">
+                <Sidebar collapsible="none">
+                  <SidebarHeader>
+                    <SidebarInput aria-label="Search the menu" placeholder="Search" />
+                  </SidebarHeader>
+                  <SidebarContent>
+                    <SidebarGroup>
+                      <SidebarMenu>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton isActive>
+                            <HomeIcon />
+                            <span>Overview (isActive)</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton>
+                            <FolderIcon />
+                            <span>storefront</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuSubButton>preview</SidebarMenuSubButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuSubButton isActive>
+                            production (isActive)
+                          </SidebarMenuSubButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton disabled>
+                            <FolderIcon />
+                            <span>archived (disabled)</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                          <SidebarMenuButton>
+                            <FolderIcon />
+                            <span>a-project-with-a-name-long-enough-to-truncate-in-the-menu</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      </SidebarMenu>
+                    </SidebarGroup>
+                  </SidebarContent>
+                  <SidebarFooter>
                     <SidebarMenu>
                       <SidebarMenuItem>
-                        <SidebarMenuButton isActive>
-                          <HomeIcon />
-                          <span>Overview (isActive)</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
                         <SidebarMenuButton>
-                          <FolderIcon />
-                          <span>storefront</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuSubButton>preview</SidebarMenuSubButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuSubButton isActive>production (isActive)</SidebarMenuSubButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton disabled>
-                          <FolderIcon />
-                          <span>archived (disabled)</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton>
-                          <FolderIcon />
-                          <span>a-project-with-a-name-long-enough-to-truncate-in-the-menu</span>
+                          <SettingsIcon />
+                          <span>Settings</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     </SidebarMenu>
-                  </SidebarGroup>
-                </SidebarContent>
-                <SidebarFooter>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton>
-                        <SettingsIcon />
-                        <span>Settings</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarFooter>
-              </Sidebar>
-              <SidebarInset>
-                <div className="flex items-center gap-2 p-3 text-body">
-                  <SidebarTrigger />
-                  <span>SidebarInset: the page beside the menu</span>
-                </div>
-              </SidebarInset>
-            </SidebarProvider>
-          </div>
-        </Specimen>
+                  </SidebarFooter>
+                </Sidebar>
+                <SidebarInset>
+                  <div className="flex items-center gap-2 p-3 text-body">
+                    <SidebarTrigger />
+                    <span>SidebarInset: the page beside the menu</span>
+                  </div>
+                </SidebarInset>
+              </SidebarProvider>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="SidebarMenuButton variants × sizes">
+      <SpecimenBlock title="Menu button variants and sizes">
         <SidebarProvider className="min-h-0">
           <SpecimenMatrix
             rowProp="variant"
@@ -114,20 +122,22 @@ function SidebarSpecimens() {
           />
         </SidebarProvider>
       </SpecimenBlock>
-      <SpecimenBlock title="SidebarMenuSubButton sizes">
+      <SpecimenBlock title="Sub-button sizes">
         <SidebarProvider className="min-h-0">
-          <SpecimenGrid>
-            {(["sm", "md"] as const).map((size) => (
-              <Specimen key={size} label={`size="${size}"`}>
-                <div className="w-48">
-                  <SidebarMenuSubButton size={size}>preview</SidebarMenuSubButton>
-                </div>
-              </Specimen>
-            ))}
-          </SpecimenGrid>
+          <div className="min-w-0 flex-1">
+            <SpecimenGrid size="md">
+              {(["sm", "md"] as const).map((size) => (
+                <Specimen key={size} label={`<SidebarMenuSubButton size="${size}">`}>
+                  <div className="w-48">
+                    <SidebarMenuSubButton size={size}>preview</SidebarMenuSubButton>
+                  </div>
+                </Specimen>
+              ))}
+            </SpecimenGrid>
+          </div>
         </SidebarProvider>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

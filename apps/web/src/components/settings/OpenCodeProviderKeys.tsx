@@ -27,6 +27,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Text } from "~/components/ui/text";
 
 /**
  * How OpenCode runs, each one line: its free models, chosen or not, and the model providers it
@@ -157,11 +158,11 @@ function OpenCodeFreeModelsRow({
           </Button>
         )}
       </div>
-      <p className="text-caption leading-4 text-muted-foreground">
+      <Text render={<p />} variant="note">
         {shownChosen
           ? `New conversations start on ${modelName}. Nothing is billed.`
           : `Runs OpenCode on its free models, ${modelName} first. Nothing is billed.`}
-      </p>
+      </Text>
       {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
     </div>
   );
@@ -297,9 +298,9 @@ export function OpenCodeProviderKeyRow({
         )}
       </div>
       {shownSet ? null : (
-        <p className="text-caption leading-4 text-muted-foreground">
+        <Text render={<p />} variant="note">
           Runs OpenCode on {provider.models}, billed to your key.
-        </p>
+        </Text>
       )}
       {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
     </div>

@@ -67,6 +67,7 @@ import {
   getProviderVersionLabel,
   type ProviderStatusKey,
 } from "./providerStatus";
+import { Text } from "~/components/ui/text";
 
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -277,9 +278,9 @@ function ProviderEnvironmentSection(props: {
         </Button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
-        </p>
+        </Text>
       ) : (
         <div className="overflow-hidden rounded-control border border-border/70">
           <Table>
@@ -357,9 +358,9 @@ function ProviderEnvironmentSection(props: {
           </Table>
         </div>
       )}
-      <span className="text-caption text-muted-foreground">
+      <Text variant="note">
         Sensitive values are stored separately and are not returned to the app after saving.
-      </span>
+      </Text>
     </div>
   );
 }
@@ -601,7 +602,9 @@ export function ProviderInstanceCard({
   const titleHeadNode = (
     <>
       {titleIconNode}
-      <h3 className="truncate text-body font-medium text-foreground">{displayName}</h3>
+      <Text render={<h3 />} truncate variant="heading">
+        {displayName}
+      </Text>
       {String(instanceId) !== String(instance.driver) ? (
         <code className="truncate rounded-mark bg-muted/60 px-1 py-0.5 text-caption text-muted-foreground">
           {instanceId}
@@ -668,7 +671,9 @@ export function ProviderInstanceCard({
   );
 
   const versionCodeNode = versionLabel ? (
-    <code className="text-caption text-muted-foreground">{versionLabel}</code>
+    <Text render={<code />} variant="meta">
+      {versionLabel}
+    </Text>
   ) : null;
 
   if (mode === "list") {
@@ -815,10 +820,14 @@ export function ProviderInstanceCard({
             {titleTailNode}
           </div>
           {showEditorStatus ? (
-            <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-caption text-muted-foreground">
+            <Text
+              className="flex min-w-0 flex-wrap items-center gap-x-1.5"
+              render={<p />}
+              variant="note"
+            >
               <span>{summary.headline}</span>
               {summary.detail ? <span>· {summary.detail}</span> : null}
-            </p>
+            </Text>
           ) : null}
         </div>
       </div>
@@ -888,9 +897,9 @@ export function ProviderInstanceCard({
                 placeholder={driverOption?.label ?? "Instance label"}
                 spellCheck={false}
               />
-              <span className="mt-1 block text-caption text-muted-foreground">
+              <Text className="mt-1 block" variant="note">
                 Optional label shown in the provider list.
-              </span>
+              </Text>
             </label>
           </div>
 
@@ -923,12 +932,12 @@ export function ProviderInstanceCard({
 
           {driverOption === undefined ? (
             <div>
-              <p className="text-caption text-muted-foreground">
+              <Text render={<p />} variant="note">
                 This instance uses a driver (
                 <code className="text-foreground">{String(instance.driver)}</code>) that is not
                 shipped with the current build. Configuration values are preserved but cannot be
                 edited here.
-              </p>
+              </Text>
             </div>
           ) : null}
         </div>

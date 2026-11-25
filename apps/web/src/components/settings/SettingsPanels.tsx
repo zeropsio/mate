@@ -152,6 +152,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { Text } from "~/components/ui/text";
 
 const WORKTREE_SUBMODULES_OPTIONS = ["recursive", "top-level", "none"] as const;
 // The select's value for an unset setting, which leaves the choice to t3.json.
@@ -739,7 +740,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase Git fetch interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-caption text-muted-foreground">seconds</span>
+                <Text variant="note">seconds</Text>
               </div>
             </div>
 
@@ -777,7 +778,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase provider health interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-caption text-muted-foreground">seconds</span>
+                <Text variant="note">seconds</Text>
               </div>
             </div>
 
@@ -815,7 +816,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase active host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-caption text-muted-foreground">seconds</span>
+                <Text variant="note">seconds</Text>
               </div>
             </div>
 
@@ -853,7 +854,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase idle host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-caption text-muted-foreground">seconds</span>
+                <Text variant="note">seconds</Text>
               </div>
             </div>
 
@@ -1368,14 +1369,14 @@ function TypographySection() {
     <SettingsSection
       title="Typography"
       headerAction={
-        <label className="flex cursor-pointer items-center gap-2 text-caption font-medium text-muted-foreground">
+        <Text className="flex cursor-pointer items-center gap-2" render={<label />} variant="label">
           Advanced
           <Switch
             checked={advanced}
             onCheckedChange={(checked) => setAdvanced(Boolean(checked))}
             aria-label="Show advanced typography settings"
           />
-        </label>
+        </Text>
       }
     >
       {advanced ? <FontSettingsGroup /> : <SimpleFontRows />}
@@ -2418,9 +2419,7 @@ export function GeneralSettingsPanel() {
           }
           control={
             !hasTextGenerationProvider ? (
-              <span className="text-body text-muted-foreground">
-                No text generation providers available.
-              </span>
+              <Text variant="description">No text generation providers available.</Text>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-1.5">
                 <ProviderModelPicker
@@ -2604,9 +2603,9 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
-      <p className="text-caption text-muted-foreground max-sm:px-3">
+      <Text className="max-sm:px-3" render={<p />} variant="note">
         Only Mates the app is connected to.
-      </p>
+      </Text>
       {archivedGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}

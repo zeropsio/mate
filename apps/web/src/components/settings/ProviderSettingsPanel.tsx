@@ -110,6 +110,7 @@ import {
 import { Loading } from "../ui/loading";
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
+import { Text } from "~/components/ui/text";
 
 /** An environment's connection as its tab's dot: work under way while it connects. */
 const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
@@ -326,9 +327,9 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
             })}
           </TabStrip>
         </div>
-        <p className="px-3 pt-2 text-caption text-muted-foreground sm:px-4">
+        <Text className="px-3 pt-2 sm:px-4" render={<p />} variant="note">
           Only Mates the app is connected to.
-        </p>
+        </Text>
       </>
     ) : null;
 
@@ -924,9 +925,9 @@ export function EnvironmentProviderSettings({
         headerAction={
           <div className="flex min-w-0 items-center gap-2">
             {readOnly ? (
-              <span className="min-w-0 truncate text-caption text-muted-foreground">
+              <Text className="min-w-0" truncate variant="meta">
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
-              </span>
+              </Text>
             ) : (
               <>
                 <Tooltip>
@@ -1026,13 +1027,13 @@ export function EnvironmentProviderSettings({
               {selectedRow ? (
                 renderProviderInstance(selectedRow, "editor")
               ) : (
-                <div className="p-6 text-body text-muted-foreground">
+                <Text className="p-6" render={<div />} variant="description">
                   {editorEmpty === "missing"
                     ? "This provider instance is no longer available on this device."
                     : editorEmpty === "none"
                       ? "No providers configured."
                       : null}
-                </div>
+                </Text>
               )}
             </div>
           </div>
@@ -1119,7 +1120,7 @@ export function EnvironmentProviderSettings({
                           <NumberFieldIncrement aria-label="Increase provider health check interval" />
                         </NumberFieldGroup>
                       </NumberField>
-                      <span className="text-caption text-muted-foreground">seconds</span>
+                      <Text variant="note">seconds</Text>
                     </div>
                   }
                 />

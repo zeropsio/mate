@@ -16,7 +16,7 @@ import {
 import { Input } from "~/components/ui/input";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 const LONG = Array.from(
   { length: 30 },
@@ -25,6 +25,7 @@ const LONG = Array.from(
 
 function Opener({
   label,
+  note,
   footer = "default",
   showCloseButton = true,
   long = false,
@@ -32,12 +33,13 @@ function Opener({
 }: {
   readonly size?: "default" | "sm";
   readonly label: string;
+  readonly note: string;
   readonly footer?: "default" | "bare";
   readonly showCloseButton?: boolean;
   readonly long?: boolean;
 }) {
   return (
-    <Specimen label={label}>
+    <Specimen label={label} note={note}>
       <Dialog>
         <DialogTrigger render={<Button variant="secondary" />}>Open</DialogTrigger>
         <DialogPopup showCloseButton={showCloseButton} size={size}>
@@ -86,7 +88,11 @@ const PICTURE_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(
 function MediaOpener() {
   const [open, setOpen] = useState(false);
   return (
-    <Specimen label="<DialogMediaPopup> (ExpandedImageDialog)">
+    <Specimen
+      label="<DialogMediaPopup>"
+      note="A conversation's picture, opened"
+      source="apps/web/src/components/chat/ExpandedImageDialog.tsx"
+    >
       <Button onClick={() => setOpen(true)} variant="secondary">
         Open the picture
       </Button>
@@ -108,7 +114,7 @@ function SteppingOpener() {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   return (
-    <Specimen label="<DialogPopup> whose next step says less">
+    <Specimen label="<DialogPopup>" note="A next step that says less: it keeps its height">
       <Dialog
         onOpenChange={(next) => {
           setOpen(next);
@@ -157,14 +163,30 @@ export default defineKitSection({
   kind: "Overlays",
   source: "apps/web/src/components/ui/dialog.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Opener label='<DialogPopup> · <DialogFooter variant="default">' />
-      <Opener footer="bare" label='<DialogFooter variant="bare">' />
-      <Opener label="<DialogPopup showCloseButton={false}>" showCloseButton={false} />
-      <Opener label="long body in <DialogPanel>" long />
-      <Opener label='<DialogPopup size="sm">' size="sm" />
-      <SteppingOpener />
-      <MediaOpener />
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="Each press opens the dialog it names." title="Footers and closing">
+        <SpecimenGrid size="md">
+          <Opener label='<DialogFooter variant="default">' note="A footer on its own band" />
+          <Opener
+            footer="bare"
+            label='<DialogFooter variant="bare">'
+            note="A footer on the body's ground"
+          />
+          <Opener
+            label="<DialogPopup showCloseButton={false}>"
+            note="Closed only by its footer"
+            showCloseButton={false}
+          />
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Sizes and bodies">
+        <SpecimenGrid size="md">
+          <Opener label='<DialogPopup size="sm">' note="A small dialog" size="sm" />
+          <Opener label="<DialogPanel>" long note="A long body that scrolls inside its panel" />
+          <SteppingOpener />
+          <MediaOpener />
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

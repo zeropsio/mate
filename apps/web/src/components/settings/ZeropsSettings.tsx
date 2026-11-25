@@ -27,6 +27,7 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsSettings() {
   const {
@@ -132,9 +133,9 @@ export function ZeropsSettings() {
                     <SelectItem key={organization.membershipId} value={organization.membershipId}>
                       <span className="flex min-w-0 items-baseline justify-between gap-4">
                         <span className="truncate">{organization.name}</span>
-                        <span className="shrink-0 text-caption text-muted-foreground">
+                        <Text className="shrink-0" variant="meta">
                           {zeropsOrganizationRoleLabel(organization)}
-                        </span>
+                        </Text>
                       </span>
                     </SelectItem>
                   ))}
@@ -211,12 +212,12 @@ export function ZeropsSettings() {
           <div className="px-3 sm:px-4">
             <ZeropsHqCard />
           </div>
-          <p className="px-3 text-caption text-muted-foreground sm:px-4">
+          <Text className="px-3 sm:px-4" render={<p />} variant="note">
             Automated Mates:{" "}
             <InlineButton render={<Link to="/settings/automation" />}>
               Settings › Automation
             </InlineButton>
-          </p>
+          </Text>
         </SettingsSection>
       ) : null}
     </SettingsPageContainer>

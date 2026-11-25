@@ -27,6 +27,7 @@ import {
   SlackMark,
 } from "./IntegrationRow";
 import { TaskLimitsSettings, TaskSourcesSettings } from "./TaskSourcesSettings";
+import { Text } from "~/components/ui/text";
 
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius");
 const ADMINS_ONLY = "Only the organization's Owner and Admins see and change this.";
@@ -46,9 +47,9 @@ export function AutomationSettings({
     <SettingsPageContainer>
       <SettingsSection title="Automation" id="automation">
         {activeOrganization === null ? (
-          <p className="px-3 text-body text-muted-foreground sm:px-4">
+          <Text className="px-3 sm:px-4" render={<p />} variant="description">
             Choose an organization in Settings › Zerops to set up automated Mates.
-          </p>
+          </Text>
         ) : admin ? (
           <AdminParts returned={returned} returnedApp={returnedApp} />
         ) : (

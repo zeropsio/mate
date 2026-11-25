@@ -22,6 +22,7 @@ import { WaitLine } from "../zerops/WaitLine";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { sectionState, taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
+import { Text } from "~/components/ui/text";
 
 /**
  * The room a part's final shape takes (`template`, drawn unseen), held under what it says while it
@@ -103,12 +104,9 @@ export function PublicChoice({
         <Label {...(id === undefined ? {} : { htmlFor: id })}>
           Take issues from a public repository
         </Label>
-        <p
-          className="text-caption text-muted-foreground"
-          {...(id === undefined ? {} : { id: `${id}-why` })}
-        >
+        <Text render={<p />} variant="note" {...(id === undefined ? {} : { id: `${id}-why` })}>
           Anyone can write a public repository's issues, and their words reach the agent.
-        </p>
+        </Text>
       </div>
     </div>
   );
@@ -188,20 +186,22 @@ export function NotKnown({
         {quiet ? (
           <span />
         ) : (
-          <p className="text-caption text-muted-foreground" role="alert">
+          <Text render={<p />} variant="note" role="alert">
             {couldntRead(what, setting.words)}
-          </p>
+          </Text>
         )}
         <Button onClick={onAgain} size="sm" variant="secondary">
           Try again
         </Button>
       </div>
     ) : quiet ? null : state === "withheld" ? (
-      <p className="text-caption text-muted-foreground">{WITHHELD}</p>
+      <Text render={<p />} variant="note">
+        {WITHHELD}
+      </Text>
     ) : (
-      <p className="text-caption text-muted-foreground">
+      <Text render={<p />} variant="note">
         <WaitLine inline text="Reading…" />
-      </p>
+      </Text>
     );
   return template === undefined ? (
     <IntakeRoom>{said}</IntakeRoom>
@@ -218,9 +218,9 @@ export function Problem({
 }) {
   const problem = taskSourceProblem(read.action);
   return problem === null ? null : (
-    <p className="text-caption text-destructive-foreground" role="alert">
+    <Text render={<p />} variant="error" role="alert">
       {problem}
-    </p>
+    </Text>
   );
 }
 

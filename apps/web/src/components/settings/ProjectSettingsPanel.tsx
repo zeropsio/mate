@@ -89,6 +89,7 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useNavigateToMainApp } from "../sidebar/mainAppLocation";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { projectSettingsState } from "./ProjectSettingsPanel.logic";
+import { Text } from "~/components/ui/text";
 
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -260,11 +261,15 @@ function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   }
   if (!selected) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-body text-muted-foreground">
+      <Text
+        className="flex flex-1 items-center justify-center p-8"
+        render={<div />}
+        variant="description"
+      >
         {state === "no-projects"
           ? "Add a project from the sidebar to configure it here."
           : "This project is no longer available."}
-      </div>
+      </Text>
     );
   }
   return <ProjectDetail key={selected.projectKey} group={selected} />;
@@ -582,9 +587,14 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       size="sm"
                       variant="ghost-muted"
                     >
-                      <code className="min-w-0 flex-1 truncate text-left font-mono">
+                      <Text
+                        className="min-w-0 flex-1 text-left"
+                        render={<code />}
+                        truncate
+                        variant="code"
+                      >
                         {selectedCheckout.workspaceRoot}
-                      </code>
+                      </Text>
                       <CopyIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" />
                     </Button>
                   }
@@ -641,10 +651,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           />
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
-              <h3 className="text-emphasis font-semibold text-foreground">Actions</h3>
-              <p className="text-pretty text-body text-muted-foreground">
+              <Text render={<h3 />} variant="headline">
+                Actions
+              </Text>
+              <Text render={<p />} variant="description">
                 Saved and run only in {selectedCheckoutLabel}.
-              </p>
+              </Text>
             </div>
             <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:shrink-0 sm:justify-end">
               {importableScripts.length > 0 ? (
@@ -660,9 +672,9 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   <MenuPopup align="end" className="w-72">
                     <MenuGroup>
                       <MenuGroupLabel>Import from t3.json</MenuGroupLabel>
-                      <p className="px-2 pb-2 text-pretty text-body text-muted-foreground">
+                      <Text className="px-2 pb-2" render={<p />} variant="description">
                         Add actions declared by this checkout without editing them first.
-                      </p>
+                      </Text>
                     </MenuGroup>
                     <MenuSeparator />
                     {importableScripts.map((fileScript) => (
@@ -696,9 +708,9 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             </div>
           </div>
           {scripts.length === 0 ? (
-            <p className="px-3 py-2 text-body text-muted-foreground sm:px-4">
+            <Text className="px-3 py-2 sm:px-4" render={<p />} variant="description">
               No actions configured for this checkout.
-            </p>
+            </Text>
           ) : (
             scripts.map((script) => {
               const shortcutLabel = shortcutLabelForCommand(
@@ -728,9 +740,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   }
                   control={
                     <>
-                      {shortcutLabel ? (
-                        <span className="text-caption text-muted-foreground">{shortcutLabel}</span>
-                      ) : null}
+                      {shortcutLabel ? <Text variant="meta">{shortcutLabel}</Text> : null}
                       {/* Shown while the row is hovered or holds focus. */}
                       <span className="flex shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                         <Button

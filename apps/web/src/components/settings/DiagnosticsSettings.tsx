@@ -47,6 +47,7 @@ import { Loading } from "../ui/loading";
 import { ResourceTelemetryDiagnostics } from "./ResourceTelemetryDiagnostics";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { Text } from "~/components/ui/text";
 
 const NUMBER_FORMAT = new Intl.NumberFormat();
 
@@ -427,9 +428,9 @@ function ProcessDiagnosticsTable({
           <tbody className="divide-y divide-border/50">
             {visibleProcesses.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-4 text-caption text-muted-foreground sm:px-5">
+                <Text className="px-4 py-4 sm:px-5" render={<td colSpan={7} />} variant="note">
                   {emptyLabel ?? "No live descendant processes found."}
-                </td>
+                </Text>
               </tr>
             ) : null}
             {visibleProcesses.map((process) => (
@@ -654,9 +655,9 @@ function ProcessResourceHistoryTable({
           <tbody className="divide-y divide-border/50">
             {processes.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-4 text-caption text-muted-foreground sm:px-5">
+                <Text className="px-4 py-4 sm:px-5" render={<td colSpan={8} />} variant="note">
                   {emptyLabel}
-                </td>
+                </Text>
               </tr>
             ) : null}
             {processes.map((process) => (

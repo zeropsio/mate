@@ -61,6 +61,7 @@ import {
 import { IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
+import { Text } from "~/components/ui/text";
 
 interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
@@ -338,7 +339,9 @@ export function GithubAppView({
             </div>
           )}
           {apps.length > 0 && !manage ? (
-            <p className="text-caption text-muted-foreground">{GITHUB_WHO_CAN}</p>
+            <Text render={<p />} variant="note">
+              {GITHUB_WHO_CAN}
+            </Text>
           ) : null}
         </>
       ) : null}
@@ -418,7 +421,7 @@ function BotGroup({
   return (
     <li className="grid gap-1.5" data-zerops-surface="settings-github-app">
       <div className="flex min-h-7 items-center gap-2">
-        <p className="min-w-0 flex-1 text-caption text-muted-foreground">
+        <Text className="min-w-0 flex-1" render={<p />} variant="note">
           <span className="font-medium text-foreground">{app.name}</span> · {app.botLogin}
           {app.personal ? (
             <>
@@ -429,11 +432,11 @@ function BotGroup({
             </>
           ) : null}
           {setUp === null ? null : ` · ${setUp}`}
-        </p>
+        </Text>
         {underWay === null ? null : (
-          <span className="shrink-0 text-caption text-muted-foreground" role="status">
+          <Text className="shrink-0" variant="meta" role="status">
             {underWay}
-          </span>
+          </Text>
         )}
         {manage ? (
           // The dots end where the rows' links do: the press's own inset is taken back.
@@ -487,9 +490,9 @@ function BotGroup({
                 key={installation.id}
               >
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <Text className="max-sm:min-w-0 max-sm:flex-1" variant="heading">
                   {installation.account ?? `Installation ${String(installation.id)}`}
-                </span>
+                </Text>
                 <span className="min-w-0 flex-1 text-muted-foreground max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
                   {installation.line}
                   {by === undefined ? null : ` · added by ${by}`}
@@ -518,9 +521,9 @@ function BotGroup({
             >
               <span className="flex items-center gap-2.5 max-sm:flex-wrap">
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <Text className="max-sm:min-w-0 max-sm:flex-1" variant="heading">
                   {installation.account}
-                </span>
+                </Text>
                 <span className="min-w-0 flex-1 text-status-attention-text max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
                   {manage ? "Waits for your OK" : "Waits for an Owner's or Admin's OK"}
                 </span>
@@ -559,7 +562,7 @@ function BotGroup({
         </ul>
       )}
       {app.privateTo === null ? null : (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           This bot can only be added to {app.privateTo.owner}. To add other GitHub accounts,{" "}
           {app.privateTo.settings ? (
             <>
@@ -571,7 +574,7 @@ function BotGroup({
               <OutLink href={app.privateTo.url}>the bot on GitHub</OutLink>.
             </>
           )}
-        </p>
+        </Text>
       )}
       {removing ? (
         <div
@@ -579,18 +582,18 @@ function BotGroup({
           data-zerops-surface="settings-github-remove"
           role="group"
         >
-          <p className="text-body font-medium text-foreground">
+          <Text render={<p />} variant="heading">
             Remove {app.name} from {organization ?? "this organization"}?
-          </p>
+          </Text>
           {app.uses.length === 0 ? (
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               No repository in Mate is connected through it.
-            </p>
+            </Text>
           ) : (
             <>
-              <p className="text-caption text-muted-foreground">
+              <Text render={<p />} variant="note">
                 These stop until they're connected through another bot or a token:
-              </p>
+              </Text>
               <ul className="grid gap-1 text-caption">
                 {app.uses.map((use) => (
                   <li
@@ -600,15 +603,15 @@ function BotGroup({
                     {use.application === null || use.repo === null
                       ? "A project you can't open"
                       : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
-                    → <span className="font-mono">{use.fullName}</span>
+                    → <Text variant="code">{use.fullName}</Text>
                   </li>
                 ))}
               </ul>
             </>
           )}
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             The bot stays on GitHub: delete it in its settings there.
-          </p>
+          </Text>
           <div className="flex gap-2">
             <Button disabled={busy} onClick={onRemove} size="sm" variant="destructive">
               Remove bot
