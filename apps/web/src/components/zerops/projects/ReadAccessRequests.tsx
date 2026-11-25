@@ -23,6 +23,7 @@ import { Button } from "../../ui/button";
 import { environmentTitle } from "../place/place.logic";
 import { SectionLabel } from "../system/SectionLabel";
 import { CELL_WORDS, type AccessTableView } from "./accessTable.logic";
+import { Failure } from "~/components/ui/failure";
 
 export function ReadAccessRequests({
   view,
@@ -227,9 +228,7 @@ function ReadAccessSection({
     <>
       <ul className="flex flex-col gap-2">{lines}</ul>
       {said.map((line) => (
-        <p className="ov-sec-empty" data-tone="failed" key={line} role="alert">
-          {line}
-        </p>
+        <Failure cause={line} key={line} role="alert" size="line" />
       ))}
     </>
   );

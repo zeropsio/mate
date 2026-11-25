@@ -72,6 +72,7 @@ import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
 import { spendProjectIds } from "./projectSpend.logic";
 import { ProjectCreditLine } from "./ProjectCreditLine";
+import { Failure } from "~/components/ui/failure";
 
 const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -1101,9 +1102,7 @@ export function CardMateLiftActions({
   const label = lift.kind === "plan" ? `Tell ${name} what to change` : `Answer ${name}`;
   const said =
     error === undefined ? null : (
-      <span className="ov-act-error" role="status">
-        {error}
-      </span>
+      <Failure className="basis-full" cause={error} role="status" size="line" />
     );
   if (replying)
     return (

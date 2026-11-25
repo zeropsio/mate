@@ -17,6 +17,7 @@ import { toastManager } from "~/lib/toasts";
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { Failure } from "../ui/failure";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PageHeader } from "../ui/page-header";
@@ -184,9 +185,7 @@ export function TeamInviteView({
               {`Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`}
             </span>
           ) : (
-            <p className="tm-trouble" role="alert">
-              {addressTrouble}
-            </p>
+            <Failure cause={addressTrouble} role="alert" size="line" />
           )}
         </div>
         <div className="tm-names">
@@ -289,7 +288,9 @@ export function TeamInviteView({
         )}
       </section>
       <div className="tm-actions">
-        {trouble === null ? null : <p role="alert">{trouble}</p>}
+        {trouble === null ? null : (
+          <Failure className="me-auto" cause={trouble} role="alert" size="line" />
+        )}
         <Button aria-busy={sending || undefined} disabled={sending} type="submit">
           {sending ? "Inviting…" : "Invite"}
         </Button>

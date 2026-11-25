@@ -37,6 +37,7 @@ import {
 } from "./teamSettings.logic";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
+import { Failure } from "../ui/failure";
 
 /** The name an invitation was typed with, as Zerops takes it: first word, then the rest. */
 const typedNames = (person: TeamPerson) => {
@@ -298,11 +299,7 @@ function PersonCard({
       </span>
     ) : offer === null && card.trouble === null && !card.busy ? null : (
       <>
-        {card.trouble === null ? null : (
-          <span className="tm-card-trouble" role="alert">
-            {card.trouble}
-          </span>
-        )}
+        {card.trouble === null ? null : <Failure cause={card.trouble} role="alert" size="line" />}
         {offer === null && !card.busy ? null : (
           <InlineButton
             aria-busy={card.busy || undefined}

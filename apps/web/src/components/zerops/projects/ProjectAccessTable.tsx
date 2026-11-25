@@ -59,6 +59,7 @@ import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectA
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
+import { Failure } from "~/components/ui/failure";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -185,9 +186,7 @@ export function ProjectAccessTable({
         </p>
       ) : null}
       {said.map(({ key, line }) => (
-        <p className="ov-sec-empty" data-tone="failed" key={key} role="alert">
-          {line}
-        </p>
+        <Failure cause={line} key={key} role="alert" size="line" />
       ))}
       {addable === null ? null : (
         <span className="-ms-2.5 flex items-center gap-1">

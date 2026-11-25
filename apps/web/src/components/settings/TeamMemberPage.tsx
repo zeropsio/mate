@@ -194,9 +194,7 @@ export function TeamMemberView({
         />
       ))}
       {unnamed && (roleEditable || accessEditable) ? (
-        <p className="tm-trouble" data-part="unnamed">
-          {NO_ACCOUNT_LINE}
-        </p>
+        <Failure cause={NO_ACCOUNT_LINE} data-part="unnamed" size="line" />
       ) : null}
 
       <section aria-label="Role" className="tm-section">
@@ -209,7 +207,9 @@ export function TeamMemberView({
         />
         {roleEditable ? (
           <div className="tm-actions">
-            {role.trouble === null ? null : <p role="alert">{role.trouble}</p>}
+            {role.trouble === null ? null : (
+              <Failure className="me-auto" cause={role.trouble} role="alert" size="line" />
+            )}
             <Button
               aria-busy={role.pending || undefined}
               disabled={
@@ -259,7 +259,9 @@ export function TeamMemberView({
         ) : null}
         {accessEditable ? (
           <div className="tm-actions">
-            {access.trouble === null ? null : <p role="alert">{access.trouble}</p>}
+            {access.trouble === null ? null : (
+              <Failure className="me-auto" cause={access.trouble} role="alert" size="line" />
+            )}
             <Button
               aria-busy={access.pending || undefined}
               disabled={unnamed || access.pending || changes.length === 0}
@@ -302,9 +304,7 @@ export function TeamMemberView({
               </Button>
             </div>
             {removal.trouble === null ? null : (
-              <p className="tm-trouble" role="alert">
-                {removal.trouble}
-              </p>
+              <Failure cause={removal.trouble} role="alert" size="line" />
             )}
           </section>
         </>

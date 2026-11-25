@@ -64,6 +64,7 @@ import {
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
+import { Failure } from "~/components/ui/failure";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -169,9 +170,7 @@ export function ProjectAccessChips({
         </ul>
       )}
       {said.map(({ key, line }) => (
-        <p className="ov-sec-empty" data-tone="failed" key={key} role="alert">
-          {line}
-        </p>
+        <Failure cause={line} key={key} role="alert" size="line" />
       ))}
       {/* Adding people is a quiet tool under the people, never a tile as big as one of them. */}
       {addable === null ? null : (

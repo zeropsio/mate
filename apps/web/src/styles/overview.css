@@ -551,13 +551,6 @@
   margin-top: 0;
 }
 
-.ov-act-error {
-  flex-basis: 100%;
-  color: var(--zerops-status-failed-text);
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-
 /* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
    have there, a ⋮ for whoever may change it; *Add access* a quiet button under them. */
 .ov-access {
@@ -1069,11 +1062,6 @@ a.ov-chip-who:focus-visible {
   white-space: nowrap;
 }
 
-.tm-card-trouble {
-  color: var(--destructive);
-  text-wrap: pretty;
-}
-
 .tm-card[data-pending] .tm-card-face {
   opacity: 0.55;
 }
@@ -1443,17 +1431,6 @@ a.ov-chip-who:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.tm-actions > [role="alert"],
-.tm-trouble {
-  color: var(--zerops-status-failed-text);
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-
-.tm-actions > [role="alert"] {
-  margin-inline-end: auto;
 }
 
 .tm-role {
@@ -2091,10 +2068,6 @@ label.tm-advanced-row:not([data-disabled]) {
 /* Its place held, empty, until it is said. */
 .ov-sec-empty:empty {
   min-height: 18px;
-}
-
-.ov-sec-empty[data-tone="failed"] {
-  color: var(--zerops-status-failed-text);
 }
 
 /* A Mate's parts on its name's line, between its name and its time: they wrap onto further lines

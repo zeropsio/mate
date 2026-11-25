@@ -15,6 +15,7 @@ import { useState } from "react";
 import { InlineButton } from "../ui/button";
 import { ZeropsAnswerDetails } from "../zerops/ZeropsAnswerDetails";
 import { ZeropsOperationEnd } from "../zerops/ZeropsOperationEnd";
+import { Failure } from "../ui/failure";
 
 const messageOf = (cause: unknown) =>
   cause instanceof Error ? cause.message : "HQ didn't take it.";
@@ -68,9 +69,11 @@ export function AccessOperationRow({
       data-part="access-operation"
       data-state={operation.state}
     >
-      <span className={operation.state === "failed" ? "tm-card-trouble" : undefined} role="alert">
-        {said}
-      </span>
+      {operation.state === "failed" ? (
+        <Failure cause={said} role="alert" size="line" />
+      ) : (
+        <span role="alert">{said}</span>
+      )}
       {operation.state === "waiting" && operation.mine && onContinue !== undefined ? (
         <InlineButton
           aria-busy={pending === "continue" || undefined}
@@ -103,7 +106,7 @@ export function AccessOperationRow({
       {typeof operation.details === "string" ? (
         <ZeropsAnswerDetails text={operation.details} />
       ) : null}
-      {trouble === null ? null : <span className="tm-card-trouble">{trouble}</span>}
+      {trouble === null ? null : <Failure cause={trouble} size="line" />}
     </span>
   );
 }

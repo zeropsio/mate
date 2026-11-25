@@ -144,12 +144,15 @@ export function MemberTakeOverView({
             </ul>
           )}
           {list.list.otherTokens > 0 ? (
-            <p className="tm-trouble" role="status">
-              {list.list.otherTokens === 1
-                ? "They made 1 other token HQ does not use"
-                : `They made ${list.list.otherTokens} other tokens HQ does not use`}
-              ; Zerops refuses the removal until it is deleted in Zerops.
-            </p>
+            <Failure
+              cause={`${
+                list.list.otherTokens === 1
+                  ? "They made 1 other token HQ does not use"
+                  : `They made ${list.list.otherTokens} other tokens HQ does not use`
+              }; Zerops refuses the removal until it is deleted in Zerops.`}
+              role="status"
+              size="line"
+            />
           ) : null}
         </>
       ) : list.state === "failed" ? (
@@ -165,14 +168,13 @@ export function MemberTakeOverView({
         <Loading count={2} label="Their tokens" shape="rows" />
       )}
       {action.kind === "failed" || action.kind === "unresolved" ? (
-        <p className="tm-trouble" role="alert">
-          {action.words}
-        </p>
+        <Failure cause={action.words} role="alert" size="line" />
       ) : last?.answer?.replaced === true && !last.answer.oldDeleted ? (
-        <p className="tm-trouble" role="status">
-          Replaced, but Zerops kept the old token ({last.answer.reason ?? "refused"}): it stays
-          listed to delete.
-        </p>
+        <Failure
+          cause={`Replaced, but Zerops kept the old token (${last.answer.reason ?? "refused"}): it stays listed to delete.`}
+          role="status"
+          size="line"
+        />
       ) : null}
     </section>
   );
