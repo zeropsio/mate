@@ -71,7 +71,7 @@ import {
   type MateComing,
   type SharedBirth,
 } from "@t3tools/client-runtime/data";
-import { ZeropsAnswerDetails } from "~/components/zerops/ZeropsAnswerDetails";
+import { FailureDetails } from "~/components/ui/failure";
 import { sharedBirthPresentation } from "~/zerops/sharedBirths";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
@@ -847,7 +847,9 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
       severity: "attention",
       below: (
         <div className="flex flex-wrap justify-center gap-2">
-          {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
+          {zeropsAnswer === null ? null : (
+            <FailureDetails align="center">{zeropsAnswer}</FailureDetails>
+          )}
           <Button variant="destructive-ghost">Delete</Button>
         </div>
       ),

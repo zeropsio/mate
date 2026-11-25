@@ -15,7 +15,6 @@ import type { ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 import { Card } from "~/components/ui/card";
 import { Text } from "~/components/ui/text";
@@ -115,7 +114,7 @@ export function ZeropsEnvironmentCreation({
             ? {
                 state: "failed",
                 cause: operationFailureWords(standing.failure),
-                details: <FailureDetails standing={standing} />,
+                details: operationFailureDetails(standing.failure),
               }
             : undefined
         }
@@ -145,13 +144,4 @@ export function ZeropsEnvironmentCreation({
       </div>
     </Card>
   );
-}
-
-function FailureDetails({
-  standing,
-}: {
-  readonly standing: Extract<HqOperationStanding, { readonly kind: "failed" }>;
-}) {
-  const details = operationFailureDetails(standing.failure);
-  return details === null ? null : <ZeropsAnswerDetails text={details} />;
 }

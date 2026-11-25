@@ -16,6 +16,7 @@ import { hqOperationOf } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn } from "~/lib/utils";
+import { FailureDetails } from "~/components/ui/failure";
 import { useDeleteApplication } from "./useDeleteApplication";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -49,7 +50,6 @@ import {
 } from "./ZeropsDeleteApplicationDialog.logic";
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import { deleteMateConfirmed } from "./ZeropsDeleteMateDialog.logic";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 
@@ -154,7 +154,7 @@ export function ZeropsDeleteApplicationForm({
             >
               {reason}
             </p>
-            {details === null ? null : <ZeropsAnswerDetails align="start" text={details} />}
+            {details === null ? null : <FailureDetails>{details}</FailureDetails>}
           </div>
         </div>
       </DialogPanel>

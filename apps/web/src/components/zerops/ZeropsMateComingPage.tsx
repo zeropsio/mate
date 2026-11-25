@@ -8,8 +8,6 @@ import {
   recoveryNotice,
   type MateDeletion,
 } from "@t3tools/client-runtime/data";
-import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import {
   ConversationOpeningStage,
   ConversationOpeningWaits,
@@ -175,7 +173,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { MateDetailFailure } from "./MateDetailFailure";
 import { useMateDetailRead } from "~/zerops/accountEnvironments";
-import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
+import { ARRIVAL_ACTS_CLASS, MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
 import { HAND_OVER_VERB, mateKeyRefused } from "~/zerops/mateHandOver.logic";
@@ -197,6 +195,7 @@ import { chatViewReady } from "../ChatViewBoundary";
 import { mateDeletionLine } from "./SidebarMateRow.logic";
 import { MateDeletionWaitingWords } from "./SidebarMateDeletingLine";
 import { Loading } from "~/components/ui/loading";
+import { Failure, FailureDetails, FailureWords } from "~/components/ui/failure";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -264,7 +263,9 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const zeropsAnswer = birth.failure === undefined ? null : operationFailureDetails(birth.failure);
   const birthBelow = (withoutDelete: boolean) => (
     <div className="flex flex-wrap justify-center gap-2">
-      {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
+      {zeropsAnswer === null ? null : (
+        <FailureDetails align="center">{zeropsAnswer}</FailureDetails>
+      )}
       {birth.adopted === true && presentation.actions.includes("delete") ? (
         <p className="w-full">
           Delete stops setting up the Mate. What the setup already added to the project stays there.
@@ -374,7 +375,9 @@ function MateDeletionStage({
                     <MateDeletionWaitingWords userId={waitsOn} />
                   </p>
                 )}
-                {details === null ? null : <ZeropsAnswerDetails text={details} />}
+                {details === null ? null : (
+                  <FailureDetails align="center">{details}</FailureDetails>
+                )}
                 {actions.trouble === null ? null : <p>{actions.trouble}</p>}
                 {deletion.kind === "failed" ? failedContent : null}
                 {action === undefined ? null : (
@@ -1705,17 +1708,18 @@ export function ComingBelow({
     >
       {steps}
       {setupFailureDetails === undefined && copy.details === undefined ? null : (
-        <MateStateDetails>
-          <pre className={DETAILS_TEXT_CLASS}>{copy.details}</pre>
+        <FailureDetails align="center">
+          {copy.details === undefined ? null : <FailureWords words={copy.details} />}
           {setupFailureDetails?.status === "loading" ? (
             <Loading count={3} label="The setup log" shape="lines" />
           ) : null}
           {setupFailureDetails?.status === "error" ? (
-            <p className={DETAILS_TEXT_CLASS}>
-              The setup log couldn't be read. Open the process in Zerops.
-            </p>
+            <Failure
+              cause="The setup log couldn't be read. Open the process in Zerops."
+              size="line"
+            />
           ) : null}
-        </MateStateDetails>
+        </FailureDetails>
       )}
       {/* Under the steps: what they leave to read whole (a stop's reason, a registration not
           finished) over the one way on. */}

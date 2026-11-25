@@ -14,6 +14,7 @@
 import { useId, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import { Failure } from "~/components/ui/failure";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -30,7 +31,6 @@ import { Radio, RadioGroup } from "../ui/radio-group";
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import type { DeleteApplicationWords } from "./ZeropsDeleteApplicationDialog.logic";
 import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDialog.logic";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 
 export function ZeropsDeleteMateForm({
   name,
@@ -114,12 +114,12 @@ export function ZeropsDeleteMateForm({
           </div>
         ) : null}
         {failed === undefined ? null : (
-          <div className="mb-4 min-w-0">
-            <p className="text-caption text-status-failed-text">{failed.line}</p>
-            {failed.details === null ? null : (
-              <ZeropsAnswerDetails align="start" text={failed.details} />
-            )}
-          </div>
+          <Failure
+            cause={failed.line}
+            className="mb-4"
+            details={failed.details ?? undefined}
+            size="line"
+          />
         )}
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>

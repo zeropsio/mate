@@ -30,7 +30,6 @@ import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { Badge } from "~/components/ui/badge";
 import { STATUS_BADGE_TONE } from "./primitives";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { gitPushHistory } from "./GitHistory.logic";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
@@ -591,9 +590,9 @@ function ZeropsProductionRemoval({
             cause={`Production was not removed · ${operationFailureWords(removal.failure)}`}
             className="mt-1.5"
             data-zerops-surface="production-removal-failed"
+            details={details ?? undefined}
             size="line"
           />
-          {details === null ? null : <ZeropsAnswerDetails align="start" text={details} />}
         </div>
       ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
