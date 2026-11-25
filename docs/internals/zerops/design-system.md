@@ -173,6 +173,12 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   for the one thing that stands out by what it is, `slot` for a place not yet filled, `sheet`
   alone among its kind), its `tone` the state of what it holds; a message in a conversation is a
   `MessageBubble` in its speaker's form; a picture or a page shown is in a `PictureFrame`.
+
+- A page stands in `Page`: its width by what it holds (`column`, `page`, `wide`, `full`), the
+  frame's gutter and top, its blocks 48 px apart. `PageHeader` heads it, its trail above the title;
+  a section's heading is `SectionHeader`, in the foreground on a page's ground and quiet
+  (`size="panel"`) over a group inside a card, a panel or the menu; a panel's or a pane's top strip
+  is `PanelBar`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status before its
   words is its `dot` form; a number is its `count` form, beside a title or on a control's corner.
@@ -324,6 +330,10 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/prefer-meter` (a plain element whose inline style sizes a fill from data,
     a width in percent or a scale or slide along x, on a ground; or paints a small round swatch from
     data: `Meter`, `ShareBar`, `SeriesSwatch`); its ledger only shrinks
+
+- **R24** — A page's title is its `PageHeader`'s
+  - _Enforced by:_ `t3code/page-title-is-page-header` (an `<h1>` outside the kit, written or passed
+    as a `render`); its ledger holds the heroes and bars that are not a page's head, and only shrinks
 
 ## 6. Exceptions
 

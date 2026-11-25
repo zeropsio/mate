@@ -31,6 +31,7 @@ import preferCodeBlock from "./rules/prefer-code-block.ts";
 import noHandPopup from "./rules/no-hand-popup.ts";
 import preferMarks from "./rules/prefer-marks.ts";
 import preferMeter from "./rules/prefer-meter.ts";
+import pageTitleIsPageHeader from "./rules/page-title-is-page-header.ts";
 import preferText from "./rules/prefer-text.ts";
 import noSizedSlotIcon from "./rules/no-sized-slot-icon.ts";
 import noHandDrawnBox from "./rules/no-hand-drawn-box.ts";
@@ -91,6 +92,7 @@ export default definePlugin({
     "no-hand-popup": noHandPopup,
     "prefer-marks": preferMarks,
     "prefer-meter": preferMeter,
+    "page-title-is-page-header": pageTitleIsPageHeader,
     "prefer-text": preferText,
     "no-sized-slot-icon": noSizedSlotIcon,
     "no-hand-drawn-box": noHandDrawnBox,
