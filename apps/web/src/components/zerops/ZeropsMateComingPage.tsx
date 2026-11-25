@@ -229,6 +229,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       projectId={projectId}
       birthId={birth?.id}
       birthReady={readyProjectIds.includes(projectId)}
+      birthStartedAt={birth?.startedAt}
       hqRun={
         birth !== undefined && next?.kind === "wait" && next.for === "hq"
           ? { startedAt: birth.startedAt }
@@ -399,12 +400,15 @@ function ExistingMateComingPage({
   projectId,
   birthId,
   birthReady,
+  birthStartedAt,
   hqRun,
 }: {
   readonly projectId: string;
   /** Its open birth at HQ, whose offers are its page's way out while HQ refuses its link. */
   readonly birthId: string | undefined;
   readonly birthReady: boolean;
+  /** When HQ accepted its open birth: the setup's one clock, from HQ's run through the hello. */
+  readonly birthStartedAt: number | undefined;
   /**
    * HQ runs its setup's next step (the project's settings, its key, the import): no container is
    * listed yet, yet it is being brought up.
@@ -412,6 +416,10 @@ function ExistingMateComingPage({
   readonly hqRun: { readonly startedAt: number | undefined } | undefined;
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  // The birth's start, kept while this page stands: HQ ends the birth at the Mate's hello, and the
+  // conversation still opens after it on the same clock.
+  const [setupClock, setSetupClock] = useState(birthStartedAt);
+  if (birthStartedAt !== undefined && birthStartedAt !== setupClock) setSetupClock(birthStartedAt);
   const navigate = useNavigate();
   const router = useRouter();
   const openMate = useOpenMate();
@@ -901,10 +909,12 @@ function ExistingMateComingPage({
   const setupSince = made?.startedAt;
   // The steps this tab runs, as the creation's view drew them.
   const pressSteps = made === undefined ? undefined : creationSubsteps(made);
-  // The row's clock is the setup's where a birth stands — this tab's creation, else HQ's
-  // open birth — and none otherwise: the row then counts the step under way (`arrivalRow`), never
-  // the birth's start the progress carries (a restarting Mate's page read 559 h, 2026-11-20).
-  const birthSince = setupSince ?? hqRun?.startedAt;
+  // The row's clock is the setup's where a birth stands — this tab's creation, else HQ's birth,
+  // the whole way from HQ's run to the conversation (each step's own start restarted it at every
+  // step, 2026-11-25) — and none otherwise: the row then counts the step under way
+  // (`arrivalRow`), never the birth's start the progress carries (a restarting Mate's page read
+  // 559 h, 2026-11-20).
+  const birthSince = setupSince ?? setupClock;
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
