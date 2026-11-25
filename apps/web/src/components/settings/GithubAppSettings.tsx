@@ -63,6 +63,7 @@ import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
@@ -475,14 +476,13 @@ function BotGroup({
         </p>
       ) : null}
       {rows === 0 ? (
-        <p className="border-y border-border py-2 text-caption text-muted-foreground">
-          No GitHub account added yet.
-        </p>
+        <List edges>
+          <Text className="py-2" render={<p />} variant="note">
+            No GitHub account added yet.
+          </Text>
+        </List>
       ) : (
-        <ul
-          className="divide-y divide-border border-y border-border"
-          data-zerops-surface="settings-github-installations"
-        >
+        <List data-zerops-surface="settings-github-installations" edges render={<ul />}>
           {app.installations.map((installation) => {
             const by = installation.addedBy === null ? undefined : nameOf(installation.addedBy);
             return (
@@ -560,7 +560,7 @@ function BotGroup({
               </span>
             </li>
           ))}
-        </ul>
+        </List>
       )}
       {app.privateTo === null ? null : (
         <Text render={<p />} variant="note">

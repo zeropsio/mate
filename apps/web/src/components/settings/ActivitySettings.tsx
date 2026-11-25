@@ -25,6 +25,7 @@ import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -104,7 +105,7 @@ function ActivityPage({
           HQ could not be read again; this is what it said before.
         </Text>
       ) : null}
-      <ul className="divide-y divide-border/60" data-activity-page={before ?? "newest"}>
+      <List data-activity-page={before ?? "newest"} render={<ul />}>
         {lines.map((line) => (
           <li
             key={line.key}
@@ -132,7 +133,7 @@ function ActivityPage({
             ) : null}
           </li>
         ))}
-      </ul>
+      </List>
       {last && read.page.next !== null ? (
         <div className="px-3">
           <Button size="sm" variant="secondary" onClick={() => onOlder(read.page.next as string)}>

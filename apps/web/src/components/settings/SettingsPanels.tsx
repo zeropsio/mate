@@ -154,6 +154,7 @@ import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 const WORKTREE_SUBMODULES_OPTIONS = ["recursive", "top-level", "none"] as const;
 // The select's value for an unset setting, which leaves the choice to t3.json.
@@ -669,221 +670,223 @@ function BackgroundActivityAdvancedDialog({
         </DialogHeader>
         <DialogPanel>
           <Card className="overflow-hidden">
-            <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-body font-medium">Shared policy</div>
-                <p className="text-caption leading-relaxed text-muted-foreground">
-                  Controls whether background work may run after a subscribed interval fires.
-                </p>
-              </div>
-              <Select
-                value={activeProfile}
-                onValueChange={(value) => {
-                  if (
-                    value === "balanced" ||
-                    value === "performance" ||
-                    value === "battery-saver"
-                  ) {
-                    updateSettings({
-                      backgroundActivity: backgroundActivitySharedPolicySettings(settings, value),
-                    });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-40" aria-label="Shared background policy">
-                  <SelectValue>{BACKGROUND_ACTIVITY_PROFILE_LABELS[activeProfile]}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  <SelectItem hideIndicator value="balanced">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS.balanced}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="performance">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS.performance}
-                  </SelectItem>
-                  <SelectItem hideIndicator value="battery-saver">
-                    {BACKGROUND_ACTIVITY_PROFILE_LABELS["battery-saver"]}
-                  </SelectItem>
-                </SelectPopup>
-              </Select>
-            </div>
-
-            <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-body font-medium">Git fetch interval</div>
-                <p className="text-caption leading-relaxed text-muted-foreground">
-                  Refresh remote branch status in the background.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={automaticGitFetchIntervalSeconds}
-                  min={0}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          automaticGitFetchInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
+            <List>
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body font-medium">Shared policy</div>
+                  <p className="text-caption leading-relaxed text-muted-foreground">
+                    Controls whether background work may run after a subscribed interval fires.
+                  </p>
+                </div>
+                <Select
+                  value={activeProfile}
+                  onValueChange={(value) => {
+                    if (
+                      value === "balanced" ||
+                      value === "performance" ||
+                      value === "battery-saver"
+                    ) {
+                      updateSettings({
+                        backgroundActivity: backgroundActivitySharedPolicySettings(settings, value),
+                      });
+                    }
+                  }}
                 >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease Git fetch interval" />
-                    <NumberFieldInput aria-label="Git fetch interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase Git fetch interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <Text variant="note">seconds</Text>
+                  <SelectTrigger className="w-full sm:w-40" aria-label="Shared background policy">
+                    <SelectValue>{BACKGROUND_ACTIVITY_PROFILE_LABELS[activeProfile]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup align="end" alignItemWithTrigger={false}>
+                    <SelectItem hideIndicator value="balanced">
+                      {BACKGROUND_ACTIVITY_PROFILE_LABELS.balanced}
+                    </SelectItem>
+                    <SelectItem hideIndicator value="performance">
+                      {BACKGROUND_ACTIVITY_PROFILE_LABELS.performance}
+                    </SelectItem>
+                    <SelectItem hideIndicator value="battery-saver">
+                      {BACKGROUND_ACTIVITY_PROFILE_LABELS["battery-saver"]}
+                    </SelectItem>
+                  </SelectPopup>
+                </Select>
               </div>
-            </div>
 
-            <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-body font-medium">Provider health interval</div>
-                <p className="text-caption leading-relaxed text-muted-foreground">
-                  Refresh provider availability, versions, auth state, and model metadata.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={providerHealthRefreshIntervalSeconds}
-                  min={0}
-                  step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          providerHealthRefreshInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease provider health interval" />
-                    <NumberFieldInput aria-label="Provider health interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase provider health interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <Text variant="note">seconds</Text>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-body font-medium">Host power monitor</div>
-                <p className="text-caption leading-relaxed text-muted-foreground">
-                  Poll host power state while clients are active.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorActiveIntervalSeconds}
-                  min={5}
-                  step={5}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorActiveInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease active host power interval" />
-                    <NumberFieldInput aria-label="Active host power interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase active host power interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <Text variant="note">seconds</Text>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <div className="text-body font-medium">Idle host monitor</div>
-                <p className="text-caption leading-relaxed text-muted-foreground">
-                  Poll host power state when no foreground client is active.
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <NumberField
-                  value={hostPowerMonitorIdleIntervalSeconds}
-                  min={5}
-                  step={30}
-                  size="sm"
-                  className="w-32"
-                  onValueChange={(value) =>
-                    updateSettings(
-                      backgroundActivityOverrideSettings(
-                        settings.backgroundActivity,
-                        resolvedBackgroundActivity,
-                        {
-                          hostPowerMonitorIdleInterval: Duration.seconds(
-                            normalizeIntervalSeconds(value, 5),
-                          ),
-                        },
-                      ),
-                    )
-                  }
-                >
-                  <NumberFieldGroup>
-                    <NumberFieldDecrement aria-label="Decrease idle host power interval" />
-                    <NumberFieldInput aria-label="Idle host power interval in seconds" />
-                    <NumberFieldIncrement aria-label="Increase idle host power interval" />
-                  </NumberFieldGroup>
-                </NumberField>
-                <Text variant="note">seconds</Text>
-              </div>
-            </div>
-
-            <div className="grid gap-0 border-t sm:grid-cols-2">
-              {BACKGROUND_ACTIVITY_BOOLEAN_OVERRIDES.map(({ key, label }) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0 sm:border-r sm:even:border-r-0"
-                >
-                  <span className="text-body font-medium">{label}</span>
-                  <Switch
-                    checked={resolvedBackgroundActivity[key]}
-                    onCheckedChange={(checked) =>
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body font-medium">Git fetch interval</div>
+                  <p className="text-caption leading-relaxed text-muted-foreground">
+                    Refresh remote branch status in the background.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <NumberField
+                    value={automaticGitFetchIntervalSeconds}
+                    min={0}
+                    step={5}
+                    size="sm"
+                    className="w-32"
+                    onValueChange={(value) =>
                       updateSettings(
                         backgroundActivityOverrideSettings(
                           settings.backgroundActivity,
                           resolvedBackgroundActivity,
                           {
-                            [key]: Boolean(checked),
+                            automaticGitFetchInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value),
+                            ),
                           },
                         ),
                       )
                     }
-                    aria-label={label}
-                  />
-                </label>
-              ))}
-            </div>
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label="Decrease Git fetch interval" />
+                      <NumberFieldInput aria-label="Git fetch interval in seconds" />
+                      <NumberFieldIncrement aria-label="Increase Git fetch interval" />
+                    </NumberFieldGroup>
+                  </NumberField>
+                  <Text variant="note">seconds</Text>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body font-medium">Provider health interval</div>
+                  <p className="text-caption leading-relaxed text-muted-foreground">
+                    Refresh provider availability, versions, auth state, and model metadata.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <NumberField
+                    value={providerHealthRefreshIntervalSeconds}
+                    min={0}
+                    step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
+                    size="sm"
+                    className="w-32"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            providerHealthRefreshInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label="Decrease provider health interval" />
+                      <NumberFieldInput aria-label="Provider health interval in seconds" />
+                      <NumberFieldIncrement aria-label="Increase provider health interval" />
+                    </NumberFieldGroup>
+                  </NumberField>
+                  <Text variant="note">seconds</Text>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body font-medium">Host power monitor</div>
+                  <p className="text-caption leading-relaxed text-muted-foreground">
+                    Poll host power state while clients are active.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <NumberField
+                    value={hostPowerMonitorActiveIntervalSeconds}
+                    min={5}
+                    step={5}
+                    size="sm"
+                    className="w-32"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            hostPowerMonitorActiveInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value, 5),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label="Decrease active host power interval" />
+                      <NumberFieldInput aria-label="Active host power interval in seconds" />
+                      <NumberFieldIncrement aria-label="Increase active host power interval" />
+                    </NumberFieldGroup>
+                  </NumberField>
+                  <Text variant="note">seconds</Text>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <div className="text-body font-medium">Idle host monitor</div>
+                  <p className="text-caption leading-relaxed text-muted-foreground">
+                    Poll host power state when no foreground client is active.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <NumberField
+                    value={hostPowerMonitorIdleIntervalSeconds}
+                    min={5}
+                    step={30}
+                    size="sm"
+                    className="w-32"
+                    onValueChange={(value) =>
+                      updateSettings(
+                        backgroundActivityOverrideSettings(
+                          settings.backgroundActivity,
+                          resolvedBackgroundActivity,
+                          {
+                            hostPowerMonitorIdleInterval: Duration.seconds(
+                              normalizeIntervalSeconds(value, 5),
+                            ),
+                          },
+                        ),
+                      )
+                    }
+                  >
+                    <NumberFieldGroup>
+                      <NumberFieldDecrement aria-label="Decrease idle host power interval" />
+                      <NumberFieldInput aria-label="Idle host power interval in seconds" />
+                      <NumberFieldIncrement aria-label="Increase idle host power interval" />
+                    </NumberFieldGroup>
+                  </NumberField>
+                  <Text variant="note">seconds</Text>
+                </div>
+              </div>
+
+              <div className="grid gap-0 sm:grid-cols-2">
+                {BACKGROUND_ACTIVITY_BOOLEAN_OVERRIDES.map(({ key, label }) => (
+                  <label
+                    key={key}
+                    className="flex items-center justify-between gap-3 border-b border-rule px-4 py-3 last:border-b-0 sm:border-r sm:even:border-r-0"
+                  >
+                    <span className="text-body font-medium">{label}</span>
+                    <Switch
+                      checked={resolvedBackgroundActivity[key]}
+                      onCheckedChange={(checked) =>
+                        updateSettings(
+                          backgroundActivityOverrideSettings(
+                            settings.backgroundActivity,
+                            resolvedBackgroundActivity,
+                            {
+                              [key]: Boolean(checked),
+                            },
+                          ),
+                        )
+                      }
+                      aria-label={label}
+                    />
+                  </label>
+                ))}
+              </div>
+            </List>
           </Card>
         </DialogPanel>
         <DialogFooter>

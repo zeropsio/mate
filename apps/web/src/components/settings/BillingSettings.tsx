@@ -40,6 +40,8 @@ import { SettingsPageContainer } from "./settingsLayout";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -210,23 +212,26 @@ function BalanceCard({
         )}
       </div>
       {balance === null || total === null ? null : (
-        <div className="flex flex-col gap-3 border-border/70 border-t px-6 py-5">
-          <Split credit={balance.credit} promo={balance.promoCredit} />
-          {billing.verification === "unverified" ? (
-            <Alert variant="success">
-              <AlertDescription>
-                A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
-                it, and higher limits.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {billing.soonest === null || billing.tone === "quiet" ? null : (
-            <SoonestStop
-              hoursLeft={billing.soonest.hoursLeft}
-              projectId={billing.soonest.projectId}
-            />
-          )}
-        </div>
+        <>
+          <Separator />
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <Split credit={balance.credit} promo={balance.promoCredit} />
+            {billing.verification === "unverified" ? (
+              <Alert variant="success">
+                <AlertDescription>
+                  A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
+                  it, and higher limits.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {billing.soonest === null || billing.tone === "quiet" ? null : (
+              <SoonestStop
+                hoursLeft={billing.soonest.hoursLeft}
+                projectId={billing.soonest.projectId}
+              />
+            )}
+          </div>
+        </>
       )}
     </Card>
   );
@@ -498,7 +503,7 @@ function ProjectsSection({
           Nothing has cost anything this month.
         </Text>
       ) : (
-        <ol className="flex flex-col divide-y divide-border/60">
+        <List className="flex flex-col" render={<ol />}>
           {shown.map(([projectId, period]) => (
             <ProjectRow
               key={projectId}
@@ -508,7 +513,7 @@ function ProjectsSection({
               usd={period.thisMonth}
             />
           ))}
-        </ol>
+        </List>
       )}
       {projects.length > PROJECTS_SHOWN ? (
         <div className="px-1">

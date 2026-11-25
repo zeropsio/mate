@@ -16,12 +16,13 @@ import { Card } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import { useSettingsSearchTarget } from "./settingsLayout";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** The rows, as one card with a hairline between each. */
 export function IntegrationList({ children }: { readonly children: ReactNode }) {
   return (
     <Card variant="flat">
-      <ul className="divide-y divide-border">{children}</ul>
+      <List render={<ul />}>{children}</List>
     </Card>
   );
 }

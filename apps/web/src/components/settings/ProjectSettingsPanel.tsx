@@ -90,6 +90,7 @@ import { useNavigateToMainApp } from "../sidebar/mainAppLocation";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { projectSettingsState } from "./ProjectSettingsPanel.logic";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -601,7 +602,8 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 />
                 <TooltipPopup side="top">Copy path</TooltipPopup>
               </Tooltip>
-              <div className="shrink-0 border-l border-border/60 px-2 tabular-nums">
+              <Separator orientation="vertical" />
+              <div className="shrink-0 px-2 tabular-nums">
                 {selectedCheckoutThreadCount === 1
                   ? "1 thread"
                   : `${selectedCheckoutThreadCount} threads`}

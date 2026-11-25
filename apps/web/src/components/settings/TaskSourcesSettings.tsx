@@ -84,6 +84,7 @@ import {
   taskSourceProblem,
 } from "./taskSourcesSettings.logic";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
 
@@ -853,7 +854,8 @@ function ManagePanel({
     <FlowSurface>
       <div className="grid gap-4">
         {children}
-        <div className="flex items-center gap-4 border-t border-border/70 pt-3 text-caption">
+        <Separator />
+        <div className="flex items-center gap-4 text-caption">
           <span className="min-w-0 flex-1 text-muted-foreground">{warning}</span>
           {disconnect}
         </div>

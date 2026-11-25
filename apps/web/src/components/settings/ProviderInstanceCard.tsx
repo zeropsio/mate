@@ -682,7 +682,7 @@ export function ProviderInstanceCard({
 
   if (mode === "list") {
     return (
-      <div className="group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 last:border-b-0">
+      <div className="group relative flex min-h-16 items-center gap-1.5 py-1 ps-1 pe-3">
         <div
           className={cn(
             "min-w-0 flex-1 transition-opacity",

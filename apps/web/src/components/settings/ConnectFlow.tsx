@@ -15,6 +15,7 @@ import { Label } from "../ui/label";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 import { StepNumber } from "~/components/ui/step-number";
+import { Separator } from "~/components/ui/separator";
 
 export function ConnectCard({
   onSubmit,
@@ -54,7 +55,8 @@ export function ConnectCard({
             {problem}
           </Text>
         ) : null}
-        <div className="flex items-center gap-2 border-t border-border/70 pt-4">
+        <Separator />
+        <div className="flex items-center gap-2">
           <Text className="min-w-0 flex-1" render={<p />} variant="note">
             {note}
           </Text>

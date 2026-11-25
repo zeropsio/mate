@@ -76,6 +76,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
@@ -1256,13 +1257,13 @@ export function KeybindingsSettingsPanel() {
           hideScrollbars
           className="w-full max-w-full"
         >
-          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <div>Command</div>
-            <div>Keybinding</div>
-            <div>When</div>
-            <div>Status</div>
-          </div>
-          <div className="min-w-[680px] divide-y divide-border/60">
+          <List className="min-w-[680px]">
+            <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div>Command</div>
+              <div>Keybinding</div>
+              <div>When</div>
+              <div>Status</div>
+            </div>
             {isAddingBinding ? (
               <NewKeybindingTableRow
                 commandOptions={commandOptions}
@@ -1290,7 +1291,7 @@ export function KeybindingsSettingsPanel() {
                 No keybindings match your search.
               </Text>
             ) : null}
-          </div>
+          </List>
         </ScrollArea>
       </SettingsSection>
     </SettingsPageContainer>
