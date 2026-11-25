@@ -48,14 +48,6 @@
     "expires": "surface:containers"
   },
   {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={cn( \"rounded-sheet transition-[background-color] duration-200\", isDragOverComposer ? \"bg-accent/45 ring-1 ring-primary/70\" : null, projectSelectionRequired ? \"opacity-75\" : null, composerProviderState.composerSurfaceClassName, )}",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
     "path": "apps/web/src/components/chat/CheckRead.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<p> className=\"flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption\"",
@@ -200,14 +192,6 @@
     "expires": "surface:identity"
   },
   {
-    "path": "apps/web/src/components/settings/SettingsFontPreviews.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"mt-1 mb-2 rounded-control border border-border bg-background px-3 py-2\"",
-    "owner": "unify pass",
-    "reason": "code or machine output in a box of its own; it moves onto the code family's kit piece",
-    "expires": "surface:code"
-  },
-  {
     "path": "apps/web/src/components/settings/SettingsPanels.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<output> className=\"min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground\"",
@@ -320,22 +304,6 @@
     "expires": "surface:containers"
   },
   {
-    "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"flex min-h-12 items-end gap-2 rounded-sheet bg-card py-2 ps-4.5 pe-2 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/8 focus-within:ring-ring/55\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={cn( \"flex min-h-12 items-center gap-2.5 rounded-sheet bg-foreground/4 py-1.5 ps-4 pe-2 ring-1 ring-foreground/7\", className, )}",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
     "path": "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<section> className=\"mt-10 flex w-full max-w-md flex-col rounded-card border border-foreground/7 bg-run-tray px-4 py-3\"",
@@ -366,14 +334,6 @@
     "owner": "unify pass",
     "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
     "expires": "surface:choices"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewConversation.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"flex items-end gap-1.5 rounded-card bg-card py-1.25 ps-3 pe-1.25 inset-ring-1 inset-ring-foreground/12 transition-shadow duration-150 ease-out-strong focus-within:inset-ring-foreground/22 focus-within:ring-3 focus-within:ring-ring/24\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
   },
   {
     "path": "apps/web/src/components/zerops/system/FaceCard.tsx",

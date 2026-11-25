@@ -5,6 +5,7 @@ import { useTheme } from "../../hooks/useTheme";
 import { DISCONNECTED_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffPresentation";
 import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
+import { ComposerFrame } from "~/components/ui/composer-frame";
 
 // The font previews are the real surfaces, not lookalikes: the composer's
 // Lexical editor, the diff panel's file diff, and the Ghostty canvas
@@ -35,21 +36,23 @@ export function PromptFontPreview() {
     setCursor(nextCursor);
   }, []);
   return (
-    <div className="mt-1 mb-2 rounded-control border border-border bg-background px-3 py-2">
-      <ComposerPromptEditor
-        editorRef={editorRef}
-        value={prompt}
-        cursor={cursor}
-        terminalContexts={EMPTY_TERMINAL_CONTEXTS}
-        skills={EMPTY_SKILLS}
-        disabled={false}
-        placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER}
-        className="max-h-40 min-h-12"
-        onRemoveTerminalContext={noop}
-        onChange={onChange}
-        onPaste={noop}
-      />
-    </div>
+    <ComposerFrame className="mt-1 mb-2" size="card">
+      <div className="min-w-0 flex-1 py-0.75 pe-1.75">
+        <ComposerPromptEditor
+          editorRef={editorRef}
+          value={prompt}
+          cursor={cursor}
+          terminalContexts={EMPTY_TERMINAL_CONTEXTS}
+          skills={EMPTY_SKILLS}
+          disabled={false}
+          placeholder={DISCONNECTED_COMPOSER_PLACEHOLDER}
+          className="max-h-40 min-h-12"
+          onRemoveTerminalContext={noop}
+          onChange={onChange}
+          onPaste={noop}
+        />
+      </div>
+    </ComposerFrame>
   );
 }
 
