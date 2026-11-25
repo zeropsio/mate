@@ -158,7 +158,7 @@ function Button({ className, variant, size, shape, render, ...props }: ButtonPro
 export { Button, buttonVariants, type ButtonShape, type ButtonSize, type ButtonVariant };
 
 const inlineButtonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center gap-0.5 whitespace-nowrap font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-64",
+  "inline-flex shrink-0 cursor-pointer items-center gap-0.5 whitespace-nowrap font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='size-'])]:size-[1em] [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     defaultVariants: { tone: "default" },
     variants: {
@@ -180,6 +180,8 @@ const inlineButtonVariants = cva(
 /**
  * A word that acts inside a sentence: it keeps the size of the text around it, is blue, and
  * underlines on hover. A press that stands on its own is a Button.
+ * An icon in it (the arrow that says a link leaves, a file's glyph before its path) is the size of
+ * the words, 12 px in a caption and 14 px in body text: it names no size of its own.
  */
 export function InlineButton({
   className,

@@ -1,9 +1,11 @@
 import {
   ArrowRightIcon,
   ArrowUpIcon,
+  ArrowUpRightIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  FileCodeIcon,
   ImageIcon,
   PlusIcon,
   SearchIcon,
@@ -303,6 +305,23 @@ function ButtonSpecimens() {
               </span>
             </Specimen>
           ))}
+          <Specimen label="text-body · <ArrowUpRightIcon /> last" note="An icon is the words' size">
+            <span className="text-body">
+              Released to{" "}
+              <InlineButton render={<a href="#button" />}>
+                storefront.zerops.app
+                <ArrowUpRightIcon aria-hidden="true" />
+              </InlineButton>
+            </span>
+          </Specimen>
+          <Specimen label='text-caption · tone="muted" · <FileCodeIcon /> first'>
+            <span className="text-caption">
+              <InlineButton tone="muted">
+                <FileCodeIcon aria-hidden="true" />
+                zerops.yml
+              </InlineButton>
+            </span>
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
     </Specimens>
