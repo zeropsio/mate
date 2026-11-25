@@ -5099,16 +5099,17 @@ code {
   inset-inline-end: calc(10px + var(--menu-time-w, 0px) + var(--menu-tags-w, 0px) + 4px);
 }
 
-/* A row's verbs stand centred on the row, its whole height, on the row's own ground
-   (`--menu-ground`: at rest, hovered, or the band's), so the words under them are covered; they
-   fade in from it over 32 px on their left, and the name and its line run out under a soft edge
-   instead of being cut. Unlayered, so it outranks the verbs' top-row placement utilities. */
+/* A row's verbs stand centred on the row, its whole height, side by side and 8 px further in from
+   its end, on the row's own ground (`--menu-ground`: at rest, hovered, or the band's), so the words
+   under them are covered; they fade in from it over 32 px on their left, and the name and its line
+   run out under a soft edge instead of being cut. Unlayered, so it outranks the verbs' top-row
+   placement utilities. */
 @media (hover: hover) and (pointer: fine) {
   .menu-row-verbs {
     top: 0;
     bottom: 0;
     height: auto;
-    gap: 4px;
+    padding-inline-end: 8px;
     /* Over the row's time and words, which stand on positioned layers of their own. */
     z-index: 2;
     background-color: var(--menu-ground, var(--sidebar));
