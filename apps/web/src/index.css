@@ -2404,7 +2404,7 @@ code {
   border-top: 1px solid var(--contrast-border);
   padding-top: 0.75rem;
   color: var(--contrast-muted-foreground);
-  font-size: 0.75rem;
+  font-size: var(--text-caption);
 }
 
 .chat-markdown section[data-footnotes] ol {
@@ -2423,7 +2423,7 @@ code {
   justify-content: center;
   border-radius: var(--radius-mark);
   text-decoration: none;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
 }
 
@@ -3258,7 +3258,7 @@ code {
      menu's coarse-pointer rules find a row's line by this class. */
   .menu-line2 {
     display: block;
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 22px;
   }
 
@@ -3280,7 +3280,7 @@ code {
     height: 22px;
     padding: 0 8px;
     border-radius: var(--radius-control);
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 500;
     line-height: 16px;
     white-space: nowrap;
@@ -3403,7 +3403,7 @@ code {
   }
 
   .mac-wait-title {
-    font-size: 16px;
+    font-size: var(--text-emphasis);
     font-weight: 600;
     line-height: 22px;
     color: var(--foreground);
@@ -3411,7 +3411,7 @@ code {
 
   .mac-wait-line {
     margin-top: 4px;
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 20px;
     color: var(--muted-foreground);
     text-wrap: pretty;
@@ -3446,14 +3446,14 @@ code {
     border-radius: 9999px;
     background: var(--muted);
     color: var(--muted-foreground);
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
 
   .mac-wait-step-words {
     padding-top: 1px;
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 20px;
     color: var(--foreground);
   }
@@ -3533,7 +3533,7 @@ code {
 
   .mac-ready-how code {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--text-caption);
     color: var(--foreground);
   }
 
@@ -3667,7 +3667,7 @@ code {
     padding-inline: 5px;
     border-radius: var(--radius-mark);
     background: color-mix(in oklab, currentColor 11%, transparent);
-    font-size: 11px;
+    font-size: var(--text-2xs);
     font-weight: 600;
     line-height: 1;
     font-variant-numeric: tabular-nums;
@@ -3790,7 +3790,7 @@ code {
     padding: 0 5px;
     border-radius: 999px;
     background: color-mix(in oklab, var(--primary-foreground) 22%, transparent);
-    font-size: 11px;
+    font-size: var(--text-2xs);
   }
 
   .chat-header-review [data-popup-open] > .menu-tag {
@@ -3927,7 +3927,7 @@ code {
     left: 12px;
     width: 12px;
     height: 12px;
-    font-size: 7px;
+    font-size: var(--text-5xs);
   }
 
   .menu-tagpop-name {
@@ -4228,7 +4228,7 @@ code {
     bottom: -2px;
     width: 14px;
     height: 14px;
-    font-size: 8px;
+    font-size: var(--text-4xs);
     box-shadow: 0 0 0 1.5px var(--menu-ground);
     transition: opacity 180ms var(--ease-out-strong);
   }
@@ -4256,7 +4256,7 @@ code {
     background: var(--sidebar-row-active);
     color: var(--sidebar-foreground);
     box-shadow: 0 0 0 2px var(--menu-ground);
-    font-size: 10px;
+    font-size: var(--text-3xs);
     font-weight: 600;
     line-height: 16px;
     font-variant-numeric: tabular-nums;
@@ -4303,7 +4303,7 @@ code {
      list leaves out under it (Mates hidden, Platform projects). */
   .menu-ungrouped {
     padding: 14px 8px 4px;
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 500;
     line-height: 16px;
     color: var(--sidebar-muted-foreground);
@@ -4322,7 +4322,7 @@ code {
     height: 36px;
     padding: 0 8px;
     border-radius: var(--radius-control);
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 20px;
   }
 
@@ -4879,7 +4879,7 @@ code {
   align-items: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 16px;
 }
@@ -4890,7 +4890,7 @@ code {
   background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
   color: color-mix(in oklab, var(--card-foreground) 76%, transparent);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: pre-wrap;
 }
@@ -4970,7 +4970,7 @@ code {
   height: 22px;
   padding: 0 8px;
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 16px;
   white-space: nowrap;
@@ -5072,7 +5072,7 @@ code {
 .zerops-sites-count {
   flex: none;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   font-variant-numeric: tabular-nums;
 }
@@ -5138,7 +5138,7 @@ code {
   background: oklch(var(--person-l) var(--person-c) var(--person-hue));
   box-shadow: 0 0 0 1.5px var(--card);
   color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
-  font-size: 7px;
+  font-size: var(--text-5xs);
   font-weight: 700;
   line-height: 1;
   user-select: none;
@@ -5151,7 +5151,7 @@ code {
 .zerops-sites-note {
   padding: 0 10px 6px 30px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 17px;
 }
 
@@ -5166,7 +5166,7 @@ code {
 .zerops-sites-quiet {
   padding: 2px 10px 8px 30px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -5231,7 +5231,7 @@ code {
   gap: 4px;
   padding: 18px 16px 14px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   text-align: center;
 }
@@ -5403,7 +5403,7 @@ code {
     display: flex;
     column-gap: 0.25em;
     min-width: 0;
-    font-size: 16px;
+    font-size: var(--text-emphasis);
     line-height: 21px;
     font-weight: 650;
     letter-spacing: -0.01em;
@@ -5491,7 +5491,7 @@ code {
 
   .menu-wait-heading {
     flex: 1 1 auto;
-    font-size: 15px;
+    font-size: var(--text-emphasis);
     line-height: 20px;
     font-weight: 600;
   }
@@ -5536,7 +5536,7 @@ code {
     height: 32px;
     border-radius: 9999px;
     background: color-mix(in oklab, var(--foreground) 7%, transparent);
-    font-size: 14px;
+    font-size: var(--text-body);
     font-weight: 600;
   }
 
@@ -5547,7 +5547,7 @@ code {
 
   .menu-wait-title {
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 20px;
     font-weight: 600;
     text-overflow: ellipsis;
@@ -5558,7 +5558,7 @@ code {
     display: -webkit-box;
     margin-top: 2px;
     overflow: hidden;
-    font-size: 14px;
+    font-size: var(--text-body);
     line-height: 20px;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
@@ -5598,7 +5598,7 @@ code {
   .menu-foot-name {
     min-width: 0;
     overflow: hidden;
-    font-size: 15px;
+    font-size: var(--text-emphasis);
     line-height: 20px;
     font-weight: 500;
     color: var(--sidebar-foreground);
@@ -5608,7 +5608,7 @@ code {
 
   .menu-foot-role {
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--text-caption);
     line-height: 16px;
     color: var(--sidebar-muted-foreground);
     text-overflow: ellipsis;
@@ -5849,7 +5849,7 @@ code {
   .menu-rail-name {
     max-width: 72px;
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 500;
     line-height: 16px;
     text-overflow: ellipsis;
@@ -5995,7 +5995,7 @@ code {
     min-width: 0;
     align-items: baseline;
     gap: 6px;
-    font-size: 14px;
+    font-size: var(--text-body);
     font-weight: 600;
     line-height: 20px;
   }
@@ -6341,7 +6341,7 @@ code {
   margin-top: 1px;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6439,7 +6439,7 @@ a.ov-card-site:hover {
 .ov-wait-text {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 19px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -6521,7 +6521,7 @@ a.ov-card-site:hover {
   left: auto;
   width: 14px;
   height: 14px;
-  font-size: 8px;
+  font-size: var(--text-4xs);
   box-shadow: 0 0 0 1.5px var(--ov-ground);
 }
 
@@ -6549,7 +6549,7 @@ a.ov-card-site:hover {
   max-width: 65%;
   min-width: 0;
   overflow: hidden;
-  font-size: 15px;
+  font-size: var(--text-emphasis);
   font-weight: 500;
   line-height: 22px;
   text-align: left;
@@ -6611,7 +6611,7 @@ a.ov-card-site:hover {
   margin-left: auto;
   padding-left: 10px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -6624,7 +6624,7 @@ a.ov-card-site:hover {
   margin-top: 1px;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6762,7 +6762,7 @@ a.ov-card-site:hover {
 
 .ov-chip-card-line {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -6795,7 +6795,7 @@ a.ov-card-site:hover {
 .ov-acc thead th {
   height: 32px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   vertical-align: bottom;
   padding-bottom: 6px;
@@ -6883,7 +6883,7 @@ a.ov-acc-face:hover [data-part="name"] {
 .ov-acc-note {
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   text-overflow: ellipsis;
 }
@@ -6920,7 +6920,7 @@ a.ov-acc-face:hover [data-part="name"] {
 /* A level from the organization's role alone: muted words, no badge; a set one is the badge. */
 .ov-acc-level {
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 
@@ -6975,7 +6975,7 @@ a.ov-acc-face:hover [data-part="name"] {
 /* What plain and highlighted levels mean, said once under the table. */
 .ov-acc-legend {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -7022,7 +7022,7 @@ a.ov-acc-face:hover [data-part="name"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .ov-pick-empty {
@@ -7223,7 +7223,7 @@ a.ov-chip-who:focus-visible {
   max-width: 100%;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 15px;
+  font-size: var(--text-emphasis);
   font-weight: 500;
   line-height: 20px;
   text-overflow: ellipsis;
@@ -7246,7 +7246,7 @@ a.ov-chip-who:focus-visible {
   border-radius: 999px;
   background: var(--zerops-status-busy-surface);
   color: var(--zerops-status-busy-text);
-  font-size: 10px;
+  font-size: var(--text-3xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   line-height: 18px;
@@ -7450,7 +7450,7 @@ a.ov-chip-who:focus-visible {
 .tm-empty {
   padding: 24px 0;
   color: var(--muted-foreground);
-  font-size: 14px;
+  font-size: var(--text-body);
   text-align: center;
 }
 
@@ -7566,7 +7566,7 @@ a.ov-chip-who:focus-visible {
 
 .tm-block-title {
   color: var(--foreground);
-  font-size: 15px;
+  font-size: var(--text-emphasis);
   font-weight: 600;
   line-height: 22px;
 }
@@ -7662,7 +7662,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 6px;
   color: var(--foreground);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 20px;
 }
@@ -7673,7 +7673,7 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .tm-advanced-desc {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -7749,7 +7749,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 5px;
   margin-inline-start: 10px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   cursor: pointer;
 }
 
@@ -7905,7 +7905,7 @@ label.tm-advanced-row:not([data-disabled]) {
   gap: 8px;
   padding: 0 8px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .ov-sec-name {
@@ -8069,7 +8069,7 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .ov-change-title {
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8078,7 +8078,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .ov-change-line {
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8087,7 +8087,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .ov-change-time {
   padding-top: 2px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -8167,7 +8167,7 @@ label.tm-advanced-row:not([data-disabled]) {
   grid-column: 3;
   margin-inline-start: 16px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 18px;
   white-space: nowrap;
 }
@@ -8240,7 +8240,7 @@ label.tm-advanced-row:not([data-disabled]) {
   gap: 2px;
   margin-block-start: calc(var(--row-pad-y) + 2px);
   margin-inline-start: var(--ov-change-gap);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -8290,7 +8290,7 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
   background: color-mix(in oklab, var(--foreground) 8%, transparent);
   color: var(--foreground);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   line-height: 18px;
   text-align: center;
@@ -8310,7 +8310,7 @@ label.tm-advanced-row:not([data-disabled]) {
   }
 
   .ov-filter-count {
-    font-size: 12px;
+    font-size: var(--text-caption);
   }
 }
 
@@ -8362,7 +8362,7 @@ label.tm-advanced-row:not([data-disabled]) {
   flex-wrap: wrap;
   min-width: 0;
   column-gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -8379,7 +8379,7 @@ label.tm-advanced-row:not([data-disabled]) {
   padding: 0 4px;
   border-radius: var(--radius-control);
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   transition:
     background-color 150ms var(--ease-out-strong),
@@ -8401,7 +8401,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .ov-other-title {
   margin-bottom: 4px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 
@@ -8419,7 +8419,7 @@ label.tm-advanced-row:not([data-disabled]) {
   margin-left: -8px;
   padding: 0 8px;
   border-radius: var(--radius-control);
-  font-size: 14px;
+  font-size: var(--text-body);
   transition: background-color 150ms var(--ease-out-strong);
 }
 
@@ -8476,7 +8476,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .rv-what {
   padding: 10px 12px;
   border-radius: var(--radius-card);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
@@ -8735,7 +8735,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 .run-now-words {
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 /* A run nobody wrote to is titled by what woke it: the face beside the title, the run's line
@@ -8832,13 +8832,13 @@ label.tm-advanced-row:not([data-disabled]) {
    their own height, they would stand it a pixel taller and off centre. */
 .run-now-mono {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-line);
   line-height: 1;
 }
 .run-now-code {
   margin-left: 8px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-line);
   line-height: 1;
   color: var(--color-muted-foreground);
 }
@@ -9608,7 +9608,7 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   min-height: 34px;
   padding-right: 14px;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 /* A row with a line under it hangs from its first line. */
@@ -9669,7 +9669,7 @@ label.tm-advanced-row:not([data-disabled]) {
    height, a mono line would stand a row with a version a pixel taller. */
 .run-result-version {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-line);
   line-height: 1;
   color: var(--color-muted-foreground);
 }
@@ -9832,7 +9832,7 @@ label.tm-advanced-row:not([data-disabled]) {
   padding: 6px;
   color: var(--color-muted-foreground);
   background: var(--color-muted);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   line-height: 1.3;
   text-align: center;
 }
@@ -9882,7 +9882,7 @@ button:hover > .run-result-tile::after {
   align-items: center;
   justify-content: center;
   background: color-mix(in oklab, var(--run-tray) 72%, transparent);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 20px;
   color: var(--color-foreground);
@@ -9958,7 +9958,7 @@ button:hover > .run-result-tile::after {
   left: 14px;
   width: 12px;
   height: 12px;
-  font-size: 7px;
+  font-size: var(--text-5xs);
 }
 
 @media (hover: hover) {
@@ -11037,7 +11037,7 @@ a.message-file:focus-visible {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  font-size: 20px;
+  font-size: var(--text-title);
   font-weight: 600;
   line-height: 28px;
   letter-spacing: -0.01em;
@@ -11048,7 +11048,7 @@ a.message-file:focus-visible {
 }
 .rv-page .rv-title {
   display: block;
-  font-size: 16px;
+  font-size: var(--text-emphasis);
   line-height: 24px;
   letter-spacing: normal;
   -webkit-line-clamp: unset;
@@ -11077,7 +11077,7 @@ a.message-file:focus-visible {
   align-items: center;
   column-gap: 6px;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
@@ -11239,7 +11239,7 @@ a.message-file:focus-visible {
   gap: 12px;
   /* A label hugs what it names: 10 under it, sections 24 apart. */
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 16px;
   color: var(--muted-foreground);
@@ -11292,7 +11292,7 @@ a.message-file:focus-visible {
 }
 .rv-words {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 22px;
   text-wrap: pretty;
 }
@@ -11308,12 +11308,12 @@ a.message-file:focus-visible {
 /* Its headings keep to the review's scale: 16 for a heading, 14 under it. */
 .rv-desc .chat-markdown :is(h1, h2) {
   margin: 20px 0 6px;
-  font-size: 16px;
+  font-size: var(--text-emphasis);
   line-height: 24px;
 }
 .rv-desc .chat-markdown h3 {
   margin: 16px 0 4px;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 22px;
 }
 .rv-desc .chat-markdown > :first-child {
@@ -11485,7 +11485,7 @@ a.message-file:focus-visible {
   justify-content: center;
   border-radius: var(--radius-mark);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 16px;
   color: var(--muted-foreground);
@@ -11522,7 +11522,7 @@ a.message-file:focus-visible {
   padding: 6px 0;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 19px;
   tab-size: 4;
 }
@@ -11599,7 +11599,7 @@ a.message-file:focus-visible {
 }
 .rv-finding-what {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 20px;
   text-wrap: pretty;
@@ -11616,7 +11616,7 @@ a.message-file:focus-visible {
 }
 .rv-finding-more {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   color: var(--muted-foreground);
 }
@@ -11680,7 +11680,7 @@ a.message-file:focus-visible {
   min-width: 0;
   align-items: baseline;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 20px;
 }
@@ -11693,7 +11693,7 @@ a.message-file:focus-visible {
 .rv-remark-body {
   grid-column: 2;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 22px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -11748,7 +11748,7 @@ a.message-file:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto auto;
   column-gap: 12px;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 .rv-commit-t {
@@ -11763,7 +11763,7 @@ a.message-file:focus-visible {
 }
 .rv-commit-sha {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-line);
   color: var(--muted-foreground);
 }
 .rv-commit-skeleton {
@@ -11818,7 +11818,7 @@ a.message-file:focus-visible {
   display: block;
   grid-area: sub;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -11829,7 +11829,7 @@ a.message-file:focus-visible {
   grid-area: sub;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: nowrap;
   color: var(--zerops-status-busy-text);
@@ -11988,7 +11988,7 @@ a.message-file:focus-visible {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 4px 14px;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 .rv-where b {
@@ -12159,7 +12159,7 @@ a.message-file:focus-visible {
 }
 .put-live-stop-t {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   line-height: 20px;
   color: var(--foreground);
@@ -12234,7 +12234,7 @@ a.message-file:focus-visible {
 }
 .put-live-shape-m {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
@@ -12307,7 +12307,7 @@ a.message-file:focus-visible {
   margin-top: 8px;
   border: 1.5px solid color-mix(in oklab, var(--foreground) 22%, transparent);
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
   line-height: 16px;
   color: var(--muted-foreground);
@@ -12369,7 +12369,7 @@ a.message-file:focus-visible {
   flex-wrap: wrap;
   column-gap: 6px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   color: var(--muted-foreground);
   overflow-wrap: anywhere;
@@ -12387,7 +12387,7 @@ a.message-file:focus-visible {
 .rv-pstep-aside {
   grid-area: aside;
   align-self: center;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: nowrap;
   color: var(--muted-foreground);
@@ -12417,7 +12417,7 @@ a.message-file:focus-visible {
 }
 .rv-pstep-more > p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   color: var(--muted-foreground);
 }
@@ -12429,7 +12429,7 @@ a.message-file:focus-visible {
   border-radius: var(--radius-control);
   background: var(--muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: pre;
 }
@@ -12459,7 +12459,7 @@ a.message-file:focus-visible {
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 18px;
   color: var(--muted-foreground);
 }
@@ -12479,7 +12479,7 @@ a.message-file:focus-visible {
   padding: 2px 4px;
   border-radius: var(--radius-mark);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
   line-height: 16px;
   background: color-mix(in oklab, currentColor 18%, transparent);
@@ -12779,7 +12779,7 @@ a.message-file:focus-visible {
 /* The one sentence under the headline: 15 px, muted, one line where it fits. */
 .arrival-sentence {
   color: var(--muted-foreground);
-  font-size: 15px;
+  font-size: var(--text-emphasis);
   line-height: 22px;
   text-align: center;
   text-wrap: balance;
@@ -13589,7 +13589,7 @@ a.message-file:focus-visible {
 
 .np-add-role {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .np-add-empty {
@@ -13604,7 +13604,7 @@ a.message-file:focus-visible {
   flex-direction: column;
   gap: 2px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1.4;
 }
 
@@ -13667,7 +13667,7 @@ a.message-file:focus-visible {
   flex-wrap: wrap;
   gap: 4px 12px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
 }
 
@@ -13722,7 +13722,7 @@ a.message-file:focus-visible {
   gap: 4px 12px;
   margin-top: 20px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 16px;
   transition: opacity 200ms var(--ease-out-strong);
 }
@@ -13942,7 +13942,7 @@ a.message-file:focus-visible {
   flex: 1;
   min-width: 0;
   color: var(--foreground);
-  font-size: 15px;
+  font-size: var(--text-emphasis);
   font-weight: 600;
   line-height: 20px;
 }
@@ -13994,7 +13994,7 @@ a.message-file:focus-visible {
 
 .arrival-open-step-words {
   color: var(--foreground);
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 
@@ -14030,7 +14030,7 @@ a.message-file:focus-visible {
   background: var(--muted);
   box-shadow: inset 0 0 0 1px var(--border);
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1;
   font-weight: 500;
 }
@@ -14067,7 +14067,7 @@ a.message-file:focus-visible {
 .arrival-field-value {
   color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-line);
 }
 
 /* Codex's code, to type on OpenAI's page. */
@@ -14323,7 +14323,7 @@ a.message-file:focus-visible {
     padding: 0 9px 0 4px;
     border-radius: 999px;
     background: color-mix(in oklab, var(--foreground) 5.5%, transparent);
-    font-size: 12px;
+    font-size: var(--text-caption);
     font-weight: 500;
     line-height: 16px;
     white-space: nowrap;
@@ -14590,7 +14590,7 @@ a.message-file:focus-visible {
   padding: 0 5px;
   border-radius: var(--radius-mark);
   background: var(--vault-mark);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   line-height: 17px;
   vertical-align: 1px;
   margin-inline: 1px;
@@ -14598,7 +14598,7 @@ a.message-file:focus-visible {
 }
 
 .vault-dots {
-  font-size: 8px;
+  font-size: var(--text-4xs);
   line-height: 1;
   letter-spacing: 2px;
   vertical-align: 1px;
