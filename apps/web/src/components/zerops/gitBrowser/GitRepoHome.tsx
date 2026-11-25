@@ -1,101 +1,31 @@
 /**
- * A repository's home at the commit its branch, tag or commit names now: its open changes, what
- * it is, its top folder, and its README — every part read at that one commit.
+ * A repository's top folder and README at the commit its branch, tag or commit names now.
  */
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
-import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
-import { EmptyState } from "~/components/ui/empty";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
 import type { GitRepoPageProps } from "./GitBrowseView";
-import { GitAtCommit, GitHomeAgain, GitNotRead } from "./GitAtCommit";
+import { GitAtCommit, GitNotRead } from "./GitAtCommit";
 import { GitDirectoryList } from "./GitDirectoryList";
-import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 import { Text } from "~/components/ui/text";
-import { List } from "~/components/ui/list";
 
 const entryTarget = (entry: { readonly path: string; readonly type: string }): RepoPathTarget => ({
   path: entry.path,
   kind: entry.type === "folder" ? "tree" : "file",
 });
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-function OpenChanges({
-  project,
-  repo,
-  repository,
-  changesFailure,
-  onReadChanges,
-  onOpenChange,
-}: Pick<
-  GitRepoPageProps,
-  "project" | "repo" | "repository" | "changesFailure" | "onReadChanges" | "onOpenChange"
->) {
-  return (
-    <section aria-label="Open changes" className="flex flex-col gap-2">
-      <h2 className="text-emphasis font-medium text-foreground">Open changes</h2>
-      {changesFailure === undefined ? null : (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-body text-status-failed" role="alert">
-            {changesFailure}
-          </p>
-          <Button variant="ghost" size="sm" onClick={onReadChanges}>
-            Read again
-          </Button>
-        </div>
-      )}
-      {repository === undefined || repository.coverage === "unread" ? (
-        <Text render={<p />} variant="description">
-          Changes not read yet.
-        </Text>
-      ) : repository.coverage === "failed" ? (
-        <Text render={<p />} variant="description">
-          Showing the last read changes.
-        </Text>
-      ) : null}
-      {repository !== undefined && repository.changes.length > 0 ? (
-        <Card variant="flat">
-          <div className="px-4 py-1">
-            <List>
-              {repository.changes.map((change) => (
-                <ZeropsGitChangeRow
-                  key={change.pull.number}
-                  change={change}
-                  project={project}
-                  repo={repo}
-                  onOpen={
-                    onOpenChange === undefined ? undefined : () => onOpenChange(change.pull.number)
-                  }
-                />
-              ))}
-            </List>
-          </div>
-        </Card>
-      ) : repository?.coverage === "complete" ? (
-        <EmptyState size="line">No open changes.</EmptyState>
-      ) : null}
-    </section>
-  );
-}
-
 function HomeAt({
   appId,
   repo,
   home,
   sha,
-  again: homeAgain,
   navigate,
   hrefOf,
 }: Pick<GitRepoPageProps, "appId" | "repo" | "navigate" | "hrefOf"> & {
   readonly home: GitHome;
   readonly sha: string;
-  /** Read again for the home read itself: the ref may have moved since. */
-  readonly again: ReactNode;
 }) {
   // The top folder at the very commit the home read resolved, so a branch moving between the two
   // reads cannot pair one commit's README with another's files.
@@ -104,21 +34,9 @@ function HomeAt({
     true,
   );
   const atCommit = (target: RepoPathTarget) => ({ rev: sha, view: "code" as const, ...target });
-  const { about, readme } = home;
+  const { readme } = home;
   return (
     <>
-      <Card variant="flat">
-        <Text
-          className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3"
-          render={<div />}
-          variant="description"
-        >
-          <GitWhen at={about.updatedAt}>Updated {formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
-          <span>{count(about.branchCount, "branch", "branches")}</span>
-          <span>{count(about.tagCount, "tag", "tags")}</span>
-          {homeAgain}
-        </Text>
-      </Card>
       <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
         <Card variant="flat">
           <div className="flex min-w-0 flex-col gap-3 p-4">
@@ -176,18 +94,8 @@ export function GitRepoHome(props: GitRepoPageProps) {
   const { appId, repo, home, onHomeAgain } = props;
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <OpenChanges {...props} />
       <GitAtCommit at={{ appId, repo }} home={home} onHomeAgain={onHomeAgain}>
-        {(answer, sha) => (
-          <HomeAt
-            {...props}
-            home={answer}
-            sha={sha}
-            again={
-              home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
-            }
-          />
-        )}
+        {(answer, sha) => <HomeAt {...props} home={answer} sha={sha} />}
       </GitAtCommit>
     </div>
   );

@@ -35,6 +35,23 @@ export type CodeStandingOffers = {
   readonly review: boolean;
 };
 
+/** The sentence shared by a project's code page and each repository in it. */
+export function codeStandingSentence(name: string, standing: CodeStanding): string | undefined {
+  switch (standing.kind) {
+    case "kept":
+      return standing.holds === "code"
+        ? `${name} has no Mate. Its code is kept and billed as storage.`
+        : `${name} has no Mate. Only its setup is kept.`;
+    case "asked":
+      return `${name} has no Mate. HQ asks whether to keep its code.`;
+    case "deleting":
+      return `${name} is being deleted.`;
+    case "in-use":
+    case "unread":
+      return undefined;
+  }
+}
+
 export function codeStandingOffers(
   standing: CodeStanding,
   viewer: {

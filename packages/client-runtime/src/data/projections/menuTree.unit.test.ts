@@ -276,6 +276,46 @@ it("PJ118: An application HQ lists that the tree draws no group for is named und
   expect(tree.undrawn).toEqual(["nothing"]);
 });
 
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | if (members.length === 0 && hiddenEnvironments.length === 0) return []; → if (members.length === 0 && app.contents?.empty !== true && hiddenEnvironments.length === 0) return [];
+it("PJ155: An application is a group of the menu only when it has a member the person sees or an environment hidden from them, whatever HQ says it holds; breaks: a project whose Mates were deleted stays in the menu as No Mate yet", () => {
+  const setupOnly = app("A", "2026-10-04T00:00:00.000Z");
+  const hiddenOnly = app("D", "2026-10-01T00:00:00.000Z");
+  const stage = placed("stage", "C", "2026-10-02T00:00:00.000Z");
+  const tree = treeOf([
+    {
+      ...setupOnly,
+      value: { ...(setupOnly.value as object), contents: { empty: true, deletingProjectIds: [] } },
+    },
+    app("B", "2026-10-03T00:00:00.000Z"),
+    app("C", "2026-10-02T00:00:00.000Z", [
+      {
+        id: HqEnvironmentId.make("env-stage"),
+        target: { kind: "zerops", projectId: ProjectId.make("stage") },
+        tier: "stage",
+        name: "stage",
+        sources: [],
+        order: 1,
+        keyHeld: false,
+        keyInvalid: false,
+        jobs: [],
+        release: null,
+        birth: null,
+      },
+    ]),
+    {
+      ...hiddenOnly,
+      value: {
+        ...(hiddenOnly.value as object),
+        hiddenEnvironments: [{ id: "hidden-production", tier: "production" }],
+      },
+    },
+    { ...stage, value: { ...(stage.value as object), kind: "plain", mate: null } },
+  ] as ReadonlyArray<Row>);
+  expect(tree.groups.map((group) => group.id)).toEqual(["C", "D"]);
+  expect(tree.undrawn).toEqual(["A", "B"]);
+  expect(tree.listsNothing).toBe(false);
+});
+
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | listsNothing: apps.length === 0 && placements.length === 0 && births.length === 0, → listsNothing: apps.length === 0 && read.members(projectsScope(orgId)).ids.length === 0,
 it("PJ122: HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back", () => {
   const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
@@ -398,7 +438,6 @@ it("PJ125: An application whose stages and productions the person reaches none o
     id: "shop",
     name: "shop",
     createdAt: "2026-10-01T00:00:00.000Z",
-    empty: false,
     hiddenEnvironments,
     members,
   });

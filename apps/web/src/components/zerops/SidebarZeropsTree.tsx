@@ -3,9 +3,10 @@ import { KeptGitQuestions } from "./KeptGitQuestions";
 import { menuMateKeys, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
+import { useCodeStandings } from "../../zerops/useCodeStandings";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
-import { projectDeleteOffered } from "@t3tools/client-runtime/zerops";
+import { codeStandingLine, projectDeleteOffered } from "@t3tools/client-runtime/zerops";
 import { groupDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/components/zerops/projectPartsShown";
@@ -960,6 +961,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const environmentFacts = useApplicationEnvironmentFacts();
   const addMateOffer = useAddMateOffer();
   const orgOffer = useOrgOffers();
+  const codeStandings = useCodeStandings();
   const addMateGate = useNewMateGate();
   const addMateDoor = useAddMateDoor();
   const treeRef = useRef<HTMLElement>(null);
@@ -2100,6 +2102,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             <ProjectBareRow
               groupId={id}
               keys={mateKeys}
+              line={codeStandingLine(codeStandings(id).standing)?.words}
               menu={projectMenu()}
               name={projectName}
               onDragStart={dragOf}
@@ -3292,13 +3295,14 @@ function ProjectGroupRow<T extends RosterCandidate>({
 }
 
 /**
- * A project with no Mate in it — its Mates deleted, or a stage or a production alone: the project's
- * mark where a face would be, its name, and "No Mate yet"; a press opens the project. Its tags and
+ * A project with no Mate in it, with a stage, production or hidden environment: the project's mark
+ * where a face would be, its name, and its standing; a press opens the project. Its tags and
  * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
 function ProjectBareRow({
   groupId,
   name,
+  line,
   review,
   sites,
   menu,
@@ -3308,6 +3312,7 @@ function ProjectBareRow({
 }: {
   readonly groupId: string;
   readonly name: string;
+  readonly line: string | undefined;
   readonly review: ProjectReviewData | undefined;
   readonly sites: ProjectSitesInput | undefined;
   readonly menu: ReadonlyArray<HeadingMenuEntry>;
@@ -3345,7 +3350,7 @@ function ProjectBareRow({
               <BoxIcon />
             </LogoTile>
           }
-          line="No Mate yet"
+          line={line}
           meta={<span className="min-w-16" />}
           pressable="band"
           render={

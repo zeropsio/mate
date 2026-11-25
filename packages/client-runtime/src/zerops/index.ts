@@ -416,6 +416,7 @@ export {
   codeStanding,
   codeStandingOffers,
   codeStandingLine,
+  codeStandingSentence,
   type CodeStanding,
   type CodeStandingOffers,
 } from "./codeStanding.ts";

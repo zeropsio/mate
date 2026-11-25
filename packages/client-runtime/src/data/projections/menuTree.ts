@@ -90,8 +90,6 @@ export interface MenuGroup {
   readonly name: string | undefined;
   /** When HQ created it. */
   readonly createdAt: string | undefined;
-  /** HQ holds nothing of it but its repository (`contents.empty`). */
-  readonly empty: boolean;
   /** Its stages and productions the person's token does not reach: the ask-for-access line. */
   readonly hiddenEnvironments: ReadonlyArray<HqHiddenEnvironment>;
   /** Its environments (stage, then production, each in HQ's order), placed projects, then Mates. */
@@ -342,15 +340,12 @@ export const menuTree: Projection<string, MenuTree> = {
         ...mates.filter((member) => !heldOutChief(member, viewer)),
       ];
       const hiddenEnvironments = app.hiddenEnvironments ?? [];
-      const empty = app.contents?.empty === true;
-      // An application with nothing the person sees is drawn only to be filled or asked into.
-      if (members.length === 0 && !empty && hiddenEnvironments.length === 0) return [];
+      if (members.length === 0 && hiddenEnvironments.length === 0) return [];
       return [
         {
           id,
           name: app.name,
           createdAt: app.createdAt,
-          empty,
           hiddenEnvironments,
           members,
         },

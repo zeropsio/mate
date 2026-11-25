@@ -3,6 +3,8 @@ import { projectServicesAtom, shownHqListNavigationAtom } from "@t3tools/client-
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
+import { useCodeStandings } from "../../zerops/useCodeStandings";
+import { codeStandingLine } from "@t3tools/client-runtime/zerops";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints } from "./projects/projectsView.logic";
@@ -917,7 +919,7 @@ export function ZeropsProjectsContent({
   const projectOrder = useProjectOrderOptions();
   // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
   // under the birth's key, before the listing holds its project — the same row the menu draws.
-  // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
+  // An application is drawn only while it has a visible member or a hidden environment.
   const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths } = useSharedBirthState();
@@ -958,6 +960,7 @@ export function ZeropsProjectsContent({
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
+  const codeStandings = useCodeStandings();
   // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
@@ -2433,6 +2436,10 @@ export function ZeropsProjectsContent({
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={drawnGroups}
+        heldWords={(groupId) => {
+          const line = codeStandingLine(codeStandings(groupId).standing);
+          return line?.notice === true ? line.words : undefined;
+        }}
         page={
           project === undefined
             ? undefined

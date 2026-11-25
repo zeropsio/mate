@@ -1,4 +1,4 @@
-next: PJ155
+next: PJ156
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -108,6 +108,7 @@ next: PJ155
 - PJ116 — A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion
 - PJ117 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
 - PJ118 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
+- PJ155 — An application is a group of the menu only when it has a member the person sees or an environment hidden from them, whatever HQ says it holds; breaks: a project whose Mates were deleted stays in the menu as No Mate yet
 - PJ121 — A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
 - PJ125 — An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access

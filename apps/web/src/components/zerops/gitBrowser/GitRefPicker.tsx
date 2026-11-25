@@ -145,6 +145,9 @@ export function GitRefPicker({
         <ChevronDownIcon aria-hidden="true" />
       </ComboboxTrigger>
       <ComboboxPopup align="start" className="flex w-96 flex-col">
+        <Text className="px-3 pt-2.5" render={<p />} variant="note">
+          Browsing source does not switch a Mate’s checkout.
+        </Text>
         <div className="px-3 pt-2.5">
           <ToggleGroup
             aria-label="List"

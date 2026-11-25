@@ -114,13 +114,12 @@ export function GitHomeAgain({
   readonly home: { readonly busy: boolean; readonly failed: boolean };
   readonly onHomeAgain: () => void;
 }) {
+  if (!home.failed) return null;
   return (
     <span className="flex flex-wrap items-center gap-3">
-      {home.failed ? (
-        <span className="text-status-failed" role="alert">
-          HQ could not read this again. Showing the last read.
-        </span>
-      ) : null}
+      <span className="text-status-failed" role="alert">
+        HQ could not read this again. Showing the last read.
+      </span>
       <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
         Read again
       </Button>
@@ -142,10 +141,7 @@ export function GitAtCommit({
 }) {
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <Text className="flex flex-wrap items-center gap-3" render={<div />} variant="description">
-        <GitNoCommit pending={home.answer.pending} />
-        <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
-      </Text>
+      <GitNoCommit pending={home.answer.pending} />
     ) : (
       children(home.answer, home.answer.sha)
     );
