@@ -155,6 +155,10 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
   is `InlineButton`; a name that opens what it names is its `plain` tone. A list's row is `Row`,
   `xs` for a tree or a dense list.
+- Words are named by what they are, with `Text`: a `headline`, a `heading`, a `label`, a
+  `description`, a `remark`, a `note`, a `meta` fact, an `error`, a `code` literal. The variant
+  fixes the step, the ink and the weight; a kit piece that draws its own words (a row, a section
+  label, a page header, an empty place, a field, a failure) keeps them.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
@@ -242,6 +246,10 @@ numbered steps of these. Every ask is the same card, in two densities.
     document, rendered markdown, fonts, the boot frame's geometry, the Mate face's drawing and the
     few rules no utility can say; a list that only shrinks); a surface's keyframes go in
     `apps/web/src/styles/motion-*.css`, which holds `@keyframes` only
+
+- **R14** — Words in a `Text` variant's look are `Text`
+  - _Enforced by:_ `t3code/prefer-text` (a plain element whose class string is exactly one variant's
+    step, ink and weight, beside only what `Text` takes in `className`); its ledger only shrinks
 
 ## 6. Exceptions
 
