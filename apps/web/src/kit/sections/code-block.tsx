@@ -1,4 +1,4 @@
-import { CodeBlock } from "~/components/ui/code-block";
+import { CodeBlock, CodeFrame } from "~/components/ui/code-block";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
@@ -88,6 +88,21 @@ export default defineKitSection({
               </CodeBlock>
             </Specimen>
           ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="The frame alone, for text another renderer draws in it: a highlighter, a terminal."
+        title="Frame"
+      >
+        <SpecimenGrid size="md">
+          <Specimen align="start" label="<CodeFrame>" note="A terminal's lines on the code ground">
+            <CodeFrame className="h-24 w-full">
+              <span className="flex flex-col px-3 py-2 font-mono text-caption leading-5">
+                <span>$ claude login</span>
+                <span>Opening the sign-in page…</span>
+              </span>
+            </CodeFrame>
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
     </Specimens>
