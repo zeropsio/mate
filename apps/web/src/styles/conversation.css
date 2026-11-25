@@ -1,22 +1,5 @@
 /* ==== Pass 16 · the conversation ==== */
 
-/* The conversation's header has one button style: borderless 28 px ghosts, a
-   muted glyph, the app's row hover and the ink under the pointer. The
-   workspace header fills every button it holds; these step out of it. */
-[data-chat-header] [data-chat-header-ghost] {
-  --control-icon-color: currentColor;
-  border-color: transparent;
-  background-color: transparent;
-  color: var(--contrast-muted-foreground);
-}
-
-[data-chat-header] [data-chat-header-ghost]:hover,
-[data-chat-header] [data-chat-header-ghost][data-pressed],
-[data-chat-header] [data-chat-header-ghost][data-popup-open] {
-  background-color: var(--sidebar-row-hover);
-  color: var(--contrast-foreground);
-}
-
 /* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
    menu's selected band while its own chat is open — 32 px tall, a
    control's corners — and with a crew, the crewmate whose chat is on screen stands on
@@ -64,17 +47,6 @@
     [data-header-sites] {
     display: none;
   }
-}
-
-/* The crewmate's pill is its menu's trigger, which the header fills like any
-   other; it is clear instead, pressed or not: the band under it is its
-   ground. A face's press wears `data-conversation-crewmate` too; only the
-   pill's is current. */
-[data-conversation-crewmate][data-current],
-[data-chat-header] [data-conversation-crewmate][data-current],
-[data-chat-header] [data-conversation-crewmate][data-current]:hover,
-[data-chat-header] [data-conversation-crewmate][data-current][data-popup-open] {
-  background-color: transparent;
 }
 
 /* ==== end of the conversation ==== */

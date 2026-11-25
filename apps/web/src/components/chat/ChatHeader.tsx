@@ -845,14 +845,7 @@ export const ChatHeader = memo(function ChatHeader({
           <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
             <MenuTrigger
               className={menuShown ? undefined : "hidden"}
-              render={
-                <Button
-                  aria-label="More header actions"
-                  data-chat-header-ghost
-                  size="icon-sm"
-                  variant="ghost"
-                />
-              }
+              render={<Button aria-label="More header actions" size="icon-sm" variant="sidebar" />}
             >
               <EllipsisIcon className="size-4" />
             </MenuTrigger>

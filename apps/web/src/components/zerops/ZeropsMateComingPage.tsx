@@ -1415,13 +1415,7 @@ export function MateComingHeader({
         }
       >
         {standsIn === null ? null : (
-          <Button
-            aria-label="More header actions"
-            data-chat-header-ghost
-            inert
-            size="icon-sm"
-            variant="ghost"
-          >
+          <Button aria-label="More header actions" inert size="icon-sm" variant="sidebar">
             <EllipsisIcon className="size-4" />
           </Button>
         )}

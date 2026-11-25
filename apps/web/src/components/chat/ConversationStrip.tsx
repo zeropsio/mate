@@ -125,10 +125,9 @@ function MateChatsMenu({
           render={
             <Button
               aria-label={`${mateName}'s chats`}
-              data-chat-header-ghost
               data-conversation-chats
               size="icon-xs"
-              variant="ghost-muted"
+              variant="sidebar"
             />
           }
         >
@@ -501,7 +500,6 @@ function MoreCrew({
         render={
           <Button
             className={cn("h-7", !shown && "invisible absolute start-0 top-0")}
-            data-chat-header-ghost
             data-conversation-more
             size="xs"
             tabIndex={shown ? undefined : -1}

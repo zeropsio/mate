@@ -22,7 +22,6 @@ export function ChiefOverviewButton({
   return (
     <Button
       aria-label="Overview"
-      data-chat-header-ghost
       data-zerops-surface="chief-overview"
       onClick={() => {
         const way = chiefOverviewWay(threadRef);
@@ -30,7 +29,7 @@ export function ChiefOverviewButton({
         else useRightPanelStore.getState().open(way.threadRef, way.panel);
       }}
       size="sm"
-      variant="ghost"
+      variant="sidebar"
     >
       <LayersIcon className="size-3.5 shrink-0" />
       <span className="hidden text-line @3xl/header-actions:inline">Overview</span>

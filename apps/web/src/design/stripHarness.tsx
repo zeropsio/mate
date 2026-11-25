@@ -557,12 +557,7 @@ function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
         className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25"
         data-chat-header-actions
       >
-        <Button
-          aria-label="More header actions"
-          data-chat-header-ghost
-          size="icon-sm"
-          variant="ghost"
-        >
+        <Button aria-label="More header actions" size="icon-sm" variant="sidebar">
           <EllipsisIcon className="size-4" />
         </Button>
         <HeaderLinksView

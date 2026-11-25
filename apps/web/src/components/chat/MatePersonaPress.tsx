@@ -21,7 +21,7 @@ export function MatePersonaPress(props: {
             data-conversation-persona=""
             onClick={props.onOpen}
             size="xs"
-            variant="ghost-muted"
+            variant="sidebar"
           />
         }
       >

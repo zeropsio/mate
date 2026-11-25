@@ -27,13 +27,7 @@ import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresse
 
 /** The Sites button, the same whichever panel it opens. */
 const sitesButton = (
-  <Button
-    aria-label="Open the Mate's sites"
-    data-chat-header-ghost
-    data-header-sites=""
-    size="sm"
-    variant="ghost"
-  />
+  <Button aria-label="Open the Mate's sites" data-header-sites="" size="sm" variant="sidebar" />
 );
 const sitesWords = (
   <>
@@ -167,11 +161,11 @@ export function HeaderLinksView({
     return (
       <HeldLink>
         {projectInMenu ? null : (
-          <Button data-chat-header-ghost size="sm" variant="ghost">
+          <Button size="sm" variant="sidebar">
             {projectWords}
           </Button>
         )}
-        <Button data-chat-header-ghost size="sm" variant="ghost">
+        <Button size="sm" variant="sidebar">
           {sitesWords}
         </Button>
       </HeldLink>
@@ -191,7 +185,7 @@ export function HeaderLinksView({
       )}
       {sites ?? (
         <HeldLink>
-          <Button data-chat-header-ghost size="sm" variant="ghost">
+          <Button size="sm" variant="sidebar">
             {sitesWords}
           </Button>
         </HeldLink>
@@ -220,11 +214,10 @@ export function ProjectPageLink({
         render={
           <Button
             aria-label={label}
-            data-chat-header-ghost
             data-zerops-surface="header-project-page"
             onClick={onOpen}
             size="sm"
-            variant="ghost"
+            variant="sidebar"
           />
         }
       >

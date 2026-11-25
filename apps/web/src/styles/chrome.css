@@ -19,27 +19,17 @@
   }
 }
 
-/* Workspace actions use a small, separate chrome hierarchy: the toolbar roles,
-   so the thread toolbar never falls back to the default dark-mode whites. */
+/* The conversation's header stands on the toolbar's ground and ink; each press
+   in it draws its own kit look (quiet ones `Button variant="sidebar"`). */
 [data-chat-header] {
   background-color: var(--toolbar-background);
   color: var(--contrast-toolbar-foreground);
 }
 
-[data-chat-header] [data-slot="button"],
-[data-chat-header] [data-slot="menu-trigger"],
-[data-chat-header] [data-toolbar-control] {
-  --control-icon-color: var(--contrast-toolbar-control-foreground);
-  background-color: var(--toolbar-control);
-  border-color: var(--contrast-toolbar-border);
-  color: var(--contrast-toolbar-control-foreground);
-}
-
-/* The panel layout toggles stay ghost: they render both inside the header and
-   in the titlebar strip, so filling them would make them change appearance as
-   the panel opens. They only take the themed foreground; hover and pressed
-   keep the base ghost accent. The tooltip trigger's data-slot wins over the
-   toggle's when the trigger renders the toggle, so match both. */
+/* The panel layout toggles take the toolbar's ink, inside the header and in
+   the titlebar strip alike, so they look the same as the panel opens; hover
+   and pressed keep the base ghost accent. The tooltip trigger's data-slot wins
+   over the toggle's when the trigger renders the toggle, so match both. */
 [data-panel-layout-controls] [data-slot="toggle"],
 [data-panel-layout-controls] [data-slot="tooltip-trigger"],
 [data-workspace-titlebar-controls] [data-slot="toggle"],
@@ -58,15 +48,6 @@
     var(--toolbar-background)
   );
   color: color-mix(in oklab, var(--contrast-toolbar-foreground) 55%, var(--toolbar-background));
-}
-
-[data-chat-header] [data-slot="button"]:hover,
-[data-chat-header] [data-slot="button"][data-pressed],
-[data-chat-header] [data-slot="menu-trigger"]:hover,
-[data-chat-header] [data-slot="menu-trigger"][data-pressed],
-[data-chat-header] [data-toolbar-control]:hover,
-[data-chat-header] [data-toolbar-control][data-pressed] {
-  background-color: var(--toolbar-control-hover);
 }
 
 [data-chat-header] [data-slot="separator"] {
@@ -97,15 +78,6 @@
     in srgb,
     color-mix(in srgb, var(--toolbar-border) var(--appearance-contrast-base), transparent),
     var(--toolbar-foreground) var(--appearance-contrast-border-boost)
-  );
-  --contrast-toolbar-control-foreground: color-mix(
-    in oklab,
-    color-mix(
-      in oklab,
-      var(--toolbar-control-foreground) var(--appearance-contrast-base),
-      var(--toolbar-control)
-    ),
-    var(--appearance-contrast-target) var(--appearance-contrast-boost)
   );
   --contrast-input: color-mix(
     in srgb,
