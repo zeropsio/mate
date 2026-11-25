@@ -214,23 +214,9 @@
 }
 
 @layer components {
-  /* The Waiting on you list, beside the menu (the kit's Popover): each thing a 32 px face, its
-     title, its words in ink and its buttons — 12 px between things. */
-  .menu-wait-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    height: 40px;
-    padding: 0 8px;
-  }
-
-  .menu-wait-heading {
-    flex: 1 1 auto;
-    font-size: var(--text-emphasis);
-    line-height: 20px;
-    font-weight: 600;
-  }
-
+  /* The Waiting on you list, beside the menu (the kit's Popover, its heading the kit's
+     SectionHeader): each thing a 32 px face, its title, its words in ink and its buttons — 12 px
+     between things. ⌥↓'s hint at the heading's end. */
   .menu-wait-key {
     display: inline-flex;
     align-items: center;
@@ -308,18 +294,6 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 12px;
-  }
-
-  .menu-wait-error {
-    flex: 1 1 100%;
-    font-size: var(--text-body);
-    line-height: 18px;
-    color: var(--muted-foreground);
-  }
-
-  .menu-wait-error {
-    margin-top: 8px;
-    color: var(--zerops-status-failed-text);
   }
 }
 

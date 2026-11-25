@@ -26,9 +26,11 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
+import { Failure } from "../ui/failure";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
@@ -222,12 +224,17 @@ export function WaitingList({
   const listed = items.filter((item) => !gone.has(item.key));
   return (
     <>
-      <div className="menu-wait-head">
-        <span className="menu-wait-heading">Waiting on you</span>
-        <span className="menu-wait-key">
-          <Kbd>⌥↓</Kbd>
-          next
-        </span>
+      <div className="px-2 py-1.5">
+        <SectionHeader
+          action={
+            <span className="menu-wait-key">
+              <Kbd>⌥↓</Kbd>
+              next
+            </span>
+          }
+          level={3}
+          title="Waiting on you"
+        />
       </div>
       <div className="menu-wait-items">
         {listed.map((item) => (
@@ -659,11 +666,7 @@ export function Replying({
       ) : (
         children
       )}
-      {error === undefined ? null : (
-        <p className="menu-wait-error" role="alert">
-          {error}
-        </p>
-      )}
+      {error === undefined ? null : <Failure cause={error} className="mt-2 basis-full" />}
     </>
   );
 }
