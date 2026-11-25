@@ -201,6 +201,7 @@ import { getComposerPromptInjectionState, getComposerProviderState } from "./com
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
 import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
+import { ComposerVaultAddButton } from "../zerops/vault/ComposerVaultAdd";
 import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
@@ -3534,6 +3535,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
+                    <ComposerVaultAddButton environmentId={environmentId} />
                     <ComposerAttachFilesButton
                       disabled={composerInputClosed("paperclip", {
                         connecting: isConnecting,

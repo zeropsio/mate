@@ -1928,14 +1928,6 @@
     "expires": "surface:text-roles"
   },
   {
-    "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"truncate text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "the words are Text's \"note\"; they move onto it with components/zerops' turn of the text-roles pass",
-    "expires": "surface:text-roles"
-  },
-  {
     "path": "apps/web/src/components/zerops/vault/VaultPanel.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<p> className=\"flex items-center gap-1.5 px-1 text-caption text-muted-foreground\"",
