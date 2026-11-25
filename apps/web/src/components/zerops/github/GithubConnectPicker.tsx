@@ -1109,48 +1109,48 @@ function RepositoryList({
         value={picked ?? ""}
       >
         <List className="flex flex-col">
-        {created === null ? null : (
-          <NewRepositoryRow
-            account={account.account}
-            checked={picked === NEW_REPOSITORY}
-            created={created}
-          />
-        )}
-        {rows.map((row) => {
-          const name = row.repository.fullName;
-          const disabled = row.taken !== null;
-          const words = [
-            row.repository.private ? "Private" : "Public",
-            row.current ? "connected now" : null,
-            row.suggested && !row.current ? "name matches" : null,
-          ]
-            .filter((part) => part !== null)
-            .join(" · ");
-          return (
-            <div
-              className={
-                row.fresh
-                  ? "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none"
-                  : undefined
-              }
-              key={name}
-            >
-              <RadioRow
-                badges={
-                  row.fresh ? (
-                    <Badge tone="info">New</Badge>
-                  ) : row.suggested ? (
-                    <Badge tone="info">Suggested</Badge>
-                  ) : null
+          {created === null ? null : (
+            <NewRepositoryRow
+              account={account.account}
+              checked={picked === NEW_REPOSITORY}
+              created={created}
+            />
+          )}
+          {rows.map((row) => {
+            const name = row.repository.fullName;
+            const disabled = row.taken !== null;
+            const words = [
+              row.repository.private ? "Private" : "Public",
+              row.current ? "connected now" : null,
+              row.suggested && !row.current ? "name matches" : null,
+            ]
+              .filter((part) => part !== null)
+              .join(" · ");
+            return (
+              <div
+                className={
+                  row.fresh
+                    ? "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none"
+                    : undefined
                 }
-                disabled={disabled}
-                line={row.taken ?? words}
-                title={<span className="font-mono font-normal">{name}</span>}
-                value={name}
-              />
-            </div>
-          );
-        })}
+                key={name}
+              >
+                <RadioRow
+                  badges={
+                    row.fresh ? (
+                      <Badge tone="info">New</Badge>
+                    ) : row.suggested ? (
+                      <Badge tone="info">Suggested</Badge>
+                    ) : null
+                  }
+                  disabled={disabled}
+                  line={row.taken ?? words}
+                  title={<span className="font-mono font-normal">{name}</span>}
+                  value={name}
+                />
+              </div>
+            );
+          })}
         </List>
       </RadioGroup>
     </Card>
