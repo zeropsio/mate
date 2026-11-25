@@ -125,6 +125,8 @@ import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./hqOverview/zeropsHqOverview.ts";
+import { readFileJson, watchFiles } from "./fileWatch.ts";
+import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
@@ -465,7 +467,15 @@ type HandshakeSignals = {
 type Link = Effect.Effect<LinkClose | undefined>;
 
 /** An overview's sections, each sent whole when it changed. */
-const SECTIONS = ["identity", "main", "threads", "logins", "crew", "conversations"] as const;
+const SECTIONS = [
+  "identity",
+  "main",
+  "threads",
+  "logins",
+  "crew",
+  "conversations",
+  "standUp",
+] as const;
 
 /**
  * The sections of `overview` whose JSON differs from what `sent` holds, which then holds them as
@@ -1116,6 +1126,11 @@ interface OverviewSources {
   readonly domainEvents: Stream.Stream<unknown>;
   /** An engine Mate's own rows, sent beside the threads' shell fields; none on a V1 Mate. */
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
+  /** zcp's own status file, read again whenever it changes. */
+  readonly zcpStatus?: {
+    readonly read: Effect.Effect<ZcpStatus | null>;
+    readonly changes: Stream.Stream<unknown>;
+  };
   /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
   readonly engine?: { readonly protocol: number };
   /** Whether its service holds the press's setup marker, read locally at each look; none off Zerops. */
@@ -1176,6 +1191,7 @@ const mateOverviewFeed = (
         ...(sources.conversations === undefined
           ? {}
           : { conversations: yield* sources.conversations }),
+        ...(sources.zcpStatus === undefined ? {} : { zcpStatus: yield* sources.zcpStatus.read }),
       });
     }).pipe(Effect.option);
     return {
@@ -1184,6 +1200,7 @@ const mateOverviewFeed = (
         [
           sources.domainEvents,
           ...(sources.providers === undefined ? [] : [sources.providers.changes]),
+          ...(sources.zcpStatus === undefined ? [] : [sources.zcpStatus.changes]),
           Stream.fromPubSub(crewMoved),
           sources.agentAuth.changes,
           sources.agentLogin.changes,
@@ -1236,6 +1253,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         Effect.map(attention.current, ({ source }) => source),
       );
       const descriptor = yield* (yield* ServerEnvironment).getDescriptor;
+      const statusFile = zerops.statusFile;
       const feed = yield* mateOverviewFeed({
         providers: {
           latest: providers.providers,
@@ -1259,6 +1277,16 @@ export const layer = (crew: OverviewSources["crew"]) =>
         domainEvents: chats.domainEvents,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
+        ...(statusFile === undefined || statusFile.length === 0
+          ? {}
+          : {
+              zcpStatus: {
+                read: readFileJson(fs, statusFile).pipe(
+                  Effect.map((raw) => parseZcpStatus(raw) ?? null),
+                ),
+                changes: Stream.fromEffectRepeat((yield* watchFiles([statusFile])).next),
+              },
+            }),
         setupMarker: readServiceVariableKeys(zerops.envStorePath).pipe(
           Effect.map(hasSetupMarker),
           Effect.provideService(FileSystem.FileSystem, fs),

@@ -1,5 +1,7 @@
-next: HO36
+next: HO38
 
+- HO36 — HQ is told how zcp's stand-up of the Mate stands, running, done or failed, with zcp's own stamp of it, and nothing of a stand-up zcp never ran or a status the Mate cannot read; breaks: a Mate whose stand-up failed looks set up to HQ, or one that never stood up looks failed
+- HO37 — A failed stand-up names to HQ each service zcp failed with where it failed, zcp's class and the source's words, the pooled rows first, eight at most and the rest counted, a credential in the words masked and long words cut; breaks: the source's words never reach HQ's operator, or a token in a build line leaves the Mate
 - HO1 — HQ shows a Mate's main chat as the Mate's own menu row does: its session, its latest turn, the person's and the agent's last words, the plan's step and what the running turn is on
 - HO2 — A chat the Mate finished a turn in reads idle to HQ, never done or woke, with the turn's completion beside it; a chat that asks, runs or broke reads approval, working or failed
 - HO3 — HQ lists every chat that is not idle, then the newest idle ones up to forty, and counts the rest

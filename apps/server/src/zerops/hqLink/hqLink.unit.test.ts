@@ -153,6 +153,7 @@ const rig = (
     /** The Mate's public origin; its container's own unless a test takes it away. */
     readonly publicOrigin?: string | undefined;
     readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
+    readonly overview?: () => MateOverview;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -178,7 +179,8 @@ const rig = (
       },
       overview: Effect.sync(() => {
         reads.count += 1;
-      }).pipe(Effect.as(Option.some(overview("Add a login page")))),
+        return Option.some(options.overview?.() ?? overview("Add a login page"));
+      }),
       changes: Stream.fromPubSub(changes),
       attention: Stream.never,
       gitCredential: (credential) => Effect.sync(() => void credentials.push(credential)),
@@ -924,4 +926,44 @@ it.effect(
         );
       }
     }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+// witness: apps/server/src/zerops/ZeropsHqLink.ts | "standUp", →
+it.effect(
+  "HL17: A stand-up that changed goes up as its own section, also when it is no longer failed, and a link whose overview carries none sends none; breaks: HQ keeps showing a stand-up failure that was run again and stood",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let current: MateOverview = {
+          ...overview("Add a login page"),
+          standUp: {
+            state: "failed",
+            at: "2026-11-25T20:01:00Z",
+            failed: [{ hostname: "apppool", step: "pool", class: "refused", cause: "refused" }],
+            omitted: 0,
+          },
+        };
+        const first = yield* rig({ overview: () => current });
+        const socket = yield* linked(first.sockets, 0);
+        assert.deepStrictEqual(socket.sent, [
+          hello("zk-1"),
+          { type: "overview", full: true, overview: current },
+        ]);
+        current = { ...current, standUp: null };
+        yield* PubSub.publish(first.changes, undefined);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(socket.sent.slice(2), [
+          { type: "overview", full: false, sections: { standUp: null } },
+        ]);
+
+        const older = yield* rig();
+        const olderSocket = yield* linked(older.sockets, 0);
+        yield* PubSub.publish(older.changes, undefined);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(olderSocket.sent, [
+          hello("zk-1"),
+          { type: "overview", full: true, overview: overview("Add a login page") },
+        ]);
+      }),
+    ),
 );

@@ -5,11 +5,17 @@ import {
   ZeropsAgentAuthSnapshot,
   ZeropsUserId,
 } from "@t3tools/contracts";
-import { linkFrameBytes, MateOverview, type OverviewIdentity } from "@t3tools/shared/mateLink";
+import {
+  linkFrameBytes,
+  MATE_LINK_TEXT_MAX,
+  MateOverview,
+  type OverviewIdentity,
+} from "@t3tools/shared/mateLink";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import type { ZcpStatus } from "../zeropsSetupSteps.ts";
 
 const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 const decodeCrew = Schema.decodeUnknownSync(CrewSnapshot);
@@ -668,4 +674,148 @@ it("HO16: A turn admitted after a usage refusal clears the refusal and the pause
   expect(overview.main?.usagePause).toBeNull();
   expect(overview.main).toMatchObject({ refusal: null });
   expect(overview.threads.list.find((thread) => thread.id === "main")?.kind).toBe("working");
+});
+
+type ZcpStandUp = NonNullable<ZcpStatus["standup"]>;
+
+const zcpStandUp = (state: ZcpStandUp["state"], extra: Partial<ZcpStandUp> = {}): ZcpStatus => ({
+  runtimes: undefined,
+  standup: {
+    state,
+    phase: "",
+    startedAt: "2026-11-25T20:00:00Z",
+    callStartedAt: "2026-11-25T20:00:00Z",
+    endedAt: "2026-11-25T20:01:00Z",
+    services: [],
+    process: undefined,
+    verdict: undefined,
+    ...extra,
+  },
+});
+
+const overviewWithStatus = (zcpStatus: ZcpStatus | null) =>
+  decodeOverview(
+    mateOverviewOf({
+      identity: IDENTITY,
+      threads: [],
+      auth: NO_LOGINS,
+      crew: undefined,
+      zcpStatus,
+    }),
+  );
+
+const failedService = {
+  hostname: "appdev",
+  step: "deploy",
+  state: "failed",
+  processId: "",
+  at: "",
+  error: "deploy refused",
+} as const;
+
+// witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | standup.state === "running" ? standup.startedAt : standup.endedAt → standup.state === "running" ? standup.endedAt : standup.endedAt
+it("HO36: HQ is told how zcp's stand-up of the Mate stands, running, done or failed, with zcp's own stamp of it, and nothing of a stand-up zcp never ran or a status the Mate cannot read; breaks: a Mate whose stand-up failed looks set up to HQ, or one that never stood up looks failed", () => {
+  const failed = [{ hostname: "appdev", step: "deploy", cause: "deploy refused" }];
+  const cases = [
+    { label: "unreadable", status: null, expected: null },
+    { label: "no stand-up", status: { runtimes: undefined, standup: undefined }, expected: null },
+    { label: "idle", status: zcpStandUp("idle"), expected: null },
+    { label: "unknown", status: zcpStandUp(undefined), expected: null },
+    {
+      label: "running",
+      status: zcpStandUp("running", { services: [failedService] }),
+      expected: { state: "running", at: "2026-11-25T20:00:00Z", failed, omitted: 0 },
+    },
+    {
+      label: "done",
+      status: zcpStandUp("done", { services: [failedService] }),
+      expected: { state: "done", at: "2026-11-25T20:01:00Z", failed: [], omitted: 0 },
+    },
+    {
+      label: "failed",
+      status: zcpStandUp("failed", { services: [failedService] }),
+      expected: { state: "failed", at: "2026-11-25T20:01:00Z", failed, omitted: 0 },
+    },
+  ];
+  for (const { label, status, expected } of cases) {
+    expect(overviewWithStatus(status).standUp, label).toEqual(expected);
+  }
+  const older = decodeOverview(
+    mateOverviewOf({ identity: IDENTITY, threads: [], auth: NO_LOGINS, crew: undefined }),
+  );
+  expect("standUp" in older).toBe(false);
+  const future = {
+    state: "future",
+    at: "",
+    failed: [{ hostname: "appdev", step: "future", class: "future", cause: "" }],
+    omitted: 0,
+  };
+  expect(decodeOverview({ ...older, standUp: future }).standUp).toEqual(future);
+});
+
+// witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | rowText(row.cause) → row.cause
+it("HO37: A failed stand-up names to HQ each service zcp failed with where it failed, zcp's class and the source's words, the pooled rows first, eight at most and the rest counted, a credential in the words masked and long words cut; breaks: the source's words never reach HQ's operator, or a token in a build line leaves the Mate", () => {
+  const pooled = {
+    hostname: " apppool ",
+    kind: "pool",
+    commit: "",
+    state: "failed",
+    appVersionId: "",
+    processId: "",
+    cause: " resource refused ",
+    next: "",
+  } as const;
+  const overview = overviewWithStatus(
+    zcpStandUp("failed", {
+      verdict: {
+        headline: "failed",
+        rows: [
+          { ...pooled, class: "refused" },
+          { ...pooled, hostname: "appstage", kind: "stage", state: "building" },
+        ],
+      },
+      services: [failedService, { ...failedService, hostname: "apidev", state: "done" }],
+    }),
+  );
+  expect(overview.standUp).toEqual({
+    state: "failed",
+    at: "2026-11-25T20:01:00Z",
+    failed: [
+      { hostname: "apppool", step: "pool", class: "refused", cause: "resource refused" },
+      { hostname: "appdev", step: "deploy", cause: "deploy refused" },
+    ],
+    omitted: 0,
+  });
+
+  const many = overviewWithStatus(
+    zcpStandUp("failed", {
+      verdict: {
+        headline: "failed",
+        rows: Array.from({ length: 10 }, (_, n) => ({ ...pooled, hostname: `app${String(n)}` })),
+      },
+    }),
+  ).standUp;
+  expect(many?.failed).toEqual(
+    Array.from({ length: 8 }, (_, n) => ({
+      hostname: `app${String(n)}`,
+      step: "pool",
+      cause: "resource refused",
+    })),
+  );
+  expect(many?.omitted).toBe(2);
+
+  const secret = "sk-ant-api03-" + "x".repeat(40);
+  const sensitive = overviewWithStatus(
+    zcpStandUp("failed", {
+      verdict: {
+        headline: "failed",
+        rows: [
+          { ...pooled, cause: `build ${secret} refused` },
+          { ...pooled, hostname: "appstage", cause: "w".repeat(MATE_LINK_TEXT_MAX + 50) },
+        ],
+      },
+    }),
+  ).standUp;
+  expect(sensitive?.failed[0]?.cause).toBe("build •••••• refused");
+  expect(sensitive?.failed[1]?.cause).toBe(`${"w".repeat(MATE_LINK_TEXT_MAX - 1)}…`);
 });

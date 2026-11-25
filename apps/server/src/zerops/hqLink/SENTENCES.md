@@ -1,5 +1,6 @@
-next: HL17
+next: HL18
 
+- HL17 — A stand-up that changed goes up as its own section, also when it is no longer failed, and a link whose overview carries none sends none; breaks: HQ keeps showing a stand-up failure that was run again and stood
 - HL1 — A link opens at HQ's link address with the project's key in its first frame and nothing in the URL, answers only pings until HQ's first state, then sends the whole overview, and the next link presents the key the container holds then
 - HL2 — A link's hello names the fingerprint of the Git credential the Mate holds, read from the keeper at every dial, and none while it holds none
 - HL3 — A Mate whose public origin is unknown dials nothing and says its link is withheld for it, and one whose container holds no key dials nothing until a key appears

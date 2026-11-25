@@ -31,6 +31,7 @@ import {
   MATE_LOGINS_MAX,
   MATE_OVERVIEW_CONVERSATIONS_MAX,
   MATE_OVERVIEW_THREADS_MAX,
+  MATE_STAND_UP_FAILED_MAX,
   MATE_TITLE_MAX,
   type MateOverview,
   type MateThreadKind,
@@ -39,6 +40,7 @@ import {
   type OverviewIdentity,
   type OverviewLogins,
   type OverviewMain,
+  type OverviewStandUp,
   type OverviewThreads,
   type ThreadDigest,
 } from "@t3tools/shared/mateLink";
@@ -48,6 +50,7 @@ import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation"
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 import { extraLoginAgent } from "../zeropsLoginIds.ts";
+import type { ZcpStatus } from "../zeropsSetupSteps.ts";
 
 export interface MateOverviewInput {
   readonly identity: OverviewIdentity;
@@ -63,6 +66,8 @@ export interface MateOverviewInput {
   readonly crew: CrewSnapshot | undefined;
   /** An engine Mate's own rows of its person's conversations; none on a V1 Mate. */
   readonly conversations?: ReadonlyArray<ConversationRow>;
+  /** zcp's status, or null when the named file could not be read. */
+  readonly zcpStatus?: ZcpStatus | null;
 }
 
 /** `text` cut to `max` characters, the last of them an ellipsis where it was longer. */
@@ -242,6 +247,39 @@ function threadsOf(threads: ReadonlyArray<OrchestrationThreadShell>): OverviewTh
 
 /** A row's free text as the overview carries it: masked, cut; its words as they were else. */
 const rowText = (value: string): string => cut(maskSecrets(value).trim(), MATE_LINK_TEXT_MAX);
+
+/** zcp's own stand-up, including pooled failures before other services. */
+function standUpOf(status: ZcpStatus | null): OverviewStandUp | null {
+  const standup = status?.standup;
+  if (standup?.state !== "running" && standup?.state !== "done" && standup?.state !== "failed") {
+    return null;
+  }
+  const at = standup.state === "running" ? standup.startedAt : standup.endedAt;
+  if (standup.state === "done") return { state: standup.state, at, failed: [], omitted: 0 };
+  const failures = [
+    ...(standup.verdict?.rows ?? [])
+      .filter((row) => row.state === "failed")
+      .map((row) => ({
+        hostname: rowText(row.hostname),
+        step: row.kind,
+        ...(row.class === undefined ? {} : { class: row.class }),
+        cause: rowText(row.cause),
+      })),
+    ...standup.services
+      .filter((service) => service.state === "failed")
+      .map((service) => ({
+        hostname: rowText(service.hostname),
+        step: service.step,
+        cause: rowText(service.error),
+      })),
+  ];
+  return {
+    state: standup.state,
+    at,
+    failed: failures.slice(0, MATE_STAND_UP_FAILED_MAX),
+    omitted: Math.max(0, failures.length - MATE_STAND_UP_FAILED_MAX),
+  };
+}
 
 /** A row with every text it carries masked and cut: its wait's words, its error, its run's end. */
 function linkRowOf(row: ConversationRow): ConversationRow {
@@ -459,6 +497,7 @@ export function mateOverviewOf(
       ...(input.conversations === undefined
         ? {}
         : { conversations: conversationsOf(input.conversations) }),
+      ...(input.zcpStatus === undefined ? {} : { standUp: standUpOf(input.zcpStatus) }),
     },
     maxBytes,
   );

@@ -14,6 +14,8 @@
  *   fields, and the protocol they speak (`identity.engine`). Both keys are optional: a V1 Mate sends
  *   neither, and an HQ from before them drops both and still takes the frame — a key a struct does
  *   not know is passed by.
+ * - **Up**, in the overview, zcp's stand-up state and failed services (`standUp`), where the Mate
+ *   reads its status file; an older Mate sends no section.
  * - **Up**, beside the overview, the Mate's attention (`attention`, `MateAttention` in
  *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
  *   new revision. An older HQ passes it by as a type it does not know.
@@ -77,6 +79,7 @@ export const MATE_TITLE_MAX = 120;
 export const MATE_OVERVIEW_THREADS_MAX = 40;
 /** The engine conversations an overview carries rows of: every one that is not idle, then the newest. */
 export const MATE_OVERVIEW_CONVERSATIONS_MAX = 40;
+export const MATE_STAND_UP_FAILED_MAX = 8;
 export const MATE_LOGINS_MAX = 8;
 /** What a live step carries of its calls (`ThreadLiveStep`), cut for a row. */
 export const MATE_LIVE_STEP_BOUNDS = { calls: 4, command: 200, inputs: 4, input: 120, files: 3 };
@@ -310,6 +313,22 @@ export const OverviewConversations = Schema.Array(ConversationRow).check(
 );
 export type OverviewConversations = typeof OverviewConversations.Type;
 
+/** zcp's stand-up state and failed services, with source words safe to keep at HQ. */
+export const OverviewStandUp = Schema.Struct({
+  state: Schema.String.check(atMost(32)),
+  at: Schema.String.check(atMost(40)),
+  failed: Schema.Array(
+    Schema.Struct({
+      hostname: Text,
+      step: Schema.String.check(atMost(32)),
+      class: Schema.optionalKey(Schema.String.check(atMost(32))),
+      cause: Text,
+    }),
+  ).check(atMost(MATE_STAND_UP_FAILED_MAX)),
+  omitted: Count,
+});
+export type OverviewStandUp = typeof OverviewStandUp.Type;
+
 /** Everything a Mate tells HQ of itself, by section: a section is always replaced whole. */
 export const MateOverview = Schema.Struct({
   identity: OverviewIdentity,
@@ -319,6 +338,7 @@ export const MateOverview = Schema.Struct({
   crew: OverviewCrew,
   /** An engine Mate's own rows; absent on a V1 Mate. */
   conversations: Schema.optionalKey(OverviewConversations),
+  standUp: Schema.optionalKey(Schema.NullOr(OverviewStandUp)),
 });
 export type MateOverview = typeof MateOverview.Type;
 
@@ -330,6 +350,7 @@ export const MateOverviewSections = Schema.Struct({
   logins: Schema.optionalKey(MateOverview.fields.logins),
   crew: Schema.optionalKey(MateOverview.fields.crew),
   conversations: Schema.optionalKey(OverviewConversations),
+  standUp: Schema.optionalKey(Schema.NullOr(OverviewStandUp)),
 });
 export type MateOverviewSections = typeof MateOverviewSections.Type;
 
