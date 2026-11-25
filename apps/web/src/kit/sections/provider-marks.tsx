@@ -1,7 +1,7 @@
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "~/components/usage/usageProviders";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 export default defineKitSection({
   id: "provider-marks",
@@ -11,15 +11,23 @@ export default defineKitSection({
   kind: "Identity",
   source: "apps/web/src/components/Icons.tsx",
   render: () => (
-    <SpecimenGrid>
-      {PROVIDER_ORDER.map((provider) => {
-        const { mark: Mark, label } = PROVIDER_PRESENTATION[provider];
-        return (
-          <Specimen key={provider} label={label}>
-            <Mark className="size-6" />
-          </Specimen>
-        );
-      })}
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="An agent's maker, by its own mark." title="Marks">
+        <SpecimenGrid>
+          {PROVIDER_ORDER.map((provider) => {
+            const { mark: Mark, label } = PROVIDER_PRESENTATION[provider];
+            return (
+              <Specimen
+                key={provider}
+                label={`PROVIDER_PRESENTATION.${provider}.mark`}
+                note={label}
+              >
+                <Mark className="size-6" />
+              </Specimen>
+            );
+          })}
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

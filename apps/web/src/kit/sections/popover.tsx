@@ -8,7 +8,7 @@ import {
 } from "~/components/ui/popover";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const WIDTHS = ["auto", "sm", "md", "lg"] as const;
@@ -28,8 +28,8 @@ function Body() {
 
 function PopoverSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Openers: widths">
+    <Specimens>
+      <SpecimenBlock note="Each press opens its popover." title="Widths">
         <SpecimenGrid>
           {WIDTHS.map((width) => (
             <Specimen key={width} label={specimenLabel({ width })}>
@@ -43,7 +43,10 @@ function PopoverSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Openers: paddings, the tooltip variant">
+      <SpecimenBlock
+        note="The room inside it, and the tooltip's look."
+        title="Paddings and variants"
+      >
         <SpecimenGrid>
           {PADDINGS.map((padding) => (
             <Specimen key={padding} label={specimenLabel({ padding, width: "md" })}>
@@ -63,7 +66,7 @@ function PopoverSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

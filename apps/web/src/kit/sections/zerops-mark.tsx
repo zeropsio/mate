@@ -1,7 +1,7 @@
 import { ZeropsMark } from "~/components/ZeropsMark";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 export default defineKitSection({
@@ -12,12 +12,19 @@ export default defineKitSection({
   kind: "Identity",
   source: "apps/web/src/components/ZeropsMark.tsx",
   render: () => (
-    <SpecimenGrid>
-      {(["brand", "current"] as const).map((tone) => (
-        <Specimen key={tone} label={specimenLabel({ tone })}>
-          <ZeropsMark className="size-8" tone={tone} />
-        </Specimen>
-      ))}
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Two-tone, or in the ink of a place that already has a colour."
+        title="Tones"
+      >
+        <SpecimenGrid>
+          {(["brand", "current"] as const).map((tone) => (
+            <Specimen key={tone} label={specimenLabel({ tone })}>
+              <ZeropsMark className="size-8" tone={tone} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

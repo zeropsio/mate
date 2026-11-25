@@ -3,7 +3,7 @@ import { PageHeader } from "~/components/ui/page-header";
 import { PersonAvatar } from "~/components/zerops/primitives";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 export default defineKitSection({
   id: "page-header",
@@ -14,26 +14,45 @@ export default defineKitSection({
   kind: "Containers",
   source: "apps/web/src/components/ui/page-header.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label="<PageHeader title count actions> (the team)">
-        <div className="w-[44rem]">
-          <PageHeader actions={<Button size="sm">Invite people</Button>} count={3} title="Team" />
-        </div>
-      </Specimen>
-      <Specimen label="<PageHeader lead title line> (a person's page)">
-        <div className="w-[44rem]">
-          <PageHeader
-            lead={<PersonAvatar name="Petra Malá" size={64} />}
-            line="petra@example.com · Invited · not joined yet"
-            title="Petra Malá"
-          />
-        </div>
-      </Specimen>
-      <Specimen label='<PageHeader size="panel" title line> (a side panel&apos;s page)'>
-        <div className="w-[33.75rem] border border-border pb-3">
-          <PageHeader line="Values every service of Acme Docs reads" size="panel" title="Vault" />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Its mark, its title with the count beside it, one line, its actions at the title line's end."
+        title="Pages and panels"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen align="start" label="<PageHeader title count actions>" note="The team">
+            <div className="w-full max-w-[44rem]">
+              <PageHeader
+                actions={<Button size="sm">Invite people</Button>}
+                count={3}
+                title="Team"
+              />
+            </div>
+          </Specimen>
+          <Specimen align="start" label="<PageHeader lead title line>" note="A person's page">
+            <div className="w-full max-w-[44rem]">
+              <PageHeader
+                lead={<PersonAvatar name="Petra Malá" size={64} />}
+                line="petra@example.com · Invited · not joined yet"
+                title="Petra Malá"
+              />
+            </div>
+          </Specimen>
+          <Specimen
+            align="start"
+            label='<PageHeader size="panel" title line>'
+            note="A side panel's page"
+          >
+            <div className="w-full max-w-[33.75rem] rounded-card border border-border pb-3">
+              <PageHeader
+                line="Values every service of Acme Docs reads"
+                size="panel"
+                title="Vault"
+              />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

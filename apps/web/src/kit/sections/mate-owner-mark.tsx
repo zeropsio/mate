@@ -5,7 +5,7 @@ import { MateFace } from "~/components/zerops/primitives";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 /** A Mate's face with its owner's mark cut into its corner, as the menu's row seats them. */
 function SeatedFace({ seat }: { readonly seat: Parameters<typeof MateOwnerMark>[0]["seat"] }) {
@@ -28,18 +28,22 @@ export default defineKitSection({
   kind: "Identity",
   source: "apps/web/src/components/zerops/MateOwnerMark.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label='seat={{ kind: "person" }}'>
-        <SeatedFace
-          seat={{
-            kind: "person",
-            mark: ownerMark({ name: "Ada Lovelace", avatarUrl: null, initials: "" }),
-          }}
-        />
-      </Specimen>
-      <Specimen label='seat={{ kind: "nobody" }}'>
-        <SeatedFace seat={{ kind: "nobody", label: "Nobody's Mate yet" }} />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Seats">
+        <SpecimenGrid size="md">
+          <Specimen label='seat={{ kind: "person" }}' note="A person's initial, cut into the face">
+            <SeatedFace
+              seat={{
+                kind: "person",
+                mark: ownerMark({ name: "Ada Lovelace", avatarUrl: null, initials: "" }),
+              }}
+            />
+          </Specimen>
+          <Specimen label='seat={{ kind: "nobody" }}' note="An empty seat: nobody's Mate yet">
+            <SeatedFace seat={{ kind: "nobody", label: "Nobody's Mate yet" }} />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

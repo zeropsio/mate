@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "~/components/ui/button";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { TYPE_CLASS } from "../typeSteps";
 
 const SPACING_STEPS = [1, 2, 3, 4, 6, 8] as const;
@@ -48,35 +48,32 @@ function MotionSpecimen({ step }: { readonly step: keyof typeof MOTION.duration 
 
 function TokenSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Type: one scale">
-        <div className="flex flex-col gap-3">
+    <Specimens>
+      <SpecimenBlock note="One scale, each step with its size and line height." title="Type">
+        <SpecimenGrid size="xl">
           {Object.entries(TYPE_SCALE).map(([step, { fontSize, lineHeight }]) => (
-            <div className="flex items-baseline gap-4" key={step}>
-              <code className="w-48 shrink-0 font-mono text-caption text-muted-foreground">
-                text-{step} · {fontSize}/{lineHeight}
-              </code>
+            <Specimen align="start" key={step} label={`text-${step} · ${fontSize}/${lineHeight}`}>
               <span className={TYPE_CLASS[step as keyof typeof TYPE_SCALE]}>
                 Fen deployed the storefront
               </span>
-            </div>
+            </Specimen>
           ))}
-        </div>
+        </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title={`Spacing: a ${SPACING_UNIT} px grid`}>
-        <div className="flex items-end gap-4">
-          {SPACING_STEPS.map((step) => (
-            <div className="flex flex-col items-center gap-1" key={step}>
-              <span className={`h-8 rounded-mark bg-primary/40 ${SPACING_WIDTH[step]}`} />
-              <code className="font-mono text-caption text-muted-foreground">
-                {step * SPACING_UNIT}
-              </code>
-            </div>
-          ))}
-        </div>
-      </SpecimenBlock>
-      <SpecimenBlock title="Radii: mark inside control inside card inside sheet, running parallel">
+      <SpecimenBlock note={`A ${SPACING_UNIT} px grid.`} title="Spacing">
         <SpecimenGrid>
+          {SPACING_STEPS.map((step) => (
+            <Specimen key={step} label={`${SPACING_WIDTH[step]} · ${step * SPACING_UNIT} px`}>
+              <span className={`h-8 rounded-mark bg-primary/40 ${SPACING_WIDTH[step]}`} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="Mark inside control inside card inside sheet, running parallel."
+        title="Radii"
+      >
+        <SpecimenGrid size="md">
           <Specimen
             label={`rounded-sheet ${RADII.sheet} › rounded-card ${RADII.card} › rounded-control ${RADII.control} › rounded-mark ${RADII.mark}`}
           >
@@ -93,23 +90,19 @@ function TokenSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Motion: three durations, one strong ease-out">
-        <div className="flex flex-col gap-3">
+      <SpecimenBlock
+        note={`ease-out-strong ${MOTION.easing.out} for what arrives or answers a press; ease-in-out-strong ${MOTION.easing.inOut} for a paired enter and leave.`}
+        title="Motion"
+      >
+        <SpecimenGrid size="md">
           {Object.entries(MOTION.duration).map(([step, ms]) => (
-            <div className="flex items-center gap-4" key={step}>
-              <code className="w-48 shrink-0 font-mono text-caption text-muted-foreground">
-                --duration-{step} · {ms} ms
-              </code>
+            <Specimen key={step} label={`--duration-${step} · ${ms} ms`} note="Press Play">
               <MotionSpecimen step={step as keyof typeof MOTION.duration} />
-            </div>
+            </Specimen>
           ))}
-          <p className="m-0 text-caption text-muted-foreground">
-            ease-out-strong {MOTION.easing.out} for what arrives or answers a press;
-            ease-in-out-strong {MOTION.easing.inOut} for a paired enter and leave.
-          </p>
-        </div>
+        </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

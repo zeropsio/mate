@@ -1,7 +1,7 @@
 import { Slider } from "~/components/ui/slider";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 export default defineKitSection({
   id: "slider",
@@ -11,17 +11,21 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/slider.tsx",
   render: () => (
-    <SpecimenGrid>
-      {[
-        { label: "defaultValue={0}", props: { defaultValue: 0 } },
-        { label: "defaultValue={60} step={5}", props: { defaultValue: 60, step: 5 } },
-        { label: "defaultValue={100}", props: { defaultValue: 100 } },
-        { label: "defaultValue={40} disabled", props: { defaultValue: 40, disabled: true } },
-      ].map(({ label, props }) => (
-        <Specimen key={label} label={label}>
-          <Slider aria-label="Glass opacity" className="w-52" {...props} />
-        </Specimen>
-      ))}
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Values and states">
+        <SpecimenGrid size="md">
+          {[
+            { label: "defaultValue={0}", props: { defaultValue: 0 } },
+            { label: "defaultValue={60} step={5}", props: { defaultValue: 60, step: 5 } },
+            { label: "defaultValue={100}", props: { defaultValue: 100 } },
+            { label: "defaultValue={40} disabled", props: { defaultValue: 40, disabled: true } },
+          ].map(({ label, props }) => (
+            <Specimen key={label} label={label}>
+              <Slider aria-label="Glass opacity" className="w-full max-w-52" {...props} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

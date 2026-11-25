@@ -4,7 +4,7 @@ import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const VARIANTS = ["default", "glass", "code"] as const;
@@ -12,8 +12,8 @@ const SIDES = ["top", "right", "bottom", "left"] as const;
 
 function TooltipSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="On hover: variants">
+    <Specimens>
+      <SpecimenBlock note="Hover each press to see its tooltip." title="Variants">
         <SpecimenGrid>
           {VARIANTS.map((variant) => (
             <Specimen key={variant} label={specimenLabel({ variant })}>
@@ -27,7 +27,7 @@ function TooltipSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="On hover: sides, long text">
+      <SpecimenBlock note="Hover each press to see its tooltip." title="Sides and long words">
         <SpecimenGrid>
           {SIDES.map((side) => (
             <Specimen key={side} label={specimenLabel({ side })}>
@@ -41,7 +41,7 @@ function TooltipSpecimens() {
               </Tooltip>
             </Specimen>
           ))}
-          <Specimen label="long text">
+          <Specimen label="<TooltipPopup>" note="Long words">
             <Tooltip>
               <TooltipTrigger render={<Button variant="secondary" />}>Hover</TooltipTrigger>
               <TooltipPopup>
@@ -52,7 +52,7 @@ function TooltipSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

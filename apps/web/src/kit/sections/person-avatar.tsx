@@ -2,7 +2,7 @@ import { PersonAvatar } from "~/components/zerops/primitives";
 import type { MateFaceSize } from "~/components/zerops/primitives";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const SIZES: ReadonlyArray<MateFaceSize> = [16, 20, 24, 32, 64];
@@ -13,14 +13,18 @@ const PEOPLE = ["Ada Lovelace", "Bruno Diaz", "Chen Wei", "Mira", "Petra Malá"]
 
 function PersonAvatarSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Sizes and people: their picture, or their letter on their own hue">
+    <Specimens>
+      <SpecimenBlock title="Sizes">
         <SpecimenGrid>
           {SIZES.map((size) => (
             <Specimen key={size} label={specimenLabel({ name: PERSON, size })}>
               <PersonAvatar name={PERSON} size={size} />
             </Specimen>
           ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock note="Their picture, or their letter on a hue of their own." title="People">
+        <SpecimenGrid>
           {PEOPLE.map((name) => (
             <Specimen key={name} label={specimenLabel({ name, size: 32 })}>
               <PersonAvatar name={name} size={32} />
@@ -28,20 +32,23 @@ function PersonAvatarSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title={`One person, "${PERSON}", everywhere the app draws them`}>
-        <SpecimenGrid>
-          <Specimen label="the account menu and its foot: size={32}, the first name">
+      <SpecimenBlock
+        note={`One person, ${PERSON}, everywhere the app draws them.`}
+        title="In place"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label='name="Ada" size={32}' note="The account menu: the first name">
             <PersonAvatar name="Ada" size={32} />
           </Specimen>
-          <Specimen label="a team card: size={64}">
+          <Specimen label="size={64}" note="A team card">
             <PersonAvatar name={PERSON} size={64} />
           </Specimen>
-          <Specimen label="the overview card's people: size={20}">
+          <Specimen label="size={20}" note="The overview card's people">
             <PersonAvatar name={PERSON} size={20} />
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

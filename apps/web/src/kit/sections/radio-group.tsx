@@ -10,7 +10,7 @@ import {
 } from "~/components/ui/radio-group";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function Choices({ disabled = false }: { readonly disabled?: boolean }) {
   return (
@@ -54,7 +54,7 @@ type Tint = (typeof TINTS)[number];
 function Swatches() {
   const [tint, setTint] = useState<Tint>("sky");
   return (
-    <div className="w-80">
+    <div className="w-full max-w-80">
       <RadioSwatchGroup
         aria-label="Color"
         className="flex justify-between"
@@ -96,19 +96,27 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/radio-group.tsx",
   render: () => (
-    <div className="flex flex-col gap-8">
-      <SpecimenGrid>
-        <Specimen label='<RadioGroup defaultValue="team">'>
-          <Choices />
-        </Specimen>
-        <Specimen label="<RadioGroup disabled>">
-          <Choices disabled />
-        </Specimen>
-      </SpecimenGrid>
-      <SpecimenBlock title="Cards">
-        <SpecimenGrid>
-          <Specimen label='<RadioGroup layout="columns"> <RadioCard title>'>
-            <div className="w-136">
+    <Specimens>
+      <SpecimenBlock title="Choices">
+        <SpecimenGrid size="md">
+          <Specimen label='<RadioGroup defaultValue="team">' note="One item disabled">
+            <Choices />
+          </Specimen>
+          <Specimen label="<RadioGroup disabled>">
+            <Choices disabled />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="A choice with words of its own, laid out in columns or a row."
+        title="Cards"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen
+            label='<RadioGroup layout="columns"> · <RadioCard title>'
+            note="Roles, the owner's disabled"
+          >
+            <div className="w-full max-w-136">
               <RadioGroup aria-label="Role" defaultValue="developer" layout="columns">
                 {ROLES.map((role) => (
                   <RadioCard
@@ -123,8 +131,8 @@ export default defineKitSection({
               </RadioGroup>
             </div>
           </Specimen>
-          <Specimen label='<RadioGroup layout="row"> <RadioCard align="center">'>
-            <div className="w-116">
+          <Specimen label='<RadioGroup layout="row"> · <RadioCard align="center">' note="Regions">
+            <div className="w-full max-w-116">
               <RadioGroup aria-label="Region" defaultValue="prg1" layout="row">
                 {REGIONS.map((region) => (
                   <RadioCard
@@ -143,12 +151,12 @@ export default defineKitSection({
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock title="Swatches">
-        <SpecimenGrid>
-          <Specimen label="<RadioSwatchGroup options value> <RadioSwatch>">
+        <SpecimenGrid size="lg">
+          <Specimen label="<RadioSwatchGroup options value> · <RadioSwatch>" note="A Mate's colour">
             <Swatches />
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   ),
 });

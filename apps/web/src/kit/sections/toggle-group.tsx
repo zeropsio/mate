@@ -4,7 +4,7 @@ import { AlignCenterIcon, AlignLeftIcon, AlignRightIcon } from "lucide-react";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
 type ToggleVariant = NonNullable<ComponentProps<typeof ToggleGroup>["variant"]>;
@@ -31,29 +31,26 @@ function Choices({ disabled = false }: { readonly disabled?: boolean }) {
 
 function ToggleGroupSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Variants, horizontal and vertical">
-        <SpecimenGrid>
-          {VARIANTS.flatMap((variant) =>
-            (["horizontal", "vertical"] as const).map((orientation) => (
-              <Specimen
-                key={`${variant}-${orientation}`}
-                label={specimenLabel({
-                  variant,
-                  orientation: orientation === "horizontal" ? undefined : orientation,
-                })}
-              >
-                <ToggleGroup defaultValue={["board"]} orientation={orientation} variant={variant}>
-                  <Choices />
-                </ToggleGroup>
-              </Specimen>
-            )),
+    <Specimens>
+      <SpecimenBlock title="Variants and orientations">
+        <SpecimenMatrix
+          rowProp="variant"
+          rows={VARIANTS}
+          columnProp="orientation"
+          columns={["horizontal", "vertical"] as const}
+          columnLabel={(orientation) =>
+            orientation === "horizontal" ? "(horizontal)" : specimenLabel({ orientation })
+          }
+          render={(variant, orientation) => (
+            <ToggleGroup defaultValue={["board"]} orientation={orientation} variant={variant}>
+              <Choices />
+            </ToggleGroup>
           )}
-        </SpecimenGrid>
+        />
       </SpecimenBlock>
-      <SpecimenBlock title="States">
-        <SpecimenGrid>
-          <Specimen label="multiple, icons">
+      <SpecimenBlock title="States and sizes">
+        <SpecimenGrid size="md">
+          <Specimen label='multiple variant="outline"' note="Several on, drawn as icons">
             <ToggleGroup defaultValue={["left", "center"]} multiple variant="outline">
               <Toggle aria-label="Left" value="left">
                 <AlignLeftIcon />
@@ -71,19 +68,19 @@ function ToggleGroupSpecimens() {
               <Choices />
             </ToggleGroup>
           </Specimen>
-          <Specimen label="one item disabled">
+          <Specimen label="<Toggle disabled>" note="One item disabled">
             <ToggleGroup defaultValue={["board"]}>
               <Choices disabled />
             </ToggleGroup>
           </Specimen>
-          <Specimen label='size="sm" variant="outline"'>
+          <Specimen label='size="sm" variant="outline"' note="Small">
             <ToggleGroup defaultValue={["list"]} size="sm" variant="outline">
               <Choices />
             </ToggleGroup>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

@@ -103,6 +103,7 @@ const GRID_COLUMNS = {
   md: "grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]",
   lg: "grid-cols-[repeat(auto-fill,minmax(min(100%,26rem),1fr))]",
   xl: "grid-cols-[repeat(auto-fill,minmax(min(100%,36rem),1fr))]",
+  page: "grid-cols-[repeat(auto-fill,minmax(min(100%,51rem),1fr))]",
 } as const;
 
 /** Specimens as tiles on a regular grid; its columns fill the canvas at the tile size given. */
@@ -110,7 +111,7 @@ export function SpecimenGrid({
   size = "sm",
   children,
 }: {
-  /** The narrowest a tile gets: `sm` for a press or a mark, up to `xl` for a page-sized state. */
+  /** The narrowest a tile gets: `sm` for a press or a mark, up to `page` for a page-sized state. */
   readonly size?: keyof typeof GRID_COLUMNS;
   readonly children: ReactNode;
 }) {

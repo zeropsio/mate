@@ -3,7 +3,7 @@ import { FileIcon } from "lucide-react";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function Tab({ tooltip }: { readonly tooltip?: string }) {
   return (
@@ -28,13 +28,17 @@ export default defineKitSection({
   kind: "Actions",
   source: "apps/web/src/components/ui/panel-tab-close-button.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label='label="Close index.ts" (hover the tab)'>
-        <Tab />
-      </Specimen>
-      <Specimen label='tooltip="Close"'>
-        <Tab tooltip="Close" />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="On hover and focus">
+        <SpecimenGrid size="md">
+          <Specimen label='label="Close index.ts"' note="Hover the tab: its icon turns to close">
+            <Tab />
+          </Specimen>
+          <Specimen label='tooltip="Close"' note="With a tooltip on its close">
+            <Tab tooltip="Close" />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

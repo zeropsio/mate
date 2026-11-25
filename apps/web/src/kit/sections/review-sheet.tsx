@@ -4,7 +4,7 @@ import { Button } from "~/components/ui/button";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function ReviewSheetOpener() {
   const [open, setOpen] = useState(false);
@@ -43,8 +43,17 @@ export default defineKitSection({
   kind: "Overlays",
   source: "apps/web/src/components/zerops/review/ZeropsReviewDialog.tsx",
   render: () => (
-    <Specimen label="<ZeropsReviewDialog from labelledBy>">
-      <ReviewSheetOpener />
-    </Specimen>
+    <Specimens>
+      <SpecimenBlock
+        note="It grows from the press that opens it; Escape steps back a layer before it closes."
+        title="Opening"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label="<ZeropsReviewDialog from labelledBy>" note="A change's review">
+            <ReviewSheetOpener />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

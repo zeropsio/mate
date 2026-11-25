@@ -4,7 +4,7 @@ import { BoldIcon } from "lucide-react";
 import { Toggle } from "~/components/ui/toggle";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { variantsOf } from "../specimenLabel";
 
 type ToggleVariant = NonNullable<ComponentProps<typeof Toggle>["variant"]>;
@@ -29,8 +29,8 @@ const SIZES = variantsOf<ToggleSize>({
 
 function ToggleSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Variants × sizes">
+    <Specimens>
+      <SpecimenBlock title="Variants and sizes">
         <SpecimenMatrix
           rowProp="variant"
           rows={VARIANTS}
@@ -43,12 +43,15 @@ function ToggleSpecimens() {
           )}
         />
       </SpecimenBlock>
-      <SpecimenBlock title="States, per variant">
+      <SpecimenBlock title="States">
         <SpecimenMatrix
           rowProp="variant"
           rows={VARIANTS}
           columnProp="state"
           columns={["off", "defaultPressed", "disabled", "icon only"] as const}
+          columnLabel={(state) =>
+            state === "off" ? "(off)" : state === "icon only" ? "<BoldIcon /> alone" : state
+          }
           render={(variant, state) =>
             state === "icon only" ? (
               <Toggle aria-label="Bold" variant={variant}>
@@ -66,9 +69,9 @@ function ToggleSpecimens() {
           }
         />
       </SpecimenBlock>
-      <SpecimenBlock title="With icon">
+      <SpecimenBlock title="With an icon">
         <SpecimenGrid>
-          <Specimen label='variant="outline" defaultPressed'>
+          <Specimen label='variant="outline" defaultPressed' note="An icon before its word">
             <Toggle defaultPressed variant="outline">
               <BoldIcon />
               Bold
@@ -76,7 +79,7 @@ function ToggleSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 
