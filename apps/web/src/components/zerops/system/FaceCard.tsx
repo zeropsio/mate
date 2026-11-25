@@ -18,6 +18,7 @@ import {
 } from "react";
 
 import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
 
 /** How the cards of one grid stand on a phone (`FaceCards phone`). */
 type FacePhone = "cards" | "rows" | "lying";
@@ -96,9 +97,12 @@ export function FaceCard({
     <>
       {stamp === undefined || stamp === null ? null : (
         // A few quiet characters in the body's top corner: when it last moved.
-        <span className="absolute top-3 right-3.5 inline-flex items-center gap-1.5 text-caption leading-4 whitespace-nowrap text-muted-foreground tabular-nums">
+        <Text
+          className="absolute top-3 right-3.5 inline-flex items-center gap-1.5 whitespace-nowrap"
+          variant="meta"
+        >
           {stamp}
-        </span>
+        </Text>
       )}
       <span
         className={cn(

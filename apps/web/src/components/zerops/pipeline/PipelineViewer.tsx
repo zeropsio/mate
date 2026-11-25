@@ -21,6 +21,7 @@ import { Card } from "../../ui/card";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 import { emptyLogWords } from "../ZeropsBuildLog";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 export type PipelineOutput = PipelineLogKind | "config";
 
@@ -109,7 +110,7 @@ function LogPane({
   const live = status === "live";
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-caption">
+      <Text className="flex items-center gap-2" render={<div />} variant="note">
         <span className="min-w-0 flex-1 truncate">
           {kind === "service"
             ? "The service's own lines, a minute either side of the failure"
@@ -125,7 +126,7 @@ function LogPane({
           {times ? "Hide times" : "Show times"}
         </Button>
         <CopyLines lines={lines} />
-      </div>
+      </Text>
       {lines.length === 0 && emptyLogWords(status) === null ? (
         <Card className="h-96 md:h-140">
           <div className="p-4">
@@ -134,14 +135,16 @@ function LogPane({
         </Card>
       ) : lines.length === 0 ? (
         <Card variant="inset">
-          <p
-            className="flex h-96 items-center justify-center text-muted-foreground text-body md:h-140"
+          <Text
+            className="flex h-96 items-center justify-center md:h-140"
+            render={<p />}
+            variant="description"
             data-zerops-pipeline-log-empty
           >
             {kind === "service" && status === "ended"
               ? "The service wrote nothing around the failure."
               : emptyLogWords(status)}
-          </p>
+          </Text>
         </Card>
       ) : (
         <LogLines format={timestampFormat} lines={lines} live={live} times={times} />
@@ -262,7 +265,7 @@ function ConfigPane({
   }, [copied]);
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <div className="flex items-center gap-2 text-muted-foreground text-caption">
+      <Text className="flex items-center gap-2" render={<div />} variant="note">
         <span className="min-w-0 flex-1 truncate">
           {setup === null ? "As the pipeline ran it" : `As the pipeline ran it, setup ${setup}`}
         </span>
@@ -279,7 +282,7 @@ function ConfigPane({
         >
           {copied ? <CheckIcon /> : <CopyIcon />}
         </Button>
-      </div>
+      </Text>
       <Card variant="inset">
         <pre
           className="h-96 overflow-auto px-3 py-2 font-mono text-caption leading-5 md:h-140"

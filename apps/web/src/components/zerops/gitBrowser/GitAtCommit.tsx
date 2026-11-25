@@ -9,6 +9,7 @@ import { EmptyState } from "~/components/ui/empty";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** Missing commit facts are pending, not evidence of an empty branch. */
 export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
@@ -23,9 +24,9 @@ export function GitNoCommit({ pending }: { readonly pending?: boolean | undefine
 function GitReading({ busy, subject }: { readonly busy: boolean; readonly subject: string }) {
   if (busy) return <Loading count={3} label={subject} shape="lines" />;
   return (
-    <p className="text-body text-muted-foreground" role="status">
+    <Text render={<p />} variant="description" role="status">
       Waiting for HQ…
-    </p>
+    </Text>
   );
 }
 
@@ -141,10 +142,10 @@ export function GitAtCommit({
 }) {
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <div className="flex flex-wrap items-center gap-3 text-body text-muted-foreground">
+      <Text className="flex flex-wrap items-center gap-3" render={<div />} variant="description">
         <GitNoCommit pending={home.answer.pending} />
         <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
-      </div>
+      </Text>
     ) : (
       children(home.answer, home.answer.sha)
     );

@@ -1278,9 +1278,9 @@ export function DiagnosticsSettingsPanel() {
                         <Text variant="code">{formatRelativeNoWrap(event.seenAt)}</Text>
                       </TableCell>
                       <TableCell>
-                        <span className="inline-flex rounded-mark bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
-                          {event.level}
-                        </span>
+                        <Text chip className="inline-flex" variant="code">
+                          {event.level.toUpperCase()}
+                        </Text>
                       </TableCell>
                       <TableCell>
                         <div className="truncate font-medium text-foreground">{event.spanName}</div>

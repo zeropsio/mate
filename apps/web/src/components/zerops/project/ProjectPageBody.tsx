@@ -123,6 +123,7 @@ import {
   PAGE_SIDE,
   PAGE_WORDS,
 } from "./pageLayout";
+import { Text } from "~/components/ui/text";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -921,10 +922,7 @@ function Brought({
   const shown = all ? brought : brought.slice(0, BROUGHT_SHOWN);
   const more = brought.length - shown.length;
   return (
-    <p
-      className="text-line leading-5 text-pretty text-muted-foreground"
-      data-zerops-surface="project-brought"
-    >
+    <Text render={<p />} variant="remark" data-zerops-surface="project-brought">
       <RealName>{version}</RealName> brought: {shown.map((pull) => pull.title).join(" · ")}
       {more > 0 ? (
         <>
@@ -938,7 +936,7 @@ function Brought({
           </InlineButton>
         </>
       ) : null}
-    </p>
+    </Text>
   );
 }
 
@@ -1561,14 +1559,11 @@ function SetupDialog({
 /** The project's state beside its title, where it is not calm: "Not live yet" on a hollow dot. */
 function ProjectState({ children }: { readonly children: ReactNode }) {
   return (
-    <span
-      className="text-body leading-5 whitespace-nowrap text-muted-foreground"
-      data-zerops-project-state=""
-    >
+    <Text className="whitespace-nowrap" variant="description" data-zerops-project-state="">
       <Badge dot hollow tone="neutral">
         {children}
       </Badge>
-    </span>
+    </Text>
   );
 }
 

@@ -72,9 +72,9 @@ function Block({ block }: { readonly block: PageBlock }) {
       );
     case "code":
       return (
-        <p className="w-fit max-w-full truncate rounded-mark bg-foreground/8 px-1.5 font-mono text-foreground/80 text-caption">
+        <Text chip className="w-fit max-w-full" render={<p />} truncate variant="code">
           {block.text}
-        </p>
+        </Text>
       );
   }
 }

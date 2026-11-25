@@ -22,22 +22,35 @@ export default definePlayground({
   controls: {
     variant: { kind: "enum", options: VARIANTS, note: "what the words are" },
     truncate: { kind: "boolean", note: "one line, cut with an ellipsis" },
+    chip: { kind: "boolean", note: "code only: the literal on its own quiet ground" },
     children: { kind: "text" },
   },
   initial: {
     variant: "note",
     truncate: false,
+    chip: false,
     children: "Use a key made only for Mate, with a spending limit.",
   },
-  render: ({ variant, truncate, children }) => (
+  render: ({ variant, truncate, chip, children }) => (
     <div className="w-80">
-      <Text render={<p />} truncate={truncate} variant={variant}>
-        {children}
-      </Text>
+      {variant === "code" ? (
+        <Text chip={chip} render={<p />} truncate={truncate} variant="code">
+          {children}
+        </Text>
+      ) : (
+        <Text render={<p />} truncate={truncate} variant={variant}>
+          {children}
+        </Text>
+      )}
     </div>
   ),
-  jsx: ({ variant, truncate, children }) =>
-    jsxElement("Text", { variant, truncate }, children, { truncate: false }),
+  jsx: ({ variant, truncate, chip, children }) =>
+    jsxElement(
+      "Text",
+      { variant, truncate, chip: variant === "code" ? chip : undefined },
+      children,
+      { truncate: false, chip: false },
+    ),
   usage: {
     do: [
       "Name the words by what they are: a hint under a field is a note, a time beside a name is meta.",

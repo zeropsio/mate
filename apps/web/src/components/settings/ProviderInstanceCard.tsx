@@ -608,9 +608,11 @@ export function ProviderInstanceCard({
         {displayName}
       </Text>
       {String(instanceId) !== String(instance.driver) ? (
-        <code className="truncate rounded-mark bg-muted/60 px-1 py-0.5 text-caption text-muted-foreground">
-          {instanceId}
-        </code>
+        <Text truncate variant="meta">
+          <Text chip render={<code />} variant="code">
+            {instanceId}
+          </Text>
+        </Text>
       ) : null}
       {driverOption?.badgeLabel ? (
         <Badge tone="warning" size="sm" className="shrink-0">

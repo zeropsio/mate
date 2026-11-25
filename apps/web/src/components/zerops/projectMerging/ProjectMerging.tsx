@@ -41,6 +41,7 @@ import {
   type MergingPerson,
   type OpenMain,
 } from "./projectMerging.logic";
+import { Text } from "~/components/ui/text";
 
 const NONE_OPEN: ReadonlyArray<OpenMain> = [];
 
@@ -85,9 +86,9 @@ export function ProjectMergingRow({
           <span className="text-body text-foreground">{mergingLine(people)}</span>
         )}
         {everyone === undefined ? null : (
-          <span className="text-line text-muted-foreground" data-zerops-merging-everyone="">
+          <Text variant="remark" data-zerops-merging-everyone="">
             {everyone}
-          </span>
+          </Text>
         )}
         {stillOpen ? (
           <span className="text-line text-warning-foreground" data-zerops-merging-open-main="">
@@ -191,7 +192,9 @@ export function ProjectMergingView({
   const picked = new Set(draft.people);
   return (
     <div className="flex flex-col gap-4" data-zerops-surface="project-merging">
-      <p className="text-body text-muted-foreground">{MERGING_IS}</p>
+      <Text render={<p />} variant="description">
+        {MERGING_IS}
+      </Text>
       <RadioGroup
         aria-label={MERGING_TITLE}
         disabled={locked}
@@ -234,9 +237,9 @@ export function ProjectMergingView({
                 />
                 {person.name}
               </Label>
-              <span className="min-w-0 truncate text-body text-muted-foreground">
+              <Text className="min-w-0" truncate variant="description">
                 {person.always ? `${person.role} · always` : person.role}
-              </span>
+              </Text>
             </li>
           ))}
         </ul>
@@ -254,7 +257,9 @@ export function ProjectMergingView({
               {press.words}
             </span>
           ) : tooMany === undefined ? null : (
-            <span className="min-w-0 text-body text-muted-foreground">{tooMany}</span>
+            <Text className="min-w-0" variant="description">
+              {tooMany}
+            </Text>
           )}
         </div>
       ) : null}
@@ -321,7 +326,9 @@ function MergingRead({
           <Skeleton className="h-5 w-48" />
         </div>
       ) : choices.kind === "unreadable" ? (
-        <p className="text-body text-muted-foreground">{choices.line}</p>
+        <Text render={<p />} variant="description">
+          {choices.line}
+        </Text>
       ) : (
         <ul
           aria-label="People who merge and release"
@@ -329,15 +336,17 @@ function MergingRead({
         >
           {mergingNow(choices.people, current).map((person) => (
             <li className="flex min-h-7 min-w-0 items-center gap-2" key={person.userId}>
-              <span className="text-body font-medium text-foreground">{person.name}</span>
-              <span className="min-w-0 truncate text-body text-muted-foreground">
+              <Text variant="heading">{person.name}</Text>
+              <Text className="min-w-0" truncate variant="description">
                 {person.role}
-              </span>
+              </Text>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-body text-muted-foreground">{MERGERS_WRITERS}</p>
+      <Text render={<p />} variant="description">
+        {MERGERS_WRITERS}
+      </Text>
     </div>
   );
 }

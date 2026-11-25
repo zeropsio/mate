@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
 import { GitReadStopped } from "./GitAtCommit";
+import { Text } from "~/components/ui/text";
 
 const FORMATS: ReadonlyArray<{ readonly format: GitArchiveFormat; readonly label: string }> = [
   { format: "zip", label: "Download ZIP" },
@@ -91,7 +92,9 @@ export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) 
   const { view, reading, slow, again, ask } = archive;
   return (
     <section aria-label="Download" className="flex flex-col gap-2">
-      <h2 className="text-body font-medium text-foreground">Download</h2>
+      <Text render={<h2 />} variant="heading">
+        Download
+      </Text>
       <div className="flex flex-wrap items-center gap-2">
         {FORMATS.map(({ format, label }) => (
           <Button
@@ -107,9 +110,9 @@ export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) 
       </div>
       {view === null ? null : reading ? (
         slow ? (
-          <p className="text-caption text-muted-foreground" role="status">
+          <Text render={<p />} variant="note" role="status">
             Reading the archive…
-          </p>
+          </Text>
         ) : null
       ) : view.state === "known" || view.state === "unread" ? null : (
         // Its refusal says what to do instead; the page it was asked on stays.

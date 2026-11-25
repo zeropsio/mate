@@ -77,6 +77,7 @@ import { Failure } from "~/components/ui/failure";
 import { CARD_ROOM, RAIL, ROW, ROW_CARD } from "./overviewLayout";
 import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
 
 const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -454,8 +455,10 @@ function releaseClock(line: PlaceLineData, since: number | undefined): PlaceLine
  */
 function QuietPlace({ children, verb }: { readonly children: string; readonly verb?: ReactNode }) {
   return (
-    <div
-      className="flex min-h-5 min-w-0 items-center gap-2 text-body text-muted-foreground"
+    <Text
+      className="flex min-h-5 min-w-0 items-center gap-2"
+      render={<div />}
+      variant="description"
       data-zerops-place-quiet=""
     >
       <PlaceDot dot="none" />
@@ -463,7 +466,7 @@ function QuietPlace({ children, verb }: { readonly children: string; readonly ve
       {verb === undefined || verb === null ? null : (
         <span className="-my-1 flex shrink-0">{verb}</span>
       )}
-    </div>
+    </Text>
   );
 }
 
@@ -626,7 +629,7 @@ function MoreLink({
 }) {
   // Its room stands around the words, as the rows' own over and beside it.
   return (
-    <span className="justify-self-start px-1.5 py-0.5 text-body text-muted-foreground leading-5">
+    <Text className="justify-self-start px-1.5 py-0.5" variant="description">
       {linked ? (
         <InlineButton
           aria-label={label}
@@ -638,7 +641,7 @@ function MoreLink({
       ) : (
         <>+ {more} more</>
       )}
-    </span>
+    </Text>
   );
 }
 
@@ -729,8 +732,9 @@ function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
   return (
     <div className="contents">
       {stops.map((stop) => (
-        <span
-          className="flex items-center gap-2 px-2 text-caption text-muted-foreground empty:hidden"
+        <Text
+          className="flex items-center gap-2 px-2 empty:hidden"
+          variant="note"
           data-zerops-row-stop={stop.id}
           key={stop.id}
         >
@@ -740,7 +744,7 @@ function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
             </span>
           ) : null}
           <StopReadAgain projectId={stop.id} />
-        </span>
+        </Text>
       ))}
     </div>
   );
@@ -894,9 +898,14 @@ function ProjectCard<T>({
             </div>
             {/* Its quiet line: why it holds no Mate yet, or what it waits for. */}
             {quiet === undefined ? null : (
-              <p className="mt-px block max-w-full truncate text-body leading-5 text-muted-foreground">
+              <Text
+                className="mt-px block max-w-full"
+                render={<p />}
+                truncate
+                variant="description"
+              >
                 {quiet}
-              </p>
+              </Text>
             )}
             <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           </header>
@@ -930,13 +939,15 @@ function ProjectCard<T>({
                 </QuietPlace>
                 {putLive === "busy" ? (
                   // Why Put it live stands off, under the line that carries it, in from its dot.
-                  <p
-                    className="m-0 ps-4 text-caption leading-4 text-muted-foreground"
+                  <Text
+                    className="m-0 ps-4"
+                    render={<p />}
+                    variant="note"
                     id={`${group.groupId}-put-live-why`}
                     role="status"
                   >
                     {PUT_LIVE_AFTER_CREATION}
-                  </p>
+                  </Text>
                 ) : null}
               </>
             ) : (

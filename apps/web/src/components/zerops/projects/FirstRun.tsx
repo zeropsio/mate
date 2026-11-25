@@ -39,6 +39,7 @@ import {
 } from "../ZeropsNewProjectForm";
 import { newProjectNext } from "../whatHappensNext.logic";
 import { firstRunWords } from "./firstRun.logic";
+import { Text } from "~/components/ui/text";
 
 /** Who waits with a person who may not start a project: nobody yet, in the slate face. */
 const NOBODY: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -271,7 +272,9 @@ function FirstRunForm({
           </div>
         </>
       ) : (
-        <p className="text-body text-muted-foreground">{form.input.closed}</p>
+        <Text render={<p />} variant="description">
+          {form.input.closed}
+        </Text>
       )}
     </NewProjectFormFrame>
   );

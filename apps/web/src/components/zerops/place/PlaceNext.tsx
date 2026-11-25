@@ -12,6 +12,7 @@ import { REVIEW_RELEASE_LABEL } from "~/zerops/review";
 import type { CardReady } from "../projects/projectCard.logic";
 import { nextReleaseTitle, nextReleaseView } from "../system";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
+import { Text } from "~/components/ui/text";
 
 const NO_FACTS: ReadonlyArray<string | undefined> = [];
 
@@ -102,9 +103,11 @@ export function PlaceNextCard({
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2.5">
             {lead}
-            <span className="min-w-0 text-emphasis font-semibold text-foreground">{title}</span>
+            <Text className="min-w-0" variant="headline">
+              {title}
+            </Text>
           </div>
-          {line === "" ? null : <span className="text-body text-muted-foreground">{line}</span>}
+          {line === "" ? null : <Text variant="description">{line}</Text>}
         </div>
         {verb === undefined || verb === null ? null : <span className="flex shrink-0">{verb}</span>}
       </div>

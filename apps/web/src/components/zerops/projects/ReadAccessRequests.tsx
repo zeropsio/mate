@@ -25,6 +25,7 @@ import { SectionLabel } from "../system/SectionLabel";
 import { CELL_WORDS, type AccessTableView } from "./accessTable.logic";
 import { CARD_SECTION } from "./ProjectAccessChips";
 import { Failure } from "~/components/ui/failure";
+import { Text } from "~/components/ui/text";
 
 export function ReadAccessRequests({
   view,
@@ -198,7 +199,7 @@ function askLines(
           {place.label}: Zerops doesn’t show you this place.
         </span>
         {asked ? (
-          <span className="text-body text-muted-foreground">Read access asked</span>
+          <Text variant="description">Read access asked</Text>
         ) : (
           <Button
             disabled={asks.busy.has(place.projectId)}

@@ -3,6 +3,7 @@ import { RotateCcwIcon } from "lucide-react";
 import { LineMark } from "~/components/chat/ConversationRows";
 import { InlineButton } from "~/components/ui/button";
 import { Separator } from "~/components/ui/separator";
+import { Text } from "~/components/ui/text";
 
 /**
  * A crew seam (PRD §4.5, design-system *Seams*): one quiet line across the
@@ -18,8 +19,10 @@ export function CrewSeamLine({
   readonly link?: { readonly label: string; readonly onOpen: () => void } | undefined;
 }) {
   return (
-    <div
-      className="flex items-center gap-3 text-caption text-muted-foreground"
+    <Text
+      className="flex items-center gap-3"
+      render={<div />}
+      variant="note"
       data-crew-seam
       {...(link === undefined ? { "aria-label": text, role: "separator" } : {})}
     >
@@ -34,7 +37,7 @@ export function CrewSeamLine({
         )}
       </span>
       <Separator aria-hidden="true" className="flex-1" />
-    </div>
+    </Text>
   );
 }
 
@@ -52,8 +55,10 @@ export function CrewRestartLine({
   readonly link?: { readonly label: string; readonly onOpen: () => void } | undefined;
 }) {
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+    <Text
+      className="flex min-h-7 min-w-0 items-center"
+      render={<div />}
+      variant="remark"
       data-crew-seam="stint"
       role="note"
     >
@@ -69,6 +74,6 @@ export function CrewRestartLine({
           </>
         )}
       </span>
-    </div>
+    </Text>
   );
 }

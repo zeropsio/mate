@@ -34,6 +34,7 @@ import {
   type domainProposalRecords,
   type ProposalStage,
 } from "./proposal.logic";
+import { Text } from "~/components/ui/text";
 
 /** The Mate a message goes to, as the menu draws it; absent while the menu does not know it. */
 export interface ProposalRecipient {
@@ -245,14 +246,14 @@ export function ProposalCard(props: ProposalCardProps) {
           chiefTarget: stage === "open" ? chiefTarget : undefined,
         })}
         {stage === "open" && (props.restarts?.notRunning.length ?? 0) > 0 ? (
-          <p className="text-caption text-muted-foreground" data-proposal-not-running>
+          <Text render={<p />} variant="note" data-proposal-not-running>
             {notRunningWords(props.restarts?.notRunning ?? [])}
-          </p>
+          </Text>
         ) : null}
         {stage === "open" && props.refusal !== undefined ? (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {props.refusal}
-          </p>
+          </Text>
         ) : null}
         {proposal.kind === "domain.add" && decided ? (
           <DomainProgress {...props} stage={stage} />
@@ -337,9 +338,9 @@ function proposalBody({
   }
   if (proposal.kind === "domain.add") {
     return (
-      <p className="text-caption text-muted-foreground" data-proposal-where>
+      <Text render={<p />} variant="note" data-proposal-where>
         {proposalWhere(proposal)}
-      </p>
+      </Text>
     );
   }
   if (proposal.kind !== "mate.message") return null;

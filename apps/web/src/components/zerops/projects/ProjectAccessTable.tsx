@@ -69,6 +69,7 @@ import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
+import { Text } from "~/components/ui/text";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -191,9 +192,9 @@ export function ProjectAccessTable({
         />
       )}
       {view.kind === "table" && rows.length > 0 ? (
-        <p className="text-caption leading-4 text-muted-foreground">
+        <Text render={<p />} variant="note">
           Plain: what the organization gives. Highlighted: set for this place.
-        </p>
+        </Text>
       ) : null}
       {said.map(({ key, line }) => (
         <Failure cause={line} key={key} role="alert" size="line" />
@@ -404,11 +405,11 @@ function Who({ row, linked }: { readonly row: AccessRow; readonly linked: boolea
         <span className="grid min-w-45 gap-0.5 px-0.5 py-1 text-left">
           <span className="text-body leading-4.5 font-semibold">{row.name}</span>
           {row.email === null || row.email === row.name ? null : (
-            <span className="text-caption leading-4 text-muted-foreground">{row.email}</span>
+            <Text variant="note">{row.email}</Text>
           )}
-          <span className="text-caption leading-4 text-muted-foreground">
+          <Text variant="meta">
             {[row.role, ...(row.pending ? ["invited, not joined yet"] : [])].join(" · ")}
-          </span>
+          </Text>
         </span>
       </TooltipPopup>
     </Tooltip>

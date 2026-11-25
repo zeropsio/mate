@@ -105,6 +105,7 @@ import {
   type Board,
 } from "./taskBoard.logic";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /** Where the organization's connections are set: Settings › Automation. */
 const AUTOMATION_SETTINGS = "/settings/automation" as const;
@@ -269,9 +270,9 @@ export function ProjectAutomationRowView({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex shrink-0 items-center">{pool.slice(0, 5).map(face)}</span>
-        <span className="min-w-0 truncate text-line text-muted-foreground">
+        <Text className="min-w-0" truncate variant="remark">
           {automationSummary(pool)}
-        </span>
+        </Text>
       </div>
     </SetupRow>
   );
@@ -1110,10 +1111,10 @@ function TaskBoardView({
   const { atWork, queued, recent } = read.board;
   if (atWork.length + queued.length + recent.length === 0)
     return waitsFor === undefined ? null : (
-      <p className="m-0 px-2.5 pt-2 pb-1.5 text-body leading-5 text-muted-foreground">
+      <Text className="m-0 px-2.5 pt-2 pb-1.5" render={<p />} variant="description">
         No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
         soon as there is somewhere to take it from.
-      </p>
+      </Text>
     );
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
   const finished = all ? recent : recent.slice(0, RECENT_SHOWN);

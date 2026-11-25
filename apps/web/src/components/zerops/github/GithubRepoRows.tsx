@@ -48,6 +48,7 @@ import { GithubTokenFields } from "./GithubTokenFields";
 import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress";
 import { Loading } from "~/components/ui/loading";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
 interface RepoRowActions {
@@ -163,7 +164,9 @@ export function RepoRowsView(props: RepoRowsViewProps) {
         ))}
       </ul>
       {someUnconnected && props.authority !== null ? (
-        <p className="px-2 pt-1 text-caption text-muted-foreground">{props.authority}</p>
+        <Text className="px-2 pt-1" render={<p />} variant="note">
+          {props.authority}
+        </Text>
       ) : null}
     </div>
   );
@@ -301,12 +304,12 @@ function RepoRow({
         </p>
         <StateLine state={state} />
         {said === null ? null : (
-          <p className="text-caption text-destructive-foreground" role="status">
+          <Text render={<p />} variant="error" role="status">
             {said.words}{" "}
             <InlineButton onClick={said.dismiss} tone="muted">
               Dismiss
             </InlineButton>
-          </p>
+          </Text>
         )}
       </div>
       <div className="flex items-center gap-1" ref={anchor}>
@@ -577,7 +580,9 @@ function Confirm({
   return (
     <div className="grid gap-2.5">
       <p className="text-body font-medium">{title}</p>
-      <p className="text-body text-muted-foreground">{children}</p>
+      <Text render={<p />} variant="description">
+        {children}
+      </Text>
       <div className="flex justify-end gap-2">
         <Button disabled={busy} onClick={onCancel} size="sm" variant="ghost">
           Cancel
@@ -637,9 +642,9 @@ function ReplaceToken({
       <p className="text-body font-medium">Replace the token for {repo}</p>
       <GithubTokenFields onToken={setToken} projectName={projectName} token={token} url={url} />
       {refusal === null ? null : (
-        <p className="text-caption text-destructive-foreground" role="alert">
+        <Text render={<p />} variant="error" role="alert">
           {refusal}
-        </p>
+        </Text>
       )}
       <div className="flex justify-end gap-2">
         <Button disabled={busy} onClick={onDone} size="sm" variant="ghost">
@@ -671,11 +676,11 @@ function DeleteFromMate({
   return (
     <div className="grid gap-2.5">
       <p className="text-body font-medium">Delete {repo}?</p>
-      <p className="text-body text-muted-foreground">
+      <Text render={<p />} variant="description">
         Its code and history kept by Mate are deleted: main, its changes, and what releases build
         from. The files in its Mate's workspace stay.
         {destination === null ? "" : ` ${destination} on GitHub stays as it is.`}
-      </p>
+      </Text>
       <div className="grid gap-1.5">
         <Label htmlFor={id}>Type {repo} to confirm</Label>
         <Input

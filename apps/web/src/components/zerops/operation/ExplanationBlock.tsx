@@ -12,6 +12,7 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { isErrorLogLine } from "./explanation";
+import { Text } from "~/components/ui/text";
 
 type Explanation = NonNullable<ZeropsOperation["explanation"]>;
 
@@ -64,14 +65,14 @@ export function ExplanationBlock({
     <div className="space-y-1.5" data-zerops-operation-explanation>
       <p className="text-line text-foreground">{explanation.reason}</p>
       {earlier.length > 0 ? (
-        <details className="text-muted-foreground text-caption">
+        <Text render={<details />} variant="note">
           <summary className="w-fit cursor-pointer list-none select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
             Earlier lines
           </summary>
           <div className="mt-1">
             <LogLines lines={earlier} />
           </div>
-        </details>
+        </Text>
       ) : null}
       {visible.length > 0 ? <LogLines lines={visible} /> : null}
     </div>

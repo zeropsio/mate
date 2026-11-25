@@ -51,6 +51,7 @@ import {
   type VaultShow,
 } from "./vaultGroups.logic";
 import { VaultStepUp } from "./VaultStepUp";
+import { Text } from "~/components/ui/text";
 
 /** What one row is doing now, as the panel knows it. */
 export type VaultRowActivity =
@@ -232,12 +233,9 @@ export function VaultRow(props: VaultRowProps) {
         <ChevronDownIcon aria-hidden="true" className={VAULT_CHEVRON_CLASS} />
       </CollapsibleTrigger>
       {activity.kind === "settled" && activity.line !== null && !open ? (
-        <p
-          className="px-3.5 pb-2.5 -mt-1 text-caption leading-4 text-muted-foreground"
-          data-vault-impact
-        >
+        <Text className="px-3.5 pb-2.5 -mt-1" render={<p />} variant="note" data-vault-impact>
           {activity.line}
-        </p>
+        </Text>
       ) : null}
       <div className={VAULT_ROW_BODY_CLASS} data-open={open ? "" : undefined} inert={!open}>
         <div className={VAULT_ROW_WORDS_CLASS} data-open={open ? "" : undefined}>
@@ -294,12 +292,9 @@ function VaultShown({ show }: { readonly show: VaultShow }) {
           {placeParts(show.parts).map(({ part, at }) =>
             part.ref ? (
               // A `${name}` inside a value: a quiet chip in the line.
-              <span
-                className="mx-px inline-block rounded-mark bg-foreground/7 px-1.25 align-[1px] font-mono text-2xs leading-4.25"
-                key={at}
-              >
+              <Text chip className="mx-px inline-block align-[1px]" key={at} variant="code">
                 {part.text}
-              </span>
+              </Text>
             ) : (
               <span key={at}>{part.text}</span>
             ),
@@ -616,7 +611,10 @@ function VaultManagedRow({
       data-vault-row={value.key}
     >
       <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
-      <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
+      <Text
+        className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1"
+        variant="remark"
+      >
         <span className="min-w-0 truncate" data-vault-shown={shown === null ? undefined : ""}>
           {hidden && shown === null ? <VaultDots /> : (shown ?? value.value)}
         </span>
@@ -633,16 +631,16 @@ function VaultManagedRow({
           </Tip>
         ) : null}
         <CopyReference text={reference} />
-      </span>
+      </Text>
       {refusal === null ? null : (
-        <p className="w-full pb-1.5 text-caption text-destructive-foreground" role="alert">
+        <Text className="w-full pb-1.5" render={<p />} variant="error" role="alert">
           {refusal}
-        </p>
+        </Text>
       )}
       {stepUp ? (
-        <div className="w-full pb-1.5 text-caption text-muted-foreground">
+        <Text className="w-full pb-1.5" render={<div />} variant="note">
           <VaultStepUp onConfirmed={() => void show()} />
-        </div>
+        </Text>
       ) : null}
     </div>
   );
