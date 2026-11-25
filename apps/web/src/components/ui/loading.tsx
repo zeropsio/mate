@@ -16,7 +16,9 @@ import { Skeleton } from "./skeleton";
  *
  * `words` says the read as one quiet line instead ("Comparing in HQ…"): its label, muted body text,
  * for a read whose stand-in has no shape to take, or slow enough that what it waits on matters; it
- * stands where `EmptyState size="line"` and `Failure size="line"` would.
+ * stands where `EmptyState size="line"` and `Failure size="line"` would. The words are its message,
+ * read as they stand (no hidden copy, no busy mark), so inside a live region that stays mounted
+ * (a form's one line under its press) a screen reader hears them when they come.
  *
  * `quiet` is for a read that usually lands at once: the stand-in holds its place unpainted for the
  * app's one hold (`STILL_READING_HOLD_MS`), so a read that lands within it never paints a stand-in
@@ -83,11 +85,7 @@ function LoadingShapeView({
     case "line":
       return <Skeleton className="h-3 w-40" />;
     case "words":
-      return (
-        <span aria-hidden="true" className="block text-pretty text-body text-muted-foreground">
-          {label}…
-        </span>
-      );
+      return <span className="block text-pretty text-body text-muted-foreground">{label}…</span>;
     case "lines":
       return <LoadingLines count={count} />;
     case "rows":
@@ -133,10 +131,12 @@ function Loading({
   readonly quiet?: boolean;
 }) {
   const held = useHeld(quiet);
+  // Words say themselves; a shape's stand-in is named for assistive technology and marked busy.
+  const said = (children === undefined || children === null) && shape === "words";
   return (
     <div
-      aria-busy="true"
-      aria-label={label}
+      aria-busy={said ? undefined : true}
+      aria-label={said ? undefined : label}
       className={cn(
         "min-w-0",
         shape === "room" && "flex h-full min-h-32 flex-1 self-stretch",
