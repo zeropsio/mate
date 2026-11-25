@@ -82,6 +82,7 @@ import {
 } from "./ZeropsReview.logic";
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -1005,22 +1006,6 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   );
 }
 
-/** `+42 −3`, each in its colour. */
-export function ReviewSize({
-  additions,
-  deletions,
-}: {
-  readonly additions: string;
-  readonly deletions: string;
-}) {
-  return (
-    <>
-      <span className="text-diff-addition-foreground">{additions}</span>{" "}
-      <span className="text-diff-deletion-foreground">{deletions}</span>
-    </>
-  );
-}
-
 interface ReviewFileRow {
   readonly path: string;
   readonly status: string;
@@ -1164,14 +1149,8 @@ function FileRow({
           <span className="text-muted-foreground">{dir}</span>
           {name}
         </span>
-        <span className="font-sans text-body/none whitespace-nowrap text-muted-foreground tabular-nums">
-          {file.additions > 0 ? (
-            <span className="text-diff-addition-foreground">+{file.additions}</span>
-          ) : null}
-          {file.additions > 0 && file.deletions > 0 ? " " : null}
-          {file.deletions > 0 ? (
-            <span className="text-diff-deletion-foreground">−{file.deletions}</span>
-          ) : null}
+        <span className="font-sans text-body/none">
+          <DiffStat additions={file.additions} deletions={file.deletions} />
         </span>
         <span className="flex text-muted-foreground transition-[rotate] duration-200 ease-out-strong in-aria-expanded:rotate-180 motion-reduce:transition-none">
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
