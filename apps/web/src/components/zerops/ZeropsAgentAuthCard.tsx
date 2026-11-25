@@ -62,6 +62,7 @@ import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwne
 import { OpenCodeAgentLine } from "./OpenCodeAgentKeys";
 import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
+import { LogoTile } from "~/components/ui/logo-tile";
 
 export function ZeropsAgentAuthCard({
   snapshot,
@@ -943,20 +944,10 @@ function AgentLogo({
   /** `sm`: a compact line's 22 px mark. */
   readonly size?: "sm" | "md";
 }) {
-  const logoClassName = size === "sm" ? "size-3.5" : "size-4";
-
   return (
-    <span
-      aria-hidden="true"
-      className={
-        size === "sm"
-          ? "flex size-5.5 shrink-0 items-center justify-center rounded-control bg-accent"
-          : "flex size-8 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
-      }
-      data-zerops-agent-logo={agentId}
-    >
-      <ZeropsAgentLogo agentId={agentId} className={logoClassName} />
-    </span>
+    <LogoTile data-zerops-agent-logo={agentId} size={size}>
+      <ZeropsAgentLogo agentId={agentId} />
+    </LogoTile>
   );
 }
 
