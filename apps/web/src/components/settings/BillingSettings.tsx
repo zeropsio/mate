@@ -111,14 +111,16 @@ function OrganizationBillingPage({
       />
       <SpendingSection billing={billing} daily={daily} />
       <ProjectsSection billing={billing} />
-      <section className="flex flex-col items-start justify-between gap-3 rounded-card bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
-        <Text render={<p />} variant="description">
-          Invoices, payment cards, automatic top-up and billing details are in HQ.
-        </Text>
-        <HqButton href={hq} variant="secondary">
-          Open billing in HQ
-        </HqButton>
-      </section>
+      <Card render={<section />} variant="inset">
+        <div className="flex flex-col items-start justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
+          <Text render={<p />} variant="description">
+            Invoices, payment cards, automatic top-up and billing details are in HQ.
+          </Text>
+          <HqButton href={hq} variant="secondary">
+            Open billing in HQ
+          </HqButton>
+        </div>
+      </Card>
     </div>
   );
 }
