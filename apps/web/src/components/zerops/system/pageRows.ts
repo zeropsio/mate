@@ -14,3 +14,17 @@ export const PageRows = createContext(false);
  * columns of their own, *Review* only where a review is due, and where it leads always shown.
  */
 export const LedgerRows = createContext(false);
+
+/**
+ * How a list's rows stand on what holds them (`ChangeList look`):
+ * - `card` — a card's or a panel's list, its hover hanging past the column's edge;
+ * - `flush` — a list on its own card's edge (a project page's waits);
+ * - `ruled` — the project's Changes card: roomier rows, a hairline between them;
+ * - `record` — what is live, on the page's own ground: a hairline over every row, titles and beads
+ *   quiet;
+ * - `release` — the changes an opened release put live: set in, a hairline over each, no ground of
+ *   their own under the pointer, their title underlined instead.
+ */
+export type ChangeLook = "card" | "flush" | "ruled" | "record" | "release";
+
+export const ChangeLookRows = createContext<ChangeLook>("card");

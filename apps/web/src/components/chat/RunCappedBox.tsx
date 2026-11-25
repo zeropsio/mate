@@ -22,7 +22,47 @@ function cappedAtEnd(box: HTMLElement): boolean {
   return box.scrollTop + box.clientHeight >= box.scrollHeight - 2;
 }
 
-/** A fade at each edge of a box that has more past it (`.run-capped`). */
+/**
+ * One item's box: at most four of the card's lines, what the person opened under a call twelve,
+ * the Mate's words as tall as the run's scroll — or by its own lines: in the working row a
+ * command's code six, a thought five; in the log a thought two and a command's code one. In the
+ * working row what runs past scrolls inside it, a fade at an edge saying there is more past it;
+ * in the log nothing scrolls inside it, its foot fades where more runs past (never under a box
+ * whose lines its item cuts: its last line is whole, "more" over it), and opened it is whole.
+ */
+function capClassName(box: {
+  readonly detail: boolean;
+  readonly words: boolean;
+  readonly lines: "thought" | "code" | undefined;
+  readonly log: boolean;
+  readonly whole: boolean;
+}): string {
+  return cn(
+    "min-w-0 [overflow-anchor:none] [scrollbar-width:none]",
+    box.log ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto",
+    box.whole
+      ? "max-h-none"
+      : box.lines === "code"
+        ? box.log
+          ? "max-h-[1lh]"
+          : "max-h-[6lh]"
+        : box.lines === "thought"
+          ? box.log
+            ? "max-h-[2lh]"
+            : "max-h-[5lh]"
+          : box.detail
+            ? "max-h-60"
+            : box.words
+              ? "max-h-[min(440px,52svh)]"
+              : "max-h-20",
+    box.log
+      ? box.lines === undefined &&
+          "data-more-below:[mask-image:linear-gradient(to_top,transparent,currentColor_14px)]"
+      : "data-more-above:[mask-image:linear-gradient(to_bottom,transparent,currentColor_14px)] data-more-below:[mask-image:linear-gradient(to_top,transparent,currentColor_14px)] [&[data-more-above][data-more-below]]:[mask-image:linear-gradient(to_bottom,transparent,currentColor_14px,currentColor_calc(100%-14px),transparent)]",
+  );
+}
+
+/** A fade at each edge of a box that has more past it (`capClassName`). */
 function markCappedEdges(box: HTMLElement): void {
   if (typeof box.toggleAttribute !== "function") return;
   // Read whole before either is written: a fade written between two reads
@@ -35,10 +75,10 @@ function markCappedEdges(box: HTMLElement): void {
 
 interface CappedBoxProps {
   readonly follows?: boolean;
-  /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
+  /** What the person opened under a call: twelve lines. */
   readonly detail?: boolean;
   /**
-   * The Mate's words to the person: as tall as the run's scroll (`--run-words-cap`), so a long
+   * The Mate's words to the person: as tall as the run's scroll, so a long
    * answer is read while it is written, never through a four-line slit.
    */
   readonly words?: boolean;
@@ -64,8 +104,7 @@ interface CappedBoxProps {
 }
 
 /**
- * One item's box, capped at its lines (`lines`, else four of the card's:
- * `--run-item-cap`). In the working row what runs past the cap scrolls inside
+ * One item's box, capped at its lines (`lines`, else four of the card's). In the working row what runs past the cap scrolls inside
  * it (`SlotBox`) — what the Mate does now is read with its body; in the log
  * nothing scrolls inside it (`LogBox`) and it is shorter — what happened is
  * skimmed (the board, 2026-11-10).
@@ -178,12 +217,8 @@ function LogBox({
   return (
     <div
       ref={boxRef}
-      className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : words ? "words" : "item"}
-      data-capped-at="log"
-      data-capped-lines={lines}
+      className={cn(capClassName({ detail, words, lines, log: true, whole }), className)}
       data-more-below={cut && !whole ? "" : undefined}
-      data-whole={whole ? "" : undefined}
     >
       <div ref={contentRef} data-capped-held="">
         {children}
@@ -339,9 +374,7 @@ function SlotBox({
   return (
     <div
       ref={boxRef}
-      className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : words ? "words" : "item"}
-      data-capped-lines={lines}
+      className={cn(capClassName({ detail, words, lines, log: false, whole: false }), className)}
       onScroll={() => {
         const box = boxRef.current;
         if (box === null) return;

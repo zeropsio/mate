@@ -3,6 +3,8 @@ import { formatRunClock } from "@t3tools/client-runtime/zerops";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
+import { mateTintStyle } from "./mateTint";
+
 /**
  * The working clock, ticking once a second — a step, never a continuous repaint (R6) — read as a
  * live clock, not a timestamp (the owner, 2026-09-30): 600 and tabular in its Mate's own hue,
@@ -21,11 +23,17 @@ export function MateWorkingTime({
   const nowMs = useSecondsNowMs(true);
   return (
     <span
-      className={cn("menu-clock shrink-0 text-caption tabular-nums", className)}
-      data-tint={tint}
+      className={cn(
+        "relative shrink-0 text-caption font-semibold text-mate-ink tabular-nums",
+        className,
+      )}
+      style={mateTintStyle(tint)}
       data-zerops-surface="sidebar-mate-time"
     >
-      <span aria-hidden="true" className="menu-clock-mark" />
+      <span
+        aria-hidden="true"
+        className="absolute top-1/2 right-[calc(100%+5px)] -mt-0.75 size-1.5 rounded-full bg-current motion-safe:animate-clock-breathe"
+      />
       {formatRunClock(nowMs - Date.parse(since))}
     </span>
   );

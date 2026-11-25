@@ -297,7 +297,9 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   return (
     <div
       ref={boxRef}
-      className="published-page-frame"
+      // The page is the answer: it stands at its full height on the conversation's own ground, with
+      // no card around it. Before a client ever measured it, a modest first box it glides from.
+      className="h-60 overflow-hidden rounded-card data-glide:transition-[height] data-glide:duration-260 data-glide:ease-out-strong data-full:h-[min(80svh,900px)] data-full:transition-none motion-reduce:transition-none"
       data-full={full ? "" : undefined}
       data-glide={glides ? "" : undefined}
       data-state={left ? "left" : failed ? "failed" : document_ === null ? "reading" : "ready"}
@@ -311,6 +313,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           sandbox="allow-scripts"
           allow=""
           referrerPolicy="no-referrer"
+          className="block size-full border-0"
           srcDoc={document_}
           onLoad={tellScreen}
           // Asked whether it grows with its viewport, the page is laid out past the frame's edge.
@@ -319,7 +322,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           }
         />
       ) : left ? (
-        <div className="published-page-left">
+        <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-caption text-muted-foreground">
           <p>The page tried to open something else, so it was closed.</p>
           <Button
             type="button"
@@ -397,19 +400,22 @@ export function PublishedPage(props: {
   const [full, setFull] = useState(false);
   const failed = bytes.read.kind === "failed" || (bytes.read.kind === "ready" && !bytes.read.blob);
   return (
-    <figure className="published-page" aria-label={page.title}>
-      <figcaption className="published-page-head">
-        <span className="published-page-title">{page.title}</span>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          aria-label={`Open ${page.title} full size`}
-          disabled={html === null}
-          onClick={() => setFull(true)}
-        >
-          <Maximize2Icon />
-        </Button>
+    <figure className="group/page grid min-w-0 gap-1.5" aria-label={page.title}>
+      <figcaption className="flex min-w-0 items-center justify-between gap-2 text-caption text-muted-foreground">
+        <span className="min-w-0 truncate">{page.title}</span>
+        {/* Open full shows where the pointer is on the page, or a key reaches it; always on touch. */}
+        <span className="flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/page:opacity-100 group-focus-within/page:opacity-100 pointer-coarse:opacity-100">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Open ${page.title} full size`}
+            disabled={html === null}
+            onClick={() => setFull(true)}
+          >
+            <Maximize2Icon />
+          </Button>
+        </span>
       </figcaption>
       <PublishedPageFrame
         title={page.title}

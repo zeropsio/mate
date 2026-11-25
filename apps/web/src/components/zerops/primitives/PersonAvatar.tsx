@@ -16,6 +16,15 @@ const SIZE_CLASS: Record<PersonAvatarSize, string> = {
   64: "size-16 text-display",
 };
 
+/**
+ * A person's disc: their picture, or their letter on their own hue (`--person-hue`, set beside
+ * it), lighter at the top left, lighter on a light ground and deeper on a dark one; the letter in
+ * the hue's dark ink on the light tints and white on the deep ones (`--color-person-*`). A
+ * hairline keeps a pale picture off the ground. `MateOwnerMark` wears the same disc.
+ */
+export const PERSON_DISC =
+  "relative inline-flex flex-none items-center justify-center overflow-hidden rounded-full bg-linear-140/srgb from-person-from to-person-to leading-none font-semibold text-person-ink ring-1 ring-foreground/8 select-none";
+
 type PersonAvatarProps = Omit<React.ComponentProps<"span">, "children" | "style"> & {
   /** The person's name: its first word gives the letter and the hue (`personMark`). */
   readonly name: string;
@@ -37,7 +46,7 @@ function PersonAvatar({ className, name, picture, size = 24, ...props }: PersonA
     <span
       {...props}
       aria-hidden="true"
-      className={cn("person-avatar", SIZE_CLASS[size], className)}
+      className={cn(PERSON_DISC, SIZE_CLASS[size], className)}
       data-zerops-avatar={shown === null ? "initials" : "picture"}
       data-zerops-primitive="avatar"
       style={{ "--person-hue": mark.hue } as CSSProperties}

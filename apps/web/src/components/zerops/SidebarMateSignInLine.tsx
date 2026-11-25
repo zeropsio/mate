@@ -17,7 +17,7 @@ export function MateSignInLine({
   return (
     <span
       className={cn(
-        "truncate menu-line2",
+        "truncate block text-body leading-5.5",
         waitsOnViewer ? "text-sidebar-foreground" : "text-muted-foreground",
       )}
       data-zerops-sign-in={waitsOnViewer ? "yours" : "nobody"}

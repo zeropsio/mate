@@ -272,8 +272,8 @@ function RowLine({
       {line.diff === undefined ? null : (
         <span className="tabular-nums">
           {" · "}
-          <span className="rv-add">{`+${line.diff.insertions}`}</span>{" "}
-          <span className="rv-del">{`−${line.diff.deletions}`}</span>
+          <span className="text-diff-addition-foreground">{`+${line.diff.insertions}`}</span>{" "}
+          <span className="text-diff-deletion-foreground">{`−${line.diff.deletions}`}</span>
         </span>
       )}
     </p>

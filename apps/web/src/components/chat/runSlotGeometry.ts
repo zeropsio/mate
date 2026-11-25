@@ -106,7 +106,8 @@ export function placeSlot(list: HTMLOListElement | null): void {
   const slotRect = slotBox.getBoundingClientRect();
   // What the history gives back is its scroll's room: its own edges and the gaps around it stay.
   const scroll =
-    slotBox.previousElementSibling?.querySelector<HTMLElement>(":scope > .run-scroll") ?? null;
+    slotBox.previousElementSibling?.querySelector<HTMLElement>(":scope > [data-run-scroll]") ??
+    null;
   const given =
     scroll === null ? 0 : scroll.getBoundingClientRect().height - verticalPadding(scroll);
   const from = chat.getBoundingClientRect().top;

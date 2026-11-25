@@ -82,7 +82,7 @@ const controlVariants = cva(
         send: "border-message-action bg-message-action text-message-action-foreground shadow-xs shadow-message-action/24 transition-[scale,background-color,border-color,color,box-shadow] not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed],[data-popup-open]]:bg-message-action-hover [:hover,[data-pressed],[data-popup-open]]:border-message-action-hover disabled:border-transparent disabled:bg-foreground/9 disabled:text-muted-foreground disabled:opacity-100",
         /** A ghost in light ink on a picture's always-dark stage (a viewer's Close and arrows). */
         scrim:
-          "[--control-icon-color:currentColor] border-transparent text-[var(--picture-stage-ink)] [:hover,[data-pressed]]:bg-[var(--picture-stage-hover)]",
+          "[--control-icon-color:currentColor] border-transparent text-stage-foreground [:hover,[data-pressed]]:bg-stage-foreground/10",
         /**
          * A count that opens what it counts, in the warning tone (what waits on the person): the
          * Badge's warning pill as a press, its figures tabular. With `shape="round"`.

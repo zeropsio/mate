@@ -162,7 +162,7 @@ type DescriptionPicture =
   | { readonly kind: "elsewhere"; readonly url: string }
   | { readonly kind: "none" };
 
-/** The tallest a description's picture stands (`.rv-pic img`'s `max-height`). */
+/** The tallest a description's picture stands (its `max-h` in `ReviewDescription`). */
 const REVIEW_PICTURE_MAX_HEIGHT = 560;
 
 /** The widest or tallest a picture a description sizes can be; anything past it is no size. */

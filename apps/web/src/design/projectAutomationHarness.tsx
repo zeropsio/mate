@@ -43,6 +43,8 @@ import { SectionLabel } from "~/components/zerops/system";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
+import { Card } from "~/components/ui/card";
+import { PAGE_GROUP } from "~/components/zerops/project/pageLayout";
 
 const params = new URLSearchParams(location.search);
 const DIALOG = params.get("dialog") as SourceKind | null;
@@ -730,11 +732,9 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
 /** The section as the project page holds it: under its label, flush on the page's card. */
 function OnPage({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="pp-group">
+    <div className={PAGE_GROUP}>
       <SectionLabel>Automation</SectionLabel>
-      <div className="pp-card pp-detail" data-flush="">
-        {children}
-      </div>
+      <Card>{children}</Card>
     </div>
   );
 }

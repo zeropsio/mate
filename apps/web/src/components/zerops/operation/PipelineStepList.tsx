@@ -111,9 +111,9 @@ function Row({
         {beneath}
       </span>
       {duration !== undefined ? (
-        // Under a line of the run's log the times end where the line's own does (`.line-time`).
+        // Under a line of the run's log the times end where the line's own does.
         <span
-          className="line-time shrink-0 text-line text-muted-foreground leading-5 tabular-nums"
+          className="shrink-0 text-line text-muted-foreground leading-5 tabular-nums in-data-run-line-detail:pe-5"
           data-zerops-pipeline-duration
         >
           {duration}

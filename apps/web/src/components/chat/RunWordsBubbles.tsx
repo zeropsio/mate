@@ -115,7 +115,9 @@ export function NoteBubble({ message: recorded }: { readonly message: ChatMessag
       {bubble}
       <span
         aria-hidden="true"
-        className="run-note-writing"
+        // A seat the row holds, so the bubble is as wide and as tall when the words end: 8 px
+        // after it, the dots' middle on the last line's x-height.
+        className="ms-2 mb-2.25 flex h-[21px] w-[19px] flex-none items-center self-end *:flex-none *:origin-left *:scale-70"
         data-note-writing={message.streaming ? "" : undefined}
       >
         {message.streaming ? <TypingDots /> : null}

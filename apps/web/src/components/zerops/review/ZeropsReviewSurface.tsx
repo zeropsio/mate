@@ -315,7 +315,13 @@ export function ZeropsReviewSurface({
     line.push({
       key: noteKey === undefined ? "verdict" : `verdict ${noteKey}`,
       node: (
-        <span className="rv-vt" data-swap={swap}>
+        <span
+          className={
+            swap === undefined
+              ? VERDICT_TONE[verdict.tone]
+              : `${VERDICT_TONE[verdict.tone]} motion-safe:animate-zerops-appear`
+          }
+        >
           {verdict.tone === "busy" ? <Spinner size="sm" tone="muted" /> : null}
           {verdict.title}
         </span>
@@ -326,9 +332,9 @@ export function ZeropsReviewSurface({
   const content = (
     <>
       {frame === "page" ? null : (
-        <div className="rv-chrome">
+        <div className="flex flex-none items-center gap-0.5 ps-6 pe-4 pt-4.5 max-sm:ps-4 max-sm:pe-2.5">
           {back === undefined ? (
-            <span className="rv-kind">
+            <span className={KIND}>
               {where === undefined ? null : (
                 <Badge tone={where.production === true ? "danger" : "neutral"}>{where.words}</Badge>
               )}
@@ -341,10 +347,10 @@ export function ZeropsReviewSurface({
                   tint={face.tint}
                 />
               )}
-              <span className="rv-kind-words">{kindLabel}</span>
+              <span className="min-w-0 truncate">{kindLabel}</span>
             </span>
           ) : (
-            <span className="rv-kind">
+            <span className={KIND}>
               <Button
                 className="-ms-2.5"
                 data-review-back=""
@@ -380,39 +386,39 @@ export function ZeropsReviewSurface({
           </Button>
         </div>
       )}
-      <header className="rv-head" data-queue-in={queue?.arrived} data-review-kind={kind}>
+      <header
+        className={`${frame === "page" ? HEAD_PAGE : HEAD_SHEET} ${QUEUE_IN_SLIDES}`}
+        data-queue-in={queue?.arrived}
+        data-review-kind={kind}
+      >
         {frame !== "page" || trail === undefined ? null : (
           <InPhoneBar>
-            <div className="rv-trail">{trail}</div>
+            <div className="mb-1 flex min-w-0">{trail}</div>
           </InPhoneBar>
         )}
-        <Title className="rv-title" id={titleId} title={title}>
+        <Title className={frame === "page" ? TITLE_PAGE : TITLE_SHEET} id={titleId} title={title}>
           {titleWords ?? title}
         </Title>
         {subtitle === undefined ? (
-          <p
-            aria-live="polite"
-            className="rv-line"
-            data-review-state={verdict.state}
-            data-tone={verdict.tone}
-          >
+          <p aria-live="polite" className={LINE} data-review-state={verdict.state}>
             {line.map((part, index) => (
               <Fragment key={part.key}>
                 {index === 0 ? null : (
-                  <span aria-hidden="true" className="rv-dot">
+                  <span aria-hidden="true" className="text-muted-foreground max-sm:hidden">
                     ·
                   </span>
                 )}
-                {part.node}
+                <span className={index === 0 ? LINE_PART : LINE_PART_AFTER_DOT}>{part.node}</span>
               </Fragment>
             ))}
           </p>
         ) : (
+          // A release's one line, what is known of it as it stands: it never wraps, so the head
+          // keeps its height from reading to done.
           <p
             aria-live="polite"
-            className="rv-sub"
+            className="truncate text-body leading-4.5 text-muted-foreground tabular-nums"
             data-review-state={verdict.state}
-            data-tone={verdict.tone}
           >
             {subtitle}
           </p>
@@ -445,7 +451,7 @@ export function ZeropsReviewSurface({
             </Alert>
           ) : (
             // All is well: the why is a quiet line under the title.
-            <div className="rv-why">
+            <div className={WHY}>
               {whySaid ? <span>{verdict.why}</span> : null}
               {whyCopy}
               {linkedFix === undefined ? null : (
@@ -458,7 +464,11 @@ export function ZeropsReviewSurface({
           )
         ) : null}
       </header>
-      <div className="rv-body" data-queue-in={queue?.arrived}>
+      <div
+        className={`${frame === "page" ? BODY_PAGE : BODY_SHEET} ${QUEUE_IN_SLIDES}`}
+        data-queue-in={queue?.arrived}
+        data-review-body=""
+      >
         {children}
       </div>
       {/* Nothing left to press or say (a merged change on its page): no empty bar. */}
@@ -472,8 +482,11 @@ export function ZeropsReviewSurface({
       noteAction === undefined &&
       (dismiss === undefined || frame === "page") &&
       consequence === "" ? null : (
-        <footer className="rv-foot" data-queue-in={queue?.arrived}>
-          <div className="rv-btns" ref={buttonsRow}>
+        <footer
+          className={`${frame === "page" ? FOOT_PAGE : FOOT_SHEET} ${QUEUE_IN_FADES}`}
+          data-queue-in={queue?.arrived}
+        >
+          <div className="flex flex-wrap-reverse items-center gap-2 empty:hidden" ref={buttonsRow}>
             {answers !== undefined ? (
               answers
             ) : (
@@ -481,7 +494,9 @@ export function ZeropsReviewSurface({
                 {(dismiss === undefined || frame === "page") &&
                 secondary === undefined &&
                 undo === undefined ? null : (
-                  <div className="rv-btns-quiet">
+                  // The quiet words' text stands on the foot's edge, over the line of what happens
+                  // next: a button's padding and border sit outside it.
+                  <div className="-ms-3 flex items-center gap-2">
                     {dismiss === undefined || frame === "page" ? null : (
                       <Button
                         data-review-secondary={secondary === undefined ? "" : undefined}
@@ -514,17 +529,23 @@ export function ZeropsReviewSurface({
                   </div>
                 )}
                 {softAsk === undefined && settled === undefined && primary === undefined ? null : (
-                  <div className="rv-btns-main">
+                  <div className="ms-auto flex items-center gap-2">
                     {softAsk === undefined ? null : (
                       <Button data-review-ask="" onClick={softAsk.onPress} variant="secondary">
                         {softAsk.label}
                       </Button>
                     )}
                     {settled === undefined ? null : (
+                      // What was already done, where the button would stand: "Merged" — standing
+                      // where a button stood a moment ago, the button's own height.
                       <span
-                        className="rv-settled"
-                        data-in-place={noteKey === undefined ? undefined : ""}
-                        data-swap={swap}
+                        className={
+                          noteKey === undefined
+                            ? `${SETTLED} h-8.5`
+                            : swap === undefined
+                              ? `${SETTLED} h-8`
+                              : `${SETTLED} h-8 motion-safe:animate-zerops-appear`
+                        }
                         key={noteKey}
                       >
                         <CheckIcon aria-hidden="true" />
@@ -552,27 +573,31 @@ export function ZeropsReviewSurface({
               </>
             )}
           </div>
-          {asked === undefined ? null : <p className="rv-asked">{asked}</p>}
+          {/* Who asked the person to press the one button, hugging the note it belongs with. */}
+          {asked === undefined ? null : (
+            <p className="-mb-2 text-body leading-4.5 text-foreground tabular-nums">{asked}</p>
+          )}
           {consequence === "" &&
           noteAction === undefined &&
           consequenceRoom === undefined ? null : (
             <p
               aria-live={consequenceBusy || noteKey !== undefined ? "polite" : undefined}
-              className="rv-conseq"
-              data-room={consequenceRoom === undefined ? undefined : ""}
-              data-tone={consequenceTone}
+              className={`${consequenceRoom === undefined ? CONSEQ : CONSEQ_ROOM} ${CONSEQ_TONE[consequenceTone ?? "quiet"]}`}
             >
               {consequence === "" ? null : consequenceBusy ? (
                 <Badge dot tone="info" wrap>
                   {consequence}
                 </Badge>
               ) : (
-                <span data-swap={swap} key={noteKey}>
+                <span
+                  className={swap === undefined ? undefined : "motion-safe:animate-zerops-appear"}
+                  key={noteKey}
+                >
                   {consequence}
                 </span>
               )}
               {consequenceRoom === undefined ? null : (
-                <span aria-hidden="true" className="rv-conseq-room">
+                <span aria-hidden="true" className="invisible">
                   {consequenceRoom}
                 </span>
               )}
@@ -613,11 +638,95 @@ export function ZeropsReviewSurface({
     primary.onPress();
   };
   return (
-    <div className="rv-page" data-zerops-surface="review" onKeyDown={pressFromKeys}>
+    <div className="flex min-w-0 flex-col" data-zerops-surface="review" onKeyDown={pressFromKeys}>
       {content}
     </div>
   );
 }
+
+/*
+ * The review: one surface in two frames, a sheet over the page (`ZeropsReviewDialog`) and a
+ * change's own page. Its type is the scale's, 20 · 14 · 12; its colour means one thing each. In
+ * the sheet the head, body and foot stand 24 in (16 on a phone), the body scrolling between them;
+ * on the page they are flush with the page's own edges, the foot's card standing 8 out from the
+ * text and staying in view.
+ */
+/** Whose it is: where it acts, the Mate's face and its words, cut to the line. */
+const KIND =
+  "flex h-7 min-w-0 flex-1 items-center gap-2 text-body leading-4.5 text-muted-foreground *:[svg]:size-3.75 *:[svg]:flex-none";
+/** The head: the title, its one line, and why where that is not all. */
+const HEAD_SHEET = "grid flex-none gap-1 border-b border-border px-6 pt-1.5 pb-4 max-sm:px-4";
+const HEAD_PAGE = "grid flex-none gap-1 pb-4";
+/**
+ * A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
+ * rest on hover — what it does is said below, in its own words.
+ */
+const TITLE_SHEET = "line-clamp-3 text-title font-semibold text-balance wrap-anywhere";
+const TITLE_PAGE = "text-emphasis font-semibold text-balance wrap-anywhere";
+/**
+ * Where it stands, in plain words: grey while all is well, amber or red for trouble, blue while it
+ * moves. A phone's line wraps: a dot goes down with the words after it, never left hanging at a
+ * line's end, and one that would start a line is cut with the line's own edge.
+ */
+const LINE =
+  "flex flex-wrap items-center gap-x-1.5 text-body text-muted-foreground tabular-nums max-sm:-ms-3.5 max-sm:gap-x-0 max-sm:[clip-path:inset(0_0_0_14px)]";
+const LINE_PART = "inline-flex items-center max-sm:relative max-sm:ps-3.5";
+const LINE_PART_AFTER_DOT = `${LINE_PART} max-sm:before:absolute max-sm:before:start-0 max-sm:before:w-3.5 max-sm:before:text-center max-sm:before:text-muted-foreground max-sm:before:content-['·']`;
+/** The verdict's words in the line, in their tone. */
+const VERDICT_TONE: Record<ReviewVerdict["tone"], string> = {
+  ok: "inline-flex items-center gap-1.5",
+  done: "inline-flex items-center gap-1.5",
+  quiet: "inline-flex items-center gap-1.5",
+  attention: "inline-flex items-center gap-1.5 text-status-attention-text",
+  failed: "inline-flex items-center gap-1.5 text-status-failed-text",
+  busy: "inline-flex items-center gap-1.5 text-status-busy-text",
+};
+/**
+ * Why, under the line, while all is well: a quiet line, its fix a link in it. Trouble is the kit's
+ * tinted callout (Alert `tint`) instead.
+ */
+export const WHY =
+  "mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body leading-4.5 text-pretty text-muted-foreground *:data-[slot=button]:-my-0.75 *:data-[slot=button]:-ms-2";
+/** The body: the sections, 24 apart; one column no wider than the review, a long line wraps. */
+const BODY_SHEET =
+  "grid min-h-0 flex-auto grid-cols-1 content-start gap-6 overflow-x-hidden overflow-y-auto overscroll-contain px-6 pt-4.5 pb-5 *:min-w-0 empty:hidden max-sm:px-4";
+const BODY_PAGE =
+  "grid min-h-0 flex-auto grid-cols-1 content-start gap-6 pt-5 *:min-w-0 empty:hidden";
+/**
+ * The foot: the quiet words at its start, the ask and the one button together at its end, the one
+ * button last, then one line of what happens next — or why the button is held, in its tone. A
+ * sheet too narrow for one row keeps the pair on the first line and drops the quiet words under
+ * it: the one button never stands alone, and nothing stands above it.
+ */
+const FOOT_SHEET =
+  "mt-auto flex flex-none flex-col gap-2.5 border-t border-border bg-card px-6 pt-4 pb-5 max-sm:px-4";
+/** On the page it is a card that stays in view, clear of a phone's home bar. */
+const FOOT_PAGE =
+  "sticky bottom-[max(16px,env(safe-area-inset-bottom))] z-1 -mx-2 mt-7 flex flex-none flex-col gap-2.5 rounded-card bg-card px-4 pt-3 pb-3.5 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/10";
+/**
+ * Changes reviewed together: the next one's head and body come in from the side it was stepped
+ * to, its foot fades in where it stood; a quicker step takes over from wherever this one is.
+ * Reduced motion keeps only the fade.
+ */
+const QUEUE_IN_FADES =
+  "data-queue-in:transition-[opacity,translate] data-queue-in:duration-200 data-queue-in:ease-out-strong data-queue-in:starting:opacity-0";
+const QUEUE_IN_SLIDES = `${QUEUE_IN_FADES} motion-safe:data-[queue-in=next]:starting:translate-x-3 motion-safe:data-[queue-in=previous]:starting:-translate-x-3`;
+const SETTLED =
+  "inline-flex flex-none items-center gap-1.5 px-2 text-body font-medium leading-4.5 text-muted-foreground *:[svg]:size-3.75 *:[svg]:text-status-ok";
+/**
+ * What happens next, under the buttons, in its tone. A note still to come keeps the room of the one
+ * that will stand, under the words that say it is loading: the buttons over it never move when it
+ * arrives.
+ */
+const CONSEQ =
+  "flex flex-wrap gap-x-2 text-body leading-4.5 text-pretty text-muted-foreground tabular-nums";
+const CONSEQ_ROOM =
+  "grid text-body leading-4.5 text-pretty text-muted-foreground tabular-nums *:col-start-1 *:row-start-1";
+const CONSEQ_TONE: Record<"quiet" | "attention" | "failed", string> = {
+  quiet: "",
+  attention: "text-status-attention-text",
+  failed: "text-status-failed-text",
+};
 
 /** The one button: what it does in words, its keys while they press it, its mark while it runs. */
 function ReviewPrimary({
@@ -666,7 +775,7 @@ function useHeldButtons(held: boolean, row: RefObject<HTMLDivElement | null>): (
   const holding = useRef(false);
   useLayoutEffect(() => {
     const node = row.current;
-    const sheet = node?.closest<HTMLElement>(".rv-viewport > .rv");
+    const sheet = node?.closest<HTMLElement>("[data-review-sheet]");
     if (node === null || sheet === null || sheet === undefined) return;
     if (!held) {
       floor.current = undefined;
@@ -753,7 +862,11 @@ export function ReviewSection({
 }) {
   if (fold !== undefined) {
     return (
-      <Collapsible onOpenChange={fold.onToggle} open={fold.open} render={<section />}>
+      <Collapsible
+        onOpenChange={fold.onToggle}
+        open={fold.open}
+        render={<section className={SECTION} />}
+      >
         <SectionLabel action={action} count={count} folds level={3}>
           {title}
         </SectionLabel>
@@ -764,7 +877,7 @@ export function ReviewSection({
     );
   }
   return (
-    <section>
+    <section className={SECTION}>
       {titleShown || action !== undefined ? (
         <SectionLabel action={action} count={titleShown ? count : undefined} level={3}>
           {titleShown ? title : <span className="sr-only">{title}</span>}
@@ -776,6 +889,14 @@ export function ReviewSection({
     </section>
   );
 }
+
+/**
+ * A section's label hugs what it names, sections 24 apart; one with nothing under its label says
+ * nothing and is not drawn. A state at its label's end (`data-section-state`) takes the label's
+ * next line where it is too long for its own.
+ */
+const SECTION =
+  "has-[>[data-zerops-section-label]:only-child]:hidden [&>[data-zerops-section-label]]:mb-1.5 [&>[data-zerops-section-label]:has([data-section-state])]:flex-wrap [&>[data-zerops-section-label]:has([data-section-state])]:gap-y-0.5";
 
 /** A fold of the review's own, shut until it is opened. */
 export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
@@ -806,7 +927,7 @@ export function ReviewTry({
 }) {
   return (
     <ReviewSection title="Try it">
-      <div className="rv-tries">
+      <div className="flex flex-wrap gap-2">
         {previews.map((preview) => {
           const words = tryItWords(mateName, preview.service);
           return (
@@ -818,14 +939,16 @@ export function ReviewTry({
               variant="secondary"
             >
               <GlobeIcon aria-hidden="true" />
-              <span className="rv-try-service">{words.preview}</span>
-              <span className="rv-try-part">· {words.part}</span>
+              <span className="flex-none font-medium">{words.preview}</span>
+              <span className="min-w-0 truncate text-muted-foreground">· {words.part}</span>
               <ArrowUpRightIcon aria-hidden="true" />
             </Button>
           );
         })}
       </div>
-      {everything ? <p className="rv-note">{tryItEverything(mateName)}</p> : null}
+      {everything ? (
+        <p className="mt-1.5 text-body text-muted-foreground">{tryItEverything(mateName)}</p>
+      ) : null}
     </ReviewSection>
   );
 }
@@ -846,7 +969,7 @@ export function ReviewFailed({
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
-    <div className="rv-failed">
+    <div>
       <Failure
         action={
           onRetry === undefined ? undefined : (
@@ -866,7 +989,7 @@ export function ReviewFailed({
 /** Lines standing in for words still being read. */
 export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   return (
-    <div aria-hidden="true" className="rv-skeleton">
+    <div aria-hidden="true" className="grid gap-2.5 py-1.25">
       {Array.from({ length: lines }, (_, index) => (
         <Skeleton
           className={index === lines - 1 ? "h-3 w-[62%]" : "h-3"}
@@ -889,7 +1012,8 @@ export function ReviewSize({
 }) {
   return (
     <>
-      <span className="rv-add">{additions}</span> <span className="rv-del">{deletions}</span>
+      <span className="text-diff-addition-foreground">{additions}</span>{" "}
+      <span className="text-diff-deletion-foreground">{deletions}</span>
     </>
   );
 }
@@ -943,15 +1067,17 @@ export function ReviewFiles({
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(initiallyOpen ?? []));
   if (failed !== undefined) {
     return (
-      <div className="rv-files">
-        <ReviewFailed onRetry={onRetry} reason={failed} what="The files couldn't be read." />
+      <div className={FILES}>
+        <div className="py-1.75 ps-3 pe-3.5">
+          <ReviewFailed onRetry={onRetry} reason={failed} what="The files couldn't be read." />
+        </div>
       </div>
     );
   }
   if (notRecorded !== undefined) {
     return (
-      <div className="rv-files">
-        <p className="rv-diff-note">The files are not known yet.</p>
+      <div className={FILES}>
+        <p className={DIFF_NOTE}>The files are not known yet.</p>
         {notRecorded.onShow === undefined ? null : (
           <Button onClick={notRecorded.onShow} size="sm" variant="link">
             Show files
@@ -962,9 +1088,9 @@ export function ReviewFiles({
   }
   if (files === undefined) {
     return (
-      <div className="rv-files">
+      <div className={FILES}>
         <Loading label="The files">
-          <div className="rv-file-skeleton">
+          <div className="flex h-9 items-center ps-9.5 pe-3">
             <Skeleton className="h-2.5 w-2/5" shape="pill" surface="card" />
           </div>
         </Loading>
@@ -972,7 +1098,7 @@ export function ReviewFiles({
     );
   }
   return (
-    <div className="rv-files">
+    <div className={FILES}>
       {files.map((file) => {
         const expanded = open.has(file.path);
         const { dir, name } = changeFileParts(file.path);
@@ -1030,20 +1156,22 @@ function FileRow({
     // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
     <Collapsible onOpenChange={onToggle} open={expanded}>
       <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-foreground/4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
-        <span className="rv-st" data-status={letter}>
-          {letter}
-        </span>
-        <span className="rv-file-name">
-          <span className="rv-file-dir">{dir}</span>
+        <span className={STATUS[letter ?? ""] ?? STATUS[""]}>{letter}</span>
+        <span className="truncate">
+          <span className="text-muted-foreground">{dir}</span>
           {name}
         </span>
-        <span className="rv-file-n">
-          {file.additions > 0 ? <span className="rv-add">+{file.additions}</span> : null}
+        <span className="font-sans text-body/none whitespace-nowrap text-muted-foreground tabular-nums">
+          {file.additions > 0 ? (
+            <span className="text-diff-addition-foreground">+{file.additions}</span>
+          ) : null}
           {file.additions > 0 && file.deletions > 0 ? " " : null}
-          {file.deletions > 0 ? <span className="rv-del">−{file.deletions}</span> : null}
+          {file.deletions > 0 ? (
+            <span className="text-diff-deletion-foreground">−{file.deletions}</span>
+          ) : null}
         </span>
-        <span className="rv-chev">
-          <ChevronDownIcon aria-hidden="true" />
+        <span className="flex text-muted-foreground transition-[rotate] duration-200 ease-out-strong in-aria-expanded:rotate-180 motion-reduce:transition-none">
+          <ChevronDownIcon aria-hidden="true" className="size-3.5" />
         </span>
       </CollapsibleTrigger>
       {diff === undefined ? null : (
@@ -1072,13 +1200,13 @@ export function ReviewDiff({
   const [all, setAll] = useState(false);
   const opener =
     open === undefined ? null : (
-      <p className="rv-diff-note">
+      <p className={DIFF_NOTE}>
         <GitBrowserLink to={open}>Open file</GitBrowserLink>
       </p>
     );
   if (diff.kind === "reading") {
     return (
-      <div className="rv-diff">
+      <div className={DIFF}>
         <Loading label="The diff">
           <ReviewSkeleton lines={3} />
         </Loading>
@@ -1088,8 +1216,10 @@ export function ReviewDiff({
   }
   if (diff.kind === "failed") {
     return (
-      <div className="rv-diff">
-        <ReviewFailed onRetry={onRetry} reason={diff.reason} what="The diff couldn't be read." />
+      <div className={DIFF}>
+        <div className="ps-15 pe-1.5">
+          <ReviewFailed onRetry={onRetry} reason={diff.reason} what="The diff couldn't be read." />
+        </div>
         {opener}
       </div>
     );
@@ -1097,8 +1227,8 @@ export function ReviewDiff({
   const file = diff.file;
   if (file === undefined && diff.cut) {
     return (
-      <div className="rv-diff">
-        <p className="rv-diff-note">Too long to read here.</p>
+      <div className={DIFF}>
+        <p className={DIFF_NOTE}>Too long to read here.</p>
         {opener}
       </div>
     );
@@ -1111,8 +1241,8 @@ export function ReviewDiff({
           ? `Renamed from ${previousPath}, nothing else changed.`
           : "Nothing to show for this file.";
     return (
-      <div className="rv-diff">
-        <p className="rv-diff-note">{note}</p>
+      <div className={DIFF}>
+        <p className={DIFF_NOTE}>{note}</p>
         {opener}
       </div>
     );
@@ -1136,12 +1266,16 @@ export function ReviewDiff({
   });
   const { shown, rest } = diffFold({ total: rows.length, all });
   return (
-    <div className="rv-diff">
-      <div className="rv-diff-lines">
+    <div className={DIFF}>
+      <div className="grid grid-cols-1">
         {rows.slice(0, shown).map((row) => (
-          <div className="rv-dl" data-kind={row.kind} key={row.key}>
-            <span className="ln">{row.n ?? ""}</span>
-            <span className="sg">{row.kind === "add" ? "+" : row.kind === "del" ? "−" : " "}</span>
+          <div className={DIFF_LINE[row.kind]} key={row.key}>
+            <span className="pe-2 text-right text-muted-foreground tabular-nums opacity-70">
+              {row.n ?? ""}
+            </span>
+            <span className={DIFF_SIGN[row.kind]}>
+              {row.kind === "add" ? "+" : row.kind === "del" ? "−" : " "}
+            </span>
             <span>{row.text}</span>
           </div>
         ))}
@@ -1158,11 +1292,41 @@ export function ReviewDiff({
           {rest.label}
         </Button>
       ) : null}
-      {rest?.kind === "cut" ? <p className="rv-diff-note">{rest.words}</p> : null}
+      {rest?.kind === "cut" ? <p className={DIFF_NOTE}>{rest.words}</p> : null}
       {opener}
     </div>
   );
 }
+
+/** The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
+const FILES =
+  "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12 *:not-first:border-t *:not-first:border-foreground/12 *:*:not-first:border-t *:*:not-first:border-foreground/12";
+/** A file's status letter: added green, deleted red, the rest quiet. */
+const STATUS: Record<string, string> = {
+  "": "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-muted-foreground inset-ring-1 inset-ring-foreground/12",
+  A: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-addition-foreground inset-ring-1 inset-ring-diff-addition-foreground/40",
+  D: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-deletion-foreground inset-ring-1 inset-ring-diff-deletion-foreground/40",
+};
+/** A file's diff, open under its row: numbered lines on a faint ground, mono. */
+const DIFF = "bg-foreground/2 py-1.5 font-mono text-caption leading-4.75 [tab-size:4]";
+/**
+ * A long line wraps inside its own column and hangs under its code: the number and the sign keep
+ * theirs, so the gutter stays one straight edge.
+ */
+const DIFF_LINE: Record<"hunk" | "context" | "add" | "del", string> = {
+  hunk: "grid grid-cols-[44px_16px_minmax(0,1fr)] pe-3 whitespace-pre-wrap wrap-anywhere text-muted-foreground",
+  context: "grid grid-cols-[44px_16px_minmax(0,1fr)] pe-3 whitespace-pre-wrap wrap-anywhere",
+  add: "grid grid-cols-[44px_16px_minmax(0,1fr)] pe-3 whitespace-pre-wrap wrap-anywhere bg-diff-addition/12",
+  del: "grid grid-cols-[44px_16px_minmax(0,1fr)] pe-3 whitespace-pre-wrap wrap-anywhere bg-diff-deletion/11",
+};
+const DIFF_SIGN: Record<"hunk" | "context" | "add" | "del", string | undefined> = {
+  hunk: undefined,
+  context: undefined,
+  add: "text-diff-addition-foreground",
+  del: "text-diff-deletion-foreground",
+};
+/** A quiet sentence in the diff's column, under the code's edge. */
+const DIFF_NOTE = "py-1 ps-15 pe-3 font-sans text-body text-muted-foreground";
 
 const STAGE_WORDS: Record<ReleaseChangeRow["stage"], string | undefined> = {
   "on-stage": "on stage",
@@ -1194,7 +1358,8 @@ export function ReviewReleaseRows({
   readonly appId?: string | undefined;
 }) {
   return (
-    <div className="rv-rel" data-opens={onOpen === undefined ? undefined : ""}>
+    // What goes out, one line per change, the rows' words on the column's edge.
+    <div className="-mx-3 grid">
       {rows.map((row) => {
         // Every change on the stage is the line's to say; a row says only what stands out.
         const mark = row.stage === "on-stage" ? undefined : STAGE_WORDS[row.stage];
@@ -1216,13 +1381,27 @@ export function ReviewReleaseRows({
                 row.sub
               )
             ) : (
-              <span className="rv-on" data-mark={row.stage}>
+              // Where a change stands on stage, where that stands out: busy blue, or failed red.
+              <span
+                className={
+                  row.stage === "failed-on-stage"
+                    ? "flex items-center gap-1 text-caption whitespace-nowrap text-status-failed-text"
+                    : "flex items-center gap-1 text-caption whitespace-nowrap text-status-busy-text"
+                }
+              >
                 {mark}
               </span>
             ),
           size: "sm",
         } as const;
-        const go = <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />;
+        // A change row's way in: a › that comes forward under the pointer; where nothing hovers, it
+        // says so at rest.
+        const go = (
+          <ChevronRightIcon
+            aria-hidden="true"
+            className="size-3.5 self-center text-muted-foreground opacity-0 transition-[opacity,color,translate] duration-200 ease-out-strong in-[[data-release-row]:hover]:translate-x-0.5 in-[[data-release-row]:hover]:text-foreground in-[[data-release-row]:hover]:opacity-100 [@media(hover:none)]:opacity-100"
+          />
+        );
         if (onOpen === undefined) return <Row key={row.key} {...parts} />;
         if (row.change === undefined) {
           return appId === undefined || row.commit === undefined ? (
@@ -1240,6 +1419,7 @@ export function ReviewReleaseRows({
           <Row
             key={row.key}
             {...parts}
+            data-mate-face-row=""
             data-release-row={row.key}
             meta={go}
             pressable
@@ -1269,7 +1449,13 @@ function ReleaseCommitRow({
   readonly row: Omit<ComponentProps<typeof Row>, "render">;
 }) {
   return (
-    <Row {...row} data-release-row={rowKey} pressable render={<a {...useGitLinkProps(to)} />} />
+    <Row
+      {...row}
+      data-mate-face-row=""
+      data-release-row={rowKey}
+      pressable
+      render={<a {...useGitLinkProps(to)} />}
+    />
   );
 }
 
@@ -1300,7 +1486,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
     if (active !== null && active !== document.body && active.isConnected) return;
     const step = arrived === "next" ? next.current : previous.current;
     if (step !== null && !step.disabled) step.focus({ preventScroll: true });
-    else step?.closest<HTMLElement>(".rv")?.focus({ preventScroll: true });
+    else step?.closest<HTMLElement>("[data-review-sheet]")?.focus({ preventScroll: true });
   }, [arrived]);
   return (
     // Loose in the top line, as its other presses are: the last of them alone hugs the edge.

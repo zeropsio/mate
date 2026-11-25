@@ -55,7 +55,9 @@ function PlatformDeployAnswer({
   if (fallback.length === 0 && environments.length === 0 && said?.note === undefined) return null;
   return (
     <>
-      <div className="rv-where">
+      {/* One row per service: its name, its state in the panel's words, and its deploy's door at
+          the row's end. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-3.5 gap-y-1 text-body *:[b]:font-medium *:[span]:text-muted-foreground">
         {environments.map(({ environment, jobs }) =>
           jobs
             .filter(({ service }) => service !== null)
@@ -108,7 +110,7 @@ function PlatformDeployAnswer({
           .filter(({ service }) => service === null)
           .map((job, index) => (
             <p
-              className="rv-words"
+              className="text-body leading-5.5 text-pretty"
               data-zerops-job-state={job.state}
               key={`${environment} ${String(index)}`}
             >
@@ -122,7 +124,9 @@ function PlatformDeployAnswer({
             </p>
           )),
       )}
-      {said?.note === undefined ? null : <p className="rv-words">{said.note}</p>}
+      {said?.note === undefined ? null : (
+        <p className="text-body leading-5.5 text-pretty">{said.note}</p>
+      )}
     </>
   );
 }

@@ -24,7 +24,9 @@ import ChatMarkdown, {
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Dialog, DialogClose, DialogMediaPopup } from "~/components/ui/dialog";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
 
@@ -87,21 +89,22 @@ export function ReviewDescription({
   const [leaving, setLeaving] = useState(false);
   if (was !== shown.kind) {
     setWas(shown.kind);
-    setLeaving(was === "reading" && shown.kind === "none");
+    // Less motion: it is simply gone.
+    setLeaving(was === "reading" && shown.kind === "none" && !prefersReducedMotion());
   }
   if (shown.kind === "none") {
     return leaving ? (
       <div
         aria-hidden="true"
-        className="rv-what-leaves"
+        className="animate-review-what-folds overflow-hidden [&+*]:animate-review-what-gap"
         onAnimationEnd={() => {
           setLeaving(false);
         }}
       >
         <ReviewSection title={WHAT_IT_DOES}>
-          <div className="rv-what">
+          <Card size="sm" variant="inset">
             <ReviewSkeleton lines={2} />
-          </div>
+          </Card>
         </ReviewSection>
       </div>
     ) : null;
@@ -117,7 +120,7 @@ export function ReviewDescription({
       // Its own heading says it: the label does not say it twice.
       titleShown={shown.kind !== "body" || !descriptionHeads(shown.text, WHAT_IT_DOES)}
     >
-      <div className="rv-what">
+      <Card size="sm" variant="inset">
         {shown.kind === "body" ? (
           <DescriptionBody
             code={code}
@@ -128,7 +131,7 @@ export function ReviewDescription({
         ) : (
           <ReviewSkeleton lines={2} />
         )}
-      </div>
+      </Card>
     </ReviewSection>
   );
 }
@@ -174,7 +177,7 @@ function DescriptionBody({
     [code],
   );
   return (
-    <div className="rv-desc" data-review-description="">
+    <div data-review-description="">
       <MarkdownPictureContext value={draw}>
         <MarkdownFileContext value={code === undefined ? null : openFile}>
           {/* Its paths are the Mate's, written in its checkout of the change's repository. */}
@@ -260,15 +263,17 @@ function HqPicture({
   return (
     <span
       ref={ref}
-      className="rv-pic"
-      data-box={box === null ? undefined : ""}
-      data-fresh={arriving && state.kind === "read" ? "" : undefined}
+      // At most the column's width, its own shape; a hairline over it, so a screenshot's white
+      // edge still meets the page. One its description sizes holds that box from the first paint
+      // (`reviewPictureBox`): its line fills it while it is read or when it cannot be, the picture
+      // once read, so nothing moves either way.
+      className="relative my-3 block w-fit max-w-full rounded-card after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:ring-1 after:ring-foreground/10 after:ring-inset"
       style={box === null ? undefined : { aspectRatio: box.aspectRatio, width: box.width }}
     >
       {state.kind === "read" ? (
         <Button
           aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
-          data-rv-pic-open=""
+          className={box === null ? "block" : "block size-full"}
           onClick={(event) => {
             const view = pictureView(event.currentTarget);
             if (view !== null) onOpen(view);
@@ -279,6 +284,15 @@ function HqPicture({
             loading="lazy"
             decoding="async"
             alt={alt}
+            className={
+              box === null
+                ? arriving
+                  ? "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in rounded-card motion-safe:animate-zerops-appear"
+                  : "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in rounded-card"
+                : arriving
+                  ? "block size-full cursor-zoom-in rounded-card motion-safe:animate-zerops-appear"
+                  : "block size-full cursor-zoom-in rounded-card"
+            }
             data-review-picture=""
             draggable={false}
             height={box === null ? undefined : height}
@@ -287,7 +301,7 @@ function HqPicture({
           />
         </Button>
       ) : (
-        <PictureLine alt={alt} />
+        <PictureLine alt={alt} fills />
       )}
     </span>
   );
@@ -297,11 +311,17 @@ function HqPicture({
  * A picture not drawn here — being read, or unreadable: its words. One line, the same while it is
  * read and after a read failed.
  */
-function PictureLine({ alt }: { readonly alt: string }) {
+function PictureLine({ alt, fills = false }: { readonly alt: string; readonly fills?: boolean }) {
   return (
-    <span className="rv-pic-line">
-      <ImageIcon aria-hidden="true" />
-      <span className="rv-pic-alt">{alt.length > 0 ? alt : "Picture"}</span>
+    <span
+      className={
+        fills
+          ? "flex h-full min-h-10 items-center gap-2 rounded-card bg-foreground/4 px-3 py-2.5 text-body leading-4.5 text-muted-foreground"
+          : "my-2 flex min-h-10 items-center gap-2 rounded-card bg-foreground/4 px-3 py-2.5 text-body leading-4.5 text-muted-foreground"
+      }
+    >
+      <ImageIcon aria-hidden="true" className="size-4 flex-none" />
+      <span className="min-w-0 flex-1">{alt.length > 0 ? alt : "Picture"}</span>
     </span>
   );
 }
@@ -358,7 +378,7 @@ function PictureViewer({
         aria-label={picture.alt.length > 0 ? picture.alt : "The picture"}
         onKeyDown={onKeyDown}
       >
-        <div className="rv-viewer">
+        <div className="flex size-full items-center justify-center px-18 py-14">
           <Button
             aria-label="Close the picture"
             className="absolute inset-0"
@@ -366,13 +386,19 @@ function PictureViewer({
             tabIndex={-1}
             variant="bare"
           />
-          <div className="rv-viewer-picture">
-            <img loading="lazy" decoding="async" alt={picture.alt} src={picture.src} />
+          <div className="relative flex max-h-full max-w-full flex-col items-center gap-3">
+            <img
+              loading="lazy"
+              decoding="async"
+              alt={picture.alt}
+              className="max-h-[calc(100dvh-160px)] min-h-0 max-w-full rounded-card object-contain shadow-(--picture-frame-shadow)"
+              src={picture.src}
+            />
             {picture.alt.length > 0 || count > 1 ? (
-              <p className="rv-viewer-words">
+              <p className="flex gap-3 text-body leading-4.5 text-(--picture-stage-ink)">
                 {picture.alt}
                 {count > 1 ? (
-                  <span>
+                  <span className="text-(--picture-stage-muted) tabular-nums">
                     {index + 1} of {count}
                   </span>
                 ) : null}

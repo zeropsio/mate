@@ -49,7 +49,7 @@ function GitCiStatus({ repo }: { readonly repo: GitRepositoryDelivery }) {
   const line = gitCiLine(repo);
   if (line === undefined) return null;
   return (
-    <p className="rv-note" data-git-ci>
+    <p className="mt-1.5 text-body text-muted-foreground" data-git-ci>
       {line.words}
       {line.failed.length === 0 ? null : ": "}
       {line.failed.map((check, index) => (
@@ -89,15 +89,17 @@ export function GitDeliveryStatus({
   const connected = repos?.filter((repo) => repo.remote != null);
   return (
     <div data-zerops-surface="git-delivery-status" data-standing={delivery?.standing ?? "checking"}>
-      <p className="rv-words">{delivery?.line ?? "Checking what HQ pushed…"}</p>
+      <p className="text-body leading-5.5 text-pretty">
+        {delivery?.line ?? "Checking what HQ pushed…"}
+      </p>
       {!showDestination ? null : connected === undefined || connected.length === 0 ? (
-        <p className="rv-note">
+        <p className="mt-1.5 text-body text-muted-foreground">
           {gitWhereLine(environment.tier, environment.target)}
           {showExpiry ? " · Expiry not reported" : null}
         </p>
       ) : (
         connected.map((repo) => (
-          <p className="rv-note" key={repo.name}>
+          <p className="mt-1.5 text-body text-muted-foreground" key={repo.name}>
             <Tooltip>
               <TooltipTrigger render={<span tabIndex={0} />}>
                 {gitWhereLine(environment.tier, environment.target, repo.remote!.url)}
@@ -113,11 +115,13 @@ export function GitDeliveryStatus({
         ))
       )}
       {delivery?.previousVersion === undefined ? null : (
-        <p className="rv-note">Previous hand-over: {delivery.previousVersion}</p>
+        <p className="mt-1.5 text-body text-muted-foreground">
+          Previous hand-over: {delivery.previousVersion}
+        </p>
       )}
       {delivery?.repositories.map((repo) => (
         <Fragment key={repo.repo}>
-          <p className="rv-note">
+          <p className="mt-1.5 text-body text-muted-foreground">
             {repo.repo} · {repo.sha.slice(0, 7)} ·{" "}
             {repo.confirmed === undefined ? (repo.reason ?? repo.state) : "Pushed"}
             {repo.confirmed === undefined ? null : (
@@ -131,7 +135,7 @@ export function GitDeliveryStatus({
         </Fragment>
       ))}
       {delivery?.nextAction ? (
-        <p className="rv-note">
+        <p className="mt-1.5 text-body text-muted-foreground">
           {delivery.nextActor === "hq" ? "HQ: " : ""}
           {delivery.nextAction}
         </p>

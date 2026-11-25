@@ -34,10 +34,12 @@ export const ROW = "text-prose leading-5";
 type BubbleTone = "speech" | "thought" | "tool";
 
 const BUBBLE_TONE: Record<BubbleTone, string> = {
-  // Its words to the person: its own tint, lightly (`.run-speech`) — the log's one bubble.
-  speech: `run-speech text-foreground overflow-hidden ${SPEECH_SHAPE}`,
+  // Its words to the person: its own tint, lightly — the log's one bubble; who is speaking shows at
+  // a glance. A crewmate speaks in its own (`--run-speaker-tint`). What says "more" over its cut
+  // words fades into its ground (`--run-item-ground`).
+  speech: `bg-(--run-speaker-tint)/17 [--run-item-ground:color-mix(in_oklab,var(--run-speaker-tint)_17%,var(--run-tray))] text-foreground overflow-hidden ${SPEECH_SHAPE}`,
   // Talking to itself: plain words on the tray, quiet.
-  thought: "w-full text-muted-foreground",
+  thought: "w-full text-muted-foreground [--run-item-ground:var(--run-tray)]",
   // A thing it did: a row on the tray.
   tool: "w-full text-foreground",
 };

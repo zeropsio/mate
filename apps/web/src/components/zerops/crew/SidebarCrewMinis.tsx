@@ -235,7 +235,13 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
   const box = useTravel();
   const working = facts.minis.filter((mini) => mini.state === "working");
   return (
-    <span className="menu-minis" data-zerops-surface="sidebar-crew-minis" ref={box}>
+    // Ducklings after their Mate's name on its first line: 15 px faces apart on the line's 22 px,
+    // the one asking 17 px, the rest a small muted "+N".
+    <span
+      className="ms-0.5 inline-flex h-5.5 flex-none items-center gap-1"
+      data-zerops-surface="sidebar-crew-minis"
+      ref={box}
+    >
       <span className="sr-only">{facts.words}</span>
       {facts.minis.map((mini) => {
         const greeting = greetings.get(mini.id);
@@ -243,7 +249,7 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
         const pose = greeting?.kind === "cheer" ? "done" : mini.state;
         const ended = (event: AnimationEvent<HTMLSpanElement>) => {
           if (event.target !== event.currentTarget) return;
-          if (event.animationName.startsWith("menu-mini-")) end(mini.id);
+          if (event.animationName.startsWith("mini-")) end(mini.id);
         };
         return (
           <Tooltip key={mini.id}>
@@ -251,16 +257,28 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
               render={
                 <span
                   aria-hidden="true"
-                  className="menu-mini"
+                  // Its box holds its place while its body moves; at work it hops with its face's
+                  // own turn, on beats the minis stagger (`--mate-face-phase`).
+                  className={
+                    mini.state === "needs"
+                      ? "inline-grid size-4.25 flex-none place-items-center motion-safe:[&_[data-mate-face-state=working]_[data-mate-face-hop]]:animate-mini-march"
+                      : "inline-grid size-3.75 flex-none place-items-center motion-safe:[&_[data-mate-face-state=working]_[data-mate-face-hop]]:animate-mini-march"
+                  }
                   data-crew-mini={mini.id}
-                  data-crew-mini-state={mini.state}
                 />
               }
             >
               {/* Drawn afresh for each greeting, so the same one can play twice running. */}
               <span
-                className="menu-mini-body"
-                data-crew-mini-greet={greeting?.kind}
+                // A cheer when its work ends while watched, a turn-out when it comes to need you,
+                // both once; with reduced motion every pose stands still.
+                className={
+                  greeting?.kind === "cheer"
+                    ? "block size-full origin-[50%_90%] motion-safe:animate-mini-cheer"
+                    : greeting?.kind === "turn"
+                      ? "block size-full origin-[50%_90%] motion-safe:animate-mini-turn"
+                      : "block size-full origin-[50%_90%]"
+                }
                 key={greeting?.run ?? 0}
                 onAnimationEnd={ended}
               >
@@ -290,7 +308,10 @@ export function SidebarCrewMinis({ facts }: { readonly facts: CrewRowFacts }): R
         );
       })}
       {facts.more > 0 ? (
-        <span aria-hidden="true" className="menu-mini-more">
+        <span
+          aria-hidden="true"
+          className="inline-grid h-4 flex-none place-items-center rounded-full bg-sidebar-foreground/8 px-1.5 text-2xs leading-none font-semibold text-sidebar-muted-foreground tabular-nums"
+        >
           +{facts.more}
         </span>
       ) : null}

@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { mateTintStyle } from "./mateTint";
 
 import type { MateTintId } from "@t3tools/shared/brand";
 
@@ -49,11 +49,7 @@ export function MateDot({
       aria-hidden="true"
       className={cn("size-1.5 flex-none rounded-full", TONE[tone], PLACE[place], className)}
       data-zerops-surface={surface}
-      style={
-        tone === "working" && tint !== undefined
-          ? ({ "--mate-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties)
-          : undefined
-      }
+      style={tone === "working" && tint !== undefined ? mateTintStyle(tint) : undefined}
     />
   );
 }

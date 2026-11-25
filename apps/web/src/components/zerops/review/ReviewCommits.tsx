@@ -46,7 +46,9 @@ export function ReviewCommits({
   if (notRecorded !== undefined) {
     return (
       <ReviewSection count={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
-        <p className="rv-diff-note">The commits are not known yet.</p>
+        <p className="py-1 ps-15 pe-3 font-sans text-body text-muted-foreground">
+          The commits are not known yet.
+        </p>
         {notRecorded.onShow === undefined ? null : (
           <Button onClick={notRecorded.onShow} size="sm" variant="link">
             Show commits
@@ -65,9 +67,13 @@ export function ReviewCommits({
       title="Commits"
     >
       {commits.kind === "reading" ? (
-        <ol aria-busy="true" className="rv-commits">
+        <ol aria-busy="true" className="grid">
           {Array.from({ length: COMMITS_PENDING }, (_, index) => (
-            <li aria-hidden="true" className="rv-commit-skeleton" key={index}>
+            <li
+              aria-hidden="true"
+              className="grid h-8 grid-cols-[minmax(0,1fr)_96px] items-center gap-x-3"
+              key={index}
+            >
               <Skeleton className="h-2.5 w-[48%]" shape="pill" surface="card" />
               <Skeleton className="h-2.5" shape="pill" surface="card" />
             </li>
@@ -111,18 +117,22 @@ function CommitRows({
   const { shown, rest } = commitFold({ total: commits.length, all });
   return (
     <>
-      <ol className="rv-commits">
+      {/* One line each, what it did, then its age and hash on the column's right edge. */}
+      <ol className="grid">
         {commits.slice(0, shown).map((commit) => (
-          <li className="rv-commit" key={commit.sha}>
+          <li
+            className="grid h-8 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 text-body"
+            key={commit.sha}
+          >
             {/* Cut to its line, it is whole a hover away (D4). */}
             <Tooltip>
-              <TooltipTrigger render={<span className="rv-commit-t" />}>
+              <TooltipTrigger render={<span className="truncate" />}>
                 {commit.subject}
               </TooltipTrigger>
               <TooltipPopup>{commit.subject}</TooltipPopup>
             </Tooltip>
-            <span className="rv-commit-at">{historyAge(commit.at, now)}</span>
-            <code className="rv-commit-sha">
+            <span className="text-muted-foreground tabular-nums">{historyAge(commit.at, now)}</span>
+            <code className="font-mono text-line text-muted-foreground">
               {at === undefined ? (
                 shortCommit(commit.sha)
               ) : (
@@ -134,7 +144,9 @@ function CommitRows({
           </li>
         ))}
       </ol>
-      {cut && (all || rest === undefined) ? <p className="rv-diff-note">and more</p> : null}
+      {cut && (all || rest === undefined) ? (
+        <p className="py-1 ps-15 pe-3 font-sans text-body text-muted-foreground">and more</p>
+      ) : null}
       {rest === undefined ? null : (
         <Button className="mt-1 -ml-2" onClick={onShowAll} size="sm" variant="link">
           Show all {rest}

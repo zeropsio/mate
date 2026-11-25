@@ -74,8 +74,8 @@ const line = (words: ReactNode, ink: "muted" | "ink") => (
   <span
     className={
       ink === "ink"
-        ? "menu-line2 truncate text-sidebar-foreground"
-        : "menu-line2 truncate text-muted-foreground"
+        ? "block text-body leading-5.5 truncate text-sidebar-foreground"
+        : "block text-body leading-5.5 truncate text-muted-foreground"
     }
   >
     {words}

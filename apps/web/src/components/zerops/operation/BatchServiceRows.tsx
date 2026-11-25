@@ -91,7 +91,7 @@ function timeOf(service: BatchServiceRow): string | undefined {
 
 /**
  * What it holds, changed in place: the new fades in over the old as the old fades out where it
- * stood (`.batch-swap`). A first paint is simply there; under reduced motion a change is a cut.
+ * stood. A first paint is simply there; under reduced motion a change is a cut.
  */
 function Swap({
   value,
@@ -112,11 +112,11 @@ function Swap({
     setHeld({ value, node: children, left: { value: held.value, node: held.node } });
   }
   return (
-    <span className={cn("batch-swap", className)}>
+    <span className={cn("relative", className)}>
       {held.left === null ? null : (
         <span
           aria-hidden="true"
-          className="batch-swap-left"
+          className="pointer-events-none absolute start-0 top-0 whitespace-nowrap opacity-0 animate-swap-out motion-reduce:hidden"
           key={`left:${held.left.value}`}
           // Gone once faded: nothing of it stays in the row.
           onAnimationEnd={() =>
@@ -126,7 +126,10 @@ function Swap({
           {held.left.node}
         </span>
       )}
-      <span data-batch-swap-changed={held.left === null ? undefined : ""} key={value}>
+      <span
+        className={held.left === null ? undefined : "animate-arrive motion-reduce:animate-none"}
+        key={value}
+      >
         {children}
       </span>
     </span>
@@ -155,7 +158,7 @@ function ServiceRow({ service }: { readonly service: BatchServiceRow }) {
     service.reason === undefined ? undefined : <FailedBecause reason={service.reason} />;
   return (
     <li
-      className="batch-service"
+      className="col-span-full grid grid-cols-subgrid items-start"
       data-zerops-batch-service={service.name}
       data-zerops-batch-service-state={service.state}
     >
@@ -198,13 +201,14 @@ function ServiceRow({ service }: { readonly service: BatchServiceRow }) {
         {service.log}
       </span>
       <span
-        className="line-time text-line text-muted-foreground leading-5 tabular-nums"
+        className="text-line text-muted-foreground leading-5 tabular-nums in-data-run-line-detail:pe-5"
         data-zerops-batch-service-time
       >
         {time}
       </span>
       {service.state !== "failed" || (service.steps.length === 0 && reason === undefined) ? null : (
-        <div className="batch-service-steps">
+        // A failed service's steps hug its row, their marks on its name's edge.
+        <div className="col-span-full py-1 ps-5.5">
           {service.steps.length > 0 ? (
             <PipelineStepList
               aria-label={`${service.name} steps`}
@@ -230,7 +234,13 @@ export function BatchServiceRows({
   readonly services: ReadonlyArray<BatchServiceRow>;
 }): JSX.Element {
   return (
-    <ol aria-label={ariaLabel} className="batch-services" data-zerops-batch-services>
+    // One row a service in one column: the mark and the name as wide as the longest name (at most
+    // 12rem), what it does now in the flexible one, its time on the card's times' edge.
+    <ol
+      aria-label={ariaLabel}
+      className="grid grid-cols-[fit-content(12rem)_minmax(0,1fr)_auto] gap-x-4 gap-y-1"
+      data-zerops-batch-services
+    >
       {services.map((service) => (
         <ServiceRow key={service.name} service={service} />
       ))}

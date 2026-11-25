@@ -100,7 +100,7 @@ export function useReleaseSteps(): ReleaseSteps {
         kind: "open",
         change: row.change,
         rowKey: row.key,
-        releaseScroll: releasePane.current?.querySelector(".rv-body")?.scrollTop ?? 0,
+        releaseScroll: releasePane.current?.querySelector("[data-review-body]")?.scrollTop ?? 0,
       });
     },
     [go],
@@ -113,7 +113,7 @@ export function useReleaseSteps(): ReleaseSteps {
     heightFrom.current = undefined;
     if (element === null || from === undefined) return;
     if (step.view === "release") {
-      const body = releasePane.current?.querySelector<HTMLElement>(".rv-body");
+      const body = releasePane.current?.querySelector<HTMLElement>("[data-review-body]");
       if (body !== null && body !== undefined) body.scrollTop = step.scrollTop;
       const row =
         step.returnTo === undefined
@@ -152,6 +152,10 @@ export function useReleaseSteps(): ReleaseSteps {
   return { step, shown, open, back, place };
 }
 
+const STEP =
+  "relative flex min-h-0 flex-auto flex-col bg-card transition-[translate,opacity] duration-200 ease-out-strong motion-reduce:transition-none";
+const STEP_ASIDE = "pointer-events-none absolute inset-0";
+
 /** The two steps drawn: the one shown holds the room, the other stands aside, `inert`. */
 export function ZeropsReleaseSteps({
   steps,
@@ -167,10 +171,12 @@ export function ZeropsReleaseSteps({
   const { shown, place } = steps;
   const { box, release: releaseAt, change: changeAt } = place;
   return (
-    <div className="rv-steps" ref={box}>
+    // The dialog's two steps fill the sheet: the step shown holds the room; the other stands aside,
+    // out of the flow — the change comes in over the release from the right, the release giving
+    // way to the left, and back undoes it from wherever the slide stood.
+    <div className="relative flex min-h-0 flex-auto flex-col" data-review-steps="" ref={box}>
       <div
-        className="rv-step"
-        data-at={onChange ? "before" : "here"}
+        className={onChange ? `${STEP} ${STEP_ASIDE} -translate-x-[30%] opacity-0` : STEP}
         inert={onChange}
         ref={releaseAt}
       >
@@ -178,8 +184,11 @@ export function ZeropsReleaseSteps({
       </div>
       {shown === undefined ? null : (
         <div
-          className="rv-step rv-step-over"
-          data-at={onChange ? "here" : "after"}
+          className={
+            onChange
+              ? `${STEP} z-1 motion-safe:starting:translate-x-full`
+              : `${STEP} ${STEP_ASIDE} z-1 translate-x-full`
+          }
           inert={!onChange}
           key={`${shown.repository}#${String(shown.number)}`}
           ref={changeAt}

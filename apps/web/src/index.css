@@ -3,8 +3,6 @@
    draw the menu without that document (the design harnesses). */
 @import "./sidebarGeometry.css";
 @import "./components/zerops/primitives/MateFaceMoments.css";
-@import "./components/zerops/project/projectPage.css";
-@import "./components/zerops/system/projectLine.css";
 @import "tailwindcss";
 
 /* The app's own styles, in cascade order: the foundation (variants, tokens, utilities), the
@@ -16,17 +14,11 @@
 @import "./styles/chat-markdown.css";
 @import "./styles/run-shimmer.css";
 @import "./styles/mate-face.css";
-@import "./styles/person-avatar.css";
-@import "./styles/menu-rows.css";
-@import "./styles/menu-projects.css";
-@import "./styles/mate-tint.css";
 @import "./styles/overview.css";
-@import "./styles/review-sheet.css";
 @import "./styles/run-card.css";
-@import "./styles/review.css";
 @import "./styles/motion-arrival.css";
 @import "./styles/motion-panels.css";
 @import "./styles/motion-conversation.css";
 @import "./styles/motion-menu.css";
 @import "./styles/motion-overview.css";
-@import "./styles/published-page.css";
+@import "./styles/motion-review.css";

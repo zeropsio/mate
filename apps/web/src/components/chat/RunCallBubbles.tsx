@@ -386,12 +386,10 @@ export function QuickCallsBubble({
           {ticks ? (
             <Badge className="mx-0.5 align-top" data-quick-count="">
               <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
-              <span className="run-quick-number" data-ticking="">
-                {count}
-              </span>
+              <span className="min-w-[2ch] text-center tabular-nums">{count}</span>
             </Badge>
           ) : (
-            <span className="run-quick-number" data-quick-count="">
+            <span className="tabular-nums" data-quick-count="">
               {count}
             </span>
           )}{" "}
@@ -400,7 +398,12 @@ export function QuickCallsBubble({
       </DisclosureButton>
       {disclosure.open ? (
         <div
-          className={cn("run-quick-list", rises(disclosure.made))}
+          // Opened in place: each of its calls a line of a tight list, under a rule in the Mate's
+          // column.
+          className={cn(
+            "relative grid min-w-0 gap-1 pt-2.5 before:absolute before:top-1.5 before:bottom-0 before:-left-5.75 before:w-px before:bg-foreground/10",
+            rises(disclosure.made),
+          )}
           data-chat-detail
           data-quick-list
         >

@@ -3,6 +3,8 @@ import { use, useEffect, useLayoutEffect, useRef, useState, type Ref } from "rea
 import { afterLayout } from "~/lib/afterLayout";
 import { Mark, HelperFace } from "./RunMarks";
 import { TypingDots } from "./RunTypingDots";
+import { NOW_DOTS, RUN_NOW_WORDS } from "./runTray";
+import { cn } from "~/lib/utils";
 import { CallGroup } from "./RunCallRow";
 import { THOUGHT_MARK, itemLine, ChatRow } from "./RunItemLine";
 import { placeSlot } from "./runSlotGeometry";
@@ -56,6 +58,9 @@ function slotEntries(
   return { entries, cards: next };
 }
 
+/** What the slot says between things, muted: "Thinking", "Writing", a wait. */
+const SLOT_WORD = "font-medium text-muted-foreground";
+
 /** Whether two cards-by-call maps say the same. */
 function sameCards(left: ReadonlyMap<string, string>, right: ReadonlyMap<string, string>) {
   return left.size === right.size && [...left].every(([call, card]) => right.get(call) === card);
@@ -88,35 +93,33 @@ function endedLine(item: RecordItem): RecordItem {
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
   switch (filler.kind) {
     case "thinking":
-      return <span className="run-slot-word">Thinking</span>;
+      return <span className={SLOT_WORD}>Thinking</span>;
     case "writing":
       return (
         <>
-          <span className="run-slot-word">Writing</span>
-          <TypingDots className="run-now-dots" />
+          <span className={SLOT_WORD}>Writing</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
     case "condensing":
       return (
         <>
-          <span className="run-slot-word">Condensing the context</span>
-          <TypingDots className="run-now-dots" />
+          <span className={SLOT_WORD}>Condensing the context</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
     case "waiting":
-      return (
-        <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
-      );
+      return <span className={SLOT_WORD}>{nowLineWords({ kind: "waiting", on: filler.on })}</span>;
     case "away":
-      return <span className="run-slot-word">{filler.words}</span>;
+      return <span className={SLOT_WORD}>{filler.words}</span>;
     case "paused":
-      return <span className="run-slot-word">{slotWords(null, filler)}</span>;
+      return <span className={SLOT_WORD}>{slotWords(null, filler)}</span>;
     case "after":
     case "starting":
       return (
         <>
-          <span className="run-slot-word">{nowLineWords(filler)}</span>
-          <TypingDots className="run-now-dots" />
+          <span className={SLOT_WORD}>{nowLineWords(filler)}</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
   }
@@ -327,22 +330,27 @@ export function LiveSlot({
   return (
     <div
       ref={ref}
-      className="run-slot"
+      // The working row: what the Mate does this moment, the one card inside the card, a step off
+      // the tray. A burst is one line of one height, 44 px with its 12.
+      className={cn(
+        "relative mt-2.5 rounded-card bg-foreground/5 p-4 [[data-run-above]:not([hidden])+&]:mt-3.5",
+        burst !== null && "py-3",
+      )}
+      data-run-slot=""
       hidden={shut}
       style={shut ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
-      data-slot-compact={burst === null ? undefined : ""}
       data-work-line={status.face}
     >
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
           <ChatShownContext value={shownRef}>
-            <ol ref={listRef} className="run-slot-list">
+            <ol ref={listRef} className="flex min-w-0 flex-col gap-4">
               {burst !== null ? (
                 // A burst: one line of one height, whatever passes through it — what it is,
                 // and which of how many (the board, 2026-11-10).
-                <li key="compact" className="run-slot-compact">
+                <li key="compact" className="flex min-w-0 items-start gap-2 text-prose leading-5">
                   <Mark line="call">
                     {ctx.speaker.helper ? (
                       <HelperFace />
@@ -355,11 +363,11 @@ export function LiveSlot({
                       />
                     )}
                   </Mark>
-                  <span className="run-slot-compact-words">
+                  <span className="min-w-0 flex-1 truncate font-medium">
                     {slotWords(firstDrawn?.item ?? null, said)}
                   </span>
-                  <span className="run-slot-compact-count">{`${burst.at} of ${burst.of}`}</span>
-                  <span className="run-slot-compact-mark">
+                  <span className="flex-none text-line tabular-nums text-muted-foreground">{`${burst.at} of ${burst.of}`}</span>
+                  <span className="flex h-5 w-3.5 flex-none items-center justify-center">
                     {burst.at === burst.of && firstDrawn?.entry.endedAt != null ? (
                       <CheckIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
                     ) : (
@@ -370,7 +378,8 @@ export function LiveSlot({
               ) : lines.length === 0 ? (
                 <li
                   key={`filler:${said.kind}`}
-                  className="run-slot-filler"
+                  // Nothing standing in it: a row as an item's, its mark in the Mate's column.
+                  className="flex items-start gap-2"
                   data-slot-filler={said.kind}
                 >
                   {/* "Thinking" wears the thought's mark: the thought that follows
@@ -378,7 +387,7 @@ export function LiveSlot({
                   <Mark line={said.kind === "thinking" ? "thought" : "call"}>
                     {said.kind === "thinking" ? THOUGHT_MARK : null}
                   </Mark>
-                  <span className="run-now-words">
+                  <span className={RUN_NOW_WORDS}>
                     <SlotFillerWords filler={said} />
                   </span>
                 </li>
@@ -411,7 +420,7 @@ export function LiveSlot({
                 )
               )}
               {more > 0 && burst === null ? (
-                <li className="run-slot-more">{`+${more} more running`}</li>
+                <li className="ps-9 text-body leading-5 text-muted-foreground">{`+${more} more running`}</li>
               ) : null}
             </ol>
           </ChatShownContext>

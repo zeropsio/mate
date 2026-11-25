@@ -1040,7 +1040,7 @@ function OutsideCommitsList({
   }
   return (
     <>
-      <p className="rv-note">
+      <p className="mt-1.5 text-body text-muted-foreground">
         {outsideCommitsWords(outside.count, outside.atLeast)}
         {list.state === "closed" ? (
           <>
@@ -1061,7 +1061,7 @@ function OutsideCommitsList({
         <ReviewReleaseRows appId={appId} onOpen={onOpen} rows={list.rows} />
       ) : null}
       {list.state === "known" && list.rows.length < outside.count ? (
-        <p className="rv-note">{`The newest ${String(list.rows.length)} are shown.`}</p>
+        <p className="mt-1.5 text-body text-muted-foreground">{`The newest ${String(list.rows.length)} are shown.`}</p>
       ) : null}
     </>
   );
@@ -1360,7 +1360,7 @@ export function ReleaseReadingView({
 /** The changes' places while HQ has not listed them: as many rows as it counted, in their size. */
 function ReleaseRowsSkeleton({ count }: { readonly count: number }) {
   return (
-    <div aria-busy="true" className="rv-rel">
+    <div aria-busy="true" className="-mx-3 grid">
       {Array.from({ length: Math.max(1, Math.min(count, ROWS_SHOWN)) }, (_, index) => (
         <Row
           aria-hidden="true"
@@ -1417,18 +1417,34 @@ function PlanState({
 }) {
   const again =
     onAgain !== undefined && (state.kind === "failed" || state.wait === "late") ? (
-      <InlineButton data-release-plan-again="" onClick={onAgain}>
+      <InlineButton
+        className={state.kind === "failed" ? "ms-0.75" : undefined}
+        data-release-plan-again=""
+        onClick={onAgain}
+      >
         {state.kind === "failed" ? state.again : TRY_AGAIN}
       </InlineButton>
     ) : null;
   return (
+    // The state speaks under the label's words, in the caption type it always had; a cause reads
+    // as a sentence, its press following its last word wherever that falls.
     <span
       aria-live="polite"
-      className="rv-sec-state"
+      className={
+        state.kind === "failed"
+          ? "grid justify-items-start text-caption text-status-attention-text"
+          : "grid justify-items-end text-caption text-muted-foreground"
+      }
       data-release-plan-state={state.kind === "failed" ? "failed" : state.wait}
-      data-tone={state.kind === "failed" ? "attention" : undefined}
+      data-section-state=""
     >
-      <span>
+      <span
+        className={
+          state.kind === "failed"
+            ? "col-start-1 row-start-1 block text-pretty"
+            : "col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap"
+        }
+      >
         {state.kind === "reading" ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
         <span id={id}>{planStateWords(state)}</span>
         {/* A cause's press follows it as a word does; the wait's own row sets its gaps. */}
@@ -1438,7 +1454,11 @@ function PlanState({
       {state.kind === "failed"
         ? null
         : WAITS.filter((wait) => wait !== state.wait).map((wait) => (
-            <span aria-hidden="true" data-room="" key={wait}>
+            <span
+              aria-hidden="true"
+              className="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap ps-4.5"
+              key={wait}
+            >
               <span>{WAIT_WORDS[wait]}</span>
               {wait === "late" && onAgain !== undefined ? <span>{TRY_AGAIN}</span> : null}
             </span>
@@ -1467,7 +1487,8 @@ export function ReleaseVersionField({
 }) {
   const versionId = useId();
   return (
-    <div className="rv-version">
+    // The version to tag: its field, its help, and the versions it suggests.
+    <div className="grid gap-1.5">
       <div className="w-44">
         <Input
           aria-label="Version"
@@ -1483,7 +1504,7 @@ export function ReleaseVersionField({
           value={version.value}
         />
       </div>
-      <p className="rv-note" id={`${versionId}-help`}>
+      <p className="text-body text-muted-foreground" id={`${versionId}-help`}>
         {error ??
           // The next patch, said only while the field holds something else.
           (`v${version.value}` === version.nextPatch
@@ -1491,7 +1512,10 @@ export function ReleaseVersionField({
             : `Must be newer than every release. Next patch is ${version.nextPatch}.`)}
       </p>
       {version.suggestions.map((suggestion) => (
-        <p className="rv-note rv-version-use" key={suggestion.source}>
+        <p
+          className="flex flex-wrap items-center gap-2 text-body text-muted-foreground"
+          key={suggestion.source}
+        >
           Your code names {suggestion.tag}.
           <Button
             disabled={disabled}
@@ -1880,7 +1904,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               outside={props.outside}
             />
           )}
-          {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+          {untold.length === 0 ? null : (
+            <p className="mt-1.5 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+          )}
         </ReviewSection>
       )}
       {nothing ? null : (
@@ -1894,8 +1920,13 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         >
           <GrowsInPlace>
             {busy === undefined ? null : (
-              <p className="rv-busy" data-zerops-surface="release-production-busy">
-                <b>Production is busy:</b> {busy.words} · <RunningClock since={busy.first.since} />
+              // What else production is doing, where that explains a wait: one calm sentence.
+              <p
+                className="mb-2.5 text-body text-muted-foreground"
+                data-zerops-surface="release-production-busy"
+              >
+                <b className="font-medium text-foreground">Production is busy:</b> {busy.words} ·{" "}
+                <RunningClock since={busy.first.since} />
                 {busy.more}.{" "}
                 {platform?.waits === true
                   ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
@@ -1931,7 +1962,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               }
             />
           </GrowsInPlace>
-          {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}
+          {answerNote === undefined ? null : (
+            <p className="mt-1.5 text-body text-muted-foreground">{answerNote}</p>
+          )}
         </ReviewSection>
       )}
       {version === undefined ? null : changing || checkedVersion?.error !== undefined ? (
@@ -1944,9 +1977,12 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         </ReviewSection>
       ) : (
         // A section as its field is: the sheet's last, the one its buttons follow.
-        <section className="rv-version-row" data-zerops-surface="release-version">
+        <section
+          className="flex items-center gap-1.5 text-caption leading-4.5 text-muted-foreground"
+          data-zerops-surface="release-version"
+        >
           Version
-          <span className="rv-code text-foreground">
+          <span className="font-mono text-foreground">
             {checkedVersion?.tag ?? `v${version.value}`}
           </span>
           <span aria-hidden="true">·</span>
@@ -2086,7 +2122,7 @@ function GitReleaseView(
       <ReviewSection title="Where">
         {model.repositories?.map((repo) => (
           <div key={repo.repository}>
-            <p className="rv-words">
+            <p className="text-body leading-5.5 text-pretty">
               {repo.repository} ·{" "}
               {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
               {repo.sha == null ? (
@@ -2102,7 +2138,7 @@ function GitReleaseView(
               )}
             </p>
             {repo.remote == null ? null : (
-              <p className="rv-note">
+              <p className="mt-1.5 text-body text-muted-foreground">
                 {gitWhereLine("production", props.git.attachment.target, repo.remote.url)}
                 {repo.expiry === undefined ? null : <> · {repo.expiry}</>}
               </p>
@@ -2136,9 +2172,12 @@ function GitReleaseView(
         </ReviewSection>
       )}
       {version === undefined ? null : inWords ? (
-        <p className="rv-version-row" data-zerops-surface="release-version">
+        <p
+          className="flex items-center gap-1.5 text-caption leading-4.5 text-muted-foreground"
+          data-zerops-surface="release-version"
+        >
           Version
-          <span className="rv-code text-foreground">
+          <span className="font-mono text-foreground">
             {checkedVersion?.tag ?? `v${version.value}`}
           </span>
           {offered ? (
@@ -2494,7 +2533,7 @@ function RollbackListSection({
           again={list.again}
         />
       ) : (
-        <p className="rv-note">
+        <p className="mt-1.5 text-body text-muted-foreground">
           {rollbackListNote(side, list)}
           {list.state === "unrecorded" && list.compare !== undefined ? (
             <>
@@ -2587,7 +2626,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         side="leaving"
         title="Leaves production"
       >
-        {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+        {untold.length === 0 ? null : (
+          <p className="mt-1.5 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+        )}
       </RollbackListSection>
       <RollbackListSection
         appId={props.appId}

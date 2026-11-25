@@ -8,6 +8,15 @@
  *   that runs on elsewhere does: its face live, what was asked and since when, its conversation a
  *   press away. A bare line there said nothing of whether anyone was at it.
  */
+import {
+  RUN_BAND,
+  RUN_NOW_HEAD,
+  RUN_NOW_LINE,
+  RUN_NOW_VERB,
+  RUN_NOW_WORDS,
+  RUN_TRAY_WHOLE,
+} from "~/components/chat/runTray";
+import { cn } from "~/lib/utils";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import {
@@ -27,6 +36,7 @@ import { DetailRow, spanOf } from "../chat/DetailRow";
 import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/messageFold";
 import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
+import { mateTintStyle } from "./mateTint";
 
 /**
  * Opens another Mate's conversation by its project: the conversation pane gives it (`OpenMateProvider`
@@ -90,13 +100,17 @@ export function MateMessageRow({
   const folded = folds && !expanded;
   return (
     <article
-      className="mate-letter flex min-w-0 flex-col gap-2 rounded-card px-4 pt-3 pb-2"
-      data-mate-tint={look.tint}
+      // A message another of the person's Mates sent, or its answer, wears that Mate's hue so it
+      // reads as another voice at a glance (the owner, 2026-11-17: "in the color of the bot or
+      // something, to make it distinct"): a wash of the hue, its edge in the hue, the sender's name
+      // in the hue mixed into the ink.
+      className="flex min-w-0 flex-col gap-2 rounded-card border border-mate-edge bg-mate-wash px-4 pt-3 pb-2"
+      style={mateTintStyle(look.tint)}
       data-zerops-surface="mate-message"
     >
       <header className="flex min-w-0 items-center gap-2 text-line">
         {notice ? null : <MateFace size={24} state="idle" {...look} />}
-        <span className="mate-letter-from min-w-0 truncate">{name}</span>
+        <span className="min-w-0 truncate font-semibold text-mate-ink">{name}</span>
         {rest === null ? null : (
           <span className="min-w-0 truncate text-muted-foreground">
             {item.kind === "answer" ? rest : `· ${rest}`}
@@ -185,16 +199,24 @@ export function MateAnswerWait({
   return (
     <section
       aria-label={awaitedWords(awaited)}
-      className="run-tray run-tray-whole @container/panel animate-panel-in text-card-foreground motion-reduce:animate-none"
+      className={cn(
+        RUN_TRAY_WHOLE,
+        "@container/panel animate-panel-in text-card-foreground motion-reduce:animate-none",
+      )}
       data-zerops-surface="mate-answer-wait"
     >
-      <div className="run-now">
-        <MateFace size={24} state={activity?.face ?? "idle"} {...look} />
-        <span className="run-now-words run-now-head">
-          <span className="run-now-verb">{awaitedWords(awaited)}</span>
+      <div className={RUN_NOW_LINE}>
+        <MateFace
+          className="justify-self-center"
+          size={24}
+          state={activity?.face ?? "idle"}
+          {...look}
+        />
+        <span className={cn(RUN_NOW_WORDS, RUN_NOW_HEAD)}>
+          <span className={RUN_NOW_VERB}>{awaitedWords(awaited)}</span>
         </span>
       </div>
-      <ul className="run-band grid">
+      <ul className={cn(RUN_BAND, "grid")}>
         {awaited.map((entry) => (
           <AwaitedAnswerRow awaited={entry} key={entry.id} named={several} />
         ))}

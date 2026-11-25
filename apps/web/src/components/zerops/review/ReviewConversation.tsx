@@ -120,10 +120,12 @@ export function ReviewConversation({
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
       ) : readOnly ? (
-        <p className="rv-note">You have Read access, so you can read this conversation.</p>
+        <p className="mt-1.5 text-body text-muted-foreground">
+          You have Read access, so you can read this conversation.
+        </p>
       ) : null}
       {commentable && asker === undefined && reaches !== undefined ? (
-        <p className="rv-note">{reaches} sees this on the change.</p>
+        <p className="mt-1.5 text-body text-muted-foreground">{reaches} sees this on the change.</p>
       ) : null}
     </ReviewSection>
   );
@@ -142,7 +144,8 @@ function Remarks({
   if (remarks.length === 0) return null;
   const { hidden } = remarkFold({ frame, total: remarks.length, all });
   return (
-    <ol className="rv-remarks">
+    // Marks in a 20 px column, words beside them; then the one box.
+    <ol className="mb-3.5 grid gap-3.5">
       {hidden === 0 ? null : (
         <li>
           <Button
@@ -158,13 +161,21 @@ function Remarks({
         </li>
       )}
       {remarks.slice(hidden).map((remark) => (
-        <li className="rv-remark" data-zerops-surface="zerops-change-remark" key={remark.id}>
+        <li
+          className="grid grid-cols-[20px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 *:first:row-span-2"
+          data-zerops-surface="zerops-change-remark"
+          key={remark.id}
+        >
           <PersonAvatar name={remark.speaker} size={20} />
-          <span className="rv-remark-who">
+          <span className="flex min-w-0 items-baseline gap-2 text-body font-medium">
             {remark.speaker}
-            <span className="rv-remark-at">{historyAge(remark.at, now)}</span>
+            <span className="font-normal text-muted-foreground tabular-nums">
+              {historyAge(remark.at, now)}
+            </span>
           </span>
-          <p className="rv-remark-body">{remark.body}</p>
+          <p className="col-start-2 text-body leading-5.5 wrap-anywhere whitespace-pre-wrap">
+            {remark.body}
+          </p>
         </li>
       ))}
     </ol>
@@ -182,10 +193,20 @@ function RemarksSkeleton({
   if (count === 0) return null;
   const { hidden } = remarkFold({ frame, total: count, all: false });
   return (
-    <ol aria-busy="true" className="rv-remarks">
-      {hidden === 0 ? null : <li aria-hidden="true" className="rv-remark-skeleton" data-fold="" />}
+    // A comment on its way holds a one-line comment's room: its mark, its name, its line.
+    <ol aria-busy="true" className="mb-3.5 grid gap-3.5">
+      {hidden === 0 ? null : (
+        <li
+          aria-hidden="true"
+          className="grid grid-cols-[20px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 h-6"
+        />
+      )}
       {Array.from({ length: count - hidden }, (_, index) => (
-        <li aria-hidden="true" className="rv-remark-skeleton" key={index}>
+        <li
+          aria-hidden="true"
+          className="grid grid-cols-[20px_minmax(0,1fr)] items-start gap-x-2.5 gap-y-0.5 h-11"
+          key={index}
+        >
           <Skeleton className="row-span-2 size-5" shape="pill" surface="card" />
           <Skeleton className="my-1.25 h-2.5 w-24" shape="pill" surface="card" />
           <Skeleton className="my-1.5 h-2.5 w-[64%]" shape="pill" surface="card" />
@@ -245,7 +266,8 @@ function SayBox({
 
   return (
     <>
-      <div className="rv-say">
+      {/* The one box: a quiet line that grows as it is written in, its two verbs at its end. */}
+      <div className="flex items-end gap-1.5 rounded-card bg-card py-1.25 ps-3 pe-1.25 inset-ring-1 inset-ring-foreground/12 transition-shadow duration-150 ease-out-strong focus-within:inset-ring-foreground/22 focus-within:ring-3 focus-within:ring-ring/24">
         <Textarea
           aria-label="Say something on this change"
           className="flex-1"
@@ -289,10 +311,16 @@ function SayBox({
           </SayVerb>
         )}
       </div>
-      {trouble === null ? null : <p className="rv-say-trouble">{trouble}</p>}
-      {waiting ? <p className="rv-say-trouble">Sends once HQ has read the conversation.</p> : null}
+      {trouble === null ? null : (
+        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">{trouble}</p>
+      )}
+      {waiting ? (
+        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
+          Sends once HQ has read the conversation.
+        </p>
+      ) : null}
       {pending?.reconnecting === true ? (
-        <p className="rv-say-trouble">
+        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
           HQ is reconnecting. Your comment shows here once HQ has it.
         </p>
       ) : null}

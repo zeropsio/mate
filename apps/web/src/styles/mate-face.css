@@ -134,9 +134,10 @@
     animation-delay: calc(var(--mate-face-phase, 0) * -0.2s);
   }
 
-  /* A Mate's row under the pointer: its face looks up at you. Pressed, the
-     face gives a little under the finger and springs back as it lets go. */
-  [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
+  /* A Mate's row under the pointer (the menu's, or any row that marks itself
+     `data-mate-face-row`): its face looks up at you. Pressed, the face gives a
+     little under the finger and springs back as it lets go. */
+  :is([data-zerops-surface="sidebar-mate"], [data-mate-face-row]):hover [data-mate-face-look] {
     translate: 0 -5%;
   }
 
@@ -149,11 +150,11 @@
     animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
   }
 
-  [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
+  :is([data-zerops-surface="sidebar-mate"], [data-mate-face-row]) [data-mate-face-hop] {
     transition: scale var(--duration-base) var(--ease-spring);
   }
 
-  [data-zerops-surface="sidebar-mate"]:active [data-mate-face-hop] {
+  :is([data-zerops-surface="sidebar-mate"], [data-mate-face-row]):active [data-mate-face-hop] {
     scale: 0.92;
     transition-duration: var(--duration-quick);
   }

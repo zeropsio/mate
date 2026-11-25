@@ -36,6 +36,7 @@
  * opening in place, under the line the person clicked, which stays where it
  * is. Nothing opens a dialog.
  */
+import { cn } from "~/lib/utils";
 import {
   use,
   useEffect,
@@ -724,13 +725,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           };
   return (
     // One container for the card's head, its chat and what the Mate does now: the Mate's column
-    // keeps one gap for them all. Its words wear its tint (`.run-speech`). Keyed, so the scroll
+    // keeps one gap for them all. Its words wear its tint (`--run-speaker-tint`). Keyed, so the scroll
     // the person watched is the one that folds away.
     <CarriedOpenContext value={carriedOpen}>
       <ResultPicturesContext value={resultPictures}>
         <div
           ref={rootRef}
-          className="@container/chat min-w-0"
+          // While the run goes on, once the record holds its height, the history and the working row
+          // share it, so the card's outer box stands still: a row that grows takes its room from
+          // the history, never from the page; on a short page the row alone can pass the cap, and
+          // the card holds it whole (`--run-slot-room`, run-card.css). Holding an older height
+          // while its edge travels to a taller one (`runRoom`), the history stands as laid out.
+          className="@container/chat min-w-0 data-run-live:flex data-run-live:max-h-[max(min(560px,60svh),var(--run-slot-room,0px))] data-run-live:flex-col [&[data-run-live]>[data-run-above]]:flex [&[data-run-live]>[data-run-above]]:min-h-0 [&[data-run-live]>[data-run-above]]:flex-initial [&[data-run-live]>[data-run-above]]:flex-col [&[data-run-live]>[data-run-above]>[data-run-scroll]]:min-h-0 [&[data-run-live]>[data-run-above]>[data-run-scroll]]:flex-initial [&[data-run-live]>[data-run-slot]]:flex-none [&[data-run-live][data-room-easing]>[data-run-above]]:shrink-0"
           data-run-chat
           data-run-fold={settled ? fold : undefined}
           // The shared height holds through the settle's fold: dropped in the
@@ -769,7 +775,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <div
               key="above"
               ref={aboveRef}
-              className="run-above"
+              // The log's first row stands 14 px under the head's line; over the working row, a
+              // hairline sets it off. Settling, it folds shut into the line, the newest lines the
+              // last to go under a soft edge (`foldAway`), its room over the work with it.
+              className={cn(
+                "mt-2.5 [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-b [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-foreground/8 [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:pb-4",
+                fold === "folding" &&
+                  "mt-0 flex flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,currentColor_24px)] *:flex-none",
+              )}
+              data-run-above=""
               hidden={row.live && liveFolded}
               style={row.live && liveFolded ? { display: "none" } : undefined}
               data-folding={fold === "folding" ? "" : undefined}
@@ -794,7 +808,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               motionRef={motionRef}
             />
           )}
-          <div key="below" ref={feedRef} className="run-later-feed">
+          {/* A run come back to: the log 14 px under its head, in its own box, so the height it
+              eases to is the height it keeps. */}
+          <div key="below" ref={feedRef} className="flow-root not-empty:mt-2.5">
             {above ? null : scroll}
           </div>
           {/* A landing is drawn in a commit of its own, its row the same: read before that one too. */}

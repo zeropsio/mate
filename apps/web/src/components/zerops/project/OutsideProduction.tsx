@@ -31,6 +31,8 @@ import {
   outsideAddressShown,
   outsideSaveChanges,
 } from "./outsideProduction.logic";
+import { cn } from "~/lib/utils";
+import { HERO, HERO_ICON, HERO_TEXT, HERO_TITLE, HERO_WHY } from "./pageLayout";
 
 /** The press as the page hands it: who may, how it stands, and the one write. */
 export type OutsideControl = Pick<AppOutsideProduction, "editable" | "press" | "save" | "reset">;
@@ -180,13 +182,14 @@ export function OutsideProductionForm({
  */
 export function ProductionOutside({ address }: { readonly address: string | null }) {
   return (
-    <div className="pp-golive-hero" data-zerops-outside-production="">
-      <span aria-hidden="true" className="pp-golive-icon" data-quiet="">
+    <div className={HERO} data-zerops-outside-production="">
+      {/* Production outside Mate says a fact: its mark is quiet, nothing on it acts. */}
+      <span aria-hidden="true" className={cn(HERO_ICON, "bg-foreground/7 text-muted-foreground")}>
         <GlobeIcon className="size-5" />
       </span>
-      <div className="pp-golive-text">
-        <p className="pp-golive-title">{PRODUCTION_OUTSIDE_MATE}</p>
-        <p className="pp-golive-why">
+      <div className={HERO_TEXT}>
+        <p className={HERO_TITLE}>{PRODUCTION_OUTSIDE_MATE}</p>
+        <p className={HERO_WHY}>
           {OUTSIDE_MATE_MEANS}
           {address === null ? null : (
             <>

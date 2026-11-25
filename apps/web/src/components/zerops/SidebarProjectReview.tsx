@@ -38,7 +38,9 @@ import { Row } from "../ui/row";
 import { SectionHeader } from "../ui/section";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { cn } from "~/lib/utils";
 import { MateOwnerMark } from "./MateOwnerMark";
+import { FACE_PALE } from "./menuFace";
 import { REVIEW_ALL_LABEL, type QueuedTarget } from "~/zerops/reviewQueue.logic";
 import { MateFace } from "./primitives";
 import { ownerMark } from "./SidebarMateRow.logic";
@@ -63,8 +65,52 @@ export {
   type ProjectReviewItem,
 } from "./SidebarProjectReview.logic";
 
-/** How long a tag, a digit or a popover item takes to go (`.menu-tag`, `.menu-tagpop-row`). */
+/** How long a tag, a digit or a popover item takes to go (`tag-out`, the list's row). */
 const LEAVE_MS = 160;
+
+/**
+ * What waits in a project, after its row's name: the kit's Badge pills. Between a project's name
+ * and its Mate's (in the row's title), room on both sides; there it gives way before either name
+ * does, a whole mark at a time — a mark that no longer fits wraps under the line, out of sight,
+ * never cut, and the empty first item keeps even the first mark from holding the line alone. Its
+ * shrink dwarfs the names' so it gives all its room before the Mate's name loses a letter.
+ */
+const MARKS =
+  "inline-flex flex-none items-center gap-1.5 in-data-[slot=row-title]:ms-1.75 in-data-[slot=row-title]:me-px in-data-[slot=row-title]:h-5 in-data-[slot=row-title]:min-w-0 in-data-[slot=row-title]:flex-[0_1000000000_auto] in-data-[slot=row-title]:flex-wrap in-data-[slot=row-title]:overflow-hidden in-data-[slot=row-title]:before:-me-1.5 in-data-[slot=row-title]:before:h-full in-data-[slot=row-title]:before:w-0";
+
+/** A change's face in the popover: 22 px, a colleague's owner's 12 px mark cut out of its corner. */
+const MAKER = "relative flex size-5.5 items-center justify-center text-muted-foreground";
+const MAKER_CUT =
+  "[mask-image:radial-gradient(circle_8px_at_18px_18px,transparent_7.5px,currentColor_8px)]";
+
+/** The header's pill: Review and Release, one door per half (\`ProjectReviewTags\`). */
+const TAGS =
+  "inline-flex h-7 flex-none items-center overflow-hidden rounded-full bg-primary text-primary-foreground has-[>[data-quiet]:only-child]:bg-card has-[>[data-quiet]:only-child]:text-muted-foreground has-[>[data-quiet]:only-child]:inset-ring-1 has-[>[data-quiet]:only-child]:inset-ring-border";
+
+/**
+ * A half's press (the kit's bare Button), or its unseen stand-in's seat: it holds the tag and
+ * carries its states — hover, an open popover, quiet, entering and leaving.
+ */
+const TAG_PRESS =
+  "group/tag flex h-full flex-none data-[phase=exit]:pointer-events-none motion-reduce:data-[phase=exit]:hidden";
+
+/**
+ * A half: its mark, word and count, shaded under the pointer and while its popover is open; the
+ * seam before the second is a short light rule, so each half reads as its own.
+ */
+const TAG =
+  "relative inline-flex h-full flex-none items-center gap-1.5 ps-3 pe-2.5 text-body leading-4 font-semibold whitespace-nowrap transition-[background-color,scale] duration-150 ease-out-strong group-last/tag:pe-3 group-data-popup-open/tag:bg-press-shade pointer-fine:group-hover/tag:bg-press-shade in-[[data-menu-tag]+*]:before:absolute in-[[data-menu-tag]+*]:before:start-0 in-[[data-menu-tag]+*]:before:top-1.75 in-[[data-menu-tag]+*]:before:h-3.5 in-[[data-menu-tag]+*]:before:w-px in-[[data-menu-tag]+*]:before:bg-primary-foreground/34 motion-safe:group-active/tag:scale-96 motion-safe:group-data-[phase=enter]/tag:animate-tag-in motion-safe:group-data-[phase=exit]/tag:animate-tag-out";
+
+/** A count's digit, rolling in from the side its number moves to and out the other. */
+const DIGIT = "col-start-1 row-start-1 text-end";
+const DIGIT_IN = {
+  up: `${DIGIT} motion-safe:animate-digit-from-below`,
+  down: `${DIGIT} motion-safe:animate-digit-from-above`,
+} as const;
+const DIGIT_OUT = {
+  up: `${DIGIT} motion-safe:animate-digit-to-above motion-reduce:hidden`,
+  down: `${DIGIT} motion-safe:animate-digit-to-below motion-reduce:hidden`,
+} as const;
 
 type Phase = "rest" | "enter" | "exit";
 
@@ -138,8 +184,12 @@ export function ProjectReviewTags({
   );
   if (read === undefined && offer.shown === undefined) return null;
   const tags = (
+    // One solid pill, a door per half — Review, then Release, each with its count where more than
+    // one waits (the owner's pick, direction B, 2026-10-13), arriving with a small rise, once.
+    // Only changes that wait on the people who merge stand behind it: the door asks nothing, so it
+    // drops the blue for the card's quiet ground in a hairline.
     <span
-      className="menu-tags"
+      className={`${TAGS} motion-safe:animate-review-arrive`}
       data-zerops-surface="sidebar-project-tags"
       onClick={stopPress}
       onKeyDown={stopKeys}
@@ -157,17 +207,17 @@ export function ProjectReviewTags({
   // The widest the tags may grow stands under them unseen: the seat takes its width, the tags
   // keep their own.
   return (
-    <span className="menu-tags-room">
+    <span className="inline-grid *:col-start-1 *:row-start-1 *:justify-self-start">
       {tags}
-      <span aria-hidden="true" className="menu-tags invisible" inert>
-        <span data-menu-tag="">
-          <span className="menu-tag">
+      <span aria-hidden="true" className={`${TAGS} invisible`} inert>
+        <span className={TAG_PRESS} data-menu-tag="">
+          <span className={TAG}>
             <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
           </span>
         </span>
         {offer.shown === undefined ? null : (
-          <span data-menu-tag="">
-            <span className="menu-tag">
+          <span className={TAG_PRESS} data-menu-tag="">
+            <span className={TAG}>
               <ReleaseFace count={releaseCount(offer.shown).count} />
             </span>
           </span>
@@ -195,7 +245,12 @@ export function HeaderReviewDoor({
   return (
     <span
       aria-hidden={held || undefined}
-      className={held ? "chat-header-review invisible" : "chat-header-review"}
+      className={
+        held
+          ? "ms-3 me-3.5 inline-flex flex-none items-center invisible"
+          : "ms-3 me-3.5 inline-flex flex-none items-center"
+      }
+      data-chat-header-review=""
       inert={held}
     >
       {/* Under an open review a merge pressed there changes its word: its seat is held as wide as
@@ -214,7 +269,15 @@ const RESERVED_WORDS = ["Merging…", "Couldn't merge", "Not confirmed", "Closin
  * chat is about never moves over for it.
  */
 export function HeaderReviewSeat({ width }: { readonly width: number }): ReactNode {
-  return <span aria-hidden="true" className="chat-header-review" data-seat="" style={{ width }} />;
+  return (
+    <span
+      aria-hidden="true"
+      className="ms-3 me-3.5 inline-flex flex-none items-center"
+      data-chat-header-review=""
+      data-seat=""
+      style={{ width }}
+    />
+  );
 }
 
 /**
@@ -245,7 +308,7 @@ export function ProjectReviewMarks({
   if (items.length === 0 && release === undefined && run === undefined) return null;
   const mark = items.length === 0 ? undefined : reviewMarkOf(items, projectName);
   return (
-    <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
+    <span className={MARKS} data-zerops-surface="sidebar-project-marks">
       {mark === undefined ? null : (
         <Badge
           aria-label={mark.label}
@@ -265,8 +328,8 @@ export function ProjectReviewMarks({
             render={
               <Badge
                 aria-label={run.tip}
-                data-menu-mark-door=""
                 data-zerops-surface="sidebar-project-run-mark"
+                door
                 onClick={(event) => {
                   event.stopPropagation();
                   openReview({ kind: "release", groupId }, { from: event.currentTarget });
@@ -288,8 +351,8 @@ export function ProjectReviewMarks({
       {release === undefined || run !== undefined ? null : (
         <Badge
           aria-label={`Release: ${releaseTagTip(release)}`}
-          data-menu-mark-door=""
           data-zerops-surface="sidebar-project-release-mark"
+          door
           onClick={(event) => {
             event.stopPropagation();
             openReview({ kind: "release", groupId }, { from: event.currentTarget });
@@ -331,6 +394,7 @@ function ReleaseTag({
         render={
           <Button
             aria-label={`Release: ${tip}`}
+            className={TAG_PRESS}
             data-menu-tag=""
             data-phase={phase}
             // Somebody else's to make: a door still, asking the person nothing.
@@ -344,7 +408,7 @@ function ReleaseTag({
           />
         }
       >
-        <span className="menu-tag">
+        <span className={TAG}>
           <ReleaseFace count={count} />
         </span>
       </TooltipTrigger>
@@ -357,8 +421,7 @@ function ReleaseTag({
 function ReleaseFace({ count }: { readonly count: number }) {
   return (
     <>
-      {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
-      <RocketIcon aria-hidden="true" className="menu-tag-icon" />
+      <RocketIcon aria-hidden="true" className="block size-3.5 flex-none" />
       <span>Release</span>
       <TagCount count={count > 1 ? count : undefined} />
     </>
@@ -378,11 +441,11 @@ function ReviewFace({
   return (
     <>
       {busy ? (
-        <span aria-hidden="true" className="menu-tag-icon">
+        <span aria-hidden="true" className="block size-3.5 flex-none">
           <Spinner role="presentation" size="xs" />
         </span>
       ) : (
-        <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+        <GitMergeIcon aria-hidden="true" className="block size-3.5 flex-none" />
       )}
       <span>{word}</span>
       <TagCount count={count} />
@@ -431,6 +494,7 @@ function ReviewTag({
               render={
                 <Button
                   aria-label={read.label}
+                  className={TAG_PRESS}
                   data-menu-tag=""
                   // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
                   data-zerops-changes={listed.map((item) => item.key).join(" ")}
@@ -446,7 +510,7 @@ function ReviewTag({
             />
           }
         >
-          <span className="menu-tag">
+          <span className={TAG}>
             <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
           </span>
         </TooltipTrigger>
@@ -476,7 +540,7 @@ function ReviewTag({
             ? false
             : leaving
               ? (tag.current
-                  ?.closest(".menu-row-box")
+                  ?.closest("[data-menu-row-box]")
                   ?.querySelector<HTMLElement>("[data-zerops-row]") ?? true)
               : true
         }
@@ -536,19 +600,19 @@ function TagCount({ count }: { readonly count: number | undefined }) {
   if (count === undefined && gone?.count === undefined) return null;
   const direction = gone === undefined ? undefined : gone.up ? "up" : "down";
   return (
-    <span aria-hidden="true" className="menu-tag-count">
+    // In its own clipped cell: the new number rolls in as the old rolls out. Behind a quiet door
+    // alone, a step of its ink.
+    <span
+      aria-hidden="true"
+      className="ms-px inline-grid h-4.5 min-w-4.5 place-items-center overflow-hidden rounded-full bg-primary-foreground/22 px-1.5 text-2xs tabular-nums group-only/tag:group-data-quiet/tag:bg-current/12"
+    >
       {gone?.count === undefined ? null : (
-        <span
-          className="menu-tag-digit"
-          data-dir={direction}
-          data-out=""
-          key={`out-${String(gone.count)}`}
-        >
+        <span className={DIGIT_OUT[direction ?? "up"]} key={`out-${String(gone.count)}`}>
           {String(gone.count)}
         </span>
       )}
       {count === undefined ? null : (
-        <span className="menu-tag-digit" data-dir={direction} data-in="" key={String(count)}>
+        <span className={direction === undefined ? DIGIT : DIGIT_IN[direction]} key={String(count)}>
           {String(count)}
         </span>
       )}
@@ -652,7 +716,7 @@ function ReviewList({
   return (
     <div
       aria-labelledby={headingId}
-      className="menu-tagpop-list"
+      className="flex max-h-[min(480px,70vh,var(--available-height))] flex-col outline-none"
       onKeyDown={move}
       ref={listRef}
       role="group"
@@ -677,12 +741,18 @@ function ReviewList({
           title={<span id={headingId}>{reviewPopoverTitle(live, projectName)}</span>}
         />
       </div>
-      <div className="menu-tagpop-items">
+      <div className="flex min-h-0 flex-col gap-0.5 overflow-y-auto overscroll-contain px-1.5 pb-1.5">
         {shown.map(({ item, leaving }) => (
           <div
-            className="menu-tagpop-row"
-            data-arrive={arrived.has(item.key) ? "" : undefined}
-            data-leaving={leaving ? "" : undefined}
+            // An item that leaves fades and the list closes over it; one that arrives opens its
+            // place.
+            className={
+              leaving
+                ? "grid transition-[grid-template-rows,opacity] duration-200 ease-out-strong *:min-h-0 *:overflow-hidden motion-reduce:transition-opacity motion-reduce:duration-150 grid-rows-[0fr] opacity-0"
+                : arrived.has(item.key)
+                  ? "grid transition-[grid-template-rows,opacity] duration-200 ease-out-strong *:min-h-0 *:overflow-hidden motion-reduce:transition-opacity motion-reduce:duration-150 grid-rows-[1fr] motion-safe:animate-tagpop-arrive"
+                  : "grid transition-[grid-template-rows,opacity] duration-200 ease-out-strong *:min-h-0 *:overflow-hidden motion-reduce:transition-opacity motion-reduce:duration-150 grid-rows-[1fr]"
+            }
             inert={leaving}
             key={item.key}
           >
@@ -744,17 +814,17 @@ function ReviewListItem({
     <Row
       aria-describedby={bylineId}
       aria-label={`${verb} ${item.title}`}
-      // In full where it is the viewer's move; paler where it is somebody else's.
-      data-mine={waits ? undefined : ""}
+      className="group/change"
       data-standing={item.standing}
       data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
-      lead={<ReviewMaker by={item.by} />}
+      // In full where it is the viewer's move; paler where it is somebody else's.
+      lead={<ReviewMaker by={item.by} pale={waits} />}
       line={<span id={bylineId}>{reviewItemByline(item)}</span>}
       meta={
         // The row is the press; its verb wears the one Review look, or none where nothing is asked.
         <Button
-          data-menu-tagpop-verb=""
+          className="motion-safe:group-active/change:scale-96"
           render={<span aria-hidden="true" />}
           size="xs"
           variant={waits || together ? "ghost" : "secondary"}
@@ -774,7 +844,7 @@ function ReviewListItem({
           <TooltipTrigger
             render={
               <span
-                className="menu-tagpop-name"
+                className="block truncate text-body leading-4.5 font-medium"
                 onPointerEnter={(event) => {
                   const element = event.currentTarget;
                   setTruncated(element.scrollWidth > element.clientWidth);
@@ -782,7 +852,10 @@ function ReviewListItem({
               />
             }
           >
-            <Mark aria-hidden="true" className="menu-tagpop-mark" />
+            <Mark
+              aria-hidden="true"
+              className="me-1.25 inline-block size-3 align-[-1px] text-muted-foreground"
+            />
             {item.title}
           </TooltipTrigger>
           <TooltipPopup side="top">{item.title}</TooltipPopup>
@@ -793,11 +866,18 @@ function ReviewListItem({
 }
 
 /** Who made it: its Mate's face, a colleague's with its owner's mark on the corner. */
-function ReviewMaker({ by }: { readonly by: ProjectReviewItem["by"] }) {
+function ReviewMaker({
+  by,
+  pale,
+}: {
+  readonly by: ProjectReviewItem["by"];
+  /** Somebody else's to move: its face paler. */
+  readonly pale: boolean;
+}) {
   if (by === undefined) {
     return (
-      <span aria-hidden="true" className="menu-tagpop-face">
-        <GitPullRequestIcon className="menu-tagpop-mark" />
+      <span aria-hidden="true" className={MAKER}>
+        <GitPullRequestIcon className="me-1.25 inline-block size-3 align-[-1px] text-muted-foreground" />
       </span>
     );
   }
@@ -807,12 +887,12 @@ function ReviewMaker({ by }: { readonly by: ProjectReviewItem["by"] }) {
       ? undefined
       : ownerMark({ name: by.ownerName, initials: "", avatarUrl: null }));
   return (
-    <span aria-hidden="true" className="menu-tagpop-face">
-      <span className={mark === undefined ? "flex" : "menu-tagpop-cut flex"}>
+    <span aria-hidden="true" className={MAKER}>
+      <span className={cn("flex", mark !== undefined && MAKER_CUT, pale && FACE_PALE)}>
         <MateFace className="size-5.5" shape={by.shape} size={20} state="idle" tint={by.tint} />
       </span>
       {mark === undefined ? null : (
-        <MateOwnerMark className="menu-tagpop-owner" seat={{ kind: "person", mark }} />
+        <MateOwnerMark className="top-3 left-3 size-3 text-5xs" seat={{ kind: "person", mark }} />
       )}
     </span>
   );

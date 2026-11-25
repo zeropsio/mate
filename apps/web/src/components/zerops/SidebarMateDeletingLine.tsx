@@ -20,7 +20,7 @@ export function MateDeletingLine({
   return (
     <span
       className={cn(
-        "truncate menu-line2",
+        "truncate block text-body leading-5.5",
         failed ? "text-status-failed-text" : "text-muted-foreground",
       )}
       data-zerops-surface={failed ? "sidebar-mate-deletion-failed" : "sidebar-mate-deleting"}

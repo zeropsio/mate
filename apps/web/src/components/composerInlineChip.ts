@@ -10,10 +10,15 @@ export const CHAT_INLINE_CHIP_CLASS_NAME = `${INLINE_CHIP_CLASS_NAME} text-[12px
 
 export const COMPOSER_INLINE_CHIP_CLASS_NAME = `${INLINE_CHIP_CLASS_NAME} text-[0.86em] select-none`;
 
-/** Another of the person's Mates, named with `@`: its hue comes from `[data-mate-tint]` (`.mate-mention`). */
-export const CHAT_INLINE_MATE_CHIP_CLASS_NAME = `${INLINE_CHIP_GEOMETRY_CLASS_NAME} mate-mention text-[12px]`;
+/**
+ * Another of the person's Mates, named with `@`: its face and name in a chip of its hue
+ * (`mateTintStyle` sets it), mixed as its message's are so the name holds its contrast.
+ */
+const INLINE_MATE_CHIP_CLASS_NAME = `${INLINE_CHIP_GEOMETRY_CLASS_NAME} border border-mate-chip-edge bg-mate-chip text-mate-ink`;
 
-export const COMPOSER_INLINE_MATE_CHIP_CLASS_NAME = `${INLINE_CHIP_GEOMETRY_CLASS_NAME} mate-mention text-[0.86em] select-none`;
+export const CHAT_INLINE_MATE_CHIP_CLASS_NAME = `${INLINE_MATE_CHIP_CLASS_NAME} text-[12px]`;
+
+export const COMPOSER_INLINE_MATE_CHIP_CLASS_NAME = `${INLINE_MATE_CHIP_CLASS_NAME} text-[0.86em] select-none`;
 
 export const COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME =
   "relative inline-flex align-[-0.125em] leading-none data-[composer-chip-selected]:after:pointer-events-none data-[composer-chip-selected]:after:absolute data-[composer-chip-selected]:after:inset-0 data-[composer-chip-selected]:after:rounded-mark data-[composer-chip-selected]:after:bg-[Highlight] data-[composer-chip-selected]:after:opacity-30 data-[composer-chip-selected]:after:content-['']";

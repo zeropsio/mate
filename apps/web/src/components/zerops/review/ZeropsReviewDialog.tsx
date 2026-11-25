@@ -43,6 +43,17 @@ import { isField, keyStaysInReview, pressesPrimary, reviewOrigin } from "./Zerop
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 
+/**
+ * The sheet: over the page's right edge, 12 in from the window's top, right and bottom and 540
+ * wide (8 in and the window's width on a phone, clear of the status bar and the home bar). A
+ * release is a few lines and its buttons: its sheet hangs from the top as tall as what it says,
+ * and takes the window's height — scrolling inside, its foot in view — only when what it says is
+ * taller (`ZeropsReleaseSteps`). Held while what it shows is read (`useReviewHold`), it slides in
+ * once, whole, from what opened it.
+ */
+const SHEET =
+  "absolute top-3 right-3 bottom-3 flex w-[min(540px,calc(100%-24px))] origin-right flex-col overflow-hidden rounded-sheet bg-card text-foreground shadow-(--zerops-shadow-dialog) ring-1 ring-foreground/10 outline-none transition-[opacity,scale,translate] duration-260 ease-out-strong has-data-[review-steps]:bottom-auto has-data-[review-steps]:max-h-[calc(100dvh-24px)] data-holding:opacity-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-150 motion-safe:data-holding:translate-x-6 motion-safe:data-holding:scale-99 motion-safe:data-starting-style:translate-x-6 motion-safe:data-starting-style:scale-99 motion-safe:data-ending-style:translate-x-4 motion-safe:data-ending-style:scale-99 max-sm:top-[max(8px,env(safe-area-inset-top))] max-sm:right-2 max-sm:bottom-[max(8px,env(safe-area-inset-bottom))] max-sm:w-[calc(100%-16px)] max-sm:has-data-[review-steps]:bottom-auto max-sm:has-data-[review-steps]:max-h-[calc(100dvh-16px-env(safe-area-inset-top)-env(safe-area-inset-bottom))]";
+
 /** The one button, as the surface marks it: whether it is safe, and whether it can be pressed. */
 const PRIMARY = "[data-review-primary]";
 
@@ -170,8 +181,7 @@ export function ZeropsReviewDialog({
           height: element.offsetHeight,
         },
       );
-      element.style.setProperty("--rv-origin-x", `${String(origin.x)}px`);
-      element.style.setProperty("--rv-origin-y", `${String(origin.y)}px`);
+      element.style.transformOrigin = `${String(origin.x)}px ${String(origin.y)}px`;
       return () => {
         popup.current = null;
       };
@@ -227,17 +237,18 @@ export function ZeropsReviewDialog({
       open={open}
     >
       <ReviewPortal>
-        <DialogPrimitive.Backdrop className="rv-backdrop" />
-        <DialogPrimitive.Viewport className="rv-viewport">
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-(--zerops-scrim) transition-opacity duration-200 ease-out-strong data-ending-style:opacity-0 data-ending-style:duration-150 data-starting-style:opacity-0" />
+        <DialogPrimitive.Viewport className="fixed inset-0 z-50">
           <DialogPrimitive.Popup
             aria-labelledby={labelledBy}
             // Modal, and said so: the composer behind takes letters typed outside any field
             // unless a modal dialog is open.
             aria-modal="true"
             aria-busy={holding || undefined}
-            className="rv"
+            className={SHEET}
             // A dialog to every layer check: the panel launcher's letters stand aside for it.
             data-slot="dialog-popup"
+            data-review-sheet=""
             data-holding={holding ? "" : undefined}
             data-zerops-surface="review"
             finalFocus={() => (from?.isConnected === true ? from : true)}

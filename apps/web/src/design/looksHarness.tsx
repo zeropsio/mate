@@ -1,3 +1,4 @@
+import { RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * Intake row 6b's looks, each on the surface the conversation draws it on: an answer with a
@@ -260,7 +261,7 @@ function Harness() {
             </>
           ) : (
             <div data-card-slice="top" data-card-whole="">
-              <div className="run-tray run-tray-top">
+              <div className={RUN_TRAY_SLICE.top}>
                 <RunChat row={RUN} />
               </div>
             </div>

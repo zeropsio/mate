@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from "react";
 
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { PERSON_DISC } from "./primitives/PersonAvatar";
 import type { BadgeSeat } from "./SidebarMateRow.logic";
 
 /**
@@ -16,8 +17,16 @@ import type { BadgeSeat } from "./SidebarMateRow.logic";
  *
  * The initial is part of a mark, not text: 7 px inside the 12 px disc, as a
  * picture would be. The menu's row and a Mate's card wear the same mark;
- * `className` places it on a face of another size.
+ * `className` places it on a face of another size, or rings it in that face's ground.
+ *
+ * Its seat on a 36 px face: 16 px round, centred 30 px across and down — below the face's
+ * corner, level with the ask, because a larger badge in the corner met the done face's smile;
+ * there it clears every pose's eyes and mouth by 1.3 px (the owner, 2026-09-30: "the not yours
+ * should have the avatar bigger"). The face wears the seat cut out of it (`FACE_CUT`), so the mark
+ * holds on the hover band and the open Mate's band alike.
  */
+const SEAT =
+  "absolute top-5.5 left-5.5 inline-flex size-4 items-center justify-center overflow-hidden rounded-full text-4xs";
 export function MateOwnerMark({
   seat,
   className,
@@ -32,7 +41,9 @@ export function MateOwnerMark({
         <TooltipTrigger
           render={
             <span
-              className={cn("menu-owner", className)}
+              // An empty seat: a dashed ring in the muted ink, no fill and no hairline, so it never
+              // reads as a person without a picture.
+              className={cn(SEAT, "text-sidebar-muted-foreground/75", className)}
               data-zerops-avatar="nobody"
               data-zerops-surface="sidebar-mate-owner"
             />
@@ -65,7 +76,7 @@ export function MateOwnerMark({
       <TooltipTrigger
         render={
           <span
-            className={cn("person-avatar menu-owner", className)}
+            className={cn(PERSON_DISC, SEAT, "ring-sidebar-foreground/8", className)}
             data-zerops-avatar={picture === null ? "initials" : "picture"}
             data-zerops-surface="sidebar-mate-owner"
             style={{ "--person-hue": mark.hue } as CSSProperties}

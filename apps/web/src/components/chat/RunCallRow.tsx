@@ -76,7 +76,10 @@ export function CallRow({
   }
   return (
     <div
-      className={cn("relative min-w-0", joined && !plops && "run-rise")}
+      className={cn(
+        "relative min-w-0",
+        joined && !plops && "animate-run-rise motion-reduce:animate-none",
+      )}
       data-run-rises={joined && !plops ? "" : undefined}
       data-chat-bubble={failure === null ? "tool" : "failed"}
       data-chat-failed={failure ?? undefined}
