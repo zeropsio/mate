@@ -12,6 +12,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Text } from "~/components/ui/text";
 
 export function ConnectCard({
   onSubmit,
@@ -47,12 +48,14 @@ export function ConnectCard({
       >
         <ol className="grid gap-5">{children}</ol>
         {problem ? (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {problem}
-          </p>
+          </Text>
         ) : null}
         <div className="flex items-center gap-2 border-t border-border/70 pt-4">
-          <p className="min-w-0 flex-1 text-caption text-muted-foreground">{note}</p>
+          <Text className="min-w-0 flex-1" render={<p />} variant="note">
+            {note}
+          </Text>
           <Button onClick={onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
@@ -92,11 +95,15 @@ export function ConnectStep({
       </span>
       <div className="grid min-w-0 gap-3">
         <div className="grid gap-0.5">
-          <p className="text-body font-medium text-foreground">
+          <Text render={<p />} variant="heading">
             <span className="sr-only">{`Step ${String(n)}: `}</span>
             {title}
-          </p>
-          {help ? <p className="text-caption text-muted-foreground">{help}</p> : null}
+          </Text>
+          {help ? (
+            <Text render={<p />} variant="note">
+              {help}
+            </Text>
+          ) : null}
         </div>
         {children}
       </div>
@@ -149,13 +156,13 @@ export function KeyField({
         value={value}
       />
       {problem === null ? (
-        <p className="text-caption text-muted-foreground" id={`${id}-hint`}>
+        <Text render={<p />} variant="note" id={`${id}-hint`}>
           {hint}
-        </p>
+        </Text>
       ) : (
-        <p className="text-caption text-destructive-foreground" id={`${id}-hint`} role="alert">
+        <Text render={<p />} variant="error" id={`${id}-hint`} role="alert">
           {problem}
-        </p>
+        </Text>
       )}
     </div>
   );
@@ -175,7 +182,9 @@ export function AddressField({
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="grid gap-1.5">
-      <p className="text-body font-medium text-foreground">{label}</p>
+      <Text render={<p />} variant="heading">
+        {label}
+      </Text>
       <div className="flex min-w-0 items-center gap-2">
         <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-control border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
           {value}
@@ -196,7 +205,11 @@ export function AddressField({
           </span>
         </Button>
       </div>
-      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <Text render={<p />} variant="note">
+          {hint}
+        </Text>
+      ) : null}
     </div>
   );
 }
@@ -213,11 +226,17 @@ export function PendingAddress({
 }) {
   return (
     <div className="grid gap-1.5">
-      <p className="text-body font-medium text-foreground">{label}</p>
+      <Text render={<p />} variant="heading">
+        {label}
+      </Text>
       <p className="flex h-7.5 items-center rounded-control border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
         {words}
       </p>
-      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
+      {hint ? (
+        <Text render={<p />} variant="note">
+          {hint}
+        </Text>
+      ) : null}
     </div>
   );
 }

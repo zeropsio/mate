@@ -83,6 +83,7 @@ import {
   slackSignatureRefused,
   taskSourceProblem,
 } from "./taskSourcesSettings.logic";
+import { Text } from "~/components/ui/text";
 
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
 
@@ -125,7 +126,11 @@ export function TaskLimitsSettings() {
 
 /** Who connected it and when, as HQ holds it; nothing where HQ names nobody. */
 function ConnectedBy({ line }: { readonly line: string | null }) {
-  return line === null ? null : <p className="text-caption text-muted-foreground">{line}</p>;
+  return line === null ? null : (
+    <Text render={<p />} variant="note">
+      {line}
+    </Text>
+  );
 }
 
 /**
@@ -278,7 +283,9 @@ function AppRows({
       ) : (
         apps.map((app) => (
           <li className="grid gap-2" data-zerops-task-source-app={app.id} key={app.id}>
-            <p className="text-body font-medium text-foreground">{app.name}</p>
+            <Text render={<p />} variant="heading">
+              {app.name}
+            </Text>
             {children(app)}
           </li>
         ))
@@ -397,8 +404,10 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
   const setting = channels.read.setting;
   return (
     <div className="grid gap-1.5">
-      <p className="text-body font-medium text-foreground">Channels</p>
-      <p className="text-caption text-muted-foreground">
+      <Text render={<p />} variant="heading">
+        Channels
+      </Text>
+      <Text render={<p />} variant="note">
         {setting.state === "known"
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
@@ -417,7 +426,7 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
             </InlineButton>
           </>
         ) : null}
-      </p>
+      </Text>
     </div>
   );
 }
@@ -503,9 +512,9 @@ function SlackReplaceKeys({
     >
       {secretFirst ? [secret, token] : [token, secret]}
       <div className="flex items-center gap-2">
-        <p className="min-w-0 flex-1 text-caption text-muted-foreground">
+        <Text className="min-w-0 flex-1" render={<p />} variant="note">
           Every project keeps its channel.
-        </p>
+        </Text>
         <Button disabled={!ready || busy} size="sm" type="submit" variant="secondary">
           {pressWords(controls.read.action, ["slack-connect"], "Replace")}
         </Button>
@@ -586,9 +595,9 @@ function SlackSteps({
             {isCopied ? "Copied" : "Copy manifest"}
           </Button>
           {read.state === "failed" ? (
-            <span className="text-caption text-destructive-foreground" role="alert">
+            <Text variant="error" role="alert">
               {read.words}
-            </span>
+            </Text>
           ) : null}
         </div>
         <AddressField
@@ -808,19 +817,23 @@ function DiscordConnected({ view }: { readonly view: HqDiscordView }) {
       />
       {view.inviteUrl === null ? null : (
         <div className="grid gap-1.5">
-          <p className="text-body font-medium text-foreground">Servers</p>
+          <Text render={<p />} variant="heading">
+            Servers
+          </Text>
           <div className="flex">
             <OutButton href={view.inviteUrl}>Add the bot to a server</OutButton>
           </div>
         </div>
       )}
       <div className="grid gap-1.5" data-zerops-surface="settings-discord-askers">
-        <p className="text-body font-medium text-foreground">Who may start and steer tasks</p>
+        <Text render={<p />} variant="heading">
+          Who may start and steer tasks
+        </Text>
         {/* HQ's gate: only a Discord user who linked their account to their Zerops person asks. */}
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Anyone in this organization who linked their Discord. Someone who has not gets a private
           link the first time they type /mate task; /mate link sends one at any time.
-        </p>
+        </Text>
       </div>
     </>
   );
@@ -864,9 +877,22 @@ export function WebhooksSettingsView({
       description={
         <>
           Anything that can send a signed request starts a task: POST JSON with{" "}
-          <code className="font-mono">title</code> and <code className="font-mono">body</code> to
-          the webhook's URL, signed in <code className="font-mono">X-Mate-Signature</code> as{" "}
-          <code className="font-mono">sha256=</code> and the body's HMAC-SHA256 with its secret.
+          <Text render={<code />} variant="code">
+            title
+          </Text>{" "}
+          and{" "}
+          <Text render={<code />} variant="code">
+            body
+          </Text>{" "}
+          to the webhook's URL, signed in{" "}
+          <Text render={<code />} variant="code">
+            X-Mate-Signature
+          </Text>{" "}
+          as{" "}
+          <Text render={<code />} variant="code">
+            sha256=
+          </Text>{" "}
+          and the body's HMAC-SHA256 with its secret.
         </>
       }
       title="Webhooks"
@@ -976,9 +1002,9 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
       surface="settings-task-limits"
     >
       {refusal === null ? null : (
-        <p className="text-caption text-destructive-foreground" role="alert">
+        <Text render={<p />} variant="error" role="alert">
           {refusal}
-        </p>
+        </Text>
       )}
     </IntegrationSetting>
   );
@@ -1065,9 +1091,9 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
       surface="settings-monthly-budget"
     >
       {refusal === null ? null : (
-        <p className="text-caption text-destructive-foreground" role="alert">
+        <Text render={<p />} variant="error" role="alert">
           {refusal}
-        </p>
+        </Text>
       )}
     </IntegrationSetting>
   );
@@ -1143,9 +1169,9 @@ export function AutomatedModelView({
       state={{ kind: "none" }}
       surface="settings-automated-model"
     >
-      <p className="text-caption text-muted-foreground" id={groupId}>
+      <Text render={<p />} variant="note" id={groupId}>
         What automated Mates run each new task on. A task at work keeps its model.
-      </p>
+      </Text>
       <RadioGroup
         aria-labelledby={groupId}
         disabled={save.sent || working(read.action)}
@@ -1173,15 +1199,15 @@ export function AutomatedModelView({
                 <Radio value={slug} />
               </span>
               <span className="grid min-w-0 gap-0.5">
-                <span className="flex items-center gap-2 text-body font-medium text-foreground">
+                <Text className="flex items-center gap-2" variant="heading">
                   {offer.name}
                   <Badge>{offer.readsImages ? "Reads images" : "Text only"}</Badge>
                   {slug === current ? <Badge>Current</Badge> : null}
-                </span>
+                </Text>
                 <span className="text-caption tabular-nums text-foreground">
                   {modelPriceWords(offer)}
                 </span>
-                <span className="text-caption text-muted-foreground">{offer.why}</span>
+                <Text variant="note">{offer.why}</Text>
               </span>
             </label>
           );

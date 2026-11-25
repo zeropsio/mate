@@ -62,6 +62,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { Text } from "~/components/ui/text";
 
 const EMPTY_DISCOVERY_RESULT: SourceControlDiscoveryResult = {
   versionControlSystems: [],
@@ -281,9 +282,13 @@ function DiscoveryItemRow({
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <SourceControlItemMark item={item} />
-              <span className="truncate text-body font-medium text-foreground">{item.label}</span>
+              <Text truncate variant="heading">
+                {item.label}
+              </Text>
               {version ? (
-                <code className="text-caption text-muted-foreground">{version}</code>
+                <Text render={<code />} variant="meta">
+                  {version}
+                </Text>
               ) : null}
               {isVcsNotReady(item) ? (
                 <Badge tone="warning" size="sm">
@@ -405,7 +410,7 @@ function GitFetchIntervalSettings() {
               <NumberFieldIncrement aria-label="Increase fetch interval" />
             </NumberFieldGroup>
           </NumberField>
-          <span className="text-caption text-muted-foreground">seconds</span>
+          <Text variant="note">seconds</Text>
         </div>
       </div>
     </div>

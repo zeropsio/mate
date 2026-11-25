@@ -10,6 +10,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
+import { Text } from "~/components/ui/text";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
@@ -334,9 +335,7 @@ export function ProviderAccentColorPicker(props: {
           </Button>
         </span>
       </div>
-      {description ? (
-        <span className="text-caption text-muted-foreground">{description}</span>
-      ) : null}
+      {description ? <Text variant="note">{description}</Text> : null}
     </div>
   );
 }

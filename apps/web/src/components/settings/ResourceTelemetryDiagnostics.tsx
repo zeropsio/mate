@@ -63,6 +63,7 @@ import {
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 const HISTORY_WINDOWS = [
   { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
@@ -312,7 +313,9 @@ function HealthSource({ label, health }: { label: string; health: ResourceTeleme
   return (
     <div className="flex items-start justify-between gap-4 border-t border-border/50 py-3 first:border-t-0">
       <div className="min-w-0">
-        <div className="text-body font-medium text-foreground">{label}</div>
+        <Text render={<div />} variant="heading">
+          {label}
+        </Text>
         <div className="mt-1 text-2xs leading-relaxed text-muted-foreground/65">
           {expectedInBrowser
             ? "Available when this page runs inside the desktop app."
@@ -691,9 +694,9 @@ function HistoryProcessTable({
           <tbody className="divide-y divide-border/50">
             {processes.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-5 text-caption text-muted-foreground sm:px-5">
+                <Text className="px-4 py-5 sm:px-5" render={<td colSpan={9} />} variant="note">
                   No retained process samples in this window.
-                </td>
+                </Text>
               </tr>
             ) : null}
             {processes.map((process) => (
@@ -777,9 +780,9 @@ function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttribut
           <tbody className="divide-y divide-border/50">
             {entries.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-5 text-caption text-muted-foreground sm:px-5">
+                <Text className="px-4 py-5 sm:px-5" render={<td colSpan={6} />} variant="note">
                   No instrumented application I/O has been recorded yet.
-                </td>
+                </Text>
               </tr>
             ) : null}
             {entries.map((entry) => (
@@ -1133,9 +1136,9 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               </>
             ) : (
               <div className="rounded-card border border-dashed border-border/70 bg-muted/20 px-4 py-5">
-                <div className="text-body font-medium text-foreground">
+                <Text render={<div />} variant="heading">
                   Desktop host signals not connected
-                </div>
+                </Text>
                 <p className="mt-1.5 max-w-sm text-2xs leading-relaxed text-muted-foreground/70">
                   Power, idle, lock, and thermal state are supplied by the desktop host. Process
                   telemetry remains fully active in this browser session.
@@ -1185,9 +1188,9 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
                 <DetailRow label="Restarts" value={String(snapshot.health.restartCount)} />
               </>
             ) : (
-              <div className="py-4 text-caption text-muted-foreground">
+              <Text className="py-4" render={<div />} variant="note">
                 Waiting for collector health.
-              </div>
+              </Text>
             )}
           </div>
         </div>
@@ -1238,7 +1241,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         headerAction={
           snapshot ? (
             <span className="text-3xs text-muted-foreground/55">
-              Identity: <span className="font-mono">PID + start time</span>
+              Identity: <Text variant="code">PID + start time</Text>
             </span>
           ) : null
         }

@@ -74,6 +74,7 @@ import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { Text } from "~/components/ui/text";
 
 function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
@@ -612,7 +613,9 @@ function WhenExpressionBuilder({
     <div className="w-[min(34rem,calc(100vw-2rem))] space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-body font-medium text-foreground">When</div>
+          <Text render={<div />} variant="heading">
+            When
+          </Text>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
@@ -1280,9 +1283,9 @@ export function KeybindingsSettingsPanel() {
               />
             ))}
             {rows.length === 0 && !isAddingBinding ? (
-              <div className="px-4 py-12 text-center text-body text-muted-foreground">
+              <Text className="px-4 py-12 text-center" render={<div />} variant="description">
                 No keybindings match your search.
-              </div>
+              </Text>
             ) : null}
           </div>
         </ScrollArea>

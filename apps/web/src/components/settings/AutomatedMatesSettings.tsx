@@ -21,6 +21,7 @@ import { type NameOf, NOBODY_NAMED } from "./automationSettings.logic";
 import { IntegrationAction, IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { AppIntakeView } from "../zerops/projectAutomation/sourceForms";
+import { Text } from "~/components/ui/text";
 
 // A project's GitHub issues form lives on its page (`projectAutomation/sourceForms`); importable from here.
 export { AppIntakeView };
@@ -141,10 +142,10 @@ export function OrganizationKeyView({
           value={value}
         />
         {/* The Mates' agents can reach the key: one made for Mate alone, with a limit. */}
-        <p className="text-caption text-muted-foreground" id={`${keyId}-hint`}>
+        <Text render={<p />} variant="note" id={`${keyId}-hint`}>
           Use a key made only for Mate, with a spending limit. HQ keeps it sealed and never shows it
           again.
-        </p>
+        </Text>
         <div className="flex items-center gap-2">
           <Button disabled={value.trim().length === 0} size="sm" type="submit">
             Save key

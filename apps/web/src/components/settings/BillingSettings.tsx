@@ -38,6 +38,7 @@ import { PAGE_BARS, SpendBars } from "../zerops/projects/ProjectSpend";
 import { formatUsd, joinSpend, moneyParts } from "../zerops/projects/projectSpend.logic";
 import { SettingsPageContainer } from "./settingsLayout";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+import { Text } from "~/components/ui/text";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -110,9 +111,9 @@ function OrganizationBillingPage({
       <SpendingSection billing={billing} daily={daily} />
       <ProjectsSection billing={billing} />
       <section className="flex flex-col items-start justify-between gap-3 rounded-card bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
-        <p className="text-muted-foreground text-body">
+        <Text render={<p />} variant="description">
           Invoices, payment cards, automatic top-up and billing details are in HQ.
-        </p>
+        </Text>
         <HqButton href={hq} variant="secondary">
           Open billing in HQ
         </HqButton>
@@ -190,18 +191,18 @@ function BalanceCard({
           ) : (
             <Figure size="hero" usd={total} />
           )}
-          <p className="min-h-5 text-muted-foreground text-body">
+          <Text className="min-h-5" render={<p />} variant="description">
             <Keeps billing={billing} />
-          </p>
+          </Text>
         </div>
         {addCredit ? (
           <HqButton href={hq} variant="primary">
             Top up in HQ
           </HqButton>
         ) : (
-          <p className="max-w-56 text-muted-foreground text-body sm:text-right">
+          <Text className="max-w-56 sm:text-right" render={<p />} variant="description">
             Owners and members who manage billing top up. Ask an owner.
-          </p>
+          </Text>
         )}
       </div>
       {balance === null || total === null ? null : (
@@ -379,12 +380,14 @@ function SpendingSection({
           {cost.kind === "known" ? (
             <>
               <Figure size="title" usd={cost.value.organization[period]} />
-              <p className="text-muted-foreground text-caption">
+              <Text render={<p />} variant="note">
                 {periodWords(period, cost.value.organization)}
-              </p>
+              </Text>
             </>
           ) : cost.kind === "refused" ? (
-            <p className="text-muted-foreground text-body">Spending isn't shared with you.</p>
+            <Text render={<p />} variant="description">
+              Spending isn't shared with you.
+            </Text>
           ) : (
             <>
               <Skeleton className="h-9 w-40" />
@@ -419,10 +422,10 @@ function SpendingSection({
               <SpendBars geometry={PAGE_BARS} series={series} />
               <AverageLine averageUsd={series.averageUsd} maxUsd={series.maxUsd} />
             </div>
-            <figcaption className="flex justify-between text-caption text-muted-foreground">
+            <Text className="flex justify-between" render={<figcaption />} variant="meta">
               <span>30 days ago</span>
               <span>Today</span>
-            </figcaption>
+            </Text>
           </>
         )}
       </figure>
@@ -481,15 +484,15 @@ function ProjectsSection({
       <div className="flex items-baseline justify-between gap-4 px-1">
         <h2 className="font-medium text-muted-foreground text-body">This month by project</h2>
         {projects.length === 0 ? null : (
-          <span className="text-muted-foreground text-caption tabular-nums">
+          <Text variant="meta">
             {projects.length} {projects.length === 1 ? "project" : "projects"}
-          </span>
+          </Text>
         )}
       </div>
       {projects.length === 0 ? (
-        <p className="px-1 text-muted-foreground text-body">
+        <Text className="px-1" render={<p />} variant="description">
           Nothing has cost anything this month.
-        </p>
+        </Text>
       ) : (
         <ol className="flex flex-col divide-y divide-border/60">
           {shown.map(([projectId, period]) => (
@@ -552,9 +555,9 @@ function ProjectRow({
       <span className="w-20 shrink-0 text-right text-foreground text-body tabular-nums">
         {formatUsd(usd)}
       </span>
-      <span className="w-9 shrink-0 text-right text-muted-foreground text-caption tabular-nums">
+      <Text className="w-9 shrink-0 text-right" variant="meta">
         {share < 1 ? "<1%" : `${String(share)}%`}
-      </span>
+      </Text>
     </li>
   );
 }
