@@ -60,10 +60,10 @@
      tint: the page's ground, half of it on hover; in dark, more input. */
   --zerops-segment: var(--color-background);
   --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
-  /* A pressable item's ground under the pointer or the keyboard's cursor, and the ground of the
-     one picked among its list (the tab open, the take on stage): a step of the ink over whatever
-     ground the item stands on, so a card, a well, a popup and the page light alike; in dark, a
-     step more. */
+  /* A pressable item's ground under the pointer or the keyboard's cursor (and a disclosure's while
+     it is held open), and the ground of the one picked among its list (the tab open, the take on
+     stage): a step of the ink over whatever ground the item stands on, so a card, a well, a popup
+     and the page light alike; in dark, a step more. */
   --zerops-item-hover: color-mix(in oklab, var(--color-foreground) 4%, transparent);
   --zerops-item-picked: color-mix(in oklab, var(--color-foreground) 7%, transparent);
   /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */

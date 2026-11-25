@@ -265,9 +265,9 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/no-sized-slot-icon` (a lucide icon with a `size-*` class as a `Row`'s
     `lead` or directly inside a `Button`, `Badge` or menu item); its ledger only shrinks
 
-- **R16** — A pressable item lights on `bg-item-hover` and the one its list shows stands on
-  `bg-item-picked`; a chosen value says itself in its own mark (`RadioRow`, `RadioCard`, a check
-  box), never in a ground
+- **R16** — A pressable item lights on `bg-item-hover` (a disclosure stays lit while open) and
+  the one its list shows stands on `bg-item-picked`; a chosen value says itself in its own mark
+  (`RadioRow`, `RadioCard`, a check box), never in a ground
   - _Enforced by:_ `t3code/prefer-item-grounds` (a theme ground or a step of the ink behind a
     `hover` variant, in a class string with no resting ground of its own); its ledger only shrinks
 
