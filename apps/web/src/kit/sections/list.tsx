@@ -43,16 +43,18 @@ function ListSpecimens() {
               </List>
             </Card>
           </Specimen>
-          <Specimen label='<List className="px-4">' note="Ruled to the card's padding">
+          <Specimen label='<div className="px-4"> · <List>' note="Ruled to the card's padding">
             <Card className="w-full max-w-96" variant="flat">
-              <List className="px-4" render={<ul />}>
-                {["Petra Malá", "Jan Svoboda"].map((name) => (
-                  <li className="flex items-center justify-between gap-3 py-2.5" key={name}>
-                    <Text variant="heading">{name}</Text>
-                    <Text variant="meta">Developer</Text>
-                  </li>
-                ))}
-              </List>
+              <div className="px-4">
+                <List render={<ul />}>
+                  {["Petra Malá", "Jan Svoboda"].map((name) => (
+                    <li className="flex items-center justify-between gap-3 py-2.5" key={name}>
+                      <Text variant="heading">{name}</Text>
+                      <Text variant="meta">Developer</Text>
+                    </li>
+                  ))}
+                </List>
+              </div>
             </Card>
           </Specimen>
         </SpecimenGrid>
