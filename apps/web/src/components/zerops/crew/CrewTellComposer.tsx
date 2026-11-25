@@ -34,6 +34,7 @@ import { cn } from "~/lib/utils";
 
 import { isPathSuggestionCurrent } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
+import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { MateFace } from "../primitives";
@@ -239,9 +240,9 @@ export function CrewTellComposer({
         </div>
       )}
       {error === null ? null : (
-        <p className="mt-2 px-4.5 text-line text-status-failed-text" role="alert">
-          {error}
-        </p>
+        <div className="px-4.5">
+          <Failure className="mt-2" cause={error} role="alert" size="line" />
+        </div>
       )}
     </div>
   );

@@ -56,6 +56,7 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { formatRelativeTimeLabel, formatWorkingTime } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Failure } from "../../ui/failure";
 import { Badge } from "../../ui/badge";
 import { Button, InlineButton } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -437,9 +438,7 @@ function CrewRow(
           </p>
         )}
         {error === null ? null : (
-          <p className="mt-1.5 text-line leading-4.5 text-status-failed-text" role="alert">
-            {error}
-          </p>
+          <Failure className="mt-1.5" cause={error} role="alert" size="line" />
         )}
       </div>
     </div>

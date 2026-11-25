@@ -12,6 +12,7 @@ import type { CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 import { ChevronLeftIcon } from "lucide-react";
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 
+import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 
@@ -129,8 +130,6 @@ export function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefi
 /** A view's place while the crew home is being read: nothing to take back, or why it failed. */
 export function CrewViewReading({ error }: { readonly error: string | null }) {
   return error === null ? null : (
-    <p className="mt-6 text-line text-status-failed-text" role="alert">
-      {error}
-    </p>
+    <Failure className="mt-6" cause={error} role="alert" size="line" />
   );
 }

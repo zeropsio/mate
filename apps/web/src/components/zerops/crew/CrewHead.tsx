@@ -21,6 +21,7 @@ import type { CrewSummary } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
+import { Failure } from "../../ui/failure";
 import { Button, InlineButton } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
@@ -149,11 +150,7 @@ export function CrewHead({
           />
         )}
       </div>
-      {error === null ? null : (
-        <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-          {error}
-        </p>
-      )}
+      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
     </div>
   );
 }

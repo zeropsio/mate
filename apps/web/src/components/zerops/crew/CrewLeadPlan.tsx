@@ -33,6 +33,7 @@ import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 
+import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
 import { MateFace } from "../primitives";
 import {
@@ -190,9 +191,7 @@ export function CrewLeadPlanBlock({
         </div>
       )}
       {error === null ? null : (
-        <p className="mt-1.5 text-line leading-4.5 text-status-failed-text" role="alert">
-          {error}
-        </p>
+        <Failure className="mt-1.5" cause={error} role="alert" size="line" />
       )}
     </div>
   );

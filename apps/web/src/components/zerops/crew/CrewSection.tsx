@@ -46,6 +46,7 @@ import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 import { LockIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
+import { Failure } from "../../ui/failure";
 import { MateFace } from "../primitives";
 import { CrewHead, type CrewHeadMenuItem } from "./CrewHead";
 import { crewModeLine, crewModePressLock, type CrewModePressKind } from "./CrewHead.logic";
@@ -89,11 +90,7 @@ export function CrewSectionEmpty({
       <p className="mt-1.5 max-w-100 text-muted-foreground text-body leading-5.5">
         {crewGiveCrewLine(mate.name)}
       </p>
-      {error === null ? null : (
-        <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-          {error}
-        </p>
-      )}
+      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
       {lock === null ? (
         <div className="mt-5 flex flex-col items-center gap-3">
           {draft ? (

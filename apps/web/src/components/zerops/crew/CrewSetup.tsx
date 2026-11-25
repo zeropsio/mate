@@ -440,9 +440,7 @@ export function CrewSetup(props: CrewSetupProps) {
       <CrewViewFoot>
         <CrewIssues issues={home.issues.filter((issue) => issue.code !== "file-missing")} />
         {startFailure !== null || commands.error === null ? null : (
-          <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-            {commands.error}
-          </p>
+          <Failure cause={commands.error} role="alert" size="line" />
         )}
         {/* Said from the start, under a Start still waiting too: a roster landing fills who's
             on it and adds no note above Start. */}
@@ -451,9 +449,11 @@ export function CrewSetup(props: CrewSetupProps) {
         </span>
         {startFailure === null ? null : (
           <div className="flex flex-col gap-1" data-crew-start-failure>
-            <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-              {crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
-            </p>
+            <Failure
+              cause={crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
+              role="alert"
+              size="line"
+            />
             {startFailure.detail === null || startFailure.detail.trim() === "" ? null : (
               <FailureDetails>{startFailure.detail}</FailureDetails>
             )}
