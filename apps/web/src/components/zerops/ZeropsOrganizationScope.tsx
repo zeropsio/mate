@@ -18,6 +18,7 @@ import {
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button, InlineButton } from "../ui/button";
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
@@ -113,14 +114,7 @@ export function ZeropsOrganizationChoice({
             <Row
               autoFocus={index === 0}
               data-zerops-organization-choice
-              lead={
-                <span
-                  aria-hidden="true"
-                  className="flex size-8 items-center justify-center rounded-control bg-muted text-body font-semibold text-foreground"
-                >
-                  {organization.name.trim().charAt(0).toLocaleUpperCase()}
-                </span>
-              }
+              lead={<LogoTile>{organization.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>}
               line={zeropsOrganizationRoleLabel(organization)}
               meta={<ChevronRightIcon aria-hidden="true" className="size-4" />}
               onClick={() => {

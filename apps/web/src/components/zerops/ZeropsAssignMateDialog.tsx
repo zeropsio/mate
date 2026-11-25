@@ -7,6 +7,7 @@
  * own read (`mateHandOver.logic.ts`), and nobody is picked until the person picks. The dialog stays
  * while HQ answers, and says its refusal or where it stopped; Hand it over asks again.
  */
+import { Failure } from "~/components/ui/failure";
 import { useId, useState } from "react";
 
 import type { HandOverCandidate } from "../../zerops/mateHandOver.logic";
@@ -125,12 +126,7 @@ export function ZeropsAssignMateForm({
         )}
       </DialogPanel>
       <DialogFooter>
-        <p
-          className="me-auto min-h-4 self-center text-line leading-4 text-status-failed-text"
-          role="alert"
-        >
-          {error}
-        </p>
+        <Failure cause={error} className="me-auto min-h-5 self-center" role="alert" size="line" />
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>

@@ -71,6 +71,7 @@ import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 export interface BranchToolbarBranchSelectorHandle {
   open: () => void;
@@ -870,32 +871,35 @@ export function BranchToolbarBranchSelector({
             </ComboboxListVirtualized>
           </div>
           {isSelectingWorktreeBase ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <label
-                    htmlFor={startFromOriginSwitchId}
-                    className="flex cursor-pointer items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-caption"
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
-                      <RefreshCwIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
-                      <span className="truncate">Start from origin</span>
-                    </span>
-                    <Switch
-                      id={startFromOriginSwitchId}
-                      checked={startFromOrigin}
-                      className="[--thumb-size:--spacing(3.5)]"
-                      aria-label="Start worktree from origin"
-                      onCheckedChange={(checked) => onStartFromOriginChange(Boolean(checked))}
-                    />
-                  </label>
-                }
-              />
-              <TooltipPopup side="top">
-                Creates the worktree from the latest matching branch on origin instead of your local
-                branch.
-              </TooltipPopup>
-            </Tooltip>
+            <>
+              <Separator />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <label
+                      htmlFor={startFromOriginSwitchId}
+                      className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-caption"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
+                        <RefreshCwIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
+                        <span className="truncate">Start from origin</span>
+                      </span>
+                      <Switch
+                        id={startFromOriginSwitchId}
+                        checked={startFromOrigin}
+                        className="[--thumb-size:--spacing(3.5)]"
+                        aria-label="Start worktree from origin"
+                        onCheckedChange={(checked) => onStartFromOriginChange(Boolean(checked))}
+                      />
+                    </label>
+                  }
+                />
+                <TooltipPopup side="top">
+                  Creates the worktree from the latest matching branch on origin instead of your
+                  local branch.
+                </TooltipPopup>
+              </Tooltip>
+            </>
           ) : null}
           {branchStatus}
         </div>

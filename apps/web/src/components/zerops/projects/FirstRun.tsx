@@ -40,6 +40,7 @@ import {
 import { newProjectNext } from "../whatHappensNext.logic";
 import { firstRunWords } from "./firstRun.logic";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** Who waits with a person who may not start a project: nobody yet, in the slate face. */
 const NOBODY: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -252,31 +253,33 @@ function FirstRunForm({
 }) {
   const { access, forecast } = form.input;
   return (
-    // The New project form as the page's card, lifting off the ground on a shadow.
-    <NewProjectFormFrame
-      className="flex min-w-0 flex-col gap-6 rounded-sheet border border-border bg-card px-7 pt-7 pb-3 shadow-(--zerops-shadow-card) @min-[960px]/first-run:col-start-2 @min-[960px]/first-run:row-span-2 @min-[960px]/first-run:row-start-1 @min-[960px]/first-run:self-center"
-      form={form}
+    // The New project form as the page's card: the kit's sheet, a surface of its own.
+    <Card
+      className="min-w-0 @min-[960px]/first-run:col-start-2 @min-[960px]/first-run:row-span-2 @min-[960px]/first-run:row-start-1 @min-[960px]/first-run:self-center"
+      variant="sheet"
     >
-      {form.input.closed === undefined ? (
-        <>
-          <NewProjectFields className="flex flex-col gap-5" form={form}>
-            <ProjectNameField form={form} inputRef={nameField} size="xl" />
-            <FirstMateField form={form} label="Your first Mate" size="xl" />
-            {access === undefined ? null : access(form.setUserRoles)}
-            <NewProjectLocation form={form} />
-          </NewProjectFields>
-          <div className="grid gap-2">
-            <CreateProjectButton form={form} size="lg" />
-            <NewProjectLine className="min-h-5" form={form} />
-            {forecast}
-          </div>
-        </>
-      ) : (
-        <Text render={<p />} variant="description">
-          {form.input.closed}
-        </Text>
-      )}
-    </NewProjectFormFrame>
+      <NewProjectFormFrame className="flex min-w-0 flex-col gap-6 px-7 pt-7 pb-3" form={form}>
+        {form.input.closed === undefined ? (
+          <>
+            <NewProjectFields className="flex flex-col gap-5" form={form}>
+              <ProjectNameField form={form} inputRef={nameField} size="xl" />
+              <FirstMateField form={form} label="Your first Mate" size="xl" />
+              {access === undefined ? null : access(form.setUserRoles)}
+              <NewProjectLocation form={form} />
+            </NewProjectFields>
+            <div className="grid gap-2">
+              <CreateProjectButton form={form} size="lg" />
+              <NewProjectLine className="min-h-5" form={form} />
+              {forecast}
+            </div>
+          </>
+        ) : (
+          <Text render={<p />} variant="description">
+            {form.input.closed}
+          </Text>
+        )}
+      </NewProjectFormFrame>
+    </Card>
   );
 }
 

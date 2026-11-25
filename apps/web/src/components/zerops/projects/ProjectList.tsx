@@ -20,6 +20,7 @@ import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** One project without a Mate: its name, then production's line, its menu on its end. */
 function OtherProject<T>({
@@ -37,7 +38,7 @@ function OtherProject<T>({
   const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
   return (
     <li
-      className="group/other -ms-2 flex h-10 min-w-0 items-center gap-2.5 rounded-control px-2 text-body transition-colors duration-150 ease-out-strong hover:bg-foreground/3"
+      className="group/other -ms-2 flex h-10 min-w-0 items-center gap-2.5 rounded-control px-2 text-body transition-colors duration-150 ease-out-strong hover:bg-item-hover"
       data-zerops-group={entry.group.groupId}
       id={`project-${entry.group.groupId}`}
     >
@@ -116,7 +117,7 @@ export function OtherContainers<T>({
         render={<section />}
       >
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
-          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-item-hover focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronRightIcon
               aria-hidden="true"
               className={cn(
@@ -161,13 +162,13 @@ export function OtherContainers<T>({
               </div>
             ) : null}
             {others.length > 0 ? (
-              <ul className="flex flex-col divide-y divide-border/50">
+              <List className="flex flex-col" render={<ul />}>
                 {others.map(({ item }) => (
                   <Fragment key={props.getKey(item)}>
                     {props.renderEnvironment(item, undefined)}
                   </Fragment>
                 ))}
-              </ul>
+              </List>
             ) : null}
           </div>
         ) : null}

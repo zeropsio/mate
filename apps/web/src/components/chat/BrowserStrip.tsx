@@ -32,6 +32,7 @@ import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Badge } from "../ui/badge";
+import { Dot } from "../ui/dot";
 import { Row } from "../ui/row";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -51,6 +52,7 @@ import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
 import { followScrollTo } from "~/lib/followScroll";
 import { Button } from "~/components/ui/button";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { Text } from "~/components/ui/text";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
@@ -537,13 +539,6 @@ export function BrowserStrip({
   );
 }
 
-/** A take among a run's pictures, in the shape of the device it was taken on. */
-const TAKE_PICTURE_CLASS: Record<BrowserDevice, string> = {
-  desktop: "w-32",
-  tablet: "w-15",
-  phone: "w-9",
-};
-
 /**
  * The pictures a run's checks took, side by side in their devices' shapes — a
  * failed take outlined red, a retried one amber — each opening the picture
@@ -616,19 +611,20 @@ export function BrowserTakes({
             }
             variant="bare"
           >
-            <span
-              className={cn(
-                "block h-full overflow-hidden rounded-control border bg-card",
-                TAKE_PICTURE_CLASS[device],
-                state === "failed"
-                  ? "border-status-failed ring-1 ring-status-failed"
-                  : state === "retried"
-                    ? "border-status-attention"
-                    : "border-border",
-              )}
+            <PictureFrame
+              // A take among a run's pictures, in the shape of the device it was taken on.
+              className={
+                device === "desktop"
+                  ? "h-full w-32"
+                  : device === "tablet"
+                    ? "h-full w-15"
+                    : "h-full w-9"
+              }
+              size="control"
+              tone={state === "failed" ? "failed" : state === "retried" ? "attention" : "default"}
             >
               <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
-            </span>
+            </PictureFrame>
           </Button>
         );
       })}
@@ -668,15 +664,19 @@ function LiveTake({
   if (live !== null && live !== held) setHeld(live);
   const frame = live ?? held;
   return (
-    <span
+    <PictureFrame
       aria-label={`Checking ${browserCheckCaption(take)}`}
-      className={cn(
-        "relative block h-20 shrink-0 overflow-hidden rounded-control border border-border bg-background",
-        TAKE_PICTURE_CLASS[device],
-      )}
+      className={
+        device === "desktop"
+          ? "h-20 shrink-0 w-32"
+          : device === "tablet"
+            ? "h-20 shrink-0 w-15"
+            : "h-20 shrink-0 w-9"
+      }
       data-report-take={device}
       data-report-take-live
       role="img"
+      size="control"
     >
       {frame === null ? (
         <TakeOpening device={device} />
@@ -689,11 +689,8 @@ function LiveTake({
           src={frameImageSrc(frame)}
         />
       )}
-      <span
-        aria-hidden="true"
-        className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
-      />
-    </span>
+      <Dot className="absolute end-1.5 bottom-1.5" pulse size="sm" tone="info" />
+    </PictureFrame>
   );
 }
 
@@ -737,22 +734,29 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
   const device = browserCheckDevice(take);
   const reason = browserCheckFailure(take);
   return (
-    <span
+    <PictureFrame
       aria-label={`${browserCheckCaption(take)} failed${reason === null ? "" : `: ${reason}`}`}
-      className={cn(
-        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-control border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
-        TAKE_PICTURE_CLASS[device],
-      )}
+      className={
+        device === "desktop"
+          ? "h-20 shrink-0 w-32"
+          : device === "tablet"
+            ? "h-20 shrink-0 w-15"
+            : "h-20 shrink-0 w-9"
+      }
       data-report-take={device}
       data-report-take-failed
       role="img"
+      size="control"
+      tone="failed"
     >
-      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
-      {device === "desktop" && reason !== null ? (
-        <span className="line-clamp-3 break-words text-status-failed-text text-caption leading-4">
-          {reason}
-        </span>
-      ) : null}
-    </span>
+      <span className="flex size-full flex-col items-center justify-center gap-1 px-2 text-center">
+        <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
+        {device === "desktop" && reason !== null ? (
+          <span className="line-clamp-3 break-words text-status-failed-text text-caption leading-4">
+            {reason}
+          </span>
+        ) : null}
+      </span>
+    </PictureFrame>
   );
 }

@@ -14,19 +14,27 @@ import {
 
 import { cn } from "~/lib/utils";
 
+import { Row } from "./row";
+
 type RadioGroupProps = RadioGroupPrimitive.Props & {
   /**
-   * `stack` lists its radios down; `columns` sets cards two to a row, 12 px apart (one to a row,
-   * 8 px apart, on a phone); `row` sets like tiles side by side, as wide as each other, 8 px apart.
+   * `stack` lists its radios down; `list` lists `RadioRow`s down, touching, each lighting its own
+   * ground; `columns` sets cards two to a row, 12 px apart (one to a row, 8 px apart, on a phone);
+   * `row` sets like tiles side by side, as wide as each other, 8 px apart.
    */
-  readonly layout?: "stack" | "columns" | "row";
+  readonly layout?: "stack" | "list" | "columns" | "row";
 };
 
+/**
+ * One choice of one value among a few: radios (`Radio`), rows (`RadioRow`), cards (`RadioCard`).
+ * The arrow keys walk the choices and pick as they go; Tab leaves from the chosen one.
+ */
 function RadioGroup({ className, layout = "stack", ...props }: RadioGroupProps) {
   return (
     <RadioGroupPrimitive
       className={cn(
         layout === "stack" && "flex flex-col gap-3",
+        layout === "list" && "flex flex-col",
         layout === "columns" && "grid grid-cols-2 gap-3 max-sm:grid-cols-1 max-sm:gap-2",
         layout === "row" && "grid auto-cols-fr grid-flow-col gap-2",
         className,
@@ -94,6 +102,70 @@ function RadioCard({ className, title, children, align = "start", ...props }: Ra
         </span>
       )}
     </RadioPrimitive.Root>
+  );
+}
+
+type RadioRowProps = Omit<
+  RadioPrimitive.Root.Props,
+  "children" | "title" | "render" | "className"
+> &
+  Pick<
+    ComponentProps<typeof Row>,
+    "title" | "line" | "lineWraps" | "badges" | "meta" | "className"
+  > & {
+    /** `sm` for a list on a page or in a dialog; `xs` for a popup's dense list. */
+    readonly size?: "xs" | "sm";
+  };
+
+/**
+ * A choice drawn as a row of a list (a repository to connect, an effort to think with): the radio
+ * leads the row, its name and the line under it follow, and the whole row presses. Picking says
+ * itself in the radio alone; the row's ground lights only under the pointer. A choice that cannot be
+ * made here sits back, its reason its line. In a `RadioGroup` with `layout="list"`.
+ */
+function RadioRow({
+  title,
+  line,
+  lineWraps = false,
+  badges,
+  meta,
+  size = "sm",
+  className,
+  ...props
+}: RadioRowProps) {
+  return (
+    <RadioPrimitive.Root
+      {...props}
+      render={(rootProps, state) => (
+        <Row
+          {...rootProps}
+          aria-disabled={state.disabled || undefined}
+          badges={badges}
+          className={cn("data-disabled:not-data-checked:opacity-55", className)}
+          data-slot="radio-row"
+          lead={
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex size-4 items-center justify-center rounded-full border transition-colors duration-150 ease-out-strong",
+                state.checked ? "border-primary bg-primary" : "border-input bg-field",
+              )}
+              data-slot="radio-row-mark"
+            >
+              {state.checked ? (
+                <span className="size-1.5 rounded-full bg-primary-foreground" />
+              ) : null}
+            </span>
+          }
+          line={line}
+          lineWraps={lineWraps}
+          meta={meta}
+          pressable
+          size={size}
+          title={title}
+        />
+      )}
+    />
   );
 }
 
@@ -221,4 +293,4 @@ function RadioSwatch({ value, size = "default", className, children, ...props }:
   );
 }
 
-export { RadioGroup, Radio, RadioCard, RadioSwatchGroup, RadioSwatch };
+export { RadioGroup, Radio, RadioCard, RadioRow, RadioSwatchGroup, RadioSwatch };

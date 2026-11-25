@@ -3438,7 +3438,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         data-chat-provider-unavailable="true"
                         className="shrink-0"
                       >
-                        <CircleAlertIcon className="size-4" />
+                        <CircleAlertIcon />
                         {providerSetupInstanceId
                           ? "Open provider settings"
                           : "No provider available"}

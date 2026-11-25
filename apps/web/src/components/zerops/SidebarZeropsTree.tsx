@@ -156,6 +156,7 @@ import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
 import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
@@ -209,7 +210,6 @@ import { MateDeletingLine } from "./SidebarMateDeletingLine";
 import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
 import { FACE_CUT, FACE_CUT_KID, FACE_PALE } from "./menuFace";
-import { PROJECT_MARK } from "./SidebarPlatformProjectRow";
 import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
 import { useRowDrag } from "./SidebarRowDrag";
 import { useMateCrew } from "~/zerops/crew/useCrew";
@@ -3341,9 +3341,9 @@ function ProjectBareRow({
       >
         <Row
           lead={
-            <span aria-hidden="true" className={PROJECT_MARK}>
-              <BoxIcon className="size-4.5" />
-            </span>
+            <LogoTile ground="menu">
+              <BoxIcon />
+            </LogoTile>
           }
           line="No Mate yet"
           meta={<span className="min-w-16" />}

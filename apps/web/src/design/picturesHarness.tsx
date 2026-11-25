@@ -12,6 +12,7 @@
  * Fixtures only. Nothing here ships — `design-pictures.html` is not
  * `index.html`, and no route imports this module.
  */
+import { MessageBubble } from "~/components/ui/message-bubble";
 import { interleavePictures, type PictureContentPart } from "@t3tools/shared/composerPictures";
 import {
   StrictMode,
@@ -450,14 +451,14 @@ function LiveSent(props: { readonly text: string; readonly attachments: ChatAtta
   if (!placed) return null;
   return (
     <div className="flex justify-end" data-live-sent>
-      <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+      <MessageBubble className="relative max-w-4/5">
         <MessagePictureBody
           segments={placed.segments}
           dimensions={new Map()}
           onOpen={() => undefined}
           renderText={(words) => <p className="whitespace-pre-wrap">{words.text}</p>}
         />
-      </div>
+      </MessageBubble>
     </div>
   );
 }
@@ -617,7 +618,7 @@ function Harness() {
           note="Each picture where it was put, its notes under it; the original's line when it went along."
         >
           <div className="flex justify-end">
-            <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+            <MessageBubble className="relative max-w-4/5">
               {placed ? (
                 <MessagePictureBody
                   segments={placed.segments}
@@ -626,7 +627,7 @@ function Harness() {
                   renderText={(words) => <p className="whitespace-pre-wrap">{words.text}</p>}
                 />
               ) : null}
-            </div>
+            </MessageBubble>
           </div>
         </State>
         <State

@@ -1,3 +1,4 @@
+import { CodeBlock } from "~/components/ui/code-block";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { FileDiff } from "@pierre/diffs/react";
 import { getRenderablePatch, resolveFileDiffPath } from "../../lib/diffRendering";
@@ -7,7 +8,6 @@ import {
 } from "../../reviewCommentContext";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
-import { Card } from "~/components/ui/card";
 
 export default function ReviewCommentDiffRenderer({
   comment,
@@ -34,11 +34,7 @@ export default function ReviewCommentDiffRenderer({
     );
   }
   if (renderablePatch?.kind === "raw") {
-    return (
-      <Card variant="inset">
-        <pre className="overflow-x-auto p-2 text-caption">{renderablePatch.text}</pre>
-      </Card>
-    );
+    return <CodeBlock wrap={false}>{renderablePatch.text}</CodeBlock>;
   }
   return null;
 }

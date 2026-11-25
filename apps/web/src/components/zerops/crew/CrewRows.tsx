@@ -79,6 +79,7 @@ import {
   type CrewRowThread,
 } from "./CrewRows.logic";
 import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 interface CrewRowsProps {
   readonly environmentId: EnvironmentId;
@@ -271,11 +272,10 @@ function RowLine({
     >
       {line.text}
       {line.diff === undefined ? null : (
-        <span className="tabular-nums">
+        <>
           {" · "}
-          <span className="text-diff-addition-foreground">{`+${line.diff.insertions}`}</span>{" "}
-          <span className="text-diff-deletion-foreground">{`−${line.diff.deletions}`}</span>
-        </span>
+          <DiffStat additions={line.diff.insertions} deletions={line.diff.deletions} />
+        </>
       )}
     </p>
   );
@@ -613,7 +613,7 @@ function AnswerBox(
           type="submit"
           variant={ready ? "primary" : "secondary"}
         >
-          <ArrowUpIcon aria-hidden="true" className="size-3.5" strokeWidth={2.4} />
+          <ArrowUpIcon aria-hidden="true" strokeWidth={2.4} />
         </Button>
       </CrewTip>
     </form>

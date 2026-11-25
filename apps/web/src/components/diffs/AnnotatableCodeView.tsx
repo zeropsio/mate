@@ -21,6 +21,7 @@ import {
 import { nextFileCommentId } from "../files/fileCommentAnnotations";
 import { DiffCommentAnnotation } from "./DiffCommentAnnotation";
 import { StyledDiffCodeView, type StyledDiffCodeViewOptions } from "./StyledDiffCodeView";
+import { List } from "~/components/ui/list";
 
 interface DiffCommentAnnotationEntry {
   id: string;
@@ -268,24 +269,20 @@ export function AnnotatableCodeView({
       {...(renderCodeViewHeader ? { renderCodeViewHeader } : {})}
       renderAnnotation={(annotation) => {
         const hasDraft = annotation.metadata.entries.some((entry) => entry.kind === "draft");
-        return (
-          <div
-            className={hasDraft ? "py-1" : "divide-y divide-border/30 border-y border-border/30"}
-          >
-            {annotation.metadata.entries.map((entry) => (
-              <DiffCommentAnnotation
-                key={entry.id}
-                kind={entry.kind}
-                rangeLabel={entry.rangeLabel}
-                text={entry.kind === "draft" ? draftText : entry.text}
-                onTextChange={setDraftText}
-                onCancel={() => removeEntry(entry.id)}
-                onComment={(text) => submitEntry(entry.id, text)}
-                onDelete={() => removeEntry(entry.id)}
-              />
-            ))}
-          </div>
-        );
+        const entries = annotation.metadata.entries.map((entry) => (
+          <DiffCommentAnnotation
+            key={entry.id}
+            kind={entry.kind}
+            rangeLabel={entry.rangeLabel}
+            text={entry.kind === "draft" ? draftText : entry.text}
+            onTextChange={setDraftText}
+            onCancel={() => removeEntry(entry.id)}
+            onComment={(text) => submitEntry(entry.id, text)}
+            onDelete={() => removeEntry(entry.id)}
+          />
+        ));
+        // A draft stands alone in its room; comments are parted by hairlines, above and below too.
+        return hasDraft ? <div className="py-1">{entries}</div> : <List edges>{entries}</List>;
       }}
     />
   );

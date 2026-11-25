@@ -331,7 +331,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         )}
         <MenuSub>
           <MenuSubTrigger density="touch">
-            <SquareArrowOutUpRightIcon className="size-4" />
+            <SquareArrowOutUpRightIcon />
             <MenuItemLabel>Open in…</MenuItemLabel>
           </MenuSubTrigger>
           <MenuSubPopup>{editorItems}</MenuSubPopup>

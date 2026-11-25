@@ -58,6 +58,7 @@ import { MateNameText } from "./MateNameText";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { PressLine } from "./PressLine";
 import { useMateShuffle } from "./useMateShuffle";
+import { Separator } from "~/components/ui/separator";
 
 /** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
 interface NewMateChoice {
@@ -375,50 +376,48 @@ export function ZeropsNewMateForm({
       </div>
       {closed === undefined ? (
         // The line saying what Add does over the press, a rule above while the options show.
-        <div
-          className={cn(
-            "flex flex-col gap-2.5 px-6 py-4",
-            options ? "border-t border-border" : undefined,
-          )}
-        >
-          <Button
-            aria-busy={waiting || undefined}
-            className="w-full"
-            disabled={waiting || shuffle.rolling}
-            size="lg"
-            type="submit"
-          >
-            {words.button}
-          </Button>
-          {/* The one quiet line under the button it is about: what Add waits on, or why it
+        <>
+          {options ? <Separator /> : null}
+          <div className="flex flex-col gap-2.5 px-6 py-4">
+            <Button
+              aria-busy={waiting || undefined}
+              className="w-full"
+              disabled={waiting || shuffle.rolling}
+              size="lg"
+              type="submit"
+            >
+              {words.button}
+            </Button>
+            {/* The one quiet line under the button it is about: what Add waits on, or why it
               refused. Saying nothing, it gives the foot's gap back. */}
-          <PressLine
-            className="text-center empty:-mt-2.5"
-            id={`${id}-line`}
-            refusal={error}
-            waiting={error === undefined ? line : undefined}
-          />
-          <Button
-            aria-expanded={options}
-            className="w-full"
-            onClick={() => {
-              setStyling(false);
-              setOptions(!options);
-            }}
-            size="lg"
-            type="button"
-            variant="ghost-muted"
-          >
-            {options ? "Close" : "Mate access & persona setup"}
-            <ChevronDownIcon
-              aria-hidden
-              className={cn(
-                "transition-[rotate] duration-200 ease-out-strong",
-                options ? "rotate-180" : undefined,
-              )}
+            <PressLine
+              className="text-center empty:-mt-2.5"
+              id={`${id}-line`}
+              refusal={error}
+              waiting={error === undefined ? line : undefined}
             />
-          </Button>
-        </div>
+            <Button
+              aria-expanded={options}
+              className="w-full"
+              onClick={() => {
+                setStyling(false);
+                setOptions(!options);
+              }}
+              size="lg"
+              type="button"
+              variant="ghost-muted"
+            >
+              {options ? "Close" : "Mate access & persona setup"}
+              <ChevronDownIcon
+                aria-hidden
+                className={cn(
+                  "transition-[rotate] duration-200 ease-out-strong",
+                  options ? "rotate-180" : undefined,
+                )}
+              />
+            </Button>
+          </div>
+        </>
       ) : (
         <DialogFooter>
           <Button onClick={onCancel} type="button" variant="ghost">

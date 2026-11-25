@@ -3,10 +3,8 @@
  * pill, the stages of an address's way to answering, a tile for a value that stands alone, a copy
  * button, and what went wrong under the control it belongs to.
  */
-import { CheckIcon, CopyIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import { Children, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
-
-import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { CheckIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { Children, useEffect, useRef, type ReactNode, type Ref } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Badge } from "../../ui/badge";
@@ -18,6 +16,7 @@ import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
 import { RealName as KitRealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** What every part of the sheet reads: whose place, what is under way, and how to write. */
 export interface SheetContext {
@@ -95,7 +94,7 @@ export function SheetSection({
         </div>
       ) : (
         <Card variant="flat">
-          <div className="divide-y divide-border/60">{groups}</div>
+          <List>{groups}</List>
         </Card>
       )}
       {after}
@@ -321,33 +320,6 @@ export function Face({ word, tone }: { readonly word: string; readonly tone: Fac
 
 const FACE_TONE = { ok: "success", warn: "warning", busy: "info", fail: "danger" } as const;
 
-/** How long a copied value says so. */
-const COPIED_MS = 1_200;
-
-export function CopyButton({ value }: { readonly value: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <Button
-      aria-label={copied ? `Copied ${value}` : `Copy ${value}`}
-      onClick={() => {
-        void writeTextToClipboard(value, value).then(
-          () => setCopied(true),
-          () => setCopied(false),
-        );
-      }}
-      size="icon-sm"
-      variant="ghost"
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </Button>
-  );
-}
-
 /** Why the last press of a control failed, under it; nothing when none did. */
 export function Trouble({ text }: { readonly text: string | undefined }) {
   if (text === undefined) return null;
@@ -399,8 +371,7 @@ export function Confirm({
   const revealed = useRevealed<HTMLDivElement>();
   return (
     <div ref={revealed}>
-      <Alert controlAlignment="first-line" variant={tone}>
-        {icon ?? <TriangleAlertIcon />}
+      <Alert controlAlignment="first-line" icon={icon ?? <TriangleAlertIcon />} variant={tone}>
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           {children}

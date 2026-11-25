@@ -31,6 +31,7 @@ import {
   type VaultTextSection,
 } from "./vaultText.logic";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 interface VaultAddCardProps {
   /**
@@ -387,7 +388,8 @@ export function VaultReview(props: VaultReviewProps) {
           </div>
         </div>
       ))}
-      <div className="flex items-center gap-2 border-t border-border/60 pt-3 pb-1">
+      <Separator />
+      <div className="flex items-center gap-2 pt-3 pb-1">
         <Button
           disabled={applied.length === 0 || props.applying}
           onClick={() => props.onApply(applied.map(({ write }) => write))}

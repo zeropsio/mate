@@ -13,6 +13,7 @@ import { useMemo } from "react";
 import { cn } from "~/lib/utils";
 import { pageBlocks, textBlocks, type PageBlock } from "./pageStructure.logic";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 type Page = NonNullable<ZeropsBrowserRead["page"]>;
 
@@ -121,20 +122,19 @@ function Answers({ answers }: { readonly answers: ZeropsBrowserRead["answers"] }
     return { key: `${answer.asked}:${occurrence}`, answer };
   });
   return (
-    <span className="flex size-full flex-col gap-2 overflow-hidden p-4" data-check-answers>
-      {keyed.map(({ key, answer }) => (
-        <span
-          key={key}
-          className="flex min-w-0 items-baseline justify-between gap-3 border-border/60 border-b pb-2"
-        >
-          <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
-            {answer.asked}
-          </code>
-          <Text className="shrink-0" variant="heading">
-            {answer.answer}
-          </Text>
-        </span>
-      ))}
+    <span className="flex size-full flex-col overflow-hidden px-4 py-2" data-check-answers>
+      <List render={<span />}>
+        {keyed.map(({ key, answer }) => (
+          <span key={key} className="flex min-w-0 items-baseline justify-between gap-3 py-2">
+            <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
+              {answer.asked}
+            </code>
+            <Text className="shrink-0" variant="heading">
+              {answer.answer}
+            </Text>
+          </span>
+        ))}
+      </List>
     </span>
   );
 }

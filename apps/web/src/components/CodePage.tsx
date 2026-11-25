@@ -28,7 +28,6 @@ import type { DraftId } from "../composerDraftStore";
 import type { DiffRenderMode } from "../diffPanelStore";
 import { getDiffCollapseIconClassName, resolveFileDiffPath } from "../lib/diffRendering";
 import { cn } from "~/lib/utils";
-import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { diffChoiceCount, type DiffChoice } from "./DiffPanel.logic";
 import { AnnotatableCodeView } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -48,6 +47,7 @@ import { MatePanelColumn } from "./zerops/MatePanelPlaces";
 import { SectionLabel } from "./zerops/system";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 /** One file of "What changed", folded unless opened. */
 export interface CodeFile {
@@ -153,12 +153,9 @@ export function CodeChangesToolbar({
       {shown === null ? null : (
         <div className="ms-auto flex shrink-0 items-center gap-1">
           {stat === null ? null : (
-            <DiffStatLabel
-              additions={stat.additions}
-              deletions={stat.deletions}
-              className="mr-1 text-2xs"
-              layout="inline"
-            />
+            <Text className="me-1" variant="meta">
+              <DiffStat additions={stat.additions} compact deletions={stat.deletions} />
+            </Text>
           )}
           {refresh === null ? null : (
             <Tooltip>

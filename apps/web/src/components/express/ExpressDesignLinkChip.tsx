@@ -14,6 +14,7 @@ import { expressDesignId } from "./expressOpen";
 import { ExpressHistoryContext } from "./useExpressHistory";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 /** A card's picture: 36 px at twice the pixels. */
 const CARD_PICTURE = { width: 72, height: 72 } as const;
@@ -69,11 +70,9 @@ function ExpressDesignCard({
             <ExpressMark className="size-8 rounded-control" />
           ) : (
             <>
-              <img
-                alt=""
-                className="size-8 rounded-control border border-border object-cover"
-                src={preview}
-              />
+              <PictureFrame className="size-8" size="control">
+                <img alt="" className="size-full object-cover" src={preview} />
+              </PictureFrame>
               <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-mark ring-2 ring-card" />
             </>
           )

@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import {
   ChevronDownIcon,
   CircleXIcon,
@@ -76,6 +77,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
@@ -133,7 +135,7 @@ function ExpandableHeaderSearch({
                 onClick={() => onOpenChange(true)}
                 aria-label="Search keybindings"
               >
-                <SearchIcon className="size-3" />
+                <SearchIcon />
               </Button>
             }
           />
@@ -377,7 +379,7 @@ function WhenExpressionNodeEditor({
             aria-label="Remove condition"
             onClick={onRemove}
           >
-            <MinusIcon className="size-3.5" />
+            <MinusIcon />
           </Button>
         ) : null}
       </div>
@@ -412,7 +414,7 @@ function WhenExpressionNodeEditor({
               aria-label="Remove negated group"
               onClick={onRemove}
             >
-              <MinusIcon className="size-3.5" />
+              <MinusIcon />
             </Button>
           ) : null}
         </div>
@@ -510,11 +512,11 @@ function WhenExpressionNodeEditor({
           </SelectContent>
         </Select>
         <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
-          <PlusIcon className="size-3.5" />
+          <PlusIcon />
           Condition
         </Button>
         <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
-          <PlusIcon className="size-3.5" />
+          <PlusIcon />
           Group
         </Button>
         {onRemove ? (
@@ -526,7 +528,7 @@ function WhenExpressionNodeEditor({
             aria-label="Remove group"
             onClick={onRemove}
           >
-            <MinusIcon className="size-3.5" />
+            <MinusIcon />
           </Button>
         ) : null}
       </div>
@@ -620,11 +622,11 @@ function WhenExpressionBuilder({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Condition
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Group
           </Button>
         </div>
@@ -648,10 +650,10 @@ function WhenExpressionBuilder({
           ) : null}
         </InputGroup>
         {parseError ? (
-          <div className="flex items-center gap-1.5 text-2xs text-destructive">
+          <Text className="flex items-center gap-1.5" role="alert" variant="error">
             <CircleXIcon className="size-3.5" />
             {parseError}
-          </div>
+          </Text>
         ) : null}
       </div>
 
@@ -668,11 +670,11 @@ function WhenExpressionBuilder({
             <div className="p-3">
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" onClick={addRootCondition}>
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon />
                   Condition
                 </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon />
                   Group
                 </Button>
               </div>
@@ -775,7 +777,7 @@ function KeybindingTableRow({
   };
 
   return (
-    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-accent/40">
+    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-item-hover">
       <div className="min-w-0 pr-4">
         <div className="flex min-w-0 items-center gap-1.5">
           <Tooltip>
@@ -948,7 +950,7 @@ function NewKeybindingTableRow({
   };
 
   return (
-    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-accent/40">
+    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-item-hover">
       <div className="min-w-0 pr-4">
         <Select
           value={commandDraft}
@@ -1213,7 +1215,7 @@ export function KeybindingsSettingsPanel() {
                     onClick={() => setIsAddingBinding(true)}
                     aria-label="Add keybinding"
                   >
-                    <PlusIcon className="size-3" />
+                    <PlusIcon />
                   </Button>
                 }
               />
@@ -1230,7 +1232,7 @@ export function KeybindingsSettingsPanel() {
                     onClick={openKeybindingsFile}
                     aria-label="Open keybindings.json"
                   >
-                    <FileJsonIcon className="size-3" />
+                    <FileJsonIcon />
                   </Button>
                 }
               />
@@ -1240,13 +1242,10 @@ export function KeybindingsSettingsPanel() {
         }
       >
         {!isElectron ? (
-          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-caption leading-relaxed text-muted-foreground sm:px-4">
-            <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
-            <p>
-              Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
-              desktop app for better keybinding support.
-            </p>
-          </div>
+          <Alert icon={<InfoIcon />} surface="band" variant="warning">
+            Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
+            desktop app for better keybinding support.
+          </Alert>
         ) : null}
 
         <ScrollArea
@@ -1256,13 +1255,13 @@ export function KeybindingsSettingsPanel() {
           hideScrollbars
           className="w-full max-w-full"
         >
-          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <div>Command</div>
-            <div>Keybinding</div>
-            <div>When</div>
-            <div>Status</div>
-          </div>
-          <div className="min-w-[680px] divide-y divide-border/60">
+          <List className="min-w-[680px]">
+            <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div>Command</div>
+              <div>Keybinding</div>
+              <div>When</div>
+              <div>Status</div>
+            </div>
             {isAddingBinding ? (
               <NewKeybindingTableRow
                 commandOptions={commandOptions}
@@ -1290,7 +1289,7 @@ export function KeybindingsSettingsPanel() {
                 No keybindings match your search.
               </Text>
             ) : null}
-          </div>
+          </List>
         </ScrollArea>
       </SettingsSection>
     </SettingsPageContainer>

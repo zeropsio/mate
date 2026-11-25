@@ -13,7 +13,6 @@ import { getProviderOptionCurrentLabel } from "@t3tools/shared/model";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import {
   BotIcon,
-  CheckIcon,
   ChevronDownIcon,
   LockIcon,
   LockOpenIcon,
@@ -22,11 +21,10 @@ import {
   SparklesIcon,
   type LucideIcon,
 } from "lucide-react";
-import { memo, type KeyboardEvent, type ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
-import { Row } from "../ui/row";
+import { RadioGroup, RadioRow } from "../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useTraitsControls } from "./TraitsPicker";
@@ -63,33 +61,25 @@ const COMPOSER_ACCESS: Record<
 
 const ACCESS_MODES = Object.keys(COMPOSER_ACCESS) as RuntimeMode[];
 
-/**
- * Up and down move between a group's choices and pick the one they land on,
- * as a radio group does; Tab leaves the group from its chosen choice.
- */
-function moveWithinGroup(event: KeyboardEvent<HTMLButtonElement>) {
-  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-  const group = event.currentTarget.closest('[role="radiogroup"]');
-  if (group === null) return;
-  const choices = Array.from(
-    group.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'),
-  );
-  const index = choices.indexOf(event.currentTarget);
-  if (index === -1 || choices.length === 0) return;
-  const step = event.key === "ArrowDown" ? 1 : -1;
-  const next = choices[(index + step + choices.length) % choices.length];
-  event.preventDefault();
-  next?.focus();
-  next?.click();
-}
-
+/** A group of the menu's choices under its label; the arrow keys walk them and pick as they go. */
 function ChoiceGroup(props: {
   readonly label: string;
   readonly note?: ReactNode;
+  readonly value: string;
+  readonly onValueChange: (value: string) => void;
+  readonly disabled?: boolean;
   readonly children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col" role="radiogroup" aria-label={props.label}>
+    <RadioGroup
+      aria-label={props.label}
+      disabled={props.disabled}
+      layout="list"
+      onValueChange={(value) => {
+        if (typeof value === "string") props.onValueChange(value);
+      }}
+      value={props.value}
+    >
       <Text className="px-2 pt-2 pb-1" render={<p />} variant="label">
         {props.label}
       </Text>
@@ -99,52 +89,24 @@ function ChoiceGroup(props: {
         </Text>
       )}
       {props.children}
-    </div>
+    </RadioGroup>
   );
 }
 
 function Choice(props: {
-  readonly checked: boolean;
-  /** Takes the Tab stop when nothing in its group is chosen yet. */
-  readonly first: boolean;
-  readonly disabled?: boolean;
+  readonly value: string;
   readonly isDefault?: boolean;
   readonly description?: string | undefined;
-  readonly onSelect: () => void;
   readonly children: ReactNode;
 }) {
   return (
-    <Row
-      size="xs"
-      pressable
-      strong={props.checked}
-      aria-disabled={props.disabled || undefined}
-      render={
-        <button
-          aria-checked={props.checked}
-          disabled={props.disabled}
-          onClick={props.onSelect}
-          onKeyDown={moveWithinGroup}
-          role="radio"
-          tabIndex={props.checked || props.first ? 0 : -1}
-          type="button"
-        />
-      }
-      title={props.children}
+    <RadioRow
       line={props.description}
       lineWraps
-      meta={
-        <>
-          {props.isDefault ? "Default" : null}
-          <CheckIcon
-            aria-hidden="true"
-            className={cn(
-              "ms-2 size-3.5 text-foreground",
-              props.checked ? "opacity-100" : "opacity-0",
-            )}
-          />
-        </>
-      }
+      meta={props.isDefault ? "Default" : undefined}
+      size="xs"
+      title={props.children}
+      value={props.value}
     />
   );
 }
@@ -184,23 +146,23 @@ function TraitsChoices({ traits }: { readonly traits: ComposerTraitsInput }) {
         const locked = isLocked(descriptor);
         return (
           <ChoiceGroup
+            disabled={locked}
             key={descriptor.id}
             label={descriptor.label}
+            onValueChange={(id) => select(descriptor, id)}
+            value={chosen}
             {...(locked
               ? {
                   note: 'Your prompt says "ultrathink". Remove it to choose another.',
                 }
               : {})}
           >
-            {descriptor.options.map((option, index) => (
+            {descriptor.options.map((option) => (
               <Choice
-                checked={option.id === chosen}
                 description={option.description}
-                disabled={locked}
-                first={chosen === "" && index === 0}
                 isDefault={option.isDefault === true}
                 key={option.id}
-                onSelect={() => select(descriptor, option.id)}
+                value={option.id}
               >
                 {option.label}
               </Choice>
@@ -209,17 +171,14 @@ function TraitsChoices({ traits }: { readonly traits: ComposerTraitsInput }) {
         );
       })}
       {booleanDescriptors.map((descriptor) => (
-        <ChoiceGroup key={descriptor.id} label={descriptor.label}>
-          {([true, false] as const).map((on) => (
-            <Choice
-              checked={(descriptor.currentValue === true) === on}
-              first={false}
-              key={String(on)}
-              onSelect={() => toggle(descriptor, on)}
-            >
-              {on ? "On" : "Off"}
-            </Choice>
-          ))}
+        <ChoiceGroup
+          key={descriptor.id}
+          label={descriptor.label}
+          onValueChange={(value) => toggle(descriptor, value === "on")}
+          value={descriptor.currentValue === true ? "on" : "off"}
+        >
+          <Choice value="on">On</Choice>
+          <Choice value="off">Off</Choice>
         </ChoiceGroup>
       ))}
     </>
@@ -242,14 +201,16 @@ export const ComposerModelChoices = memo(function ComposerModelChoices(props: {
       data-composer-model-choices="true"
     >
       {props.traits === null ? null : <TraitsChoices traits={props.traits} />}
-      <ChoiceGroup label="Access">
+      <ChoiceGroup
+        label="Access"
+        onValueChange={(value) => {
+          const mode = ACCESS_MODES.find((each) => each === value);
+          if (mode !== undefined) props.onRuntimeModeChange(mode);
+        }}
+        value={props.runtimeMode}
+      >
         {ACCESS_MODES.map((mode) => (
-          <Choice
-            checked={mode === props.runtimeMode}
-            first={false}
-            key={mode}
-            onSelect={() => props.onRuntimeModeChange(mode)}
-          >
+          <Choice key={mode} value={mode}>
             {COMPOSER_ACCESS[mode].label}
           </Choice>
         ))}

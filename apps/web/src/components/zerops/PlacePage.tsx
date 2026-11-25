@@ -1,3 +1,4 @@
+import { Failure } from "~/components/ui/failure";
 import { keyRenewPress } from "~/zerops/renewDeployKey.logic";
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useEnvironmentDeployHeld, useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
@@ -1443,7 +1444,7 @@ export function ZeropsStopPane({
             )}
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
-            <p className="mt-1.5 px-3 text-body text-status-failed-text">{runAgain.refused}</p>
+            <Failure cause={runAgain.refused} className="mx-3 mt-1.5" role="alert" size="line" />
           )}
           {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
             <Text className="mt-1.5 px-3" render={<p />} variant="description">
@@ -1451,7 +1452,7 @@ export function ZeropsStopPane({
             </Text>
           )}
           {down || renewing?.kind !== "failed" ? null : (
-            <p className="mt-1.5 px-3 text-body text-status-failed-text">{renewing.words}</p>
+            <Failure cause={renewing.words} className="mx-3 mt-1.5" role="alert" size="line" />
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.
@@ -1666,7 +1667,7 @@ export function ZeropsStopPane({
                     routes={routes}
                   />
                   {routeTrouble === null || routeTrouble === undefined ? null : (
-                    <p className="text-body text-status-failed-text">{routeTrouble}</p>
+                    <Failure cause={routeTrouble} role="alert" size="line" />
                   )}
                 </PlaceSection>
               )}
@@ -1778,7 +1779,7 @@ export function ZeropsStopPane({
               {projectId === undefined || tierStops.length === 0 ? null : (
                 <StopTierStops
                   projectId={projectId}
-                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2"
                   rows={tierStops}
                 />
               )}
@@ -1812,7 +1813,7 @@ export function ZeropsStopPane({
       </div>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (
-        <p className="mt-2 text-body text-status-failed-text">{trouble}</p>
+        <Failure cause={trouble} className="mt-2" role="alert" size="line" />
       )}
       {vault === undefined || projectId === undefined ? null : (
         <StopVaultDrawer

@@ -9,16 +9,14 @@
 import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
 import {
   ArrowUpRightIcon,
-  CheckIcon,
   ChevronDownIcon,
-  CopyIcon,
   LaptopIcon,
   LinkIcon,
   MoonIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { zeropsTokenManagementUrl } from "@t3tools/client-runtime/zerops/gui";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -29,56 +27,12 @@ import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
 import { Card } from "../ui/card";
+import { CopyLine } from "../ui/copy-line";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
 import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
-
-/** How long a copy button says so. */
-const COPIED_MS = 2_000;
-
-/**
- * One command for the Mac's Terminal, its copy button inside the field: mono words to select
- * whole, on the muted ground, or on the page's where it stands in an inset card.
- */
-export function MacCommand({
-  command,
-  inset = false,
-}: {
-  readonly command: string;
-  readonly inset?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <span
-      className={cn(
-        "flex min-h-9 min-w-0 items-center gap-1 rounded-control ps-3 pe-1",
-        inset ? "bg-background" : "bg-muted",
-      )}
-    >
-      <code className="min-w-0 flex-1 font-mono text-caption text-foreground wrap-anywhere select-all">
-        {command}
-      </code>
-      <Button
-        aria-label={copied ? "Copied" : "Copy the command"}
-        onClick={() => {
-          void navigator.clipboard.writeText(command).then(
-            () => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), COPIED_MS);
-            },
-            () => undefined,
-          );
-        }}
-        size="icon-sm"
-        variant="ghost"
-      >
-        {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-      </Button>
-    </span>
-  );
-}
 
 /** One numbered step of what the person does on the Mac: its words, then its command or more. */
 function macStep({
@@ -98,17 +52,12 @@ function macStep({
       <span className="pt-0.5 text-body text-foreground">{words}</span>
       {command === undefined ? null : (
         <span className="col-start-2">
-          <MacCommand command={command} />
+          <CopyLine label="the command" value={command} wrap />
         </span>
       )}
       {more === undefined ? null : <span className="col-start-2">{more}</span>}
     </li>
   );
-}
-
-/** A command that readies the Mac itself, not one of the Mate's own, in the inset card. */
-function SetupCommand({ command }: { readonly command: string }) {
-  return <MacCommand command={command} inset />;
 }
 
 /** A page to install from, opened beside the app. */
@@ -156,7 +105,7 @@ function macReady() {
             <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
             <span>then</span>
           </span>
-          <SetupCommand command="brew install wireguard-tools" />
+          <CopyLine label="the command" value="brew install wireguard-tools" wrap />
         </li>
         <li className="flex flex-col gap-1.5">
           <span className={READY_NAME_CLASS}>Node.js 22.12 or newer</span>
@@ -175,7 +124,7 @@ function macReady() {
           <span className={READY_HOW_CLASS}>
             <span>For the smooth live view and building apps.</span>
           </span>
-          <SetupCommand command="xcode-select --install" />
+          <CopyLine label="the command" value="xcode-select --install" wrap />
         </li>
       </ul>
     </Card>
@@ -260,7 +209,7 @@ function macSteps({
           </CollapsibleTrigger>
           <CollapsiblePanel>
             <div className="pt-2.5">
-              <MacCommand command={pair} />
+              <CopyLine label="the command" value={pair} wrap />
             </div>
           </CollapsiblePanel>
         </Collapsible>

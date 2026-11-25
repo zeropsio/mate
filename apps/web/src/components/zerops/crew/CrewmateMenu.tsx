@@ -62,13 +62,16 @@ export function CrewmateMenuPopup({
         {model.heading}
       </Text>
       {model.notice === null ? null : (
-        <p
-          className="flex items-start gap-2 border-t border-border/60 px-2.75 pt-2 pb-1.5 text-line text-foreground/85"
-          data-crewmate-menu-notice
-        >
-          <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
-          {model.notice}
-        </p>
+        <>
+          <MenuSeparator />
+          <p
+            className="flex items-start gap-2 px-2.75 pt-1 pb-1.5 text-line text-foreground/85"
+            data-crewmate-menu-notice
+          >
+            <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            {model.notice}
+          </p>
+        </>
       )}
       {model.items.map((item) => (
         <Fragment key={item.id}>

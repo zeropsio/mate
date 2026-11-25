@@ -84,6 +84,7 @@ import {
   taskSourceProblem,
 } from "./taskSourcesSettings.logic";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 const DISCORD_PORTAL = "https://discord.com/developers/applications";
 
@@ -201,9 +202,9 @@ function sourceLine<T>(
   const problem = taskSourceProblem(read.action);
   if (problem !== null)
     return (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {problem}
-      </span>
+      </Text>
     );
   if (setting.state === "known") {
     const said = connected(setting.held);
@@ -335,9 +336,9 @@ export function SlackSettingsView({
       id={searchableSetting("automation-slack").id}
       line={
         refused && taskSourceProblem(read.action) === null ? (
-          <span className="text-destructive-foreground" role="alert">
+          <Text role="alert" variant="error">
             {SLACK_SIGNATURE_REFUSED}
-          </span>
+          </Text>
         ) : (
           sourceLine(
             read,
@@ -853,7 +854,8 @@ function ManagePanel({
     <FlowSurface>
       <div className="grid gap-4">
         {children}
-        <div className="flex items-center gap-4 border-t border-border/70 pt-3 text-caption">
+        <Separator />
+        <div className="flex items-center gap-4 text-caption">
           <span className="min-w-0 flex-1 text-muted-foreground">{warning}</span>
           {disconnect}
         </div>
@@ -1136,9 +1138,9 @@ export function AutomatedModelView({
   const currentOffer = offerOf(current);
   const line =
     refusal !== null ? (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {refusal}
-      </span>
+      </Text>
     ) : save.sent ? (
       "Saving…"
     ) : currentOffer === undefined ? (

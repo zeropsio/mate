@@ -684,7 +684,7 @@ function MarkdownDetails({
   const content = childNodes.filter((_, index) => index !== summaryIndex);
 
   return (
-    <div className="my-2 border-y border-border/60">
+    <div className="my-2 border-y border-rule">
       <Collapsible
         defaultOpen={open}
         onOpenChange={setIsOpen}
@@ -857,9 +857,10 @@ function MarkdownCodeBlock({
                 render={
                   <Button
                     type="button"
-                    variant={wrapped ? "secondary" : "ghost"}
+                    variant="ghost"
                     size="icon-sm"
                     aria-pressed={wrapped}
+                    data-pressed={wrapped ? "" : undefined}
                     onClick={() => setWrapped((value) => !value)}
                     aria-label={wrapLabel}
                   />
@@ -1128,7 +1129,7 @@ interface MarkdownFileLinkProps {
 }
 
 const MARKDOWN_FILE_CHIP_CLASS_NAME = "chat-markdown-file-link";
-const MARKDOWN_FILE_LINK_CLASS_NAME = `${MARKDOWN_FILE_CHIP_CLASS_NAME} cursor-pointer transition-colors hover:bg-accent/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70`;
+const MARKDOWN_FILE_LINK_CLASS_NAME = `${MARKDOWN_FILE_CHIP_CLASS_NAME} cursor-pointer transition-colors hover:bg-item-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70`;
 
 function pathParentSegments(path: string): string[] {
   const normalized = path.replaceAll("\\", "/");

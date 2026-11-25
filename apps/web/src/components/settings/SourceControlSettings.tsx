@@ -24,6 +24,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
 import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
+import { Dot, type DotTone } from "../ui/dot";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
 import { EmptyState } from "../ui/empty";
@@ -162,11 +163,11 @@ function RedactedAccount(props: { readonly account: string | null }) {
   );
 }
 
-function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem): string {
-  if (isVcsNotReady(item)) return "bg-muted-foreground/35";
-  if (item.status !== "available") return "bg-warning";
-  if (isProviderDiscoveryItem(item) && item.auth.status !== "authenticated") return "bg-warning";
-  return "bg-success";
+function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem): DotTone {
+  if (isVcsNotReady(item)) return "neutral";
+  if (item.status !== "available") return "warning";
+  if (isProviderDiscoveryItem(item) && item.auth.status !== "authenticated") return "warning";
+  return "success";
 }
 
 function SourceControlItemMark({
@@ -174,25 +175,19 @@ function SourceControlItemMark({
 }: {
   readonly item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem;
 }) {
-  const dotClassName = itemStatusDot(item);
+  const tone = itemStatusDot(item);
   const Icon = isProviderDiscoveryItem(item)
     ? SOURCE_CONTROL_PROVIDER_ICONS[item.kind]
     : VCS_ICONS[item.kind];
 
   if (!Icon) {
-    return <span className={cn("size-2 shrink-0 rounded-full", dotClassName)} aria-hidden />;
+    return <Dot tone={tone} />;
   }
 
   return (
     <span className="relative inline-flex size-5 shrink-0 items-center justify-center">
       <Icon className="size-4.5 text-foreground/80" aria-hidden />
-      <span
-        className={cn(
-          "pointer-events-none absolute -left-0.5 -top-0.5 size-2 rounded-full ring-2 ring-background",
-          dotClassName,
-        )}
-        aria-hidden
-      />
+      <Dot corner="top-start" tone={tone} />
     </span>
   );
 }
@@ -276,7 +271,7 @@ function DiscoveryItemRow({
   return (
     <div
       className={cn(
-        "rounded-control transition-colors hover:bg-muted/20",
+        "rounded-control transition-colors hover:bg-item-hover",
         isVcsNotReady(item) && "opacity-80",
       )}
     >

@@ -3,7 +3,6 @@
 import {
   AlertTriangleIcon,
   ArrowUpCircleIcon,
-  CopyIcon,
   DownloadIcon,
   PlusIcon,
   Trash2Icon,
@@ -29,7 +28,7 @@ import {
   toCustomModelSetting,
 } from "@t3tools/shared/model";
 import { cn } from "../../lib/utils";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { CopyLine } from "../ui/copy-line";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import {
   AlertDialog,
@@ -47,10 +46,8 @@ import { Checkbox } from "../ui/checkbox";
 import { DraftInput } from "../ui/draft-input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
-import { ScrollArea } from "../ui/scroll-area";
 import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
 import { Tab, TabStrip } from "../ui/tab-strip";
@@ -275,7 +272,7 @@ function ProviderEnvironmentSection(props: {
             ])
           }
         >
-          <PlusIcon className="size-3" />
+          <PlusIcon />
           Add
         </Button>
       </div>
@@ -350,7 +347,7 @@ function ProviderEnvironmentSection(props: {
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
                       >
-                        <XIcon className="size-3.5" />
+                        <XIcon />
                       </Button>
                     </div>
                   </TableCell>
@@ -484,24 +481,6 @@ export function ProviderInstanceCard({
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
   const accentColor = normalizeProviderAccentColor(instance.accentColor);
-  const { copyToClipboard } = useCopyToClipboard<{ providerName: string }>({
-    onCopy: ({ providerName }) => {
-      toastManager.add({
-        type: "success",
-        title: `${providerName} update command copied`,
-        description: "Run it in a terminal when you are ready to update.",
-      });
-    },
-    onError: (error, { providerName }) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: `Could not copy ${providerName} update command`,
-          description: error.message,
-        }),
-      );
-    },
-  });
 
   // Narrow `instance.driver` for callers that key on the closed
   // `ProviderDriverKind` union (e.g. `normalizeModelSlug`'s alias table). Custom
@@ -640,7 +619,7 @@ export function ProviderInstanceCard({
                   onClick={() => setDeleting(true)}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
-                  <Trash2Icon className="size-3" />
+                  <Trash2Icon />
                 </Button>
               }
             />
@@ -682,7 +661,7 @@ export function ProviderInstanceCard({
 
   if (mode === "list") {
     return (
-      <div className="group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 last:border-b-0">
+      <div className="group relative flex min-h-16 items-center gap-1.5 py-1 ps-1 pe-3">
         <div
           className={cn(
             "min-w-0 flex-1 transition-opacity",
@@ -788,34 +767,7 @@ export function ProviderInstanceCard({
                       </div>
                     ) : null}
                     {updateCommand ? (
-                      <div className="flex min-w-0 items-center gap-1 rounded-control border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
-                        <ScrollArea radius="none" scrollFade className="h-8 min-w-0 flex-1">
-                          <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-2xs text-foreground">
-                            {updateCommand}
-                          </code>
-                        </ScrollArea>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                type="button"
-                                size="icon-sm"
-                                variant="ghost"
-                                className="shrink-0"
-                                onClick={() =>
-                                  copyToClipboard(updateCommand, {
-                                    providerName: displayName,
-                                  })
-                                }
-                                aria-label="Copy update command"
-                              >
-                                <CopyIcon className="size-3" />
-                              </Button>
-                            }
-                          />
-                          <TooltipPopup side="top">Copy command</TooltipPopup>
-                        </Tooltip>
-                      </div>
+                      <CopyLine label="the update command" value={updateCommand} wrap />
                     ) : null}
                   </div>
                 </PopoverPopup>

@@ -14,7 +14,7 @@
  * change's code, on the line it names: the review has no checkout to open it in.
  */
 import { useNearViewport } from "../../../hooks/useNearViewport";
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, XIcon } from "lucide-react";
+import { ImageIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import ChatMarkdown, {
@@ -24,8 +24,14 @@ import ChatMarkdown, {
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
 import { Button, InlineButton } from "~/components/ui/button";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { Card } from "~/components/ui/card";
-import { Dialog, DialogClose, DialogMediaPopup } from "~/components/ui/dialog";
+import {
+  Dialog,
+  DialogMediaClose,
+  DialogMediaPopup,
+  DialogMediaStep,
+} from "~/components/ui/dialog";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
@@ -220,7 +226,7 @@ function ReviewPicture({
       </InlineButton>
     );
   }
-  if (where.kind === "none") return <PictureLine alt={picture.alt} />;
+  if (where.kind === "none") return <PictureLine alt={picture.alt} className="my-2" />;
   return (
     <HqPicture
       alt={picture.alt}
@@ -257,17 +263,18 @@ function HqPicture({
   if (box === null && state.kind !== "read")
     return (
       <span ref={ref}>
-        <PictureLine alt={alt} />
+        <PictureLine alt={alt} className="my-2" />
       </span>
     );
   return (
     <span
       ref={ref}
-      // At most the column's width, its own shape; a hairline over it, so a screenshot's white
-      // edge still meets the page. One its description sizes holds that box from the first paint
-      // (`reviewPictureBox`): its line fills it while it is read or when it cannot be, the picture
-      // once read, so nothing moves either way.
-      className="relative my-3 block w-fit max-w-full rounded-card after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:ring-1 after:ring-foreground/10 after:ring-inset"
+      // At most the column's width, its own shape, in the kit's picture frame: its hairline over it,
+      // so a screenshot's white edge still meets the page. One its description sizes holds that box
+      // from the first paint (`reviewPictureBox`): its line fills it while it is read or when it
+      // cannot be, the picture once read, so nothing moves either way. The frame is the press's
+      // content, so it never clips the press's focus ring.
+      className="my-3 block w-fit max-w-full"
       style={box === null ? undefined : { aspectRatio: box.aspectRatio, width: box.width }}
     >
       {state.kind === "read" ? (
@@ -280,49 +287,47 @@ function HqPicture({
           }}
           variant="bare"
         >
-          <img
-            loading="lazy"
-            decoding="async"
-            alt={alt}
-            className={
-              box === null
-                ? arriving
-                  ? "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in rounded-card motion-safe:animate-zerops-appear"
-                  : "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in rounded-card"
-                : arriving
-                  ? "block size-full cursor-zoom-in rounded-card motion-safe:animate-zerops-appear"
-                  : "block size-full cursor-zoom-in rounded-card"
-            }
-            data-review-picture=""
-            draggable={false}
-            height={box === null ? undefined : height}
-            src={state.src}
-            width={box === null ? undefined : width}
-          />
+          <PictureFrame className={box === null ? undefined : "size-full"}>
+            <img
+              loading="lazy"
+              decoding="async"
+              alt={alt}
+              className={
+                box === null
+                  ? arriving
+                    ? "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in motion-safe:animate-zerops-appear"
+                    : "block h-auto max-h-[560px] w-auto max-w-full cursor-zoom-in"
+                  : arriving
+                    ? "block size-full cursor-zoom-in motion-safe:animate-zerops-appear"
+                    : "block size-full cursor-zoom-in"
+              }
+              data-review-picture=""
+              draggable={false}
+              height={box === null ? undefined : height}
+              src={state.src}
+              width={box === null ? undefined : width}
+            />
+          </PictureFrame>
         </Button>
       ) : (
-        <PictureLine alt={alt} fills />
+        <PictureLine alt={alt} className="size-full" />
       )}
     </span>
   );
 }
 
 /**
- * A picture not drawn here — being read, or unreadable: its words. One line, the same while it is
- * read and after a read failed.
+ * A picture not drawn here — being read, or unreadable: its words in its frame. One line, the same
+ * while it is read and after a read failed.
  */
-function PictureLine({ alt, fills = false }: { readonly alt: string; readonly fills?: boolean }) {
+function PictureLine({ alt, className }: { readonly alt: string; readonly className: string }) {
   return (
-    <span
-      className={
-        fills
-          ? "flex h-full min-h-10 items-center gap-2 rounded-card bg-foreground/4 px-3 py-2.5 text-body leading-4.5 text-muted-foreground"
-          : "my-2 flex min-h-10 items-center gap-2 rounded-card bg-foreground/4 px-3 py-2.5 text-body leading-4.5 text-muted-foreground"
-      }
-    >
-      <ImageIcon aria-hidden="true" className="size-4 flex-none" />
-      <span className="min-w-0 flex-1">{alt.length > 0 ? alt : "Picture"}</span>
-    </span>
+    <PictureFrame className={className}>
+      <span className="flex h-full min-h-10 items-center gap-2 px-3 py-2.5 text-body leading-4.5 text-muted-foreground">
+        <ImageIcon aria-hidden="true" className="size-4 flex-none" />
+        <span className="min-w-0 flex-1">{alt.length > 0 ? alt : "Picture"}</span>
+      </span>
+    </PictureFrame>
   );
 }
 
@@ -405,38 +410,23 @@ function PictureViewer({
               </p>
             ) : null}
           </div>
-          <DialogClose
-            aria-label="Close"
-            render={<Button className="fixed end-4 top-4 size-10" size="icon-md" variant="scrim" />}
-          >
-            <XIcon aria-hidden="true" className="size-5" />
-          </DialogClose>
+          <DialogMediaClose />
           {count > 1 ? (
             <>
-              <Button
-                aria-label="The picture before"
-                className="fixed start-4 top-1/2 size-10 -translate-y-1/2"
-                data-side="before"
+              <DialogMediaStep
+                label="The picture before"
                 onClick={() => {
                   step(-1);
                 }}
-                size="icon-md"
-                variant="scrim"
-              >
-                <ChevronLeftIcon aria-hidden="true" className="size-5" />
-              </Button>
-              <Button
-                aria-label="The picture after"
-                className="fixed end-4 top-1/2 size-10 -translate-y-1/2"
-                data-side="after"
+                side="before"
+              />
+              <DialogMediaStep
+                label="The picture after"
                 onClick={() => {
                   step(1);
                 }}
-                size="icon-md"
-                variant="scrim"
-              >
-                <ChevronRightIcon aria-hidden="true" className="size-5" />
-              </Button>
+                side="after"
+              />
             </>
           ) : null}
         </div>

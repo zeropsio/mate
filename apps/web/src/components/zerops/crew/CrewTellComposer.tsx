@@ -225,7 +225,7 @@ export function CrewTellComposer({
           size="icon-md"
           variant={ready ? "primary" : "secondary"}
         >
-          <ArrowUpIcon aria-hidden="true" className="size-4" strokeWidth={2.2} />
+          <ArrowUpIcon aria-hidden="true" strokeWidth={2.2} />
         </Button>
       </div>
       {menu === null || items.length === 0 ? null : (

@@ -1,4 +1,9 @@
-import { formatPercent, formatTokens, formatUsageCost } from "@t3tools/shared/usageFormat";
+import {
+  formatPercent,
+  formatTokens,
+  formatUsageCost,
+  formatUsd,
+} from "@t3tools/shared/usageFormat";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import type * as React from "react";
@@ -9,8 +14,10 @@ import {
   type UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { Badge } from "../ui/badge";
+import { SeriesSwatch, seriesColor } from "../ui/chart";
+import { ShareBar } from "../ui/share-bar";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
-import { AutomatedMatesMark, UsageMateTaskRows } from "./UsageAutomated";
+import { UsageMateTaskRows } from "./UsageAutomated";
 import type {
   UsageDimension,
   UsageDimensionMetric,
@@ -30,25 +37,9 @@ import {
   TableRow,
 } from "~/components/ui/table";
 
-/**
- * Person series, in legend order: the Mate identity tints, so a person reads
- * in the same family as the faces the left menu draws.
- */
-const PERSON_SERIES = [
-  "var(--zerops-mate-tint-sky)",
-  "var(--zerops-mate-tint-violet)",
-  "var(--zerops-mate-tint-amber)",
-  "var(--zerops-mate-tint-olive)",
-  "var(--zerops-mate-tint-rose)",
-  "var(--zerops-mate-tint-coral)",
-  "var(--zerops-mate-tint-sand)",
-  "var(--zerops-mate-tint-slate)",
-] as const;
-
+/** A person's series colour: their place in the legend, or the muted ink for an unknown owner. */
 function personColor(person: UsagePersonRow, index: number): string {
-  return person.owner === null
-    ? "var(--muted-foreground)"
-    : (PERSON_SERIES[index % PERSON_SERIES.length] ?? "var(--muted-foreground)");
+  return person.owner === null ? "var(--color-muted-foreground)" : seriesColor(index);
 }
 
 function amount(
@@ -105,7 +96,7 @@ function OwnerAvatar({
 }) {
   if (owner === null) return null;
   return isAutomatedMatesOwner(owner) ? (
-    <AutomatedMatesMark />
+    <PersonAvatar nobody size={16} />
   ) : (
     <PersonAvatar
       name={owner.name}
@@ -157,18 +148,17 @@ export function UsagePeopleSplit({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div aria-hidden className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-        {people.map((person, index) => (
-          <span
-            key={person.owner?.id ?? person.ownerState}
-            className="h-full"
-            style={{
-              width: `${(metric === "cost" ? person.costShare : person.tokenShare) * 100}%`,
-              backgroundColor: personColor(person, index),
-            }}
-          />
-        ))}
-      </div>
+      <ShareBar
+        format={metric === "cost" ? formatUsd : formatTokens}
+        label={metric === "cost" ? "Priced cost by owner" : "Tokens by owner"}
+        parts={people.map((person, index) => ({
+          label:
+            person.owner?.name ??
+            (person.ownerState === "unassigned" ? "Unassigned" : "Unknown owner"),
+          value: metric === "cost" ? person.costUsd : person.totalTokens,
+          color: personColor(person, index),
+        }))}
+      />
       <ul className="flex flex-col gap-2">
         {people.map((person, index) => (
           <li
@@ -176,11 +166,7 @@ export function UsagePeopleSplit({
             className="flex items-center justify-between gap-3 text-body"
           >
             <span className="flex min-w-0 items-center gap-2 text-foreground">
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: personColor(person, index) }}
-              />
+              <SeriesSwatch color={personColor(person, index)} />
               <OwnerAvatar owner={person.owner} />
               <OwnerName owner={person.owner} state={person.ownerState} />
             </span>

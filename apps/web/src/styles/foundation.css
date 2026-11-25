@@ -442,6 +442,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);
   --color-spend-tokens: var(--zerops-mate-tint-coral);
+  /* A chart's categorical series (`SERIES_COLORS` in `components/ui/chart.tsx`), and each coding
+     agent's colour in usage charts. */
+  --color-series-1: var(--zerops-series-1);
+  --color-series-2: var(--zerops-series-2);
+  --color-series-3: var(--zerops-series-3);
+  --color-series-4: var(--zerops-series-4);
+  --color-series-5: var(--zerops-series-5);
+  --color-series-6: var(--zerops-series-6);
+  --color-series-7: var(--zerops-series-7);
+  --color-series-8: var(--zerops-series-8);
+  --color-agent-codex: var(--zerops-agent-codex);
+  --color-agent-claude: var(--zerops-agent-claude);
+  --color-agent-grok: var(--zerops-agent-grok);
+  --color-agent-cursor: var(--zerops-agent-cursor);
+  --color-agent-opencode: var(--zerops-agent-opencode);
+  --color-agent-antigravity: var(--zerops-agent-antigravity);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -505,7 +521,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-failed-text: var(--zerops-status-failed-text);
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
-  --color-mint-panel: var(--zerops-mint-panel);
   --color-stage: var(--zerops-stage);
   --color-stage-foreground: var(--zerops-stage-foreground);
   --color-annotation: var(--zerops-annotation);
@@ -523,10 +538,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-invalid: var(--zerops-field-invalid);
   --color-well: var(--zerops-well);
   --color-well-edge: var(--zerops-well-edge);
+  --color-rule: var(--zerops-rule);
   --color-field-hover: var(--zerops-field-hover);
   --color-field-pressed: var(--zerops-field-pressed);
   --color-segment: var(--zerops-segment);
   --color-segment-hover: var(--zerops-segment-hover);
+  --color-item-hover: var(--zerops-item-hover);
+  --color-item-picked: var(--zerops-item-picked);
   --color-shimmer: var(--zerops-shimmer);
   /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
      draws its eyes and mouth in. */

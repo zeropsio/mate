@@ -155,6 +155,33 @@ function RowSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
+      <SpecimenBlock
+        note="Every pressable item's two grounds: lit under the pointer or the keyboard's cursor, and picked while its list shows it. Both are a step of the ink, alike on every surface."
+        title="Lit and picked"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen label="pressable · data-highlighted · picked" note="At rest, lit, picked">
+            <div className="flex w-full max-w-80 flex-col gap-0.5">
+              <Row pressable render={<button type="button" />} size="sm" title="Overview" />
+              <Row
+                data-highlighted=""
+                pressable
+                render={<button type="button" />}
+                size="sm"
+                title="Vault"
+              />
+              <Row
+                aria-current="page"
+                picked
+                pressable
+                render={<button type="button" />}
+                size="sm"
+                title="Settings"
+              />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
       <SpecimenBlock note="A take among pictures, the picked one lit." title="Thumbnail lead">
         <SpecimenGrid size="lg">
           <Specimen label='size="xs" thumbnail picked pressable' note="Two takes, the first picked">

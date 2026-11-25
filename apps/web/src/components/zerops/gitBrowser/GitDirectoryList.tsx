@@ -49,7 +49,7 @@ function EntryRow({
     size: "sm",
   } as const;
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-rule">
       {entry.type === "submodule" ? (
         <Row {...parts} title={`${entry.name} · submodule ${entry.sha.slice(0, 7)}`} />
       ) : (

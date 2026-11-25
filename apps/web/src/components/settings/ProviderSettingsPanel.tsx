@@ -112,6 +112,8 @@ import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** An environment's connection as its tab's dot: work under way while it connects. */
 const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
@@ -989,9 +991,9 @@ export function EnvironmentProviderSettings({
                 <span>Provider</span>
                 <span>On</span>
               </div>
-              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+              <List className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {rows.map((row) => renderProviderInstance(row, "list"))}
-              </div>
+              </List>
               <div
                 className={cn(
                   "flex min-h-10 shrink-0 items-center justify-between px-3",
@@ -1047,14 +1049,11 @@ export function EnvironmentProviderSettings({
             readOnly={readOnly}
           />
 
+          <Separator className="mt-2" />
           <div
             inert={readOnly}
             aria-disabled={readOnly || undefined}
-            className={
-              readOnly
-                ? "mt-2 border-t border-border/70 opacity-50 select-none"
-                : "mt-2 border-t border-border/70"
-            }
+            className={readOnly ? "opacity-50 select-none" : undefined}
           >
             <Collapsible open={advancedVisible} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-caption text-muted-foreground hover:text-foreground sm:px-4">

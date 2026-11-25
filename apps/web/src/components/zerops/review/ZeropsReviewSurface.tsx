@@ -82,6 +82,8 @@ import {
 } from "./ZeropsReview.logic";
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
+import { List } from "~/components/ui/list";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -383,7 +385,7 @@ export function ZeropsReviewSurface({
             size="icon-sm"
             variant="ghost-muted"
           >
-            <XIcon aria-hidden="true" className="size-4" />
+            <XIcon aria-hidden="true" />
           </Button>
         </div>
       )}
@@ -1005,22 +1007,6 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   );
 }
 
-/** `+42 −3`, each in its colour. */
-export function ReviewSize({
-  additions,
-  deletions,
-}: {
-  readonly additions: string;
-  readonly deletions: string;
-}) {
-  return (
-    <>
-      <span className="text-diff-addition-foreground">{additions}</span>{" "}
-      <span className="text-diff-deletion-foreground">{deletions}</span>
-    </>
-  );
-}
-
 interface ReviewFileRow {
   readonly path: string;
   readonly status: string;
@@ -1102,34 +1088,36 @@ export function ReviewFiles({
   }
   return (
     <div className={FILES}>
-      {files.map((file) => {
-        const expanded = open.has(file.path);
-        const { dir, name } = changeFileParts(file.path);
-        const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
-        return (
-          <FileRow
-            diff={expanded ? diffOf(file.path) : undefined}
-            dir={dir}
-            expanded={expanded}
-            file={file}
-            key={file.path}
-            letter={letter}
-            name={name}
-            onRetry={onRetry}
-            // A file the change deletes is in none of its commits any more.
-            open={letter === "D" ? undefined : fileAt?.(file.path)}
-            onToggle={() => {
-              if (!expanded) onOpen?.(file.path);
-              setOpen((current) => {
-                const next = new Set(current);
-                if (next.has(file.path)) next.delete(file.path);
-                else next.add(file.path);
-                return next;
-              });
-            }}
-          />
-        );
-      })}
+      <List>
+        {files.map((file) => {
+          const expanded = open.has(file.path);
+          const { dir, name } = changeFileParts(file.path);
+          const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
+          return (
+            <FileRow
+              diff={expanded ? diffOf(file.path) : undefined}
+              dir={dir}
+              expanded={expanded}
+              file={file}
+              key={file.path}
+              letter={letter}
+              name={name}
+              onRetry={onRetry}
+              // A file the change deletes is in none of its commits any more.
+              open={letter === "D" ? undefined : fileAt?.(file.path)}
+              onToggle={() => {
+                if (!expanded) onOpen?.(file.path);
+                setOpen((current) => {
+                  const next = new Set(current);
+                  if (next.has(file.path)) next.delete(file.path);
+                  else next.add(file.path);
+                  return next;
+                });
+              }}
+            />
+          );
+        })}
+      </List>
     </div>
   );
 }
@@ -1157,21 +1145,15 @@ function FileRow({
 }) {
   return (
     // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
-    <Collapsible onOpenChange={onToggle} open={expanded}>
-      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-foreground/4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+    <Collapsible onOpenChange={onToggle} open={expanded} render={<List />}>
+      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-item-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <span className={STATUS[letter ?? ""] ?? STATUS[""]}>{letter}</span>
         <span className="truncate">
           <span className="text-muted-foreground">{dir}</span>
           {name}
         </span>
-        <span className="font-sans text-body/none whitespace-nowrap text-muted-foreground tabular-nums">
-          {file.additions > 0 ? (
-            <span className="text-diff-addition-foreground">+{file.additions}</span>
-          ) : null}
-          {file.additions > 0 && file.deletions > 0 ? " " : null}
-          {file.deletions > 0 ? (
-            <span className="text-diff-deletion-foreground">−{file.deletions}</span>
-          ) : null}
+        <span className="font-sans text-body/none">
+          <DiffStat additions={file.additions} deletions={file.deletions} />
         </span>
         <span className="flex text-muted-foreground transition-[rotate] duration-200 ease-out-strong in-aria-expanded:rotate-180 motion-reduce:transition-none">
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
@@ -1302,16 +1284,16 @@ export function ReviewDiff({
 }
 
 /** The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
-const FILES =
-  "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12 *:not-first:border-t *:not-first:border-foreground/12 *:*:not-first:border-t *:*:not-first:border-foreground/12";
+const FILES = "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12";
 /** A file's status letter: added green, deleted red, the rest quiet. */
 const STATUS: Record<string, string> = {
   "": "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-muted-foreground inset-ring-1 inset-ring-foreground/12",
   A: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-addition-foreground inset-ring-1 inset-ring-diff-addition-foreground/40",
   D: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-deletion-foreground inset-ring-1 inset-ring-diff-deletion-foreground/40",
 };
-/** A file's diff, open under its row: numbered lines on a faint ground, mono. */
-const DIFF = "bg-foreground/2 py-1.5 font-mono text-caption leading-4.75 [tab-size:4]";
+/** A file's diff, open under its row: numbered lines on the code ground, at the person's code size. */
+const DIFF =
+  "bg-code py-1.5 font-mono text-(length:--font-size-code,var(--text-line)) leading-5 text-code-foreground [tab-size:4]";
 /**
  * A long line wraps inside its own column and hangs under its code: the number and the sign keep
  * theirs, so the gutter stays one straight edge.
@@ -1502,7 +1484,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+        <ChevronLeftIcon aria-hidden="true" />
       </Button>
       <span aria-live="polite" className="px-1 text-line text-muted-foreground tabular-nums">
         {queue.words}
@@ -1515,7 +1497,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
+        <ChevronRightIcon aria-hidden="true" />
       </Button>
     </>
   );

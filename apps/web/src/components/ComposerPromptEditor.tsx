@@ -215,7 +215,7 @@ function ComposerMentionDecorator(props: { path: string }) {
   return (
     <Tooltip>
       <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="max-w-120">
+      <TooltipPopup side="top" variant="code">
         {props.path}
       </TooltipPopup>
     </Tooltip>
@@ -478,9 +478,7 @@ function ComposerSkillDecorator(props: { skillLabel: string; skillDescription: s
   return (
     <Tooltip>
       <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" className="max-w-120">
-        {props.skillDescription}
-      </TooltipPopup>
+      <TooltipPopup side="top">{props.skillDescription}</TooltipPopup>
     </Tooltip>
   );
 }

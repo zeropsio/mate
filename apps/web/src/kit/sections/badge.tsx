@@ -1,4 +1,4 @@
-import { CircleCheckIcon } from "lucide-react";
+import { CircleCheckIcon, PanelRightIcon } from "lucide-react";
 
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 
@@ -80,8 +80,27 @@ function BadgeSpecimens() {
               Running
             </Badge>
           </Specimen>
-          <Specimen label="(defaults)" note="A count">
-            <Badge>12</Badge>
+          <Specimen label="count" note="A count beside a title">
+            <span className="flex items-center gap-2 font-medium text-body">
+              Changes
+              <Badge count>12</Badge>
+            </span>
+          </Specimen>
+          <Specimen label='count tone="info"' note="How many are at work">
+            <span className="flex items-center gap-2 font-medium text-body">
+              Working
+              <Badge count tone="info">
+                3
+              </Badge>
+            </span>
+          </Specimen>
+          <Specimen label='count corner tone="info"' note="A count on a control's corner">
+            <span className="relative inline-flex size-8 items-center justify-center rounded-control bg-muted text-muted-foreground">
+              <PanelRightIcon aria-hidden="true" className="size-4" />
+              <Badge corner count tone="info">
+                2
+              </Badge>
+            </span>
           </Specimen>
           <Specimen
             label='className="max-w-full" · <span className="truncate">'

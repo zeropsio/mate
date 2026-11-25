@@ -29,6 +29,7 @@ import { useMateWrite } from "~/zerops/useMateWrite";
 import { Failure } from "../ui/failure";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
+import { LogoTile } from "../ui/logo-tile";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -317,9 +318,7 @@ function WaitingEntry({
     >
       <span className="flex h-8" aria-hidden="true">
         {item.kind === "release" ? (
-          <span className="grid size-8 place-items-center rounded-full bg-foreground/7 text-body font-semibold">
-            {item.release.name.trim().charAt(0).toUpperCase()}
-          </span>
+          <LogoTile>{item.release.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>
         ) : (
           <MateFace
             shape={item.mate.shape}

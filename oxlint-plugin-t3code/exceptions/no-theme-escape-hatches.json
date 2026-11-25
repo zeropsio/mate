@@ -1696,38 +1696,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/usage/usageProviders.ts",
-    "kind": "Literal",
-    "fingerprint": "\"#d97757\"",
-    "owner": "karel",
-    "reason": "vendor provider icon colour (Claude)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/usage/usageProviders.ts",
-    "kind": "Literal",
-    "fingerprint": "\"#8b8b8b\"",
-    "owner": "karel",
-    "reason": "vendor provider series colour (Cursor)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/usage/usageProviders.ts",
-    "kind": "Literal",
-    "fingerprint": "\"#5b9bbd\"",
-    "owner": "karel",
-    "reason": "vendor provider series colour (OpenCode)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/usage/usageProviders.ts",
-    "kind": "Literal",
-    "fingerprint": "\"#8c7bd1\"",
-    "owner": "karel",
-    "reason": "vendor provider series colour (Antigravity)",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/styles/chat-markdown.css",
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-frame::before{-webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)}",

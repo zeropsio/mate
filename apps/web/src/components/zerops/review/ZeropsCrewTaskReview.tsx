@@ -25,8 +25,9 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { crewmateFace } from "../crew/CrewLeadPlan.logic";
 import { MateFace, STATUS_BADGE_TONE } from "../primitives";
 import { crewLandCommand, reviewKindLine } from "./ZeropsReview.logic";
-import { ReviewSection, ReviewSize, ZeropsReviewSurface } from "./ZeropsReviewSurface";
+import { ReviewSection, ZeropsReviewSurface } from "./ZeropsReviewSurface";
 import { Badge } from "~/components/ui/badge";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 const KIND = "crew-task" as const;
 
@@ -208,10 +209,7 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
           {task.diffStat === null ? null : (
             <>
               <span aria-hidden="true">·</span>
-              <ReviewSize
-                additions={`+${String(task.diffStat.insertions)}`}
-                deletions={`−${String(task.diffStat.deletions)}`}
-              />
+              <DiffStat additions={task.diffStat.insertions} deletions={task.diffStat.deletions} />
             </>
           )}
         </>

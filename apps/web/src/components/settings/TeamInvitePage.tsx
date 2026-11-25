@@ -234,10 +234,7 @@ export function TeamInviteView({
         <SectionHeader line={inviteReachLine(membership, projects.length)} title="Projects" />
         {level === null || projects.length === 0 ? null : (
           <>
-            <ul
-              aria-label="Projects to give"
-              className="grid gap-0.5 rounded-card bg-muted p-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,var(--muted))]"
-            >
+            <ul aria-label="Projects to give" className="grid gap-0.5 rounded-card bg-muted p-1.5">
               {projects.map((project) => (
                 <li key={project.key}>
                   <Row

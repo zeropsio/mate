@@ -35,6 +35,7 @@ import { cn, randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import { Label } from "../ui/label";
+import { Popover, PopoverPopup } from "../ui/popover";
 import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
@@ -143,14 +144,12 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
   const [hoverMark, setHoverMark] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
   // The stage as it mounts: the dialog draws its popup a beat after the view, so it is measured
   // once it is there rather than on the view's first commit.
   const [stageNode, setStageNode] = useState<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
   const marksRef = useRef<HTMLCanvasElement>(null);
-  const noteRef = useRef<HTMLDivElement>(null);
   const noteTextRef = useRef<HTMLTextAreaElement>(null);
   const doneRef = useRef<HTMLButtonElement>(null);
   const chipRefs = useRef(new Map<number, HTMLButtonElement>());
@@ -335,23 +334,27 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
     }
   });
 
-  // The note being written sits beside its mark, inside the stage.
-  useLayoutEffect(() => {
-    const note = noteRef.current;
-    const mark = marks[noteFor];
-    const frame = frameRef.current;
-    const stageElement = stageRef.current;
-    if (!note || !mark || !frame || !stageElement || !layout) return;
-    const frameRect = frame.getBoundingClientRect();
-    const stageRect = stageElement.getBoundingClientRect();
-    const anchor = anchorOf(mark);
-    const offset = { x: frameRect.left - stageRect.left, y: frameRect.top - stageRect.top };
-    let x = offset.x + anchor.x + metrics.radius + 12;
-    if (x + note.offsetWidth > stageRect.width - 8)
-      x = offset.x + anchor.x - metrics.radius - 12 - note.offsetWidth;
-    note.style.left = `${clamp(x, 8, Math.max(8, stageRect.width - note.offsetWidth - 8))}px`;
-    note.style.top = `${clamp(offset.y + anchor.y - 22, 8, Math.max(8, stageRect.height - note.offsetHeight - 8))}px`;
-  });
+  // The note being written stands beside its mark: the pin's box on screen, which the popover
+  // flips around and keeps on the stage.
+  // It keeps the note it held while it eases out.
+  const [shownNote, setShownNote] = useState(-1);
+  if (noteFor >= 0 && noteFor !== shownNote) setShownNote(noteFor);
+  const noteMark = marks[noteFor >= 0 ? noteFor : shownNote];
+  const noteAnchor =
+    noteMark === undefined
+      ? null
+      : {
+          getBoundingClientRect: () => {
+            const frame = frameRef.current?.getBoundingClientRect();
+            const anchor = anchorOf(noteMark);
+            return DOMRect.fromRect({
+              x: (frame?.left ?? 0) + anchor.x - metrics.radius,
+              y: (frame?.top ?? 0) + anchor.y - metrics.radius,
+              width: metrics.radius * 2,
+              height: metrics.radius * 2,
+            });
+          },
+        };
 
   const change = (next: Partial<ComposerPicture>) => {
     undoRef.current.push(picture);
@@ -656,14 +659,11 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               aria-label="Close picture"
               onClick={close}
             >
-              <XIcon aria-hidden="true" className="size-4.5" />
+              <XIcon aria-hidden="true" />
             </Button>
           </div>
           <div
-            ref={(node) => {
-              stageRef.current = node;
-              setStageNode(node);
-            }}
+            ref={setStageNode}
             className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
           >
             {layout ? (
@@ -733,16 +733,27 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                 ) : null}
               </div>
             ) : null}
-            {noteFor >= 0 ? (
-              // A note being written: a small popover by its pin.
-              <div
-                ref={noteRef}
-                className="absolute z-6 w-62.5 rounded-card border border-border bg-popover px-2.5 pt-2.5 pb-2 text-popover-foreground shadow-popup"
+            {/* A note being written: a popover by its pin, inside the stage so it keeps the
+                view's own focus order and its Escape, a layer at a time. */}
+            <Popover open={noteFor >= 0}>
+              <PopoverPopup
+                align="start"
+                alignOffset={metrics.radius - 22}
+                anchor={noteAnchor}
+                collisionBoundary={stageNode ?? undefined}
+                collisionPadding={8}
+                container={stageNode}
+                // The view moves focus itself: into the words as a note opens, to Done as it closes.
+                finalFocus={false}
+                initialFocus={false}
+                side="right"
+                sideOffset={12}
+                width="sm"
               >
-                <div className="mb-1.5 flex items-center gap-2 text-caption leading-4.5 font-medium text-muted-foreground">
-                  <PictureNoteNumber>{noteFor + 1}</PictureNoteNumber>
+                <Text className="mb-1.5 flex items-center gap-2" render={<div />} variant="label">
+                  <PictureNoteNumber>{shownNote + 1}</PictureNoteNumber>
                   <span>Note</span>
-                </div>
+                </Text>
                 <Textarea
                   ref={noteTextRef}
                   unstyled
@@ -782,8 +793,8 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     </Button>
                   ) : null}
                 </Text>
-              </div>
-            ) : null}
+              </PopoverPopup>
+            </Popover>
           </div>
           <div className="flex flex-none justify-center px-3 pt-2.5 pb-3.5">
             <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-card border border-border bg-popover p-1.5 text-popover-foreground shadow-popup">

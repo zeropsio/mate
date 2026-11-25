@@ -49,8 +49,8 @@ export function ComposerPendingReviewComments({
         return (
           <Tooltip key={comment.id}>
             <TooltipTrigger render={chip} />
-            <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap">
-              {comment.text}
+            <TooltipPopup side="top">
+              <span className="whitespace-pre-wrap">{comment.text}</span>
             </TooltipPopup>
           </Tooltip>
         );

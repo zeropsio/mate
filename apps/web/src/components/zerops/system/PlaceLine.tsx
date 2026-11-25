@@ -138,7 +138,7 @@ export function PlaceLine({
           // What opens answers the pointer as a list's row does; its address and its verbs are
           // their own presses and leave it still.
           opens &&
-            "-mx-2 px-2 transition-colors duration-150 has-[[data-zerops-place-name]:hover]:bg-foreground/5 has-[[data-zerops-place-name]:focus-visible]:bg-foreground/5 motion-reduce:transition-none",
+            "-mx-2 px-2 transition-colors duration-150 has-[[data-zerops-place-name]:hover]:bg-item-hover has-[[data-zerops-place-name]:focus-visible]:bg-item-hover motion-reduce:transition-none",
         )}
         data-zerops-place-line="row"
         data-zerops-place={line.kind}

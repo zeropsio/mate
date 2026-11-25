@@ -7,6 +7,7 @@
  *
  * It is what somebody said, never something Mate saw: no word here says a deploy ran.
  */
+import { Failure } from "~/components/ui/failure";
 import { OUTSIDE_MATE_MEANS, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
 import { ArrowUpRightIcon, GlobeIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
@@ -131,9 +132,7 @@ export function OutsideProductionForm({
                 {/* One line's room, held: what is said here never moves the buttons under it. */}
                 <Text className="min-h-5" render={<p />} variant="description">
                   {press.kind === "refused" ? (
-                    <span className="text-destructive-foreground" role="alert">
-                      {press.words}
-                    </span>
+                    <Failure cause={press.words} role="alert" size="line" />
                   ) : address.kind === "invalid" ? (
                     address.why
                   ) : (

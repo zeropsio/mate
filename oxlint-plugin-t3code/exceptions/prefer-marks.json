@@ -1,0 +1,194 @@
+[
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 shrink-0 rounded-full bg-muted-foreground/35\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 shrink-0 rounded-full bg-muted-foreground/35\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 shrink-0 rounded-full bg-muted-foreground/35\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 rounded-full bg-muted-foreground/30\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 rounded-full bg-muted-foreground/30\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 rounded-full bg-muted-foreground/30\"",
+    "owner": "marks pass",
+    "reason": "a drawn window's three title-bar dots in a picture of a browser, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunTypingDots.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none\"",
+    "owner": "marks pass",
+    "reason": "the typing indicator: three dots in a staggered motion, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunTypingDots.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 animate-typing-second rounded-full bg-muted-foreground motion-reduce:animate-none\"",
+    "owner": "marks pass",
+    "reason": "the typing indicator: three dots in a staggered motion, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunTypingDots.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1.5 animate-typing-third rounded-full bg-muted-foreground motion-reduce:animate-none\"",
+    "owner": "marks pass",
+    "reason": "the typing indicator: three dots in a staggered motion, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className={cn( \"size-1.5 shrink-0 rounded-full\", process.isServerRoot ? \"bg-warning/90\" : \"bg-success/80\", )}",
+    "owner": "marks pass",
+    "reason": "a process tree's root and child kinds as colours: a category, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-2 rounded-full bg-diff-addition\"",
+    "owner": "marks pass",
+    "reason": "a diff legend's swatches beside their words: a chart's key, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-2 rounded-full bg-diff-deletion\"",
+    "owner": "marks pass",
+    "reason": "a diff legend's swatches beside their words: a chart's key, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"absolute -right-1 -bottom-1 grid size-2.5 place-items-center rounded-full bg-update-foreground text-background ring-2 ring-background\"",
+    "owner": "marks pass",
+    "reason": "the desktop client's update marks in the update ink (desktop is kept compiling, not designed)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-update-foreground ring-2 ring-update-surface\"",
+    "owner": "marks pass",
+    "reason": "the desktop client's update marks in the update ink (desktop is kept compiling, not designed)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarMateWorkingTime.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"absolute top-1/2 right-[calc(100%+5px)] -mt-0.75 size-1.5 rounded-full bg-current motion-safe:animate-clock-breathe\"",
+    "owner": "marks pass",
+    "reason": "the menu's working time: a dot in the gap before its words that breathes with the clock, MateDot's sibling (owner's menu look)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectCluster.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"absolute -right-2.75 -bottom-1.5 z-4 grid h-4 min-w-5.5 place-items-center rounded-full bg-sidebar-row-active px-1 text-3xs leading-4 font-semibold text-sidebar-foreground tabular-nums ring-2 ring-(--menu-ground)\"",
+    "owner": "marks pass",
+    "reason": "the menu's face cluster: its +N sits over faces, cut in the menu's ground, in the sidebar's own ink (owner's menu look)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"ms-px inline-grid h-4.5 min-w-4.5 place-items-center overflow-hidden rounded-full bg-primary-foreground/22 px-1.5 text-2xs tabular-nums group-only/tag:group-data-quiet/tag:bg-current/12\"",
+    "owner": "marks pass",
+    "reason": "a count inside the review press, in the press's own ink, its digits rolling",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 rounded-full bg-sidebar-muted-foreground/45\"",
+    "owner": "marks pass",
+    "reason": "the menu's held 'still to come' line: three still dots that keep a row's height, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 rounded-full bg-sidebar-muted-foreground/45\"",
+    "owner": "marks pass",
+    "reason": "the menu's held 'still to come' line: three still dots that keep a row's height, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-1 rounded-full bg-sidebar-muted-foreground/45\"",
+    "owner": "marks pass",
+    "reason": "the menu's held 'still to come' line: three still dots that keep a row's height, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className={ live ? \"size-2 shrink-0 rounded-full bg-status-ok\" : \"size-2 shrink-0 rounded-full border border-rail\" }",
+    "owner": "marks pass",
+    "reason": "a commit's node on the history's rail, drawn with the rail like the project line's track",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsReleaseCarried.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"absolute -start-3 top-2 size-1 rounded-full bg-muted-foreground/60\"",
+    "owner": "marks pass",
+    "reason": "a list's bullet, not a state",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"size-2 rounded-full bg-status-attention\"",
+    "owner": "marks pass",
+    "reason": "the domain journey's bead: a dot set in its stage's tinted seat, beside done, busy and failed beads",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/SidebarCrewMinis.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"inline-grid h-4 flex-none place-items-center rounded-full bg-sidebar-foreground/8 px-1.5 text-2xs leading-none font-semibold text-sidebar-muted-foreground tabular-nums\"",
+    "owner": "marks pass",
+    "reason": "the menu's +N beside crew faces, in the sidebar's own ink (owner's menu look)",
+    "expires": "never"
+  }
+]

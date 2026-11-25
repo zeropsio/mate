@@ -49,6 +49,7 @@ import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress"
 import { Loading } from "~/components/ui/loading";
 import { RealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
 interface RepoRowActions {
@@ -158,11 +159,11 @@ export function RepoRowsView(props: RepoRowsViewProps) {
   );
   return (
     <div className="grid" data-zerops-surface="git-remotes">
-      <ul className="@container grid">
+      <List className="@container grid" render={<ul />}>
         {listed.map((entry) => (
           <RepoRow entry={entry} key={entry.name} seat={seat} {...props} />
         ))}
-      </ul>
+      </List>
       {someUnconnected && props.authority !== null ? (
         <Text className="px-2 pt-1" render={<p />} variant="note">
           {props.authority}
@@ -271,7 +272,7 @@ function RepoRow({
   return (
     // Wide, the name stands in its own column as the board's rows do, on line one's baseline;
     // narrow, it leads the line.
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 text-body/5 first:border-transparent @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 py-2.5 text-body/5 @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
       <span className="hidden self-start truncate text-foreground @lg:block">
         <RealName>{entry.name}</RealName>
       </span>

@@ -31,7 +31,7 @@ export function ChiefOverviewButton({
       size="sm"
       variant="sidebar"
     >
-      <LayersIcon className="size-3.5 shrink-0" />
+      <LayersIcon />
       <span className="hidden text-line @3xl/header-actions:inline">Overview</span>
     </Button>
   );

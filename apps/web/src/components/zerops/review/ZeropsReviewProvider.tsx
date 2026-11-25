@@ -212,7 +212,7 @@ function ReviewBody({
               </h2>
               <div className="absolute end-2 top-2">
                 <Button aria-label="Close" onClick={close} size="icon-sm" variant="ghost-muted">
-                  <XIcon aria-hidden="true" className="size-4" />
+                  <XIcon aria-hidden="true" />
                 </Button>
               </div>
               <Loading label="The review" shape="room" />

@@ -26,7 +26,9 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { Loading } from "~/components/ui/loading";
+import { Tab } from "~/components/ui/tab-strip";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** How long a first read may keep the page to its one line before it shows what it has. */
 const FIRST_READ_PATIENCE_MS = 1_500;
@@ -135,18 +137,20 @@ export function ZeropsGitOverview({
               ["all", "All repositories"],
             ] as const
           ).map(([value, label]) => (
-            <Button
-              key={value}
-              variant={view === value ? "secondary" : "ghost"}
-              size="sm"
+            <Tab
+              active={view === value}
               aria-pressed={view === value}
+              key={value}
               onClick={() => {
                 setView(value);
                 setHeld(undefined);
               }}
+              render={<button type="button" />}
+              size="md"
+              tabId={value}
             >
               {label}
-            </Button>
+            </Tab>
           ))}
         </div>
         <Text variant="note">Project, then repository A–Z</Text>
@@ -174,7 +178,7 @@ export function ZeropsGitOverview({
       {presentation.rows.length > 0 ? (
         <section aria-label="Repositories" data-zerops-surface="git-overview">
           <Card variant="flat">
-            <div className="divide-y divide-border">
+            <List>
               {presentation.rows.map((repository) => {
                 const changeRows = repository.changes.map((change) => (
                   <ZeropsGitChangeRow
@@ -246,7 +250,7 @@ export function ZeropsGitOverview({
                   </div>
                 );
               })}
-            </div>
+            </List>
           </Card>
           <Text className="mt-3" render={<p />} variant="note">
             {view === "all" ? (

@@ -43,6 +43,10 @@ const PRINCIPLES = [
   ["A word acts inline", "A word that acts inside a sentence is an InlineButton."],
   ["A list is Rows", "A list's row is a Row; xs for a tree or a dense list."],
   ["A label is a Badge", "A pill in one of five tones, so it never reads as a press."],
+  [
+    "A state mark is a Dot",
+    "Badge's tones as a dot: before a line, or on a corner; a number is a count.",
+  ],
 ] as const;
 
 /** A guard as the overview names it: plain words first, its rule's id under them. */
@@ -53,6 +57,9 @@ const GUARD_NAME: Readonly<Record<(typeof KIT_GUARDS)[number]["rule"], string>> 
   "no-theme-escape-hatches": "Colours around the theme",
   "no-unknown-classes": "Unknown classes",
   "prefer-text": "Hand-styled words",
+  "no-hand-popup": "Hand-floated popups",
+  "prefer-marks": "Hand-drawn marks",
+  "no-hand-drawn-rules": "Hand-drawn dividers",
 };
 
 /** One figure of the kit's size: the number large, what it counts under it. */

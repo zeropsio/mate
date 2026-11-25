@@ -59,8 +59,10 @@ function PopoverPopup({
   sideOffset = 4,
   alignOffset = 0,
   keepMounted = false,
+  container,
   anchor,
   collisionAvoidance,
+  collisionBoundary,
   collisionPadding,
   ...props
 }: PopoverPrimitive.Popup.Props &
@@ -70,12 +72,24 @@ function PopoverPopup({
     sideOffset?: PopoverPrimitive.Positioner.Props["sideOffset"];
     alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
     keepMounted?: PopoverPrimitive.Portal.Props["keepMounted"];
+    /**
+     * Where it is rendered; the document's end by default. A popover that belongs to a surface
+     * keeping its own focus order and its own Escape (the picture's stage) renders inside it.
+     */
+    container?: PopoverPrimitive.Portal.Props["container"];
+    /**
+     * What it stands beside when not its trigger: an element, or a point as a virtual element
+     * (`{ getBoundingClientRect }`) for a popover that follows a mark or a pointer. It is placed,
+     * flipped and kept on screen the same way.
+     */
     anchor?: PopoverPrimitive.Positioner.Props["anchor"];
     /**
      * How it keeps to the viewport. A popover that must never cover what sits beside its trigger
      * (the menu's doors, over the conversation) flips above or below and never out to the side.
      */
     collisionAvoidance?: PopoverPrimitive.Positioner.Props["collisionAvoidance"];
+    /** The area it keeps inside, by default whatever clips it: a popover on a stage keeps to the stage. */
+    collisionBoundary?: PopoverPrimitive.Positioner.Props["collisionBoundary"];
     collisionPadding?: PopoverPrimitive.Positioner.Props["collisionPadding"];
   }) {
   const tooltip = variant === "tooltip";
@@ -87,12 +101,13 @@ function PopoverPopup({
   // size — a menu taller than the room opened at its full height and snapped
   // to its cap once its entrance ended, and was placed by the uncapped size.
   return (
-    <PopoverPortal keepMounted={keepMounted}>
+    <PopoverPortal container={container} keepMounted={keepMounted}>
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
         collisionAvoidance={collisionAvoidance}
+        collisionBoundary={collisionBoundary}
         collisionPadding={collisionPadding}
         className="z-[130] max-w-(--available-width)"
         data-slot="popover-positioner"

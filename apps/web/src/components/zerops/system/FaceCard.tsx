@@ -19,6 +19,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** How the cards of one grid stand on a phone (`FaceCards phone`). */
 type FacePhone = "cards" | "rows" | "lying";
@@ -173,11 +174,12 @@ export function FaceCard({
       )}
     >
       {body}
+      {ruled && (footed || footHeld) ? <Separator /> : null}
       {footed || footHeld ? (
         <span
           className={cn(
             "grid justify-items-center gap-1 px-4 text-body leading-4.5 *:relative *:z-1",
-            ruled ? "min-h-11.25 border-t border-border px-3 py-1.5" : "-mt-3.5 pb-4.5",
+            ruled ? "min-h-11 px-3 py-1.5" : "-mt-3.5 pb-4.5",
             // A foot that keeps its seat while it holds nothing, so a verb arriving moves nothing;
             // a ruled one is one height whatever stands in it.
             footHeld && !ruled && "min-h-12.5 content-center",

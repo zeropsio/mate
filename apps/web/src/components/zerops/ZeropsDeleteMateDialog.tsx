@@ -10,9 +10,11 @@
  * The last Mate of its project never opens it: its Delete is the project's own, which deletes the
  * Mate and then the project (`ZeropsDeleteApplicationDialog`).
  */
+import { Text } from "~/components/ui/text";
 import { useId, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import { Failure } from "~/components/ui/failure";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -26,7 +28,6 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDialog.logic";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 
 export function ZeropsDeleteMateForm({
   name,
@@ -71,12 +72,12 @@ export function ZeropsDeleteMateForm({
       </DialogHeader>
       <DialogPanel>
         {failed === undefined ? null : (
-          <div className="mb-4 min-w-0">
-            <p className="text-caption text-status-failed-text">{failed.line}</p>
-            {failed.details === null ? null : (
-              <ZeropsAnswerDetails align="start" text={failed.details} />
-            )}
-          </div>
+          <Failure
+            cause={failed.line}
+            className="mb-4"
+            details={failed.details ?? undefined}
+            size="line"
+          />
         )}
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>{words.label}</Label>
@@ -92,13 +93,9 @@ export function ZeropsDeleteMateForm({
             spellCheck={false}
             value={typed}
           />
-          <p
-            className="min-h-4 text-caption text-status-failed-text"
-            id={`${id}-reason`}
-            role="alert"
-          >
+          <Text className="min-h-4" id={`${id}-reason`} render={<p />} role="alert" variant="error">
             {error}
-          </p>
+          </Text>
         </div>
       </DialogPanel>
       <DialogFooter>

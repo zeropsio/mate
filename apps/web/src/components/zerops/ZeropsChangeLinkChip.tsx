@@ -28,6 +28,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
 import { Button, InlineButton } from "../ui/button";
+import { Dot } from "../ui/dot";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
 import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
@@ -192,7 +193,7 @@ export function ZeropsChangeLinkChip({
       render={<a href={href} rel="noopener noreferrer" target="_blank" />}
       tone="plain"
     >
-      <span className="relative inline-flex shrink-0 self-center">
+      <span className="relative inline-flex shrink-0 self-center [--mark-ground:var(--color-muted)]">
         <Glyph
           aria-hidden="true"
           className={cn(
@@ -200,12 +201,7 @@ export function ZeropsChangeLinkChip({
             state === undefined ? "text-muted-foreground" : TONE_GLYPH[state.tone],
           )}
         />
-        {landedSince ? (
-          <span
-            aria-hidden="true"
-            className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-info ring-1 ring-muted"
-          />
-        ) : null}
+        {landedSince ? <Dot corner="top-end" size="sm" tone="info" /> : null}
       </span>
       <span className="font-medium">{words ?? line}</span>
       {state === undefined ? null : (

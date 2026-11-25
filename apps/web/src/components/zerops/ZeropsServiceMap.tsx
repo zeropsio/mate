@@ -47,12 +47,13 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
+import { Meter } from "~/components/ui/meter";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { placeServiceRows } from "./place/place.logic";
@@ -62,6 +63,7 @@ import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -548,13 +550,7 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
           <MetricRange metric={metric} />
         </div>
         {metric.fraction === undefined ? null : (
-          <div aria-hidden="true" className="mt-1 h-0.5 w-full rounded-full bg-border">
-            <div
-              className="h-full rounded-full bg-info"
-              data-zerops-service-metric-fill
-              style={{ width: `${Math.round(metric.fraction * 100)}%` }}
-            />
-          </div>
+          <Meter className="mt-1" tone="info" value={metric.fraction} />
         )}
       </div>
     </div>
@@ -600,14 +596,14 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
       )}
       {row.metrics.length === 0 ? null : (
-        <div
-          className="mt-3 flex flex-col gap-2 border-t border-border/60 pt-3"
-          data-zerops-service-metrics
-        >
-          {row.metrics.map((metric) => (
-            <MetricRow key={metric.id} metric={metric} />
-          ))}
-        </div>
+        <>
+          <Separator className="mt-3" />
+          <div className="mt-3 flex flex-col gap-2" data-zerops-service-metrics>
+            {row.metrics.map((metric) => (
+              <MetricRow key={metric.id} metric={metric} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -648,20 +644,23 @@ function StageLine({
   usageRead: boolean;
 }) {
   return (
-    <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
-      <ServiceHeader
-        aside={undefined}
-        portLabel={portLabel}
-        folded={folded}
-        routes={routes}
-        service={stage}
-        statusLabel={label}
-        statusNeedsWord={needsWord}
-        title={title}
-        tone={tone}
-      />
-      <Meters row={meters} usageRead={usageRead} />
-    </div>
+    <>
+      <Separator className="mt-2" />
+      <div className="mt-2" data-zerops-service-stage>
+        <ServiceHeader
+          aside={undefined}
+          portLabel={portLabel}
+          folded={folded}
+          routes={routes}
+          service={stage}
+          statusLabel={label}
+          statusNeedsWord={needsWord}
+          title={title}
+          tone={tone}
+        />
+        <Meters row={meters} usageRead={usageRead} />
+      </div>
+    </>
   );
 }
 
@@ -705,7 +704,8 @@ function ControlPlaneRow({
   const versioned = mate !== undefined && mateUpdate !== undefined && mateUpdate !== null;
   return (
     <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
-      <MintPanel className="overflow-hidden border border-status-ok/20">
+      {/* The Mate's own home: the card in the running tone's wash. */}
+      <Card className="overflow-hidden" render={<section />} tone="ok" variant="wash">
         <div className="flex min-w-0 flex-col px-3.5 pt-3 pb-3.5">
           <div className="flex min-w-0 items-center justify-between gap-2.5">
             <Popover>
@@ -781,7 +781,7 @@ function ControlPlaneRow({
             {agents}
           </div>
         ) : null}
-      </MintPanel>
+      </Card>
     </li>
   );
 }

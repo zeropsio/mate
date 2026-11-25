@@ -621,7 +621,7 @@ function RecordsStage({
         />
       )}
       {/* Our own add has no routing to look up yet: the line stands as it will, its press held. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-rule pt-3">
         <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-caption">
           <p className="text-foreground" data-addresses-checked="">
             {busy

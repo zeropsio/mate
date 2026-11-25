@@ -25,6 +25,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { SeriesSwatch } from "../ui/chart";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
@@ -436,7 +437,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
       <div className="ms-auto flex min-w-0 items-center justify-end gap-1 lg:hidden">
@@ -493,7 +494,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
     </div>
@@ -629,13 +630,7 @@ export function UsagePage({
                           <div key={provider} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-4">
                               <span className="flex min-w-0 items-center gap-2 text-body text-foreground">
-                                <span
-                                  aria-hidden
-                                  className="size-2 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                                  }}
-                                />
+                                <SeriesSwatch color={PROVIDER_PRESENTATION[provider].color} />
                                 <ProviderMark provider={provider} className="size-4" />
                                 <span className="flex min-w-0 items-baseline gap-1.5">
                                   <span className="truncate">
@@ -1096,7 +1091,7 @@ function UsageScopeChips({
             aria-label={`Clear ${chip.dimension} filter`}
             onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
           >
-            <XIcon className="size-3" aria-hidden />
+            <XIcon aria-hidden />
           </Button>
         </span>
       </WorkspaceBreadcrumbItem>

@@ -214,9 +214,9 @@ export function GitEnvironmentForm({
                 : "A token comes next"}
             </Text>
             {address.trim() !== "" && repos !== undefined && repository === undefined ? (
-              <p role="alert" className="text-body text-destructive">
+              <Text render={<p />} role="alert" variant="error">
                 {gitSetupRepositoryHint(address)}
-              </p>
+              </Text>
             ) : null}
             {repos === undefined ? (
               <Text render={<p />} variant="note">
@@ -371,9 +371,9 @@ export function GitEnvironmentForm({
               }}
             />
             {!gitSetupBranchValid(branch) ? (
-              <p role="alert" className="text-body text-destructive">
+              <Text render={<p />} role="alert" variant="error">
                 Enter an unreserved Git branch name. The mate/ prefix is reserved.
-              </p>
+              </Text>
             ) : null}
             <p className="text-body font-medium">How Mate hands over</p>
             <p className="text-body">

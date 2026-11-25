@@ -19,6 +19,7 @@
  * (`reaches`), its Mate's owner gets one press that hands the Mate what others said since its last
  * push (`answer`), and a person who may only read reads so where the box would be (`readOnly`).
  */
+import { Failure } from "~/components/ui/failure";
 import {
   changeAskLabel,
   changeConversationCount,
@@ -315,17 +316,17 @@ function SayBox({
         )}
       </div>
       {trouble === null ? null : (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">{trouble}</p>
+        <Failure cause={trouble} className="mt-1.5" role="alert" size="line" />
       )}
       {waiting ? (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
+        <Text className="mt-1.5" render={<p />} role="status" variant="description">
           Sends once HQ has read the conversation.
-        </p>
+        </Text>
       ) : null}
       {pending?.reconnecting === true ? (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
+        <Text className="mt-1.5" render={<p />} role="status" variant="description">
           HQ is reconnecting. Your comment shows here once HQ has it.
-        </p>
+        </Text>
       ) : null}
     </>
   );

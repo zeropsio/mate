@@ -206,7 +206,7 @@ export function SidebarProviderUpdatePill() {
                 onClick={() => startExit(displayedView.key, null, displayedView.key)}
                 variant="bare"
               >
-                <XIcon className="size-3.5 shrink-0 opacity-70 group-hover/dismiss:opacity-100 group-focus-visible/dismiss:opacity-100" />
+                <XIcon className="opacity-70 group-hover/dismiss:opacity-100 group-focus-visible/dismiss:opacity-100" />
               </Button>
             }
           />

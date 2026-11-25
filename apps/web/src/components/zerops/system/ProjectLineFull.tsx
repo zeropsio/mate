@@ -21,6 +21,7 @@
  * `onReviewRelease(from)`; `onPutLive`; `onOpenMates(from)` (Mates' work: the page's Mates
  * section).
  */
+import { Skeleton } from "~/components/ui/skeleton";
 import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 
@@ -196,7 +197,7 @@ export function ProjectLineFull({
             {sides.map((side) =>
               held ? (
                 <li className={SIDE} key={side.key}>
-                  <span className="my-1 h-2 w-24 rounded-full bg-foreground/8" />
+                  <Skeleton className="my-1 h-2 w-24" shape="pill" still surface="card" />
                 </li>
               ) : (
                 <SideRow groupId={groupId} key={side.key} side={side} />
@@ -317,7 +318,7 @@ function Legend({
 
 /** What a bead's marks mean, at the card's foot. */
 const LEGEND =
-  "flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-border pt-2.5 pb-3";
+  "flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-rule pt-2.5 pb-3";
 /** A row hung under `main`, its dash from the spine to its words. */
 const SIDE =
   "relative flex h-5.5 min-w-0 items-center ps-7 before:absolute before:top-2.5 before:left-1.5 before:h-0 before:w-3.5 before:border-t-2 before:border-dashed before:border-(--ln-faint)";

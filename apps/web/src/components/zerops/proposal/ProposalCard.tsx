@@ -35,6 +35,7 @@ import {
   type ProposalStage,
 } from "./proposal.logic";
 import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 /** The Mate a message goes to, as the menu draws it; absent while the menu does not know it. */
 export interface ProposalRecipient {
@@ -401,11 +402,9 @@ export function Attachment({ title, text }: { readonly title: string; readonly t
         <span className="min-w-0 truncate">{title}</span>
       </CollapsibleTrigger>
       {open ? (
-        <Card className="min-w-0" variant="inset">
-          <pre className="max-h-60 min-w-0 overflow-auto px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
-            {text}
-          </pre>
-        </Card>
+        <CodeBlock height="md" wrap={false}>
+          {text}
+        </CodeBlock>
       ) : null}
     </Collapsible>
   );

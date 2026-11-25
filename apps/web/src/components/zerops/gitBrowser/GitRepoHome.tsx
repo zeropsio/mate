@@ -16,6 +16,7 @@ import { GitDirectoryList } from "./GitDirectoryList";
 import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 const entryTarget = (entry: { readonly path: string; readonly type: string }): RepoPathTarget => ({
   path: entry.path,
@@ -59,18 +60,20 @@ function OpenChanges({
       ) : null}
       {repository !== undefined && repository.changes.length > 0 ? (
         <Card variant="flat">
-          <div className="divide-y divide-border px-4 py-1">
-            {repository.changes.map((change) => (
-              <ZeropsGitChangeRow
-                key={change.pull.number}
-                change={change}
-                project={project}
-                repo={repo}
-                onOpen={
-                  onOpenChange === undefined ? undefined : () => onOpenChange(change.pull.number)
-                }
-              />
-            ))}
+          <div className="px-4 py-1">
+            <List>
+              {repository.changes.map((change) => (
+                <ZeropsGitChangeRow
+                  key={change.pull.number}
+                  change={change}
+                  project={project}
+                  repo={repo}
+                  onOpen={
+                    onOpenChange === undefined ? undefined : () => onOpenChange(change.pull.number)
+                  }
+                />
+              ))}
+            </List>
           </div>
         </Card>
       ) : repository?.coverage === "complete" ? (

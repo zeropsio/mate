@@ -25,8 +25,6 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ChevronDownIcon, EllipsisIcon, PlusIcon, SearchIcon, TextIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
-
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
@@ -66,13 +64,14 @@ import {
   VAULT_ROW_BODY_CLASS,
   VAULT_ROW_CLASS,
   VAULT_ROW_WORDS_CLASS,
-  VAULT_ROWS_CLASS,
   VaultManagedRows,
   VaultRow,
   type VaultRowActivity,
 } from "./VaultRow";
 import { diffVaultText, pasteIntoText, vaultToText, type VaultText } from "./vaultText.logic";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** What the account knows of one row's write: in flight, or refused with the platform's code. */
 export type VaultPending =
@@ -585,7 +584,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         title={<VaultPartName mateName={mateName} scope={section.scope} />}
       >
         <Card className="overflow-hidden">
-          <div className={VAULT_ROWS_CLASS}>{section.entries.map(rowOf)}</div>
+          <List>{section.entries.map(rowOf)}</List>
         </Card>
       </Section>
     );
@@ -653,16 +652,19 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         ) : (
           // Each app's own stand apart from what every app gets: over twice the room two of them
           // keep, a hairline between, and the group's label hugging its first heading.
-          <div className="mt-2 grid gap-1 border-t border-border/70 pt-5" data-vault-own>
-            <Text className="m-0" render={<p />} variant="label">
-              {OWN_VAULTS_LABEL}
-            </Text>
-            <div className="grid gap-6">{own.map(sectionOf)}</div>
-          </div>
+          <>
+            <Separator className="mt-2" />
+            <div className="grid gap-1" data-vault-own>
+              <Text className="m-0" render={<p />} variant="label">
+                {OWN_VAULTS_LABEL}
+              </Text>
+              <div className="grid gap-6">{own.map(sectionOf)}</div>
+            </div>
+          </>
         )}
         {made.length > 0 ? (
           <Card className="overflow-hidden" data-vault-made>
-            <div className={VAULT_ROWS_CLASS}>
+            <List>
               {made.map((scope) => {
                 const open = openMade.has(scope.id);
                 const { words } = serviceWords(scope);
@@ -704,16 +706,19 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                       <div className={VAULT_ROW_WORDS_CLASS} data-open={open ? "" : undefined}>
                         {open ? (
                           // A service Zerops runs, unfolded: its values under its line.
-                          <div className={cn(VAULT_ROWS_CLASS, "border-t border-border/70")}>
-                            <VaultManagedRows onReveal={props.onReveal} scope={scope} />
-                          </div>
+                          <>
+                            <Separator />
+                            <List>
+                              <VaultManagedRows onReveal={props.onReveal} scope={scope} />
+                            </List>
+                          </>
                         ) : null}
                       </div>
                     </div>
                   </Collapsible>
                 );
               })}
-            </div>
+            </List>
           </Card>
         ) : null}
         {mates.length === 0 || forAll.length + own.length + made.length === 0 ? (
@@ -722,9 +727,10 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           // The Mate's own comes last, apart from everything the apps read (their vaults and the
           // services Zerops runs for them): the room and hairline the apps' own group has, and
           // its own name for a heading.
-          <div className="mt-2 border-t border-border/70 pt-5" data-vault-mate>
-            {mates.map(sectionOf)}
-          </div>
+          <>
+            <Separator className="mt-2" />
+            <div data-vault-mate>{mates.map(sectionOf)}</div>
+          </>
         )}
         {sections.length === 0 && made.length === 0 && q !== "" ? (
           <EmptyState size="row">Nothing matches “{q}”.</EmptyState>
@@ -792,7 +798,7 @@ function HeldSection({
     <div className="flex flex-col gap-2">
       <div className="flex min-h-7 items-center">{label}</div>
       <Card className="overflow-hidden">
-        <div className={VAULT_ROWS_CLASS}>{children}</div>
+        <List>{children}</List>
       </Card>
     </div>
   );

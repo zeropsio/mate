@@ -165,7 +165,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
               disabled={pendingAction.isResponding}
               aria-label="Previous question"
             >
-              <ChevronLeftIcon className="size-3.5" />
+              <ChevronLeftIcon />
             </Button>
           ) : (
             <Button

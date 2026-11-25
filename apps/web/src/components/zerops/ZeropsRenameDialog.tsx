@@ -2,6 +2,8 @@
  * One field, one verb. Used to rename an agent and to rename a group; the
  * caller says what is being renamed and what a good name is.
  */
+import { Text } from "~/components/ui/text";
+import { Failure } from "~/components/ui/failure";
 import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
@@ -86,20 +88,15 @@ export function ZeropsRenameForm({
             value={value}
           />
           {submitted && error !== undefined ? (
-            <p className="text-caption text-status-failed-text" role="alert">
+            <Text render={<p />} role="alert" variant="error">
               {error}
-            </p>
+            </Text>
           ) : null}
         </div>
         {children}
       </DialogPanel>
       <DialogFooter>
-        <p
-          className="me-auto min-h-4 self-center text-line leading-4 text-status-failed-text"
-          role="alert"
-        >
-          {refusal}
-        </p>
+        <Failure cause={refusal} className="me-auto min-h-5 self-center" role="alert" size="line" />
         <Button onClick={onCancel} type="button" variant="ghost">
           {reportOnly ? "Close" : "Cancel"}
         </Button>

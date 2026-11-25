@@ -15,6 +15,7 @@
  * press, a card's starts with it, as every ask's does, and ends in what the card adds
  * (`footerEnd`: its *Not now*).
  */
+import { Failure } from "~/components/ui/failure";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { OperationStopped, type RepoGovernanceRead } from "@t3tools/client-runtime/data";
@@ -32,7 +33,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { DialogFooter, DialogPanel } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
-import { Row } from "~/components/ui/row";
+import { RadioGroup, RadioRow } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
 import { StepNumber } from "~/components/ui/step-number";
 import { Toggle } from "~/components/ui/toggle";
@@ -94,6 +95,7 @@ import {
   useRepoPress,
 } from "./repoPress";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
@@ -721,11 +723,7 @@ function refusalWords(cause: unknown): string {
 }
 
 function Refusal({ words }: { readonly words: string | null }) {
-  return words === null ? null : (
-    <p className="text-body text-destructive-foreground" role="alert">
-      {words}
-    </p>
-  );
+  return words === null ? null : <Failure cause={words} role="alert" size="line" />;
 }
 
 /** GitHub app or token: the two ways in, as a segmented control. */
@@ -1075,30 +1073,6 @@ function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string
   );
 }
 
-/**
- * Arrow keys move the choice through a radio list, past the rows that can't be picked; Tab leaves
- * the list from the chosen row.
- */
-function radioKeys(event: React.KeyboardEvent<HTMLElement>) {
-  const step =
-    event.key === "ArrowDown" || event.key === "ArrowRight"
-      ? 1
-      : event.key === "ArrowUp" || event.key === "ArrowLeft"
-        ? -1
-        : 0;
-  if (step === 0) return;
-  event.preventDefault();
-  const radios = [
-    ...(event.currentTarget
-      .closest('[role="radiogroup"]')
-      ?.querySelectorAll<HTMLElement>('[role="radio"]:not([aria-disabled="true"])') ?? []),
-  ];
-  const at = radios.indexOf(event.currentTarget);
-  const next = radios[(at + step + radios.length) % radios.length];
-  next?.focus();
-  next?.click();
-}
-
 /** The repository HQ would create, as its row holds it: the name typed, and what the row does with it. */
 interface CreatedRow {
   readonly name: string;
@@ -1125,87 +1099,60 @@ function RepositoryList({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div aria-label="Repository" className="grid max-h-64 overflow-y-auto" role="radiogroup">
-        {created === null ? null : (
-          <NewRepositoryRow
-            account={account.account}
-            checked={picked === NEW_REPOSITORY}
-            created={created}
-            focusable={picked === NEW_REPOSITORY || picked === null}
-            onPick={() => onPick(account, NEW_REPOSITORY)}
-          />
-        )}
-        {rows.map((row) => {
-          const name = row.repository.fullName;
-          const checked = picked === name;
-          const disabled = row.taken !== null;
-          const first = created === null && rows.find((each) => each.taken === null) === row;
-          const words = [
-            row.repository.private ? "Private" : "Public",
-            row.current ? "connected now" : null,
-            row.suggested && !row.current ? "name matches" : null,
-          ]
-            .filter((part) => part !== null)
-            .join(" · ");
-          return (
-            <div
-              className={cn(
-                "border-t first:border-t-0",
-                row.fresh &&
-                  "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
-              )}
-              key={name}
-            >
-              <Row
-                aria-checked={checked}
-                aria-disabled={disabled}
-                badges={
-                  row.fresh ? (
-                    <Badge tone="info">New</Badge>
-                  ) : row.suggested ? (
-                    <Badge tone="info">Suggested</Badge>
-                  ) : null
+      <RadioGroup
+        aria-label="Repository"
+        className="max-h-64 overflow-y-auto"
+        layout="list"
+        onValueChange={(value) => {
+          if (typeof value === "string") onPick(account, value);
+        }}
+        value={picked ?? ""}
+      >
+        <List className="flex flex-col">
+          {created === null ? null : (
+            <NewRepositoryRow
+              account={account.account}
+              checked={picked === NEW_REPOSITORY}
+              created={created}
+            />
+          )}
+          {rows.map((row) => {
+            const name = row.repository.fullName;
+            const disabled = row.taken !== null;
+            const words = [
+              row.repository.private ? "Private" : "Public",
+              row.current ? "connected now" : null,
+              row.suggested && !row.current ? "name matches" : null,
+            ]
+              .filter((part) => part !== null)
+              .join(" · ");
+            return (
+              <div
+                className={
+                  row.fresh
+                    ? "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none"
+                    : undefined
                 }
-                lead={
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "flex size-4 items-center justify-center rounded-full border",
-                      checked ? "border-primary" : "border-input",
-                    )}
-                  >
-                    {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-                  </span>
-                }
-                line={row.taken ?? words}
-                pressable
-                render={
-                  <button
-                    onClick={() => {
-                      if (!disabled) onPick(account, name);
-                    }}
-                    onKeyDown={radioKeys}
-                    role="radio"
-                    tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
-                    type="button"
-                  />
-                }
-                size="sm"
-                title={
-                  <span
-                    className={cn(
-                      "font-mono font-normal",
-                      disabled ? "text-muted-foreground/70" : "text-foreground",
-                    )}
-                  >
-                    {name}
-                  </span>
-                }
-              />
-            </div>
-          );
-        })}
-      </div>
+                key={name}
+              >
+                <RadioRow
+                  badges={
+                    row.fresh ? (
+                      <Badge tone="info">New</Badge>
+                    ) : row.suggested ? (
+                      <Badge tone="info">Suggested</Badge>
+                    ) : null
+                  }
+                  disabled={disabled}
+                  line={row.taken ?? words}
+                  title={<span className="font-mono font-normal">{name}</span>}
+                  value={name}
+                />
+              </div>
+            );
+          })}
+        </List>
+      </RadioGroup>
     </Card>
   );
 }
@@ -1218,16 +1165,11 @@ function RepositoryList({
 function NewRepositoryRow({
   account,
   checked,
-  focusable,
   created,
-  onPick,
 }: {
   readonly account: string;
   readonly checked: boolean;
-  /** Tab reaches the list on this row. */
-  readonly focusable: boolean;
   readonly created: CreatedRow;
-  readonly onPick: () => void;
 }) {
   const field = useRef<HTMLInputElement>(null);
   // Picked with a pointer, the name is ready to type; picked with the arrow keys, focus stays on the row.
@@ -1239,38 +1181,15 @@ function NewRepositoryRow({
     field.current?.select();
   }, [checked]);
   return (
-    <div
-      aria-checked={checked}
+    <RadioRow
       aria-label={`New repository ${account}/${created.name}`}
-      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out-strong hover:bg-accent/60 focus-visible:bg-accent"
+      line="Mate creates it on GitHub, empty"
+      meta={<Badge tone="info">New · private</Badge>}
       onClick={(event) => {
         if (!checked && event.detail > 0) typeNext.current = true;
-        onPick();
       }}
-      onKeyDown={(event) => {
-        // Keys typed in the name stay in the name.
-        if (event.target !== event.currentTarget) return;
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          onPick();
-          return;
-        }
-        radioKeys(event);
-      }}
-      role="radio"
-      tabIndex={focusable ? 0 : -1}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "flex size-4 items-center justify-center rounded-full border",
-          checked ? "border-primary" : "border-input",
-        )}
-      >
-        {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-      </span>
-      <span className="grid min-w-0 gap-px">
-        <span className="flex h-5 min-w-0 items-center font-mono text-body text-foreground">
+      title={
+        <span className="flex min-w-0 items-center font-mono font-normal text-foreground">
           <span className="shrink-0 text-muted-foreground">{account}/</span>
           {checked ? (
             <Input
@@ -1282,6 +1201,8 @@ function NewRepositoryRow({
               maxLength={100}
               onChange={(event) => created.onName(event.currentTarget.value)}
               onKeyDown={(event) => {
+                // Keys typed in the name stay in the name.
+                event.stopPropagation();
                 if (event.key !== "Enter") return;
                 event.preventDefault();
                 if (!created.invalid) created.onSubmit();
@@ -1296,10 +1217,9 @@ function NewRepositoryRow({
             <span className="truncate">{created.name}</span>
           )}
         </span>
-        <Text variant="note">Mate creates it on GitHub, empty</Text>
-      </span>
-      <Badge tone="info">New · private</Badge>
-    </div>
+      }
+      value={NEW_REPOSITORY}
+    />
   );
 }
 

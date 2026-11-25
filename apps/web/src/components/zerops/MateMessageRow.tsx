@@ -35,8 +35,8 @@ import type { AwaitedMateAnswer } from "../chat/MessagesTimeline.logic";
 import { DetailRow, spanOf } from "../chat/DetailRow";
 import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/messageFold";
 import { Button } from "../ui/button";
+import { MessageBubble } from "../ui/message-bubble";
 import { MateFace } from "./primitives";
-import { mateTintStyle } from "./mateTint";
 
 /**
  * Opens another Mate's conversation by its project: the conversation pane gives it (`OpenMateProvider`
@@ -99,45 +99,51 @@ export function MateMessageRow({
   const folds = foldsLikeAMessage(text);
   const folded = folds && !expanded;
   return (
-    <article
+    <MessageBubble
       // A message another of the person's Mates sent, or its answer, wears that Mate's hue so it
       // reads as another voice at a glance (the owner, 2026-11-17: "in the color of the bot or
-      // something, to make it distinct"): a wash of the hue, its edge in the hue, the sender's name
-      // in the hue mixed into the ink.
-      className="flex min-w-0 flex-col gap-2 rounded-card border border-mate-edge bg-mate-wash px-4 pt-3 pb-2"
-      style={mateTintStyle(look.tint)}
+      // something, to make it distinct"): the kit's message of another Mate, the sender's name in
+      // the hue mixed into the ink.
       data-zerops-surface="mate-message"
+      render={<article />}
+      speaker="another-mate"
+      tint={look.tint}
     >
-      <header className="flex min-w-0 items-center gap-2 text-line">
-        {notice ? null : <MateFace size={24} state="idle" {...look} />}
-        <span className="min-w-0 truncate font-semibold text-mate-ink">{name}</span>
-        {rest === null ? null : (
-          <span className="min-w-0 truncate text-muted-foreground">
-            {item.kind === "answer" ? rest : `· ${rest}`}
-          </span>
-        )}
-      </header>
-      <div
-        className={folded ? "relative min-w-0 max-h-44 overflow-hidden" : "min-w-0"}
-        data-mate-message-folded={folded ? "true" : "false"}
-        style={folded ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined}
-      >
-        <ChatMarkdown cwd={markdownCwd} skills={skills} text={text} threadRef={threadRef} />
-      </div>
-      {folds ? (
-        <div className="-ml-2 flex">
-          <Button
-            aria-expanded={expanded}
-            onClick={() => setExpanded((open) => !open)}
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            {expanded ? "Show less" : "Show more"}
-          </Button>
+      <div className="flex min-w-0 flex-col gap-2">
+        <header className="flex min-w-0 items-center gap-2 text-line">
+          {notice ? null : <MateFace size={24} state="idle" {...look} />}
+          <span className="min-w-0 truncate font-semibold text-mate-ink">{name}</span>
+          {rest === null ? null : (
+            <span className="min-w-0 truncate text-muted-foreground">
+              {item.kind === "answer" ? rest : `· ${rest}`}
+            </span>
+          )}
+        </header>
+        <div
+          className={folded ? "relative min-w-0 max-h-44 overflow-hidden" : "min-w-0"}
+          data-mate-message-folded={folded ? "true" : "false"}
+          style={
+            folded ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined
+          }
+        >
+          <ChatMarkdown cwd={markdownCwd} skills={skills} text={text} threadRef={threadRef} />
         </div>
-      ) : null}
-    </article>
+        {folds ? (
+          // Show more stands 4 px into the bubble's foot: a ghost press carries its own room.
+          <div className="-mb-1 -ml-2 flex">
+            <Button
+              aria-expanded={expanded}
+              onClick={() => setExpanded((open) => !open)}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </MessageBubble>
   );
 }
 

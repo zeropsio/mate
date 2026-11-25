@@ -24,23 +24,26 @@ type UsageProviderPresentation = {
 export const PROVIDER_PRESENTATION = {
   codex: {
     label: "Codex",
-    color: "var(--contrast-foreground)",
+    color: "var(--color-agent-codex)",
     mark: OpenAI,
   },
   claude: {
     label: "Claude Code",
-    color: "#d97757",
+    color: "var(--color-agent-claude)",
     mark: ClaudeAI,
   },
   grok: {
     label: "Grok Build",
-    // Contrast-aware neutral between the Codex series and muted chart chrome.
-    color: "color-mix(in oklab, var(--contrast-foreground) 72%, var(--background))",
+    color: "var(--color-agent-grok)",
     mark: GrokIcon,
   },
-  cursor: { label: "Cursor", color: "#8b8b8b", mark: CursorIcon },
-  opencode: { label: "OpenCode", color: "#5b9bbd", mark: OpenCodeIcon },
-  antigravity: { label: "Antigravity", color: "#8c7bd1", mark: AntigravityIcon },
+  cursor: { label: "Cursor", color: "var(--color-agent-cursor)", mark: CursorIcon },
+  opencode: { label: "OpenCode", color: "var(--color-agent-opencode)", mark: OpenCodeIcon },
+  antigravity: {
+    label: "Antigravity",
+    color: "var(--color-agent-antigravity)",
+    mark: AntigravityIcon,
+  },
 } satisfies Record<UsageProviderKind, UsageProviderPresentation>;
 
 /** Stable provider reading order across charts, summaries, tables, and hover rows. */

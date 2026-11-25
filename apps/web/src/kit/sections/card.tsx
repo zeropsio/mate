@@ -68,16 +68,6 @@ function CardSpecimens() {
               <SampleCard variant="sheet" />
             </div>
           </Specimen>
-          <Specimen label='variant="flat" tone="failed" size="sm"' note="A thing that broke">
-            <div className="w-full max-w-80">
-              <Card size="sm" tone="failed" variant="flat">
-                <span className="font-medium text-body">Deploy failed</span>
-                <span className="text-caption text-muted-foreground">
-                  The build stopped at step 3.
-                </span>
-              </Card>
-            </div>
-          </Specimen>
           <Specimen label='variant="slot" size="md"' note="A place not filled yet">
             <div className="w-full max-w-80">
               <Card size="md" variant="slot">
@@ -102,6 +92,43 @@ function CardSpecimens() {
               </Card>
             </div>
           </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="The state of what it holds, on its hairline; a wash card wears it as its ground too."
+        title="Tones"
+      >
+        <SpecimenGrid size="md">
+          {(["default", "ok", "busy", "attention", "failed"] as const).map((tone) => (
+            <Specimen key={tone} label={`variant="flat" tone="${tone}" size="sm"`}>
+              <div className="w-full max-w-72">
+                <Card size="sm" tone={tone} variant="flat">
+                  <span className="font-medium text-body">Release 14</span>
+                  <span className="text-caption text-muted-foreground">Production · 2 min ago</span>
+                </Card>
+              </div>
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+        <SpecimenGrid size="md">
+          {(["default", "ok", "busy", "attention", "failed"] as const).map((tone) => (
+            <Specimen
+              key={`wash-${tone}`}
+              label={`variant="wash" tone="${tone}" size="sm"`}
+              {...(tone === "default"
+                ? { note: "The one next step" }
+                : tone === "ok"
+                  ? { note: "The Mate's own home" }
+                  : {})}
+            >
+              <div className="w-full max-w-72">
+                <Card size="sm" tone={tone} variant="wash">
+                  <span className="font-medium text-body">Release 14 is ready</span>
+                  <span className="text-caption text-muted-foreground">3 changes since Monday</span>
+                </Card>
+              </div>
+            </Specimen>
+          ))}
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock

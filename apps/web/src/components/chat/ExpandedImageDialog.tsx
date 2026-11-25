@@ -2,10 +2,9 @@ import { parseMateImageSource } from "@t3tools/client-runtime/data";
 import { useMateImage, useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
 import { ExpressMark } from "../express/ExpressMark";
-import { Dialog, DialogMediaPopup } from "../ui/dialog";
+import { Dialog, DialogMediaClose, DialogMediaPopup, DialogMediaStep } from "../ui/dialog";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 
@@ -81,30 +80,16 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             aria-label="Close image preview"
             onClick={onClose}
           />
+          <DialogMediaClose label="Close image preview" />
           {preview.images.length > 1 && (
-            <Button
-              type="button"
-              size="icon-md"
-              variant="scrim"
-              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 sm:left-6"
-              aria-label="Previous image"
+            <DialogMediaStep
+              label="Previous image"
+              side="before"
               {...previousIntent}
               onClick={() => navigateImage(-1)}
-            >
-              <ChevronLeftIcon className="size-5" />
-            </Button>
+            />
           )}
           <div className="relative isolate z-10 max-h-[92vh] max-w-[var(--media-width)]">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="absolute right-2 top-2 z-20"
-              onClick={onClose}
-              aria-label="Close image preview"
-            >
-              <XIcon />
-            </Button>
             {failedImageSrc === item.src ? (
               <AssetImage
                 loading="lazy"
@@ -160,17 +145,12 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             ) : null}
           </div>
           {preview.images.length > 1 && (
-            <Button
-              type="button"
-              size="icon-md"
-              variant="scrim"
-              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 sm:right-6"
-              aria-label="Next image"
+            <DialogMediaStep
+              label="Next image"
+              side="after"
               {...nextIntent}
               onClick={() => navigateImage(1)}
-            >
-              <ChevronRightIcon className="size-5" />
-            </Button>
+            />
           )}
         </div>
       </DialogMediaPopup>

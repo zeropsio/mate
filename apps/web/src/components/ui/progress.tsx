@@ -5,6 +5,7 @@ import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { FailureDetails } from "./failure";
+import { Meter } from "./meter";
 import { progressClock, progressFraction, type ProgressState } from "./progress.logic";
 
 /** The highest value seen for `key`: the bar never takes a step back, even when its input does. */
@@ -42,7 +43,7 @@ const RUNNING: ProgressView = { state: "running" };
  * A long operation, as one row: the step it is on in words that replace themselves in place (never
  * a growing list), its clock beside an honest estimate that says when it overruns, and a bar that
  * only moves forward. Done, the row becomes its result; stopped, it says why and offers the one
- * action that fixes it — the clock and the bar stay where they stopped.
+ * action that fixes it — the clock and the bar (a `Meter`) stay where they stopped.
  */
 function Progress({
   steps,
@@ -155,22 +156,12 @@ function Progress({
         )}
         {action === null ? null : <span className="shrink-0">{action}</span>}
       </div>
-      <div
-        aria-label={label}
-        aria-valuemax={100}
-        aria-valuemin={0}
-        aria-valuenow={Math.round(fraction * 100)}
-        className="h-1 w-full overflow-hidden rounded-full bg-muted"
+      <Meter
+        label={label}
         role="progressbar"
-      >
-        <div
-          className={cn(
-            "h-full w-full origin-left rounded-full transition-transform duration-200 ease-out-strong motion-reduce:transition-none",
-            state === "failed" ? "bg-destructive" : state === "done" ? "bg-success" : "bg-primary",
-          )}
-          style={{ transform: `scaleX(${fraction})` }}
-        />
-      </div>
+        tone={state === "failed" ? "danger" : state === "done" ? "success" : "primary"}
+        value={fraction}
+      />
       {view.state === "failed" && view.details !== undefined && view.details !== null ? (
         <FailureDetails>{view.details}</FailureDetails>
       ) : null}

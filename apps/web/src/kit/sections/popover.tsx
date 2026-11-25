@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import {
   Popover,
   PopoverClose,
@@ -22,6 +25,60 @@ function Body() {
       <div className="flex justify-end">
         <PopoverClose render={<Button size="sm" variant="secondary" />}>Done</PopoverClose>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A popover anchored to a point rather than a press: the picture's notes and the timeline map's
+ * preview stand beside a mark this way, placed and kept on the frame by the popover itself.
+ */
+function PointAnchored() {
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+  const [frame, setFrame] = useState<HTMLElement | null>(null);
+  return (
+    <div className="relative w-full" ref={setFrame}>
+      <Card
+        aria-label="Place the popover"
+        className="h-44 w-full"
+        pressable
+        variant="slot"
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          setPoint({ x: event.clientX - box.left, y: event.clientY - box.top });
+        }}
+      />
+      {point === null ? null : (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute size-2 -translate-1/2 rounded-full bg-primary"
+          style={{ left: point.x, top: point.y }}
+        />
+      )}
+      <Popover open={point !== null} onOpenChange={(open) => open || setPoint(null)}>
+        <PopoverPopup
+          anchor={
+            point === null || frame === null
+              ? null
+              : {
+                  getBoundingClientRect: () => {
+                    const box = frame.getBoundingClientRect();
+                    return DOMRect.fromRect({ x: box.left + point.x, y: box.top + point.y });
+                  },
+                }
+          }
+          collisionBoundary={frame ?? undefined}
+          collisionPadding={8}
+          initialFocus={false}
+          side="right"
+          sideOffset={8}
+          width="sm"
+        >
+          <p className="m-0 text-body">
+            Press anywhere in the frame: the popover follows the point.
+          </p>
+        </PopoverPopup>
+      </Popover>
     </div>
   );
 }
@@ -63,6 +120,16 @@ function PopoverSpecimens() {
               <PopoverTrigger render={<Button variant="secondary" />}>Open</PopoverTrigger>
               <PopoverPopup variant="tooltip">Saved to the project's vault.</PopoverPopup>
             </Popover>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="Beside a point rather than a press, and kept inside its frame."
+        title="Anchored to a point"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen label={specimenLabel({ anchor: "point", side: "right" })} span="row">
+            <PointAnchored />
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>

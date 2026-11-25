@@ -47,6 +47,7 @@ import { readLocalApi } from "~/localApi";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Dot } from "~/components/ui/dot";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import {
@@ -592,12 +593,8 @@ function SurfaceTabFace(props: {
   readonly onClose: () => void;
 }) {
   const compact = useTabFolded();
-  const pendingDot = props.pending ? (
-    <span
-      className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-      aria-hidden
-    />
-  ) : null;
+  // Unsaved changes: a dot in the tab's own ink on its icon's corner, as an editor marks a file.
+  const pendingDot = props.pending ? <Dot corner="bottom-end" size="sm" tone="current" /> : null;
   const touch = useMediaQuery("(hover: none)");
   if (touch && !compact) {
     return (

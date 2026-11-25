@@ -2,10 +2,11 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import type { KitGround, KitView, KitZoom } from "../kitAppearance";
 
+/** Each ground, and the ground a corner mark is cut out of on it (`--mark-ground`). */
 const GROUND_CLASS: Readonly<Record<KitGround, string>> = {
   page: "bg-background text-foreground",
-  card: "bg-card text-card-foreground",
-  menu: "bg-sidebar text-sidebar-foreground",
+  card: "bg-card text-card-foreground [--mark-ground:var(--color-card)]",
+  menu: "bg-sidebar text-sidebar-foreground [--mark-ground:var(--color-sidebar)]",
 };
 
 /** Every box in the canvas drawn with a hairline, to read its layout. */

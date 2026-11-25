@@ -120,10 +120,12 @@ export function ZeropsDataFilters({
         </Button>
         {onToggleRaw ? (
           <Button
+            aria-pressed={rawOpen}
+            data-pressed={rawOpen ? "" : undefined}
             data-zerops-data-filter-raw-toggle
             onClick={onToggleRaw}
             size="sm"
-            variant={rawOpen ? "secondary" : "ghost"}
+            variant="ghost"
           >
             WHERE…
           </Button>

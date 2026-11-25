@@ -1,5 +1,5 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
 import {
@@ -11,6 +11,14 @@ import {
   formatUsdTick,
   formatUsageCost,
 } from "@t3tools/shared/usageFormat";
+import { ChartAxis, ChartReadout, ChartReadoutRow } from "~/components/ui/chart";
+import { Text } from "~/components/ui/text";
+import {
+  Tooltip,
+  TooltipCreateHandle,
+  TooltipPopup,
+  TooltipTrigger,
+} from "~/components/ui/tooltip";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
 
 const VIEW_WIDTH = 960;
@@ -106,9 +114,7 @@ export function UsageProviderChart({
     [daily, hourly, resolution],
   );
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const plotRef = useRef<HTMLDivElement | null>(null);
-  const tooltipRef = useRef<HTMLDivElement | null>(null);
-  const hoverPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const [handle] = useState(() => TooltipCreateHandle<number>());
 
   const { ticks, stepX, toY, series } = useMemo(() => {
     const columns = buildPeriodColumns(periods, byPeriod, metric);
@@ -131,64 +137,6 @@ export function UsageProviderChart({
 
   const format = metric === "tokens" ? formatTokens : formatUsd;
 
-  const positionTooltip = useCallback(() => {
-    const plot = plotRef.current;
-    const tooltip = tooltipRef.current;
-    const hoverPosition = hoverPositionRef.current;
-    if (plot === null || tooltip === null || hoverPosition === null) return;
-
-    const gap = 12;
-    const tooltipWidth = tooltip.offsetWidth;
-    const tooltipHeight = tooltip.offsetHeight;
-    const plotWidth = plot.clientWidth;
-    const plotHeight = plot.clientHeight;
-    const preferredLeft =
-      hoverPosition.x + gap + tooltipWidth <= plotWidth
-        ? hoverPosition.x + gap
-        : hoverPosition.x - gap - tooltipWidth;
-    const preferredTop =
-      hoverPosition.y + gap + tooltipHeight <= plotHeight
-        ? hoverPosition.y + gap
-        : hoverPosition.y - gap - tooltipHeight;
-    const left = Math.min(Math.max(0, preferredLeft), Math.max(0, plotWidth - tooltipWidth));
-    const top = Math.min(Math.max(0, preferredTop), Math.max(0, plotHeight - tooltipHeight));
-    plot.style.setProperty("--usage-tooltip-left", `${left}px`);
-    plot.style.setProperty("--usage-tooltip-top", `${top}px`);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (hoverIndex === null) return;
-    positionTooltip();
-
-    const plot = plotRef.current;
-    const tooltip = tooltipRef.current;
-    if (plot === null || tooltip === null || typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(positionTooltip);
-    observer.observe(plot);
-    observer.observe(tooltip);
-    return () => observer.disconnect();
-  }, [hoverIndex, positionTooltip]);
-
-  const handleMove = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
-      const plot = plotRef.current;
-      if (plot === null || periods.length === 0) return;
-      const bounds = plot.getBoundingClientRect();
-      if (bounds.width === 0) return;
-      const localX = Math.min(bounds.width, Math.max(0, event.clientX - bounds.left));
-      const localY = Math.min(bounds.height, Math.max(0, event.clientY - bounds.top));
-      const fraction = localX / bounds.width;
-      const index = Math.floor(fraction * periods.length);
-      hoverPositionRef.current = { x: localX, y: localY };
-      positionTooltip();
-      setHoverIndex(Math.min(periods.length - 1, Math.max(0, index)));
-    },
-    [periods.length, positionTooltip],
-  );
-
-  const hoveredPeriod = hoverIndex === null ? undefined : periods[hoverIndex];
-  const hoveredColumn = hoverIndex === null ? undefined : series[hoverIndex];
   const formatPeriod = (period: string) =>
     resolution === "hour" ? formatHourShort(period, timeZone) : formatDayShort(period);
   const formatTooltipPeriod = (period: string) =>
@@ -203,41 +151,64 @@ export function UsageProviderChart({
         ? formatUsageCost(row)
         : formatTokens(row.totalTokens);
   };
-  const selectPeriod = (index: number) => {
-    const plot = plotRef.current;
-    hoverPositionRef.current = {
-      x: plot === null ? 0 : ((index + 0.5) / periods.length) * plot.clientWidth,
-      y: 0,
-    };
-    setHoverIndex(index);
-    positionTooltip();
-  };
+  const periodTotal = (period: string, column: DayColumn | undefined) =>
+    byPeriod.has(period) !== true
+      ? "No data"
+      : column?.total == null
+        ? "Unpriced"
+        : metric === "cost"
+          ? formatUsageCost(byPeriod.get(period)!)
+          : format(column.total);
+  const middle = periods[Math.floor(periods.length / 2)];
+  const axis = [periods[0], middle, periods[periods.length - 1]].map((period) =>
+    period === undefined ? "" : formatPeriod(period),
+  );
 
   return (
     <div className="flex flex-col gap-1">
+      <Tooltip handle={handle}>
+        {({ payload }) => {
+          const period = payload === undefined ? undefined : periods[payload];
+          return period === undefined || payload === undefined ? null : (
+            <TooltipPopup side="top">
+              <ChartReadout title={formatTooltipPeriod(period)}>
+                {providers.map((provider) => {
+                  const { label, mark: Mark } = PROVIDER_PRESENTATION[provider];
+                  return (
+                    <ChartReadoutRow
+                      key={provider}
+                      label={label}
+                      mark={<Mark aria-hidden className="size-3 shrink-0" />}
+                      value={providerValue(period, provider)}
+                    />
+                  );
+                })}
+                <ChartReadoutRow
+                  label={metric === "cost" ? "Priced cost" : "Total"}
+                  total
+                  value={periodTotal(period, series[payload])}
+                />
+              </ChartReadout>
+            </TooltipPopup>
+          );
+        }}
+      </Tooltip>
       <div className="flex gap-2">
         {/* Axis labels sit outside the plot so they stay aligned to gridlines. */}
         <div className="relative h-56 w-14 shrink-0">
           {ticks.map((tick) => (
-            <span
+            <Text
               key={tick}
-              className="absolute right-0 -translate-y-1/2 text-3xs text-muted-foreground tabular-nums max-sm:text-caption"
+              className="absolute right-0 -translate-y-1/2"
               style={{ top: `${(toY(tick) / VIEW_HEIGHT) * 100}%` }}
+              variant="meta"
             >
               {tick === 0 ? "0" : metric === "cost" ? formatUsdTick(tick) : formatTokens(tick)}
-            </span>
+            </Text>
           ))}
         </div>
 
-        <div
-          ref={plotRef}
-          className="relative h-56 flex-1"
-          onMouseMove={handleMove}
-          onMouseLeave={() => {
-            hoverPositionRef.current = null;
-            setHoverIndex(null);
-          }}
-        >
+        <div className="relative h-56 flex-1" onMouseLeave={() => setHoverIndex(null)}>
           <svg
             className="h-full w-full"
             viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
@@ -263,28 +234,7 @@ export function UsageProviderChart({
             })}
 
             {periods.map((period, index) => (
-              <g
-                key={period}
-                role="button"
-                tabIndex={0}
-                aria-label={`${formatTooltipPeriod(period)}; ${metric === "tokens" ? "processed tokens" : "cost"}; ${providers.map((provider) => `${PROVIDER_PRESENTATION[provider].label}: ${providerValue(period, provider)}`).join("; ")}`}
-                onFocus={() => selectPeriod(index)}
-                onClick={() => selectPeriod(index)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    selectPeriod(index);
-                  }
-                }}
-                onBlur={() => setHoverIndex(null)}
-              >
-                <rect
-                  x={index * stepX}
-                  y={0}
-                  width={stepX}
-                  height={VIEW_HEIGHT}
-                  fill="transparent"
-                />
+              <g key={period}>
                 {providers.map((provider, providerIndex) => {
                   const value = series[index]?.bands.find(
                     (band) => band.provider === provider,
@@ -320,63 +270,28 @@ export function UsageProviderChart({
               />
             )}
           </svg>
-
-          {hoveredPeriod === undefined ? null : (
-            <div
-              ref={tooltipRef}
-              className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-card border border-border/50 px-2.5 py-2 text-caption shadow-lg"
-              style={{
-                left: "var(--usage-tooltip-left, 0px)",
-                top: "var(--usage-tooltip-top, 0px)",
-              }}
-            >
-              <div className="mb-1 text-muted-foreground">{formatTooltipPeriod(hoveredPeriod)}</div>
-              {providers.map((provider) => {
-                const { label, mark: Mark } = PROVIDER_PRESENTATION[provider];
-                return (
-                  <div key={provider} className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <Mark className="size-3 shrink-0" aria-hidden />
-                      {label}
-                    </span>
-                    <span className="text-foreground tabular-nums">
-                      {providerValue(hoveredPeriod, provider)}
-                    </span>
-                  </div>
-                );
-              })}
-              <div className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1">
-                <span className="text-muted-foreground">
-                  {metric === "cost" ? "Priced cost" : "Total"}
-                </span>
-                <span className="text-foreground tabular-nums">
-                  {byPeriod.has(hoveredPeriod) !== true
-                    ? "No data"
-                    : hoveredColumn?.total == null
-                      ? "Unpriced"
-                      : metric === "cost"
-                        ? formatUsageCost(byPeriod.get(hoveredPeriod)!)
-                        : format(hoveredColumn.total)}
-                </span>
-              </div>
-            </div>
-          )}
+          {/* Each period's hover and focus target, over its column: one tooltip names them all. */}
+          <div className="absolute inset-0 flex">
+            {periods.map((period, index) => (
+              <TooltipTrigger
+                aria-label={`${formatTooltipPeriod(period)}; ${metric === "tokens" ? "processed tokens" : "cost"}; ${providers.map((provider) => `${PROVIDER_PRESENTATION[provider].label}: ${providerValue(period, provider)}`).join("; ")}`}
+                className="h-full min-w-0 flex-1"
+                delay={0}
+                handle={handle}
+                key={period}
+                onBlur={() => setHoverIndex(null)}
+                onFocus={() => setHoverIndex(index)}
+                onMouseEnter={() => setHoverIndex(index)}
+                payload={index}
+                render={<div />}
+                tabIndex={0}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-between pl-16 text-3xs text-muted-foreground uppercase max-sm:text-caption">
-        <span>{periods[0] === undefined ? "" : formatPeriod(periods[0])}</span>
-        <span>
-          {periods[Math.floor(periods.length / 2)] === undefined
-            ? ""
-            : formatPeriod(periods[Math.floor(periods.length / 2)] ?? "")}
-        </span>
-        <span>
-          {periods[periods.length - 1] === undefined
-            ? ""
-            : formatPeriod(periods[periods.length - 1] ?? "")}
-        </span>
-      </div>
+      <ChartAxis className="ms-16" labels={axis} />
     </div>
   );
 }

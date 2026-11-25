@@ -2824,7 +2824,7 @@ export function ZeropsProjectsContent({
           />
         ),
       )}
-      {trouble === null ? null : <p className="text-body text-status-failed-text">{trouble}</p>}
+      {trouble === null ? null : <Failure cause={trouble} role="alert" size="line" />}
     </div>
   );
   return (

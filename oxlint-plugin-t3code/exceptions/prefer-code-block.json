@@ -1,0 +1,42 @@
+[
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<pre>",
+    "owner": "unify pass, code",
+    "reason": "the Markdown renderer's own code block: react-markdown hands it the fenced code, the highlighter colours it and chat-markdown.css draws it at the person's code size; a CodeBlock would nest a second frame",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<pre>",
+    "owner": "unify pass, code",
+    "reason": "the Markdown code block's fallback when the highlighter throws: the renderer's own plain block, drawn by chat-markdown.css like the highlighted one",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<pre> className=\"invisible\"",
+    "owner": "unify pass, code",
+    "reason": "the Markdown code block's invisible twin holding its height while the highlighter loads, so the conversation does not move when the colours land",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/FileWriteDetail.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<pre> className={cn(\"min-w-0 px-3 py-2 font-mono select-text\", META)}",
+    "owner": "unify pass, code",
+    "reason": "a write's text inside the run card's item box (RunCappedBox): the box is the frame, capped and faded in the log, scrolling in the working row; its words keep the card's 13/20 step beside the bubble's",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/RunDisclosure.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<pre> className={cn( \"min-w-0 whitespace-pre-wrap break-words px-3 py-2 text-foreground/80 select-text\", META, mono ? \"font-mono\" : \"font-sans\", )}",
+    "owner": "unify pass, code",
+    "reason": "a call's output inside the run card's item box (RunCappedBox): the box is the frame, capped and faded in the log, scrolling in the working row; it holds words as well as code (mono={false})",
+    "expires": "never"
+  }
+]

@@ -21,7 +21,7 @@ import type {
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
 import { useId, useState } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 import type { TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Button, InlineButton } from "../../ui/button";
@@ -31,7 +31,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Textarea } from "../../ui/textarea";
 import { WaitLine } from "../WaitLine";
 import {
-  CopyLine,
+  NamedCopyLine,
   IntakeRoom,
   NotKnown,
   pressWords,
@@ -212,8 +212,8 @@ function IntakeAnswer({
       <p className="text-caption text-foreground">{intakeAnswerLine(answer, githubApp)}</p>
       {answer.hook.kind === "paste" ? (
         <>
-          <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />
-          <CopyLine copy="Copy secret" label="Secret" value={answer.hook.secret} />
+          <NamedCopyLine name="Payload URL" value={answer.webhookUrl} />
+          <NamedCopyLine name="Secret" value={answer.hook.secret} />
           <Text render={<p />} variant="note">
             {answer.hook.why}
           </Text>
@@ -435,10 +435,8 @@ function WebhookMade({ view }: { readonly view: HqWebhookView }) {
       <p className="text-caption text-foreground">
         {`${view.name} is made. Its secret is shown once: keep it where the caller signs with it.`}
       </p>
-      <CopyLine copy="Copy URL" label="URL" value={view.url} />
-      {view.secret === undefined ? null : (
-        <CopyLine copy="Copy secret" label="Secret" value={view.secret} />
-      )}
+      <NamedCopyLine name="URL" value={view.url} />
+      {view.secret === undefined ? null : <NamedCopyLine name="Secret" value={view.secret} />}
     </div>
   );
 }
@@ -452,22 +450,10 @@ function WebhookLine({
   readonly busy: boolean;
   readonly onDelete: () => void;
 }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: hook.name });
   return (
-    <li className="flex min-w-0 items-center gap-2">
+    <li className="flex min-w-0 items-center gap-3">
       <span className="w-24 shrink-0 truncate text-caption text-foreground">{hook.name}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground">
-        {hook.url}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(hook.url, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : "Copy URL"}
-      </Button>
+      <CopyLine className="flex-1" label={`${hook.name}'s URL`} value={hook.url} />
       <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
         Delete
       </Button>

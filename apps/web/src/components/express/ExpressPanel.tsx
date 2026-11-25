@@ -15,8 +15,10 @@ import {
   pictureAskSource,
 } from "../ask/pictureAsk.logic";
 import { Button } from "../ui/button";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { Card } from "../ui/card";
 import { Failure } from "../ui/failure";
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
 import type { ExpressHistoryEntry } from "./expressHistory.logic";
 import { ExpressMark } from "./ExpressMark";
@@ -412,11 +414,7 @@ function ExpressTile(props: {
     <Card>
       <Row
         className="@lg:flex-col"
-        lead={
-          <span className="flex size-8 items-center justify-center rounded-control bg-muted text-foreground [&_svg]:size-4">
-            {props.icon}
-          </span>
-        }
+        lead={<LogoTile>{props.icon}</LogoTile>}
         line={props.line}
         lineWraps
         onClick={props.onClick}
@@ -445,7 +443,7 @@ function SavedDesign({
       : { environmentId, resource: entry.picture, rendition: TILE_PICTURE },
   );
   return (
-    <figure className="group/saved relative aspect-square overflow-hidden rounded-control border border-border bg-muted">
+    <PictureFrame className="group/saved aspect-square" render={<figure />} size="control">
       {url === undefined ? null : (
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
@@ -464,7 +462,7 @@ function SavedDesign({
           {reopening ? "Opening…" : "Edit again"}
         </Button>
       </span>
-    </figure>
+    </PictureFrame>
   );
 }
 
@@ -478,17 +476,19 @@ function LinkedDesign({
 }) {
   return (
     <Button className="block aspect-square" onClick={onOpen} variant="bare">
-      <span className="flex size-full flex-col items-center justify-center gap-2 rounded-control border border-border bg-muted p-3 text-center transition-colors hover:bg-accent/60">
-        <ExpressMark className="size-8 rounded-control" />
-        <span className="line-clamp-2 text-caption font-medium leading-4">
-          {entry.words ?? "Adobe Express design"}
-        </span>
-        {entry.words === undefined ? (
-          <span className="font-mono text-muted-foreground text-caption leading-4">
-            {entry.documentId.slice(-7)}
+      <PictureFrame className="size-full" size="control">
+        <span className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center">
+          <ExpressMark className="size-8 rounded-control" />
+          <span className="line-clamp-2 text-caption font-medium leading-4">
+            {entry.words ?? "Adobe Express design"}
           </span>
-        ) : null}
-      </span>
+          {entry.words === undefined ? (
+            <span className="font-mono text-muted-foreground text-caption leading-4">
+              {entry.documentId.slice(-7)}
+            </span>
+          ) : null}
+        </span>
+      </PictureFrame>
     </Button>
   );
 }

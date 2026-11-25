@@ -32,6 +32,9 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty";
+import { ChartAxis } from "../ui/chart";
+import { Meter } from "../ui/meter";
+import { ShareBar } from "../ui/share-bar";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PAGE_BARS, SpendBars } from "../zerops/projects/ProjectSpend";
@@ -40,6 +43,8 @@ import { SettingsPageContainer } from "./settingsLayout";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -180,6 +185,12 @@ function BalanceCard({
 }): JSX.Element {
   const balance = billing.balance;
   const total = billing.total;
+  const stops = billing.soonest !== null && billing.tone !== "quiet";
+  // The split shows nothing of an empty balance: the strip opens only for what it holds.
+  const strip =
+    balance !== null &&
+    total !== null &&
+    (total > 0 || billing.verification === "unverified" || stops);
   return (
     <Card
       aria-label="Balance"
@@ -209,24 +220,27 @@ function BalanceCard({
           </Text>
         )}
       </div>
-      {balance === null || total === null ? null : (
-        <div className="flex flex-col gap-3 border-border/70 border-t px-6 py-5">
-          <Split credit={balance.credit} promo={balance.promoCredit} />
-          {billing.verification === "unverified" ? (
-            <Alert variant="success">
-              <AlertDescription>
-                A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
-                it, and higher limits.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {billing.soonest === null || billing.tone === "quiet" ? null : (
-            <SoonestStop
-              hoursLeft={billing.soonest.hoursLeft}
-              projectId={billing.soonest.projectId}
-            />
-          )}
-        </div>
+      {balance === null || !strip ? null : (
+        <>
+          <Separator />
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <Split credit={balance.credit} promo={balance.promoCredit} />
+            {billing.verification === "unverified" ? (
+              <Alert variant="success">
+                <AlertDescription>
+                  A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
+                  it, and higher limits.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {!stops || billing.soonest === null ? null : (
+              <SoonestStop
+                hoursLeft={billing.soonest.hoursLeft}
+                projectId={billing.soonest.projectId}
+              />
+            )}
+          </div>
+        </>
       )}
     </Card>
   );
@@ -266,48 +280,21 @@ function daysWords(days: number): string {
 
 /** How the balance splits between topped-up credit and promo credit, which Zerops spends alike. */
 function Split({ credit, promo }: { readonly credit: number; readonly promo: number }) {
-  const total = Math.max(0, credit) + Math.max(0, promo);
-  const creditShare = total > 0 ? (Math.max(0, credit) / total) * 100 : 0;
   return (
-    <div className="flex flex-col gap-3">
-      <div aria-hidden="true" className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        {total > 0 ? (
-          <>
-            <span className="h-full bg-spend-compute" style={{ width: `${creditShare}%` }} />
-            <span
-              className="h-full bg-spend-compute/55"
-              style={{ width: `${100 - creditShare}%` }}
-            />
-          </>
-        ) : null}
-      </div>
-      <dl className="flex flex-wrap gap-x-8 gap-y-2 text-body">
-        <SplitPart dot="bg-spend-compute" label="Topped up" usd={credit} />
-        <SplitPart dot="bg-spend-compute/55" label="Promo credit" usd={promo} />
-      </dl>
-    </div>
+    <ShareBar
+      format={formatUsd}
+      label="Balance"
+      legend
+      parts={[
+        { label: "Topped up", value: Math.max(0, credit), color: "var(--color-spend-compute)" },
+        { label: "Promo credit", value: Math.max(0, promo), color: PROMO_COLOR },
+      ]}
+    />
   );
 }
 
-function SplitPart({
-  label,
-  usd,
-  dot,
-}: {
-  readonly label: string;
-  readonly usd: number;
-  readonly dot: string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <dt className="flex items-center gap-2 text-muted-foreground">
-        <span aria-hidden="true" className={cn("size-2 rounded-full", dot)} />
-        {label}
-      </dt>
-      <dd className="text-foreground tabular-nums">{formatUsd(usd)}</dd>
-    </div>
-  );
-}
+/** Promo credit is the same money as topped-up credit, a step lighter. */
+const PROMO_COLOR = "color-mix(in oklab, var(--color-spend-compute) 55%, transparent)";
 
 /** The project Zerops will stop soonest: its own name, and when, in Zerops's hours. */
 function SoonestStop({
@@ -426,10 +413,7 @@ function SpendingSection({
               <SpendBars geometry={PAGE_BARS} series={series} />
               <AverageLine averageUsd={series.averageUsd} maxUsd={series.maxUsd} />
             </div>
-            <Text className="flex justify-between" render={<figcaption />} variant="meta">
-              <span>30 days ago</span>
-              <span>Today</span>
-            </Text>
+            <ChartAxis labels={["30 days ago", "Today"]} />
           </>
         )}
       </figure>
@@ -498,7 +482,7 @@ function ProjectsSection({
           Nothing has cost anything this month.
         </Text>
       ) : (
-        <ol className="flex flex-col divide-y divide-border/60">
+        <List className="flex flex-col" render={<ol />}>
           {shown.map(([projectId, period]) => (
             <ProjectRow
               key={projectId}
@@ -508,7 +492,7 @@ function ProjectsSection({
               usd={period.thisMonth}
             />
           ))}
-        </ol>
+        </List>
       )}
       {projects.length > PROJECTS_SHOWN ? (
         <div className="px-1">
@@ -547,15 +531,12 @@ function ProjectRow({
       >
         {project?.name ?? "A project no longer listed"}
       </span>
-      <span
-        aria-hidden="true"
-        className="hidden h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
-      >
-        <span
-          className="block h-full rounded-full bg-spend-compute"
-          style={{ width: `${top > 0 ? Math.max(2, (usd / top) * 100) : 0}%` }}
-        />
-      </span>
+      <Meter
+        className="hidden w-32 shrink-0 sm:block"
+        color="var(--color-spend-compute)"
+        size="md"
+        value={top > 0 ? Math.max(0.02, usd / top) : 0}
+      />
       <span className="w-20 shrink-0 text-right text-foreground text-body tabular-nums">
         {formatUsd(usd)}
       </span>

@@ -196,7 +196,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     searchInputRef.current?.focus();
                   }}
                 >
-                  <XIcon className="size-3" />
+                  <XIcon />
                 </Button>
               ) : (
                 // A key to press: said only where there is a keyboard to press it on.

@@ -33,6 +33,7 @@ import {
   type HistoryRelease,
 } from "./projectHistory.logic";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** A change as History opens it: by its repository and number. */
 type HistoryChangeKey = Pick<FlowPullRequest, "repository" | "number">;
@@ -150,7 +151,7 @@ export function ProjectHistoryView({
 }
 
 /** A line of an opened release: why it failed, what went live outside Mate. */
-const HIST_LINE = "border-t border-border/60 py-2.25 text-line leading-5";
+const HIST_LINE = "py-2.25 text-line leading-5";
 
 /** Tones of a release's state: Live green, a failure red, a stall amber, Rolled back quiet. */
 const STATE_TONE = {
@@ -235,7 +236,7 @@ function ReleaseRow({
         <li
           className={cn(
             "grid min-w-0 rounded-control transition-colors duration-150 ease-out-strong",
-            open ? "bg-foreground/4 pb-1.5" : "has-[>[data-hist-head]:hover]:bg-foreground/5",
+            open ? "bg-item-hover pb-1.5" : "has-[>[data-hist-head]:hover]:bg-item-hover",
           )}
         />
       }
@@ -254,34 +255,36 @@ function ReleaseRow({
       )}
       {open ? (
         // Its changes, set in under its version, a hairline over each.
-        <div className="grid min-w-0 ps-11 pe-3.5">
-          {release.failure === undefined ? null : (
-            <p className={cn(HIST_LINE, "text-status-failed-text")}>{release.failure}</p>
-          )}
-          {recorded.length === 0 ? null : (
-            <ChangeList label={`What ${release.tag} put live`} look="release">
-              {recorded.map((change) => (
-                <HistoryChangeRow
-                  change={change}
-                  face={face}
-                  key={`${change.repository}#${String(change.number)}`}
-                  mateName={mateName}
-                  onOpen={onOpen}
-                />
-              ))}
-            </ChangeList>
-          )}
-          {outside === 0 ? null : (
-            <p className={cn(HIST_LINE, "text-muted-foreground")}>
-              {repo === undefined ? (
-                outsideLine(outside)
-              ) : (
-                <GitBrowserLink to={{ ...repo, view: "commits" }}>
-                  {outsideLine(outside)}
-                </GitBrowserLink>
-              )}
-            </p>
-          )}
+        <div className="ps-11 pe-3.5">
+          <List className="grid min-w-0" edges="top">
+            {release.failure === undefined ? null : (
+              <p className={cn(HIST_LINE, "text-status-failed-text")}>{release.failure}</p>
+            )}
+            {recorded.length === 0 ? null : (
+              <ChangeList label={`What ${release.tag} put live`} look="release">
+                {recorded.map((change) => (
+                  <HistoryChangeRow
+                    change={change}
+                    face={face}
+                    key={`${change.repository}#${String(change.number)}`}
+                    mateName={mateName}
+                    onOpen={onOpen}
+                  />
+                ))}
+              </ChangeList>
+            )}
+            {outside === 0 ? null : (
+              <p className={cn(HIST_LINE, "text-muted-foreground")}>
+                {repo === undefined ? (
+                  outsideLine(outside)
+                ) : (
+                  <GitBrowserLink to={{ ...repo, view: "commits" }}>
+                    {outsideLine(outside)}
+                  </GitBrowserLink>
+                )}
+              </p>
+            )}
+          </List>
         </div>
       ) : null}
     </Collapsible>

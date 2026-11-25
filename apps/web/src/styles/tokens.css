@@ -35,7 +35,6 @@
   --zerops-status-off: #bdbdbd;
   --zerops-status-off-surface: #f3f5f7;
   --zerops-flat-card-border: transparent;
-  --zerops-mint-panel: #e8f7ec;
   /* A popup's lift; a raised surface's edge: a hairline under it, in dark a highlight on its top. */
   --zerops-shadow-popup: 0 16px 40px -18px rgb(0 0 0 / 55%);
   --zerops-shadow-edge: 0 1px rgb(0 0 0 / 4%);
@@ -49,6 +48,9 @@
      the ground alone sets it apart. */
   --zerops-well: var(--color-secondary);
   --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
+  /* A hairline that parts things inside one surface: a list's items, a card's sections, a
+     toolbar's groups. Quieter than the surface's own edge, in both appearances. */
+  --zerops-rule: color-mix(in oklab, var(--color-border) 60%, transparent);
   /* A field-like press (an outline toggle) under the pointer and pressed: the hover's accent and a
      step of input in light; in dark, input over its translucent ground, then input itself. */
   --zerops-field-hover: var(--color-accent);
@@ -57,6 +59,12 @@
      tint: the page's ground, half of it on hover; in dark, more input. */
   --zerops-segment: var(--color-background);
   --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
+  /* A pressable item's ground under the pointer or the keyboard's cursor (and a disclosure's while
+     it is held open), and the ground of the one picked among its list (the tab open, the take on
+     stage): a step of the ink over whatever ground the item stands on, so a card, a well, a popup
+     and the page light alike; in dark, a step more. */
+  --zerops-item-hover: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+  --zerops-item-picked: color-mix(in oklab, var(--color-foreground) 7%, transparent);
   /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
   --zerops-shimmer: rgb(255 255 255 / 64%);
   /* A lift's shadow: a surface held off the page (a drawer or strip hanging under the composer,
@@ -111,6 +119,25 @@
   --zerops-stage-foreground: #f4f5f7;
   /* Notes on a picture: their pink is burnt into the copy the Mate sees, the same in both. */
   --zerops-annotation: #e5267a;
+  /* A chart's series, in the order a chart hands them out (`SERIES_COLORS`): eight hues stepped per
+     appearance and checked as a set, on the card, for lightness, chroma and colour-blind
+     separation between neighbours. */
+  --zerops-series-1: #2a78d6;
+  --zerops-series-2: #eb6834;
+  --zerops-series-3: #1baf7a;
+  --zerops-series-4: #eda100;
+  --zerops-series-5: #e87ba4;
+  --zerops-series-6: #008300;
+  --zerops-series-7: #6250d6;
+  --zerops-series-8: #e34948;
+  /* A coding agent's own colour in usage charts: its brand's hue, or an ink for a monochrome mark,
+     the same in both appearances. */
+  --zerops-agent-codex: var(--contrast-foreground);
+  --zerops-agent-claude: #d97757;
+  --zerops-agent-grok: color-mix(in oklab, var(--contrast-foreground) 72%, var(--background));
+  --zerops-agent-cursor: #8b8b8b;
+  --zerops-agent-opencode: #5b9bbd;
+  --zerops-agent-antigravity: #8c7bd1;
   /* The run's card: a quiet tray one small step above the canvas, with a hairline edge
      (chat-markdown.css draws the joints between its slices with them). */
   --run-tray: oklch(0.968 0.004 255.5);
@@ -120,6 +147,14 @@
     color-scheme: dark;
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
     --run-tray: oklch(0.19 0.007 180);
+    --zerops-series-1: #3987e5;
+    --zerops-series-2: #d95926;
+    --zerops-series-3: #199e70;
+    --zerops-series-4: #c98500;
+    --zerops-series-5: #d55181;
+    --zerops-series-6: #0ca30c;
+    --zerops-series-7: #9085e9;
+    --zerops-series-8: #e66767;
     --info: #58a6ff;
     --info-foreground: var(--color-blue-400);
     --success: #56d364;
@@ -140,7 +175,6 @@
     --zerops-status-off: #5e6e69;
     --zerops-status-off-surface: #1c2221;
     --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
-    --zerops-mint-panel: #19261d;
     --zerops-shadow-popup: 0 18px 44px -18px rgb(0 0 0 / 80%);
     --zerops-shadow-edge: 0 -1px rgb(255 255 255 / 6%);
     --zerops-field: color-mix(in oklab, var(--color-input) 32%, transparent);
@@ -153,6 +187,8 @@
     --zerops-field-pressed: var(--color-input);
     --zerops-segment: color-mix(in oklab, var(--color-input) 72%, transparent);
     --zerops-segment-hover: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-item-hover: color-mix(in oklab, var(--color-foreground) 6%, transparent);
+    --zerops-item-picked: color-mix(in oklab, var(--color-foreground) 10%, transparent);
     --zerops-shimmer: rgb(255 255 255 / 4%);
     --zerops-shadow-drawer: 0 14px 32px -18px rgb(0 0 0 / 75%);
     --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);

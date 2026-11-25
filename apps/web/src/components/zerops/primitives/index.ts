@@ -1,9 +1,9 @@
 export { LivenessLine } from "./LivenessLine";
 export { MicroLabel } from "./MicroLabel";
-export { MintPanel } from "./MintPanel";
 export { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 export type { ProcessStep, ProcessStepState } from "./ProcessSteps";
-export { PersonAvatar } from "./PersonAvatar";
+export { PersonAvatar, PersonAvatarStack } from "./PersonAvatar";
+export type { PersonAvatarSize, PersonAvatarStackSize } from "./PersonAvatar";
 export { MateFace, MateFaceAsMark } from "./MateFace";
 export type { MateFaceProps, MateFaceSize } from "./MateFace";
 export { VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";

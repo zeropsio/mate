@@ -21,7 +21,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
-import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -33,7 +33,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { CopyLine } from "../ui/copy-line";
 import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { keybindingValueForCommand } from "../../lib/projectScriptKeybindings";
@@ -66,6 +66,7 @@ import {
   type NewProjectScriptInput,
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
@@ -79,7 +80,6 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -287,20 +287,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   });
   const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
-  });
-  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
-    onCopy: ({ path }) => {
-      toastManager.add({ type: "success", title: "Path copied", description: path });
-    },
-    onError: (error) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Failed to copy path",
-          description: error instanceof Error ? error.message : "An error occurred.",
-        }),
-      );
-    },
   });
 
   const representative =
@@ -572,40 +558,17 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           }
         >
           <div className="px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-body text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="Copy checkout path"
-                      className="group min-w-0 flex-1 justify-start"
-                      onClick={() =>
-                        copyPathToClipboard(selectedCheckout.workspaceRoot, {
-                          path: selectedCheckout.workspaceRoot,
-                        })
-                      }
-                      size="sm"
-                      variant="ghost-muted"
-                    >
-                      <Text
-                        className="min-w-0 flex-1 text-left"
-                        render={<code />}
-                        truncate
-                        variant="code"
-                      >
-                        {selectedCheckout.workspaceRoot}
-                      </Text>
-                      <CopyIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">Copy path</TooltipPopup>
-              </Tooltip>
-              <div className="shrink-0 border-l border-border/60 px-2 tabular-nums">
+            <div className="flex min-w-0 items-center gap-3">
+              <CopyLine
+                className="flex-1"
+                label="the checkout's path"
+                value={selectedCheckout.workspaceRoot}
+              />
+              <Text className="shrink-0" variant="meta">
                 {selectedCheckoutThreadCount === 1
                   ? "1 thread"
                   : `${selectedCheckoutThreadCount} threads`}
-              </div>
+              </Text>
             </div>
           </div>
           <SettingsRow
@@ -702,7 +665,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })
                 }
               >
-                <PlusIcon className="size-3.5" />
+                <PlusIcon />
                 Add action
               </Button>
             </div>
@@ -731,11 +694,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       <code className="min-w-0 flex-1 truncate font-mono font-normal text-muted-foreground">
                         {script.command}
                       </code>
-                      {script.runOnWorktreeCreate ? (
-                        <span className="shrink-0 rounded-mark border border-border/60 px-1.5 py-px text-caption font-normal text-muted-foreground">
-                          setup
-                        </span>
-                      ) : null}
+                      {script.runOnWorktreeCreate ? <Badge>setup</Badge> : null}
                     </span>
                   }
                   control={
@@ -752,7 +711,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                             setEditorRequest(editorRequestForScript(script, keybindings))
                           }
                         >
-                          <SettingsIcon className="size-3.5" />
+                          <SettingsIcon />
                         </Button>
                       </span>
                     </>

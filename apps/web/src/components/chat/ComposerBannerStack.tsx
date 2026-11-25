@@ -170,7 +170,7 @@ function ComposerBannerStackAlert({
       aria-label={item.dismissLabel ?? "Dismiss notice"}
       onClick={onDismissRequest}
     >
-      <XIcon className="size-3.5" />
+      <XIcon />
     </Button>
   ) : null;
 
@@ -179,10 +179,10 @@ function ComposerBannerStackAlert({
       variant={item.variant}
       layout={item.layout ?? "row"}
       surface={attached ? "bare" : "glass"}
+      icon={item.icon}
       // In the drawer the notice's words end a step above the drawer's open bottom edge.
       className={attached ? "mb-1.5" : undefined}
     >
-      {item.icon}
       <AlertTitle>{item.title}</AlertTitle>
       {item.description ? <AlertDescription>{item.description}</AlertDescription> : null}
       {item.actions || item.onDismiss || stackToggle ? (
