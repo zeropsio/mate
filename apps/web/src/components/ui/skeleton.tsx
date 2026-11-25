@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 // A skeleton's width and height are its content, so consumers size it through
 // className (the lint contract allows layout there). Its shape is not.
 const skeletonVariants = cva(
-  "relative overflow-hidden bg-muted after:absolute after:inset-0 after:animate-skeleton after:bg-linear-120/srgb after:from-transparent after:from-40% after:via-shimmer after:to-transparent after:to-60% motion-reduce:after:content-none",
+  "relative block overflow-hidden bg-muted after:absolute after:inset-0 after:animate-skeleton after:bg-linear-120/srgb after:from-transparent after:from-40% after:via-shimmer after:to-transparent after:to-60% motion-reduce:after:content-none",
   {
     variants: {
       shape: {
@@ -26,6 +26,7 @@ const skeletonVariants = cva(
 );
 
 /**
+ * A block `span`, so it can stand in a line of words (a `<p>`, a heading) as well as in a box.
  * Its sweep runs only while it is in view (`data-seen`, read by `index.css`): a page's stand-ins
  * out of sight keep their boxes and move nothing. One watcher serves every skeleton on the page.
  */
@@ -33,7 +34,7 @@ const seen = watchIntersections((entries) => {
   for (const entry of entries) entry.target.toggleAttribute("data-seen", entry.isIntersecting);
 });
 
-function sweepWhileSeen(node: HTMLDivElement | null) {
+function sweepWhileSeen(node: HTMLSpanElement | null) {
   if (node === null) return;
   // Nowhere to ask (a test's page): it sweeps as it always did.
   if (seen === undefined) {
@@ -49,9 +50,9 @@ function Skeleton({
   shape,
   surface,
   ...props
-}: Omit<React.ComponentProps<"div">, "ref"> & VariantProps<typeof skeletonVariants>) {
+}: Omit<React.ComponentProps<"span">, "ref"> & VariantProps<typeof skeletonVariants>) {
   return (
-    <div
+    <span
       className={cn(skeletonVariants({ shape, surface }), className)}
       data-slot="skeleton"
       ref={sweepWhileSeen}
