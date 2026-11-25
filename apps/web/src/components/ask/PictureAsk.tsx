@@ -29,6 +29,7 @@ import {
   pictureAsksPassed,
 } from "./pictureAsk.logic";
 import { Text } from "~/components/ui/text";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
@@ -376,16 +377,13 @@ function AskPicture({
     rendition: size === "sm" ? { width: 64, height: 64 } : { width: 144, height: 144 },
   });
   return (
-    <span
-      className={
-        size === "sm"
-          ? "inline-block size-8 shrink-0 overflow-hidden rounded-control bg-muted"
-          : "inline-block size-18 shrink-0 overflow-hidden rounded-control bg-muted"
-      }
+    <PictureFrame
+      className={size === "sm" ? "inline-block size-8 shrink-0" : "inline-block size-18 shrink-0"}
+      size="control"
     >
       {url === undefined ? null : (
         <img alt={fileNameOf(path)} className="size-full object-cover" src={url} />
       )}
-    </span>
+    </PictureFrame>
   );
 }

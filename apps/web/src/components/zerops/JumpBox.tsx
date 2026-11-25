@@ -533,9 +533,9 @@ function JumpWriteView({
       >
         <p role="status">{write?.sending === true ? `Sending to ${target.name}…` : write?.hint}</p>
         {write?.error === undefined ? null : (
-          <p className="text-status-failed-text" role="alert">
+          <Text render={<p />} role="alert" variant="error">
             {write.error}
-          </p>
+          </Text>
         )}
       </Text>
       <CommandFooter className="max-sm:flex-col max-sm:items-start">

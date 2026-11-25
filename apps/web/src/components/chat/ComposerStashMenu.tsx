@@ -127,7 +127,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
             onPointerDown={(event) => event.preventDefault()}
             onClick={onClose}
           >
-            <XIcon className="size-3" />
+            <XIcon />
           </Button>
         </div>
         <CommandList className="max-h-64 scroll-pb-6">
@@ -194,7 +194,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                         onDelete(entry);
                       }}
                     >
-                      <XIcon className="size-3.5 stroke-2 text-foreground" />
+                      <XIcon className="stroke-2 text-foreground" />
                     </Button>
                   </span>
                 </CommandItem>

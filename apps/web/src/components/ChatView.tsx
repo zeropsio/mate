@@ -7377,7 +7377,7 @@ function ConversationView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
+            <WorkspaceFileDropOverlay shown={isWorkspaceFileDragActive} />
             {/* Its open asks to connect a repository to GitHub, drawn or not. */}
             <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}

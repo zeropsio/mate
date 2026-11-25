@@ -1,16 +1,16 @@
 import { use, useMemo } from "react";
 import { AssetImage } from "~/assets/AssetImage";
-import { cn } from "~/lib/utils";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { selectMessageImageResources } from "../../session-logic";
 import type { ChatImageAttachment, ChatAttachment } from "../../types";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { echoOfMessage } from "./messagePictures.logic";
 import type { RecordItem } from "./MessagesTimeline.logic";
-import { BUBBLE_PAD, BUBBLE_SHAPE, WORDS } from "./RunBubble";
 import { TimelineRowCtx } from "./timelineContext";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { Button } from "~/components/ui/button";
 import { Loading } from "~/components/ui/loading";
+import { MessageBubble } from "~/components/ui/message-bubble";
 import { Skeleton } from "~/components/ui/skeleton";
 
 /**
@@ -22,12 +22,11 @@ import { Skeleton } from "~/components/ui/skeleton";
  * words (2026-10-01: "it also swallows the text it had").
  */
 export function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "person" }> }) {
-  const bubble = cn("max-w-4/5 bg-message text-message-foreground", BUBBLE_SHAPE, BUBBLE_PAD);
   if (item.words !== undefined) {
     return (
-      <p className={cn(bubble, "whitespace-pre-wrap break-words", WORDS)} data-chat-kind="person">
-        {item.words}
-      </p>
+      <MessageBubble className="max-w-4/5" data-chat-kind="person">
+        <p className="whitespace-pre-wrap break-words">{item.words}</p>
+      </MessageBubble>
     );
   }
   // The client's own placeholder for an image-only message is nothing they wrote.
@@ -36,10 +35,12 @@ export function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind
     item.message?.attachments ?? [],
   );
   return (
-    <div className={cn(bubble, "grid min-w-0 gap-2")} data-chat-kind="person">
-      {echo.line.length > 0 ? <p className={cn("truncate", WORDS)}>{echo.line}</p> : null}
-      {echo.pictures.length > 0 ? <PersonPictures pictures={echo.pictures} /> : null}
-    </div>
+    <MessageBubble className="max-w-4/5" data-chat-kind="person">
+      <div className="grid min-w-0 gap-2">
+        {echo.line.length > 0 ? <p className="truncate">{echo.line}</p> : null}
+        {echo.pictures.length > 0 ? <PersonPictures pictures={echo.pictures} /> : null}
+      </div>
+    </MessageBubble>
   );
 }
 
@@ -104,15 +105,15 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
             }
             variant="bare"
           >
-            <span className="block size-full overflow-hidden rounded-control border border-border/60 bg-card">
+            <PictureFrame className="size-full" size="control">
               <AssetImage
                 loading="lazy"
                 decoding="async"
                 alt={picture.name}
-                className="block size-full object-contain"
+                className="block size-full object-cover object-top"
                 src={src}
               />
-            </span>
+            </PictureFrame>
           </Button>
         ),
       )}

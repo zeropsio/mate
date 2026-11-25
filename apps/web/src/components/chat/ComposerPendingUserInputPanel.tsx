@@ -409,37 +409,29 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     : undefined;
                 if (answer === null) {
                   return (
-                    <div
+                    <Row
                       key={`${activeQuestion.id}:${optionValue}`}
-                      className={cn("rounded-control", isSelected && "bg-muted/55")}
-                    >
-                      <Row
-                        size="sm"
-                        title={option.label}
-                        line={description}
-                        lineWraps
-                        meta={
-                          isSelected ? <CheckIcon className="size-3.5 text-primary" /> : undefined
-                        }
-                      />
-                    </div>
+                      size="sm"
+                      title={option.label}
+                      line={description}
+                      lineWraps
+                      meta={
+                        isSelected ? <CheckIcon className="size-3.5 text-primary" /> : undefined
+                      }
+                    />
                   );
                 }
                 const shortcutKey = index < 9 ? index + 1 : null;
                 return (
                   <div
                     key={`${activeQuestion.id}:${optionValue}`}
-                    className={cn(
-                      "rounded-control transition-colors duration-150",
-                      isSelected ? "bg-muted/55" : "hover:bg-muted/30",
-                      isHighlighted && "ring-1 ring-primary/40",
-                      isResponding && "opacity-50",
-                    )}
+                    className={cn(isResponding && "opacity-50")}
                   >
                     <Row
                       size="sm"
-                      pressable="band"
+                      pressable
                       aria-disabled={isResponding || undefined}
+                      data-highlighted={isHighlighted ? "" : undefined}
                       render={
                         <button
                           type="button"
@@ -477,7 +469,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               <div
                 className={cn(
                   "mt-1 flex items-center gap-2 rounded-control px-2.5 py-2 text-left",
-                  customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
+                  customAnswerActive ? "text-foreground" : "text-secondary-label",
                 )}
                 data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
               >

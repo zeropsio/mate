@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /**
  * The route: what goes live, then where, on the release plan's card and marks; its rows wrap, a
@@ -83,89 +84,91 @@ export function PutLiveSheet({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <ol className="grid rounded-card border border-border bg-foreground/2 py-0.5">
-          <li aria-label="What goes live" className={STOP}>
-            <StepNumber className="-mt-px" icon={<GitMergeIcon />} n={1} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              {what === undefined ? (
-                // What is merged, still read: its title's room held, no words it takes back.
-                <p aria-hidden="true" className={STOP_TITLE}>
-                  <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
-                </p>
-              ) : (
-                <>
-                  <p className={`${STOP_TITLE} line-clamp-2`}>{what.title}</p>
-                  {what.lines.length === 0 ? null : (
-                    <p className={`${STOP_LINE} line-clamp-2`}>{what.lines.join(" · ")}</p>
-                  )}
-                </>
-              )}
-              {onSeeCode === undefined ? null : (
-                <Button className="-ms-2 self-start" onClick={onSeeCode} size="xs" variant="link">
-                  See the code
-                </Button>
-              )}
-            </div>
-          </li>
-          <li aria-label="Where" className={STOP}>
-            <StepNumber className="-mt-px" icon={<GlobeIcon />} n={2} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <div className="flex items-start justify-between gap-3">
-                <p className={STOP_TITLE}>{where.name}</p>
-                {onSetUpYourself === undefined ? null : (
-                  <Button
-                    aria-label="Set up production yourself…"
-                    className="-me-2 shrink-0"
-                    onClick={onSetUpYourself}
-                    size="xs"
-                    variant="link"
-                  >
-                    Set up yourself…
+        <Card variant="inset">
+          <ol className="grid py-0.5">
+            <li aria-label="What goes live" className={STOP}>
+              <StepNumber className="-mt-px" icon={<GitMergeIcon />} n={1} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                {what === undefined ? (
+                  // What is merged, still read: its title's room held, no words it takes back.
+                  <p aria-hidden="true" className={STOP_TITLE}>
+                    <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
+                  </p>
+                ) : (
+                  <>
+                    <p className={`${STOP_TITLE} line-clamp-2`}>{what.title}</p>
+                    {what.lines.length === 0 ? null : (
+                      <p className={`${STOP_LINE} line-clamp-2`}>{what.lines.join(" · ")}</p>
+                    )}
+                  </>
+                )}
+                {onSeeCode === undefined ? null : (
+                  <Button className="-ms-2 self-start" onClick={onSeeCode} size="xs" variant="link">
+                    See the code
                   </Button>
                 )}
               </div>
-              <p className={STOP_LINE}>{where.line}</p>
-              {where.creates === undefined ? (
-                // The setup files, still read: the line's room held.
-                <p aria-hidden="true" className={STOP_LINE}>
-                  <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
-                </p>
-              ) : where.creates.length === 0 ? null : (
-                <p className={STOP_LINE}>{createsLine(where.creates)}</p>
-              )}
-              {where.shapes === undefined ? (
-                // Who it is for, still read: both answers' room held.
-                <div aria-hidden="true" className={ASK}>
-                  <p className={ASK_TITLE}>Who is it for?</p>
-                  <Skeleton className="h-23.5" shape="card" />
-                  <Skeleton className="mt-0.5 h-32.5" shape="card" />
+            </li>
+            <li aria-label="Where" className={STOP}>
+              <StepNumber className="-mt-px" icon={<GlobeIcon />} n={2} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex items-start justify-between gap-3">
+                  <p className={STOP_TITLE}>{where.name}</p>
+                  {onSetUpYourself === undefined ? null : (
+                    <Button
+                      aria-label="Set up production yourself…"
+                      className="-me-2 shrink-0"
+                      onClick={onSetUpYourself}
+                      size="xs"
+                      variant="link"
+                    >
+                      Set up yourself…
+                    </Button>
+                  )}
                 </div>
-              ) : where.shapes.length === 0 ? null : (
-                <div className={ASK}>
-                  <p className={ASK_TITLE} id={asked}>
-                    Who is it for?
+                <p className={STOP_LINE}>{where.line}</p>
+                {where.creates === undefined ? (
+                  // The setup files, still read: the line's room held.
+                  <p aria-hidden="true" className={STOP_LINE}>
+                    <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
                   </p>
-                  <RadioGroup
-                    aria-labelledby={asked}
-                    disabled={model.busy === true}
-                    onValueChange={(value) => {
-                      const chosen = where.shapes?.find((choice) => choice.shape === value);
-                      if (chosen !== undefined) onShape(chosen.shape);
-                    }}
-                    value={where.shape ?? null}
-                  >
-                    {where.shapes.map((choice) => (
-                      <RadioCard key={choice.shape} title={choice.title} value={choice.shape}>
-                        <span>{choice.line}</span>
-                        <span className="mt-0.5 tabular-nums">{choice.meta}</span>
-                      </RadioCard>
-                    ))}
-                  </RadioGroup>
-                </div>
-              )}
-            </div>
-          </li>
-        </ol>
+                ) : where.creates.length === 0 ? null : (
+                  <p className={STOP_LINE}>{createsLine(where.creates)}</p>
+                )}
+                {where.shapes === undefined ? (
+                  // Who it is for, still read: both answers' room held.
+                  <div aria-hidden="true" className={ASK}>
+                    <p className={ASK_TITLE}>Who is it for?</p>
+                    <Skeleton className="h-23.5" shape="card" />
+                    <Skeleton className="mt-0.5 h-32.5" shape="card" />
+                  </div>
+                ) : where.shapes.length === 0 ? null : (
+                  <div className={ASK}>
+                    <p className={ASK_TITLE} id={asked}>
+                      Who is it for?
+                    </p>
+                    <RadioGroup
+                      aria-labelledby={asked}
+                      disabled={model.busy === true}
+                      onValueChange={(value) => {
+                        const chosen = where.shapes?.find((choice) => choice.shape === value);
+                        if (chosen !== undefined) onShape(chosen.shape);
+                      }}
+                      value={where.shape ?? null}
+                    >
+                      {where.shapes.map((choice) => (
+                        <RadioCard key={choice.shape} title={choice.title} value={choice.shape}>
+                          <span>{choice.line}</span>
+                          <span className="mt-0.5 tabular-nums">{choice.meta}</span>
+                        </RadioCard>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                )}
+              </div>
+            </li>
+          </ol>
+        </Card>
         {model.later === undefined ? null : (
           <Text render={<p />} variant="note">
             {model.later}

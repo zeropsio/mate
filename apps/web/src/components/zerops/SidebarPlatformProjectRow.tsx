@@ -1,12 +1,9 @@
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { ArrowUpRightIcon } from "lucide-react";
 
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
 import { ZeropsMark } from "../ZeropsMark";
-
-/** A project with no Mate: its mark where a face would stand. */
-export const PROJECT_MARK =
-  "grid size-8 place-items-center rounded-control bg-sidebar-foreground/6 text-sidebar-muted-foreground";
 
 /**
  * A project only Platform holds, by name: no face, since no Mate lives there; pressing it opens the
@@ -26,9 +23,10 @@ export function PlatformProjectRow({
     >
       <Row
         lead={
-          <span aria-hidden="true" className={PROJECT_MARK}>
-            <ZeropsMark className="size-4" tone="current" />
-          </span>
+          // A project with no Mate: its mark where a face would stand.
+          <LogoTile ground="menu">
+            <ZeropsMark tone="current" />
+          </LogoTile>
         }
         meta={
           <ArrowUpRightIcon

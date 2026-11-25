@@ -11,6 +11,7 @@
  * Karel 2026-10-22): kept, its code, changes, stage and production stay for the next Mate; deleted
  * too, the project's own Delete lists what goes and the field asks for the project's name.
  */
+import { Text } from "~/components/ui/text";
 import { useId, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -137,13 +138,9 @@ export function ZeropsDeleteMateForm({
             spellCheck={false}
             value={typed}
           />
-          <p
-            className="min-h-4 text-caption text-status-failed-text"
-            id={`${id}-reason`}
-            role="alert"
-          >
+          <Text className="min-h-4" id={`${id}-reason`} render={<p />} role="alert" variant="error">
             {error}
-          </p>
+          </Text>
         </div>
       </DialogPanel>
       <DialogFooter>

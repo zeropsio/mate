@@ -52,7 +52,7 @@ import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { placeServiceRows } from "./place/place.logic";
@@ -705,7 +705,8 @@ function ControlPlaneRow({
   const versioned = mate !== undefined && mateUpdate !== undefined && mateUpdate !== null;
   return (
     <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
-      <MintPanel className="overflow-hidden border border-status-ok/20">
+      {/* The Mate's own home: the card in the running tone's wash. */}
+      <Card className="overflow-hidden" render={<section />} tone="ok" variant="wash">
         <div className="flex min-w-0 flex-col px-3.5 pt-3 pb-3.5">
           <div className="flex min-w-0 items-center justify-between gap-2.5">
             <Popover>
@@ -781,7 +782,7 @@ function ControlPlaneRow({
             {agents}
           </div>
         ) : null}
-      </MintPanel>
+      </Card>
     </li>
   );
 }

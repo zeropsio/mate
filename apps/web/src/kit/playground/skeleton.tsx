@@ -29,9 +29,10 @@ export default definePlayground({
       options: SURFACES,
       note: "what it stands on: card on a card's ground",
     },
+    still: { kind: "boolean", note: "holds a place without sweeping: a slot that may never fill" },
   },
-  initial: { shape: "block", surface: "page" },
-  render: ({ shape, surface }) => (
+  initial: { shape: "block", surface: "page", still: false },
+  render: ({ shape, surface, still }) => (
     // The ground it is drawn on is the one its surface names.
     <div
       className={
@@ -41,18 +42,19 @@ export default definePlayground({
       }
     >
       {shape === "pill" ? (
-        <Skeleton className="size-8" shape="pill" surface={surface} />
+        <Skeleton className="size-8" shape="pill" still={still} surface={surface} />
       ) : shape === "card" ? (
-        <Skeleton className="h-24 w-48" shape="card" surface={surface} />
+        <Skeleton className="h-24 w-48" shape="card" still={still} surface={surface} />
       ) : (
-        <Skeleton className="h-4 w-48" surface={surface} />
+        <Skeleton className="h-4 w-48" still={still} surface={surface} />
       )}
     </div>
   ),
-  jsx: ({ shape, surface }) =>
-    jsxElement("Skeleton", { className: SIZE[shape], shape, surface }, undefined, {
+  jsx: ({ shape, surface, still }) =>
+    jsxElement("Skeleton", { className: SIZE[shape], shape, surface, still }, undefined, {
       shape: "block",
       surface: "page",
+      still: false,
     }),
   usage: {
     do: [

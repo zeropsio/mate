@@ -18,6 +18,7 @@
  * login the viewer may not run does not start (D6): *Start the crew* waits,
  * saying why.
  */
+import { Text } from "~/components/ui/text";
 import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COPY_READYING,
@@ -271,7 +272,7 @@ export function CrewSetup(props: CrewSetupProps) {
           size="icon-sm"
           variant="ghost-muted"
         >
-          <XIcon aria-hidden="true" className="size-4" />
+          <XIcon aria-hidden="true" />
         </Button>
       </div>
       <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_SETUP_WORDS.line}</p>
@@ -367,7 +368,7 @@ export function CrewSetup(props: CrewSetupProps) {
           />
           <Row
             aria-disabled={busy || undefined}
-            lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+            lead={<PlusIcon aria-hidden="true" />}
             pressable
             render={
               <button
@@ -399,7 +400,7 @@ export function CrewSetup(props: CrewSetupProps) {
             ))}
             {props.applied ? null : (
               <Row
-                lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+                lead={<PlusIcon aria-hidden="true" />}
                 pressable
                 render={
                   <button
@@ -544,7 +545,11 @@ function SetupRow({
         <>
           <span className="block">{sentence}</span>
           {readying ? <span className="block">{CREW_COPY_READYING}</span> : null}
-          {broken === null ? null : <span className="block text-status-failed-text">{broken}</span>}
+          {broken === null ? null : (
+            <Text className="block" variant="error">
+              {broken}
+            </Text>
+          )}
         </>
       }
       lineWraps

@@ -7,6 +7,7 @@
  * from a deploy in Mate, or from Zerops' build e-mail. A pipeline of another of the person's
  * organizations switches to it first; one the account cannot open says so.
  */
+import { Failure } from "~/components/ui/failure";
 import { useLocation } from "@tanstack/react-router";
 import type { PipelineValue } from "@t3tools/client-runtime/data";
 import {
@@ -295,9 +296,7 @@ function CancelBuildControl({
         {canceling ? "Cancelling…" : "Cancel build"}
       </Button>
       {trouble === null ? null : (
-        <p className="min-w-0 text-destructive-foreground text-body" role="alert">
-          {trouble}
-        </p>
+        <Failure cause={trouble} className="min-w-0" role="alert" size="line" />
       )}
     </div>
   );

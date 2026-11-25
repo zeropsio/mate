@@ -1,5 +1,6 @@
 "use client";
 
+import { Failure } from "~/components/ui/failure";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -273,7 +274,7 @@ export function ProviderModelsSection({
                       >
                         <InfoIcon className="size-3" />
                       </TooltipTrigger>
-                      <TooltipPopup side="top" className="max-w-56">
+                      <TooltipPopup side="top">
                         <div className="space-y-1">
                           <code className="block text-2xs text-foreground">{model.slug}</code>
                           {capLabels.length > 0 ? (
@@ -446,14 +447,14 @@ export function ProviderModelsSection({
             spellCheck={false}
           />
           <Button className="shrink-0" variant="secondary" onClick={handleAdd}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Add
           </Button>
         </div>
       )}
 
       {driverKind !== "antigravity" && error ? (
-        <p className="mt-2 text-caption text-destructive">{error}</p>
+        <Failure cause={error} className="mt-2" role="alert" size="line" />
       ) : null}
     </div>
   );

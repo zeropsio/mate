@@ -2190,7 +2190,7 @@ export function GeneralSettingsPanel() {
                         aria-label="Configure advanced background activity"
                         onClick={() => setBackgroundActivityDialogOpen(true)}
                       >
-                        <SettingsIcon className="size-4" />
+                        <SettingsIcon />
                       </Button>
                     }
                   />
@@ -2720,7 +2720,7 @@ export function ArchivedThreadsPanel() {
                       })();
                     }}
                   >
-                    <ArchiveX className="size-3.5" />
+                    <ArchiveX />
                     <span>Unarchive</span>
                   </Button>
                 }

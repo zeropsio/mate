@@ -436,7 +436,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
       <div className="ms-auto flex min-w-0 items-center justify-end gap-1 lg:hidden">
@@ -493,7 +493,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
     </div>
@@ -1096,7 +1096,7 @@ function UsageScopeChips({
             aria-label={`Clear ${chip.dimension} filter`}
             onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
           >
-            <XIcon className="size-3" aria-hidden />
+            <XIcon aria-hidden />
           </Button>
         </span>
       </WorkspaceBreadcrumbItem>

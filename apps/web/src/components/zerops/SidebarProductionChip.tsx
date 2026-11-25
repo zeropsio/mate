@@ -22,6 +22,7 @@ import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { draftParts, type ChipDot } from "./SidebarProductionChip.logic";
 import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 /** One of the project's Mates, as the fix may be offered to it (S6, `fixMatesOf`). */
 export interface ChipMate {
@@ -59,7 +60,7 @@ export function OpenInZerops({ projectId }: { readonly projectId: string }) {
   return (
     <Row
       data-zerops-surface="sidebar-production-zerops"
-      lead={<ZeropsMark className="size-3.5" />}
+      lead={<ZeropsMark />}
       meta={<ArrowUpRightIcon aria-hidden="true" className="size-3.5" />}
       pressable
       render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
@@ -186,12 +187,7 @@ export function AskToFix({
             </Text>
             {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
               part.kind === "code" ? (
-                <pre
-                  className="rounded-mark bg-card-foreground/7 px-2 py-1.5 font-mono text-caption whitespace-pre-wrap text-card-foreground/76"
-                  key={`code:${part.text}`}
-                >
-                  {part.text}
-                </pre>
+                <CodeBlock key={`code:${part.text}`}>{part.text}</CodeBlock>
               ) : (
                 <p key={`words:${part.text}`}>{part.text}</p>
               ),

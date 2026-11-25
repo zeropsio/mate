@@ -10,7 +10,7 @@ import {
 } from "../../zerops/usageEnvironmentIdentities";
 import { Badge } from "../ui/badge";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
-import { AutomatedMatesMark, UsageMateTaskRows } from "./UsageAutomated";
+import { UsageMateTaskRows } from "./UsageAutomated";
 import type {
   UsageDimension,
   UsageDimensionMetric,
@@ -105,7 +105,7 @@ function OwnerAvatar({
 }) {
   if (owner === null) return null;
   return isAutomatedMatesOwner(owner) ? (
-    <AutomatedMatesMark />
+    <PersonAvatar nobody size={16} />
   ) : (
     <PersonAvatar
       name={owner.name}

@@ -323,13 +323,9 @@ function TroubleLine({
 }) {
   return (
     <span className={STATE}>
-      <span
-        className="min-w-0 text-caption text-status-failed-text"
-        data-zerops-surface="git-trouble"
-        role="status"
-      >
+      <Text className="min-w-0" data-zerops-surface="git-trouble" role="status" variant="error">
         {trouble}
-      </span>
+      </Text>
       {onCheckAgain === undefined ? null : (
         <span className={VERB}>
           {checking ? (

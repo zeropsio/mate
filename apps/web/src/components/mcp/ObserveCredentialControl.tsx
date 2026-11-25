@@ -3,6 +3,7 @@
  * the Zerops row's facts: "Reads them as Aleš · until 4 Dec · Renew". Renew (Authorize, where
  * none is held) is offered to a person who may operate the Mate; HQ's refusal is said in its words.
  */
+import { Text } from "~/components/ui/text";
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   offersObserveAuthorize,
@@ -71,9 +72,9 @@ export function ObserveLineBody(props: {
     );
   const refused =
     props.press?.state === "refused" ? (
-      <span className="block text-destructive-foreground" role="alert">
+      <Text className="block" role="alert" variant="error">
         {props.press.words}
-      </span>
+      </Text>
     ) : null;
   if (!props.available) return <span className="text-muted-foreground">Unavailable here</span>;
   if (metadata.state === "known") {
@@ -107,8 +108,8 @@ export function ObserveLineBody(props: {
     );
   }
   return (
-    <span className="text-destructive-foreground" role="alert">
+    <Text role="alert" variant="error">
       {metadata.state === "failed" ? metadata.words : "You can't read whose permissions these are."}
-    </span>
+    </Text>
   );
 }

@@ -12,6 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { Failure } from "~/components/ui/failure";
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import {
   MOTION,
@@ -1076,9 +1077,7 @@ function TaskBoardView({
     return (
       // The board's read failed: HQ's words, and the way to read again.
       <div className={LINE}>
-        <span className="min-w-0 flex-1 text-body leading-5 text-status-failed-text" role="alert">
-          {read.words}
-        </span>
+        <Failure cause={read.words} className="min-w-0 flex-1" role="alert" size="line" />
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
           Try again
         </Button>
@@ -1569,7 +1568,7 @@ const ROWS = "m-0 grid min-w-0 list-none grid-cols-subgrid p-0";
  * while any of it is pointed at: its Stop and its Review stand over it.
  */
 const ROW =
-  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-foreground/5";
+  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-item-hover";
 const PRESS = "row-start-1 min-h-10 items-center";
 
 /** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */

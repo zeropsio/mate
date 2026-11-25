@@ -21,6 +21,7 @@
  * `onReviewRelease(from)`; `onPutLive`; `onOpenMates(from)` (Mates' work: the page's Mates
  * section).
  */
+import { Skeleton } from "~/components/ui/skeleton";
 import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 
@@ -196,7 +197,7 @@ export function ProjectLineFull({
             {sides.map((side) =>
               held ? (
                 <li className={SIDE} key={side.key}>
-                  <span className="my-1 h-2 w-24 rounded-full bg-foreground/8" />
+                  <Skeleton className="my-1 h-2 w-24" shape="pill" still surface="card" />
                 </li>
               ) : (
                 <SideRow groupId={groupId} key={side.key} side={side} />

@@ -64,6 +64,7 @@ import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
 import { LogoTile } from "~/components/ui/logo-tile";
 import { Text } from "~/components/ui/text";
+import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 
 export function ZeropsAgentAuthCard({
   snapshot,
@@ -544,9 +545,9 @@ function ZeropsAgentAuthRow({
         )}
         {agent.verification?.reason === undefined &&
         agent.registration?.reason === undefined ? null : (
-          <p className="text-caption leading-4 text-destructive">
+          <Text render={<p />} variant="error">
             {agent.verification?.reason ?? agent.registration?.reason}
-          </p>
+          </Text>
         )}
         {(agentAuthAction(agent) === "check-again" ||
           agentAuthAction(agent) === "register-again") &&
@@ -796,15 +797,19 @@ function ZeropsLoginRow({
           )}
         </div>
         {login.verification?.reason === undefined ? null : (
-          <p className="text-caption leading-4 text-destructive">{login.verification.reason}</p>
+          <Text render={<p />} variant="error">
+            {login.verification.reason}
+          </Text>
         )}
         {status?.error === undefined ? null : (
-          <p
-            className="w-full text-caption leading-4 text-destructive @sm:text-right"
+          <Text
+            className="w-full @sm:text-right"
             data-zerops-login-error
+            render={<p />}
+            variant="error"
           >
             {status.error}
-          </p>
+          </Text>
         )}
       </div>
     </div>
@@ -849,7 +854,9 @@ function AddLoginControl({
           + Add another login
         </Button>
         {error === undefined ? null : (
-          <p className="ps-1.5 text-caption leading-4 text-destructive">{error}</p>
+          <Text className="ps-1.5" render={<p />} variant="error">
+            {error}
+          </Text>
         )}
       </div>
     );
@@ -874,28 +881,18 @@ function AddLoginControl({
       }}
     >
       {agentId === "claude-code" ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => {
-              setKind("subscription");
-            }}
-            size="sm"
-            type="button"
-            variant={kind === "subscription" ? "primary" : "secondary"}
-          >
-            Another account
-          </Button>
-          <Button
-            onClick={() => {
-              setKind("apiKey");
-            }}
-            size="sm"
-            type="button"
-            variant={kind === "apiKey" ? "primary" : "secondary"}
-          >
-            API key
-          </Button>
-        </div>
+        <ToggleGroup
+          aria-label="Sign in with"
+          onValueChange={(value) => {
+            const next = value[0];
+            if (next === "subscription" || next === "apiKey") setKind(next);
+          }}
+          value={[kind]}
+          variant="segmented"
+        >
+          <Toggle value="subscription">Another account</Toggle>
+          <Toggle value="apiKey">API key</Toggle>
+        </ToggleGroup>
       ) : null}
       <div className="space-y-1">
         <Label htmlFor={labelId}>{needsKey ? "Name (optional)" : "Name"}</Label>
@@ -1186,12 +1183,14 @@ function ZeropsAgentAuthActionButton({
         </Button>
       ) : null}
       {signOutError === undefined ? null : (
-        <p
-          className="w-full text-caption leading-4 text-destructive @sm:text-right"
+        <Text
+          className="w-full @sm:text-right"
           data-zerops-agent-sign-out-error
+          render={<p />}
+          variant="error"
         >
           {signOutError}
-        </p>
+        </Text>
       )}
     </div>
   );

@@ -1,10 +1,10 @@
+import { CodeBlock } from "~/components/ui/code-block";
 import { CatchBoundary } from "@tanstack/react-router";
 import { createContext, lazy, Suspense, use, useMemo, useState, type ReactNode } from "react";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { Button } from "../ui/button";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
 import { Text } from "~/components/ui/text";
-import { Card } from "~/components/ui/card";
 
 const loadDiffRenderer = () => import("./ReviewCommentDiffRenderer");
 
@@ -38,11 +38,7 @@ export function ReviewCommentDiff({
   const [renderer, setRenderer] = useState(() => ({ component: lazy(loadRenderer), attempt: 0 }));
   const Renderer = renderer.component;
   const rawPatch = useMemo(
-    () => (
-      <Card variant="inset">
-        <pre className="overflow-x-auto p-2 text-caption">{comment.diff}</pre>
-      </Card>
-    ),
+    () => <CodeBlock wrap={false}>{comment.diff}</CodeBlock>,
     [comment.diff],
   );
   const failure = useMemo(

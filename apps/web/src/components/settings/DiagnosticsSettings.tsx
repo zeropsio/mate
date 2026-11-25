@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import { CollectionRead } from "../CollectionRead";
 import { ProcessSignalActions } from "./ProcessSignalActions";
 import {
@@ -280,7 +281,7 @@ function TraceIdCell({ traceId }: { traceId: string }) {
               aria-label={copied ? "Copied trace ID" : "Copy trace ID"}
               onClick={() => copyToClipboard(traceId)}
             >
-              <CopyIcon className="size-3" />
+              <CopyIcon />
             </Button>
           }
         />
@@ -1096,7 +1097,7 @@ export function DiagnosticsSettingsPanel() {
                     onClick={openLogsDirectory}
                     aria-label="Open logs folder"
                   >
-                    <FolderOpenIcon className="size-3" />
+                    <FolderOpenIcon />
                   </Button>
                 }
               />
@@ -1133,39 +1134,28 @@ export function DiagnosticsSettingsPanel() {
             tone={data && data.parseErrorCount > 0 ? "warning" : "default"}
           />
         </StatsGrid>
-        {openLogsDirectoryError || traceDiagnosticsError || error ? (
-          <>
-            <Separator />
-            <Text className="space-y-2 px-4 py-3 sm:px-5" render={<div />} variant="note">
-              {openLogsDirectoryError ? (
-                <div className="flex items-start gap-2 text-destructive">
-                  <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{openLogsDirectoryError}</span>
-                </div>
-              ) : null}
-              {traceDiagnosticsError ? (
-                <div
-                  className={cn(
-                    "flex items-start gap-2",
-                    traceDiagnosticsPartialFailure ? "text-warning-foreground" : "text-destructive",
-                  )}
-                >
-                  <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>
-                    {traceDiagnosticsPartialFailure
-                      ? `Some trace files could not be read, so diagnostics may be incomplete. ${traceDiagnosticsError.message}`
-                      : traceDiagnosticsError.message}
-                  </span>
-                </div>
-              ) : null}
-              {error ? (
-                <div className="flex items-start gap-2 text-destructive">
-                  <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              ) : null}
-            </Text>
-          </>
+        {/* What could not be read, at the card's foot: one band per reading. */}
+        {openLogsDirectoryError ? (
+          <Alert edge="bottom" icon={<AlertTriangleIcon />} surface="band" variant="error">
+            {openLogsDirectoryError}
+          </Alert>
+        ) : null}
+        {traceDiagnosticsError ? (
+          <Alert
+            edge="bottom"
+            icon={<AlertTriangleIcon />}
+            surface="band"
+            variant={traceDiagnosticsPartialFailure ? "warning" : "error"}
+          >
+            {traceDiagnosticsPartialFailure
+              ? `Some trace files could not be read, so diagnostics may be incomplete. ${traceDiagnosticsError.message}`
+              : traceDiagnosticsError.message}
+          </Alert>
+        ) : null}
+        {error ? (
+          <Alert edge="bottom" icon={<AlertTriangleIcon />} surface="band" variant="error">
+            {error}
+          </Alert>
         ) : null}
       </SettingsSection>
 

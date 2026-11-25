@@ -71,6 +71,7 @@ import { MiddleTruncate } from "./ui/middle-truncate";
 import { Kbd } from "./ui/kbd";
 import { Row } from "./ui/row";
 import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -667,10 +668,11 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {terminalStatusIcon}
               {prBadge}
               {diff ? (
-                <Text className="shrink-0" variant="code">
-                  <span className="text-diff-addition-foreground">+{diff.insertions}</span>{" "}
-                  <span className="text-diff-deletion-foreground">−{diff.deletions}</span>
-                </Text>
+                <DiffStat
+                  additions={diff.insertions}
+                  className="shrink-0"
+                  deletions={diff.deletions}
+                />
               ) : null}
               <span
                 aria-hidden

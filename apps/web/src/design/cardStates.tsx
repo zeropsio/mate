@@ -1,5 +1,6 @@
 import { cn } from "~/lib/utils";
 import { RUN_BAND, RUN_TRAY_SLICE } from "~/components/chat/runTray";
+import { MessageBubble } from "~/components/ui/message-bubble";
 import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * The run's card in the states pass 16's plan draws it, on the plan's own run
@@ -338,9 +339,9 @@ function Turn({
 }) {
   return (
     <div className="grid gap-6">
-      <p className="ms-auto max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-message-foreground text-prose">
+      <MessageBubble className="ms-auto max-w-4/5" render={<p />}>
         {ask}
-      </p>
+      </MessageBubble>
       <div>
         <div data-card-slice="top" data-card-whole={result ? undefined : ""}>
           <div className={RUN_TRAY_SLICE.top}>

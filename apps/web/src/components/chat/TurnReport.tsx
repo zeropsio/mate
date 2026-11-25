@@ -54,6 +54,7 @@ import { useRunResultFacts } from "./runResultFacts";
 import { publishStripFiles } from "./resultStripFiles";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { Button } from "~/components/ui/button";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { cn } from "~/lib/utils";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 
@@ -170,16 +171,12 @@ const NO_FILES: ResultFiles = new Map();
  */
 /**
  * A tile: one height for every tile, each as wide as its picture's own shape makes it, set from its
- * first frame (`tileRatio`). While its file is read it holds its room unpainted, no fill and no
- * edge, so nothing under the strip moves when the picture comes or never does; its fill comes with
- * its picture. Its edge is the card's hairline drawn over the picture, so a white page on the tray
- * keeps its edge; red when the page's check stayed failed.
+ * first frame (`tileRatio`): the kit's picture frame, unpainted while its file is read, so nothing
+ * under the strip moves when the picture comes or never does; red when the page's check stayed
+ * failed. Under a service's row, what its checks took: the open card's thumbnails' 80 px.
  */
-const TILE_CLASS =
-  "relative block max-w-full flex-none overflow-hidden rounded-card bg-foreground/5 transition-colors duration-150 ease-out-strong after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:inset-ring after:inset-ring-foreground/8 after:transition-shadow after:duration-150 after:ease-out-strong group-hover/tile:after:inset-ring-foreground/20 data-failed:after:inset-ring-status-failed data-[result-picture=loading]:bg-transparent data-[result-picture=loading]:after:inset-ring-0 has-data-image-pending:bg-transparent has-data-image-pending:after:inset-ring-0 [&>[data-image-frame]]:block [&>[data-image-frame]]:size-full";
-const TILE_CLASS_NAME = `${TILE_CLASS} h-24`;
-/** Under a service's row, what its checks took: the open card's thumbnails' 80 px. */
-const TILE_COMPACT_CLASS_NAME = `${TILE_CLASS} h-20`;
+const TILE_CLASS_NAME = "h-24 max-w-full flex-none";
+const TILE_COMPACT_CLASS_NAME = "h-20 max-w-full flex-none";
 
 function PictureTile({
   picture,
@@ -253,19 +250,20 @@ function PictureTile({
       <TooltipTrigger
         render={
           pressless ? (
-            <span
+            <PictureFrame
               aria-label={said}
               className={compact ? TILE_COMPACT_CLASS_NAME : TILE_CLASS_NAME}
-              data-failed={failed}
               data-result-picture={status}
               role="img"
               style={shape}
+              tone={failed ? "failed" : "default"}
+              waiting={status === "loading"}
             />
           ) : (
             // The tile is the press's content: its corners, edge and fill are the picture's.
             <Button
               aria-label={`${said}. Open ${more > 0 ? "the pictures" : "the picture"}`}
-              className="group/tile block max-w-full shrink-0 cursor-zoom-in"
+              className="block max-w-full shrink-0 cursor-zoom-in"
               {...intent}
               onClick={onOpen}
               variant="bare"
@@ -276,14 +274,15 @@ function PictureTile({
         {pressless ? (
           content
         ) : (
-          <span
+          <PictureFrame
             className={compact ? TILE_COMPACT_CLASS_NAME : TILE_CLASS_NAME}
-            data-failed={failed}
             data-result-picture={status}
             style={shape}
+            tone={failed ? "failed" : "default"}
+            waiting={status === "loading"}
           >
             {content}
-          </span>
+          </PictureFrame>
         )}
       </TooltipTrigger>
       <TooltipPopup side="bottom">{said}</TooltipPopup>

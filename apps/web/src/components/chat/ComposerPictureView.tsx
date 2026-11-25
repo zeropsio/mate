@@ -659,7 +659,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               aria-label="Close picture"
               onClick={close}
             >
-              <XIcon aria-hidden="true" className="size-4.5" />
+              <XIcon aria-hidden="true" />
             </Button>
           </div>
           <div

@@ -272,7 +272,7 @@ function ProviderEnvironmentSection(props: {
             ])
           }
         >
-          <PlusIcon className="size-3" />
+          <PlusIcon />
           Add
         </Button>
       </div>
@@ -347,7 +347,7 @@ function ProviderEnvironmentSection(props: {
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
                       >
-                        <XIcon className="size-3.5" />
+                        <XIcon />
                       </Button>
                     </div>
                   </TableCell>
@@ -619,7 +619,7 @@ export function ProviderInstanceCard({
                   onClick={() => setDeleting(true)}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
-                  <Trash2Icon className="size-3" />
+                  <Trash2Icon />
                 </Button>
               }
             />

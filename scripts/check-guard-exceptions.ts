@@ -162,7 +162,13 @@ export const RATCHET_RULES = [
   "no-frame-per-tick",
   "no-remote-data-in-browser-storage",
   "no-raw-controls",
+  "prefer-item-grounds",
   "prefer-text",
+  "no-sized-slot-icon",
+  "prefer-failure",
+  "prefer-code-block",
+  "no-hand-popup",
+  "no-hand-drawn-box",
   "no-infinite-motion",
   "no-legacy-vocabulary",
   "require-static-classes",
@@ -185,7 +191,12 @@ export const RATCHET_RULES = [
 const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
   "no-frame-per-tick",
   "no-raw-controls",
+  "prefer-item-grounds",
   "prefer-text",
+  "no-sized-slot-icon",
+  "prefer-code-block",
+  "no-hand-popup",
+  "no-hand-drawn-box",
   "reduced-motion-home",
   "protected-roots-render-only",
   "web-never-derives",
@@ -343,17 +354,15 @@ export const loadRatchetBaseline = (
     const header = objects.stdout.toString("utf8", offset, headerEnd);
     if (header === `${revision}:${ledgerPath} missing`) {
       offset = headerEnd + 1;
-      // Before the runtime-zone guard existed its baseline was empty. Once introduced,
-      // its ledger is required even when every module satisfies the rule.
-      if (
-        ledgerPath.endsWith("/zerops-runtime-zones.json") &&
-        !guardHeldAt(cwd, revision, "zerops-runtime-zones")
-      ) {
+      if (ledgerPath.endsWith("/no-legacy-notice-policy.json")) continue;
+      const ruleName = NodePath.basename(ledgerPath, ".json");
+      if (BORN_WITH_FINDINGS.has(ruleName)) continue;
+      // Before a guard existed its baseline was empty. Once introduced, its ledger is required
+      // even when every module satisfies the rule.
+      if (!guardHeldAt(cwd, revision, ruleName)) {
         contents.set(ledgerPath, Buffer.from("[]"));
         continue;
       }
-      if (ledgerPath.endsWith("/no-legacy-notice-policy.json")) continue;
-      if (BORN_WITH_FINDINGS.has(NodePath.basename(ledgerPath, ".json"))) continue;
       if (
         ledgerPath.endsWith("/no-environment-as-project.json") &&
         git(["ls-tree", "--name-only", revision, "--", ledgerPath]) === ""

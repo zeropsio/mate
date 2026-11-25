@@ -59,7 +59,7 @@ export function StopTierStops({
                 {row.hostname} · {row.line}
               </Text>
               {trouble?.hostname === row.hostname ? (
-                <span className="text-caption text-status-failed-text">{trouble.text}</span>
+                <Text variant="error">{trouble.text}</Text>
               ) : null}
             </span>
             {row.deletable === undefined ? (

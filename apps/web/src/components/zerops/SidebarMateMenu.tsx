@@ -18,6 +18,7 @@
  * place and size, and a reason it will not do floats under it rather than
  * pushing the rows below.
  */
+import { Text } from "~/components/ui/text";
 import { MoreHorizontalIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -471,9 +472,9 @@ export function MateRenameField({
           initialFocus={false}
           variant="tooltip"
         >
-          <span className="text-destructive-foreground" role="alert">
+          <Text role="alert" variant="error">
             {error}
-          </span>
+          </Text>
         </PopoverPopup>
       </Popover>
     </span>

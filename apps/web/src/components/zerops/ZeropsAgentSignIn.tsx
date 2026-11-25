@@ -48,6 +48,7 @@ import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
+import { LogoTile } from "../ui/logo-tile";
 import { Spinner } from "../ui/spinner";
 import { StepNumber } from "../ui/step-number";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -319,9 +320,6 @@ const OPEN_HEAD_CLASS = "flex items-center gap-3 border-b border-border py-2.5 p
 const OPEN_TITLE_CLASS = "min-w-0 flex-1 text-emphasis leading-5 font-semibold text-foreground";
 const OPEN_BODY_CLASS = "flex flex-col gap-3.5 px-4 pt-4 pb-4.5";
 
-/** An agent's logo, in a 40 px seat at the card's start. */
-const LOGO_CLASS = "flex size-10 flex-none items-center justify-center rounded-control";
-
 /**
  * A step: its number, its words, and under the words what it asks for (a press, a field). The
  * press stands under the words (`STEP_PRESS_CLASS`); "Open again" takes the account line's size.
@@ -334,17 +332,17 @@ const STEP_HINT_CLASS = "col-[2/-1] flex items-center gap-1.5 text-caption text-
 
 function AgentLogoTile({ agentId }: { agentId: ZeropsAgentId }) {
   return (
-    <span aria-hidden="true" className={LOGO_CLASS} data-agent-logo={agentId}>
-      <ZeropsAgentLogo agentId={agentId} className="size-6.5" />
-    </span>
+    <LogoTile data-agent-logo={agentId} size="lg">
+      <ZeropsAgentLogo agentId={agentId} />
+    </LogoTile>
   );
 }
 
 function OpenCodeLogoTile() {
   return (
-    <span aria-hidden="true" className={LOGO_CLASS} data-agent-logo="opencode">
-      <OpenCodeIcon className="size-6.5" />
-    </span>
+    <LogoTile data-agent-logo="opencode" size="lg">
+      <OpenCodeIcon />
+    </LogoTile>
   );
 }
 

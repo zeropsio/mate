@@ -27,7 +27,7 @@ import type {
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import { Bot, Braces, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
 import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -48,9 +48,8 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Row } from "~/components/ui/row";
-import { Loading } from "~/components/ui/loading";
+import { CodeBlock } from "~/components/ui/code-block";
 import { EmptyState } from "~/components/ui/empty";
-import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 
 /**
@@ -184,52 +183,49 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
           style={{ insetInlineStart: depth * 20 - 8 }}
         />
       ) : null}
-      <div className={cn("rounded-control", open && "bg-foreground/4")}>
-        <Row
-          size="sm"
-          pressable
-          render={
-            <button
-              aria-expanded={threadRef === null ? undefined : open}
-              aria-disabled={threadRef === null || undefined}
-              disabled={threadRef === null}
-              onClick={() => onToggle(agent.id)}
-              type="button"
-            />
-          }
-          lead={<HelperMark status={agent.status} />}
-          title={
+      <Row
+        size="sm"
+        pressable
+        picked={open}
+        render={
+          <button
+            aria-expanded={threadRef === null ? undefined : open}
+            aria-disabled={threadRef === null || undefined}
+            disabled={threadRef === null}
+            onClick={() => onToggle(agent.id)}
+            type="button"
+          />
+        }
+        lead={<HelperMark status={agent.status} />}
+        title={
+          <>
+            {agent.title}
+            <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+          </>
+        }
+        meta={open ? undefined : <HelperClock helper={agent} />}
+        lineWraps
+        line={
+          (open || line === null) && cost === null ? undefined : (
             <>
-              {agent.title}
-              <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+              {open || line === null ? null : (
+                <span
+                  className={cn(
+                    "line-clamp-2",
+                    agent.status === "failed" && "text-status-failed-text",
+                    agent.status === "waiting" && "text-status-attention-text",
+                  )}
+                >
+                  {line}
+                </span>
+              )}
+              {cost === null ? null : (
+                <span className="block text-2xs text-muted-foreground/75 tabular-nums">{cost}</span>
+              )}
             </>
-          }
-          meta={open ? undefined : <HelperClock helper={agent} />}
-          lineWraps
-          line={
-            (open || line === null) && cost === null ? undefined : (
-              <>
-                {open || line === null ? null : (
-                  <span
-                    className={cn(
-                      "line-clamp-2",
-                      agent.status === "failed" && "text-status-failed-text",
-                      agent.status === "waiting" && "text-status-attention-text",
-                    )}
-                  >
-                    {line}
-                  </span>
-                )}
-                {cost === null ? null : (
-                  <span className="block text-2xs text-muted-foreground/75 tabular-nums">
-                    {cost}
-                  </span>
-                )}
-              </>
-            )
-          }
-        />
-      </div>
+          )
+        }
+      />
       {open && threadRef !== null ? (
         <div className="pt-2 pe-2 pb-4 ps-8">
           <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
@@ -326,37 +322,23 @@ function WorkflowScriptView({
     orchestrationEnvironment.workflowScript({ environmentId, input: { threadId, scriptPath } }),
   );
   return (
-    <div className="mx-1.5 mb-1 rounded-control border border-border/60 bg-background/60">
-      <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1">
-        <Braces aria-hidden className="size-3 text-muted-foreground" />
-        <span className="truncate font-mono text-3xs text-muted-foreground">
-          {scriptPath.split("/").at(-1)}
-        </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onClose}
-          aria-label="Close script"
-          className="ml-auto"
-        >
-          <X aria-hidden className="size-3" />
+    <CodeBlock
+      actions={
+        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close script">
+          <X aria-hidden />
         </Button>
-      </div>
-      <div className="max-h-72 overflow-auto p-2">
-        {result._tag === "Success" ? (
-          <pre className="whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed text-foreground/90">
-            {result.value.contents}
-            {result.value.truncated ? "\n… (truncated)" : ""}
-          </pre>
-        ) : result._tag === "Failure" ? (
-          <Text render={<p />} variant="error">
-            Could not load the script.
-          </Text>
-        ) : (
-          <Loading count={3} label="The script" shape="lines" />
-        )}
-      </div>
-    </div>
+      }
+      className="mx-1.5 mb-1"
+      height="md"
+      title={scriptPath.split("/").at(-1)}
+      tone={result._tag === "Failure" ? "error" : "default"}
+    >
+      {result._tag === "Success"
+        ? `${result.value.contents}${result.value.truncated ? "\n… (truncated)" : ""}`
+        : result._tag === "Failure"
+          ? "Could not load the script."
+          : "Reading the script…"}
+    </CodeBlock>
   );
 }
 
@@ -397,7 +379,7 @@ function PhaseSection({
     >
       <CollapsibleTrigger
         className={cn(
-          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
+          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-item-hover",
           phase.state === "done"
             ? "text-success-foreground"
             : phase.state === "running"
@@ -483,7 +465,7 @@ function ExpandedWorkflowSection({
           {settled}/{members.length} settled
         </span>
         <Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Collapse workflow">
-          <ChevronDown aria-hidden className="size-3" />
+          <ChevronDown aria-hidden />
         </Button>
       </div>
       <PhaseRail group={group} />

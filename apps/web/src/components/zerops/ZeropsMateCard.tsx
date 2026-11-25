@@ -106,14 +106,14 @@ const ROW_SURFACE_CLASS =
 const LAYOUT = {
   card: {
     surface: CARD_SURFACE_CLASS,
-    opens: "hover:bg-accent/40",
+    opens: "hover:bg-item-hover",
     lineOne: "",
     name: "",
     time: "",
   },
   row: {
     surface: ROW_SURFACE_CLASS,
-    opens: "hover:bg-accent/60",
+    opens: "hover:bg-item-hover",
     // A row sits in a narrow step: the name never gives way, and its time and
     // Preview follow it — wrapping under it rather than cutting it to an
     // initial — with or without a Preview, at every width.

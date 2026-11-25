@@ -66,7 +66,7 @@ export function MateRow({
         MATE,
         lifted
           ? "bg-foreground/4 shadow-edge [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]"
-          : "has-[[data-ov-mate-open]:hover]:bg-foreground/3",
+          : "has-[[data-ov-mate-open]:hover]:bg-item-hover",
       )}
       data-lift={lifted ? reading.lift?.kind : undefined}
       data-zerops-surface="card-mate"
@@ -146,7 +146,7 @@ export function ComingMateRow({
     <div
       // Under way it is busy; stopped, nothing is coming until someone continues it.
       aria-busy={stopped ? undefined : true}
-      className={cn(MATE, "has-[[data-ov-mate-open]:hover]:bg-foreground/3")}
+      className={cn(MATE, "has-[[data-ov-mate-open]:hover]:bg-item-hover")}
       data-zerops-surface="mate-coming"
       role="listitem"
     >

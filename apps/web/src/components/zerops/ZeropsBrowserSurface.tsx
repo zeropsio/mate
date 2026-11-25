@@ -45,7 +45,7 @@ export function BrowserSites({
           <ul className="col-span-full grid grid-cols-subgrid">
             {group.rows.map(({ address, name }) => (
               <li
-                className="col-span-full grid grid-cols-subgrid items-center rounded-control hover:bg-accent"
+                className="col-span-full grid grid-cols-subgrid items-center rounded-control hover:bg-item-hover"
                 data-mate-address={address.service}
                 key={address.url}
               >

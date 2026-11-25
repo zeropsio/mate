@@ -49,7 +49,8 @@ type CodeHeight = "auto" | "sm" | "md" | "pane";
 
 /**
  * A block of literal text that stands on its own: code, a config, YAML, JSON, a command's output,
- * a source's own answer behind Details. Monospace 12/20 on the code ground. `wrap` (the default)
+ * a source's own answer behind Details. Monospace on the code ground, at the person's code size
+ * (Settings › Appearance, 13 px unless they chose another) on a 20 px line. `wrap` (the default)
  * breaks long lines anywhere so nothing scrolls sideways; `wrap={false}` keeps each line whole and
  * scrolls sideways, for text whose indent is its meaning (YAML, code). `title` names it on a
  * header line (a file's path, `zerops.yaml`); `copy` adds the one Copy press, in the header or in
@@ -107,7 +108,7 @@ function CodeBlock({
       <pre
         className={cn(
           codeHeightVariants({ height }),
-          "m-0 px-3 py-2 font-mono text-caption leading-5 [tab-size:2] select-text",
+          "m-0 px-3 py-2 font-mono text-(length:--font-size-code,var(--text-line)) leading-5 [tab-size:2] select-text",
           wrap ? "whitespace-pre-wrap wrap-anywhere" : "whitespace-pre",
           !header && press !== null && "pe-10",
         )}
@@ -152,7 +153,7 @@ const FOLLOW_SLACK_PX = 4;
 
 /**
  * Lines a machine wrote, one by one: a build's log, a service's log, a failed phase's tail. The
- * code ground, monospace 12/20, each line wrapped under itself; a failed line tinted across the
+ * code ground, monospace at the person's code size on a 20 px line, each line wrapped under itself; a failed line tinted across the
  * whole width so it stands out in a long scroll, a warning in its ink. Times, when the lines carry
  * them, stand in a column of their own. While its lines are read (`pending`), three stand-in lines
  * hold their room. A `live` log follows its newest line while the reader is at
@@ -216,7 +217,7 @@ function LogView({
         aria-live={live ? "polite" : undefined}
         className={cn(
           codeHeightVariants({ height }),
-          "m-0 list-none py-2 ps-0 font-mono text-caption leading-5 select-text",
+          "m-0 list-none py-2 ps-0 font-mono text-(length:--font-size-code,var(--text-line)) leading-5 select-text",
         )}
         data-slot="log-view-lines"
         onScroll={(event) => {

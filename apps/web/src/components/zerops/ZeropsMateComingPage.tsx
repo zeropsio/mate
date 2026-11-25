@@ -1432,7 +1432,7 @@ export function MateComingHeader({
       >
         {standsIn === null ? null : (
           <Button aria-label="More header actions" inert size="icon-sm" variant="sidebar">
-            <EllipsisIcon className="size-4" />
+            <EllipsisIcon />
           </Button>
         )}
         {mate.chief === true ? (

@@ -149,7 +149,7 @@ function SidebarControl({ rail }: { readonly rail: boolean }) {
                 size="icon-md"
                 variant="sidebar"
               >
-                <PanelLeftIcon className="size-4" />
+                <PanelLeftIcon />
               </Button>
             }
           />

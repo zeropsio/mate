@@ -35,7 +35,7 @@ export function CrewView({
           size="sm"
           variant="ghost-muted"
         >
-          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          <ChevronLeftIcon aria-hidden="true" />
           {CREW_VIEW_WORDS.back}
         </Button>
       )}
@@ -119,11 +119,8 @@ export function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefi
   return (
     <ul className="space-y-1" role="alert">
       {issues.map((issue) => (
-        <li
-          className="text-line leading-4.5 text-status-failed-text"
-          key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}
-        >
-          {issue.message}
+        <li key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}>
+          <Failure cause={issue.message} size="line" />
         </li>
       ))}
     </ul>

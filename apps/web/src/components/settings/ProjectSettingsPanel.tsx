@@ -664,7 +664,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })
                 }
               >
-                <PlusIcon className="size-3.5" />
+                <PlusIcon />
                 Add action
               </Button>
             </div>
@@ -714,7 +714,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                             setEditorRequest(editorRequestForScript(script, keybindings))
                           }
                         >
-                          <SettingsIcon className="size-3.5" />
+                          <SettingsIcon />
                         </Button>
                       </span>
                     </>

@@ -10,6 +10,7 @@
  * `McpPanelBody` draws a list it is given and reports what the person does; `McpPanel` feeds it
  * from the Mate (`useMcpServers`). The harness (`/design-mcp.html`) draws the body over a fixture.
  */
+import { Failure } from "~/components/ui/failure";
 import {
   mcpAgentCannot,
   type EnvironmentId,
@@ -31,6 +32,7 @@ import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
+import { LogoTile } from "../ui/logo-tile";
 import { ScrollArea } from "../ui/scroll-area";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
@@ -280,12 +282,13 @@ export function McpPanelBody(props: {
         </RightPanelPageEdge>
 
         {state.error === null ? null : (
-          <p className="text-line leading-4.5 text-destructive-foreground" role="alert">
-            {MCP_WORDS.readFailed} {state.error}{" "}
-            <InlineButton onClick={props.onRetry} tone="muted">
-              {MCP_WORDS.tryAgain}
-            </InlineButton>
-          </p>
+          <Failure
+            action={<InlineButton onClick={props.onRetry}>{MCP_WORDS.tryAgain}</InlineButton>}
+            cause={MCP_WORDS.readFailed}
+            details={state.error}
+            role="alert"
+            size="line"
+          />
         )}
 
         {adding && state.list !== null ? (
@@ -353,14 +356,7 @@ export function McpPanelBody(props: {
 
 /** The neutral tile: colour belongs to state, never to what a tool is. */
 function Tile({ letters }: { readonly letters: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-control border border-border bg-muted font-medium text-muted-foreground text-caption"
-    >
-      {letters}
-    </span>
-  );
+  return <LogoTile>{letters}</LogoTile>;
 }
 
 /** Each installed agent as its own icon with a dot for its state; the words in its tooltip. */
@@ -412,8 +408,8 @@ function RowHead(props: {
   return (
     <div
       className={cn(
-        "group/tool relative grid grid-cols-[28px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40",
-        props.open && "bg-accent/30",
+        "group/tool relative grid grid-cols-[32px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-item-hover",
+        props.open && "bg-item-hover",
       )}
     >
       <CollapsibleTrigger

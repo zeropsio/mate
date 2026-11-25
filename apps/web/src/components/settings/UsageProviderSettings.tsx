@@ -40,7 +40,7 @@ export function UsageProviderSettings({
         headerAction={
           !readOnly ? (
             <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
-              <PlusIcon className="size-3" aria-hidden />
+              <PlusIcon aria-hidden />
               Add hub
             </Button>
           ) : null

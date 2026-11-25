@@ -10,15 +10,19 @@ export default definePlayground({
   controls: {
     variant: {
       kind: "enum",
-      options: ["default", "flat", "inset", "sheet", "slot"],
-      note: "flat is the app's; sheet a card standing alone among its kind; slot a place not filled yet",
+      options: ["default", "flat", "inset", "sheet", "slot", "wash"],
+      note: "flat is the app's; sheet a card standing alone among its kind; slot a place not filled yet; wash a card that stands out in its tone",
     },
     size: {
       kind: "enum",
       options: ["none", "sm", "md", "rows"],
       note: "its padding; rows: around rows that light their own ground",
     },
-    tone: { kind: "enum", options: ["default", "failed"], note: "failed: a thing that broke" },
+    tone: {
+      kind: "enum",
+      options: ["default", "ok", "busy", "attention", "failed"],
+      note: "the state of what it holds, on its hairline (and a wash card's ground)",
+    },
     action: { kind: "boolean", note: "a press at its end" },
   },
   initial: { variant: "flat", size: "md", tone: "default", action: true },
@@ -54,6 +58,7 @@ export default definePlayground({
     do: [
       "Use flat on a page: a hairline and the card ground, no shadow.",
       "Set a card inside another apart with inset: depth shows as tint.",
+      "Give the one next step on a surface a wash card; tone a card by what it holds.",
     ],
     dont: ["Stack a list of cards where rows would do.", "Add a second border inside a card."],
   },

@@ -8,16 +8,20 @@ import { cn } from "~/lib/utils";
 
 /**
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
- * inside another, set apart by a deeper tint instead of a second border — depth shows as tint;
- * `sheet` is a card that stands alone as its own surface, side by side with its kind (the
- * overview's project cards): the default card at the sheet's radius; `slot` is the place a thing
- * will stand before it is there (a service the setup declares and Zerops lacks, a section with
- * nothing yet): a dashed hairline and no ground of its own.
+ * inside another (a well set into its surface), set apart by a step of the ink under it instead of
+ * a second border — depth shows as tint, on a page, a card and a tray alike; `sheet` is a card that
+ * stands alone as its own surface, side by side with its kind (the overview's project cards): the
+ * default card at the sheet's radius; `slot` is the place a thing will stand before it is there (a
+ * service the setup declares and Zerops lacks, a section with nothing yet): a dashed hairline and
+ * no ground of its own; `wash` is a card that stands out from its siblings by what it is, in a wash
+ * of its tone with its hairline in it: the one next step on a surface (the default tone, the
+ * primary's: what the person can act on), the Mate's own home (`ok`).
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
  * list or a conversation, `md` for a card that stands alone on a page; `rows` is a card of rows
  * that light their own ground, 6 px around them so a lit row's corner sits inside the card's.
- * `pressable` makes the whole card one press. `tone="failed"` wears its hairline in the failed
- * ink: a thing that broke, on its own card (a tool call that failed).
+ * `pressable` makes the whole card one press. `tone` is the state of what it holds, worn by its
+ * hairline: `ok` running or done, `busy` under way, `attention` waiting on the person, `failed`
+ * a thing that broke (a tool call that failed); a `wash` card wears it as its ground too.
  */
 const cardVariants = cva("", {
   defaultVariants: {
@@ -31,10 +35,11 @@ const cardVariants = cva("", {
       default:
         "relative flex flex-col rounded-card border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge",
       flat: "relative flex flex-col rounded-card border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
-      inset: "relative flex flex-col rounded-control bg-muted/60 text-card-foreground",
+      inset: "relative flex flex-col rounded-control bg-foreground/4 text-card-foreground",
       sheet:
         "relative flex flex-col rounded-sheet border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-sheet)-1px)] before:shadow-edge",
       slot: "relative flex flex-col rounded-card border border-dashed border-border",
+      wash: "relative flex flex-col rounded-card border text-card-foreground",
     },
     size: {
       none: "",
@@ -44,6 +49,9 @@ const cardVariants = cva("", {
     },
     tone: {
       default: "",
+      ok: "border-status-ok/35",
+      busy: "border-status-busy/35",
+      attention: "border-status-attention/35",
       failed: "border-status-failed/35",
     },
     /**
@@ -56,6 +64,21 @@ const cardVariants = cva("", {
       false: "",
     },
   },
+  compoundVariants: [
+    { variant: "wash", tone: "default", className: "border-primary/20 bg-primary/6" },
+    { variant: "wash", tone: "ok", className: "border-status-ok/20 bg-status-ok-surface" },
+    { variant: "wash", tone: "busy", className: "border-status-busy/20 bg-status-busy-surface" },
+    {
+      variant: "wash",
+      tone: "attention",
+      className: "border-status-attention/20 bg-status-attention-surface",
+    },
+    {
+      variant: "wash",
+      tone: "failed",
+      className: "border-status-failed/20 bg-status-failed-surface",
+    },
+  ],
 });
 
 interface CardProps extends useRender.ComponentProps<"div"> {

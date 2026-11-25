@@ -8,6 +8,7 @@
  * does; `PersonaPanel` feeds it from the Mate's settings and HQ and writes through the Mate's
  * `updateSettings`, so what it shows is always what the server echoed back.
  */
+import { Failure } from "~/components/ui/failure";
 import type { EnvironmentId, MatePersona } from "@t3tools/contracts";
 import { MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH } from "@t3tools/contracts";
 import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
@@ -534,12 +535,12 @@ export function PersonaPanelBody(props: {
 
 function FailureLine(props: { readonly message: string; readonly onRetry: () => void }) {
   return (
-    <p className="text-caption leading-4.5 text-destructive-foreground" role="alert">
-      {props.message}{" "}
-      <InlineButton onClick={props.onRetry} tone="muted">
-        {PERSONA_PAGE_WORDS.tryAgain}
-      </InlineButton>
-    </p>
+    <Failure
+      action={<InlineButton onClick={props.onRetry}>{PERSONA_PAGE_WORDS.tryAgain}</InlineButton>}
+      cause={props.message}
+      role="alert"
+      size="line"
+    />
   );
 }
 
@@ -804,12 +805,17 @@ function TemplateList(props: {
           <span className="flex size-5 shrink-0 items-center justify-center">
             <PersonaMark icon={Building2Icon} quiet />
           </span>
-          <p className="min-w-0 text-caption leading-5 text-destructive-foreground" role="alert">
-            {note.text}{" "}
-            <InlineButton onClick={props.onReadAgain} tone="muted">
-              {PERSONA_PAGE_WORDS.readAgain}
-            </InlineButton>
-          </p>
+          <Failure
+            action={
+              <InlineButton onClick={props.onReadAgain}>
+                {PERSONA_PAGE_WORDS.readAgain}
+              </InlineButton>
+            }
+            cause={note.text}
+            className="min-w-0"
+            role="alert"
+            size="line"
+          />
         </div>
       ) : (
         <ul className="flex flex-col">

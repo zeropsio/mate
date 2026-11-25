@@ -163,6 +163,16 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   `description`, a `remark`, a `note`, a `meta` fact, an `error`, a `code` literal. The variant
   fixes the step, the ink and the weight; a kit piece that draws its own words (a row, a section
   label, a page header, an empty place, a field, a failure) keeps them.
+- Who or what a thing is stands before its name: a person is a `PersonAvatar` (`nobody` for the
+  seat no person holds, `PersonAvatarStack` for who has access), a Mate its `MateFace`, anything
+  else a `LogoTile` (a logo, an organization's letter, a kind of thing's icon), each at the size of
+  the row it leads. An icon in a kit slot (a `Row`'s lead, a `Button`, a `Badge`, a menu item) takes
+  the slot's size, and in a row's lead the muted ink unless its ink means something; it names no
+  size of its own.
+- A box is the kit's: a `Card` form (`flat` on a page, `inset` set into another surface, `wash`
+  for the one thing that stands out by what it is, `slot` for a place not yet filled, `sheet`
+  alone among its kind), its `tone` the state of what it holds; a message in a conversation is a
+  `MessageBubble` in its speaker's form; a picture or a page shown is in a `PictureFrame`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
@@ -255,8 +265,68 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/prefer-text` (a plain element whose class string is exactly one variant's
     step, ink and weight, beside only what `Text` takes in `className`); its ledger only shrinks
 
+- **R15** — An icon in a kit slot takes the slot's size
+  - _Enforced by:_ `t3code/no-sized-slot-icon` (a lucide icon with a `size-*` class as a `Row`'s
+    `lead` or directly inside a `Button`, `Badge` or menu item); its ledger only shrinks
+
+- **R16** — A pressable item lights on `bg-item-hover` (a disclosure stays lit while open) and
+  the one its list shows stands on `bg-item-picked`; a chosen value says itself in its own mark
+  (`RadioRow`, `RadioCard`, a check box), never in a ground
+  - _Enforced by:_ `t3code/prefer-item-grounds` (a theme ground or a step of the ink behind a
+    `hover` variant, in a class string with no resting ground of its own); its ledger only shrinks
+
+- **R17** — A failure is said in one form: an action's refusal is `Failure size="line"` (what
+  failed, why, its one action, the source's words under Details), a value's error is `Text
+  variant="error"`, a place that failed is `Failure`; a notice across a panel's edge is `Alert
+  surface="band"`
+  - _Enforced by:_ `t3code/prefer-failure` (a plain element whose class string is a failure's ink
+    with a type step or an alert/status role, beside only its place); its ledger only shrinks
+
+- **R18** — Machine text is the kit's: a block is `CodeBlock`, arriving lines `LogView`, one value to
+  copy `CopyLine`, a change's size `DiffStat`
+  - _Enforced by:_ `t3code/prefer-code-block` (a `<pre>` in the web client outside `components/ui`,
+    the kit and the design harness); its ledger only shrinks
+
+- **R19** — What floats is the kit's: a popup tied to a press or a point is `Popover`, `Tooltip` or
+  `Menu` (a point is a virtual `anchor`), a layer over a surface is `Overlay`, a press over
+  scrolling content is `FloatingAction`
+  - _Enforced by:_ `t3code/no-hand-popup` (a plain element that is `fixed` or `absolute`, stacked
+    with `z-*`, on a popup's ground: `bg-popover`, `dropdown-glass` or `shadow-popup`); its ledger
+    only shrinks
+
+- **R20** — A box is a kit piece
+  - _Enforced by:_ `t3code/no-hand-drawn-box` (a plain element whose class string holds, at rest, a
+    box's radius and a ground); its ledger only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
 remove a dead or expired exception. A permanent exception needs a reason why the finding is correct.
 The machine ledgers own the entries and fingerprints; do not copy their counts into documentation.
+
+## 7. Building with the kit
+
+The kit is the web client's component library (`apps/web/src/components/ui`) and its workbench at
+`/kit`, served by every dev server, preview and production build.
+
+- Before drawing anything, find the piece that does the job. `/kit` groups the components by what
+  they are for, and each page shows its forms, a playground and its import line. Read the
+  component's doc comment before deciding nothing fits.
+- A surface composes kit pieces and lays them out with utilities. A look belongs to the kit, never
+  to the surface: never restyle a piece from outside, and never draw a look by hand that a piece
+  already draws.
+- If nothing fits, extend the kit, not the surface. Add a variant or size when the job is the
+  same, and a new component when it differs. Either one lands in its own commit, before the
+  surface uses it, with:
+  - its doc comment;
+  - its kit section (`apps/web/src/kit/sections/<id>.tsx`, on `kit/Specimen.tsx`'s tiles);
+  - its playground (`apps/web/src/kit/playground/<id>.tsx`).
+
+  A job others would otherwise draw by hand also gets a guard (§5).
+
+- To see a surface in a state, use its flow, never a throwaway page. Each `apps/web/design-*.html`
+  page draws one surface over fixtures (`apps/web/src/design/`) and needs no account, project or
+  Mate. Its states are listed in its `kit-states` meta, and it appears in `/kit` under Flows, with
+  a link per state in light, dark or both. A missing state is added to the surface's flow as a
+  fixture and a `kit-states` entry. A surface without a flow gets one.
+- A look is checked in `/kit` in both appearances and on the canvas's grounds before it lands.

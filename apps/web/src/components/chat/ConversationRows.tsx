@@ -578,7 +578,7 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
             size="icon-sm"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <XIcon />
           </Button>
         )}
       </div>

@@ -202,9 +202,9 @@ function sourceLine<T>(
   const problem = taskSourceProblem(read.action);
   if (problem !== null)
     return (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {problem}
-      </span>
+      </Text>
     );
   if (setting.state === "known") {
     const said = connected(setting.held);
@@ -336,9 +336,9 @@ export function SlackSettingsView({
       id={searchableSetting("automation-slack").id}
       line={
         refused && taskSourceProblem(read.action) === null ? (
-          <span className="text-destructive-foreground" role="alert">
+          <Text role="alert" variant="error">
             {SLACK_SIGNATURE_REFUSED}
-          </span>
+          </Text>
         ) : (
           sourceLine(
             read,
@@ -1138,9 +1138,9 @@ export function AutomatedModelView({
   const currentOffer = offerOf(current);
   const line =
     refusal !== null ? (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {refusal}
-      </span>
+      </Text>
     ) : save.sent ? (
       "Saving…"
     ) : currentOffer === undefined ? (

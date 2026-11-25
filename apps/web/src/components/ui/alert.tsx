@@ -36,12 +36,12 @@ const alertVariants = cva("relative text-card-foreground", {
     {
       surface: ["tint", "band"],
       variant: "warning",
-      className: "bg-status-attention/13 [&_svg]:text-status-attention",
+      className: "bg-status-attention/13 [&_[data-slot=alert-icon]]:text-status-attention",
     },
     {
       surface: ["tint", "band"],
       variant: "error",
-      className: "bg-status-failed/10 [&_svg]:text-status-failed",
+      className: "bg-status-failed/10 [&_[data-slot=alert-icon]]:text-status-failed",
     },
     { surface: "band", className: "border-border" },
     { surface: "band", edge: "top", className: "border-b" },
@@ -65,11 +65,11 @@ const alertVariants = cva("relative text-card-foreground", {
       band: "px-4 py-2.5 text-caption text-foreground",
     },
     variant: {
-      default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
-      error: "border-border bg-muted/35 [&_svg]:text-error",
-      info: "border-info/32 bg-info/4 [&_svg]:text-info",
-      success: "border-success/32 bg-success/4 [&_svg]:text-success",
-      warning: "border-border bg-muted/35 [&_svg]:text-warning",
+      default: "border-border bg-muted/35 [&_[data-slot=alert-icon]]:text-muted-foreground",
+      error: "border-border bg-muted/35 [&_[data-slot=alert-icon]]:text-error",
+      info: "border-info/32 bg-info/4 [&_[data-slot=alert-icon]]:text-info",
+      success: "border-success/32 bg-success/4 [&_[data-slot=alert-icon]]:text-success",
+      warning: "border-border bg-muted/35 [&_[data-slot=alert-icon]]:text-warning",
     },
   },
 });

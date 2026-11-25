@@ -30,6 +30,7 @@ import { ChevronLeftIcon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { MicroLabel } from "./primitives";
 import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 interface ZeropsDataRowDrawerProps {
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
@@ -104,12 +105,7 @@ export function ZeropsDataRowDrawer({
               </Text>
               <dd>
                 {detail.kind === "json" || detail.detail.includes("\n") ? (
-                  <pre
-                    className="overflow-x-auto whitespace-pre-wrap break-words text-caption"
-                    data-zerops-data-row-value={name}
-                  >
-                    {detail.detail}
-                  </pre>
+                  <CodeBlock data-zerops-data-row-value={name}>{detail.detail}</CodeBlock>
                 ) : (
                   <p className="break-words text-caption" data-zerops-data-row-value={name}>
                     {detail.detail}

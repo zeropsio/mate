@@ -276,7 +276,7 @@ function DiscoveryItemRow({
   return (
     <div
       className={cn(
-        "rounded-control transition-colors hover:bg-muted/20",
+        "rounded-control transition-colors hover:bg-item-hover",
         isVcsNotReady(item) && "opacity-80",
       )}
     >

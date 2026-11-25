@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import { CollectionRead } from "../CollectionRead";
 import { collectionPresentation } from "../../state/query";
 import { ProcessSignalActions } from "./ProcessSignalActions";
@@ -462,7 +463,7 @@ function ResourceHistoryChart({
                     </div>
                   }
                 />
-                <TooltipPopup side="top" className="text-left">
+                <TooltipPopup side="top">
                   <div className="space-y-0.5">
                     <div>CPU avg {bucket.avgCpuPercent.toFixed(1)}%</div>
                     <div>CPU peak {bucket.maxCpuPercent.toFixed(1)}%</div>
@@ -1089,10 +1090,9 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             />
           </div>
           {telemetry.error ? (
-            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/5 px-4 py-3 text-caption text-destructive sm:px-5">
-              <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-              <span>{telemetry.error}</span>
-            </div>
+            <Alert edge="bottom" icon={<AlertTriangleIcon />} surface="band" variant="error">
+              {telemetry.error}
+            </Alert>
           ) : null}
           {snapshot ? (
             <>

@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { AssetImage } from "~/assets/AssetImage";
 import type {
@@ -106,8 +107,8 @@ function WorkspaceImagePreview(props: {
 
   if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-caption leading-relaxed text-destructive">
-        Unable to load workspace image.
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+        <Failure cause="This image couldn't be loaded." role="alert" size="line" />
       </div>
     );
   }
@@ -825,9 +826,9 @@ function WorkspaceFilePreviewPanel({
         </div>
       ) : null}
       {previewPath && file.data?.truncated ? (
-        <div className="shrink-0 border-b border-warning/20 bg-warning-surface px-3 py-1.5 text-2xs text-warning-foreground">
-          Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
-        </div>
+        <Alert className="shrink-0" surface="band" variant="warning">
+          Only the first 1 MB of this {file.data.byteLength.toLocaleString()} byte file is shown.
+        </Alert>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div

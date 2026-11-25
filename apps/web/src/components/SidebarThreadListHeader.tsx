@@ -94,7 +94,7 @@ export function SidebarThreadSearchField({
             threadSearchInputRef.current?.focus();
           }}
         >
-          <XIcon className="size-3" />
+          <XIcon />
         </Button>
       ) : null}
     </div>
@@ -244,7 +244,7 @@ export function SidebarProjectScopeRow({
                         openAddProjectSourcePicker(project.environmentId);
                       }}
                     >
-                      <GitBranchIcon className="size-3.5" />
+                      <GitBranchIcon />
                     </Button>
                     <Button
                       size="icon-sm"
@@ -256,7 +256,7 @@ export function SidebarProjectScopeRow({
                         void handleProjectSettings(event, project);
                       }}
                     >
-                      <SettingsIcon className="size-3.5" />
+                      <SettingsIcon />
                     </Button>
                   </span>
                 </MenuRadioItem>

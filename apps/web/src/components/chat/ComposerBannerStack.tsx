@@ -170,7 +170,7 @@ function ComposerBannerStackAlert({
       aria-label={item.dismissLabel ?? "Dismiss notice"}
       onClick={onDismissRequest}
     >
-      <XIcon className="size-3.5" />
+      <XIcon />
     </Button>
   ) : null;
 
