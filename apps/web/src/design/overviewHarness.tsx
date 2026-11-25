@@ -1368,7 +1368,10 @@ function HarnessPage() {
     );
   return (
     <div className="flex h-dvh bg-background text-foreground">
-      <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }}>
+      <aside
+        className="shrink-0 border-e border-border bg-sidebar max-md:hidden"
+        style={{ width: MENU_WIDTH }}
+      >
         {/* The menu's top, its count of what waits on the viewer: the overview's tab counts the same. */}
         <SidebarChiefRow
           current={false}
