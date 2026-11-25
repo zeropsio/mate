@@ -66,11 +66,12 @@ import {
 import { cn } from "~/lib/utils";
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 import { Text } from "~/components/ui/text";
 import { List } from "~/components/ui/list";
+import { SectionHeader } from "~/components/ui/section";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -162,7 +163,7 @@ export function ProjectAccessTable({
 
   return (
     <section aria-label={label} className={CARD_SECTION} data-zerops-surface="access-table">
-      <SectionLabel level={3}>{label}</SectionLabel>
+      <SectionHeader level={3} size="panel" title={label} />
       {view.kind === "reading" ? (
         <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (

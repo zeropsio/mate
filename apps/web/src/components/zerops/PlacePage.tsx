@@ -180,7 +180,6 @@ import {
   readyOfFlow,
   rowStanding,
   RunningNow,
-  SectionLabel,
   useApplicationPlaces,
   usePageTrail,
   type Crumb,
@@ -203,6 +202,7 @@ import {
   useWithheldStops,
 } from "./ZeropsGroupDetail";
 import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
 function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<string, string> {
@@ -1476,7 +1476,10 @@ export function ZeropsStopPane({
             {!nextShown ? null : production ? (
               <PlaceSection
                 label={
-                  <SectionLabel>{releasingNow ? "Releasing now" : "Next release"}</SectionLabel>
+                  <SectionHeader
+                    size="panel"
+                    title={releasingNow ? "Releasing now" : "Next release"}
+                  />
                 }
               >
                 <PlaceNextRelease
@@ -1499,7 +1502,9 @@ export function ZeropsStopPane({
                 )}
               </PlaceSection>
             ) : (
-              <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
+              <PlaceSection
+                label={<SectionHeader size="panel" title={<>Next on {head.title}</>} />}
+              >
                 <PlaceNextCard
                   state="stage"
                   title={stageNextTitle(nextChanges, head.title, standingOf)}
@@ -1513,14 +1518,14 @@ export function ZeropsStopPane({
               // Its releases are not answered yet: a place that runs something has some, so the
               // slot holds their rows' shape; one that runs nothing says so once they are.
               runs === undefined ? null : (
-                <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+                <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
                   <Card className="min-w-0" size="rows">
                     <ReleaseRowsWaiting />
                   </Card>
                 </PlaceSection>
               )
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
-              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+              <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
                 <Card
                   data-zerops-surface="place-releases-unrecorded"
                   render={<p />}
@@ -1533,7 +1538,7 @@ export function ZeropsStopPane({
                 </Card>
               </PlaceSection>
             ) : nextShown ? null : (
-              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+              <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
                 <Card
                   data-zerops-surface="place-releases-empty"
                   render={<p />}
@@ -1549,7 +1554,9 @@ export function ZeropsStopPane({
             )}
 
             {!production || releases.length === 0 ? null : (
-              <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
+              <PlaceSection
+                label={<SectionHeader count={releases.length} size="panel" title="Releases" />}
+              >
                 <Card className="@container/releases min-w-0" size="rows">
                   <ReleaseList>
                     <ZeropsReleaseRows
@@ -1593,7 +1600,7 @@ export function ZeropsStopPane({
             {production ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     count={
                       recordedHistory === undefined
                         ? repo !== undefined && history.kind === "read"
@@ -1601,9 +1608,9 @@ export function ZeropsStopPane({
                           : DEPLOYS_ASIDE
                         : undefined
                     }
-                  >
-                    Deploys
-                  </SectionLabel>
+                    size="panel"
+                    title="Deploys"
+                  />
                 }
               >
                 <Card className="min-w-0" size="md">
@@ -1646,7 +1653,7 @@ export function ZeropsStopPane({
               {projectId === undefined ? null : (
                 <PlaceSection
                   label={
-                    <SectionLabel
+                    <SectionHeader
                       action={
                         onManageAddresses === undefined ? undefined : (
                           <Button onClick={onManageAddresses} size="sm" variant="link">
@@ -1654,9 +1661,9 @@ export function ZeropsStopPane({
                           </Button>
                         )
                       }
-                    >
-                      Addresses
-                    </SectionLabel>
+                      size="panel"
+                      title="Addresses"
+                    />
                   }
                 >
                   <PlaceAddressCard
@@ -1676,7 +1683,7 @@ export function ZeropsStopPane({
             {vault?.view === undefined || projectId === undefined ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     action={
                       <Button
                         onClick={() => {
@@ -1688,9 +1695,9 @@ export function ZeropsStopPane({
                         Open
                       </Button>
                     }
-                  >
-                    Vault
-                  </SectionLabel>
+                    size="panel"
+                    title="Vault"
+                  />
                 }
               >
                 <PlaceVaultCard onOpen={openVault} overview={vaultOverview(vault.view)} />
@@ -1700,7 +1707,7 @@ export function ZeropsStopPane({
             {access === undefined || projectId === undefined ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     action={
                       <Button
                         render={
@@ -1718,9 +1725,9 @@ export function ZeropsStopPane({
                           : `Manage on ${possessive(groupName, "page")}`}
                       </Button>
                     }
-                  >
-                    Who has access
-                  </SectionLabel>
+                    size="panel"
+                    title="Who has access"
+                  />
                 }
               >
                 <PlaceAccessCard
@@ -1732,11 +1739,11 @@ export function ZeropsStopPane({
 
             <PlaceSection
               label={
-                <SectionLabel
+                <SectionHeader
                   count={servicesWaiting ? undefined : table.length + missingSlots.length}
-                >
-                  Services
-                </SectionLabel>
+                  size="panel"
+                  title="Services"
+                />
               }
             >
               {servicesWaiting ? (

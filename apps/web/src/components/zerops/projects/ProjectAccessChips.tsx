@@ -63,11 +63,12 @@ import {
 } from "./projectPeople.logic";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { Failure } from "~/components/ui/failure";
 import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
 import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -154,7 +155,7 @@ export function ProjectAccessChips({
       aria-label={label}
       className={heading ? CARD_SECTION : rows ? "grid gap-1.5" : "grid gap-1.5 pb-3"}
     >
-      {heading ? <SectionLabel level={3}>{label}</SectionLabel> : null}
+      {heading ? <SectionHeader level={3} size="panel" title={label} /> : null}
       {view.kind === "reading" ? (
         <Loading count={2} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
@@ -196,7 +197,7 @@ export function ProjectAccessChips({
  * dialog (`data-sections="bare"`), it stands there with no rule, named by the dialog's title.
  */
 export const CARD_SECTION =
-  "mt-4 grid gap-1 border-t border-rule px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-zerops-section-label]]:hidden";
+  "mt-4 grid gap-1 border-t border-rule px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-slot=section-header]]:hidden";
 
 /**
  * Who reaches a project, as people chips: as many columns of at least 168 px as fit (232 px for

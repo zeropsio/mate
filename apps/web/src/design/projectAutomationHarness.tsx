@@ -39,12 +39,13 @@ import {
   AppSchedulesView,
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
-import { SectionLabel } from "~/components/zerops/system";
+
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
 import { Card } from "~/components/ui/card";
 import { PAGE_GROUP } from "~/components/zerops/project/pageLayout";
+import { SectionHeader } from "~/components/ui/section";
 
 const params = new URLSearchParams(location.search);
 const DIALOG = params.get("dialog") as SourceKind | null;
@@ -733,7 +734,7 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
 function OnPage({ children }: { readonly children: ReactNode }) {
   return (
     <div className={PAGE_GROUP}>
-      <SectionLabel>Automation</SectionLabel>
+      <SectionHeader size="panel" title="Automation" />
       <Card>{children}</Card>
     </div>
   );

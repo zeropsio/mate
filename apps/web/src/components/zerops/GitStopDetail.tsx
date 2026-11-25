@@ -38,7 +38,7 @@ import { hqOffer } from "@t3tools/shared/hqOffers";
 import { useMemo, useRef, useState } from "react";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
-import { SectionLabel } from "./system";
+
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
@@ -46,6 +46,7 @@ import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /**
  * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
@@ -148,7 +149,7 @@ export function GitStopDetail({
     <Card data-zerops-surface="git-stop-detail" variant="flat">
       <div className="flex flex-col gap-7 px-4 py-4">
         <section className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel>Delivery</SectionLabel>
+          <SectionHeader size="panel" title="Delivery" />
           <GitDeliveryStatus environment={environment} delivery={delivery} repos={repos} />
           {environment.tier !== "production" || !staged
             ? null
@@ -217,9 +218,11 @@ export function GitStopDetail({
           </div>
         </section>
         <section className="flex min-w-0 flex-col gap-1.5">
-          <SectionLabel count={history === 0 ? undefined : history}>
-            {environment.tier === "stage" ? "Pushes" : "Releases"}
-          </SectionLabel>
+          <SectionHeader
+            count={history === 0 ? undefined : history}
+            size="panel"
+            title={environment.tier === "stage" ? "Pushes" : "Releases"}
+          />
           {environment.tier === "stage" ? (
             pushes.length === 0 ? (
               <EmptyState className="mt-1.5" size="line">

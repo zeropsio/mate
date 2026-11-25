@@ -27,10 +27,11 @@ import {
   type MergingDraft,
   type OpenMain,
 } from "~/components/zerops/projectMerging/projectMerging.logic";
-import { SectionLabel } from "~/components/zerops/system";
+
 import type { MergingPress } from "~/zerops/useAppMergers";
 import { Card } from "~/components/ui/card";
 import { PAGE_GROUP, PAGE_SIDE } from "~/components/zerops/project/pageLayout";
+import { SectionHeader } from "~/components/ui/section";
 
 const nothing = () => {};
 
@@ -168,7 +169,7 @@ export const isMergingState = (name: string): name is MergingStateName =>
 function Section({ children }: { readonly children: ReactNode }) {
   return (
     <section aria-label={MERGING_TITLE} className={PAGE_GROUP}>
-      <SectionLabel>{MERGING_TITLE}</SectionLabel>
+      <SectionHeader size="panel" title={MERGING_TITLE} />
       <Card>
         <div className="p-3">{children}</div>
       </Card>

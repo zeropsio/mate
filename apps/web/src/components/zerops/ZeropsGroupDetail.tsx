@@ -53,7 +53,7 @@ import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { PageHeader } from "../ui/page-header";
-import { Crumbs, PageTrail, SectionLabel, usePageTrail, type Crumb } from "./system";
+import { Crumbs, PageTrail, usePageTrail, type Crumb } from "./system";
 import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -64,6 +64,7 @@ import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
 import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -576,7 +577,7 @@ function Section({
 }) {
   return (
     <section className="flex min-w-0 flex-col gap-1.5">
-      <SectionLabel>{title}</SectionLabel>
+      <SectionHeader size="panel" title={title} />
       {children}
     </section>
   );

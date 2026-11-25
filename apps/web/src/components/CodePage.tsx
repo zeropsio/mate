@@ -44,10 +44,11 @@ import {
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MatePanelColumn } from "./zerops/MatePanelPlaces";
-import { SectionLabel } from "./zerops/system";
+
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 import { DiffStat } from "~/components/ui/diff-stat";
+import { SectionHeader } from "~/components/ui/section";
 
 /** One file of "What changed", folded unless opened. */
 export interface CodeFile {
@@ -425,7 +426,7 @@ export function CodePage({
                 data-code-section="changes"
                 ref={setChanges}
               >
-                <SectionLabel>What changed</SectionLabel>
+                <SectionHeader size="panel" title="What changed" />
                 {toolbar}
                 {notices}
                 {commits}

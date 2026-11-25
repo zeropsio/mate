@@ -32,7 +32,7 @@ export {
   type ProjectLineView,
 } from "./projectLine.logic";
 export { RunningClock, RunningLine, RunningNow } from "./RunningLine";
-export { SectionAction, SectionLabel } from "./SectionLabel";
+export { SectionAction } from "./SectionAction";
 export { ServiceList, ServiceMeters, ServiceRow } from "./ServiceRow";
 export { serviceRunsLine } from "./ServiceRow.logic";
 export { applicationStage } from "./applicationPlaces.logic";

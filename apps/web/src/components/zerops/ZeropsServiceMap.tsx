@@ -57,13 +57,14 @@ import { LivenessLine, MateFace, MicroLabel, STATUS_BADGE_TONE } from "./primiti
 import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { placeServiceRows } from "./place/place.logic";
-import { SectionLabel } from "./system/SectionLabel";
+
 import { ServiceList, ServiceMeters, ServiceRow } from "./system/ServiceRow";
 import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
 import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -910,7 +911,7 @@ export function ZeropsServiceMap({
           2026-11-09) — its card, the agents it signs in to and its version. */}
       {view.isEmpty || homes.length === 0 ? null : (
         <section className="flex min-w-0 flex-col gap-2" data-zerops-surface="panel-home">
-          <SectionLabel level={3}>{homeLabel}</SectionLabel>
+          <SectionHeader level={3} size="panel" title={homeLabel} />
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {homes.map((row) => (
               <ControlPlaneRow
@@ -926,7 +927,7 @@ export function ZeropsServiceMap({
         </section>
       )}
       <section className="flex min-w-0 flex-col gap-2" data-zerops-surface="panel-services">
-        <SectionLabel
+        <SectionHeader
           level={3}
           // Calm says itself in a word; only a state that is not calm wears a badge.
           count={
@@ -973,9 +974,9 @@ export function ZeropsServiceMap({
               </Button>
             </span>
           }
-        >
-          {servicesLabel}
-        </SectionLabel>
+          size="panel"
+          title={servicesLabel}
+        />
         {view.isEmpty || services.length === 0 ? (
           <Card data-zerops-map-empty render={<p />} size="md" variant="slot">
             <EmptyState size="line">

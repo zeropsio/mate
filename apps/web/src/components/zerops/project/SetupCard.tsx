@@ -5,9 +5,9 @@
  */
 import type { ReactNode } from "react";
 
-import { SectionLabel } from "../system";
 import { Card } from "~/components/ui/card";
 import { PAGE_GROUP, PAGE_SIDE } from "./pageLayout";
+import { SectionHeader } from "~/components/ui/section";
 
 export function SetupCard({ children }: { readonly children: ReactNode }) {
   return (
@@ -48,7 +48,7 @@ export function SetupRow({
       className={PAGE_GROUP}
       data-zerops-surface={surface}
     >
-      <SectionLabel action={action}>{label}</SectionLabel>
+      <SectionHeader action={action} size="panel" title={label} />
       {empty ? (
         // A setup nobody made yet: a dashed slot saying what it is for, beside its one verb.
         <Card variant="slot">

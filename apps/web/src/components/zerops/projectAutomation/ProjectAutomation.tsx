@@ -79,7 +79,7 @@ import { appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
-import { BeadMark, CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
+import { BeadMark, CutText, GrowsInPlace, SectionAction } from "../system";
 import { goClass } from "../system/ChangeRow";
 import { cn } from "~/lib/utils";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
@@ -109,6 +109,7 @@ import { RealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
 import { List } from "~/components/ui/list";
 import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 /** Where the organization's connections are set: Settings › Automation. */
 const AUTOMATION_SETTINGS = "/settings/automation" as const;
@@ -858,12 +859,10 @@ function LedgerGroup({
   return (
     // The page's label 15 px over its first row's words, 32 px under the last group's.
     <div
-      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-zerops-section-label]]:px-2.5"
+      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-slot=section-header]]:px-2.5"
       data-zerops-board={name}
     >
-      <SectionLabel action={action} count={count} level={3}>
-        {name}
-      </SectionLabel>
+      <SectionHeader action={action} count={count} level={3} size="panel" title={name} />
       {children}
     </div>
   );

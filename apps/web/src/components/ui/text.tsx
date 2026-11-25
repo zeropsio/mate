@@ -15,7 +15,7 @@ import { cn } from "~/lib/utils";
  *   a task's name. 15/24, semibold, the page's ink.
  * - `heading` — a block's own heading inside a page, a card or a dialog: a setting group's name, a
  *   form's question, an item's name standing alone. 14/20, medium, the page's ink. A page's title
- *   is `PageHeader`; a section's quiet label over its rows is `SectionLabel`; a row's name is
+ *   is `PageHeader`; a section's heading over its rows is `SectionHeader`; a row's name is
  *   `Row`'s title.
  * - `label` — a group's or a column's name in a dense list or a popup ("Models", "Branches"):
  *   12/16, medium, muted. A menu's own group label is `MenuGroupLabel`.

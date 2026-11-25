@@ -13,8 +13,9 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { Badge } from "../../ui/badge";
 import { Card } from "../../ui/card";
 import { GrowsInPlace } from "./GrowsInPlace";
-import { SectionLabel } from "./SectionLabel";
+
 import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /**
  * How long a line has run, counted here from when the platform says it began. `short` where a
@@ -133,7 +134,7 @@ export function RunningNow({ lines }: { readonly lines: ReadonlyArray<Line> }) {
       {lines.length === 0 ? null : (
         // As far from the group under it as the column's groups stand from each other.
         <section className="mb-8 min-w-0" data-zerops-surface="running-now">
-          <SectionLabel>Running now</SectionLabel>
+          <SectionHeader size="panel" title="Running now" />
           <Card>
             <ul className="m-0 flex list-none flex-col gap-1.5 px-3 py-2.5">
               {lines.map((line) => (

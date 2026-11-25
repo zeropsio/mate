@@ -59,7 +59,7 @@ import { PlaceLine } from "../system/PlaceLine";
 import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
 import { PlaceDoors, usePlaceSitesDrawn } from "../place/PlaceDoors";
 import { placeSitesOf } from "../place/placeDoors.logic";
-import { SectionAction, SectionLabel } from "../system/SectionLabel";
+import { SectionAction } from "../system/SectionAction";
 import type {
   ComingBirthRow,
   ProjectsFlowGroup,
@@ -78,6 +78,7 @@ import { CARD_ROOM, RAIL, ROW, ROW_CARD } from "./overviewLayout";
 import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -529,10 +530,10 @@ function CardMates<T>({
     // label hugs the first row, whose own padding is its hover's, not air.
     <section
       aria-label="Project Mates"
-      className="mt-4 grid gap-0.5 [&>[data-zerops-section-label]]:-mb-0.5 [&>[data-zerops-section-label]]:px-1.5"
+      className="mt-4 grid gap-0.5 [&>[data-slot=section-header]]:-mb-0.5 [&>[data-slot=section-header]]:px-1.5"
       data-zerops-step="mates"
     >
-      <SectionLabel
+      <SectionHeader
         action={
           onAdd === undefined || addWhy !== null ? undefined : (
             <SectionAction onClick={onAdd}>+ Add a Mate</SectionAction>
@@ -540,9 +541,9 @@ function CardMates<T>({
         }
         count={mates.length > 1 ? mates.length : undefined}
         level={3}
-      >
-        Mates
-      </SectionLabel>
+        size="panel"
+        title="Mates"
+      />
       {shown.map((mate) =>
         mate.kind === "coming" ? (
           <CardComingMate
@@ -689,7 +690,7 @@ function CardWaits({
       variant={heading === WAITING_ON_YOU ? "warning" : "default"}
     >
       <AlertTitle>
-        <SectionLabel level={3}>{heading}</SectionLabel>
+        <SectionHeader level={3} size="panel" title={heading} />
       </AlertTitle>
       <AlertDescription>
         {/* Each wait a row on the card's own ground inside the callout, reaching out toward its

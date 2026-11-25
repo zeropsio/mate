@@ -14,7 +14,7 @@ import { panelPlaces, possessive } from "./MatePanelPlaces.logic";
 import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
 import { NextRelease, type NextReleaseInput } from "./system/NextRelease";
 import { PlaceLine } from "./system/PlaceLine";
-import { SectionAction } from "./system/SectionLabel";
+import { SectionAction } from "./system/SectionAction";
 import { Card } from "~/components/ui/card";
 import { Text } from "~/components/ui/text";
 

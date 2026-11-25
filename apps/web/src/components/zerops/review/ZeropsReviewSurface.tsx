@@ -68,7 +68,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
 import { InPhoneBar } from "../system/PhoneBar";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
@@ -84,6 +84,7 @@ import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
 import { DiffStat } from "~/components/ui/diff-stat";
 import { List } from "~/components/ui/list";
+import { SectionHeader } from "~/components/ui/section";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -840,7 +841,7 @@ export interface ReviewFoldState {
 }
 
 /**
- * One section: its label (the kit's `SectionLabel`) with what it counts beside it and its state or
+ * One section: its label (the kit's quiet `SectionHeader`) with what it counts beside it and its state or
  * press at the line's end, and what it holds. Folded, its label is the press that opens it —
  * "Files · 4 changed · +163 −12 ⌄" — and what it holds stays drawn, hidden, so nothing it read or
  * was typed into it is lost while it is shut.
@@ -870,9 +871,7 @@ export function ReviewSection({
         open={fold.open}
         render={<section className={SECTION} />}
       >
-        <SectionLabel action={action} count={count} folds level={3}>
-          {title}
-        </SectionLabel>
+        <SectionHeader action={action} count={count} folds level={3} size="panel" title={title} />
         <CollapsiblePanel className="mt-3" keepMounted>
           {children}
         </CollapsiblePanel>
@@ -882,9 +881,13 @@ export function ReviewSection({
   return (
     <section className={SECTION}>
       {titleShown || action !== undefined ? (
-        <SectionLabel action={action} count={titleShown ? count : undefined} level={3}>
-          {titleShown ? title : <span className="sr-only">{title}</span>}
-        </SectionLabel>
+        <SectionHeader
+          action={action}
+          count={titleShown ? count : undefined}
+          level={3}
+          size="panel"
+          title={titleShown ? title : <span className="sr-only">{title}</span>}
+        />
       ) : (
         <h3 className="sr-only">{title}</h3>
       )}
@@ -899,7 +902,7 @@ export function ReviewSection({
  * next line where it is too long for its own.
  */
 const SECTION =
-  "has-[>[data-zerops-section-label]:only-child]:hidden [&>[data-zerops-section-label]]:mb-1.5 [&>[data-zerops-section-label]:has([data-section-state])]:flex-wrap [&>[data-zerops-section-label]:has([data-section-state])]:gap-y-0.5";
+  "has-[>[data-slot=section-header]:only-child]:hidden [&>[data-slot=section-header]]:mb-1.5 [&>[data-slot=section-header]:has([data-section-state])]:flex-wrap [&>[data-slot=section-header]:has([data-section-state])]:gap-y-0.5";
 
 /** A fold of the review's own, shut until it is opened. */
 export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
