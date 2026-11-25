@@ -16,6 +16,7 @@ export const KIT_GUARDS = [
   { rule: "prefer-text", line: "Words styled by hand instead of a Text role" },
   { rule: "no-hand-popup", line: "A popup floated by hand instead of Popover, Tooltip or Overlay" },
   { rule: "prefer-marks", line: "A dot or a count drawn by hand instead of Dot or Badge" },
+  { rule: "no-hand-drawn-rules", line: "A divider drawn by hand instead of a List or Separator" },
 ] as const;
 
 /** A ledger entry as far as the kit reads it: when it is due. */
@@ -31,7 +32,7 @@ const WEB_CLIENT = "apps/web/";
 const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> = import.meta.glob<
   readonly LedgerEntry[]
 >(
-  "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes,prefer-text,no-hand-popup,prefer-marks}.json",
+  "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes,prefer-text,no-hand-popup,prefer-marks,no-hand-drawn-rules}.json",
   { eager: true, import: "default" },
 );
 

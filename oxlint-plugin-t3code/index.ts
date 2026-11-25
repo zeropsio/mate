@@ -33,6 +33,7 @@ import preferMarks from "./rules/prefer-marks.ts";
 import preferText from "./rules/prefer-text.ts";
 import noSizedSlotIcon from "./rules/no-sized-slot-icon.ts";
 import noHandDrawnBox from "./rules/no-hand-drawn-box.ts";
+import noHandDrawnRules from "./rules/no-hand-drawn-rules.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
 import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
@@ -91,6 +92,7 @@ export default definePlugin({
     "prefer-text": preferText,
     "no-sized-slot-icon": noSizedSlotIcon,
     "no-hand-drawn-box": noHandDrawnBox,
+    "no-hand-drawn-rules": noHandDrawnRules,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
     "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
     "no-restyle": noRestyle,

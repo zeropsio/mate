@@ -1,0 +1,10 @@
+[
+  {
+    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<div> className={`min-h-0 min-w-0 ${ splitDirection === \"vertical\" ? \"border-t first:border-t-0\" : \"border-l first:border-l-0\" } ${ terminalId === resolvedActiveTerminalId ? \"border-border\" : \"border-border/70\" }`}",
+    "owner": "unify rules",
+    "reason": "a terminal split's panes: the rule between them turns with the split's direction (upright side by side), and the active pane's is stronger; List rules only across, between like items",
+    "expires": "never"
+  }
+]

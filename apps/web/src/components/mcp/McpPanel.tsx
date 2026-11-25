@@ -76,6 +76,7 @@ import {
 } from "./useMcpServers";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 export const MCP_WORDS = {
   builtIn: "Built in",
@@ -318,7 +319,7 @@ export function McpPanelBody(props: {
               </span>
             </Text>
             <Card className="overflow-hidden">
-              <ul className="flex flex-col divide-y divide-border">
+              <List className="flex flex-col" render={<ul />}>
                 {group.id === "waiting"
                   ? proposals.map((proposal) => (
                       <ProposalRowView
@@ -343,7 +344,7 @@ export function McpPanelBody(props: {
                     signIn={props.signIn}
                   />
                 ))}
-              </ul>
+              </List>
             </Card>
           </section>
         ))}

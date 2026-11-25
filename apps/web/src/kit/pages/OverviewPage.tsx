@@ -59,6 +59,7 @@ const GUARD_NAME: Readonly<Record<(typeof KIT_GUARDS)[number]["rule"], string>> 
   "prefer-text": "Hand-styled words",
   "no-hand-popup": "Hand-floated popups",
   "prefer-marks": "Hand-drawn marks",
+  "no-hand-drawn-rules": "Hand-drawn dividers",
 };
 
 /** One figure of the kit's size: the number large, what it counts under it. */

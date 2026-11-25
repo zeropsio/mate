@@ -305,6 +305,12 @@ numbered steps of these. Every ask is the same card, in two densities.
     fill and a dot's size, 4 to 10 px, or with even figures in a dense step and a height); its
     ledger only shrinks
 
+- **R22** — Dividers are a `List`'s or a `Separator`
+  - _Enforced by:_ `t3code/no-hand-drawn-rules` (on a plain element in the web client: `divide-y`
+    without `divide-x`, an item ruling itself by its place (`border-t first:border-t-0`, a
+    `not-first:before:h-px` hairline), an unpositioned one-pixel element in the border's or the
+    rule's ink, an empty element that only draws a rule); its ledger only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
