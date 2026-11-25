@@ -312,6 +312,18 @@ export function releasePermission(
 }
 
 /**
+ * Deleting a stage's or a production's Zerops project with its application: an admin of that
+ * project, as Zerops itself lets only full access delete a project, the organization's own role
+ * lowered there included. A project Zerops does not list is gone, or not theirs to know.
+ */
+export function deleteProjectPermission(facts: PermissionFacts, projectId: string): Decision {
+  const member = activeMember(facts.member);
+  if (member === undefined) return refuse("not_active_member");
+  if (facts.project(projectId) === undefined) return refuse("project_gone");
+  return administers(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_project_admin");
+}
+
+/**
  * Taking a project out of its application: an environment by the structure's writers, a Mate by an
  * admin of its project. Who a person is on it comes before whether it exists.
  */

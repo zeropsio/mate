@@ -14,6 +14,7 @@ import {
   attachPermission,
   changePermission,
   createAppPermission,
+  deleteProjectPermission,
   deployPermission,
   detachPermission,
   mateRecordPermission,
@@ -110,7 +111,8 @@ export function applicationOffers(facts: PermissionFacts, app: ApplicationFacts)
 }
 
 /**
- * A Zerops environment's verbs: its deploy token and deploys, and — a production's — its removal,
+ * A Zerops environment's verbs: its deploy token and deploys, its project's deletion with its
+ * application (`delete_project`, an admin of that project), and — a production's — its removal,
  * which takes the role that could make its replacement. A production's deploy asked again is held
  * by its application's limit on who merges, as a release is; a stage's never.
  */
@@ -127,6 +129,7 @@ export function environmentOffers(
       environment.projectId,
       environment.tier === "production" ? app.mergers : undefined,
     ),
+    delete_project: deleteProjectPermission(facts, environment.projectId),
   };
   if (environment.tier !== "production") return offers;
   const creates = createAppPermission(facts);
