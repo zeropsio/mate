@@ -1,35 +1,23 @@
-import { CheckIcon, ChevronDownIcon, CircleAlertIcon, CopyIcon } from "lucide-react";
+import { ChevronDownIcon, CircleAlertIcon } from "lucide-react";
 import type * as React from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./alert";
-import { Button, InlineButton } from "./button";
+import { InlineButton } from "./button";
+import { CodeBlock } from "./code-block";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./collapsible";
 import { StatusPage } from "./status-page";
 
 /**
- * The source's words as it sent them, in a well that scrolls past twelve lines, with one Copy: what
- * `FailureDetails` draws for words given as a string, for a panel that holds more beside them.
+ * The source's words as it sent them, on the code ground, scrolled past about nine lines, with one
+ * Copy: what `FailureDetails` draws for words given as a string, for a panel that holds more.
  */
 function FailureWords({ words }: { readonly words: string }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "the details" });
   return (
-    <div className="relative rounded-control border border-well-edge bg-well">
-      <pre className="m-0 max-h-48 overflow-auto py-2.5 ps-3 pe-10 text-left font-mono text-caption text-foreground/80 whitespace-pre-wrap wrap-anywhere">
-        {words}
-      </pre>
-      <Button
-        aria-label={isCopied ? "Copied" : "Copy the details"}
-        className="absolute top-1.5 right-1.5"
-        onClick={() => copyToClipboard(words)}
-        size="icon-xs"
-        variant="ghost"
-      >
-        {isCopied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-      </Button>
-    </div>
+    <CodeBlock copy="the details" height="sm">
+      {words}
+    </CodeBlock>
   );
 }
 
