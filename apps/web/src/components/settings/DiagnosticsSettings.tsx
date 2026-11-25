@@ -48,6 +48,7 @@ import { ResourceTelemetryDiagnostics } from "./ResourceTelemetryDiagnostics";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Text } from "~/components/ui/text";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 const NUMBER_FORMAT = new Intl.NumberFormat();
 
@@ -221,37 +222,30 @@ function DiagnosticsTable({
       hideScrollbars
       className="w-full max-w-full"
     >
-      <table
-        className={cn(
-          "w-full text-left text-caption",
-          minTableWidth,
-          columnWidths && "table-fixed",
-        )}
-      >
-        {columnWidths ? (
-          <colgroup>
-            {headers.map((header, index) => (
-              <col key={header} className={columnWidths[index]} />
-            ))}
-          </colgroup>
-        ) : null}
-        <thead className="border-b border-border/60 text-2xs uppercase tracking-widest text-muted-foreground/70">
-          <tr>
-            {headers.map((header, index) => (
-              <th
-                key={header}
-                className={cn(
-                  "whitespace-nowrap px-4 py-2.5 font-semibold first:sm:pl-5 last:sm:pr-5",
-                  !columnWidths && index === headers.length - 1 && "w-px",
-                )}
-              >
-                {header.replaceAll(" ", "\u00a0")}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/60">{children}</tbody>
-      </table>
+      <div className={minTableWidth}>
+        <Table className={columnWidths ? "table-fixed" : undefined} size="report">
+          {columnWidths ? (
+            <colgroup>
+              {headers.map((header, index) => (
+                <col key={header} className={columnWidths[index]} />
+              ))}
+            </colgroup>
+          ) : null}
+          <TableHeader>
+            <TableRow>
+              {headers.map((header, index) => (
+                <TableHead
+                  className={!columnWidths && index === headers.length - 1 ? "w-px" : undefined}
+                  key={header}
+                >
+                  {header.replaceAll(" ", "\u00a0")}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>{children}</TableBody>
+        </Table>
+      </div>
     </ScrollArea>
   );
 }
@@ -404,7 +398,7 @@ function ProcessDiagnosticsTable({
         hideScrollbars
         className="max-h-[min(64vh,44rem)] w-full max-w-full"
       >
-        <table className="w-full min-w-[1040px] table-fixed text-left text-caption">
+        <Table className="min-w-[1040px] table-fixed" size="report">
           <colgroup>
             <col className="w-[24%]" />
             <col className="w-[8%]" />
@@ -414,41 +408,41 @@ function ProcessDiagnosticsTable({
             <col className="w-[11%]" />
             <col className="w-[6%]" />
           </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-2xs uppercase tracking-widest text-muted-foreground/70">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Name</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU</th>
-              <th className="px-3 py-2 text-right font-semibold">Memory</th>
-              <th className="px-3 py-2 font-semibold">Command</th>
-              <th className="px-3 py-2 text-right font-semibold">PID</th>
-              <th className="px-3 py-2 font-semibold">Type</th>
-              <th className="p-2 text-right font-semibold sm:pr-4">Kill</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
+          <TableHeader sticky>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead align="end">CPU</TableHead>
+              <TableHead align="end">Memory</TableHead>
+              <TableHead>Command</TableHead>
+              <TableHead align="end">PID</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead align="end">Kill</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {visibleProcesses.length === 0 ? (
-              <tr>
+              <TableRow>
                 <Text className="px-4 py-4 sm:px-5" render={<td colSpan={7} />} variant="note">
                   {emptyLabel ?? "No live descendant processes found."}
                 </Text>
-              </tr>
+              </TableRow>
             ) : null}
             {visibleProcesses.map((process) => (
-              <tr key={process.pid} className="hover:bg-muted/20">
-                <td className="px-4 py-2 align-middle sm:pl-5">
+              <TableRow key={process.pid}>
+                <TableCell>
                   <ProcessNameCell
                     process={process}
                     isExpanded={!collapsedPids.has(process.pid)}
                     onToggle={toggleProcess}
                   />
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {process.cpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {formatBytes(process.rssBytes)}
-                </td>
-                <td className="px-3 py-2 align-middle text-muted-foreground">
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.cpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatBytes(process.rssBytes)}</Text>
+                </TableCell>
+                <TableCell tone="muted">
                   <Tooltip>
                     <TooltipTrigger
                       render={<span className="block truncate">{process.command}</span>}
@@ -457,23 +451,23 @@ function ProcessDiagnosticsTable({
                       {process.command}
                     </TooltipPopup>
                   </Tooltip>
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums text-muted-foreground">
-                  {process.pid}
-                </td>
-                <td className="truncate px-3 py-2 align-middle text-muted-foreground">
-                  {formatProcessType(process)}
-                </td>
-                <td className="p-2 align-middle sm:pr-4">
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{process.pid}</Text>
+                </TableCell>
+                <TableCell tone="muted">
+                  <span className="block truncate">{formatProcessType(process)}</span>
+                </TableCell>
+                <TableCell>
                   <ProcessSignalActions
                     disabled={signalingPid === process.pid}
                     onSignal={(signal) => onSignal(process.pid, signal)}
                   />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </ScrollArea>
     </div>
   );
@@ -629,7 +623,7 @@ function ProcessResourceHistoryTable({
         hideScrollbars
         className="max-h-[min(64vh,44rem)] w-full max-w-full"
       >
-        <table className="w-full min-w-[980px] table-fixed text-left text-caption">
+        <Table className="min-w-[980px] table-fixed" size="report">
           <colgroup>
             <col className="w-[24%]" />
             <col className="w-[10%]" />
@@ -640,29 +634,29 @@ function ProcessResourceHistoryTable({
             <col className="w-[16%]" />
             <col className="w-[10%]" />
           </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-2xs uppercase tracking-widest text-muted-foreground/70">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Process</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU Time</th>
-              <th className="px-3 py-2 text-right font-semibold">Current</th>
-              <th className="px-3 py-2 text-right font-semibold">Average</th>
-              <th className="px-3 py-2 text-right font-semibold">Peak</th>
-              <th className="px-3 py-2 text-right font-semibold">Max Mem</th>
-              <th className="px-3 py-2 font-semibold">Command</th>
-              <th className="px-3 py-2 text-right font-semibold sm:pr-5">PID</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
+          <TableHeader sticky>
+            <TableRow>
+              <TableHead>Process</TableHead>
+              <TableHead align="end">CPU Time</TableHead>
+              <TableHead align="end">Current</TableHead>
+              <TableHead align="end">Average</TableHead>
+              <TableHead align="end">Peak</TableHead>
+              <TableHead align="end">Max Mem</TableHead>
+              <TableHead>Command</TableHead>
+              <TableHead align="end">PID</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {processes.length === 0 ? (
-              <tr>
+              <TableRow>
                 <Text className="px-4 py-4 sm:px-5" render={<td colSpan={8} />} variant="note">
                   {emptyLabel}
                 </Text>
-              </tr>
+              </TableRow>
             ) : null}
             {processes.map((process) => (
-              <tr key={process.processKey} className="hover:bg-muted/20">
-                <td className="px-4 py-2 align-middle sm:pl-5">
+              <TableRow key={process.processKey}>
+                <TableCell>
                   <ResourceHistoryProcessNameCell
                     process={process}
                     visualDepth={
@@ -671,23 +665,23 @@ function ProcessResourceHistoryTable({
                         : Math.max(1, process.depth - shallowestChildDepth + 1)
                     }
                   />
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {formatCpuTime(process.cpuSecondsApprox)}
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {process.currentCpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {process.avgCpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {process.maxCpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums">
-                  {formatBytes(process.maxRssBytes)}
-                </td>
-                <td className="px-3 py-2 align-middle text-muted-foreground">
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatCpuTime(process.cpuSecondsApprox)}</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.currentCpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.avgCpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.maxCpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatBytes(process.maxRssBytes)}</Text>
+                </TableCell>
+                <TableCell tone="muted">
                   <Tooltip>
                     <TooltipTrigger
                       render={<span className="block truncate">{process.command}</span>}
@@ -696,14 +690,14 @@ function ProcessResourceHistoryTable({
                       {process.command}
                     </TooltipPopup>
                   </Tooltip>
-                </td>
-                <td className="px-3 py-2 text-right align-middle font-mono tabular-nums text-muted-foreground sm:pr-5">
-                  {process.pid}
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{process.pid}</Text>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </ScrollArea>
     </div>
   );
@@ -1166,20 +1160,20 @@ export function DiagnosticsSettingsPanel() {
         {data && data.latestFailures.length > 0 ? (
           <DiagnosticsTable headers={["Span", "Cause", "Duration", "Ended"]}>
             {data.latestFailures.map((failure) => (
-              <tr key={`${failure.traceId}:${failure.spanId}`}>
-                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
-                  {failure.name}
-                </td>
-                <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
+              <TableRow key={`${failure.traceId}:${failure.spanId}`}>
+                <TableCell>
+                  <span className="font-medium">{failure.name}</span>
+                </TableCell>
+                <TableCell className="max-w-[360px]" tone="muted">
                   <ExpandableText text={failure.cause} />
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(failure.durationMs)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
-                  {formatRelativeNoWrap(failure.endedAt)}
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatDuration(failure.durationMs)}</Text>
+                </TableCell>
+                <TableCell tone="muted">
+                  <Text variant="code">{formatRelativeNoWrap(failure.endedAt)}</Text>
+                </TableCell>
+              </TableRow>
             ))}
           </DiagnosticsTable>
         ) : (
@@ -1194,20 +1188,20 @@ export function DiagnosticsSettingsPanel() {
             minTableWidth="min-w-[760px]"
           >
             {data.commonFailures.map((failure) => (
-              <tr key={`${failure.name}:${failure.cause}`}>
-                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
-                  {failure.name}
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(failure.count)}
-                </td>
-                <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
+              <TableRow key={`${failure.name}:${failure.cause}`}>
+                <TableCell>
+                  <span className="font-medium">{failure.name}</span>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatCount(failure.count)}</Text>
+                </TableCell>
+                <TableCell className="max-w-[360px]" tone="muted">
                   <ExpandableText text={failure.cause} />
-                </td>
-                <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground last:sm:pr-5">
-                  {formatRelativeNoWrap(failure.lastSeenAt)}
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell className="w-px" tone="muted">
+                  <Text variant="code">{formatRelativeNoWrap(failure.lastSeenAt)}</Text>
+                </TableCell>
+              </TableRow>
             ))}
           </DiagnosticsTable>
         ) : (
@@ -1227,20 +1221,20 @@ export function DiagnosticsSettingsPanel() {
             columnWidths={["w-[44%]", "w-[14%]", "w-[12%]", "w-[30%]"]}
           >
             {data.slowestSpans.map((span) => (
-              <tr key={`${span.traceId}:${span.spanId}`}>
-                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
-                  {span.name}
-                </td>
-                <td className="px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(span.durationMs)}
-                </td>
-                <td className="w-px whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground">
-                  {formatRelativeNoWrap(span.endedAt)}
-                </td>
-                <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground last:sm:pr-5">
+              <TableRow key={`${span.traceId}:${span.spanId}`}>
+                <TableCell>
+                  <span className="font-medium">{span.name}</span>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatDuration(span.durationMs)}</Text>
+                </TableCell>
+                <TableCell className="w-px" tone="muted">
+                  <Text variant="code">{formatRelativeNoWrap(span.endedAt)}</Text>
+                </TableCell>
+                <TableCell className="min-w-0" tone="muted">
                   <TraceIdCell traceId={span.traceId} />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
           </DiagnosticsTable>
         ) : (
@@ -1257,54 +1251,55 @@ export function DiagnosticsSettingsPanel() {
             hideScrollbars
             className="w-full max-w-full"
           >
-            <table className="w-full min-w-[920px] table-fixed text-left text-caption">
-              <colgroup>
-                <col className="w-[11%]" />
-                <col className="w-[9%]" />
-                <col className="w-[24%]" />
-                <col className="w-[26%]" />
-                <col className="w-[30%]" />
-              </colgroup>
-              <thead className="border-b border-border/60 text-2xs uppercase tracking-widest text-muted-foreground/70">
-                <tr>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pl-5">Time</th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">Level</th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">Span</th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold">Message</th>
-                  <th className="whitespace-nowrap px-4 py-2.5 font-semibold sm:pr-5">Trace</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {data.latestWarningAndErrorLogs.map((event) => (
-                  <tr
-                    key={`${event.traceId}:${event.spanId}:${DateTime.formatIso(event.seenAt)}:${event.message}`}
-                    className="hover:bg-muted/15"
-                  >
-                    <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums text-muted-foreground sm:pl-5">
-                      {formatRelativeNoWrap(event.seenAt)}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <span className="inline-flex rounded-mark bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
-                        {event.level}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <div className="truncate font-medium text-foreground">{event.spanName}</div>
-                    </td>
-                    <td className="px-4 py-3 align-top text-muted-foreground">
-                      <ExpandableText
-                        collapsedClassName="line-clamp-2"
-                        expandLabel="Show full message"
-                        text={event.message}
-                      />
-                    </td>
-                    <td className="min-w-0 whitespace-nowrap px-4 py-3 align-top text-muted-foreground sm:pr-5">
-                      <TraceIdCell traceId={event.traceId} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="min-w-[920px]">
+              <Table className="table-fixed" size="report">
+                <colgroup>
+                  <col className="w-[11%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[24%]" />
+                  <col className="w-[26%]" />
+                  <col className="w-[30%]" />
+                </colgroup>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Level</TableHead>
+                    <TableHead>Span</TableHead>
+                    <TableHead>Message</TableHead>
+                    <TableHead>Trace</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.latestWarningAndErrorLogs.map((event) => (
+                    <TableRow
+                      key={`${event.traceId}:${event.spanId}:${DateTime.formatIso(event.seenAt)}:${event.message}`}
+                    >
+                      <TableCell tone="muted">
+                        <Text variant="code">{formatRelativeNoWrap(event.seenAt)}</Text>
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex rounded-mark bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
+                          {event.level}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="truncate font-medium text-foreground">{event.spanName}</div>
+                      </TableCell>
+                      <TableCell tone="muted">
+                        <ExpandableText
+                          collapsedClassName="line-clamp-2"
+                          expandLabel="Show full message"
+                          text={event.message}
+                        />
+                      </TableCell>
+                      <TableCell className="min-w-0" tone="muted">
+                        <TraceIdCell traceId={event.traceId} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </ScrollArea>
         ) : (
           <RowsOrNone
@@ -1323,23 +1318,23 @@ export function DiagnosticsSettingsPanel() {
             columnWidths={["w-[48%]", "w-[13%]", "w-[13%]", "w-[13%]", "w-[13%]"]}
           >
             {data.topSpansByCount.map((span) => (
-              <tr key={span.name}>
-                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
-                  {span.name}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(span.count)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatCount(span.failureCount)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">
-                  {formatDuration(span.averageDurationMs)}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums last:sm:pr-5">
-                  {formatDuration(span.maxDurationMs)}
-                </td>
-              </tr>
+              <TableRow key={span.name}>
+                <TableCell>
+                  <span className="font-medium">{span.name}</span>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatCount(span.count)}</Text>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatCount(span.failureCount)}</Text>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatDuration(span.averageDurationMs)}</Text>
+                </TableCell>
+                <TableCell>
+                  <Text variant="code">{formatDuration(span.maxDurationMs)}</Text>
+                </TableCell>
+              </TableRow>
             ))}
           </DiagnosticsTable>
         ) : (
