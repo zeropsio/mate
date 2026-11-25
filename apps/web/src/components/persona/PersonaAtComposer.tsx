@@ -195,6 +195,10 @@ export function PersonaSuggestions(props: {
   );
 }
 
+/** A CSS time as the browser gives it back (a registered token reads in seconds) in ms. */
+const milliseconds = (time: string): number =>
+  time.trim().endsWith("ms") ? Number.parseFloat(time) : Number.parseFloat(time) * 1000;
+
 /**
  * The picked suggestion's travel into the control: the control's label starts where the press's
  * mark and name were and settles in its own place, so the eye follows the choice to where it now
@@ -212,7 +216,7 @@ export function travelInto(from: HTMLElement, label: HTMLElement | null): void {
       { transform: "translate(0, 0)" },
     ],
     {
-      duration: Number.parseFloat(tokens.getPropertyValue("--duration-slow")),
+      duration: milliseconds(tokens.getPropertyValue("--duration-slow")),
       easing: tokens.getPropertyValue("--ease-in-out-strong"),
     },
   );
