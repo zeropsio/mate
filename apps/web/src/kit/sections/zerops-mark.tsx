@@ -7,14 +7,14 @@ import { specimenLabel } from "../specimenLabel";
 export default defineKitSection({
   id: "zerops-mark",
   title: "ZeropsMark",
-  purpose: "The platform: two-tone, or in the ink of a place that already has a colour.",
+  purpose: "The platform: in Zerops' teal, or in the ink of a place that already has a colour.",
   group: "Chosen",
   kind: "Identity",
   source: "apps/web/src/components/ZeropsMark.tsx",
   render: () => (
     <Specimens>
       <SpecimenBlock
-        note="Two-tone, or in the ink of a place that already has a colour."
+        note="In Zerops' teal, or in the ink of a place that already has a colour."
         title="Tones"
       >
         <SpecimenGrid>

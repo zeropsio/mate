@@ -1,7 +1,7 @@
 import { ZEROPS_MARK } from "@t3tools/shared/brand";
 
 /**
- * The Zerops loop, two-tone by default. `tone="current"` draws it in the
+ * The Zerops ring, in Zerops' teal by default. `tone="current"` draws it in the
  * text colour — for a place that already has a colour, like a filled button.
  */
 export function ZeropsMark({
