@@ -59,7 +59,7 @@ export function OpenInZerops({ projectId }: { readonly projectId: string }) {
   return (
     <Row
       data-zerops-surface="sidebar-production-zerops"
-      lead={<ZeropsMark className="size-3.5" />}
+      lead={<ZeropsMark />}
       meta={<ArrowUpRightIcon aria-hidden="true" className="size-3.5" />}
       pressable
       render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}

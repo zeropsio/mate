@@ -62,13 +62,18 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
 
 type RowSize = NonNullable<VariantProps<typeof rowVariants>["size"]>;
 
+/**
+ * The lead's room, and the size it gives an icon that says what the row is: 14 px in an `xs` row,
+ * 16 px in every other, in the muted ink unless the icon names an ink that means something (the
+ * primary ink of an add). An icon in a lead names no size of its own.
+ */
 const LEAD_CLASS: Record<RowSize, string> = {
-  xs: "size-4",
-  sm: "size-5",
-  md: "size-8",
-  lg: "size-9",
-  "lg-line": "size-9",
-  bar: "w-7",
+  xs: "size-4 [&>svg:not([class*='size-'])]:size-3.5",
+  sm: "size-5 [&>svg:not([class*='size-'])]:size-4",
+  md: "size-8 [&>svg:not([class*='size-'])]:size-4",
+  lg: "size-9 [&>svg:not([class*='size-'])]:size-4",
+  "lg-line": "size-9 [&>svg:not([class*='size-'])]:size-4",
+  bar: "w-7 [&>svg:not([class*='size-'])]:size-4",
 };
 
 const HEAD_CLASS: Record<RowSize, string> = {
@@ -172,7 +177,7 @@ function RowSlots({
         {hasLead ? (
           <span
             className={cn(
-              "relative flex shrink-0 items-center justify-center",
+              "relative flex shrink-0 items-center justify-center [&>svg:not([class*='text-'])]:text-muted-foreground",
               thumbnail ? "h-8 w-13" : LEAD_CLASS[rowSize],
             )}
             data-slot="row-lead"

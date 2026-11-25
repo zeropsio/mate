@@ -367,7 +367,7 @@ export function CrewSetup(props: CrewSetupProps) {
           />
           <Row
             aria-disabled={busy || undefined}
-            lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+            lead={<PlusIcon aria-hidden="true" />}
             pressable
             render={
               <button
@@ -399,7 +399,7 @@ export function CrewSetup(props: CrewSetupProps) {
             ))}
             {props.applied ? null : (
               <Row
-                lead={<PlusIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
+                lead={<PlusIcon aria-hidden="true" />}
                 pressable
                 render={
                   <button

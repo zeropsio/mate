@@ -84,7 +84,7 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     >
       <Row
         data-testid="sidebar-draft-row"
-        lead={<SquarePenIcon aria-hidden className="size-4 text-muted-foreground" />}
+        lead={<SquarePenIcon aria-hidden />}
         meta={
           // The discard press shows while the row is under the pointer or the press has focus.
           <span className="pointer-events-none flex h-5 min-w-5 items-center justify-end opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100">

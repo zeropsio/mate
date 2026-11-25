@@ -1916,7 +1916,7 @@ export default function ThreadTerminalDrawer({
                             pressable="band"
                             render={<button type="button" />}
                             onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
-                            lead={<GroupIcon className="size-3 text-muted-foreground" />}
+                            lead={<GroupIcon />}
                             title={groupLabel}
                             meta={terminalCount}
                           />

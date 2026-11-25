@@ -972,7 +972,7 @@ function ManageRow({
       aria-label={`Manage the addresses of ${name}`}
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-manage"
-      lead={<SlidersHorizontalIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
+      lead={<SlidersHorizontalIcon aria-hidden="true" />}
       onClick={() => {
         manage(projectId);
       }}
@@ -998,7 +998,7 @@ function AddYourDomain({
     <Row
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-add-domain"
-      lead={<PlusIcon aria-hidden="true" className="size-3.5 text-primary" />}
+      lead={<PlusIcon aria-hidden="true" className="text-primary" />}
       onClick={() => {
         manage(projectId, "add-domain");
       }}
@@ -1140,7 +1140,7 @@ function SitesLinkRow({
       {...trigger}
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-link"
-      lead={<ArrowUpRightIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
+      lead={<ArrowUpRightIcon aria-hidden="true" />}
       meta={<span aria-hidden="true" className="block w-6" />}
       onKeyDown={(event) => {
         copyOnKey(event, onCopyKey);
