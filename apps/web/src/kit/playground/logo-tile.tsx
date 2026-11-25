@@ -28,8 +28,8 @@ export default definePlayground({
   controls: {
     size: {
       kind: "enum",
-      options: ["md", "lg", "sm"],
-      note: "lg an lg row's or a picker's start, md an md row's or a card's, sm a compact line",
+      options: ["md", "lg", "sm", "xl"],
+      note: "lg an lg row's or a picker's start, md an md row's or a card's, sm a compact line, xl a waiting place's head",
     },
     ground: { kind: "enum", options: ["card", "menu"], note: "menu: flat, in the menu's tint" },
     mark: { kind: "enum", options: NAMES, note: "a logo, an organization's letter, an icon" },
