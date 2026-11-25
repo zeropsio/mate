@@ -401,12 +401,9 @@ export function ZeropsGitPage() {
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
 
-  const repository =
-    state.kind === "read"
-      ? state.apps
-          .find((app) => app.appId === search.appId)
-          ?.repositories.find((repo) => repo.name === search.repo)
-      : undefined;
+  const overviewApp =
+    state.kind === "read" ? state.apps.find((app) => app.appId === search.appId) : undefined;
+  const repository = overviewApp?.repositories.find((repo) => repo.name === search.repo);
   const selectedApp = apps.find((app) => app.appId === search.appId);
   const detailOpen = search.appId !== undefined && search.repo !== undefined;
   const readAgain = () => {
@@ -464,6 +461,13 @@ export function ZeropsGitPage() {
           allowed={offersOf(search.appId)?.read}
           accessReason={offersOf(search.appId)?.why.read}
           appId={search.appId}
+          appsKnown={!registry.loading}
+          appListed={selectedApp !== undefined}
+          repositories={
+            selectedApp?.repositories === undefined
+              ? undefined
+              : overviewApp?.repositories.map(({ name }) => name)
+          }
           project={selectedApp?.name ?? "Project"}
           repository={repository}
           changesFailure={selectedApp?.failure ?? flow.readFailure ?? inventory?.error ?? undefined}
