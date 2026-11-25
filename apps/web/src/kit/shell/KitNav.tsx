@@ -30,6 +30,7 @@ import {
   type NavEntry,
   type NavGroupName,
 } from "./kitPages";
+import { useKitWords } from "./kitWords";
 
 const entryDomId = (entry: NavEntry) => `kit-nav-${entry.key.replaceAll(":", "-")}`;
 
@@ -64,7 +65,9 @@ function Highlighted({ label, query }: { readonly label: string; readonly query:
 
 /**
  * The kit's navigation: a search over every page, flow and flow state (`/` or ⌘K to reach it,
- * ↑/↓ and Enter to open, Esc to clear), then its groups, each folding, with its count.
+ * ↑/↓ and Enter to open, Esc to clear), then its groups, each folding, with its count. A component
+ * is found by its name, by its job in plain words ("a divider", "a copyable command") or by what
+ * its doc comments and kit page say, best answers first, each with its kind beside it.
  */
 export function KitNav({
   entries,
@@ -82,9 +85,12 @@ export function KitNav({
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const [folded, setFolded] = useState<ReadonlySet<NavGroupName>>(() => new Set());
+  const [reaching, setReaching] = useState(false);
   const field = useRef<HTMLInputElement | null>(null);
   const searching = query.trim() !== "";
-  const results = useMemo(() => searchNavEntries(entries, query), [entries, query]);
+  // The doc words are read once the search is reached for, so the kit opens without them.
+  const docs = useKitWords(entries, reaching || searching);
+  const results = useMemo(() => searchNavEntries(entries, query, docs), [entries, query, docs]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -125,6 +131,8 @@ export function KitNav({
   const renderEntry = (entry: NavEntry) => {
     const active = searching ? entry === cursorEntry : isNavEntryActive(entry, page, state);
     const current = isNavEntryActive(entry, page, state);
+    // While searching, a flow's state says its flow, and a component its kind.
+    const context = entry.context ?? (entry.group === "Components" ? entry.sub : undefined);
     return (
       <SidebarMenuItem id={entryDomId(entry)} key={entry.key}>
         <SidebarMenuButton
@@ -144,11 +152,12 @@ export function KitNav({
         >
           <span>
             <Highlighted label={entry.label} query={query} />
-            {searching && entry.context !== undefined ? (
-              <span className="text-sidebar-muted-foreground">
+            {searching && context !== undefined ? (
+              // In the name's own ink: a step quieter would fall under 4.5:1 on the menu's ground.
+              <>
                 {" · "}
-                <Highlighted label={entry.context} query={query} />
-              </span>
+                <Highlighted label={context} query={query} />
+              </>
             ) : null}
           </span>
         </SidebarMenuButton>
@@ -156,8 +165,18 @@ export function KitNav({
     );
   };
 
-  /** A group's entries in runs under their kind or area; a flow's states indented under it. */
-  const renderRuns = (shown: readonly NavEntry[]) => {
+  /**
+   * A group's entries in runs under their kind or area; a flow's states indented under it. Found
+   * components stand in one run, best answer first, each saying its kind.
+   */
+  const renderRuns = (group: NavGroupName, shown: readonly NavEntry[]) => {
+    if (searching && group === "Components") {
+      return (
+        <div className="flex flex-col gap-0.5 pb-2">
+          <SidebarMenu>{shown.map(renderEntry)}</SidebarMenu>
+        </div>
+      );
+    }
     const runs: Array<{ sub: string | undefined; entries: NavEntry[] }> = [];
     for (const entry of shown) {
       const last = runs.at(-1);
@@ -198,6 +217,7 @@ export function KitNav({
           </InputGroupAddon>
           <InputGroupInput
             aria-label="Search the kit"
+            onFocus={() => setReaching(true)}
             onChange={(event) => {
               setQuery(event.currentTarget.value);
               setCursor(0);
@@ -222,7 +242,7 @@ export function KitNav({
                 open(cursorEntry);
               }
             }}
-            placeholder="Search the kit"
+            placeholder="Search by name or job"
             ref={field}
             size="sm"
             type="search"
@@ -263,7 +283,7 @@ export function KitNav({
                     });
                   }}
                 >
-                  {renderRuns(shown)}
+                  {renderRuns(group, shown)}
                 </NavGroup>
               </SidebarGroup>
             ),
