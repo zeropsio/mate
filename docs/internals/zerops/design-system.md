@@ -174,8 +174,10 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   alone among its kind), its `tone` the state of what it holds; a message in a conversation is a
   `MessageBubble` in its speaker's form; a picture or a page shown is in a `PictureFrame`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
-  `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
-  `dot` form, with its words or an accessible name.
+  `danger`), so it never reads as a press; `danger` also names Production. A status before its
+  words is its `dot` form; a number is its `count` form, beside a title or on a control's corner.
+  A state mark with no words of its own (a line's mark, something new on an icon's corner) is a
+  `Dot` in the same tones.
 
 ## 4. Asks
 
@@ -297,6 +299,11 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R20** — A box is a kit piece
   - _Enforced by:_ `t3code/no-hand-drawn-box` (a plain element whose class string holds, at rest, a
     box's radius and a ground); its ledger only shrinks
+
+- **R21** — A dot is a `Dot`, a count is a `Badge` count
+  - _Enforced by:_ `t3code/prefer-marks` (a plain element that always draws `rounded-full` with a
+    fill and a dot's size, 4 to 10 px, or with even figures in a dense step and a height); its
+    ledger only shrinks
 
 ## 6. Exceptions
 

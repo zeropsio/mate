@@ -202,14 +202,6 @@
   {
     "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"rounded-control bg-muted/55 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground/70\"",
-    "owner": "unify pass",
-    "reason": "a small mark drawn as a box (a tag, a count, a readout); it moves onto the marks family's kit piece",
-    "expires": "surface:marks"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"flex size-6 items-center justify-center rounded-control bg-muted/60\"",
     "owner": "unify pass",
     "reason": "an icon or a face on a tile of its own; it moves onto the identity family's tile",
@@ -366,14 +358,6 @@
     "owner": "unify pass",
     "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
     "expires": "surface:containers"
-  },
-  {
-    "path": "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<li> className=\"inline-flex min-w-0 items-center gap-1 rounded-control bg-muted/60 px-1.5 py-0.5 text-foreground text-caption\"",
-    "owner": "unify pass",
-    "reason": "a small mark drawn as a box (a tag, a count, a readout); it moves onto the marks family's kit piece",
-    "expires": "surface:marks"
   },
   {
     "path": "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
