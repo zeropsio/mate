@@ -462,7 +462,7 @@ function ResourceHistoryChart({
                     </div>
                   }
                 />
-                <TooltipPopup side="top" className="text-left">
+                <TooltipPopup side="top">
                   <div className="space-y-0.5">
                     <div>CPU avg {bucket.avgCpuPercent.toFixed(1)}%</div>
                     <div>CPU peak {bucket.maxCpuPercent.toFixed(1)}%</div>
