@@ -1,3 +1,4 @@
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { AssetImage } from "~/assets/AssetImage";
 import {
   useCallback,
@@ -148,106 +149,108 @@ export function ZoomableImage({
 
   return (
     <div className="min-w-0">
-      <div
-        ref={viewportRef}
-        role="region"
-        aria-label={`${name}, zoomable image`}
-        aria-description="Click to zoom in or return to fit. Scroll to zoom, drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit."
-        tabIndex={0}
-        className="max-w-[var(--media-width)] overflow-auto overscroll-contain rounded-card bg-background shadow-2xl ring-1 ring-border/70 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        style={{
-          width: width || undefined,
-          height: height || undefined,
-          maxHeight,
-          cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
-        }}
-        onClick={(event) => {
-          // Pointer capture also produces a click after dragging; leave the image zoomed.
-          if (suppressClickRef.current || event.detail > 1) return;
-          changeZoom(zoomRef.current > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
-        }}
-        onKeyDown={(event) => {
-          if (event.ctrlKey || event.metaKey || event.altKey) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            if (!event.repeat) changeZoom(zoomRef.current > 1 ? 1 : 2);
-          } else if (event.key === "+" || event.key === "=") {
-            event.preventDefault();
-            changeZoom(zoomRef.current * 1.5);
-          } else if (event.key === "-") {
-            event.preventDefault();
-            changeZoom(zoomRef.current / 1.5);
-          } else if (event.key === "0") {
-            event.preventDefault();
-            changeZoom(1);
-          }
-        }}
-        onPointerDown={(event) => {
-          if (dragRef.current) return;
-          suppressClickRef.current = false;
-          if (event.pointerType !== "mouse" || event.button !== 0 || zoomRef.current <= 1) return;
-          const viewport = event.currentTarget;
-          const bounds = viewport.getBoundingClientRect();
-          if (
-            event.clientX - bounds.left >= viewport.clientWidth ||
-            event.clientY - bounds.top >= viewport.clientHeight
-          )
-            return;
-          dragRef.current = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-            left: viewport.scrollLeft,
-            top: viewport.scrollTop,
-          };
-          viewport.setPointerCapture(event.pointerId);
-          setDragging(true);
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) return;
-          if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
-            suppressClickRef.current = true;
-          }
-          event.currentTarget.scrollLeft = drag.left - (event.clientX - drag.x);
-          event.currentTarget.scrollTop = drag.top - (event.clientY - drag.y);
-        }}
-        onPointerUp={(event) => {
-          if (dragRef.current?.pointerId !== event.pointerId) return;
-          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          }
-          dragRef.current = null;
-          setDragging(false);
-        }}
-        onLostPointerCapture={(event) => {
-          if (dragRef.current?.pointerId !== event.pointerId) return;
-          dragRef.current = null;
-          setDragging(false);
-        }}
-      >
-        <AssetImage
-          original
-          loading="lazy"
-          decoding="async"
-          src={src}
-          alt={name}
-          draggable={false}
-          className="block max-w-none select-none"
-          style={
-            sourceSize.width
-              ? { width, height, maxWidth: "none" }
-              : { maxWidth: "var(--media-width)", maxHeight }
-          }
-          onLoad={(event) => {
-            setNaturalSize({
-              width: event.currentTarget.naturalWidth,
-              height: event.currentTarget.naturalHeight,
-            });
+      <PictureFrame className="w-fit max-w-full" render={<div />}>
+        <div
+          ref={viewportRef}
+          role="region"
+          aria-label={`${name}, zoomable image`}
+          aria-description="Click to zoom in or return to fit. Scroll to zoom, drag to pan. Use Enter to toggle zoom, plus or minus to zoom, and 0 to fit."
+          tabIndex={0}
+          className="max-w-[var(--media-width)] overflow-auto overscroll-contain outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          style={{
+            width: width || undefined,
+            height: height || undefined,
+            maxHeight,
+            cursor: zoom > 1 ? (dragging ? "grabbing" : "grab") : "zoom-in",
           }}
-          onError={onError}
-        />
-      </div>
+          onClick={(event) => {
+            // Pointer capture also produces a click after dragging; leave the image zoomed.
+            if (suppressClickRef.current || event.detail > 1) return;
+            changeZoom(zoomRef.current > 1 ? 1 : 2, { x: event.clientX, y: event.clientY });
+          }}
+          onKeyDown={(event) => {
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              if (!event.repeat) changeZoom(zoomRef.current > 1 ? 1 : 2);
+            } else if (event.key === "+" || event.key === "=") {
+              event.preventDefault();
+              changeZoom(zoomRef.current * 1.5);
+            } else if (event.key === "-") {
+              event.preventDefault();
+              changeZoom(zoomRef.current / 1.5);
+            } else if (event.key === "0") {
+              event.preventDefault();
+              changeZoom(1);
+            }
+          }}
+          onPointerDown={(event) => {
+            if (dragRef.current) return;
+            suppressClickRef.current = false;
+            if (event.pointerType !== "mouse" || event.button !== 0 || zoomRef.current <= 1) return;
+            const viewport = event.currentTarget;
+            const bounds = viewport.getBoundingClientRect();
+            if (
+              event.clientX - bounds.left >= viewport.clientWidth ||
+              event.clientY - bounds.top >= viewport.clientHeight
+            )
+              return;
+            dragRef.current = {
+              pointerId: event.pointerId,
+              x: event.clientX,
+              y: event.clientY,
+              left: viewport.scrollLeft,
+              top: viewport.scrollTop,
+            };
+            viewport.setPointerCapture(event.pointerId);
+            setDragging(true);
+          }}
+          onPointerMove={(event) => {
+            const drag = dragRef.current;
+            if (!drag || drag.pointerId !== event.pointerId) return;
+            if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
+              suppressClickRef.current = true;
+            }
+            event.currentTarget.scrollLeft = drag.left - (event.clientX - drag.x);
+            event.currentTarget.scrollTop = drag.top - (event.clientY - drag.y);
+          }}
+          onPointerUp={(event) => {
+            if (dragRef.current?.pointerId !== event.pointerId) return;
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+            dragRef.current = null;
+            setDragging(false);
+          }}
+          onLostPointerCapture={(event) => {
+            if (dragRef.current?.pointerId !== event.pointerId) return;
+            dragRef.current = null;
+            setDragging(false);
+          }}
+        >
+          <AssetImage
+            original
+            loading="lazy"
+            decoding="async"
+            src={src}
+            alt={name}
+            draggable={false}
+            className="block max-w-none select-none"
+            style={
+              sourceSize.width
+                ? { width, height, maxWidth: "none" }
+                : { maxWidth: "var(--media-width)", maxHeight }
+            }
+            onLoad={(event) => {
+              setNaturalSize({
+                width: event.currentTarget.naturalWidth,
+                height: event.currentTarget.naturalHeight,
+              });
+            }}
+            onError={onError}
+          />
+        </div>
+      </PictureFrame>
       <span className="sr-only" aria-live="polite">
         {Math.round(zoom * 100)}% zoom
       </span>

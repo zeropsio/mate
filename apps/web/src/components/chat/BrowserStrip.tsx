@@ -32,6 +32,7 @@ import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Badge } from "../ui/badge";
+import { Card } from "../ui/card";
 import { Dot } from "../ui/dot";
 import { Row } from "../ui/row";
 import { Skeleton } from "../ui/skeleton";
@@ -351,191 +352,198 @@ export function BrowserStrip({
     </>
   );
 
-  return (
-    <div
-      className={cn(
-        "@container/strip min-w-0 overflow-hidden",
-        staged ? (bare ? "h-66" : "h-72") : "max-h-66",
-        // A light share of the ink, both palettes show it: `muted` all but
-        // vanishes on the dark card, and a surface this large sits a step
-        // under the Mate's bubble.
-        !bare && "rounded-card bg-foreground/5 p-3",
-      )}
-      data-browser-strip
-      data-browser-strip-device={device}
-    >
-      <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
-        {staged ? (
-          // The frame's room on the stage, in its device's width; the frame fills it.
-          <div
-            className={cn(
-              "flex min-h-0 flex-1 shrink-0 flex-col self-center @xl/strip:h-66 @xl/strip:flex-none",
-              FRAME_WIDTH[device],
-            )}
-          >
-            {readOnStage ? (
-              // What it read has nothing to open: a frame, not a button.
-              <div
-                aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
-                className={frameLook}
-                data-browser-strip-stage="read"
-                role="img"
+  // The strip's own lines: on the run card's well, or bare where its parent draws one.
+  const body = (
+    <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
+      {staged ? (
+        // The frame's room on the stage, in its device's width; the frame fills it.
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 shrink-0 flex-col self-center @xl/strip:h-66 @xl/strip:flex-none",
+            FRAME_WIDTH[device],
+          )}
+        >
+          {readOnStage ? (
+            // What it read has nothing to open: a frame, not a button.
+            <div
+              aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
+              className={frameLook}
+              data-browser-strip-stage="read"
+              role="img"
+            >
+              {frameBody}
+            </div>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    aria-label={
+                      stageSrc
+                        ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
+                        : "Open the Browser panel"
+                    }
+                    className="flex min-h-0 flex-1 flex-col"
+                    data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                    {...intent}
+                    onClick={onStageClick}
+                    variant="bare"
+                  />
+                }
               >
-                {frameBody}
-              </div>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={
-                        stageSrc
-                          ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
-                          : "Open the Browser panel"
-                      }
-                      className="flex min-h-0 flex-1 flex-col"
-                      data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
-                      {...intent}
-                      onClick={onStageClick}
-                      variant="bare"
-                    />
-                  }
-                >
-                  <span className={frameLook}>{frameBody}</span>
-                </TooltipTrigger>
-                <TooltipPopup side="bottom">
-                  {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
-                </TooltipPopup>
-              </Tooltip>
-            )}
-          </div>
-        ) : null}
-        <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
-          <p
-            className={cn(
-              "truncate font-medium text-line",
-              failedOnStage ? "text-status-failed-text" : "text-foreground",
-            )}
-            data-browser-strip-title
-          >
-            {heading}
+                <span className={frameLook}>{frameBody}</span>
+              </TooltipTrigger>
+              <TooltipPopup side="bottom">
+                {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
+              </TooltipPopup>
+            </Tooltip>
+          )}
+        </div>
+      ) : null}
+      <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
+        <p
+          className={cn(
+            "truncate font-medium text-line",
+            failedOnStage ? "text-status-failed-text" : "text-foreground",
+          )}
+          data-browser-strip-title
+        >
+          {heading}
+        </p>
+        <Text render={<p />} truncate variant="remark">
+          {facts}
+        </Text>
+        {failedOnStage ? (
+          <p className="line-clamp-1 text-line text-status-failed-text @xl/strip:line-clamp-2">
+            {browserCheckFailure(onStage)}
           </p>
-          <Text render={<p />} truncate variant="remark">
-            {facts}
-          </Text>
-          {failedOnStage ? (
-            <p className="line-clamp-1 text-line text-status-failed-text @xl/strip:line-clamp-2">
-              {browserCheckFailure(onStage)}
-            </p>
-          ) : null}
-          <div
-            ref={filmRef}
-            className={cn(
-              "mt-2 min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto scrollbar-none",
-              staged ? "hidden @xl/strip:flex" : "flex",
-            )}
-            data-browser-strip-film
-          >
-            {strip.checks.map((check) => {
-              const state = browserTakeState(check, strip.checks);
-              const live = state === "running";
-              const takeDevice = browserCheckDevice(check);
-              // No picture and no page read: it looked only at errors, the
-              // console and requests.
-              const unseen =
-                state === "passed" &&
-                check.screenshot === undefined &&
-                check.browserRead === undefined;
-              const takeWords = [
-                check.deviceName ?? DEVICE_WORD[takeDevice],
-                browserCheckCaption(check),
-                state === "passed" || live ? null : state === "unfinished" ? "not finished" : state,
-                live ? "running" : checkDuration(check),
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              const label = `${browserCheckCaption(check)} on ${DEVICE_WORD[takeDevice].toLowerCase()}${
-                state === "failed"
-                  ? ` — ${browserCheckFailure(check)}`
-                  : state === "retried"
-                    ? ` — retried: ${browserCheckFailure(check)}`
-                    : state === "unfinished"
-                      ? " — not finished"
-                      : live
-                        ? " — running"
-                        : ""
-              }`;
-              return (
-                <Row
-                  key={check.key}
-                  aria-label={label}
-                  aria-pressed={check === onStage}
-                  data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
-                  lead={
-                    // Every take's words start on one edge: its thumbnail, in its device's shape,
-                    // sits in a slot as wide as a desktop's.
-                    <span
-                      className={cn(
-                        "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
-                        TAKE_CLASS[takeDevice],
-                        TAKE_FRAME[state],
-                      )}
-                      data-browser-strip-take-slot
-                    >
-                      {check.screenshot ? (
-                        <TakeThumbnail
-                          aspect={TAKE_ASPECT[takeDevice]}
-                          src={takeSource(check.screenshot.src, threadRef)!}
-                        />
-                      ) : check.browserRead !== undefined ? (
-                        <CheckRead
-                          failure={null}
-                          findings={null}
-                          read={check.browserRead}
-                          size="thumbnail"
-                        />
-                      ) : unseen ? (
-                        <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
-                      ) : null}
-                    </span>
-                  }
-                  meta={
-                    live ? (
-                      <Badge aria-label="Live" dot tone="info" />
-                    ) : state === "failed" ? (
-                      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
-                    ) : state === "retried" ? (
-                      <RotateCcwIcon
-                        aria-hidden="true"
-                        className="size-3.5 shrink-0 text-status-attention"
+        ) : null}
+        <div
+          ref={filmRef}
+          className={cn(
+            "mt-2 min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto scrollbar-none",
+            staged ? "hidden @xl/strip:flex" : "flex",
+          )}
+          data-browser-strip-film
+        >
+          {strip.checks.map((check) => {
+            const state = browserTakeState(check, strip.checks);
+            const live = state === "running";
+            const takeDevice = browserCheckDevice(check);
+            // No picture and no page read: it looked only at errors, the
+            // console and requests.
+            const unseen =
+              state === "passed" &&
+              check.screenshot === undefined &&
+              check.browserRead === undefined;
+            const takeWords = [
+              check.deviceName ?? DEVICE_WORD[takeDevice],
+              browserCheckCaption(check),
+              state === "passed" || live ? null : state === "unfinished" ? "not finished" : state,
+              live ? "running" : checkDuration(check),
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            const label = `${browserCheckCaption(check)} on ${DEVICE_WORD[takeDevice].toLowerCase()}${
+              state === "failed"
+                ? ` — ${browserCheckFailure(check)}`
+                : state === "retried"
+                  ? ` — retried: ${browserCheckFailure(check)}`
+                  : state === "unfinished"
+                    ? " — not finished"
+                    : live
+                      ? " — running"
+                      : ""
+            }`;
+            return (
+              <Row
+                key={check.key}
+                aria-label={label}
+                aria-pressed={check === onStage}
+                data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
+                lead={
+                  // Every take's words start on one edge: its thumbnail, in its device's shape,
+                  // sits in a slot as wide as a desktop's.
+                  <span
+                    className={cn(
+                      "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
+                      TAKE_CLASS[takeDevice],
+                      TAKE_FRAME[state],
+                    )}
+                    data-browser-strip-take-slot
+                  >
+                    {check.screenshot ? (
+                      <TakeThumbnail
+                        aspect={TAKE_ASPECT[takeDevice]}
+                        src={takeSource(check.screenshot.src, threadRef)!}
                       />
-                    ) : state === "unfinished" ? (
-                      <MinusIcon
-                        aria-hidden="true"
-                        className="size-3.5 shrink-0 text-muted-foreground"
+                    ) : check.browserRead !== undefined ? (
+                      <CheckRead
+                        failure={null}
+                        findings={null}
+                        read={check.browserRead}
+                        size="thumbnail"
                       />
-                    ) : (
-                      <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
-                    )
-                  }
-                  onClick={() => (live ? openPanel() : setPickedKey(check.key))}
-                  picked={check === onStage}
-                  pressable
-                  render={<button type="button" />}
-                  size="xs"
-                  thumbnail
-                  title={
-                    <span className={check === onStage ? undefined : "text-muted-foreground"}>
-                      {takeWords}
-                    </span>
-                  }
-                />
-              );
-            })}
-          </div>
+                    ) : unseen ? (
+                      <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
+                    ) : null}
+                  </span>
+                }
+                meta={
+                  live ? (
+                    <Badge aria-label="Live" dot tone="info" />
+                  ) : state === "failed" ? (
+                    <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
+                  ) : state === "retried" ? (
+                    <RotateCcwIcon
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-status-attention"
+                    />
+                  ) : state === "unfinished" ? (
+                    <MinusIcon
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-muted-foreground"
+                    />
+                  ) : (
+                    <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+                  )
+                }
+                onClick={() => (live ? openPanel() : setPickedKey(check.key))}
+                picked={check === onStage}
+                pressable
+                render={<button type="button" />}
+                size="xs"
+                thumbnail
+                title={
+                  <span className={check === onStage ? undefined : "text-muted-foreground"}>
+                    {takeWords}
+                  </span>
+                }
+              />
+            );
+          })}
         </div>
       </div>
     </div>
+  );
+  const look = { "data-browser-strip": "", "data-browser-strip-device": device };
+  return bare ? (
+    <div
+      className={cn("@container/strip min-w-0 overflow-hidden", staged ? "h-66" : "max-h-66")}
+      {...look}
+    >
+      {body}
+    </div>
+  ) : (
+    // A light share of the ink, both palettes show it, a step under the Mate's bubble: the run
+    // card's well.
+    <Card
+      className={cn("@container/strip min-w-0 overflow-hidden", staged ? "h-72" : "max-h-66")}
+      variant="well"
+      {...look}
+    >
+      <div className="min-h-0 flex-1 p-3">{body}</div>
+    </Card>
   );
 }
 

@@ -10,6 +10,7 @@ import { CircleAlertIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { createContext, use, type KeyboardEvent } from "react";
 
 import { Button } from "../ui/button";
+import { PictureFrame } from "../ui/picture-frame";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** What the text shows of a picture: everything but the file. */
@@ -81,23 +82,29 @@ export function ComposerPicture({ id }: { readonly id: string }) {
         onClick={() => onOpenPicture(id)}
         onKeyDown={onKeyDown}
       >
-        {picture.src ? (
-          <AssetImage
-            loading="lazy"
-            decoding="async"
-            className="block h-20 max-w-full rounded-control bg-muted object-cover outline-1 outline-foreground/14 transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning"
-            src={picture.src}
-            alt=""
-            draggable={false}
-            width={picture.width}
-            height={picture.height}
-          />
-        ) : (
-          <span
-            className="block h-20 max-w-full rounded-control bg-muted object-cover outline-1 outline-foreground/14 transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning"
-            style={{ width: picture.width, height: picture.height }}
-          />
-        )}
+        {/* Its frame's states: a ring under the pointer, the ring's ink when picked, amber when
+            its upload did not go through. */}
+        <span className="block rounded-control transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning">
+          <PictureFrame className="max-w-full" size="control">
+            {picture.src ? (
+              <AssetImage
+                loading="lazy"
+                decoding="async"
+                className="block h-20 max-w-full object-cover"
+                src={picture.src}
+                alt=""
+                draggable={false}
+                width={picture.width}
+                height={picture.height}
+              />
+            ) : (
+              <span
+                className="block h-20 max-w-full"
+                style={{ width: picture.width, height: picture.height }}
+              />
+            )}
+          </PictureFrame>
+        </span>
       </Button>
       {/* Over the picture, on the stage's dark ground: the untouched file goes along. */}
       {picture.keepOriginal ? (

@@ -14,6 +14,7 @@ import { cn } from "~/lib/utils";
 import { pageBlocks, textBlocks, type PageBlock } from "./pageStructure.logic";
 import { Text } from "~/components/ui/text";
 import { List } from "~/components/ui/list";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 type Page = NonNullable<ZeropsBrowserRead["page"]>;
 
@@ -60,9 +61,15 @@ function Block({ block }: { readonly block: PageBlock }) {
       );
     case "image":
       return (
-        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption">
-          {block.text}
-        </p>
+        <PictureFrame
+          className="flex h-24 w-40 max-w-full items-center justify-center"
+          render={<p />}
+          size="control"
+        >
+          <span className="px-2 text-center">
+            <Text variant="note">{block.text}</Text>
+          </span>
+        </PictureFrame>
       );
     case "item":
       return (

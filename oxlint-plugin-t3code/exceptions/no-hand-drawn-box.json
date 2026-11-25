@@ -1,91 +1,11 @@
 [
   {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"absolute end-0 top-1 flex items-center rounded-control bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100\"",
-    "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
-  },
-  {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"chat-markdown-codeblock my-2.5 overflow-hidden rounded-card border border-border bg-code leading-snug text-code-foreground\"",
-    "owner": "unify pass",
-    "reason": "code or machine output in a box of its own; it moves onto the code family's kit piece",
-    "expires": "surface:code"
-  },
-  {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"my-1 inline-flex items-center gap-1.5 rounded-control border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground\"",
-    "owner": "unify pass",
-    "reason": "a small mark drawn as a box (a tag, a count, a readout); it moves onto the marks family's kit piece",
-    "expires": "surface:marks"
-  },
-  {
     "path": "apps/web/src/components/SidebarDraftRows.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<li> className={cn( \"list-none rounded-card transition-colors duration-150 ease-out-strong\", props.isActive ? \"bg-sidebar-row-active\" : \"hover:bg-sidebar-row-hover\", )}",
     "owner": "unify pass",
     "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
     "expires": "surface:choices"
-  },
-  {
-    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"pointer-events-auto inline-flex items-center overflow-hidden rounded-control border border-border/80 bg-background shadow-xs\"",
-    "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
-  },
-  {
-    "path": "apps/web/src/components/chat/BrowserStrip.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={cn( \"@container/strip min-w-0 overflow-hidden\", staged ? (bare ? \"h-66\" : \"h-72\") : \"max-h-66\", // A light share of the ink, both palettes show it: `muted` all but // vanishes on the dark card, and a surface this large sits a step // under the Mate's bubble. !bare && \"rounded-card bg-foreground/5 p-3\", )}",
-    "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
-  },
-  {
-    "path": "apps/web/src/components/chat/CheckRead.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<p> className=\"flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption\"",
-    "owner": "unify pass",
-    "reason": "a message to the person in a tinted block; it moves onto the notices family's kit piece",
-    "expires": "surface:notices"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerFile.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"group/file relative inline-flex h-20 w-42 max-w-full cursor-default flex-col justify-between rounded-control bg-foreground/4 px-3 py-2.5 leading-normal text-foreground outline-none ring-1 ring-foreground/14 transition-shadow duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring in-data-composer-chip-selected:ring-2 in-data-composer-chip-selected:ring-ring data-[status=failed]:ring-2 data-[status=failed]:ring-warning\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={cn( \"flex min-w-0 items-center gap-2 rounded-card border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80\", !multiSelect && \"p-0\", )}",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPicture.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"block h-20 max-w-full rounded-control bg-muted object-cover outline-1 outline-foreground/14 transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"flex max-w-full flex-wrap items-center justify-center gap-1 rounded-card border border-border bg-popover p-1.5 text-popover-foreground shadow-popup\"",
-    "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
   },
   {
     "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
@@ -96,28 +16,12 @@
     "expires": "surface:floating"
   },
   {
-    "path": "apps/web/src/components/chat/ConversationRows.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={cn( // Resumed, the same block goes quiet — history, not a state to act // on: a line like an event's — and keeps // its height: newer rows may already sit under it. \"relative grid gap-3 rounded-card border py-3 text-center\", history ? \"border-x-0 border-transparent text-muted-foreground\" : \"border-border bg-muted/35 px-3.5\", )}",
-    "owner": "unify pass",
-    "reason": "a message to the person in a tinted block; it moves onto the notices family's kit piece",
-    "expires": "surface:notices"
-  },
-  {
     "path": "apps/web/src/components/chat/RunLiveSlot.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className={cn( \"relative mt-2.5 rounded-card bg-foreground/5 p-4 [[data-run-above]:not([hidden])+&]:mt-3.5\", burst !== null && \"py-3\", )}",
     "owner": "unify pass",
     "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
     "expires": "surface:containers"
-  },
-  {
-    "path": "apps/web/src/components/chat/ZoomableImage.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"max-w-[var(--media-width)] overflow-auto overscroll-contain rounded-card bg-background shadow-2xl ring-1 ring-border/70 outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
   },
   {
     "path": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
