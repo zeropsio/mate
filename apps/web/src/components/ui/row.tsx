@@ -125,6 +125,11 @@ interface RowSlotsProps
    * an input, a slider) takes the row's width under the words, every select one height.
    */
   readonly fieldUnder?: boolean;
+  /**
+   * A short control (a two-way choice) that stays on the title's line however narrow the row:
+   * the words truncate first. A person's access in a narrow picker.
+   */
+  readonly controlStays?: boolean;
 }
 
 function RowSlots({
@@ -144,6 +149,7 @@ function RowSlots({
   lineWraps = false,
   control,
   fieldUnder = false,
+  controlStays = false,
   ...props
 }: RowSlotsProps) {
   const lined = line !== undefined && line !== null && line !== false;
@@ -157,7 +163,7 @@ function RowSlots({
       // The mark stands on the title's line however many lines follow; a one-line row centres it.
       lined || rowSize === "lg" ? "items-start" : "items-center",
       // A control that leaves the words less than 12rem goes under them, at the row's end.
-      hasControl && "flex-wrap",
+      hasControl && !controlStays && "flex-wrap",
       className,
     ),
     "data-slot": "row",
@@ -175,7 +181,7 @@ function RowSlots({
           </span>
         ) : null}
         <span
-          className={cn("flex min-w-0 flex-1 flex-col", hasControl && "basis-48")}
+          className={cn("flex min-w-0 flex-1 flex-col", hasControl && !controlStays && "basis-48")}
           data-slot="row-body"
         >
           <span className={cn("flex min-w-0 items-center gap-2", HEAD_CLASS[rowSize])}>
