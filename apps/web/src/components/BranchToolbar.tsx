@@ -157,7 +157,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden">
+      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 text-body font-medium text-muted-foreground/70 sm:h-6 md:hidden">
         {triggerContent}
       </span>
     );

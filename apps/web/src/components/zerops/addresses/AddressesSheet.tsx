@@ -230,7 +230,7 @@ function SheetHeader({
   return (
     <div className="flex shrink-0 items-center gap-2.5 py-4 ps-6 pe-4">
       {/* A phone reads the title whole, on two lines where one cuts it. */}
-      <h2 className="truncate font-semibold text-lg max-sm:line-clamp-2 max-sm:whitespace-normal">
+      <h2 className="truncate font-semibold text-title max-sm:line-clamp-2 max-sm:whitespace-normal">
         {projectName}'s addresses
       </h2>
       {places.length > 1 ? (

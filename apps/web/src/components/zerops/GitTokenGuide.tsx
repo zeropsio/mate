@@ -11,7 +11,7 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
   return (
     <section aria-label="Direct push token guide" className="flex min-w-0 flex-col gap-3">
       <div>
-        <h2 className="text-base font-medium text-foreground">Token for your repository</h2>
+        <h2 className="text-emphasis font-medium text-foreground">Token for your repository</h2>
         <p className="mt-1 text-caption text-muted-foreground">
           Direct push to a branch only. This guide does not connect a repository or check access.
         </p>

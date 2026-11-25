@@ -238,7 +238,7 @@ function MatePill({
     [asMark, mate.cues, mate.known, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
-    <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
+    <span className="max-w-48 shrink-0 truncate text-emphasis font-semibold text-foreground">
       {mate.name}
     </span>
   );

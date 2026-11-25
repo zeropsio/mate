@@ -262,7 +262,7 @@ export function CrewSetup(props: CrewSetupProps) {
   return (
     <CrewView onBack={null}>
       <div className="mt-1 flex h-7 items-center gap-2" data-crew-setup>
-        <h2 className="font-semibold text-base leading-6">{crewSetUpTitle(mate.name)}</h2>
+        <h2 className="font-semibold text-emphasis">{crewSetUpTitle(mate.name)}</h2>
         <span className="grow" />
         <Button
           aria-label={CREW_SETUP_WORDS.close}

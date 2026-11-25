@@ -146,12 +146,7 @@ function Figure({ usd, size }: { readonly usd: number; readonly size: "hero" | "
   const { whole, cents } = moneyParts(usd);
   const sign = whole.match(/^-?\$/u)?.[0] ?? "";
   return (
-    <span
-      className={cn(
-        "font-semibold text-foreground tabular-nums tracking-tight",
-        size === "hero" ? "text-4xl" : "text-display",
-      )}
-    >
+    <span className="font-semibold text-display text-foreground tabular-nums tracking-tight">
       <span className="font-normal text-muted-foreground">{sign}</span>
       {whole.slice(sign.length)}
       <span

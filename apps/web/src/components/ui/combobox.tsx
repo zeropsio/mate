@@ -75,7 +75,7 @@ function ComboboxInput({
             className={cn(
               "has-disabled:opacity-100",
               // A typed field: 16 px below 640, so iOS never zooms the page onto it.
-              unstyled && "rounded-none bg-transparent text-base sm:text-body",
+              unstyled && "rounded-none bg-transparent text-typed sm:text-body",
             )}
             nativeInput
             size={sizeValue}

@@ -290,8 +290,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      (composer context, pills). */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* The system's scale (packages/shared/src/brand.ts): the type steps, four
-     nested radii, two easings. The radius namespace starts empty, so the scale's
-     radii are the only ones a class can name (rounded-full and rounded-none stay). */
+     nested radii, two easings. The text and radius namespaces start empty, so the
+     scale's steps are the only sizes and radii a class can name (rounded-full and
+     rounded-none stay). */
+  --text-*: initial;
   --radius-*: initial;
   /* generated:scale-tokens start */
   --text-5xs: 0.4375rem;
@@ -13206,18 +13208,18 @@ a.message-file:focus-visible {
   margin: 0;
   color: var(--foreground);
   /* The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
-  font-size: var(--text-2xl);
+  font-size: var(--text-title);
   font-weight: 400;
   letter-spacing: var(--tracking-tight);
-  line-height: var(--text-2xl--line-height);
+  line-height: var(--text-title--line-height);
   text-align: center;
   text-wrap: balance;
 }
 
 @media (min-width: 40rem) {
   .new-project-heading {
-    font-size: var(--text-3xl);
-    line-height: var(--text-3xl--line-height);
+    font-size: var(--text-display);
+    line-height: var(--text-display--line-height);
   }
 }
 
@@ -13394,9 +13396,9 @@ a.message-file:focus-visible {
   margin: 0;
   overflow: hidden;
   color: var(--foreground);
-  font-size: var(--text-3xl);
+  font-size: var(--text-display);
   letter-spacing: var(--tracking-tight);
-  line-height: var(--text-3xl--line-height);
+  line-height: var(--text-display--line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -14748,7 +14750,7 @@ a.message-file:focus-visible {
 .arrival-failure-details {
   min-width: 0;
   color: var(--muted-foreground);
-  font-size: var(--text-sm);
+  font-size: var(--text-body);
   text-align: center;
 }
 
@@ -14776,7 +14778,7 @@ a.message-file:focus-visible {
   justify-content: space-between;
   gap: 8px;
   min-width: 0;
-  font-size: var(--text-xs);
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
 }
 /* Open full shows where the pointer is on the page, or a key reaches it; always on touch. */
@@ -14830,7 +14832,7 @@ a.message-file:focus-visible {
   justify-content: center;
   gap: 8px;
   padding: 12px;
-  font-size: var(--text-xs);
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
   text-align: center;
 }
@@ -14840,7 +14842,7 @@ a.message-file:focus-visible {
 .published-page-failed {
   margin: 0;
   padding: 12px;
-  font-size: var(--text-xs);
+  font-size: var(--text-caption);
   color: var(--muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {

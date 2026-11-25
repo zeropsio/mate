@@ -558,7 +558,7 @@ export function UsagePage({
                   ) : (
                     <div className="flex min-h-44 min-w-0 flex-col gap-5">
                       <div className="flex flex-col gap-1">
-                        <span className="text-4xl font-semibold text-foreground tabular-nums">
+                        <span className="text-display font-semibold text-foreground tabular-nums">
                           {metric === "cost"
                             ? merged.costQuality.unpricedShare === 1
                               ? "Unpriced"
@@ -1019,7 +1019,7 @@ function Metric({
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-caption text-muted-foreground">{label}</span>
-      <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
+      <span className="text-emphasis font-medium text-foreground tabular-nums">{value}</span>
       {detail === undefined ? null : (
         <span className="truncate text-caption text-muted-foreground tabular-nums">{detail}</span>
       )}

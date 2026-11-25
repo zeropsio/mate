@@ -1538,7 +1538,7 @@ function progressStep(
               Paused
             </Badge>
           </p>
-          <p className="text-lg font-medium">{repo} is connected, and the two mains differ</p>
+          <p className="text-title font-medium">{repo} is connected, and the two mains differ</p>
           <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
             commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
@@ -1591,7 +1591,7 @@ function progressStep(
               In sync
             </Badge>
           </p>
-          <p className="text-lg font-medium">{repo} is on GitHub</p>
+          <p className="text-title font-medium">{repo} is on GitHub</p>
           <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.

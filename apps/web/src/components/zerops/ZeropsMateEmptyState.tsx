@@ -331,7 +331,7 @@ export interface MateEmptyComing {
  * keeps the face where it stood.
  */
 export const MATE_EMPTY_HEADLINE_CLASS =
-  "text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl";
+  "text-center text-title font-normal tracking-tight text-foreground sm:text-display";
 export const MATE_EMPTY_FACE_CLASS = "size-16 sm:size-18";
 
 /** What the stage says, from where the Mate is and whose stand-up it is. */

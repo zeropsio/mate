@@ -1182,7 +1182,7 @@ function Header({ state }: { readonly state: HarnessState }) {
             state={state.mate.connected ? "idle" : "sleep"}
             tint={state.mate.tint}
           />
-          <span className="font-semibold text-base">{state.mate.name}</span>
+          <span className="font-semibold text-emphasis">{state.mate.name}</span>
         </span>
       ) : null}
       {state.crew === true ? (

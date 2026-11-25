@@ -102,7 +102,9 @@ export function MateProjectCard({
           <span className="text-caption text-muted-foreground">
             {mateName === undefined ? "This Mate's project" : possessive(mateName, "project")}
           </span>
-          <span className="truncate text-base font-semibold text-foreground">{project.name}</span>
+          <span className="truncate text-emphasis font-semibold text-foreground">
+            {project.name}
+          </span>
         </span>
         <SectionAction onClick={project.onOpenProject}>
           Open project

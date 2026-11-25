@@ -39,7 +39,7 @@ export function ZeropsLandingShell({
       <div className="w-full max-w-md space-y-6">
         <MateMark playful className="mx-auto h-20 w-auto" />
         <div className="space-y-1.5 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+          <h1 className="text-title font-semibold tracking-tight text-foreground">{title}</h1>
           <p className="text-body text-muted-foreground">{description}</p>
         </div>
 

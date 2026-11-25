@@ -567,7 +567,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           }
         >
           <div className="px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-base text-muted-foreground sm:text-body">
+            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-body text-muted-foreground">
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -641,7 +641,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           />
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold text-foreground">Actions</h3>
+              <h3 className="text-emphasis font-semibold text-foreground">Actions</h3>
               <p className="text-pretty text-body text-muted-foreground">
                 Saved and run only in {selectedCheckoutLabel}.
               </p>
@@ -696,7 +696,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             </div>
           </div>
           {scripts.length === 0 ? (
-            <p className="px-3 py-2 text-base text-muted-foreground sm:px-4 sm:text-body">
+            <p className="px-3 py-2 text-body text-muted-foreground sm:px-4">
               No actions configured for this checkout.
             </p>
           ) : (

@@ -65,7 +65,7 @@ export function CrewGoal({
 function GoalHeading() {
   return (
     <>
-      <h2 className="mt-2.5 font-semibold text-base leading-6">{CREW_GOAL_WORDS.title}</h2>
+      <h2 className="mt-2.5 font-semibold text-emphasis">{CREW_GOAL_WORDS.title}</h2>
       <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_GOAL_WORDS.line}</p>
     </>
   );

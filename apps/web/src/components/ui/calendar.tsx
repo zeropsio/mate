@@ -6,7 +6,7 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 
 const buttonClassNames =
-  "relative flex size-(--cell-size) text-base sm:text-body items-center justify-center rounded-control text-foreground not-in-data-selected:hover:bg-accent disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
+  "relative flex size-(--cell-size) text-body items-center justify-center rounded-control text-foreground not-in-data-selected:hover:bg-accent disabled:pointer-events-none disabled:opacity-64 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0";
 
 const defaultComponents = {
   Chevron: ({
@@ -52,7 +52,7 @@ export function Calendar({
   const defaultClassNames = {
     button_next: buttonClassNames,
     button_previous: buttonClassNames,
-    caption_label: "text-base sm:text-body font-medium flex items-center gap-2 h-full",
+    caption_label: "text-body font-medium flex items-center gap-2 h-full",
     day: "size-(--cell-size) text-body py-px",
     day_button: cn(
       buttonClassNames,
@@ -62,7 +62,7 @@ export function Calendar({
     dropdown_root:
       "relative has-focus:border-ring has-focus:ring-ring/50 has-focus:ring-[3px] border border-input shadow-xs/5 rounded-control px-[calc(--spacing(3)-1px)] h-9 sm:h-8 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:-me-1",
     dropdowns:
-      "w-full flex items-center text-base sm:text-body justify-center h-(--cell-size) gap-1.5 *:[span]:font-medium",
+      "w-full flex items-center text-body justify-center h-(--cell-size) gap-1.5 *:[span]:font-medium",
     hidden: "invisible",
     month: "w-full",
     month_caption:

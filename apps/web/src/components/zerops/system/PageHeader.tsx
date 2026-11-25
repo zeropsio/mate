@@ -43,7 +43,7 @@ export function PageHeader({
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1
           className={cn(
-            "m-0 min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere text-foreground",
+            "m-0 min-w-0 text-title font-semibold tracking-tight wrap-anywhere text-foreground",
             placeholder && "font-normal text-muted-foreground italic",
           )}
         >

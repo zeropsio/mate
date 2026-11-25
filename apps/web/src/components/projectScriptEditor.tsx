@@ -299,7 +299,7 @@ export function ProjectScriptEditorDialog({
                   readOnly
                   onKeyDown={captureKeybinding}
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="text-caption text-muted-foreground">
                   Press a shortcut. Use <code>Backspace</code> to clear.
                 </p>
               </div>
@@ -319,7 +319,7 @@ export function ProjectScriptEditorDialog({
                   onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
                 />
               </label>
-              {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+              {validationError && <p className="text-body text-destructive">{validationError}</p>}
             </form>
           </DialogPanel>
           <DialogFooter variant="bare">

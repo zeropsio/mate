@@ -19,7 +19,7 @@ type Page = NonNullable<ZeropsBrowserRead["page"]>;
 const SCALE = { stage: 0.62, thumbnail: 0.14 } as const;
 
 const HEADING_CLASS: Record<number, string> = {
-  1: "text-2xl font-semibold",
+  1: "text-display font-semibold",
   2: "text-title font-semibold",
 };
 
@@ -28,7 +28,10 @@ function Block({ block }: { readonly block: PageBlock }) {
     case "heading":
       return (
         <p
-          className={cn("text-foreground", HEADING_CLASS[block.level] ?? "text-base font-semibold")}
+          className={cn(
+            "text-foreground",
+            HEADING_CLASS[block.level] ?? "text-emphasis font-semibold",
+          )}
         >
           {block.text}
         </p>

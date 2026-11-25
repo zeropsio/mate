@@ -218,7 +218,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   return (
     <section aria-label="History" className="flex min-w-0 flex-col gap-2">
       {path === "" ? null : (
-        <h2 className="min-w-0 break-all text-base font-medium text-foreground">
+        <h2 className="min-w-0 break-all text-emphasis font-medium text-foreground">
           History of <span className="font-mono">{path}</span>
         </h2>
       )}

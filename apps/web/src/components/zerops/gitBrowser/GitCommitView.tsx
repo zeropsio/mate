@@ -52,7 +52,7 @@ export function GitCommitSummary({
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-4">
       <header className="flex min-w-0 flex-col gap-2">
-        <h2 className="text-base font-medium break-words text-foreground">{commit.subject}</h2>
+        <h2 className="text-emphasis font-medium break-words text-foreground">{commit.subject}</h2>
         {commit.body === "" ? null : (
           <p className="text-body break-words whitespace-pre-wrap text-muted-foreground">
             {commit.body}

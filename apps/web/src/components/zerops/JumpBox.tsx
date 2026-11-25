@@ -467,7 +467,7 @@ function JumpWriteView({
   return (
     <div className="contents" data-testid="jump-box">
       <div className="px-2 py-1.5">
-        <div className="flex h-10 items-center gap-2 border border-transparent ps-2.25 pe-3 text-base text-foreground sm:h-9 sm:text-body">
+        <div className="flex h-10 items-center gap-2 border border-transparent ps-2.25 pe-3 text-typed text-foreground sm:h-9 sm:text-body">
           <SearchIcon
             aria-hidden="true"
             className="size-4.5 shrink-0 text-icon-muted opacity-80 sm:size-4"

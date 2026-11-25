@@ -140,7 +140,7 @@ function RootRouteNotFoundView() {
   return (
     <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
       <div className="flex max-w-sm flex-col items-center gap-4 text-center">
-        <h1 className="text-lg font-medium text-foreground">Page not found</h1>
+        <h1 className="text-title font-medium text-foreground">Page not found</h1>
         <p className="text-body text-muted-foreground">
           This link doesn't point to a page in {APP_DISPLAY_NAME}. Go home to choose a project or
           start a conversation.
