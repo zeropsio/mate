@@ -144,7 +144,7 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 - One scale, from `packages/shared/src/brand.ts` and projected into the web theme: twelve type steps
   and no others (`text-caption`, `text-body`, `text-emphasis`, `text-title`, `text-display`; `text-2xs`
   to `text-5xs` for dense metadata and icon badges; `text-line` and `text-prose`, the conversation's
-  quiet voice and prose; `text-field`, a phone's field at 16 px), spacing on a 4 px
+  quiet voice and prose; `text-typed`, a phone's field at 16 px), spacing on a 4 px
   grid, four nested radii (`rounded-mark` for a key, a checkbox or a swatch, inside `rounded-control`
   inside `rounded-card` inside `rounded-sheet`; `rounded-full` only for a pill or a circle), three
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for

@@ -608,7 +608,8 @@ export const RADII = {
  * - prose, 14 on a 22.75 px line: the conversation's prose (what the person wrote, what the Mate
  *   answered and asked, the answers to its questions) at one size; the owner, 2026-09-26: "14px
  *   everywhere was better".
- * - field, 16 on 24: what a phone's field types at; iOS zooms the page onto a field under 16 px.
+ * - typed, 16 on 24: what a phone's field types at; iOS zooms the page onto a field under 16 px.
+ *   Not `field`: `text-field` is already the field's colour (`--color-field`).
  *
  * A `relative` step's line is a ratio of its size, so text sized in em inside it keeps the
  * proportion (prose's headings and code); every other step holds its line's pixels.
@@ -623,7 +624,7 @@ export const TYPE_SCALE = {
   body: { fontSize: 14, lineHeight: 20 },
   prose: { fontSize: 14, lineHeight: 22.75, relative: true },
   emphasis: { fontSize: 15, lineHeight: 24 },
-  field: { fontSize: 16, lineHeight: 24 },
+  typed: { fontSize: 16, lineHeight: 24 },
   title: { fontSize: 20, lineHeight: 28 },
   display: { fontSize: 28, lineHeight: 36 },
 } as const satisfies Record<

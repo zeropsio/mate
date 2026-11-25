@@ -312,8 +312,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --text-prose--line-height: calc(22.75 / 14);
   --text-emphasis: 0.9375rem;
   --text-emphasis--line-height: 1.5rem;
-  --text-field: 1rem;
-  --text-field--line-height: 1.5rem;
+  --text-typed: 1rem;
+  --text-typed--line-height: 1.5rem;
   --text-title: 1.25rem;
   --text-title--line-height: 1.75rem;
   --text-display: 1.75rem;
@@ -10183,7 +10183,7 @@ button:hover > .run-result-tile::after {
 
   /* 16 px in the search, so a phone does not zoom the page on its focus. */
   .composer-model-menu [data-model-picker-content] input {
-    font-size: var(--text-field);
+    font-size: var(--text-typed);
   }
 }
 

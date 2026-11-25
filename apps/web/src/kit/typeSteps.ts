@@ -13,7 +13,7 @@ export const TYPE_CLASS: Readonly<Record<TypeStep, string>> = {
   body: "text-body",
   prose: "text-prose",
   emphasis: "text-emphasis",
-  field: "text-field",
+  typed: "text-typed",
   title: "text-title",
   display: "text-display",
 };
@@ -29,7 +29,7 @@ export const TYPE_USE: Readonly<Record<TypeStep, string>> = {
   body: "Every control and most text",
   prose: "The conversation's prose: what the person wrote, the Mate's answer",
   emphasis: "A section's or a card's heading",
-  field: "What a phone's field types at: iOS zooms under 16 px",
+  typed: "What a phone's field types at: iOS zooms under 16 px",
   title: "A page's title",
   display: "A figure, a hero's one line",
 };
