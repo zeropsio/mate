@@ -10,13 +10,20 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenGrid } from "../Specimen";
 import { birthProgress, failedBirthProgress, WREN, type BirthAge } from "../states/fixtures";
+import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { StateFrame } from "../states/StateFrame";
 
 const AGES: readonly BirthAge[] = ["start", "midway", "over-time"];
 const READY_WREN = { ...WREN, connected: true };
 
 /** A Mate's own page while it comes up: the stage with its steps under it. */
-function ArrivalStage({ age }: { readonly age: BirthAge }) {
+export function ArrivalStage({
+  age,
+  mate = WREN,
+}: {
+  readonly age: BirthAge;
+  readonly mate?: ZeropsMateIdentity;
+}) {
   const nowMs = useSecondsNowMs(true);
   const progress = birthProgress(age, nowMs);
   const coming: MateComing = { kind: "coming", line: "Coming up. A few minutes." };
@@ -28,14 +35,14 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
         below: (
           <ComingBelow
             coming={coming}
-            mate={WREN}
+            mate={mate}
             nowMs={nowMs}
             onRemove={() => {}}
             progress={progress}
           />
         ),
       }}
-      mate={WREN}
+      mate={mate}
       phase={null}
       signIn={null}
       signInRequired={false}
@@ -45,11 +52,11 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
 }
 
 /** A Mate whose container never came: the stage, its stopped steps, *Try again* and *Remove*. */
-function NotCreatedStage() {
+export function NotCreatedStage({ mate = WREN }: { readonly mate?: ZeropsMateIdentity }) {
   // Its setup stopped: its times stand.
   const nowMs = useSecondsNowMs(false);
   const progress = failedBirthProgress(nowMs);
-  const failure = setupFailureReason(WREN.name, "CommandExec: init command failed", [
+  const failure = setupFailureReason(mate.name, "CommandExec: init command failed", [
     "curl: (6) Could not resolve host: zerops.io",
     "zcp init: command not found (exit 127)",
   ]);
@@ -62,7 +69,7 @@ function NotCreatedStage() {
         below: (
           <ComingBelow
             coming={coming}
-            mate={WREN}
+            mate={mate}
             nowMs={nowMs}
             onRemove={() => {}}
             onTryAgain={() => {}}
@@ -84,7 +91,7 @@ function NotCreatedStage() {
           />
         ),
       }}
-      mate={WREN}
+      mate={mate}
       phase={null}
       signIn={null}
       signInRequired={false}
