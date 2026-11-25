@@ -4,13 +4,13 @@
  */
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { Link } from "@tanstack/react-router";
-import { BotIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { useAppTaskSource, useOrgTaskSource } from "../../zerops/useTaskSourceSettings";
 import { InlineButton } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import {
   automatedBudget,
   USAGE_TASKS_CUT_WORDS,
@@ -20,18 +20,6 @@ import {
 } from "./usageAutomated.logic";
 import { Text } from "~/components/ui/text";
 import { TableCell, TableRow } from "~/components/ui/table";
-
-/** In place of a face: automated Mates are nobody's own. Decorative: their name stands beside it. */
-export function AutomatedMatesMark() {
-  return (
-    <span
-      aria-hidden
-      className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-background"
-    >
-      <BotIcon className="size-3" />
-    </span>
-  );
-}
 
 /** A task's title starts a step in from its Mate's name, nested under a person or a project or not. */
 const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
@@ -196,7 +184,7 @@ export function UsageAutomatedBudget() {
   if (budget === null) return null;
   return (
     <Text className="flex items-center gap-2" render={<p />} variant="note">
-      <AutomatedMatesMark />
+      <PersonAvatar nobody size={16} />
       <span>
         Automated Mates spent{" "}
         <span

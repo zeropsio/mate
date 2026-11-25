@@ -9,7 +9,7 @@ import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 
 import type { columnPeople } from "../projects/accessTable.logic";
-import { PersonAvatar } from "../primitives";
+import { PersonAvatarStack } from "../primitives";
 import { ACCESS_FACES, accessBreakdown } from "./place.logic";
 import { Text } from "~/components/ui/text";
 
@@ -24,7 +24,6 @@ export function PlaceAccessCard({
 }) {
   const people = summary?.people ?? [];
   const words = accessBreakdown(people);
-  const more = people.length - ACCESS_FACES;
   return (
     <Card className="min-w-0" data-zerops-surface="place-access">
       <div className="flex min-w-0 items-center gap-3.5 px-4 py-3.5">
@@ -34,22 +33,7 @@ export function PlaceAccessCard({
           <EmptyState size="line">Nobody has access yet.</EmptyState>
         ) : (
           <>
-            <span aria-hidden="true" className="flex shrink-0 ps-2">
-              {people.slice(0, ACCESS_FACES).map((person) => (
-                <PersonAvatar
-                  className="-ms-2 ring-2 ring-card"
-                  key={person.key}
-                  name={person.name}
-                  picture={person.avatarUrl}
-                  size={32}
-                />
-              ))}
-              {more <= 0 ? null : (
-                <span className="relative -ms-2 flex size-8 items-center justify-center rounded-full bg-accent text-caption font-medium text-muted-foreground ring-2 ring-card tabular-nums">
-                  {`+${String(more)}`}
-                </span>
-              )}
-            </span>
+            <PersonAvatarStack people={people} shown={ACCESS_FACES} size={32} />
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-body text-foreground">{words.count}</span>
               {words.split === "" ? null : (
