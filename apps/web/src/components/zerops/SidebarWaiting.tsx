@@ -666,7 +666,9 @@ export function Replying({
       ) : (
         children
       )}
-      {error === undefined ? null : <Failure cause={error} className="mt-2 basis-full" />}
+      {error === undefined ? null : (
+        <Failure cause={error} className="mt-2 basis-full" role="alert" size="line" />
+      )}
     </>
   );
 }
