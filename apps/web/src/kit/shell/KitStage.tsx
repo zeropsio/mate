@@ -68,7 +68,7 @@ export function KitStage({
     );
   }
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-4" data-kit-stage="">
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-6" data-kit-stage="">
       <KitCanvas ground={ground} outline={outline} viewport={viewport} zoom={zoom} fill>
         {children}
       </KitCanvas>
@@ -147,7 +147,7 @@ function BothFrames({
   const width = viewport === undefined ? undefined : (viewport * zoom) / 100;
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-auto bg-muted/40 p-4"
+      className="flex min-h-0 min-w-0 flex-1 gap-6 overflow-auto bg-muted/40 p-6"
       data-kit-stage=""
     >
       {(["light", "dark"] as const).map((appearance, index) => (
