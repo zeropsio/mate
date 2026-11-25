@@ -136,10 +136,7 @@ function ButtonSpecimens() {
             </div>
           </Specimen>
           <Specimen label="scrim: on a picture's dark stage">
-            <div
-              className="flex items-center gap-2 rounded-card p-3"
-              style={{ background: "var(--picture-stage)" }}
-            >
+            <div className="flex items-center gap-2 rounded-card bg-stage p-3">
               <Button aria-label="The picture before" size="icon-md" variant="scrim">
                 <ChevronLeftIcon />
               </Button>
