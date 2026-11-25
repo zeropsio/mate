@@ -17,6 +17,7 @@ import { toastManager } from "~/lib/toasts";
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { EmptyState } from "../ui/empty";
 import { Failure } from "../ui/failure";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -328,7 +329,7 @@ export function TeamInvitePage() {
   return (
     <SettingsPageContainer width="wide">
       {team.view.kind === "people" && !mayInvite ? (
-        <p className="tm-empty">Only an organization owner or admin can invite.</p>
+        <EmptyState>Only an organization owner or admin can invite.</EmptyState>
       ) : (
         <TeamInviteView
           actions={actions}

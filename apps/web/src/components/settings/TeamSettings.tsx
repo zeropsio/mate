@@ -217,7 +217,7 @@ export function TeamList({
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
-          <p className="tm-empty">{view.line}</p>
+          <Failure cause={view.line} />
         ) : shown.length === 0 ? (
           <EmptyState mark={<SearchIcon aria-hidden="true" />}>
             Nobody matches “{query.trim()}”.
@@ -256,9 +256,9 @@ export function TeamList({
               ))}
             </FaceCards>
             {view.kind === "people" && view.people.length === 1 && view.invite.length > 0 ? (
-              <p className="tm-empty" data-part="alone">
+              <EmptyState size="row">
                 Only you so far. People you invite sign in with their own Zerops account.
-              </p>
+              </EmptyState>
             ) : null}
           </>
         )}

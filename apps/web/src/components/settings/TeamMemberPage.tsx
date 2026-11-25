@@ -57,6 +57,7 @@ import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 import { MemberTakeOverView } from "./MemberTakeOver";
 import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
+import { EmptyState } from "../ui/empty";
 
 /** What the page asks HQ to start; each rejects with what to tell the person. */
 export interface TeamMemberActions {
@@ -255,7 +256,7 @@ export function TeamMemberView({
           />
         )}
         {grants !== null && chips.length === 0 && !accessEditable ? (
-          <p className="tm-empty">Every project as their role gives it.</p>
+          <EmptyState size="row">Every project as their role gives it.</EmptyState>
         ) : null}
         {accessEditable ? (
           <div className="tm-actions">
@@ -431,11 +432,17 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
       {view.kind === "reading" ? (
         <Loading label="Who is on the team" shape="page" />
       ) : view.kind === "unreadable" ? (
-        <p className="tm-empty">{view.line}</p>
+        <Failure cause={view.line} />
       ) : person === undefined || person === null ? (
-        <p className="tm-empty">
-          They're no longer on the team. <Link to="/settings/team">Back to the team</Link>
-        </p>
+        <EmptyState
+          action={
+            <Button render={<Link to="/settings/team" />} size="sm" variant="link">
+              Back to the team
+            </Button>
+          }
+        >
+          They're no longer on the team.
+        </EmptyState>
       ) : (
         <TeamMemberView
           // A person read again starts the page's drafts over.

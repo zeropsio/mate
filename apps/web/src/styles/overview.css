@@ -1279,13 +1279,6 @@ a.ov-chip-who:focus-visible {
   }
 }
 
-.tm-empty {
-  padding: 24px 0;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  text-align: center;
-}
-
 /* On a phone the team is rows, not cards: a 40 px face, the name with the role beside it, the
    address under them, and the whole row one press. The search takes its own line under the
    heading, sharing it with Invite. */

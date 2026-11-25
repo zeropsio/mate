@@ -12,6 +12,7 @@ import { Button } from "../ui/button";
 import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { EmptyState } from "../ui/empty";
 
 interface TakeOverPerson {
   readonly userId: string;
@@ -128,7 +129,7 @@ export function MemberTakeOverView({
       {list.state === "known" ? (
         <>
           {list.list.items.length === 0 ? (
-            <p className="tm-empty">Nothing of theirs is in use by HQ.</p>
+            <EmptyState size="row">Nothing of theirs is in use by HQ.</EmptyState>
           ) : (
             <ul className="tm-section">
               {list.list.items.map((item) => (
