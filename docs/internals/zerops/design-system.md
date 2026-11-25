@@ -169,6 +169,10 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   the row it leads. An icon in a kit slot (a `Row`'s lead, a `Button`, a `Badge`, a menu item) takes
   the slot's size, and in a row's lead the muted ink unless its ink means something; it names no
   size of its own.
+- A box is the kit's: a `Card` form (`flat` on a page, `inset` set into another surface, `wash`
+  for the one thing that stands out by what it is, `slot` for a place not yet filled, `sheet`
+  alone among its kind), its `tone` the state of what it holds; a message in a conversation is a
+  `MessageBubble` in its speaker's form; a picture or a page shown is in a `PictureFrame`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
@@ -289,6 +293,10 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/no-hand-popup` (a plain element that is `fixed` or `absolute`, stacked
     with `z-*`, on a popup's ground: `bg-popover`, `dropdown-glass` or `shadow-popup`); its ledger
     only shrinks
+
+- **R20** — A box is a kit piece
+  - _Enforced by:_ `t3code/no-hand-drawn-box` (a plain element whose class string holds, at rest, a
+    box's radius and a ground); its ledger only shrinks
 
 ## 6. Exceptions
 

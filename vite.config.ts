@@ -187,6 +187,7 @@ export default defineConfig({
       "t3code/no-hand-popup": "error",
       "t3code/prefer-text": "error",
       "t3code/no-sized-slot-icon": "error",
+      "t3code/no-hand-drawn-box": "error",
       "t3code/no-test-in-loop": "error",
       "t3code/no-platform-globals": "error",
       "t3code/no-remote-data-in-browser-storage": "error",
