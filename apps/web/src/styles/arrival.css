@@ -1243,6 +1243,10 @@
 }
 
 /* *Show N more options*: a quiet pill under the cards. */
+.arrival-sign-in:has(> [data-sign-in-more]) {
+  padding-bottom: 40px;
+}
+
 [data-sign-in-more] svg {
   transition: transform 200ms var(--ease-out-strong);
 }
@@ -1446,6 +1450,16 @@
 
 [data-standup-holds-composer] [data-slot="composer-shell"] {
   opacity: 0;
+}
+
+/* Unseen, it lets presses through to the stage under it: its frame, which takes presses where the
+   inert composer does not, passes them on, and what stands above the composer still takes them. */
+[data-footer-parts]:has(> [data-standup-holds-composer]) {
+  pointer-events: none;
+}
+
+[data-footer-parts]:has(> [data-standup-holds-composer]) > :not([data-standup-holds-composer]) {
+  pointer-events: auto;
 }
 
 /* The composer's room while who writes in the conversation is not known (`ComposerRoomHeld`):
