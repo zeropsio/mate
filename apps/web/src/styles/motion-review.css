@@ -1,0 +1,21 @@
+/* ==== The review's choreography: keyframes only ==== */
+
+/* A description read for that does not exist (`ReviewDescription`): its lines fold shut, and the
+   section after it takes back the grid's gap, which cannot close with its row. The fold's height
+   is its two lines, their box and their label. */
+@keyframes review-what-folds {
+  from {
+    height: 94px;
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes review-what-gap {
+  to {
+    margin-top: -24px;
+  }
+}

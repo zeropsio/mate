@@ -162,7 +162,11 @@ export function GitStopDetail({
                         gitRequiredChecks(environment.jobs, repo.name),
                       );
                 return guide === undefined ? null : (
-                  <p className="rv-note" data-git-ruleset key={repo.name}>
+                  <p
+                    className="mt-1.5 text-body text-muted-foreground"
+                    data-git-ruleset
+                    key={repo.name}
+                  >
                     {guide.words}{" "}
                     <InlineButton render={<a href={guide.url} rel="noreferrer" target="_blank" />}>
                       Open {repo.name}'s rulesets
@@ -175,7 +179,9 @@ export function GitStopDetail({
               Pull-request delivery is not available here yet.
             </EmptyState>
           )}
-          {notice === undefined ? null : <p className="rv-note">{notice}</p>}
+          {notice === undefined ? null : (
+            <p className="mt-1.5 text-body text-muted-foreground">{notice}</p>
+          )}
           <div className="flex flex-wrap gap-2 empty:hidden">
             {onRunAgain !== undefined && hqOffer(can, "redeploy").kind === "allowed"
               ? delivery?.repositories.map((repo) => (
@@ -310,19 +316,21 @@ function GitEnvironmentRemoval({
           {environment.tier !== "production" ? null : (
             <>
               {targets?.map((target) => (
-                <p className="rv-note" key={target.name}>
+                <p className="mt-1.5 text-body text-muted-foreground" key={target.name}>
                   {`Removes production. ${gitRemoteLabel(target.url)} ${environment.target.branch} stays as it is; Mate stops pushing to it.`}
                 </p>
               ))}
               {targetKnown ? null : (
-                <p className="rv-note">Read the repository addresses before confirming removal.</p>
+                <p className="mt-1.5 text-body text-muted-foreground">
+                  Read the repository addresses before confirming removal.
+                </p>
               )}
-              <p className="rv-note">
+              <p className="mt-1.5 text-body text-muted-foreground">
                 The remote stays connected. Manage it under Repositories on this project's page.
               </p>
             </>
           )}
-          <p className="rv-note">
+          <p className="mt-1.5 text-body text-muted-foreground">
             Its push history goes with it. Removing this environment never deletes an external
             branch or undoes a push.
             {targets?.length && targets.every((target) => target.viaApp)
@@ -330,15 +338,17 @@ function GitEnvironmentRemoval({
               : " The token stays valid at its host until you revoke it there."}
           </p>
           {delivery?.standing === "unresolved" ? (
-            <p className="rv-note">
+            <p className="mt-1.5 text-body text-muted-foreground">
               The last push couldn't be confirmed. Anything already sent may remain at the host.
             </p>
           ) : null}
           {delivery === undefined || delivery.repositories.length === 0 ? (
-            <p className="rv-note">External leftovers could not be confirmed</p>
+            <p className="mt-1.5 text-body text-muted-foreground">
+              External leftovers could not be confirmed
+            </p>
           ) : null}
           {delivery?.repositories.map((repo) => (
-            <p className="rv-note" key={repo.repo}>
+            <p className="mt-1.5 text-body text-muted-foreground" key={repo.repo}>
               {repo.repo}: {repo.confirmed?.ref ?? "External leftovers could not be confirmed"}
             </p>
           ))}
@@ -349,7 +359,7 @@ function GitEnvironmentRemoval({
                 checked={historyLoss}
                 onCheckedChange={(checked) => setHistoryLoss(checked === true)}
               />{" "}
-              <span className="rv-note">
+              <span className="mt-1.5 text-body text-muted-foreground">
                 I understand that the unresolved push history will be lost.
               </span>
             </div>
@@ -518,7 +528,10 @@ function ZeropsProductionRemoval({
     );
   if (removal.kind === "going")
     return (
-      <p className="rv-note" data-zerops-surface="production-removal-going">
+      <p
+        className="mt-1.5 text-body text-muted-foreground"
+        data-zerops-surface="production-removal-going"
+      >
         Removing production…
       </p>
     );
@@ -526,7 +539,10 @@ function ZeropsProductionRemoval({
     const end = endOperationIntent(removal, orgId, appId);
     return (
       <>
-        <p className="rv-note" data-zerops-surface="production-removal-waiting">
+        <p
+          className="mt-1.5 text-body text-muted-foreground"
+          data-zerops-surface="production-removal-waiting"
+        >
           <RemovalWaitingWords orgId={orgId} userId={removal.continueBy} />
         </p>
         {removal.yours ? (
@@ -577,7 +593,7 @@ function ZeropsProductionRemoval({
       {said}
       {!confirming ? null : (
         <div role="group" aria-label={`Remove ${environment.name}`} aria-busy={busy}>
-          <p className="rv-note">
+          <p className="mt-1.5 text-body text-muted-foreground">
             {project === null
               ? "Read the project name before confirming removal."
               : deleteProject

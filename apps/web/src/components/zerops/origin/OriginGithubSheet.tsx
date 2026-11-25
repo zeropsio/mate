@@ -118,26 +118,30 @@ export function OriginGithubSheet({
       <DialogPanel>
         <div className="grid gap-2">
           {step.kind === "reading" ? (
-            <p className="rv-note">Reading your organization's GitHub app…</p>
+            <p className="mt-1.5 text-body text-muted-foreground">
+              Reading your organization's GitHub app…
+            </p>
           ) : step.kind === "mounted" ? (
             <>
-              <p className="rv-words">
+              <p className="text-body leading-5.5 text-pretty">
                 {ask.repo} keeps its code on {address}
                 {through === null ? "" : ` through ${through.name}`}.
               </p>
-              {gate === undefined ? null : <p className="rv-note">{gate}</p>}
+              {gate === undefined ? null : (
+                <p className="mt-1.5 text-body text-muted-foreground">{gate}</p>
+              )}
             </>
           ) : step.kind === "taken" ? (
-            <p className="rv-note">
+            <p className="mt-1.5 text-body text-muted-foreground">
               {ask.repo} already keeps its code with {gitRemoteLabel(step.url)}. Change it in the
               project's Mirror code to GitHub or GitLab.
             </p>
           ) : step.kind === "refused" ? (
-            <p className="rv-note">
+            <p className="mt-1.5 text-body text-muted-foreground">
               {refusal ?? "HQ doesn't let you connect a repository of this project."}
             </p>
           ) : step.kind === "no-app" ? (
-            <p className="rv-note">
+            <p className="mt-1.5 text-body text-muted-foreground">
               Your organization has no GitHub app yet.{" "}
               <InlineButton onClick={onOpenAutomation}>
                 Connect GitHub in Settings › Automation
@@ -145,14 +149,16 @@ export function OriginGithubSheet({
             </p>
           ) : step.kind === "unknown" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="rv-note">HQ didn't say whether your organization has a GitHub app.</p>
+              <p className="mt-1.5 text-body text-muted-foreground">
+                HQ didn't say whether your organization has a GitHub app.
+              </p>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
                 Try again
               </Button>
             </div>
           ) : step.kind === "waiting" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="rv-note">{waitingWords(step.account)}</p>
+              <p className="mt-1.5 text-body text-muted-foreground">{waitingWords(step.account)}</p>
               {admin ? (
                 <Button onClick={onOpenAutomation} size="sm" variant="secondary">
                   Open Settings › Automation
@@ -160,10 +166,10 @@ export function OriginGithubSheet({
               ) : null}
             </div>
           ) : step.kind === "unsealed" ? (
-            <p className="rv-note">{unsealedWords(step.app)}</p>
+            <p className="mt-1.5 text-body text-muted-foreground">{unsealedWords(step.app)}</p>
           ) : step.kind === "not-reached" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="rv-note">
+              <p className="mt-1.5 text-body text-muted-foreground">
                 {step.unanswered > 0
                   ? "GitHub didn't answer about some installations, so the repositories they reach aren't listed."
                   : step.trip.kind === "install"
@@ -176,12 +182,12 @@ export function OriginGithubSheet({
               </Button>
             </div>
           ) : (
-            <p className="rv-note">
+            <p className="mt-1.5 text-body text-muted-foreground">
               {step.name} reaches {step.repository}.
             </p>
           )}
           {answer === null ? null : (
-            <p className="rv-note" role="status">
+            <p className="mt-1.5 text-body text-muted-foreground" role="status">
               {answer}
             </p>
           )}

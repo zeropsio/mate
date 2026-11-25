@@ -2905,7 +2905,7 @@ export function ReviewStage({
         className="flex justify-center rounded-card px-5 py-9"
         style={{ background: "color-mix(in oklab, var(--background), var(--color-black) 18%)" }}
       >
-        <div className="rv" style={{ maxHeight: "none", width: 540 }}>
+        <div className="relative flex w-[540px] flex-col overflow-hidden rounded-sheet bg-card text-foreground shadow-(--zerops-shadow-dialog) ring-1 ring-foreground/10">
           {children}
         </div>
       </div>

@@ -21,11 +21,10 @@
 @import "./styles/menu-projects.css";
 @import "./styles/mate-tint.css";
 @import "./styles/overview.css";
-@import "./styles/review-sheet.css";
 @import "./styles/run-card.css";
-@import "./styles/review.css";
 @import "./styles/motion-arrival.css";
 @import "./styles/motion-panels.css";
 @import "./styles/motion-conversation.css";
 @import "./styles/motion-menu.css";
 @import "./styles/motion-overview.css";
+@import "./styles/motion-review.css";

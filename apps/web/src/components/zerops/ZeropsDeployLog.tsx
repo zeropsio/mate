@@ -9,8 +9,8 @@ import { PipelineCalculating, PipelineStepList } from "./operation/PipelineStepL
 
 /**
  * The same process handles open from a stop or the answer to a merge, release, or Run again: its
- * door at the end of its service's row in Where's list (`.rv-where`), and what it opens under the
- * row, across the list.
+ * door at the end of its service's row in Where's list (`ZeropsDeployAnswer`), and what it opens
+ * under the row, across the list.
  */
 export function ZeropsDeployLog({
   projectId,
@@ -28,7 +28,7 @@ export function ZeropsDeployLog({
   if (versionId !== null) {
     // A deploy whose version is known opens its pipeline: one place for a pipeline's detail.
     return (
-      <span className="rv-where-go" data-zerops-deploy-job={target.jobId}>
+      <span className="justify-self-end" data-zerops-deploy-job={target.jobId}>
         <Button onClick={() => openPipeline(versionId)} size="sm" variant="link">
           View deploy
         </Button>
@@ -37,18 +37,18 @@ export function ZeropsDeployLog({
   }
   return (
     <>
-      <span className="rv-where-go" data-zerops-deploy-job={target.jobId}>
+      <span className="justify-self-end" data-zerops-deploy-job={target.jobId}>
         <Button aria-expanded={open} onClick={() => setOpen(!open)} size="sm" variant="link">
           {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
         </Button>
       </span>
       {!open && unavailable ? (
-        <p className="rv-where-more text-caption text-muted-foreground">
+        <p className="col-span-full text-caption text-muted-foreground">
           Deploy history unavailable in Zerops’ recent processes.
         </p>
       ) : null}
       {open ? (
-        <div className="rv-where-more pb-2">
+        <div className="col-span-full pb-2">
           <DeployLogDetails
             key={target.jobId}
             projectId={projectId}

@@ -153,6 +153,7 @@ import {
   ReviewWhere,
   ReviewSize,
   useReviewFold,
+  WHY,
   ZeropsReviewSurface,
   type ReviewButton,
   type ReviewDiffState,
@@ -1020,14 +1021,14 @@ function GithubChecksLine({ checks }: { readonly checks: ReviewGithubChecks }) {
     );
   }
   return (
-    <div className="rv-why" data-zerops-surface="change-github-checks-line">
+    <div className={WHY} data-zerops-surface="change-github-checks-line">
       {checks.state === "pending" ? (
         <Badge dot tone="info">
           {checks.words}
         </Badge>
       ) : (
-        <span className="rv-checks" data-mark="passed">
-          <CheckIcon aria-hidden="true" />
+        <span className="inline-flex items-center gap-1 text-foreground">
+          <CheckIcon aria-hidden="true" className="size-3.25" />
           {checks.words}
         </span>
       )}
@@ -1549,7 +1550,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         />
       ) : null}
       {others.length === 0 ? null : (
-        <p className="rv-words" data-zerops-surface="change-others">
+        <p className="text-body leading-5.5 text-pretty" data-zerops-surface="change-others">
           Other open changes in {pull.repository}:{" "}
           {others.map((other, index) => (
             <Fragment key={other.number}>
@@ -1568,7 +1569,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       {model.orphan === undefined ? null : (
         <ReviewSection title="Its Mate is gone">
-          <p className="rv-words">{model.orphan.text}</p>
+          <p className="text-body leading-5.5 text-pretty">{model.orphan.text}</p>
           {model.orphan.options.length === 0 ? null : (
             <div className="mt-2 flex flex-wrap gap-2">
               {model.orphan.options.map((option) => (
@@ -1612,7 +1613,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       {receipt === undefined ? null : (
         <ReviewSection count={String(receipt.parts.length)} title="Parts">
-          <ul className="rv-check-list">
+          <ul className="mt-1.5 grid gap-1 text-body leading-4.5">
             {receipt.parts.map((part) => (
               <li key={part.setup}>
                 {part.setup} · {part.preview} · {part.words}
@@ -1652,7 +1653,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       </ReviewSection>
       {github === undefined ? null : (
         <ReviewSection count="1" fold={checks} title="Checks">
-          <ul className="rv-check-list" data-zerops-surface="change-github-checks">
+          <ul
+            className="mt-1.5 grid gap-1 text-body leading-4.5"
+            data-zerops-surface="change-github-checks"
+          >
             <li>
               GitHub&apos;s checks ·{" "}
               {github.state === "failing"

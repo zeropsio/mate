@@ -233,13 +233,15 @@ export function CrewTaskReviewView(props: CrewTaskReviewViewProps) {
     >
       {task.report === null || task.report.trim().length === 0 ? null : (
         <ReviewSection title="What it did">
-          <p className="rv-words">{task.report.trim()}</p>
+          <p className="text-body leading-5.5 text-pretty">{task.report.trim()}</p>
         </ReviewSection>
       )}
       <ReviewSection title="The task">
-        <p className="rv-words">{task.brief}</p>
+        <p className="text-body leading-5.5 text-pretty">{task.brief}</p>
         {task.doneWhen.length === 0 ? null : (
-          <p className="rv-words text-muted-foreground">Done when: {task.doneWhen}</p>
+          <p className="text-body leading-5.5 text-pretty text-muted-foreground">
+            Done when: {task.doneWhen}
+          </p>
         )}
       </ReviewSection>
       {task.check === null ? null : (

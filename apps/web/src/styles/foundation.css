@@ -401,6 +401,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-sites-flash: sites-flash 1200ms ease-out;
   /* A face card just added grows in once, top first (`motion-overview.css`). */
   --animate-card-arrive: card-arrive var(--duration-base) var(--ease-out-strong);
+  /* A review's description read for and not there: it folds shut and the section after it glides
+     up into its place (`motion-review.css`). */
+  --animate-review-what-folds: review-what-folds var(--duration-base) var(--ease-out-strong)
+    forwards;
+  --animate-review-what-gap: review-what-gap var(--duration-base) var(--ease-out-strong) forwards;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);

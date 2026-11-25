@@ -6,7 +6,7 @@
  * stopped it on the step that stopped. Props only: the review hands every read in.
  */
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
-import { CheckIcon, DicesIcon, XIcon } from "lucide-react";
+import { DicesIcon } from "lucide-react";
 import type { RunningLine as Running } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { MOTION } from "@t3tools/shared/brand";
 import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
@@ -15,6 +15,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
+import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
@@ -38,7 +39,7 @@ export function WordsOf({ words }: { readonly words: Words }) {
         typeof word === "string" ? (
           <Fragment key={key}>{word}</Fragment>
         ) : (
-          <span className="rv-code" key={key}>
+          <span className="font-mono" key={key}>
             {word.code}
           </span>
         ),
@@ -48,6 +49,37 @@ export function WordsOf({ words }: { readonly words: Words }) {
 }
 
 /** Each part keyed by where it starts in the sentence: the same name said twice is two parts. */
+/**
+ * What happens in production: one card, the steps in HQ's order — a mark, a title and one line
+ * each, joined down their marks; the hairline between two steps starts at their words. Before
+ * the press they are the plan; after it they tick in place.
+ */
+const PLAN = "grid rounded-card border border-border bg-foreground/2 py-1.5";
+const STEP =
+  "relative grid min-h-16 grid-cols-[24px_minmax(0,1fr)_auto] content-start items-start gap-x-3.75 pt-3.25 ps-4.25 pe-4 pb-3.75 not-first:before:absolute not-first:before:top-0 not-first:before:right-4 not-first:before:left-14 not-first:before:h-px not-first:before:bg-border not-last:after:absolute not-last:after:top-11.5 not-last:after:-bottom-4.5 not-last:after:left-7 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
+/** A step's mark, beside both its lines. */
+const MARK = "col-start-1 row-span-2 row-start-1 mt-2";
+const TITLE = "col-start-2 row-start-1 truncate text-body font-medium";
+/** Its one line, the line's first words in the step's tone; beside a clock it leaves the clock its column. */
+const LINE =
+  "col-span-2 col-start-2 row-start-2 flex flex-wrap gap-x-1.5 text-caption text-muted-foreground wrap-anywhere";
+const LINE_BY_CLOCK =
+  "col-start-2 row-start-2 flex flex-wrap gap-x-1.5 text-caption text-muted-foreground wrap-anywhere";
+const LINE_TONE: Record<ReleaseSheetStep["tone"], string> = {
+  quiet: "",
+  busy: "*:first:text-status-busy-text",
+  failed: "*:first:text-status-failed-text",
+  attention: "*:first:text-status-attention-text",
+};
+/** At the step's end: how long it has run or took — at its middle — or its own quiet press. */
+const ASIDE =
+  "col-start-3 row-start-1 self-center text-caption whitespace-nowrap text-muted-foreground tabular-nums";
+const CLOCK =
+  "col-start-3 row-span-2 row-start-1 self-center text-caption whitespace-nowrap text-muted-foreground tabular-nums";
+/** What a step opens under its line: its import, its deploy's log, a value's field. */
+const MORE =
+  "col-span-2 col-start-2 row-start-3 mt-2.5 grid min-w-0 gap-2 *:[p]:text-caption *:[p]:text-muted-foreground";
+
 function keyedWords(words: Words) {
   const keyed: Array<{ readonly key: string; readonly word: Words[number] }> = [];
   let at = 0;
@@ -175,7 +207,7 @@ export function ReleasePlan({
   return (
     <ol
       aria-busy={unread === "reading" ? true : undefined}
-      className="rv-plan"
+      className={PLAN}
       data-zerops-surface="release-plan"
       ref={list}
     >
@@ -224,15 +256,15 @@ export function ReleasePlan({
 /** A value step's place while production's vault is read: its title, line and field, unsaid. */
 function ValueStepRoom() {
   return (
-    <li aria-hidden="true" className="rv-pstep" data-release-step="value-room">
+    <li aria-hidden="true" className={STEP} data-release-step="value-room">
       <MarkRoom />
-      <span className="rv-pstep-t">
+      <span className={TITLE}>
         <Skeleton className="my-1.25 h-2.5 w-36" shape="pill" surface="card" />
       </span>
-      <span className="rv-pstep-l">
+      <span className={LINE}>
         <Skeleton className="my-1 h-2 w-56" shape="pill" surface="card" />
       </span>
-      <span className="rv-pstep-more">
+      <span className={MORE}>
         <Skeleton className="h-7" surface="card" />
       </span>
     </li>
@@ -242,7 +274,7 @@ function ValueStepRoom() {
 /** A step's mark, still being read: its round, in the mark's place and size. */
 function MarkRoom() {
   return (
-    <span aria-hidden="true" className="rv-pmark-room">
+    <span aria-hidden="true" className={`${MARK} flex size-6`}>
       <Skeleton className="size-full" shape="pill" surface="card" />
     </span>
   );
@@ -250,22 +282,29 @@ function MarkRoom() {
 
 /** A step's mark: its number to do, or how it stands. */
 function StepMark({ mark, index }: { readonly mark: ReleaseStepMark; readonly index: number }) {
+  const said = MARK_WORDS[mark];
   return (
-    <span className="rv-pmark" data-mark={mark}>
-      {mark === "done" ? (
-        <CheckIcon aria-label="Done" strokeWidth={2.5} />
-      ) : mark === "busy" ? (
-        <Spinner aria-label="Under way" />
-      ) : mark === "failed" ? (
-        <XIcon aria-label="Failed" strokeWidth={2.5} />
-      ) : mark === "attention" ? (
-        "!"
-      ) : (
-        index + 1
-      )}
-    </span>
+    <>
+      <StepNumber className={MARK} n={index + 1} state={MARK_STATE[mark]} />
+      {said === undefined ? null : <span className="sr-only">{said}</span>}
+    </>
   );
 }
+
+const MARK_STATE: Record<ReleaseStepMark, StepNumberState> = {
+  pending: "todo",
+  busy: "busy",
+  done: "done",
+  failed: "failed",
+  attention: "attention",
+};
+const MARK_WORDS: Record<ReleaseStepMark, string | undefined> = {
+  pending: undefined,
+  busy: "Under way",
+  done: "Done",
+  failed: "Failed",
+  attention: undefined,
+};
 
 /**
  * A value production lacks, added in place: a field nobody reads back, a generated value or the
@@ -291,16 +330,20 @@ function ValueStep({
     onSave(step.id, draft);
   };
   return (
-    <li className="rv-pstep" data-release-step="value" data-step-mark={words.mark}>
+    <li className={STEP} data-release-step="value" data-step-mark={words.mark}>
       <StepMark index={index} mark={words.mark} />
-      <p className="rv-pstep-t" id={titleId}>
+      <p className={TITLE} id={titleId}>
         <WordsOf words={words.title} />
       </p>
-      <p className="rv-pstep-l" data-tone={words.tone}>
+      <p className={`${LINE} ${LINE_TONE[words.tone]}`}>
         <span>{words.line}</span>
       </p>
       {step.write.kind === "saved" || onSave === undefined ? null : (
-        <div className="rv-pstep-more rv-pstep-value" data-zerops-surface="release-value">
+        // A value production lacks, added in place: its field, Generate and Save on one row.
+        <div
+          className={`${MORE} grid-cols-[minmax(0,1fr)_auto_auto] items-center`}
+          data-zerops-surface="release-value"
+        >
           <Input
             aria-label={`${step.key}'s value`}
             autoComplete="off"
@@ -387,23 +430,21 @@ function PlanStep({
     );
   return (
     <li
-      className="rv-pstep"
+      className={STEP}
       data-release-step={step.kind}
       data-step-mark={step.mark}
       data-unread={unread}
     >
       <StepMark index={index} mark={step.mark} />
-      <p className="rv-pstep-t">
+      <p className={TITLE}>
         <WordsOf words={step.title} />
       </p>
       {step.aside !== undefined ? (
-        <span className="rv-pstep-aside" data-clock="">
-          {step.aside}
-        </span>
+        <span className={CLOCK}>{step.aside}</span>
       ) : step.action === "renew-key" ? (
         onRenew === undefined ? null : (
           // Its words change while it runs; its place does not.
-          <span className="rv-pstep-aside">
+          <span className={ASIDE}>
             <InlineButton data-release-renew="" disabled={renewing} onClick={onRenew}>
               {renewing ? "Renewing…" : renewWord}
             </InlineButton>
@@ -411,7 +452,7 @@ function PlanStep({
         )
       ) : step.action !== undefined && onCreate !== undefined ? (
         // The step's own press stands at its title's end; its line keeps the step's width.
-        <span className="rv-pstep-aside">
+        <span className={ASIDE}>
           <InlineButton data-release-create="" onClick={onCreate}>
             {step.action === "create-again" ? "Try again" : createWords}
           </InlineButton>
@@ -419,15 +460,20 @@ function PlanStep({
       ) : null}
       {unread === "unsaid" ? null : unread === "reading" ? (
         // The line it will say, in its place and height.
-        <p aria-hidden="true" className="rv-pstep-l">
+        <p aria-hidden="true" className={step.aside === undefined ? LINE : LINE_BY_CLOCK}>
           <Skeleton className="my-1 h-2 w-28" shape="pill" surface="card" />
         </p>
       ) : (
-        <PlanStepLine acts={acts} running={running} step={step} />
+        <PlanStepLine
+          acts={acts}
+          className={step.aside === undefined ? LINE : LINE_BY_CLOCK}
+          running={running}
+          step={step}
+        />
       )}
       {/* Live, its ways in stand on a line of their own under the way back. */}
       {live === undefined || (live.open === undefined && live.onAddDomain === undefined) ? null : (
-        <p className="rv-pstep-l rv-pstep-ways">
+        <p className="col-span-2 col-start-2 row-start-3 mt-1 flex flex-wrap gap-x-1.5 text-caption text-muted-foreground wrap-anywhere">
           {live.open === undefined ? null : (
             <InlineButton render={<a href={live.open.url} rel="noreferrer" target="_blank" />}>
               Open {live.open.host}
@@ -442,9 +488,12 @@ function PlanStep({
         </p>
       )}
       {open === "import" && yaml !== undefined && step.creates !== undefined ? (
-        <div className="rv-pstep-more" data-zerops-surface="release-import">
+        <div className={MORE} data-zerops-surface="release-import">
           {step.creates.cost.trim() === "" ? null : <p>{step.creates.cost}</p>}
-          <pre className="rv-pstep-yaml">{yaml}</pre>
+          {/* Its import, as YAML, scrolling inside its own box. */}
+          <pre className="max-h-60 overflow-auto rounded-control bg-muted px-3 py-2.5 font-mono text-caption whitespace-pre">
+            {yaml}
+          </pre>
           <p>
             <InlineButton onClick={() => copyToClipboard(yaml)}>
               {isCopied ? "Copied" : "Copy"}
@@ -453,7 +502,7 @@ function PlanStep({
         </div>
       ) : null}
       {open === "log" && log !== undefined && step.service !== undefined ? (
-        <div className="rv-pstep-more">
+        <div className={MORE}>
           <DeployLogDetails
             key={log.target.jobId}
             projectId={log.projectId}
@@ -471,13 +520,16 @@ function PlanStepLine({
   step,
   running,
   acts,
+  className,
 }: {
   readonly step: ReleaseSheetStep;
   readonly running: Running | undefined;
   readonly acts: ReadonlyArray<ReactElement>;
+  /** Its place in the step, beside a clock or not. */
+  readonly className: string;
 }) {
   return (
-    <p className="rv-pstep-l" data-tone={running === undefined ? step.tone : "quiet"}>
+    <p className={`${className} ${LINE_TONE[running === undefined ? step.tone : "quiet"]}`}>
       {running === undefined ? (
         <span>
           <WordsOf words={step.line} />
@@ -511,12 +563,12 @@ function PlanStepLine({
  */
 export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
   return (
-    <ol aria-busy="true" className="rv-plan" data-zerops-surface="release-plan">
+    <ol aria-busy="true" className={PLAN} data-zerops-surface="release-plan">
       {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
         // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
-        <li className="rv-pstep" key={at}>
+        <li className={STEP} key={at}>
           <MarkRoom />
-          <span aria-hidden="true" className="rv-pstep-t">
+          <span aria-hidden="true" className={TITLE}>
             <Skeleton
               className={
                 index === 0
@@ -529,7 +581,7 @@ export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
               surface="card"
             />
           </span>
-          <span aria-hidden="true" className="rv-pstep-l">
+          <span aria-hidden="true" className={LINE}>
             <Skeleton
               className={
                 index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"

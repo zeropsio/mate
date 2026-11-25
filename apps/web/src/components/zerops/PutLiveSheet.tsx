@@ -17,6 +17,7 @@ import type { PutLiveService, PutLiveSheetModel } from "~/zerops/putLive.logic";
 import { Button } from "../ui/button";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { Skeleton } from "../ui/skeleton";
+import { StepNumber } from "../ui/step-number";
 import {
   DialogClose,
   DialogDescription,
@@ -26,6 +27,18 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+
+/**
+ * The route: what goes live, then where, on the release plan's card and marks; its rows wrap, a
+ * change's title being the person's words. From one stop's mark a line runs to the next one's.
+ */
+const STOP =
+  "relative grid grid-cols-[24px_minmax(0,1fr)] gap-x-3.5 px-4 py-3.5 not-first:before:absolute not-first:before:top-0 not-first:before:right-4 not-first:before:left-13.5 not-first:before:h-px not-first:before:bg-border not-last:after:absolute not-last:after:top-10.25 not-last:after:-bottom-1.75 not-last:after:left-6.75 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
+const STOP_TITLE = "text-body font-medium text-foreground text-pretty";
+const STOP_LINE = "text-body leading-4.5 text-muted-foreground text-pretty";
+/** Who production is for, asked in its stop: its question over the kit's RadioCards. */
+const ASK = "mt-2.5 grid gap-2.5";
+const ASK_TITLE = "text-body font-medium leading-4.5 text-foreground";
 
 const LIST = new Intl.ListFormat("en-GB", { style: "long", type: "conjunction" });
 
@@ -69,22 +82,20 @@ export function PutLiveSheet({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <ol className="put-live-route">
-          <li aria-label="What goes live" className="put-live-stop">
-            <span aria-hidden="true" className="put-live-mark">
-              <GitMergeIcon />
-            </span>
-            <div className="put-live-stop-body">
+        <ol className="grid rounded-card border border-border bg-foreground/2 py-0.5">
+          <li aria-label="What goes live" className={STOP}>
+            <StepNumber className="-mt-px" icon={<GitMergeIcon />} n={1} />
+            <div className="flex min-w-0 flex-col gap-0.5">
               {what === undefined ? (
                 // What is merged, still read: its title's room held, no words it takes back.
-                <p aria-hidden="true" className="put-live-stop-t">
+                <p aria-hidden="true" className={STOP_TITLE}>
                   <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
                 </p>
               ) : (
                 <>
-                  <p className="put-live-stop-t line-clamp-2">{what.title}</p>
+                  <p className={`${STOP_TITLE} line-clamp-2`}>{what.title}</p>
                   {what.lines.length === 0 ? null : (
-                    <p className="put-live-stop-l line-clamp-2">{what.lines.join(" · ")}</p>
+                    <p className={`${STOP_LINE} line-clamp-2`}>{what.lines.join(" · ")}</p>
                   )}
                 </>
               )}
@@ -95,13 +106,11 @@ export function PutLiveSheet({
               )}
             </div>
           </li>
-          <li aria-label="Where" className="put-live-stop">
-            <span aria-hidden="true" className="put-live-mark">
-              <GlobeIcon />
-            </span>
-            <div className="put-live-stop-body">
+          <li aria-label="Where" className={STOP}>
+            <StepNumber className="-mt-px" icon={<GlobeIcon />} n={2} />
+            <div className="flex min-w-0 flex-col gap-0.5">
               <div className="flex items-start justify-between gap-3">
-                <p className="put-live-stop-t">{where.name}</p>
+                <p className={STOP_TITLE}>{where.name}</p>
                 {onSetUpYourself === undefined ? null : (
                   <Button
                     aria-label="Set up production yourself…"
@@ -114,25 +123,25 @@ export function PutLiveSheet({
                   </Button>
                 )}
               </div>
-              <p className="put-live-stop-l">{where.line}</p>
+              <p className={STOP_LINE}>{where.line}</p>
               {where.creates === undefined ? (
                 // The setup files, still read: the line's room held.
-                <p aria-hidden="true" className="put-live-stop-l">
+                <p aria-hidden="true" className={STOP_LINE}>
                   <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
                 </p>
               ) : where.creates.length === 0 ? null : (
-                <p className="put-live-stop-l">{createsLine(where.creates)}</p>
+                <p className={STOP_LINE}>{createsLine(where.creates)}</p>
               )}
               {where.shapes === undefined ? (
                 // Who it is for, still read: both answers' room held.
-                <div aria-hidden="true" className="put-live-ask">
-                  <p className="put-live-ask-t">Who is it for?</p>
+                <div aria-hidden="true" className={ASK}>
+                  <p className={ASK_TITLE}>Who is it for?</p>
                   <Skeleton className="h-23.5" shape="card" />
                   <Skeleton className="mt-0.5 h-32.5" shape="card" />
                 </div>
               ) : where.shapes.length === 0 ? null : (
-                <div className="put-live-ask">
-                  <p className="put-live-ask-t" id={asked}>
+                <div className={ASK}>
+                  <p className={ASK_TITLE} id={asked}>
                     Who is it for?
                   </p>
                   <RadioGroup
