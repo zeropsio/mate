@@ -45,8 +45,13 @@ interface VaultAddCardProps {
   readonly busy: boolean;
   readonly onAdd: (scope: VaultScope, write: Extract<VaultWrite, { kind: "add" }>) => void;
   readonly onCancel: () => void;
-  /** A multi-line `.env` pasted into the key: the panel opens that part's text with it. */
-  readonly onPasteEnv: (scope: VaultScope, pasted: string) => void;
+  /**
+   * A multi-line `.env` pasted into the key: the panel opens that part's text with it. Without it
+   * (where no text editor stands) a paste is only typed.
+   */
+  readonly onPasteEnv?: (scope: VaultScope, pasted: string) => void;
+  /** Drawn in a popup, which is its frame: no card of its own. */
+  readonly framed?: boolean;
 }
 
 export function VaultAddCard(props: VaultAddCardProps) {
@@ -74,7 +79,11 @@ export function VaultAddCard(props: VaultAddCardProps) {
   return (
     // A card raised over the list it adds to.
     <div
-      className="rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border"
+      className={
+        props.framed === false
+          ? undefined
+          : "rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border"
+      }
       data-vault-add
     >
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
@@ -109,7 +118,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             onKeyDown={onKeys}
             onPaste={(event) => {
               const pasted = event.clipboardData.getData("text");
-              if (envPasteLines(pasted) === null) return;
+              if (props.onPasteEnv === undefined || envPasteLines(pasted) === null) return;
               event.preventDefault();
               props.onPasteEnv(scope, pasted);
             }}
@@ -158,7 +167,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             {error}
           </Text>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Text
             className="flex h-7 cursor-pointer items-center gap-2"
             render={<label />}
@@ -172,7 +181,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             <LockIcon aria-hidden="true" className="size-3" />
             <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
           </Text>
-          <Text truncate variant="note" data-vault-add-auto>
+          <Text className="min-w-0" data-vault-add-auto truncate variant="note">
             {sensitive ? "nobody reads it back once saved" : ""}
           </Text>
           <span className="grow" />
@@ -184,9 +193,11 @@ export function VaultAddCard(props: VaultAddCardProps) {
             Save
           </Button>
         </div>
-        <Text render={<p />} variant="note">
-          Paste a whole .env into the name to add many at once.
-        </Text>
+        {props.onPasteEnv === undefined ? null : (
+          <Text render={<p />} variant="note">
+            Paste a whole .env into the name to add many at once.
+          </Text>
+        )}
       </div>
     </div>
   );
