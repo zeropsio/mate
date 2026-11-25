@@ -26,6 +26,7 @@ import { Link } from "@tanstack/react-router";
 
 import { Button, InlineButton } from "~/components/ui/button";
 import { CutText } from "./ChangeRow";
+import { mateTintStyle } from "../mateTint";
 import { BeadMark } from "./BeadMark";
 import {
   Caption,
@@ -316,7 +317,7 @@ function Legend({
 
 /** What a bead's marks mean, at the card's foot. */
 const LEGEND =
-  "flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-(--ov-rule,var(--border)) pt-2.5 pb-3";
+  "flex min-w-0 flex-wrap items-center gap-x-5 gap-y-1 border-t border-border pt-2.5 pb-3";
 /** A row hung under `main`, its dash from the spine to its words. */
 const SIDE =
   "relative flex h-5.5 min-w-0 items-center ps-7 before:absolute before:top-2.5 before:left-1.5 before:h-0 before:w-3.5 before:border-t-2 before:border-dashed before:border-(--ln-faint)";
@@ -374,8 +375,8 @@ function StationLines({ station }: { readonly station: LineStationFull }) {
             <i
               aria-hidden="true"
               className="me-0.75 inline-block size-3.5 rounded-mark bg-(--mate-tint,var(--ln-track)) align-[-3px] last-of-type:me-1.5"
-              data-mate-tint={face.tint}
               key={face.key}
+              style={face.tint === undefined ? undefined : mateTintStyle(face.tint)}
             />
           ))
         : null}

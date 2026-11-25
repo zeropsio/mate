@@ -1,3 +1,4 @@
+import { mateTintStyle } from "../mateTint";
 import type { LineBead } from "./projectLine.logic";
 
 /**
@@ -19,7 +20,7 @@ export function BeadMark({
     <i
       aria-hidden="true"
       className={`${BEAD[mark ?? "plain"]} ${className ?? ""}`}
-      data-mate-tint={tint}
+      style={tint === undefined ? undefined : mateTintStyle(tint)}
     />
   );
 }

@@ -391,14 +391,14 @@ function PictureViewer({
               loading="lazy"
               decoding="async"
               alt={picture.alt}
-              className="max-h-[calc(100dvh-160px)] min-h-0 max-w-full rounded-card object-contain shadow-(--picture-frame-shadow)"
+              className="max-h-[calc(100dvh-160px)] min-h-0 max-w-full rounded-card object-contain shadow-popup"
               src={picture.src}
             />
             {picture.alt.length > 0 || count > 1 ? (
-              <p className="flex gap-3 text-body leading-4.5 text-(--picture-stage-ink)">
+              <p className="flex gap-3 text-body leading-4.5 text-stage-foreground">
                 {picture.alt}
                 {count > 1 ? (
-                  <span className="text-(--picture-stage-muted) tabular-nums">
+                  <span className="text-stage-foreground/62 tabular-nums">
                     {index + 1} of {count}
                   </span>
                 ) : null}
