@@ -20,6 +20,7 @@ const SERVICES = [
 const LONG_NAME = "a-service-with-a-name-long-enough-to-wrap-or-truncate";
 
 const ROWS = ["2", "3", "5"] as const;
+const SIZES = ["sm", "md"] as const;
 const SELECTED = ["none", "1", "2"] as const;
 
 export default definePlayground({
@@ -36,20 +37,35 @@ export default definePlayground({
       kind: "boolean",
       note: "the header holds the top of the scrolling box the table sits in",
     },
+    stickyColumn: {
+      kind: "boolean",
+      note: "the first column stays as the rest scroll sideways under it",
+    },
+    size: { kind: "enum", options: SIZES, note: "sm a dense table of facts, md people or places" },
   },
-  initial: { rows: "3", state: true, longName: false, selected: "none", sticky: false },
-  render: ({ rows, state, longName, selected, sticky }) => (
+  initial: {
+    rows: "3",
+    state: true,
+    longName: false,
+    selected: "none",
+    sticky: false,
+    stickyColumn: false,
+    size: "sm",
+  },
+  render: ({ rows, state, longName, selected, sticky, stickyColumn, size }) => (
     <div
       className={
         sticky
           ? "h-36 w-[40rem] max-w-full overflow-auto rounded-card border"
-          : "w-[40rem] max-w-full"
+          : stickyColumn
+            ? "w-64 max-w-full rounded-card border bg-card"
+            : "w-[40rem] max-w-full"
       }
     >
-      <Table>
+      <Table size={size}>
         <TableHeader sticky={sticky}>
           <TableRow>
-            <TableHead>Service</TableHead>
+            <TableHead sticky={stickyColumn}>Service</TableHead>
             <TableHead>Runtime</TableHead>
             {state ? <TableHead>State</TableHead> : null}
           </TableRow>
@@ -60,7 +76,9 @@ export default definePlayground({
               data-state={String(index + 1) === selected ? "selected" : undefined}
               key={service.name}
             >
-              <TableCell>{longName && index === 0 ? LONG_NAME : service.name}</TableCell>
+              <TableHead scope="row" sticky={stickyColumn}>
+                {longName && index === 0 ? LONG_NAME : service.name}
+              </TableHead>
               <TableCell>{service.runtime}</TableCell>
               {state ? (
                 <TableCell>
@@ -73,9 +91,10 @@ export default definePlayground({
       </Table>
     </div>
   ),
-  jsx: ({ rows, state, longName, selected, sticky }) => {
+  jsx: ({ rows, state, longName, selected, sticky, stickyColumn, size }) => {
+    const first = stickyColumn ? "TableHead sticky" : "TableHead";
     const head = [
-      "<TableHead>Service</TableHead>",
+      `<${first}>Service</TableHead>`,
       "<TableHead>Runtime</TableHead>",
       ...(state ? ["<TableHead>State</TableHead>"] : []),
     ].join("\n");
@@ -85,7 +104,7 @@ export default definePlayground({
           "TableRow",
           { "data-state": String(index + 1) === selected ? "selected" : undefined },
           [
-            `<TableCell>${longName && index === 0 ? LONG_NAME : service.name}</TableCell>`,
+            `<${first} scope="row">${longName && index === 0 ? LONG_NAME : service.name}</TableHead>`,
             `<TableCell>${service.runtime}</TableCell>`,
             ...(state
               ? [
@@ -98,11 +117,12 @@ export default definePlayground({
       .join("\n");
     return jsxElement(
       "Table",
-      {},
+      { size },
       [
         jsxElement("TableHeader", { sticky }, jsxElement("TableRow", {}, head), { sticky: false }),
         jsxElement("TableBody", {}, body),
       ].join("\n"),
+      { size: "sm" },
     );
   },
   usage: {
@@ -111,6 +131,8 @@ export default definePlayground({
       "Name a column by what it holds, in one or two words.",
       "Say a state in a Badge in its cell.",
       "Stick the header when the table scrolls in a box of its own height.",
+      "Stick the first column when the table is wider than its place and its rows are named there.",
+      "Set --table-ground on a surface whose ground is not the card's, so what sticks stands on it.",
     ],
     dont: [
       "Lay out a list of one kind of thing as a table: those are Rows.",

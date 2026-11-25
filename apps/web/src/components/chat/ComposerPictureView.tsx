@@ -16,6 +16,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 
 import type { ComposerImageAttachment } from "~/composerDraftStore";
@@ -30,9 +31,11 @@ import {
 } from "~/lib/composerPictures";
 import { pictureFitSize } from "~/lib/imageCompression";
 import { drawPictureMarks, pictureMarkMetrics } from "~/lib/pictureDrawing";
-import { randomUUID } from "~/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
+import { Label } from "../ui/label";
+import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
@@ -52,6 +55,39 @@ type MarkDrag = {
 };
 
 const CROP_HANDLES: ReadonlyArray<CropHandle> = ["nw", "ne", "sw", "se", "n", "s", "e", "w"];
+
+/** The crop's handles: corner brackets and side bars, white on the picture, to drag. */
+const CROP_HANDLE_CLASS_NAME: Record<CropHandle, string> = {
+  nw: "-top-1 -left-1 size-5.5 cursor-nwse-resize before:inset-0 before:border-t-4 before:border-l-4",
+  ne: "-top-1 -right-1 size-5.5 cursor-nesw-resize before:inset-0 before:border-t-4 before:border-r-4",
+  sw: "-bottom-1 -left-1 size-5.5 cursor-nesw-resize before:inset-0 before:border-b-4 before:border-l-4",
+  se: "-right-1 -bottom-1 size-5.5 cursor-nwse-resize before:inset-0 before:border-r-4 before:border-b-4",
+  n: "-top-1.5 left-1/2 -ml-4 h-4 w-8 cursor-ns-resize before:inset-x-0 before:top-1.25 before:h-1 before:rounded-full before:bg-stage-foreground",
+  s: "-bottom-1.5 left-1/2 -ml-4 h-4 w-8 cursor-ns-resize before:inset-x-0 before:bottom-1.25 before:h-1 before:rounded-full before:bg-stage-foreground",
+  w: "top-1/2 -left-1.5 -mt-4 h-8 w-4 cursor-ew-resize before:inset-y-0 before:left-1.25 before:w-1 before:rounded-full before:bg-stage-foreground",
+  e: "top-1/2 -right-1.5 -mt-4 h-8 w-4 cursor-ew-resize before:inset-y-0 before:right-1.25 before:w-1 before:rounded-full before:bg-stage-foreground",
+};
+
+/** A note's number in the notes' pink: by its pin, and beside its words in the sent message. */
+export function PictureNoteNumber({
+  className,
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-4.5 flex-none rounded-full bg-annotation text-center text-caption leading-4.5 font-medium tabular-nums text-stage-foreground",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 /** Marks on screen never shrink under this radius, however small the picture. */
 const VIEW_MIN_RADIUS = 11;
 
@@ -596,10 +632,18 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
         aria-label={`Picture: ${source?.name ?? image.name}`}
         initialFocus={doneRef}
       >
-        <div ref={rootRef} className="picture-view" onKeyDown={onKeyDown}>
-          <div className="picture-view-top">
-            <span className="picture-view-name">{source?.name ?? image.name}</span>
-            <span className="picture-view-dims">
+        {/* The picture's stage, filling the kit's media dialog: its head, the picture with its
+            marks and notes, and the bar that says what goes. */}
+        <div
+          ref={rootRef}
+          className="flex size-full flex-col bg-stage font-sans text-stage-foreground"
+          onKeyDown={onKeyDown}
+        >
+          <div className="flex h-12 min-w-0 flex-none items-center gap-2.5 ps-4 pe-2">
+            <span className="min-w-0 truncate text-body font-medium">
+              {source?.name ?? image.name}
+            </span>
+            <span className="whitespace-nowrap text-line tabular-nums text-stage-foreground/62">
               {source
                 ? `${pictureDims(picture.sourceWidth, picture.sourceHeight)} · ${formatPictureBytes(source.size)}`
                 : pictureDims(picture.width, picture.height)}
@@ -619,12 +663,13 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               stageRef.current = node;
               setStageNode(node);
             }}
-            className="picture-view-stage"
+            className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden"
           >
             {layout ? (
               <div
                 ref={frameRef}
-                className="picture-view-frame"
+                // The picture drawn on two canvases (it, then its marks), centred in the room left.
+                className="relative flex-none touch-none shadow-popup data-editable:cursor-crosshair data-over-mark:cursor-pointer"
                 data-mode={mode}
                 data-editable={editable ? "true" : undefined}
                 data-over-mark={hoverMark ? "true" : undefined}
@@ -634,8 +679,8 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
               >
-                <canvas ref={baseRef} className="picture-view-canvas" />
-                <canvas ref={marksRef} className="picture-view-canvas" />
+                <canvas ref={baseRef} className="absolute inset-0 block size-full" />
+                <canvas ref={marksRef} className="absolute inset-0 block size-full" />
                 {mode === "mark"
                   ? marks.map((mark, index) =>
                       index === noteFor || mark.note.length === 0 ? null : (
@@ -646,6 +691,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                             else chipRefs.current.delete(index);
                           }}
                           variant="bare"
+                          className="group/chip absolute max-w-55"
                           data-picture-chip=""
                           data-selected={index === selected ? "true" : undefined}
                           aria-label={`Note ${index + 1}: ${mark.note}. Edit it`}
@@ -654,14 +700,17 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                             openNote(index);
                           }}
                         >
-                          {mark.note}
+                          {/* A note's words beside its pin, two lines at most. */}
+                          <span className="line-clamp-2 cursor-pointer whitespace-normal rounded-control bg-popover px-2.25 py-1.25 text-left text-body text-popover-foreground shadow-popup ring-1 ring-border group-hover/chip:ring-2 group-hover/chip:ring-annotation group-data-selected/chip:ring-2 group-data-selected/chip:ring-annotation">
+                            {mark.note}
+                          </span>
                         </Button>
                       ),
                     )
                   : null}
                 {cropping ? (
                   <div
-                    className="picture-crop"
+                    className="absolute z-4 cursor-move touch-none outline-2 outline-stage-foreground/95"
                     style={{
                       left: (cropDraft.x - view.x) * layout.scale,
                       top: (cropDraft.y - view.y) * layout.scale,
@@ -670,16 +719,27 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     }}
                   >
                     {CROP_HANDLES.map((handle) => (
-                      <span key={handle} className="picture-crop-handle" data-handle={handle} />
+                      <span
+                        key={handle}
+                        className={cn(
+                          "absolute touch-none before:pointer-events-none before:absolute before:border-stage-foreground",
+                          CROP_HANDLE_CLASS_NAME[handle],
+                        )}
+                        data-handle={handle}
+                      />
                     ))}
                   </div>
                 ) : null}
               </div>
             ) : null}
             {noteFor >= 0 ? (
-              <div ref={noteRef} className="picture-note">
-                <div className="picture-note-head">
-                  <span className="picture-note-number">{noteFor + 1}</span>
+              // A note being written: a small popover by its pin.
+              <div
+                ref={noteRef}
+                className="absolute z-6 w-62.5 rounded-card border border-border bg-popover px-2.5 pt-2.5 pb-2 text-popover-foreground shadow-popup"
+              >
+                <div className="mb-1.5 flex items-center gap-2 text-caption leading-4.5 font-medium text-muted-foreground">
+                  <PictureNoteNumber>{noteFor + 1}</PictureNoteNumber>
                   <span>Note</span>
                 </div>
                 <Textarea
@@ -703,7 +763,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     }
                   }}
                 />
-                <div className="picture-note-foot">
+                <div className="mt-1.5 flex items-center justify-between gap-2 text-caption font-medium text-muted-foreground">
                   <span>↵ to save, empty is fine</span>
                   {editable ? (
                     <Button
@@ -720,8 +780,8 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               </div>
             ) : null}
           </div>
-          <div className="picture-view-bar">
-            <div className="picture-tools">
+          <div className="flex flex-none justify-center px-3 pt-2.5 pb-3.5">
+            <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-card border border-border bg-popover p-1.5 text-popover-foreground shadow-popup">
               {editable ? (
                 <>
                   <Button
@@ -733,11 +793,11 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     <CropIcon aria-hidden="true" />
                     Crop
                   </Button>
-                  <span className="picture-tools-rule" />
+                  <Separator className="mx-1 h-5" orientation="vertical" />
                 </>
               ) : null}
               {cropping ? (
-                <span className="picture-tools-info">
+                <span className="inline-flex items-center gap-1.5 ps-1.5 whitespace-nowrap text-line tabular-nums text-muted-foreground">
                   <span>{pictureDims(cropDraft.w, cropDraft.h)}</span>
                   <Button
                     variant="ghost-muted"
@@ -748,35 +808,40 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                   </Button>
                 </span>
               ) : (
-                <span className="picture-tools-hint">
+                <span className="px-1.5 whitespace-nowrap text-line tabular-nums text-muted-foreground max-[47.5rem]:hidden">
                   {editable
                     ? "Click to pin a note, drag to box an area"
                     : "Its marks and crop stay as they were before the reload"}
                 </span>
               )}
-              <span className="picture-tools-rule" />
-              <span className="picture-tools-out" aria-live="polite">
+              <Separator className="mx-1 h-5" orientation="vertical" />
+              <span
+                className="min-w-59 px-1.5 whitespace-nowrap text-line tabular-nums text-muted-foreground max-[47.5rem]:min-w-0 [&_b]:font-medium [&_b]:text-popover-foreground"
+                aria-live="polite"
+              >
                 Sends <b>{pictureDims(sends.width, sends.height)}</b>
                 {tail}
                 {picture.keepOriginal && source ? (
-                  <span className="picture-tools-plus">
+                  <span className="font-medium text-popover-foreground">
                     {" "}
                     + original {formatPictureBytes(source.size)}
                   </span>
                 ) : null}
               </span>
               {props.canKeepOriginal && source ? (
-                <label className="picture-tool picture-keep">
-                  <Switch
-                    checked={picture.keepOriginal}
-                    onCheckedChange={(checked) => change({ keepOriginal: checked })}
-                    aria-describedby="picture-keep-why"
-                  />
-                  <span>Keep original</span>
-                  <span id="picture-keep-why" className="sr-only">
-                    {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
-                  </span>
-                </label>
+                <span className="flex h-8 items-center whitespace-nowrap px-2">
+                  <Label>
+                    <Switch
+                      checked={picture.keepOriginal}
+                      onCheckedChange={(checked) => change({ keepOriginal: checked })}
+                      aria-describedby="picture-keep-why"
+                    />
+                    <span>Keep original</span>
+                    <span id="picture-keep-why" className="sr-only">
+                      {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
+                    </span>
+                  </Label>
+                </span>
               ) : null}
               <Button ref={doneRef} onClick={close}>
                 Done

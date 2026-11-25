@@ -7,6 +7,7 @@
 import { historyAge, shortCommit, type ChangeReadoutCommit } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
+import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
@@ -44,7 +45,7 @@ export function ReviewCommits({
   const [all, setAll] = useState(false);
   if (notRecorded !== undefined) {
     return (
-      <ReviewSection aside={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
+      <ReviewSection count={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
         <p className="rv-diff-note">The commits are not known yet.</p>
         {notRecorded.onShow === undefined ? null : (
           <Button onClick={notRecorded.onShow} size="sm" variant="link">
@@ -59,7 +60,7 @@ export function ReviewCommits({
   const count = commits.kind === "read" ? commits.value.length : undefined;
   return (
     <ReviewSection
-      aside={count === undefined ? undefined : String(count)}
+      count={count === undefined ? undefined : String(count)}
       fold={fold}
       title="Commits"
     >
@@ -67,8 +68,8 @@ export function ReviewCommits({
         <ol aria-busy="true" className="rv-commits">
           {Array.from({ length: COMMITS_PENDING }, (_, index) => (
             <li aria-hidden="true" className="rv-commit-skeleton" key={index}>
-              <span />
-              <span />
+              <Skeleton className="h-2.5 w-[48%]" shape="pill" surface="card" />
+              <Skeleton className="h-2.5" shape="pill" surface="card" />
             </li>
           ))}
         </ol>

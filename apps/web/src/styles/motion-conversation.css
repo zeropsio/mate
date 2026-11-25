@@ -1,0 +1,24 @@
+/* The conversation's choreographies: only their keyframes, applied by the `animate-*` tokens in
+   foundation.css. A keyframe a handler reads by name (`conversation-eye-open`,
+   `conversation-handoff`) keeps that name. */
+
+@keyframes conversation-eye-open {
+  0%,
+  20% {
+    transform: scaleY(0.04);
+  }
+  65%,
+  100% {
+    transform: none;
+  }
+}
+
+/* Animation completion advances presentation only, never source readiness. */
+@keyframes conversation-handoff {
+  from {
+    --conversation-handoff: 0;
+  }
+  to {
+    --conversation-handoff: 1;
+  }
+}

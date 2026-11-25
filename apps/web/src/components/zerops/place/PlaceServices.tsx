@@ -32,6 +32,7 @@ import { DeployLogDetails, useDeployLogUnavailable } from "../ZeropsDeployLog";
 import { useOpenPipeline } from "~/zerops/pipelineSearch";
 import { ServiceList, ServiceRow, serviceRunsLine } from "../system";
 import type { PlaceServiceRow } from "./place.logic";
+import { RealName } from "~/components/ui/real-name";
 
 /**
  * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
@@ -425,7 +426,7 @@ export function PlaceAddressCard({
             key={route.url}
             meta={
               <>
-                <span className="real-name">{route.service}</span>
+                <RealName>{route.service}</RealName>
                 {subdomain ? " · Zerops subdomain" : null}
               </>
             }

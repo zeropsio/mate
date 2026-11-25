@@ -21,6 +21,7 @@ import {
   type SheetContext,
 } from "./AddressesSheetBits";
 import type { WebMode } from "./AddressesDomains";
+import { RealName as KitRealName } from "~/components/ui/real-name";
 
 export function AddressesZerops({
   ctx,
@@ -195,12 +196,12 @@ function HostLink({
     >
       {/* Its size is set here, around the mono face's own: every address of a service is one size. */}
       <span className="min-w-0 truncate text-body max-sm:text-caption">
-        <span className="real-name">
+        <KitRealName>
           <span className="font-medium">{named ? service : host.host}</span>
           {named ? (
             <span className="text-muted-foreground">{host.host.slice(service.length)}</span>
           ) : null}
-        </span>
+        </KitRealName>
       </span>
       <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
     </InlineButton>

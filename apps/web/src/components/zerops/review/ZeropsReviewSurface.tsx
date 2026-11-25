@@ -46,8 +46,10 @@ import {
   type RefObject,
 } from "react";
 
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
+import { Kbd } from "~/components/ui/kbd";
 import { Row } from "~/components/ui/row";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Failure } from "~/components/ui/failure";
@@ -66,6 +68,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
 import { InPhoneBar } from "../system/PhoneBar";
+import { SectionLabel } from "../system/SectionLabel";
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
@@ -296,6 +299,12 @@ export function ZeropsReviewSurface({
   // buttons keep their one row.
   const leadingFix = primary?.plain === true ? fix : undefined;
   const linkedFix = leadingFix === undefined ? fix : undefined;
+  const whyCopy =
+    whySaid && verdict.copyWhy === true ? (
+      <Button onClick={() => copyToClipboard(verdict.why)} size="sm" variant="link">
+        {isCopied ? "Copied" : "Copy"}
+      </Button>
+    ) : null;
   const softAsk = leadingFix === undefined ? ask : undefined;
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
@@ -410,22 +419,43 @@ export function ZeropsReviewSurface({
         )}
         {subtitle === undefined ? notice : null}
         {subtitle === undefined && (whySaid || linkedFix !== undefined || fixNote !== undefined) ? (
-          <div className="rv-why" data-tone={verdict.tone}>
-            {whySaid ? <span>{verdict.why}</span> : null}
-            {whySaid && verdict.copyWhy === true ? (
-              <Button onClick={() => copyToClipboard(verdict.why)} size="sm" variant="link">
-                {isCopied ? "Copied" : "Copy"}
-              </Button>
-            ) : null}
-            {linkedFix === undefined ? null : (
-              <Button onClick={linkedFix.onPress} size="sm" variant="link">
-                {linkedFix.label}
-              </Button>
-            )}
-            {fix !== undefined || fixNote === undefined ? null : (
-              <span className="rv-why-whose">{fixNote}</span>
-            )}
-          </div>
+          verdict.tone === "attention" || verdict.tone === "failed" ? (
+            // Trouble: a tinted callout, its fix the callout's action.
+            <Alert
+              className="mt-2.5"
+              controlAlignment="first-line"
+              data-review-why={verdict.tone}
+              surface="tint"
+              variant={verdict.tone === "failed" ? "error" : "warning"}
+            >
+              {whySaid ? <AlertTitle>{verdict.why}</AlertTitle> : null}
+              {fix !== undefined || fixNote === undefined ? null : (
+                <AlertDescription>{fixNote}</AlertDescription>
+              )}
+              {whyCopy === null && linkedFix === undefined ? null : (
+                <AlertAction>
+                  {whyCopy}
+                  {linkedFix === undefined ? null : (
+                    <Button onClick={linkedFix.onPress} size="sm" variant="link">
+                      {linkedFix.label}
+                    </Button>
+                  )}
+                </AlertAction>
+              )}
+            </Alert>
+          ) : (
+            // All is well: the why is a quiet line under the title.
+            <div className="rv-why">
+              {whySaid ? <span>{verdict.why}</span> : null}
+              {whyCopy}
+              {linkedFix === undefined ? null : (
+                <Button onClick={linkedFix.onPress} size="sm" variant="link">
+                  {linkedFix.label}
+                </Button>
+              )}
+              {fix !== undefined || fixNote === undefined ? null : <span>{fixNote}</span>}
+            </div>
+          )
         ) : null}
       </header>
       <div className="rv-body" data-queue-in={queue?.arrived}>
@@ -616,9 +646,9 @@ function ReviewPrimary({
       {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
       {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
       {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-        <kbd aria-hidden="true" className="rv-keys">
+        <Kbd aria-hidden="true" tone="ink">
           {PRESS_KEYS}
-        </kbd>
+        </Kbd>
       ) : null}
     </Button>
   );
@@ -698,19 +728,24 @@ export interface ReviewFoldState {
 }
 
 /**
- * One section: its small label, what it counts on the right, and what it holds. Folded, its
- * label is a row that opens it — "Files 4 changed · +163 −12 ⌄" — and what it holds stays drawn,
- * hidden, so nothing it read or was typed into it is lost while it is shut.
+ * One section: its label (the kit's `SectionLabel`) with what it counts beside it and its state or
+ * press at the line's end, and what it holds. Folded, its label is the press that opens it —
+ * "Files · 4 changed · +163 −12 ⌄" — and what it holds stays drawn, hidden, so nothing it read or
+ * was typed into it is lost while it is shut.
  */
 export function ReviewSection({
   title,
-  aside,
+  count,
+  action,
   fold,
   titleShown = true,
   children,
 }: {
   readonly title: string;
-  readonly aside?: ReactNode;
+  /** What it counts, said beside its title. */
+  readonly count?: ReactNode;
+  /** Its own state or press, at its label's end. */
+  readonly action?: ReactNode;
   readonly fold?: ReviewFoldState | undefined;
   /** Whether its label is seen; one what it holds already says is kept for screen readers only. */
   readonly titleShown?: boolean | undefined;
@@ -719,13 +754,9 @@ export function ReviewSection({
   if (fold !== undefined) {
     return (
       <Collapsible onOpenChange={fold.onToggle} open={fold.open} render={<section />}>
-        <h3 className="rv-sec-h">
-          <CollapsibleTrigger className="-my-1.5 flex h-7 w-full items-center gap-2.5 text-start text-muted-foreground outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-y-2 pointer-coarse:after:inset-x-0">
-            <span>{title}</span>
-            {aside === undefined ? null : <span className="rv-fold-aside">{aside}</span>}
-            <ChevronDownIcon aria-hidden="true" className="rv-fold-chev" />
-          </CollapsibleTrigger>
-        </h3>
+        <SectionLabel action={action} count={count} folds level={3}>
+          {title}
+        </SectionLabel>
         <CollapsiblePanel className="mt-3" keepMounted>
           {children}
         </CollapsiblePanel>
@@ -734,11 +765,10 @@ export function ReviewSection({
   }
   return (
     <section>
-      {titleShown || aside !== undefined ? (
-        <h3 className={titleShown ? "rv-sec-h" : "rv-sec-h justify-end"}>
+      {titleShown || action !== undefined ? (
+        <SectionLabel action={action} count={titleShown ? count : undefined} level={3}>
           {titleShown ? title : <span className="sr-only">{title}</span>}
-          {aside === undefined ? null : <span>{aside}</span>}
-        </h3>
+        </SectionLabel>
       ) : (
         <h3 className="sr-only">{title}</h3>
       )}
@@ -795,7 +825,7 @@ export function ReviewTry({
           );
         })}
       </div>
-      {everything ? <p className="rv-try-note">{tryItEverything(mateName)}</p> : null}
+      {everything ? <p className="rv-note">{tryItEverything(mateName)}</p> : null}
     </ReviewSection>
   );
 }

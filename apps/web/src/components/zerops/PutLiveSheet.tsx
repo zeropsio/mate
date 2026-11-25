@@ -15,7 +15,8 @@ import { useId, useRef } from "react";
 import type { PutLiveService, PutLiveSheetModel } from "~/zerops/putLive.logic";
 
 import { Button } from "../ui/button";
-import { Radio, RadioGroup } from "../ui/radio-group";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
+import { Skeleton } from "../ui/skeleton";
 import {
   DialogClose,
   DialogDescription,
@@ -77,7 +78,7 @@ export function PutLiveSheet({
               {what === undefined ? (
                 // What is merged, still read: its title's room held, no words it takes back.
                 <p aria-hidden="true" className="put-live-stop-t">
-                  <span className="put-live-skel w-48" />
+                  <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
                 </p>
               ) : (
                 <>
@@ -117,7 +118,7 @@ export function PutLiveSheet({
               {where.creates === undefined ? (
                 // The setup files, still read: the line's room held.
                 <p aria-hidden="true" className="put-live-stop-l">
-                  <span className="put-live-skel w-56" />
+                  <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
                 </p>
               ) : where.creates.length === 0 ? null : (
                 <p className="put-live-stop-l">{createsLine(where.creates)}</p>
@@ -126,8 +127,8 @@ export function PutLiveSheet({
                 // Who it is for, still read: both answers' room held.
                 <div aria-hidden="true" className="put-live-ask">
                   <p className="put-live-ask-t">Who is it for?</p>
-                  <span className="put-live-shape-held" />
-                  <span className="put-live-shape-held" data-long="" />
+                  <Skeleton className="h-23.5" shape="card" />
+                  <Skeleton className="mt-0.5 h-32.5" shape="card" />
                 </div>
               ) : where.shapes.length === 0 ? null : (
                 <div className="put-live-ask">
@@ -144,18 +145,10 @@ export function PutLiveSheet({
                     value={where.shape ?? null}
                   >
                     {where.shapes.map((choice) => (
-                      <label
-                        className="put-live-shape"
-                        data-chosen={choice.shape === where.shape || undefined}
-                        key={choice.shape}
-                      >
-                        <Radio className="mt-0.5" value={choice.shape} />
-                        <span className="put-live-shape-body">
-                          <span className="put-live-shape-t">{choice.title}</span>
-                          <span className="put-live-stop-l">{choice.line}</span>
-                          <span className="put-live-shape-m">{choice.meta}</span>
-                        </span>
-                      </label>
+                      <RadioCard key={choice.shape} title={choice.title} value={choice.shape}>
+                        <span>{choice.line}</span>
+                        <span className="mt-0.5 tabular-nums">{choice.meta}</span>
+                      </RadioCard>
                     ))}
                   </RadioGroup>
                 </div>

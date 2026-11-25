@@ -32,6 +32,7 @@ import { useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Failure } from "../../ui/failure";
 import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { readFinishedWork } from "./CrewmateEmptyState.logic";
@@ -157,9 +158,9 @@ export function CrewInFensCode({
         </div>
       )}
       {error === null ? null : (
-        <p className="ps-14 pe-4 text-line leading-4.5 text-status-failed-text" role="alert">
-          {error}
-        </p>
+        <div className="ps-14 pe-4">
+          <Failure cause={error} role="alert" size="line" />
+        </div>
       )}
     </div>
   );

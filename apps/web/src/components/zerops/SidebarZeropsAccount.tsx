@@ -14,6 +14,7 @@
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import { cn } from "~/lib/utils";
 import {
   organizationBillingAtom,
   type BillingTone,
@@ -235,13 +236,18 @@ export function SidebarZeropsAccount({
           picture={account.avatarUrl}
           size={32}
         />
-        <span className="menu-foot-lines">
+        <span className="grid min-w-0 flex-auto">
           {/* A first visit: the seat, a line tall, until the name it will keep is known. */}
-          <span className="menu-foot-name">{nameHeld ? "\u00a0" : lines.name}</span>
+          <span className="min-w-0 truncate text-emphasis leading-5 font-medium text-sidebar-foreground">
+            {nameHeld ? "\u00a0" : lines.name}
+          </span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
-            <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
+            <span
+              className="truncate text-caption text-sidebar-muted-foreground"
+              data-zerops-surface="sidebar-account-role"
+            >
               {role.before}
               <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
               {role.after}
@@ -251,7 +257,7 @@ export function SidebarZeropsAccount({
         {credit === null ? null : <AccountCredit credit={credit} />}
         <span
           aria-hidden="true"
-          className="menu-foot-button group-hover/foot:text-sidebar-foreground group-data-popup-open/foot:text-sidebar-foreground"
+          className="grid size-8 flex-none place-items-center text-sidebar-muted-foreground transition-colors duration-150 ease-out-strong group-hover/foot:text-sidebar-foreground group-data-popup-open/foot:text-sidebar-foreground"
         >
           <EllipsisIcon className="size-4" />
         </span>
@@ -608,6 +614,14 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
   return { amount: compactUsd(billing.total), tone: billing.tone, words };
 }
 
+/** The readout's ink by how the credit stands; it comes in, and changes tone, without a cut. */
+const CREDIT_INK: Readonly<Record<BillingTone, string>> = {
+  quiet:
+    "flex flex-none items-center gap-1.5 text-body font-medium whitespace-nowrap tabular-nums motion-safe:transition-[opacity,color] motion-safe:duration-200 motion-safe:ease-out-strong motion-safe:starting:opacity-0 text-sidebar-foreground",
+  low: "flex flex-none items-center gap-1.5 text-body font-medium whitespace-nowrap tabular-nums motion-safe:transition-[opacity,color] motion-safe:duration-200 motion-safe:ease-out-strong motion-safe:starting:opacity-0 text-status-attention-text",
+  out: "flex flex-none items-center gap-1.5 text-body font-medium whitespace-nowrap tabular-nums motion-safe:transition-[opacity,color] motion-safe:duration-200 motion-safe:ease-out-strong motion-safe:starting:opacity-0 text-status-failed-text",
+};
+
 /**
  * The balance as the foot's one readout, on the row's centre line with its dots: Billing's own
  * mark, then the figure with its currency sign stepped back. Its colour is how it stands; the
@@ -615,17 +629,19 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
  */
 function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
   const sign = credit.amount.indexOf("$") + 1;
+  // A value, so quieter than the name; its mark and its currency sign step back so the digits are
+  // what is read — unless credit needs the person, when the whole readout takes the tone.
+  const step = credit.tone === "quiet" ? "text-sidebar-muted-foreground" : undefined;
   return (
     <span
       aria-hidden="true"
-      className="menu-foot-credit"
-      data-tone={credit.tone}
+      className={CREDIT_INK[credit.tone]}
       data-zerops-surface="sidebar-account-credit"
       ref={fadeFillIn}
     >
-      <WalletIcon className="size-3.5" />
+      <WalletIcon className={cn("size-3.5 flex-none", step)} />
       <span>
-        <span className="menu-foot-credit-sign">{credit.amount.slice(0, sign)}</span>
+        <span className={step}>{credit.amount.slice(0, sign)}</span>
         {credit.amount.slice(sign)}
       </span>
     </span>

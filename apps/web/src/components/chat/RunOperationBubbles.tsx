@@ -60,6 +60,7 @@ import {
   SlotStandsOpenContext,
   useCarried,
 } from "./runCardContext";
+import { RealName } from "~/components/ui/real-name";
 
 /** An operation whose call returned while it runs on: the band under the chat draws it. */
 function runsOnInBand(operation: ZeropsOperation): boolean {
@@ -226,7 +227,7 @@ function WatchedOperationBubble(props: OperationLineProps) {
 
 /**
  * A line's words with the service they name in the mono face: a hostname is a real thing's own
- * name, never a label (`.real-name`). Only where it stands as a word of its own.
+ * name, never a label (`RealName`). Only where it stands as a word of its own.
  */
 function ServiceNamed({
   words,
@@ -244,7 +245,7 @@ function ServiceNamed({
   return (
     <>
       {words.slice(0, at)}
-      <span className="real-name">{name}</span>
+      <RealName>{name}</RealName>
       {words.slice(end)}
     </>
   );

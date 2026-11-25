@@ -72,6 +72,9 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
+import { Loading } from "~/components/ui/loading";
+import { Skeleton } from "~/components/ui/skeleton";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
@@ -1031,7 +1034,9 @@ function OutsideCommitsList({
   const { list } = outside;
   // Not counted yet: its line's place, never a sentence the count takes back.
   if (list.state === "pending") {
-    return <span aria-hidden="true" className="rv-pskel mt-2.5 w-44" />;
+    return (
+      <Skeleton aria-hidden="true" className="mt-2.5 h-2.5 w-44" shape="pill" surface="card" />
+    );
   }
   return (
     <>
@@ -1046,7 +1051,9 @@ function OutsideCommitsList({
           </>
         ) : null}
       </p>
-      {list.state === "reading" ? <p className="rv-note">Comparing in HQ…</p> : null}
+      {list.state === "reading" ? (
+        <Loading className="mt-1.5" label="Comparing in HQ" shape="words" />
+      ) : null}
       {list.state === "failed" ? (
         <ZeropsReadFailure action="Compare again" reason={list.reason} again={list.again} />
       ) : null}
@@ -1321,7 +1328,9 @@ export function ReleaseReadingView({
         held: { by: stateId, words: RELEASE_READING },
         onPress: () => undefined,
       }}
-      subtitle={<span aria-hidden="true" className="rv-pskel my-1 w-56" />}
+      subtitle={
+        <Skeleton aria-hidden="true" className="my-1 h-2.5 w-56" shape="pill" surface="card" />
+      }
       title="Release"
       titleId={titleId}
       verdict={{
@@ -1339,7 +1348,7 @@ export function ReleaseReadingView({
         <ReleaseRowsSkeleton count={1} />
       </ReviewSection>
       <ReviewSection
-        aside={<PlanState id={stateId} state={READING_STARTED} />}
+        action={<PlanState id={stateId} state={READING_STARTED} />}
         title="What happens in production"
       >
         <ReleasePlanSkeleton steps={2} />
@@ -1353,11 +1362,20 @@ function ReleaseRowsSkeleton({ count }: { readonly count: number }) {
   return (
     <div aria-busy="true" className="rv-rel">
       {Array.from({ length: Math.max(1, Math.min(count, ROWS_SHOWN)) }, (_, index) => (
-        <div aria-hidden="true" className="rv-relrow" data-skeleton="" key={index}>
-          <span className="rv-pskel" />
-          <span className={`rv-pskel rv-relrow-t ${index % 2 === 0 ? "w-64" : "w-48"}`} />
-          <span className="rv-pskel rv-relrow-sub w-28" />
-        </div>
+        <Row
+          aria-hidden="true"
+          key={index}
+          lead={<Skeleton className="size-4.5" shape="pill" surface="card" />}
+          line={<Skeleton className="my-1 h-2 w-28" shape="pill" surface="card" />}
+          size="sm"
+          title={
+            <Skeleton
+              className={index % 2 === 0 ? "h-2.5 w-64" : "h-2.5 w-48"}
+              shape="pill"
+              surface="card"
+            />
+          }
+        />
       ))}
     </div>
   );
@@ -1828,7 +1846,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       untold.length === 0 &&
       props.comparisonFailure === undefined ? null : (
         <ReviewSection
-          aside={
+          count={
             counted === undefined
               ? undefined
               : [
@@ -1867,7 +1885,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       )}
       {nothing ? null : (
         <ReviewSection
-          aside={
+          action={
             planState === undefined ? undefined : (
               <PlanState id={stateId} onAgain={props.onRetryServicePlan} state={planState} />
             )
@@ -2464,7 +2482,7 @@ function RollbackListSection({
   const listed = list.state === "known" && list.rows.length > 0;
   return (
     <ReviewSection
-      aside={listed ? changesCountWords(list.count, list.atLeast) : undefined}
+      count={listed ? changesCountWords(list.count, list.atLeast) : undefined}
       title={title}
     >
       {listed ? (

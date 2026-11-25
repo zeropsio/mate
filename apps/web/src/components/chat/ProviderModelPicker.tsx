@@ -4,9 +4,10 @@ import {
   type ResolvedKeybindingsConfig,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { ZapIcon } from "lucide-react";
+import { ChevronDownIcon, ZapIcon } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -22,7 +23,6 @@ import {
   getTriggerDisplayModelName,
 } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
-import { ComposerControl, ComposerControlChevron } from "./ComposerControl";
 import {
   composerModelControlLabel,
   composerModelControlText,
@@ -74,7 +74,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   rememberAs?: string | undefined;
   terminalOpen?: boolean;
   open?: boolean;
-  triggerClassName?: string;
   triggerAriaLabel?: string;
   /**
    * Replaces the trigger's visible text (e.g. "Sign this Mate in" when
@@ -295,15 +294,16 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       >
         <PopoverTrigger
           render={
-            <ComposerControl
+            <Button
               aria-label={availabilityName(props.triggerAriaLabel ?? text, availability)}
-              className={cn("min-w-0 shrink", props.triggerClassName)}
+              className="min-w-0 shrink"
               data-chat-provider-model-picker="true"
               data-composer-shortcut={props.composer.shortcuts}
               // Unknown catalog evidence reserves the control and keeps its menu shut.
               disabled={props.disabled === true && props.catalogPending !== true}
               aria-disabled={props.catalogPending === true || undefined}
-              size="quiet"
+              size="sm"
+              variant="ghost-muted"
             />
           }
         >
@@ -345,15 +345,18 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               Text only
             </Badge>
           ) : null}
-          <ComposerControlChevron size="quiet" />
+          <ChevronDownIcon aria-hidden="true" />
         </PopoverTrigger>
         <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
           {/* The note and the menu share the room the popup has: the list scrolls inside it. */}
-          <div className="composer-model-popup">
+          <div className="flex max-h-[var(--available-height,100vh)] flex-col">
             {availability === null ? null : (
               <AvailabilityNote availability={availability} onOpenSetup={null} />
             )}
-            <div className="composer-model-menu">
+            {/* The models, and beside them the model's effort, its other choices and the access:
+                both columns share one height, capped by the room above the composer, and the
+                choices scroll on their own. A narrow screen stacks them. */}
+            <div className="flex h-[min(28rem,var(--available-height,100vh))] min-h-0 flex-initial *:data-model-picker-content:h-full *:data-model-picker-content:max-h-none max-sm:h-auto max-sm:max-h-[var(--available-height,100vh)] max-sm:flex-col max-sm:overflow-y-auto max-sm:*:data-model-picker-content:h-86.5 max-sm:*:data-model-picker-content:flex-none">
               {content}
               {props.composer.choices}
             </div>
@@ -376,14 +379,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     >
       <PopoverTrigger
         render={
-          <ComposerControl
+          <Button
             aria-label={props.triggerAriaLabel}
             data-chat-provider-model-picker="true"
-            className={cn(
-              "min-w-0 max-w-48 shrink justify-between whitespace-nowrap sm:max-w-56",
-              props.triggerClassName,
-            )}
+            className="min-w-0 shrink-0 justify-between"
             disabled={props.disabled}
+            size="sm"
+            variant="ghost-muted"
           />
         }
       >
@@ -421,7 +423,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
         </span>
         <span aria-hidden="true" className="flex items-center">
-          <ComposerControlChevron />
+          <ChevronDownIcon />
         </span>
       </PopoverTrigger>
       <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>

@@ -1,0 +1,15 @@
+/* The overview's, the project page's and Settings › Team's choreographies: only their keyframes,
+   each applied by its `--animate-*` theme token (`foundation.css`). */
+
+/* An invitation just sent grows in once, top first (`animate-card-arrive`). */
+@keyframes card-arrive {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}

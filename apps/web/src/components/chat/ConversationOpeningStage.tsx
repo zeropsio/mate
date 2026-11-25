@@ -19,6 +19,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { onReducedMotionChange, prefersReducedMotion } from "~/lib/reducedMotion";
+import { cn } from "~/lib/utils";
 import { gatedPortal } from "../ui/portal-gate";
 import {
   MateConnectionState,
@@ -199,7 +200,7 @@ export function stageSaysMate(
 /**
  * What the header says of the Mate — its name, what it is on — held in its place, unseen and
  * unsaid, while the opening stage says the Mate (`stageSaysMate`), and arriving with the
- * conversation from the moment it is placed (`data-opening-arrives`, `index.css`).
+ * conversation from the moment it is placed.
  */
 export function ConversationOpeningYields({ children }: { readonly children: ReactNode }) {
   const says = use(Opening)?.saysMate === true;
@@ -207,9 +208,10 @@ export function ConversationOpeningYields({ children }: { readonly children: Rea
   return (
     <span
       aria-hidden={says || undefined}
-      className="contents"
-      data-opening-arrives={arrives ? "" : undefined}
-      data-opening-header={says ? "yields" : "says"}
+      className={cn(
+        "contents",
+        arrives ? "*:animate-arrive" : says && "*:pointer-events-none *:opacity-0",
+      )}
     >
       {children}
     </span>
@@ -255,10 +257,10 @@ export function ConversationOpeningArrival({ onArrive }: { readonly onArrive: ()
 /**
  * A part of the conversation's surface that waits for the opening: its children — or, `whole`,
  * the element itself — are unseen while the stage waits, and arrive with the conversation from
- * the moment it is placed (`index.css`), wherever the stage stands while the route changes.
- * The element reads the opening itself, so the view around it never renders for an opening's
- * steps; and the style sheet asks no `:has()` of the page, which restyled the whole document
- * for every node added anywhere in it.
+ * the moment it is placed, wherever the stage stands while the route changes. The element reads
+ * the opening itself, so the view around it never renders for an opening's steps, and nothing
+ * asks a `:has()` of the page, which restyled the whole document for every node added anywhere
+ * in it.
  */
 export function ConversationOpeningWaits({
   as = "span",
@@ -282,13 +284,32 @@ export function ConversationOpeningWaits({
     foot
       ? {
           ...props,
-          "data-opening-waits-foot": wait === "" ? undefined : wait,
+          className: cn(
+            props.className,
+            wait === "held" && "opacity-0 transition-none",
+            wait === "arrives" && "animate-arrive motion-reduce:animate-none",
+          ),
           // Under the stage the foot takes no keys: nothing typed is ever unseen.
           inert: wait === "held" ? true : props.inert,
         }
       : whole
-        ? { ...props, "data-opening-waits-whole": wait === "" ? undefined : wait }
-        : { ...props, "data-opening-waits": wait },
+        ? {
+            ...props,
+            className: cn(
+              props.className,
+              wait === "held" && "opacity-0 transition-none",
+              wait === "arrives" && "animate-arrive",
+            ),
+            "data-opening-waits-whole": wait === "" ? undefined : wait,
+          }
+        : {
+            ...props,
+            className: cn(
+              props.className,
+              wait === "held" && "*:pointer-events-none *:opacity-0",
+              wait === "arrives" && "*:animate-arrive",
+            ),
+          },
   );
 }
 
@@ -309,9 +330,10 @@ function OpeningAvatar({ children }: { readonly children: ReactElement<MateFaceP
   const arrives = use(OpeningWaitContext) === "arrives";
   return (
     <span
-      className="relative block size-6 shrink-0"
-      data-conversation-avatar=""
-      data-opening-arrives={arrives ? "" : undefined}
+      className={cn(
+        "relative block size-6 shrink-0",
+        arrives && "*:animate-arrive motion-reduce:*:animate-none",
+      )}
       ref={ref}
     >
       {opening?.stage?.mate == null || arrives ? children : null}
@@ -508,11 +530,14 @@ function OpeningSequence({
   const stage = useRef<HTMLDivElement>(null);
   const source = useRef<HTMLDivElement>(null);
   // A stable portal container moves between the two slots; neither React nor the browser clones it.
-  const [faceHost] = useState(() =>
-    typeof document !== "undefined" && typeof document.createElement === "function"
-      ? document.createElement("span")
-      : null,
-  );
+  const [faceHost] = useState(() => {
+    if (typeof document === "undefined" || typeof document.createElement !== "function")
+      return null;
+    const host = document.createElement("span");
+    // Decorative: the header's press owns the pointer once the face has landed in it.
+    host.className = "pointer-events-none block size-full";
+    return host;
+  });
   const setSource = useCallback(
     (node: HTMLDivElement | null) => {
       source.current = node;
@@ -547,7 +572,6 @@ function OpeningSequence({
   }, [phase, finish, faceHost]);
   useLayoutEffect(() => {
     if (faceHost === null) return;
-    faceHost.setAttribute("data-opening-face", phase === "skipped" ? "complete" : phase);
     if (phase === "complete" || phase === "skipped") {
       faceHost.removeAttribute("style");
       if (avatar?.node.isConnected) avatar.node.appendChild(faceHost);
@@ -599,8 +623,14 @@ function OpeningSequence({
             };
     return createPortal(
       <div
-        className="relative size-full"
-        data-opening-actor={landed ? "complete" : phase}
+        className={cn(
+          "relative size-full",
+          // The stage's eyes are solid drawings throughout (the face's own easing is held off them,
+          // `!` over mate-face.css); waking, only their height opens.
+          !landed && "[&_:is([data-mate-face-eye],[data-mate-face-shut])]:transition-none!",
+          phase === "wake" &&
+            "[&_[data-mate-face-eye]]:origin-center! [&_[data-mate-face-eye]]:transform-fill! [&_[data-mate-face-eye]]:animate-conversation-eye-open! motion-reduce:[&_[data-mate-face-eye]]:animate-none!",
+        )}
         onAnimationEnd={(event) => {
           if (
             event.animationName === "conversation-eye-open" &&
@@ -625,14 +655,20 @@ function OpeningSequence({
         // nothing more to assistive technology and takes no press; the header says the Mate now.
         aria-hidden={phase === "waiting" ? undefined : true}
         inert={phase === "wake" || phase === "hand-off"}
-        className={
+        className={cn(
           phase === "skipped"
             ? "invisible pointer-events-none absolute inset-0 z-10"
             : scene.content === undefined
               ? "pointer-events-none absolute inset-0 z-10"
-              : "pointer-events-auto absolute inset-0 z-10"
-        }
-        data-conversation-opening={phase === "skipped" ? undefined : phase}
+              : "pointer-events-auto absolute inset-0 z-10",
+          // From the moment the conversation is placed, through the eyes' opening and the hand-off
+          // after it, the stage's words and face fade where they stand: one exit, never started
+          // again as the phase changes. The hand-off's own animation only marks its end.
+          (phase === "wake" || phase === "hand-off") && "*:animate-stage-exit",
+          phase === "hand-off" && "animate-conversation-handoff",
+          phase === "complete" && "invisible",
+          "motion-reduce:animate-none!",
+        )}
         ref={stage}
         onAnimationEnd={(event) => {
           if (

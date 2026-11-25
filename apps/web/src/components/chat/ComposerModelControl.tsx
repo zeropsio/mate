@@ -10,9 +10,11 @@
  */
 import type { ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { getProviderOptionCurrentLabel } from "@t3tools/shared/model";
+import { Select as SelectPrimitive } from "@base-ui/react/select";
 import {
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
   LockIcon,
   LockOpenIcon,
   PencilRulerIcon,
@@ -23,10 +25,10 @@ import {
 import { memo, type KeyboardEvent, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Button } from "../ui/button";
 import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
 import { useTraitsControls } from "./TraitsPicker";
 
 /** What the traits are read from and written to: the model, the prompt, the draft. */
@@ -260,6 +262,7 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
   readonly onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const access = COMPOSER_ACCESS[props.runtimeMode];
+  const AccessIcon = access.icon;
   return (
     <Tooltip>
       <Select
@@ -270,16 +273,22 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
       >
         <TooltipTrigger
           render={
-            <ComposerSelectControl
-              aria-label="Access"
-              className="min-w-0 shrink"
-              data-composer-shortcut="composer.mode"
-              size="quiet"
+            <SelectPrimitive.Trigger
+              render={
+                <Button
+                  aria-label="Access"
+                  className="min-w-0 shrink"
+                  data-composer-shortcut="composer.mode"
+                  size="sm"
+                  variant="ghost-muted"
+                />
+              }
             />
           }
         >
-          <ComposerControlIcon icon={access.icon} size="quiet" />
+          <AccessIcon aria-hidden="true" />
           <SelectValue>{access.label}</SelectValue>
+          <ChevronDownIcon aria-hidden="true" />
         </TooltipTrigger>
         <SelectPopup alignItemWithTrigger={false}>
           {ACCESS_MODES.map((mode) => {
@@ -321,17 +330,19 @@ export const ComposerInteractionModeToggle = memo(function ComposerInteractionMo
     <Tooltip>
       <TooltipTrigger
         render={
-          <ComposerControl
+          <Button
             aria-label={tooltip}
             aria-pressed={planning}
             className="shrink-0"
+            // Plan mode on wears the ghost's pressed ground.
+            data-pressed={planning ? "" : undefined}
             onClick={props.onToggle}
-            size="quiet"
-            type="button"
+            size="sm"
+            variant="ghost-muted"
           />
         }
       >
-        <ComposerControlIcon icon={planning ? PencilRulerIcon : BotIcon} size="quiet" />
+        {planning ? <PencilRulerIcon aria-hidden="true" /> : <BotIcon aria-hidden="true" />}
         <span className="sr-only sm:not-sr-only">{planning ? "Plan" : "Build"}</span>
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>

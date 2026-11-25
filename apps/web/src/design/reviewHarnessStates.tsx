@@ -1390,6 +1390,33 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     },
   },
   {
+    id: "release-findings",
+    label:
+      "Release · HQ found what stops it: each finding a tinted callout, its identifiers folded",
+    props: {
+      over: {
+        gate: { allowed: false, reason: "HQ found two things to fix before this release." },
+        problems: [
+          {
+            code: "zerops-yaml-invalid",
+            what: "zerops.yaml names a build base that does not exist: nodejs@19.",
+            where: { appId: "app-tea", service: "api", file: "zerops.yaml" },
+            rule: { source: "zerops-schema", instancePath: "/zerops/0/build/base" },
+            next: { actor: "mate", action: "Ask Nova to pick nodejs@22 and push again." },
+          },
+          {
+            code: "env-missing",
+            what: "STRIPE_KEY is read by the api but production has no value for it.",
+            where: { appId: "app-tea", environment: "production", service: "api" },
+            rule: { source: "hq", code: "env-missing" },
+            next: { actor: "person", action: "Add the value in production's vault." },
+            evidence: { processId: "proc-8f2a" },
+          },
+        ],
+      },
+    },
+  },
+  {
     id: "release-blocked-permission",
     label: "Release · not this person's to press",
     props: {

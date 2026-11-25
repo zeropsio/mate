@@ -32,6 +32,7 @@ import {
 } from "../../ui/alert-dialog";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
+import { EmptyState } from "../../ui/empty";
 import { Row } from "../../ui/row";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -62,6 +63,9 @@ import {
 } from "./projectPeople.logic";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
+import { SectionLabel } from "../system/SectionLabel";
+import { Failure } from "~/components/ui/failure";
+import { cn } from "~/lib/utils";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -103,7 +107,7 @@ interface ProjectAccessChipsProps {
   readonly adding?: boolean;
   /** Whether a chip's face leads to that person's Team page; absent, none does. */
   readonly personPage?: PersonPageLink;
-  /** One person a row, a small face and the level at the row's end: the New project page's list. */
+  /** One person a `Row`, a small face and the level at the row's end: the New project page's list. */
   readonly rows?: boolean;
 }
 
@@ -144,32 +148,35 @@ export function ProjectAccessChips({
       ? { candidates: view.candidates, onAdd }
       : null;
   return (
-    <section className={heading ? "ov-sec" : "ov-access"} aria-label={label}>
-      {heading ? <h3 className="ov-sec-name">{label}</h3> : null}
+    <section
+      aria-label={label}
+      className={heading ? CARD_SECTION : rows ? "grid gap-1.5" : "grid gap-1.5 pb-3"}
+    >
+      {heading ? <SectionLabel level={3}>{label}</SectionLabel> : null}
       {view.kind === "reading" ? (
         <Loading count={2} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
-        <p className="ov-sec-empty">{view.line}</p>
+        <Failure cause={view.line} size="line" />
       ) : (
-        <ul aria-label={label} className="ov-chips" data-rows={rows || undefined}>
-          {view.people.map((person) => (
-            <AccessChip
-              busy={saving?.has(person.key) === true}
-              face={rows ? 24 : 32}
-              key={person.key}
-              linked={personPage?.(person.key) === true}
-              {...(onChoose === undefined
-                ? {}
-                : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
-              person={person}
-            />
-          ))}
+        <ul aria-label={label} className={rows ? "flex flex-col" : ACCESS_CHIPS}>
+          {view.people.map((person) => {
+            const Person = rows ? AccessRow : AccessChip;
+            return (
+              <Person
+                busy={saving?.has(person.key) === true}
+                key={person.key}
+                linked={personPage?.(person.key) === true}
+                {...(onChoose === undefined
+                  ? {}
+                  : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
+                person={person}
+              />
+            );
+          })}
         </ul>
       )}
       {said.map(({ key, line }) => (
-        <p className="ov-sec-empty" data-tone="failed" key={key} role="alert">
-          {line}
-        </p>
+        <Failure cause={line} key={key} role="alert" size="line" />
       ))}
       {/* Adding people is a quiet tool under the people, never a tile as big as one of them. */}
       {addable === null ? null : (
@@ -181,6 +188,47 @@ export function ProjectAccessChips({
     </section>
   );
 }
+
+/**
+ * A section of a card: a hairline over it, its label hugging what it holds. Opened alone in a
+ * dialog (`data-sections="bare"`), it stands there with no rule, named by the dialog's title.
+ */
+export const CARD_SECTION =
+  "mt-4 grid gap-1 border-t border-border/60 px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-zerops-section-label]]:hidden";
+
+/**
+ * Who reaches a project, as people chips: as many columns of at least 168 px as fit (232 px for
+ * `wide` chips, a person's projects, whose names are longer).
+ */
+export const ACCESS_CHIPS = "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2";
+export const ACCESS_CHIPS_WIDE =
+  "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-2";
+
+/**
+ * A chip: a pill lifted off its card, its face and words, a ⋮ where it has a menu. A quiet press's
+ * hover on it is a step over the lift.
+ */
+export function accessChip(menu: boolean): string {
+  return cn(
+    "grid h-12 grid-cols-[minmax(0,1fr)] items-center rounded-full bg-foreground/4 px-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]",
+    menu && "grid-cols-[minmax(0,1fr)_auto] pe-1",
+  );
+}
+
+/** A chip's face and words: a 32 px face, then its name over its level. */
+export const ACCESS_CHIP_WHO =
+  "grid min-w-0 cursor-default grid-cols-[32px_minmax(0,1fr)] items-center gap-x-2.5";
+export const ACCESS_CHIP_TEXT = "grid min-w-0 justify-items-start gap-y-0.75";
+export const ACCESS_CHIP_NAME =
+  "max-w-full truncate text-body leading-4 font-medium text-foreground";
+
+/** A line of a chip's hover card. */
+const HOVER_LINE = "text-caption leading-4 text-muted-foreground";
+
+/** An access picker's parts, in its popover: the search, the list, the foot under a hairline. */
+export const PICK_SEARCH = "px-3 pt-3 pb-2";
+export const PICK_LIST = "grid max-h-72 overflow-y-auto px-1.5 pb-1.5";
+export const PICK_FOOT = "grid border-t border-border px-3 pt-2.5 pb-3";
 
 /** The level a chip holds, as a small badge: an icon and a word. */
 const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
@@ -202,52 +250,43 @@ export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?:
   );
 }
 
-function AccessChip({
-  person,
-  busy,
-  face,
-  linked,
-  onChoose,
-}: {
+interface AccessPersonProps {
   readonly person: ProjectPerson;
   readonly busy: boolean;
-  /** The face's size: 32 on a chip, 24 on a row. */
-  readonly face: 24 | 32;
   /** The face leads to the person's own Team page. */
   readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
-}) {
+}
+
+/** A pill in the chips' grid: a 32 px face, the short name over the level, then the ⋮. */
+function AccessChip({ person, busy, linked, onChoose }: AccessPersonProps) {
   const change = person.change;
-  const [asking, setAsking] = useState<AccessChoice | null>(null);
-  const choose = (choice: AccessChoice) => {
-    if (change !== null && asksFirst(change, choice)) setAsking(choice);
-    else onChoose?.(choice);
-  };
+  const { choose, asking } = useAskFirst(person, onChoose);
   return (
-    <li
-      className="ov-chip"
-      data-menu={(change !== null && onChoose !== undefined) || undefined}
-      data-pending={person.pending || undefined}
-    >
+    <li className={accessChip(change !== null && onChoose !== undefined)}>
       <Tooltip>
         <TooltipTrigger
           render={
             linked ? (
+              // The face leads to the person's own Team page.
               <Link
-                className="ov-chip-who"
+                className={cn(
+                  ACCESS_CHIP_WHO,
+                  "group/who cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  person.pending && "opacity-55",
+                )}
                 params={{ clientUserId: person.key }}
                 to="/settings/team/$clientUserId"
               />
             ) : (
-              <span className="ov-chip-who" />
+              <span className={cn(ACCESS_CHIP_WHO, person.pending && "opacity-55")} />
             )
           }
         >
-          <PersonAvatar name={person.name} picture={person.avatarUrl} size={face} />
-          <span className="ov-chip-text">
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
+          <span className={ACCESS_CHIP_TEXT}>
             <span
-              className="ov-chip-name"
-              data-creator={person.creator || undefined}
+              className={cn(ACCESS_CHIP_NAME, "underline-offset-2 group-hover/who:underline")}
               data-part="name"
             >
               {person.creator ? "You" : person.short}
@@ -262,54 +301,134 @@ function AccessChip({
       {change === null || onChoose === undefined ? null : (
         <ChipMenu busy={busy} change={change} name={person.name} onChoose={choose} />
       )}
-      {change?.selfLower === undefined ? null : (
-        <AlertDialog
-          onOpenChange={(open) => {
-            if (!open) setAsking(null);
-          }}
-          open={asking !== null}
-        >
-          <AlertDialogPopup>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
-              <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
-              <Button
-                onClick={() => {
-                  if (asking !== null) onChoose?.(asking);
-                  setAsking(null);
-                }}
-                variant="destructive"
-              >
-                Give it up
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogPopup>
-        </AlertDialog>
-      )}
+      {asking}
     </li>
   );
+}
+
+/**
+ * One person a row (the kit's `Row`, as the *Add people* card's found people): a 20 px face, the
+ * short name with who they are on hover, and the level and the ⋮ at the row's end. An invitation's
+ * face and name are dimmed; its level and menu stay at full ink.
+ */
+function AccessRow({ person, busy, linked, onChoose }: AccessPersonProps) {
+  const change = person.change;
+  const { choose, asking } = useAskFirst(person, onChoose);
+  const dim = person.pending ? "opacity-55" : undefined;
+  return (
+    <Row
+      control={
+        <>
+          <AccessBadge busy={busy} level={person.level} />
+          {change === null || onChoose === undefined ? null : (
+            <ChipMenu
+              busy={busy}
+              change={change}
+              name={person.name}
+              onChoose={choose}
+              size="icon-xs"
+            />
+          )}
+          {asking}
+        </>
+      }
+      lead={
+        <span className={dim}>
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={20} />
+        </span>
+      }
+      render={<li />}
+      size="sm"
+      title={
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              linked ? (
+                <Link
+                  className="underline-offset-2 hover:underline"
+                  params={{ clientUserId: person.key }}
+                  to="/settings/team/$clientUserId"
+                />
+              ) : (
+                <span className="cursor-default" />
+              )
+            }
+          >
+            <span className={dim} data-part="name">
+              {person.creator ? "You" : person.short}
+            </span>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            <HoverCard person={person} />
+          </TooltipPopup>
+        </Tooltip>
+      }
+    />
+  );
+}
+
+/**
+ * A choice from a person's ⋮, asked first where it takes the viewer's own access down: `choose`
+ * for the menu, and `asking`, the question, to draw beside it.
+ */
+function useAskFirst(
+  person: ProjectPerson,
+  onChoose: ((choice: AccessChoice) => void) | undefined,
+) {
+  const change = person.change;
+  const [asked, setAsked] = useState<AccessChoice | null>(null);
+  const choose = (choice: AccessChoice) => {
+    if (change !== null && asksFirst(change, choice)) setAsked(choice);
+    else onChoose?.(choice);
+  };
+  const asking =
+    change?.selfLower === undefined ? null : (
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setAsked(null);
+        }}
+        open={asked !== null}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
+            <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
+            <Button
+              onClick={() => {
+                if (asked !== null) onChoose?.(asked);
+                setAsked(null);
+              }}
+              variant="destructive"
+            >
+              Give it up
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+    );
+  return { choose, asking };
 }
 
 /** Who someone is: full name, e-mail and role — then what they may do here. */
 function HoverCard({ person }: { readonly person: ProjectPerson }) {
   return (
-    <div className="ov-chip-card">
-      <span className="ov-chip-card-name">{person.name}</span>
+    <div className="grid min-w-45 gap-0.5 px-0.5 py-1 text-left">
+      <span className="text-body leading-4.5 font-semibold">{person.name}</span>
       {person.email === null || person.email === person.name ? null : (
-        <span className="ov-chip-card-line">{person.email}</span>
+        <span className={HOVER_LINE}>{person.email}</span>
       )}
-      <span className="ov-chip-card-line">
+      <span className={HOVER_LINE}>
         {[person.role, ...(person.pending ? ["invited, not joined yet"] : [])].join(" · ")}
       </span>
-      {person.line === "" ? null : <span className="ov-chip-card-line">{person.line}</span>}
-      <span className="ov-chip-card-line">
+      {person.line === "" ? null : <span className={HOVER_LINE}>{person.line}</span>}
+      <span className={HOVER_LINE}>
         {BADGE_WORDS[person.level]}:{" "}
         {LEVEL_MEANING[person.level === "hidden" ? "none" : person.level]}
       </span>
-      {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
+      {person.note === null ? null : <span className={HOVER_LINE}>{person.note}</span>}
     </div>
   );
 }
@@ -320,11 +439,14 @@ function ChipMenu({
   name,
   busy,
   onChoose,
+  size = "icon-sm",
 }: {
   readonly change: PersonChange;
   readonly name: string;
   readonly busy: boolean;
   readonly onChoose: (choice: AccessChoice) => void;
+  /** A row's ⋮ is its line's height (`icon-xs`); a chip's, the pill's (`icon-sm`). */
+  readonly size?: "icon-xs" | "icon-sm";
 }) {
   const entries = personMenu(change);
   const actions = entries.flatMap((entry) => (entry.kind === "action" ? [entry] : []));
@@ -336,7 +458,7 @@ function ChipMenu({
       <MenuTrigger
         aria-label={`Change ${name}'s access`}
         disabled={busy}
-        render={<Button size="icon-sm" variant="ghost" />}
+        render={<Button size={size} variant="ghost" />}
       >
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>
@@ -449,8 +571,8 @@ export function AddAccessPicker({
       return was === level ? rest : held;
     });
   return (
-    <div className="ov-pick">
-      <div className="ov-pick-search">
+    <div className="grid">
+      <div className={PICK_SEARCH}>
         <Input
           aria-label="Search people"
           autoFocus
@@ -462,15 +584,22 @@ export function AddAccessPicker({
         />
       </div>
       {shown.length === 0 ? (
-        <p className="ov-pick-empty">
-          {query.trim() === "" ? "Everyone here has access." : `Nobody matches “${query.trim()}”.`}
-        </p>
+        <div className="px-2.5 pb-1">
+          <EmptyState size="row">
+            {query.trim() === ""
+              ? "Everyone here has access."
+              : `Nobody matches “${query.trim()}”.`}
+          </EmptyState>
+        </div>
       ) : (
-        <ul aria-label="People in the organization" className="ov-pick-list">
+        <ul aria-label="People in the organization" className={PICK_LIST}>
           {shown.map((candidate) => (
             <Row
               control={(["read", "full"] as const).map((level) => (
-                <span className="ov-pick-level" key={level}>
+                <span
+                  className="inline-flex items-center gap-1.5 text-caption leading-4.5"
+                  key={level}
+                >
                   <Checkbox
                     aria-label={`${level === "read" ? "Read" : "Full"} access for ${candidate.name}`}
                     checked={ticked[candidate.clientUserId] === level}
@@ -479,10 +608,10 @@ export function AddAccessPicker({
                   <span aria-hidden="true">{level === "read" ? "Read" : "Full"}</span>
                 </span>
               ))}
-              data-ticked={ticked[candidate.clientUserId] !== undefined || undefined}
               key={candidate.clientUserId}
               lead={<PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={32} />}
               line={candidate.pending ? `${candidate.role} · invited` : candidate.role}
+              picked={ticked[candidate.clientUserId] !== undefined}
               render={<li />}
               title={candidate.name}
             />
@@ -502,7 +631,7 @@ export function AddAccessPicker({
           </div>
         ))}
       </dl>
-      <div className="ov-pick-foot">
+      <div className={PICK_FOOT}>
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}
         </Button>

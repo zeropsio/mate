@@ -60,6 +60,7 @@ import {
   type SheetContext,
 } from "./AddressesSheetBits";
 import { DnsRecords } from "./DnsRecords";
+import { RealName } from "~/components/ui/real-name";
 
 export type WebMode =
   | { readonly kind: "list" }
@@ -347,7 +348,7 @@ function DomainRow({
             {leads === null ? null : (
               <>
                 {" · "}
-                {live ? "opens" : "will open"} <span className="real-name">{leads}</span>
+                {live ? "opens" : "will open"} <RealName>{leads}</RealName>
               </>
             )}
           </span>
@@ -578,7 +579,10 @@ function RecordsStage({
         ) : provider.kind === "other" ? (
           <>
             You do this where {root}'s DNS is kept (its name server is{" "}
-            <span className="real-name text-foreground">{provider.host}</span>).
+            <span className="text-foreground">
+              <RealName>{provider.host}</RealName>
+            </span>
+            ).
           </>
         ) : provider.kind === "registry" ? (
           <>

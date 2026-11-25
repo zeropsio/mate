@@ -399,7 +399,15 @@ export class LineMotion extends Component<LineMotionProps> {
 
   override render() {
     return (
-      <span aria-hidden="true" className="conversation-band" ref={this.band}>
+      // The line's one band: the menu's selected-band colour under the Mate or the crewmate whose
+      // chat is on screen, behind everything on the line. Three pieces — two round ends and the
+      // run between, tucked under both — so as it travels its ends move and only the run
+      // stretches: the corners stay round on every frame.
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-0 -z-1 not-data-on:hidden *:absolute *:origin-top-left *:bg-sidebar-row-active"
+        ref={this.band}
+      >
         <span />
         <span />
         <span />

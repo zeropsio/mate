@@ -10,6 +10,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { EmptyState } from "~/components/ui/empty";
+import { Loading } from "~/components/ui/loading";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useAccountOrgId } from "~/zerops/accountData";
@@ -98,9 +100,9 @@ export function ProjectHistoryView({
   const [all, setAll] = useState(false);
   const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   // Until HQ answers, its line's place is held: the column does not grow when it lands.
-  if (releases === undefined) return <p aria-hidden="true" className="ov-sec-empty pp-hist-note" />;
-  if (releases.length === 0)
-    return <p className="ov-sec-empty pp-hist-note">Nothing released yet.</p>;
+  if (releases === undefined)
+    return <Loading className="flex h-5 items-center" label="Releases" quiet shape="line" />;
+  if (releases.length === 0) return <EmptyState size="line">Nothing released yet.</EmptyState>;
   const shown = shownReleases(releases, all);
   const toggle = (tag: string) => {
     setOpened((current) => {

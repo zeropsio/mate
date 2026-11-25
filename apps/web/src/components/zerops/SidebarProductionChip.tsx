@@ -4,7 +4,6 @@
  *
  * What a place says is `SidebarProductionChip.logic.ts`'s; this draws its parts.
  */
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -17,13 +16,11 @@ import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Row } from "../ui/row";
-import { gatedPortal } from "../ui/portal-gate";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { draftParts, type ChipDot } from "./SidebarProductionChip.logic";
-
-export const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
 
 /** One of the project's Mates, as the fix may be offered to it (S6, `fixMatesOf`). */
 export interface ChipMate {
@@ -116,7 +113,10 @@ export function AskToFix({
   if (mate === undefined) return null;
   const others = choice.filter((entry) => entry !== mate);
   return (
-    <div className="zerops-envpop-ask" data-zerops-surface="sidebar-production-ask">
+    <div
+      className="ms-8 me-1.5 mt-1 mb-2 flex flex-col gap-1.5"
+      data-zerops-surface="sidebar-production-ask"
+    >
       <div className="flex items-center gap-1">
         <Button
           aria-expanded={drafting}
@@ -151,7 +151,7 @@ export function AskToFix({
         )}
       </div>
       {choosing ? (
-        <div className="zerops-envpop-others" role="group" aria-label="Your other Mates">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Your other Mates">
           {others.map((other) => (
             <Button
               key={other.mateProjectId}
@@ -175,28 +175,37 @@ export function AskToFix({
         </div>
       ) : null}
       {drafting ? (
-        <div className="zerops-envpop-draft" data-zerops-surface="sidebar-production-draft">
-          <div className="zerops-envpop-draft-to">
-            <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
-            {`Opens ${mate.name}'s conversation with this in the composer`}
-          </div>
-          {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
-            part.kind === "code" ? (
-              <pre key={`code:${part.text}`}>{part.text}</pre>
-            ) : (
-              <p key={`words:${part.text}`}>{part.text}</p>
-            ),
-          )}
-          <Button
-            className="self-start"
-            data-zerops-surface="sidebar-production-ask-open"
-            onClick={() => {
-              onAsk(mate.mateProjectId, problem);
-            }}
-            size="sm"
-          >
-            {`Open ${mate.name}'s conversation`}
-          </Button>
+        // The words that go into the Mate's composer: long hosts and paths break anywhere rather
+        // than widen the popover, and the card rises in as it opens.
+        <div className="leading-4.75 wrap-anywhere motion-safe:animate-envpop-rise">
+          <Card data-zerops-surface="sidebar-production-draft" size="sm">
+            <div className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
+              <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
+              {`Opens ${mate.name}'s conversation with this in the composer`}
+            </div>
+            {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
+              part.kind === "code" ? (
+                <pre
+                  className="rounded-mark bg-card-foreground/7 px-2 py-1.5 font-mono text-caption whitespace-pre-wrap text-card-foreground/76"
+                  key={`code:${part.text}`}
+                >
+                  {part.text}
+                </pre>
+              ) : (
+                <p key={`words:${part.text}`}>{part.text}</p>
+              ),
+            )}
+            <Button
+              className="self-start"
+              data-zerops-surface="sidebar-production-ask-open"
+              onClick={() => {
+                onAsk(mate.mateProjectId, problem);
+              }}
+              size="sm"
+            >
+              {`Open ${mate.name}'s conversation`}
+            </Button>
+          </Card>
         </div>
       ) : null}
     </div>

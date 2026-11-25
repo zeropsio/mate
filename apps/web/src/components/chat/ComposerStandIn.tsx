@@ -6,7 +6,11 @@
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
+import {
+  COMPOSER_ATTACHMENT_RUNS_CLASS_NAME,
+  COMPOSER_ATTACHMENT_SLOT_CLASS_NAME,
+  COMPOSER_PROMPT_TYPE_CLASS_NAME,
+} from "./composerTypography";
 import { heldDraftRuns } from "./ComposerRoom.logic";
 
 /**
@@ -86,14 +90,23 @@ export function ComposerRoomHeld({
           <div className="relative px-3 pt-3.5 pb-2 max-sm:hidden sm:px-4 sm:pt-4">
             <div className={COMPOSER_PROMPT_TYPE_CLASS_NAME}>
               {/* The draft laid out as the editor will lay it out (`heldDraftRuns`), unseen. */}
-              <div className="block max-h-50 min-h-17.5 w-full overflow-hidden whitespace-pre-wrap wrap-break-word leading-relaxed">
+              <div
+                className={cn(
+                  "block max-h-50 min-h-17.5 w-full overflow-hidden whitespace-pre-wrap wrap-break-word leading-relaxed",
+                  COMPOSER_ATTACHMENT_RUNS_CLASS_NAME,
+                )}
+              >
                 {heldDraftRuns(draft).map((run, at) =>
                   run.kind === "text" ? (
                     // oxlint-disable-next-line react/no-array-index-key -- runs have no identity
                     <span key={at}>{run.text}</span>
                   ) : (
                     // oxlint-disable-next-line react/no-array-index-key -- runs have no identity
-                    <span className="composer-attachment-slot" key={at}>
+                    <span
+                      className={COMPOSER_ATTACHMENT_SLOT_CLASS_NAME}
+                      data-attachment-slot=""
+                      key={at}
+                    >
                       <span
                         className={run.kind === "picture" ? "block h-20 w-20" : "block h-20 w-42"}
                       />

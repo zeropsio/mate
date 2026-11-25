@@ -57,6 +57,7 @@ import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
 import { Spinner } from "../ui/spinner";
+import { StepNumber } from "../ui/step-number";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
@@ -79,7 +80,6 @@ import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { appChunk } from "~/lib/appChunks";
 
-import { ArrivalSpinner } from "./ZeropsArrivalSteps";
 import {
   abbreviatedCode,
   agentSignInSteps,
@@ -684,9 +684,7 @@ function OpenCardSteps({
   if (steps.kind === "signed-in") {
     return (
       <div className="arrival-open-step" data-sign-in-outcome="signed-in">
-        <span className="arrival-num" data-done="">
-          <CheckIcon aria-hidden="true" className="size-3" />
-        </span>
+        <StepNumber n={1} state="done" />
         <span className="arrival-open-step-words">{words.signedIn}</span>
         <span />
       </div>
@@ -695,9 +693,7 @@ function OpenCardSteps({
   if (steps.kind === "failed") {
     return (
       <div className="arrival-open-step" data-sign-in-outcome="failed">
-        <span className="arrival-num" data-failed="">
-          !
-        </span>
+        <StepNumber n={1} state="failed" />
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
@@ -713,9 +709,7 @@ function OpenCardSteps({
   return (
     <>
       <div className="arrival-open-step" data-sign-in-step="page">
-        <span className="arrival-num" data-done={pageDone ? "" : undefined}>
-          {pageDone ? <CheckIcon aria-hidden="true" className="size-3" /> : "1"}
-        </span>
+        <StepNumber n={1} state={pageDone ? "done" : "todo"} />
         <span className="arrival-open-step-words" data-quiet={pageDone ? "" : undefined}>
           {pageDone ? words.opened : words.open}
         </span>
@@ -797,7 +791,7 @@ function PasteCodeStep({
   }, [checking, disabled, focus]);
   return (
     <div className="arrival-open-step" data-sign-in-step="code">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{terminal ? words.terminal : words.paste}</span>
       <span />
       {terminal ? null : (
@@ -830,7 +824,7 @@ function PasteCodeStep({
             <span className="arrival-field" data-sign-in-checking>
               <span className="arrival-field-value">{abbreviatedCode(checking)}</span>
               <span className="flex-1" />
-              <ArrivalSpinner className="arrival-spin" />
+              <Spinner aria-hidden="true" size="sm" tone="muted" />
               <span>{words.checking}</span>
             </span>
           )}
@@ -843,7 +837,7 @@ function PasteCodeStep({
       ) : (
         // What happens then, as the third step.
         <span className="arrival-open-step-then">
-          <span className="arrival-num">3</span>
+          <StepNumber n={3} />
           <span className="arrival-open-step-words">{words.pasteHint}</span>
         </span>
       )}
@@ -866,12 +860,12 @@ function TypeCodeStep({
   }, [copied]);
   return (
     <div className="arrival-open-step" data-sign-in-step="code">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{words.type}</span>
       <span />
       <span className="arrival-open-step-field flex items-center gap-2">
         <span className="arrival-code" data-sign-in-device-code>
-          {code ?? <ArrivalSpinner className="arrival-spin" />}
+          {code ?? <Spinner aria-hidden="true" size="sm" tone="muted" />}
         </span>
         {code === undefined ? null : (
           <Button
@@ -890,7 +884,7 @@ function TypeCodeStep({
         )}
       </span>
       <span className="arrival-open-step-hint">
-        <ArrivalSpinner className="arrival-spin" />
+        <Spinner aria-hidden="true" size="sm" tone="muted" />
         {words.typeHint}
       </span>
     </div>
@@ -910,11 +904,11 @@ function ApproveStep({
 }) {
   return (
     <div className="arrival-open-step" data-sign-in-step="approve">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{words.approve}</span>
       <span />
       <span className="arrival-open-step-hint">
-        {waiting ? <ArrivalSpinner className="arrival-spin" /> : null}
+        {waiting ? <Spinner aria-hidden="true" size="sm" tone="muted" /> : null}
         {words.approveHint}
       </span>
     </div>

@@ -57,6 +57,9 @@ import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 import { MemberTakeOverView } from "./MemberTakeOver";
 import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
+import { EmptyState } from "../ui/empty";
+import { SectionHeader } from "../ui/section";
+import { Separator } from "../ui/separator";
 
 /** What the page asks HQ to start; each rejects with what to tell the person. */
 export interface TeamMemberActions {
@@ -172,7 +175,7 @@ export function TeamMemberView({
   const selfWords = selfLowerWords(viewerRole);
 
   return (
-    <div className="tm-page" data-zerops-surface="team-member">
+    <div className="grid w-full max-w-140 gap-11 px-3" data-zerops-surface="team-member">
       <PageHeader
         lead={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
         line={
@@ -194,12 +197,10 @@ export function TeamMemberView({
         />
       ))}
       {unnamed && (roleEditable || accessEditable) ? (
-        <p className="tm-trouble" data-part="unnamed">
-          {NO_ACCOUNT_LINE}
-        </p>
+        <Failure cause={NO_ACCOUNT_LINE} data-part="unnamed" size="line" />
       ) : null}
 
-      <section aria-label="Role" className="tm-section">
+      <section aria-label="Role" className="grid gap-3.5">
         <TeamRoleEditor
           editable={roleEditable}
           editorRole={viewerRole}
@@ -208,8 +209,10 @@ export function TeamMemberView({
           value={membership}
         />
         {roleEditable ? (
-          <div className="tm-actions">
-            {role.trouble === null ? null : <p role="alert">{role.trouble}</p>}
+          <div className="flex items-center justify-end gap-2">
+            {role.trouble === null ? null : (
+              <Failure className="me-auto" cause={role.trouble} role="alert" size="line" />
+            )}
             <Button
               aria-busy={role.pending || undefined}
               disabled={
@@ -223,9 +226,9 @@ export function TeamMemberView({
         ) : null}
       </section>
 
-      <div aria-hidden="true" className="tm-rule" />
+      <Separator />
 
-      <section aria-label="Project access" className="tm-section">
+      <section aria-label="Project access" className="grid gap-3.5">
         {grants === null && held === null ? (
           grantsUnread === undefined ? (
             <Loading count={2} label="Their projects" shape="rows" />
@@ -255,11 +258,13 @@ export function TeamMemberView({
           />
         )}
         {grants !== null && chips.length === 0 && !accessEditable ? (
-          <p className="tm-empty">Every project as their role gives it.</p>
+          <EmptyState size="row">Every project as their role gives it.</EmptyState>
         ) : null}
         {accessEditable ? (
-          <div className="tm-actions">
-            {access.trouble === null ? null : <p role="alert">{access.trouble}</p>}
+          <div className="flex items-center justify-end gap-2">
+            {access.trouble === null ? null : (
+              <Failure className="me-auto" cause={access.trouble} role="alert" size="line" />
+            )}
             <Button
               aria-busy={access.pending || undefined}
               disabled={unnamed || access.pending || changes.length === 0}
@@ -275,36 +280,34 @@ export function TeamMemberView({
         <>
           {end === "remove" && takeOver !== undefined ? (
             <>
-              <div aria-hidden="true" className="tm-rule" />
+              <Separator />
               {takeOver}
             </>
           ) : null}
-          <div aria-hidden="true" className="tm-rule" />
-          <section aria-label="Danger zone" className="tm-section">
-            <div className="tm-block-head">
-              <span className="tm-block-text">
-                <h2 className="tm-block-title">Danger zone</h2>
-                <span className="tm-block-desc">
-                  {end === "withdraw"
-                    ? "The invitation stops working at once; you can invite them again later."
-                    : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`}
-                </span>
-              </span>
-              <Button
-                aria-busy={removal.pending || undefined}
-                disabled={unnamed || removal.pending}
-                onClick={() => setAskingRemove(true)}
-                size="sm"
-                variant="destructive"
-              >
-                <Trash2Icon aria-hidden="true" />
-                {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
-              </Button>
-            </div>
+          <Separator />
+          <section aria-label="Danger zone" className="grid gap-3.5">
+            <SectionHeader
+              action={
+                <Button
+                  aria-busy={removal.pending || undefined}
+                  disabled={unnamed || removal.pending}
+                  onClick={() => setAskingRemove(true)}
+                  size="sm"
+                  variant="destructive"
+                >
+                  <Trash2Icon aria-hidden="true" />
+                  {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
+                </Button>
+              }
+              line={
+                end === "withdraw"
+                  ? "The invitation stops working at once; you can invite them again later."
+                  : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`
+              }
+              title="Danger zone"
+            />
             {removal.trouble === null ? null : (
-              <p className="tm-trouble" role="alert">
-                {removal.trouble}
-              </p>
+              <Failure cause={removal.trouble} role="alert" size="line" />
             )}
           </section>
         </>
@@ -431,11 +434,17 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
       {view.kind === "reading" ? (
         <Loading label="Who is on the team" shape="page" />
       ) : view.kind === "unreadable" ? (
-        <p className="tm-empty">{view.line}</p>
+        <Failure cause={view.line} />
       ) : person === undefined || person === null ? (
-        <p className="tm-empty">
-          They're no longer on the team. <Link to="/settings/team">Back to the team</Link>
-        </p>
+        <EmptyState
+          action={
+            <Button render={<Link to="/settings/team" />} size="sm" variant="link">
+              Back to the team
+            </Button>
+          }
+        >
+          They're no longer on the team.
+        </EmptyState>
       ) : (
         <TeamMemberView
           // A person read again starts the page's drafts over.

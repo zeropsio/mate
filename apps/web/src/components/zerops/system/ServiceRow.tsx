@@ -25,6 +25,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import type { PlaceServiceRow } from "../place/place.logic";
 import { meterFill, meterReading, serviceRowState } from "./ServiceRow.logic";
+import { RealName } from "~/components/ui/real-name";
 
 const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =
   [
@@ -78,9 +79,9 @@ export function ServiceRow({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            {/* Its hostname, a real thing's own name: the mono face (`.real-name`). */}
+            {/* Its hostname, a real thing's own name: the mono face (`RealName`). */}
             <span className="min-w-0 truncate text-body font-medium text-foreground">
-              <span className="real-name">{row.hostname}</span>
+              <RealName>{row.hostname}</RealName>
             </span>
             {kind === undefined || kind === "" ? null : (
               <span className="min-w-0 truncate text-caption text-muted-foreground">{kind}</span>

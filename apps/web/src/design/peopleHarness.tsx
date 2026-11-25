@@ -163,8 +163,8 @@ function HarnessPage() {
                   </InlineButton>
                 </span>
               }
-              line={null}
               summary={columnPeople(stage, "stage")}
+              unread={null}
             />
           </article>
           <article className="ov-card" style={{ maxWidth: 560 }}>

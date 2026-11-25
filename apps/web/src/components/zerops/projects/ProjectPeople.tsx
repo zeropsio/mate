@@ -97,7 +97,12 @@ import {
   type AccessTableView,
   type CellChoice,
 } from "./accessTable.logic";
-import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccessTable";
+import {
+  AccessUnread,
+  cellKey,
+  PlaceAccessSummary,
+  ProjectAccessTable,
+} from "./ProjectAccessTable";
 import { InlineButton } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
@@ -738,7 +743,7 @@ export function PlaceAccess({
   /** Called as the link is followed: a dialog closes. */
   readonly onLeave?: () => void;
 }) {
-  const { view, summary, line } = usePlaceAccessPeople({ projectId, kind, name });
+  const { view, summary } = usePlaceAccessPeople({ projectId, kind, name });
   return (
     <PlaceAccessSummary
       change={
@@ -757,7 +762,7 @@ export function PlaceAccess({
           </InlineButton>
         </span>
       }
-      line={line}
+      unread={<AccessUnread view={view} />}
       summary={summary}
     />
   );
@@ -784,13 +789,7 @@ export function usePlaceAccessPeople({
   const { base } = useAccessReads(projects);
   const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
   const summary = useMemo(() => columnPeople(view, projectId), [projectId, view]);
-  const line =
-    view.kind === "reading"
-      ? "Reading who has access…"
-      : view.kind === "unreadable"
-        ? view.line
-        : null;
-  return { view, summary, line };
+  return { view, summary };
 }
 
 /** One Zerops project's access, changed here: a Mate on its own's *Project access…*. */

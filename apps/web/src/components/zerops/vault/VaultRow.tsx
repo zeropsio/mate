@@ -145,6 +145,29 @@ interface VaultRowProps {
 }
 
 /**
+ * A row of the vault's lists (in the kit's Card, parted by hairlines): the card's ground, lit
+ * under the pointer and while open, flashed when it is found.
+ */
+export const VAULT_ROW_CLASS =
+  "relative transition-colors duration-150 ease-out-strong not-data-open:hover:bg-foreground/4 data-open:bg-foreground/3 data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
+
+/** A group's rows, parted by a hairline. */
+export const VAULT_ROWS_CLASS = "divide-y divide-border/70";
+
+/**
+ * A row's body opens by its grid row, so what is under it travels with it; its words fade in
+ * after. Both carry the row's `data-open`, so a row open never opens the rows inside it.
+ */
+export const VAULT_ROW_BODY_CLASS =
+  "grid grid-rows-[0fr] transition-[grid-template-rows] duration-260 ease-out-strong data-open:grid-rows-[1fr] motion-reduce:transition-none";
+export const VAULT_ROW_WORDS_CLASS =
+  "min-h-0 overflow-hidden opacity-0 transition-opacity duration-150 ease-out-strong data-open:opacity-100 data-open:delay-60 data-open:duration-200 motion-reduce:transition-none";
+
+/** The chevron a row and a folded service wear: it turns as its trigger (`group/trigger`) opens. */
+export const VAULT_CHEVRON_CLASS =
+  "size-4 shrink-0 text-muted-foreground transition-transform duration-200 ease-out-strong group-data-panel-open/trigger:rotate-180 motion-reduce:transition-none";
+
+/**
  * One value on one line: its name in words and its key at the left, the value at the right, a
  * mark when an app still runs the old one; open, its verbs.
  */
@@ -153,7 +176,7 @@ export function VaultRow(props: VaultRowProps) {
   const stale = value.readers.some((reader) => reader.state === "restart");
   return (
     <Collapsible
-      render={<div className="vault-row" />}
+      render={<div className={VAULT_ROW_CLASS} />}
       data-flash={props.flash ? "" : undefined}
       data-open={open ? "" : undefined}
       data-vault-row={value.key}
@@ -162,7 +185,7 @@ export function VaultRow(props: VaultRowProps) {
     >
       <CollapsibleTrigger
         // On a phone a value's name stands over its key: side by side, both were cut mid-word.
-        className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2"
+        className="group/trigger flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2"
       >
         <span className="flex min-w-0 shrink items-center gap-2 max-sm:flex-col max-sm:items-start max-sm:gap-0.5">
           <span className="truncate text-line text-foreground max-sm:max-w-full">
@@ -172,7 +195,8 @@ export function VaultRow(props: VaultRowProps) {
             {value.key}
           </code>
         </span>
-        <span className="vault-row-value ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1.5 text-line text-muted-foreground">
+        {/* Open, the value is said in its body instead: its place on the line stays. */}
+        <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1.5 text-line text-muted-foreground group-data-panel-open/trigger:invisible">
           {activity.kind === "busy" ? <Spinner size="sm" tone="muted" /> : null}
           {stale && activity.kind !== "busy" ? (
             <RotateCwIcon
@@ -185,7 +209,7 @@ export function VaultRow(props: VaultRowProps) {
           {activity.kind === "settled" && activity.check ? (
             <span
               aria-label="Saved"
-              className="vault-settled grid size-[18px] shrink-0 place-items-center rounded-full bg-status-ok-surface text-status-ok-text"
+              className="grid size-[18px] motion-safe:animate-vault-settled shrink-0 place-items-center rounded-full bg-status-ok-surface text-status-ok-text"
               role="img"
             >
               <CheckIcon aria-hidden="true" className="size-3" />
@@ -204,10 +228,7 @@ export function VaultRow(props: VaultRowProps) {
           )}
         </span>
         {/* Every value opens in place: the same mark the folded services wear says so. */}
-        <ChevronDownIcon
-          aria-hidden="true"
-          className="vault-chevron size-4 shrink-0 text-muted-foreground"
-        />
+        <ChevronDownIcon aria-hidden="true" className={VAULT_CHEVRON_CLASS} />
       </CollapsibleTrigger>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
@@ -217,14 +238,27 @@ export function VaultRow(props: VaultRowProps) {
           {activity.line}
         </p>
       ) : null}
-      <div className="vault-row-body" inert={!open}>
-        <div>{open ? <RowBody {...props} /> : null}</div>
+      <div className={VAULT_ROW_BODY_CLASS} data-open={open ? "" : undefined} inert={!open}>
+        <div className={VAULT_ROW_WORDS_CLASS} data-open={open ? "" : undefined}>
+          {open ? <RowBody {...props} /> : null}
+        </div>
       </div>
     </Collapsible>
   );
 }
 
-const DOTS = "●●●●●●●●";
+/** A hidden value's dots: small and spaced, on the value's line. */
+function VaultDots() {
+  return (
+    <span className="inline-flex gap-0.5 align-[1px] text-4xs leading-none">
+      {DOT_KEYS.map((key) => (
+        <span key={key}>●</span>
+      ))}
+    </span>
+  );
+}
+
+const DOT_KEYS = [0, 1, 2, 3, 4, 5, 6, 7];
 
 /** Each part of a value with where it starts in the value: its key. */
 function placeParts(parts: Extract<VaultShow, { kind: "text" }>["parts"]) {
@@ -244,12 +278,12 @@ function VaultShown({ show }: { readonly show: VaultShow }) {
     case "secret":
       return (
         <span className="flex items-center gap-1.5">
-          <span className="vault-dots">{DOTS}</span>
+          <VaultDots />
           <LockIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
         </span>
       );
     case "masked":
-      return <span className="vault-dots">{DOTS}</span>;
+      return <VaultDots />;
     case "text":
       if (show.parts.every((part) => !part.ref)) {
         return <MiddleTruncate tail={12} value={show.parts.map((part) => part.text).join("")} />;
@@ -258,7 +292,11 @@ function VaultShown({ show }: { readonly show: VaultShow }) {
         <span className="min-w-0 truncate">
           {placeParts(show.parts).map(({ part, at }) =>
             part.ref ? (
-              <span className="vault-ref" key={at}>
+              // A `${name}` inside a value: a quiet chip in the line.
+              <span
+                className="mx-px inline-block rounded-mark bg-foreground/7 px-1.25 align-[1px] font-mono text-2xs leading-4.25"
+                key={at}
+              >
                 {part.text}
               </span>
             ) : (
@@ -575,18 +613,13 @@ function VaultManagedRow({
   };
   return (
     <div
-      className="vault-row flex min-h-11 flex-wrap items-center gap-x-3 px-3.5 py-1"
-      data-static=""
+      className="relative flex min-h-11 flex-wrap items-center gap-x-3 px-3.5 py-1"
       data-vault-row={value.key}
     >
       <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
       <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
         <span className="min-w-0 truncate" data-vault-shown={shown === null ? undefined : ""}>
-          {hidden && shown === null ? (
-            <span className="vault-dots">{DOTS}</span>
-          ) : (
-            (shown ?? value.value)
-          )}
+          {hidden && shown === null ? <VaultDots /> : (shown ?? value.value)}
         </span>
         {hidden && (onReveal !== undefined || !value.sensitive) ? (
           <Tip tip={shown === null ? "Show it to you" : "Hide"}>

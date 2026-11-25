@@ -27,18 +27,43 @@ export function SidebarStage({
   const { open } = useSidebar();
   if (rail === null) return children;
   return (
+    // The rail stands over the open menu, which waits clipped to the rail's edge; opened, it grows
+    // out of that edge and docks while the page's edge travels with its own; closing, it shrinks
+    // back into the rail. Its visibility steps with the clip: shown at once, hidden at its end.
     <div
-      className="menu-stage"
-      data-menu={open ? "docked" : "rest"}
+      className="relative flex min-h-0 w-full flex-auto flex-col"
       data-zerops-surface="sidebar-stage"
     >
-      <div className="menu-stage-rail" inert={open}>
+      <div
+        className={
+          open
+            ? "pointer-events-none absolute inset-y-0 left-0 z-1 flex w-(--sidebar-width-icon) flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) opacity-0 transition-opacity duration-150 ease-out-strong motion-reduce:transition-none"
+            : "absolute inset-y-0 left-0 z-1 flex w-(--sidebar-width-icon) flex-col border-r border-sidebar-border bg-sidebar bg-(image:--surface-grain) transition-opacity duration-150 ease-out-strong motion-reduce:transition-none"
+        }
+        inert={open}
+      >
         <RailUnderMenu covered={open} holds={railHolds}>
           {rail}
         </RailUnderMenu>
       </div>
-      <div className="menu-stage-menu" data-zerops-surface="sidebar-menu" inert={!open}>
-        <div className="menu-stage-body">{children}</div>
+      <div
+        className={
+          open
+            ? "absolute inset-y-0 left-0 flex w-(--sidebar-width) flex-col border-r border-sidebar-border transition-[clip-path,visibility] duration-260 ease-out-strong [clip-path:inset(0_0_0_0)] before:absolute before:inset-0 before:-z-1 before:bg-sidebar before:bg-(image:--surface-grain) motion-reduce:transition-none"
+            : "pointer-events-none invisible absolute inset-y-0 left-0 flex w-(--sidebar-width) flex-col border-r border-sidebar-border transition-[clip-path,visibility] duration-200 ease-out-strong [clip-path:inset(0_calc(100%-var(--sidebar-width-icon))_0_0)] before:absolute before:inset-0 before:-z-1 before:bg-sidebar before:bg-(image:--surface-grain) motion-reduce:transition-none"
+        }
+        data-zerops-surface="sidebar-menu"
+        inert={!open}
+      >
+        <div
+          className={
+            open
+              ? "flex min-h-0 flex-auto flex-col transition-opacity duration-150 ease-out-strong motion-reduce:transition-none"
+              : "flex min-h-0 flex-auto flex-col opacity-0 transition-opacity duration-150 ease-out-strong motion-reduce:transition-none"
+          }
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -43,6 +43,8 @@ import { SectionLabel } from "./system";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
+import { EmptyState } from "~/components/ui/empty";
+import { Failure } from "~/components/ui/failure";
 import { Loading } from "~/components/ui/loading";
 
 /**
@@ -169,7 +171,9 @@ export function GitStopDetail({
                 );
               })}
           {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
-            <p className="rv-note">Pull-request delivery is not available here yet.</p>
+            <EmptyState className="mt-1.5" size="line">
+              Pull-request delivery is not available here yet.
+            </EmptyState>
           )}
           {notice === undefined ? null : <p className="rv-note">{notice}</p>}
           <div className="flex flex-wrap gap-2 empty:hidden">
@@ -208,7 +212,9 @@ export function GitStopDetail({
           </SectionLabel>
           {environment.tier === "stage" ? (
             pushes.length === 0 ? (
-              <p className="rv-note">No pushes recorded.</p>
+              <EmptyState className="mt-1.5" size="line">
+                No pushes recorded.
+              </EmptyState>
             ) : (
               <ul className="space-y-2">
                 {pushes.map((push) => (
@@ -229,7 +235,9 @@ export function GitStopDetail({
           ) : releases === undefined ? (
             <Loading count={3} label="Release history" shape="lines" />
           ) : releases.length === 0 ? (
-            <p className="rv-note">No releases recorded.</p>
+            <EmptyState className="mt-1.5" size="line">
+              No releases recorded.
+            </EmptyState>
           ) : (
             <ul className="space-y-2">
               <GitReleaseRows
@@ -295,9 +303,7 @@ function GitEnvironmentRemoval({
         </Button>
       ) : null}
       {notice === undefined ? null : (
-        <p className="rv-note" role="alert">
-          {notice}
-        </p>
+        <Failure cause={notice} className="mt-1.5" role="alert" size="line" />
       )}
       {removing ? (
         <div role="group" aria-label={`Remove ${environment.name}`} aria-busy={busy}>
@@ -508,9 +514,7 @@ function ZeropsProductionRemoval({
   };
   const said =
     notice === undefined ? null : (
-      <p className="rv-note" role="alert">
-        {notice}
-      </p>
+      <Failure cause={notice} className="mt-1.5" role="alert" size="line" />
     );
   if (removal.kind === "going")
     return (
@@ -558,9 +562,12 @@ function ZeropsProductionRemoval({
     <>
       {removal.kind === "failed" ? (
         <div className="w-full min-w-0 [&_.arrival-failure-details]:text-left!">
-          <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
-            Production was not removed · {operationFailureWords(removal.failure)}
-          </p>
+          <Failure
+            cause={`Production was not removed · ${operationFailureWords(removal.failure)}`}
+            className="mt-1.5"
+            data-zerops-surface="production-removal-failed"
+            size="line"
+          />
           {details === null ? null : <ZeropsAnswerDetails text={details} />}
         </div>
       ) : null}

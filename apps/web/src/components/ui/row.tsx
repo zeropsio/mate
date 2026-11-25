@@ -120,6 +120,11 @@ interface RowSlotsProps
   readonly lineWraps?: boolean;
   /** A control at the row's end, centred on it: a switch, a select, a menu. */
   readonly control?: ReactNode;
+  /**
+   * A setting's row on a phone: its control stands on the title's line, and a field (a select,
+   * an input, a slider) takes the row's width under the words, every select one height.
+   */
+  readonly fieldUnder?: boolean;
 }
 
 function RowSlots({
@@ -138,6 +143,7 @@ function RowSlots({
   line,
   lineWraps = false,
   control,
+  fieldUnder = false,
   ...props
 }: RowSlotsProps) {
   const lined = line !== undefined && line !== null && line !== false;
@@ -225,7 +231,11 @@ function RowSlots({
         </span>
         {hasControl ? (
           <span
-            className="ms-auto flex shrink-0 items-center gap-2 self-center"
+            className={cn(
+              "ms-auto flex shrink-0 items-center gap-2 self-center",
+              fieldUnder &&
+                "max-sm:self-start max-sm:has-[[data-slot=select-trigger],[data-slot=input-control],[data-slot=number-field],input[type=range]]:basis-full max-sm:**:data-[slot=select-trigger]:min-h-9",
+            )}
             data-slot="row-control"
           >
             {control}

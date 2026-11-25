@@ -1,5 +1,6 @@
 /**
- * A project row's Review and Release tags and their changes popover, at the menu's real width.
+ * A project's Review and Release doors and their changes popover, at the menu's real width, drawn
+ * as the conversation's header draws them (`HeaderReviewDoor`).
  *
  * Served by the dev server at `/design-review.html` (`?theme=dark`, `?open=Orbit` opens Orbit's
  * popover, `?live=1500` changes Orbit's list on its own). Rows stand on the menu's ground as the menu draws them; the buttons under them change
@@ -28,7 +29,6 @@ import {
   changeReviewItem,
   crewTaskReviewItem,
   HeaderReviewDoor,
-  ProjectReviewTags,
   type ProjectReviewItem,
 } from "~/components/zerops/SidebarProjectReview";
 import { ReviewContext, reviewTargetKey, type OpenReview } from "~/zerops/review";
@@ -228,26 +228,33 @@ interface Project {
 
 function Row({ project }: { readonly project: Project }) {
   return (
-    <KitRow
-      badges={
-        <ProjectReviewTags
-          groupId={project.id}
-          items={project.items}
-          projectName={project.name}
-          release={project.release}
+    <div className="flex items-start">
+      <KitRow
+        className="flex-1"
+        lead={<MateFace shape="clover" size={32} state="idle" tint={project.tint} />}
+        line="Merged the due dates; the list sorts by them now."
+        meta="3m"
+        size="lg"
+        title={
+          <>
+            {project.name}{" "}
+            <span className="font-normal text-sidebar-muted-foreground">· {project.mate}</span>
+          </>
+        }
+      />
+      {/* The doors as the product draws them: the conversation header's pill. */}
+      <span className="flex h-15.75 items-center">
+        <HeaderReviewDoor
+          held={false}
+          review={{
+            groupId: project.id,
+            items: project.items,
+            projectName: project.name,
+            release: project.release,
+          }}
         />
-      }
-      lead={<MateFace shape="clover" size={32} state="idle" tint={project.tint} />}
-      line="Merged the due dates; the list sorts by them now."
-      meta="3m"
-      size="lg"
-      title={
-        <>
-          {project.name}{" "}
-          <span className="font-normal text-sidebar-muted-foreground">· {project.mate}</span>
-        </>
-      }
-    />
+      </span>
+    </div>
   );
 }
 

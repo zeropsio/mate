@@ -10,7 +10,6 @@ import { ZeropsMark } from "../ZeropsMark";
 export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
   return (
     <Button
-      data-chat-header-ghost
       render={
         <a aria-label="Open in Zerops" href={projectUrl} rel="noreferrer" target="_blank">
           <ZeropsMark className="size-3.5 shrink-0" />
@@ -18,7 +17,7 @@ export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string 
         </a>
       }
       size="sm"
-      variant="ghost"
+      variant="sidebar"
     />
   );
 }

@@ -822,7 +822,7 @@ export const ChatHeader = memo(function ChatHeader({
           ref={headerActionsRef}
           data-chat-header-actions
           // Every action here arrives with the conversation at the opening's hand-off, never a
-          // step ahead of it (`[data-opening-waits]`, index.css).
+          // step ahead of it (`ConversationOpeningWaits`).
           className={cn(
             "flex shrink-0 items-center justify-end",
             // A Mate's header is a row of borderless buttons, 4 px apart like
@@ -845,14 +845,7 @@ export const ChatHeader = memo(function ChatHeader({
           <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
             <MenuTrigger
               className={menuShown ? undefined : "hidden"}
-              render={
-                <Button
-                  aria-label="More header actions"
-                  data-chat-header-ghost
-                  size="icon-sm"
-                  variant="ghost"
-                />
-              }
+              render={<Button aria-label="More header actions" size="icon-sm" variant="sidebar" />}
             >
               <EllipsisIcon className="size-4" />
             </MenuTrigger>

@@ -272,9 +272,6 @@ export default function ProjectScriptsControl({
                   variant="secondary"
                   className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
                   aria-label={`Run ${primaryScript.name}`}
-                  // The tooltip wrapper replaces data-slot="button", so themed
-                  // toolbar styling needs its own hook.
-                  data-toolbar-control=""
                   onClick={() => onRunScript(primaryScript)}
                 />
               }
@@ -334,9 +331,6 @@ export default function ProjectScriptsControl({
                 variant="secondary"
                 className="w-7 sm:w-6 @3xl/header-actions:w-auto!"
                 aria-label="Add action"
-                // The tooltip wrapper replaces data-slot="button", so themed
-                // toolbar styling needs its own hook.
-                data-toolbar-control=""
                 onClick={openAddDialog}
               />
             }

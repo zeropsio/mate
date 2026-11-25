@@ -30,6 +30,19 @@ export default defineKitSection({
           />
         </div>
       </Specimen>
+      <Specimen label="<SectionHeader title line action>">
+        <div className="w-[36rem]">
+          <SectionHeader
+            action={
+              <Button size="sm" variant="secondary">
+                Choose projects
+              </Button>
+            }
+            line="Owners and admins reach every project by their role. Set a different level on a project here."
+            title="Project access"
+          />
+        </div>
+      </Specimen>
       <Specimen label="<SectionHeader level={3}> (inside a sheet or a panel)">
         <div className="w-[36rem]">
           <SectionHeader level={3} title="What Fen's crew changed" />

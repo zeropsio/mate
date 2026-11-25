@@ -71,7 +71,11 @@ export function VaultAddCard(props: VaultAddCardProps) {
   };
 
   return (
-    <div className="vault-card rounded-card bg-card p-px" data-vault-add>
+    // A card raised over the list it adds to.
+    <div
+      className="rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border"
+      data-vault-add
+    >
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
         New value in
         <Menu>
@@ -221,7 +225,8 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
         <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
           <div
             aria-hidden="true"
-            className="vault-gutter py-2 text-center font-mono font-medium text-caption leading-5"
+            // One mark per line, at the line's height.
+            className="py-2 text-center *:block *:h-5 font-mono font-medium text-caption leading-5"
           >
             {lineStarts(lines).map(({ start, line }) => {
               const mark = diff.marks[which][line] ?? null;

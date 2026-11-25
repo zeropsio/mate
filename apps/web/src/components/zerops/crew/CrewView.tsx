@@ -12,6 +12,7 @@ import type { CrewDefinitionIssue } from "@t3tools/shared/crewHome";
 import { ChevronLeftIcon } from "lucide-react";
 import type { ReactNode, TextareaHTMLAttributes } from "react";
 
+import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 
@@ -48,7 +49,10 @@ export function CrewViewFoot({ children }: { readonly children: ReactNode }) {
   return (
     <>
       <span className="min-h-6 grow" />
-      <div className="crew-view-foot -mx-4">{children}</div>
+      {/* Its presses on the panel's ground, in reach while it scrolls. */}
+      <div className="sticky bottom-0 -mx-4 flex flex-col gap-3 border-t border-foreground/8 bg-background px-4 pt-3.5 pb-5">
+        {children}
+      </div>
     </>
   );
 }
@@ -129,8 +133,6 @@ export function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefi
 /** A view's place while the crew home is being read: nothing to take back, or why it failed. */
 export function CrewViewReading({ error }: { readonly error: string | null }) {
   return error === null ? null : (
-    <p className="mt-6 text-line text-status-failed-text" role="alert">
-      {error}
-    </p>
+    <Failure className="mt-6" cause={error} role="alert" size="line" />
   );
 }

@@ -1,5 +1,6 @@
 /* ==== Pass 41 · the review sheet ==== */
 /* The sheet's own pieces; its frame, line and foot are the review's ("Pass 16 · review"). */
+/* The dots between the line's facts. */
 .rv-dot {
   color: var(--muted-foreground);
 }
@@ -44,19 +45,13 @@
     animation-duration: 1ms;
   }
 }
+/* A try pill's part, after its preview's name, cut to the pill. */
 .rv-try-part {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* What the pills open, where it is more than this change: quiet, under them. */
-.rv-try-note {
-  margin: 6px 0 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-  color: var(--muted-foreground);
 }
 /* One pill per part: whose preview, then the part. */
 .rv-tries {
@@ -68,34 +63,12 @@
   flex: none;
   font-weight: 500;
 }
-.rv-fold-aside {
-  font-size: var(--text-body);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-.rv-fold-chev {
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-  transition: rotate 200ms var(--ease-out-strong);
-}
-[aria-expanded="true"] > .rv-fold-chev {
-  rotate: 180deg;
-}
-@media (prefers-reduced-motion: reduce) {
-  .rv-fold-chev {
-    transition: none;
-  }
-}
-/* A quiet sentence under a section's rows. */
+/* A quiet sentence under a section's rows: what the try pills open, whom a comment reaches. */
 .rv-note {
   margin: 6px 0 0;
   font-size: var(--text-body);
   line-height: 18px;
   color: var(--muted-foreground);
-}
-.rv-note[data-tone="failed"] {
-  color: var(--zerops-status-failed-text);
 }
 /* Above the plan while the release runs: what else production is doing, where that explains a
    wait. One calm sentence; its clock ticks. */
@@ -109,6 +82,7 @@
   font-weight: 500;
   color: var(--foreground);
 }
+/* The version to tag: its field, its help, and the versions it suggests. */
 .rv-version {
   display: grid;
   gap: 6px;
@@ -122,6 +96,7 @@
   align-items: center;
   gap: 8px;
 }
+/* A section's short list: parts, GitHub's checks. */
 .rv-check-list {
   display: grid;
   gap: 4px;

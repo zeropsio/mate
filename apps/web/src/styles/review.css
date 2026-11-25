@@ -21,6 +21,7 @@
   transition-duration: var(--duration-quick);
 }
 
+/* The sheet's frame: the window, the sheet placed in it below. */
 .rv-viewport {
   position: fixed;
   inset: 0;
@@ -127,6 +128,7 @@
   gap: 2px;
   padding: 18px 16px 0 24px;
 }
+/* The head: the title, its one line, and why where that is not all. */
 .rv-head {
   display: grid;
   flex: none;
@@ -134,6 +136,7 @@
   padding: 6px 24px 16px;
   border-bottom: 1px solid var(--border);
 }
+/* Whose it is: where it acts, the Mate's face and its words, cut to the line. */
 .rv-kind {
   display: flex;
   flex: 1;
@@ -234,6 +237,7 @@
     content: "·";
   }
 }
+/* The verdict's words in the line, in their tone; GitHub's checks beside them, ticked once passed. */
 .rv-vt {
   display: inline-flex;
   align-items: center;
@@ -260,6 +264,8 @@
 .rv-checks[data-mark="passed"] {
   color: var(--foreground);
 }
+/* Why, under the line, while all is well: a quiet line, its fix a link in it. Trouble is the
+   kit's tinted callout (Alert `tint`) instead. */
 .rv-why {
   display: flex;
   flex-wrap: wrap;
@@ -271,25 +277,8 @@
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-.rv-why[data-tone="attention"],
-.rv-why[data-tone="failed"] {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-card);
-  color: var(--foreground);
-}
-.rv-why[data-tone="attention"] {
-  background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
-}
-.rv-why[data-tone="failed"] {
-  background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
-}
 .rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
-}
-/* Whose move the fix is, where the press is not the reader's: quiet beside the reason. */
-.rv-why-whose {
-  color: var(--muted-foreground);
 }
 
 /* The review as a page: the same column, flush with the page's own edges; the foot's card stands
@@ -328,6 +317,7 @@
     0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
     var(--zerops-shadow-drawer);
 }
+/* A change's size, its lines added green and removed red. */
 .rv-add {
   color: var(--diff-addition-foreground);
 }
@@ -335,6 +325,7 @@
   color: var(--diff-deletion-foreground);
 }
 
+/* The body: the sections, 24 apart, scrolling inside the sheet. */
 .rv-body {
   display: grid;
   flex: 1 1 auto;
@@ -354,40 +345,28 @@
   display: none;
 }
 /* A section with nothing under its label says nothing: it is not drawn. */
-.rv-body section:has(> .rv-sec-h:only-child) {
+.rv-body section:has(> [data-zerops-section-label]:only-child) {
   display: none;
 }
-.rv-sec-h {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  /* A label hugs what it names: 10 under it, sections 24 apart. */
-  margin: 0 0 10px;
-  font-size: var(--text-caption);
-  font-weight: 500;
-  line-height: 16px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.rv-sec-h > span {
-  font-weight: 400;
+/* A section's label (the kit's SectionLabel) hugs what it names: its words 10 over it, sections
+   24 apart. */
+.rv-body section > [data-zerops-section-label] {
+  margin-bottom: 6px;
 }
 /* A section's own state at its label's end: its mark, its words and the press beside them. Every
    sentence its wait will say holds the room from the start, so the one it says next never moves
-   the label; a cause too long for the label's line takes the next one, from the label's edge. */
-.rv-sec-h:has(.rv-sec-state) {
+   the label; a cause too long for the label's line takes the next one, keeping the end edge. */
+.rv-body [data-zerops-section-label]:has(.rv-sec-state) {
   flex-wrap: wrap;
-  align-items: center;
   row-gap: 2px;
-}
-/* On a line of its own, in a narrow sheet, it keeps the end edge it has beside the label. */
-.rv-sec-h:has(.rv-sec-state) > span {
-  margin-inline-start: auto;
 }
 .rv-sec-state {
   display: grid;
   justify-items: end;
+  /* The state speaks under the label's words, in the caption type it always had. */
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--muted-foreground);
 }
 .rv-sec-state > span {
   display: inline-flex;
@@ -415,12 +394,14 @@
 .rv-sec-state[data-tone="attention"] [data-release-plan-again] {
   margin-inline-start: 3px;
 }
+/* A paragraph of the review's own words. */
 .rv-words {
   margin: 0;
   font-size: var(--text-body);
   line-height: 22px;
   text-wrap: pretty;
 }
+/* Lines standing in for words still being read (the kit's Skeletons), 10 apart. */
 .rv-skeleton {
   display: grid;
   gap: 10px;
@@ -444,6 +425,7 @@
 .rv-desc .chat-markdown > :first-child {
   margin-top: 0;
 }
+/* A picture in the description: its own shape, at most the column's width, framed by a hairline. */
 .rv-pic {
   position: relative;
   display: block;
@@ -501,6 +483,7 @@
   margin: 0;
   border-radius: 0;
 }
+/* A picture not drawn here, being read or unreadable: one quiet line in a soft box. */
 .rv-pic-line {
   display: flex;
   min-height: 40px;
@@ -524,40 +507,26 @@
   flex: 1;
 }
 
-/* A picture opened large, over the review: the picture, its words, a way through the others. */
-.rv-viewer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  @apply dialog-media-backdrop;
-  transition: opacity var(--duration-base) var(--ease-out-strong);
-}
+/* A picture opened large, over the review (the kit's media dialog): the picture and its words in
+   the window's middle, a way through the others at its sides. */
 .rv-viewer {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
   display: flex;
+  width: 100%;
+  height: 100%;
   align-items: center;
   justify-content: center;
   padding: 56px 72px;
 }
-.rv-viewer-popup {
+.rv-viewer-picture {
+  position: relative;
   display: flex;
   max-width: 100%;
   max-height: 100%;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  outline: none;
-  transition: opacity var(--duration-base) var(--ease-out-strong);
 }
-.rv-viewer-backdrop[data-starting-style],
-.rv-viewer-backdrop[data-ending-style],
-.rv-viewer-popup[data-starting-style],
-.rv-viewer-popup[data-ending-style] {
-  opacity: 0;
-}
-.rv-viewer-popup img {
+.rv-viewer-picture img {
   min-height: 0;
   max-width: 100%;
   max-height: calc(100dvh - 160px);
@@ -587,6 +556,7 @@
 .rv-files > * > :where(:not(:first-child)) {
   border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
 }
+/* A file's row: its folder dimmed, its name, its size, its status letter, its chevron. */
 .rv-file-name {
   overflow: hidden;
   white-space: nowrap;
@@ -636,6 +606,7 @@
 [aria-expanded="true"] > .rv-chev {
   rotate: 180deg;
 }
+/* A file row's place while the files are read. */
 .rv-file-skeleton {
   display: flex;
   height: 36px;
@@ -643,6 +614,7 @@
   padding: 0 12px 0 38px;
 }
 
+/* A file's diff, open under its row: numbered lines on a faint ground, mono. */
 .rv-diff {
   padding: 6px 0;
   background: color-mix(in oklab, var(--foreground) 2%, transparent);
@@ -686,6 +658,7 @@
 .rv-dl[data-kind="del"] .sg {
   color: var(--diff-deletion-foreground);
 }
+/* A quiet sentence in the diff's column, under the code's edge. */
 .rv-diff-note {
   padding: 4px 12px 4px 60px;
   font-family: var(--font-sans);
@@ -694,93 +667,14 @@
   color: var(--muted-foreground);
 }
 
-/* What could not be read, where it would have stood, with Try again: amber, it didn't go
-   through; a failure never blanks its section. */
-/* What HQ found: each finding a soft box — the statement beside its mark, who acts next under it,
-   and its identifiers folded under Details. */
-.rv-findings {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.rv-finding {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: 4px 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius-card);
-  background: color-mix(in oklab, var(--zerops-status-attention) 9%, transparent);
-}
-.rv-finding > svg {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  color: var(--zerops-status-attention);
-}
-.rv-finding > :not(svg) {
-  grid-column: 2;
-}
-.rv-finding-what {
-  margin: 0;
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 20px;
-  text-wrap: pretty;
-}
-.rv-finding-next {
-  margin: 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-  color: var(--muted-foreground);
-  text-wrap: pretty;
-}
-.rv-finding-next > span {
-  color: var(--foreground);
-}
-.rv-finding-more {
-  margin-top: 2px;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--muted-foreground);
-}
-.rv-finding-more > summary {
-  width: fit-content;
-  cursor: pointer;
-  border-radius: var(--radius-mark);
-  outline-offset: 2px;
-}
-.rv-finding-more > summary:hover {
-  color: var(--foreground);
-}
-.rv-finding-more > dl {
-  display: grid;
-  gap: 4px;
-  margin: 6px 0 0;
-}
-.rv-finding-more > dl > div {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-}
-.rv-finding-more dt {
-  color: var(--muted-foreground);
-}
-.rv-finding-more dd {
-  margin: 0;
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-  color: color-mix(in oklab, var(--foreground) 80%, transparent);
-}
+/* What could not be read (the kit's Failure), where it would have stood: inset to the list's
+   rows, or to the diff's code. */
 .rv-files .rv-failed {
   padding: 7px 14px 7px 12px;
 }
 .rv-diff .rv-failed {
   padding: 0 6px 0 60px;
 }
-/* A fold's way open: its words on the edge of what it opens. */
-
 /* The conversation: marks in a 20 px column, words beside them; then the one box. */
 .rv-remarks {
   display: grid;
@@ -852,13 +746,6 @@
   line-height: 18px;
   color: var(--zerops-status-failed-text);
 }
-/* Whom a comment reaches, or why there is no box to write one in: quiet, under the conversation. */
-.rv-say-note {
-  margin: 6px 0 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-  color: var(--muted-foreground);
-}
 
 /* The commits: one line each, what it did, then its age and hash on the column's right edge. */
 .rv-commits {
@@ -898,14 +785,6 @@
   column-gap: 12px;
   align-items: center;
 }
-.rv-commit-skeleton span {
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-.rv-commit-skeleton span:first-child {
-  width: 48%;
-}
 
 /* A release: what goes out, one line per change — its Mate's face, its number and title, and its
    Mate on the right. */
@@ -913,45 +792,9 @@
   display: grid;
   margin: 0 -12px;
 }
-.rv-relrow {
-  display: grid;
-  min-height: 44px;
-  grid-template-columns: 18px minmax(0, 1fr);
-  grid-template-areas:
-    "face title"
-    "face sub";
-  column-gap: 12px;
-  align-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-control);
-}
-.rv-relrow > :first-child {
-  grid-area: face;
-  align-self: start;
-  margin-top: 1px;
-}
-.rv-relrow-t {
-  display: block;
-  grid-area: title;
-  overflow: hidden;
-  font-size: var(--text-body);
-  line-height: 20px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.rv-relrow-sub {
-  display: block;
-  grid-area: sub;
-  overflow: hidden;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--muted-foreground);
-}
+/* Where a change stands on stage, where that stands out: busy blue, or failed red. */
 .rv-on {
   display: flex;
-  grid-area: sub;
   align-items: center;
   gap: 4px;
   font-size: var(--text-caption);
@@ -962,8 +805,8 @@
 .rv-on[data-mark="failed-on-stage"] {
   color: var(--zerops-status-failed-text);
 }
+/* A change row's way in: a › that comes forward under the pointer. */
 .rv-relrow-go {
-  grid-area: go;
   align-self: center;
   width: 14px;
   height: 14px;
@@ -983,15 +826,6 @@
 @media (hover: none) {
   .rv-relrow-go {
     opacity: 1;
-  }
-}
-/* A phone reads a change's title whole, on two lines where one cuts it. */
-@media (max-width: 39.999rem) {
-  .rv-relrow-t {
-    display: -webkit-box;
-    white-space: normal;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -1170,6 +1004,7 @@
 .rv-btns:empty {
   display: none;
 }
+/* What happens next, under the buttons, in its tone. */
 .rv-conseq {
   display: flex;
   flex-wrap: wrap;
@@ -1222,8 +1057,6 @@
   }
 }
 
-/* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
-   each, joined down their marks. Before the press they are the plan; after it they tick in place. */
 /* Put it live's route (`PutLiveSheet`): what goes live, then where, on the release plan's card
    and marks (`.rv-plan`, `.rv-pmark`); its rows wrap, a change's title being the person's words. */
 .put-live-route {
@@ -1261,6 +1094,7 @@
   background: color-mix(in oklab, var(--foreground) 12%, transparent);
   content: "";
 }
+/* A stop's mark: a ringed icon, the release plan's marks' size. */
 .put-live-mark {
   display: flex;
   width: 22px;
@@ -1276,6 +1110,7 @@
   width: 12px;
   height: 12px;
 }
+/* A stop's words: its title and its quiet lines. */
 .put-live-stop-body {
   display: flex;
   min-width: 0;
@@ -1297,7 +1132,7 @@
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-/* Who production is for, asked in its stop: two answers, the chosen one tinted. */
+/* Who production is for, asked in its stop: its question over the kit's RadioCards. */
 .put-live-ask {
   display: grid;
   gap: 10px;
@@ -1310,67 +1145,8 @@
   line-height: 18px;
   color: var(--foreground);
 }
-.put-live-shape {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
-  border-radius: var(--radius-card);
-  cursor: pointer;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    border-color 150ms var(--ease-out-strong);
-}
-.put-live-shape:hover {
-  background: color-mix(in oklab, var(--accent) 50%, transparent);
-}
-.put-live-shape[data-chosen] {
-  border-color: color-mix(in oklab, var(--primary) 40%, transparent);
-  background: color-mix(in oklab, var(--primary) 5%, transparent);
-}
-.put-live-shape:has([data-disabled]) {
-  cursor: default;
-}
-/* An answer's room while the setup files are read, at the height its words take, no words. */
-.put-live-shape-held {
-  display: block;
-  height: 76px;
-  border-radius: var(--radius-card);
-  background: var(--muted);
-}
-.put-live-shape-held + .put-live-shape-held {
-  margin-top: 2px;
-}
-.put-live-shape-held[data-long] {
-  height: 112px;
-}
-.put-live-shape-body {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 1px;
-}
-.put-live-shape-t {
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
-  color: var(--foreground);
-}
-.put-live-shape-m {
-  margin-top: 2px;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.put-live-skel {
-  display: block;
-  height: 12px;
-  margin-block: 3px;
-  border-radius: 999px;
-  background: var(--muted);
-}
+/* What happens in production: one card, the steps in HQ's order — a mark, a title and one line
+   each, joined down their marks. Before the press they are the plan; after it they tick in place. */
 .rv-plan {
   display: grid;
   margin: 0;
@@ -1422,6 +1198,7 @@
   background: color-mix(in oklab, var(--foreground) 12%, transparent);
   content: "";
 }
+/* A step's mark: its number to do, a spinner while it runs, a tinted round once it settled. */
 .rv-pmark {
   display: flex;
   grid-area: mark;
@@ -1469,15 +1246,20 @@
   background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
   color: var(--zerops-status-attention-text);
 }
-.rv-pmark[data-mark="skeleton"] {
-  border-color: transparent;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
 @media (prefers-reduced-motion: reduce) {
   .rv-pmark {
     transition: none;
   }
 }
+/* A mark still being read: its round's place, the kit's stand-in in it. */
+.rv-pmark-room {
+  display: flex;
+  grid-area: mark;
+  width: 22px;
+  height: 22px;
+  margin-top: 8px;
+}
+/* A step's title and its one line, the line's first words in the step's tone. */
 .rv-pstep-t {
   grid-area: title;
   margin: 0;
@@ -1535,17 +1317,13 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
 }
-/* The field's place in a value step still being read: the height the field stands at. */
-.rv-pstep-more > .rv-pskel-field {
-  height: 28px;
-  border-radius: var(--radius-control);
-}
 .rv-pstep-more > p {
   margin: 0;
   font-size: var(--text-caption);
   line-height: 16px;
   color: var(--muted-foreground);
 }
+/* A step's import, as YAML, scrolling inside its own box. */
 .rv-pstep-yaml {
   max-height: 240px;
   margin: 0;
@@ -1557,26 +1335,6 @@
   font-size: var(--text-caption);
   line-height: 16px;
   white-space: pre;
-}
-/* Words still being read, in the place and size they will stand. */
-.rv-pskel {
-  display: block;
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-/* A change's row before it is listed: its face, its title and its line, in their sizes. */
-.rv-relrow[data-skeleton] .rv-pskel:first-child {
-  width: 18px;
-  height: 18px;
-}
-.rv-relrow[data-skeleton] .rv-relrow-t {
-  margin: 5px 0;
-}
-.rv-relrow[data-skeleton] .rv-relrow-sub,
-.rv-pskel[data-line] {
-  height: 8px;
-  margin: 4px 0;
 }
 /* The version it tags, in words, until the person asks to change it. */
 .rv-version-row {
@@ -1598,15 +1356,5 @@
 .rv-viewport > .rv .rv-step:not([data-at="here"]) {
   bottom: 0;
   max-height: none;
-}
-/* The primary's keys: a chip in the button's own ink, enabled or waiting. */
-.rv-keys {
-  padding: 2px 4px;
-  border-radius: var(--radius-mark);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  line-height: 16px;
-  background: color-mix(in oklab, currentColor 18%, transparent);
 }
 /* ==== end of review ==== */

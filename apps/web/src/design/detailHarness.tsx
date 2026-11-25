@@ -96,7 +96,7 @@ import {
   VAULT_TWO_APPS_FIXTURE,
   vaultFixtureImpact,
 } from "~/components/zerops/vault/vaultFixture";
-import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
+import type { AccessTableView, columnPeople } from "~/components/zerops/projects/accessTable.logic";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
@@ -712,6 +712,16 @@ const ACME_RELEASING: ReadonlyArray<FlowRelease> = [
   },
   ...ACME_RELEASES,
 ];
+
+/** Acme's access as read: its people stand in `ACME_PEOPLE`, so the view says only that it was read. */
+const ACME_ACCESS: AccessTableView = {
+  kind: "table",
+  columns: [],
+  rows: [],
+  editable: false,
+  invite: false,
+  candidates: [],
+};
 
 /** Fifteen people who reach Acme's production, as its access reads them: two set, the rest by default. */
 const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
@@ -1887,7 +1897,7 @@ function HarnessStates() {
                 routes: ACME_ROUTES,
                 releases: ACME_RELEASES,
                 platformServices: ACME_SERVICES,
-                access: { summary: ACME_PEOPLE, line: null },
+                access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
                 vault: true,
                 release: RELEASE_WAITING,
                 ready: READY_TWO,
@@ -1964,7 +1974,7 @@ function HarnessStates() {
               sha: sha(RELAY_COMMITS[1] ?? ""),
               refused: true,
             })),
-            access: { summary: ACME_PEOPLE, line: null },
+            access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
             vault: true,
             vaultView: RELAY_VAULT,
             release: { ...RELEASE_WAITING, tag: "v0.1.8" },
@@ -2011,7 +2021,7 @@ function HarnessStates() {
             ],
             notInZerops: ["db"],
             platformServices: ACME_SERVICES.filter((row) => row.service.hostname !== "db"),
-            access: { summary: ACME_PEOPLE, line: null },
+            access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
             mayRunAgain: true,
             release: { ...RELEASE_WAITING, tag: "v0.1.16" },
             ready: READY_THREE_FAILED,
@@ -2036,7 +2046,7 @@ function HarnessStates() {
             releasing: "v0.1.14",
             release: { ...TEASHOP_RELEASING, inFlight: "v0.1.14" },
             platformServices: ACME_SERVICES,
-            access: { summary: ACME_PEOPLE, line: null },
+            access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
             next: MERGED_THREE,
             liveBy: "Dana K.",
           }}
@@ -2057,7 +2067,7 @@ function HarnessStates() {
             declared: false,
             servicesRead: false,
             releasesRead: "reading",
-            access: { summary: ACME_PEOPLE, line: null },
+            access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
           }}
         />
       </State>
@@ -2075,7 +2085,7 @@ function HarnessStates() {
             routes: ACME_ROUTES,
             declared: false,
             platformServices: ACME_SERVICES,
-            access: { summary: ACME_PEOPLE, line: null },
+            access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
           }}
         />
       </State>
@@ -2275,7 +2285,7 @@ function HarnessStates() {
               services: [service("bot", "b21d904c", undefined)],
               deployment: STAGE_RUNNING,
               routes: RELAY_ROUTES.slice(3),
-              access: { summary: ACME_PEOPLE, line: null },
+              access: { summary: ACME_PEOPLE, view: ACME_ACCESS },
               vault: true,
               vaultView,
             }}

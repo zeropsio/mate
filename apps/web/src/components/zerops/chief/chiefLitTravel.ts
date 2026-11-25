@@ -14,9 +14,9 @@ import { shownBandBox } from "../selectedBandBox";
 const TRAVEL_MS = MOTION.duration.slow;
 const TRAVEL_EASE = MOTION.easing.out;
 
-const LIT = '[data-zerops-surface="sidebar-chief-row"] .menu-chief-lit';
+const LIT = '[data-zerops-surface="sidebar-chief-row"] [data-chief-lit]';
 const LIT_ON =
-  '[data-zerops-surface="sidebar-chief-row"]:is([data-current], [data-pressed]) .menu-chief-lit';
+  '[data-zerops-surface="sidebar-chief-row"]:is([data-current], [data-pressed]) [data-chief-lit]';
 
 /** `box` drawn at `at`, as a transform from its own place (its origin its top-left corner). */
 function placed(box: DOMRect, at: DOMRect): string {
@@ -50,7 +50,7 @@ function carry(lit: HTMLElement, from: DOMRect, to: DOMRect): void {
 export function carryBandToChief(): void {
   if (typeof document === "undefined" || prefersReducedMotion()) return;
   const lit = document.querySelector<HTMLElement>(LIT);
-  const band = document.querySelector<HTMLElement>(".menu-band[data-on]");
+  const band = document.querySelector<HTMLElement>("[data-menu-band][data-on]");
   if (lit === null || band === null) return;
   const home = lit.parentElement?.getBoundingClientRect();
   if (home === undefined) return;

@@ -27,6 +27,7 @@ import {
 import type { CrewCommand, CrewRun, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
 import { useState, type ReactNode } from "react";
 
+import { Failure } from "~/components/ui/failure";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
   Dialog,
@@ -211,9 +212,9 @@ function Foot({
   return (
     <>
       {error === null ? null : (
-        <p className="px-6 text-line text-status-failed-text" role="alert">
-          {error}
-        </p>
+        <div className="px-6">
+          <Failure cause={error} role="alert" size="line" />
+        </div>
       )}
       <DialogFooter variant="bare">{children}</DialogFooter>
     </>

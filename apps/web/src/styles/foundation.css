@@ -355,6 +355,39 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   /* What a call returned, opened: down out of its header, once. The room it
      takes opens at once, so the chat can still bring its end into sight. */
   --animate-detail-in: detail-in var(--duration-base) var(--ease-out-strong) backwards;
+  /* A face being picked (`MateFacePreview`): the one before fades out under the new one, which
+     settles from a touch smaller (`motion-arrival.css`). */
+  --animate-face-out: face-out var(--duration-quick) var(--ease-out-strong);
+  --animate-face-in: face-in var(--duration-base) var(--ease-out-strong);
+  /* A vault row found flashes its ring; a value saved shows its check, which leaves by itself
+     (`motion-panels.css`). */
+  /* The Crew tab's moves, only for a change the tab watched: a need unfolding, a view sliding in
+     from the side it comes from, the amber dot scaling in (`motion-panels.css`); reduced motion
+     fades them (`animate-zerops-appear`). */
+  --animate-crew-reveal: crew-reveal var(--duration-base) var(--ease-out-strong) both;
+  --animate-crew-view-forward: crew-view-forward var(--duration-base) var(--ease-out-strong)
+    backwards;
+  --animate-crew-view-back: crew-view-back var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-crew-dot-in: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-vault-flash: vault-flash 1.5s var(--ease-out-strong);
+  --animate-vault-settled: vault-settled 1.4s var(--ease-out-strong) both;
+  /* A conversation opening (`ConversationOpeningStage`): the stage's eyes blink open, the stage
+     fades where it stands, and the conversation comes in under it, each 150 ms; the hand-off's
+     1 ms is what is left of the rise once the eyes are open, and only its end is read. */
+  --animate-conversation-eye-open: conversation-eye-open var(--duration-quick)
+    var(--ease-out-strong) both;
+  --animate-conversation-handoff: conversation-handoff 1ms linear;
+  --animate-stage-exit: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
+  --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
+  /* The full-screen composer's backdrop fading in over the conversation. */
+  --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
+  /* The menu's (`motion-menu.css`): the fix's words rising in as their card opens; the section a
+     project's tag spoke of lit for a moment as its popover opens, longer than the scale so the
+     eye finds it. */
+  --animate-envpop-rise: envpop-rise var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-sites-flash: sites-flash 1200ms ease-out;
+  /* A face card just added grows in once, top first (`motion-overview.css`). */
+  --animate-card-arrive: card-arrive var(--duration-base) var(--ease-out-strong);
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);
@@ -423,6 +456,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
   --color-mint-panel: var(--zerops-mint-panel);
+  --color-stage: var(--zerops-stage);
+  --color-stage-foreground: var(--zerops-stage-foreground);
+  --color-annotation: var(--zerops-annotation);
+  /* What a table's sticky header and first column stand on: the card's, or the ground of the
+     surface it sits in, which sets --table-ground. */
+  --color-table-ground: var(--table-ground, var(--color-card));
   --shadow-popup: var(--zerops-shadow-popup);
   --shadow-edge: var(--zerops-shadow-edge);
   /* A handle dragged over a colour plane: a white ring with a dark hairline, alike in both
@@ -455,6 +494,21 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
+  /* The ground of a project's open group on the closed menu's rail, and a press on it: a step of
+     the menu's ink into its ground. */
+  --color-rail-group: color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar));
+  --color-rail-group-hover: color-mix(
+    in oklab,
+    var(--contrast-sidebar-foreground) 6%,
+    color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar))
+  );
+  /* A Mate's dot at work (`MateDot`): its own hue (`--mate-tint`), or the muted ink without one,
+     mixed into the menu's ink. */
+  --color-mate-dot: color-mix(
+    in oklab,
+    var(--mate-tint, var(--contrast-sidebar-muted-foreground)) 80%,
+    var(--sidebar-foreground)
+  );
   @keyframes skeleton {
     /* Transform-only so the highlight sweep stays on the compositor, then a
        long hold with the band parked off-screen instead of a constant shimmer. */

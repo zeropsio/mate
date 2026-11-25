@@ -10,9 +10,9 @@ export function ComposerFullScreenToggle({
   readonly onToggle: () => void;
 }) {
   return (
-    // `.composer-full-toggle` places the press in the text's top corner and shows it with the
-    // composer's hover or focus.
-    <span className="composer-full-toggle">
+    // In the text's top corner, shown with the composer's hover or focus (always on a screen
+    // without hover), and while the composer is full screen.
+    <span className="absolute -top-0.5 -right-1 z-1 grid size-6.5 place-items-center opacity-0 transition-opacity duration-150 ease-out-strong focus-within:opacity-100 in-data-[composer-full=on]:opacity-100 in-[[data-chat-composer-surface]:focus-within]:opacity-100 in-[[data-chat-composer-surface]:hover]:opacity-100 [@media(hover:none)]:opacity-100">
       <Tooltip>
         <TooltipTrigger
           render={

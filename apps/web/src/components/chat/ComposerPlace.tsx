@@ -75,7 +75,7 @@ export function ComposerPlaceLine({ notice }: { readonly notice: ComposerPlaceNo
   return (
     <div className="mx-auto w-full min-w-0 max-w-3xl" data-composer-place={notice.id}>
       <div
-        className="relative z-10 flex min-h-12 min-w-0 items-center gap-2.5 px-4 py-2 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+        className="relative z-10 flex min-h-12 min-w-0 items-center gap-2.5 rounded-sheet px-4 py-2 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
         data-chat-composer-main-surface="true"
         role="status"
       >

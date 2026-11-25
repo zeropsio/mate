@@ -1,11 +1,12 @@
 /**
  * Pieces of a Mate's arrival other surfaces draw: its services' line, its runtimes still coming
- * up, a spinner and the sign-in phrase with each brand wearing its logo. The arrival itself is one
+ * up and the sign-in phrase with each brand wearing its logo. The arrival itself is one
  * progress row (`ComingBelow`).
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Fragment, useState } from "react";
 
+import { Badge, type BadgeTone } from "../ui/badge";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 
 import {
@@ -16,6 +17,17 @@ import {
 } from "~/zerops/mateArrival";
 
 import type { SignInPhrasePart } from "@t3tools/client-runtime/zerops/agentSignIn";
+
+/** A service's state as the kit's dot: a hollow one where nothing runs yet or ever will. */
+const SERVICE_DOT: Readonly<
+  Record<ArrivalService["state"], { readonly tone: BadgeTone; readonly hollow: boolean }>
+> = {
+  ok: { tone: "success", hollow: false },
+  busy: { tone: "info", hollow: false },
+  waiting: { tone: "neutral", hollow: true },
+  failed: { tone: "danger", hollow: false },
+  empty: { tone: "neutral", hollow: true },
+};
 
 const SERVICE_STATE_WORDS: Readonly<Record<ArrivalService["state"], string>> = {
   ok: "running",
@@ -40,8 +52,13 @@ export function ArrivalServices({
           data-state={service.state}
           key={service.name}
         >
-          <span aria-hidden="true" className="arrival-service-dot" />
-          {service.name}
+          <Badge
+            dot
+            hollow={SERVICE_DOT[service.state].hollow}
+            tone={SERVICE_DOT[service.state].tone}
+          >
+            {service.name}
+          </Badge>
         </li>
       ))}
     </ul>
@@ -82,16 +99,6 @@ export function ArrivalRuntimesLine({
       <ArrivalServices services={services} />
       <span>coming up</span>
     </div>
-  );
-}
-
-/** Something under way: a ring and its arc, turning a notch at a time. */
-export function ArrivalSpinner({ className }: { readonly className: string }) {
-  return (
-    <svg aria-hidden="true" className={className} data-arrival-spinner viewBox="0 0 16 16">
-      <circle className="arrival-glyph-track" cx="8" cy="8" r="6.4" />
-      <path className="arrival-glyph-arc" d="M8 1.6a6.4 6.4 0 0 1 6.4 6.4" />
-    </svg>
   );
 }
 

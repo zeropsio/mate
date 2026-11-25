@@ -50,6 +50,8 @@ const NO_FILES: ComposerFilesValue = {
 
 export const ComposerFilesContext = createContext<ComposerFilesValue>(NO_FILES);
 
+const FILE_NAME_CLASS_NAME = "truncate text-line leading-4.5 font-medium";
+
 /** A file's face: its icon, its name and a quiet line beside it. */
 export function AttachedFileFace(props: {
   readonly name: string;
@@ -65,18 +67,22 @@ export function AttachedFileFace(props: {
         pathValue={props.name}
         kind={inferEntryKindFromPath(props.name)}
         theme={props.theme}
-        className="attached-file-icon"
+        className="in-data-composer-file:size-5"
       />
       {shown === props.name ? (
-        <span className="attached-file-name">{shown}</span>
+        <span className={FILE_NAME_CLASS_NAME}>{shown}</span>
       ) : (
         // A name cut short shows whole on hover.
         <Tooltip>
-          <TooltipTrigger render={<span className="attached-file-name" />}>{shown}</TooltipTrigger>
+          <TooltipTrigger render={<span className={FILE_NAME_CLASS_NAME} />}>
+            {shown}
+          </TooltipTrigger>
           <TooltipPopup side="top">{props.name}</TooltipPopup>
         </Tooltip>
       )}
-      <span className="attached-file-detail">{props.detail}</span>
+      <span className="shrink-0 text-caption tabular-nums text-muted-foreground in-data-composer-file:-mt-1.5 group-data-[status=failed]/file:text-warning-foreground">
+        {props.detail}
+      </span>
     </>
   );
 }
@@ -101,8 +107,9 @@ export function ComposerFile({ id }: { readonly id: string }) {
         ? "Not uploaded"
         : formatPictureBytes(file.sizeBytes);
   return (
+    // A quiet card as tall as a picture, so a row of pictures and files reads as one gallery.
     <span
-      className="composer-file"
+      className="group/file relative inline-flex h-20 w-42 max-w-full cursor-default flex-col justify-between rounded-control bg-foreground/4 px-3 py-2.5 leading-normal text-foreground outline-none ring-1 ring-foreground/14 transition-shadow duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring in-data-composer-chip-selected:ring-2 in-data-composer-chip-selected:ring-ring data-[status=failed]:ring-2 data-[status=failed]:ring-warning"
       data-composer-file={id}
       data-status={file.status}
       role="group"
@@ -117,7 +124,7 @@ export function ComposerFile({ id }: { readonly id: string }) {
         nameChars={CARD_NAME_CHARS}
       />
       {file.status === "failed" ? (
-        <span className="composer-file-action composer-file-retry">
+        <span className="absolute right-2 bottom-2 flex">
           <Button
             variant="secondary"
             size="icon-2xs"
@@ -130,7 +137,7 @@ export function ComposerFile({ id }: { readonly id: string }) {
           </Button>
         </span>
       ) : null}
-      <span className="composer-file-action composer-file-remove">
+      <span className="absolute -top-2 -right-2 flex opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/file:opacity-100 group-hover/file:opacity-100 pointer-coarse:opacity-100">
         <Button
           variant="secondary"
           size="icon-2xs"

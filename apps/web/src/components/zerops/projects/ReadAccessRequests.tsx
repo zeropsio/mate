@@ -23,6 +23,8 @@ import { Button } from "../../ui/button";
 import { environmentTitle } from "../place/place.logic";
 import { SectionLabel } from "../system/SectionLabel";
 import { CELL_WORDS, type AccessTableView } from "./accessTable.logic";
+import { CARD_SECTION } from "./ProjectAccessChips";
+import { Failure } from "~/components/ui/failure";
 
 export function ReadAccessRequests({
   view,
@@ -227,9 +229,7 @@ function ReadAccessSection({
     <>
       <ul className="flex flex-col gap-2">{lines}</ul>
       {said.map((line) => (
-        <p className="ov-sec-empty" data-tone="failed" key={line} role="alert">
-          {line}
-        </p>
+        <Failure cause={line} key={line} role="alert" size="line" />
       ))}
     </>
   );
@@ -237,7 +237,7 @@ function ReadAccessSection({
     return (
       <section
         aria-labelledby="pp-read-access"
-        className="pp-group"
+        className="grid min-w-0 gap-1"
         data-zerops-surface="read-access"
       >
         <SectionLabel id="pp-read-access">Read access</SectionLabel>
@@ -245,8 +245,8 @@ function ReadAccessSection({
       </section>
     );
   return (
-    <section aria-label="Read access" className="ov-sec" data-zerops-surface="read-access">
-      <h3 className="ov-sec-name">Read access</h3>
+    <section aria-label="Read access" className={CARD_SECTION} data-zerops-surface="read-access">
+      <SectionLabel level={3}>Read access</SectionLabel>
       {body}
     </section>
   );

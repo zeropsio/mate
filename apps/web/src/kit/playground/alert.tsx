@@ -17,7 +17,7 @@ const VARIANTS = variantsOf<AlertVariant>({
   warning: true,
   error: true,
 });
-const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true });
+const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true, tint: true });
 // `controlAlignment` only reads in a row, so the two props are one choice here.
 const LAYOUTS = ["row", "first-line", "centered"] as const;
 
@@ -45,7 +45,7 @@ export default definePlayground({
     surface: {
       kind: "enum",
       options: SURFACES,
-      note: "glass over content, bare inside a parent's surface",
+      note: "glass over content, bare inside a parent's surface, tint a callout set into one",
     },
     layout: {
       kind: "enum",
@@ -107,6 +107,7 @@ export default definePlayground({
       "Title it with what happened; put what fixes it in the description and the action.",
       "Use error only for something that failed; a Failure says it with Details folded under.",
       "Set it bare inside a surface that already draws a card, such as the composer's drawer.",
+      "Tint it where trouble stands inside a surface: a review's reason, what HQ found, what waits on you.",
     ],
     dont: [
       "Announce something that just happened and is over: that is a Toast.",

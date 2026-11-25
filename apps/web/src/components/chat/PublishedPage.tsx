@@ -9,6 +9,8 @@ import { useTheme } from "~/hooks/useTheme";
 import { watchIntersections } from "~/lib/restingIntersections";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import { Failure } from "../ui/failure";
+import { Skeleton } from "../ui/skeleton";
 import { keepFrameOnMove } from "./keepFrameOnMove";
 import { useTimelineRowSettling } from "./timelineRowReads";
 import {
@@ -332,7 +334,11 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           </Button>
         </div>
       ) : failed ? (
-        <p className="published-page-failed">The page could not be read from the Mate.</p>
+        <div className="p-3">
+          <Failure cause="The page could not be read from the Mate." />
+        </div>
+      ) : document_ === null ? (
+        <Skeleton className="size-full" shape="card" />
       ) : null}
     </div>
   );

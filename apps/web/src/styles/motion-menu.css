@@ -1,0 +1,17 @@
+/* ==== The menu's choreographies: only keyframes; each runs through an `--animate-*` token ==== */
+
+/* The words a Mate is asked to fix production with, rising in as their card opens. */
+@keyframes envpop-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* The section a project's environment tag spoke of, lit for a moment as its popover opens. */
+@keyframes sites-flash {
+  0%,
+  40% {
+    background-color: color-mix(in oklab, var(--info-foreground) 12%, var(--popover));
+  }
+}

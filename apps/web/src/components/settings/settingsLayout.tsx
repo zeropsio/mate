@@ -106,6 +106,7 @@ export function SettingsSection({
   icon,
   count,
   headerAction,
+  headerActionWraps,
   children,
   className,
   ...sectionProps
@@ -115,6 +116,8 @@ export function SettingsSection({
   /** How many it holds, beside its title. */
   count?: ReactNode;
   headerAction?: ReactNode;
+  /** On a phone the header's action takes a line of its own (`SectionHeader actionWraps`). */
+  headerActionWraps?: boolean;
   children: ReactNode;
 }) {
   const targetRef = useSettingsSearchTarget<HTMLElement>(sectionProps.id);
@@ -129,6 +132,7 @@ export function SettingsSection({
       <div className="px-3">
         <SectionHeader
           action={headerAction}
+          actionWraps={headerActionWraps}
           count={count}
           title={
             <>
@@ -190,6 +194,7 @@ export function SettingsRow({
             </>
           ) : undefined
         }
+        fieldUnder
         lineWraps
         size="sm"
         title={title}
@@ -236,9 +241,6 @@ export function SettingResetButton({
  * settings row: drop the composer's max-width so the trigger sizes to its
  * label instead.
  */
-export const SETTINGS_PICKER_TRIGGER_CLASSNAME =
-  "min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground";
-
 export function SettingsPageContainer({
   children,
   className,
@@ -258,7 +260,9 @@ export function SettingsPageContainer({
   return (
     <SettingsSearchTargetProvider targetId={targetId} onTargetHandled={clearTargetHash}>
       <div
-        className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem]"
+        // On a phone the desktop's 10 and 11 px notes (a count, a table's head, a sample's label)
+        // are 12 px.
+        className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem] max-sm:[&_.text-2xs]:text-caption max-sm:[&_.text-3xs]:text-caption"
         data-settings-page-scroll
       >
         {/* On a phone the page's gutter is its rows' own inset: their words start 16 px in. */}

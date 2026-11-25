@@ -31,6 +31,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
+import { EmptyState } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PAGE_BARS, SpendBars } from "../zerops/projects/ProjectSpend";
@@ -63,11 +64,12 @@ export function BillingSettings(): JSX.Element {
   );
 }
 
+/** The page holds nothing for this viewer: why, and who can see it. */
 function PageNote({ title, words }: { readonly title: string; readonly words: string }) {
   return (
-    <div className="flex flex-col items-center gap-1 px-6 py-24 text-center">
-      <p className="font-medium text-foreground text-body">{title}</p>
-      <p className="max-w-sm text-muted-foreground text-body">{words}</p>
+    // As far from the page's top and foot as before the kit's state held it.
+    <div className="py-14">
+      <EmptyState title={title}>{words}</EmptyState>
     </div>
   );
 }

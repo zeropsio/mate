@@ -102,6 +102,7 @@ import {
   spendLine,
   type Board,
 } from "./taskBoard.logic";
+import { RealName } from "~/components/ui/real-name";
 
 /** Where the organization's connections are set: Settings › Automation. */
 const AUTOMATION_SETTINGS = "/settings/automation" as const;
@@ -1199,7 +1200,7 @@ function TaskBoardView({
                             render={<a href={row.url} rel="noreferrer" target="_blank" />}
                             tone="muted"
                           >
-                            <span className="real-name">{row.source}</span>
+                            <RealName>{row.source}</RealName>
                             <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
                           </InlineButton>
                         </span>
@@ -1446,7 +1447,7 @@ function SourceRowView({
           {row.kind === "github" ? (
             <>
               {" "}
-              <span className="real-name">{row.label}</span>
+              <RealName>{row.label}</RealName>
             </>
           ) : null}
         </span>
@@ -1459,7 +1460,7 @@ function SourceRowView({
         ) : null}
         {row.detail === null && row.meta === null ? null : (
           <span className="pa-who">
-            {row.kind === "github" ? <span className="real-name">{row.detail}</span> : row.detail}
+            {row.kind === "github" ? <RealName>{row.detail}</RealName> : row.detail}
             {row.detail === null || row.meta === null ? null : " · "}
             {row.meta}
           </span>

@@ -32,22 +32,9 @@
 .run-result-row[data-tall] .run-result-mark {
   height: 20px;
 }
-/* One meaning per colour (S3): green runs, amber waits on the person, red is
-   still broken; a thing's glyph stays muted. */
-.run-result-mark[data-tone="ok"] {
-  color: var(--color-status-ok);
-}
-.run-result-mark[data-tone="attention"] {
-  color: var(--color-status-attention);
-}
+/* A broken row's glyph is red (S3); a thing's glyph stays muted. Its dot is a Badge in its tone. */
 .run-result-mark[data-tone="failed"] {
   color: var(--color-status-failed);
-}
-.run-result-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
 }
 .run-result-main {
   display: flex;
@@ -92,39 +79,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-/* Blue is something to click (S3): a text action, never a filled button. */
-.run-result-open {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-control);
-  color: var(--color-muted-foreground);
-  transition:
-    background-color var(--duration-quick) var(--ease-out-strong),
-    color var(--duration-quick) var(--ease-out-strong);
-}
-.run-result-open:hover {
-  background: var(--color-accent);
-  color: var(--color-foreground);
-}
-/* Under a finger the arrow takes 40 px around its 24: the rows stand 28 to 40 px apart, so two
-   arrows' presses never reach each other's glyph. */
-@media (pointer: coarse) {
-  .run-result-open {
-    position: relative;
-  }
-  .run-result-open::after {
-    content: "";
-    position: absolute;
-    inset: -8px;
-  }
-}
-.run-result-open:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
-  outline-offset: 1px;
 }
 
 /* The run's pictures, one strip under its rows (the owner, 2026-09-29: "if

@@ -17,10 +17,13 @@ import { toastManager } from "~/lib/toasts";
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { EmptyState } from "../ui/empty";
+import { Failure } from "../ui/failure";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PageHeader } from "../ui/page-header";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
+import { Row } from "../ui/row";
 import { ACCESS_LEVEL_LINES } from "../zerops/projects/projectPeople.logic";
 import { noteInvitationSent } from "./invitationSent";
 import { SettingsPageContainer } from "./settingsLayout";
@@ -38,6 +41,7 @@ import {
   type InviteProject,
 } from "./teamMember.logic";
 import { useTeam } from "./useTeam";
+import { SectionHeader } from "../ui/section";
 
 /** What the invitation asks Zerops and HQ; each rejects with what to tell the person. */
 export interface TeamInviteActions {
@@ -149,7 +153,7 @@ export function TeamInviteView({
 
   return (
     <form
-      className="tm-page"
+      className="grid w-full max-w-140 gap-11 px-3"
       data-zerops-surface="team-invite"
       noValidate
       onSubmit={(event) => {
@@ -161,8 +165,8 @@ export function TeamInviteView({
         line="People you invite sign in with their own Zerops account."
         title={`Invite someone to ${organizationName}`}
       />
-      <section aria-label="Who" className="tm-section">
-        <div className="tm-field">
+      <section aria-label="Who" className="grid gap-3.5">
+        <div className="grid gap-1.5">
           <Label htmlFor={`${id}-email`}>E-mail</Label>
           <Input
             aria-invalid={addressTrouble !== null ? true : undefined}
@@ -179,17 +183,15 @@ export function TeamInviteView({
             value={email}
           />
           {addressTrouble === null ? (
-            <span className="tm-block-desc">
+            <span className="text-body leading-4.5 text-pretty text-muted-foreground">
               {`Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`}
             </span>
           ) : (
-            <p className="tm-trouble" role="alert">
-              {addressTrouble}
-            </p>
+            <Failure cause={addressTrouble} role="alert" size="line" />
           )}
         </div>
-        <div className="tm-names">
-          <div className="tm-field">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
             <Label htmlFor={`${id}-first`}>First name</Label>
             <Input
               aria-invalid={submitted && first.trim() === "" ? true : undefined}
@@ -199,7 +201,7 @@ export function TeamInviteView({
               value={first}
             />
           </div>
-          <div className="tm-field">
+          <div className="grid gap-1.5">
             <Label htmlFor={`${id}-last`}>Last name</Label>
             <Input
               aria-invalid={submitted && last.trim() === "" ? true : undefined}
@@ -211,7 +213,7 @@ export function TeamInviteView({
           </div>
         </div>
       </section>
-      <section aria-label="Role" className="tm-section">
+      <section aria-label="Role" className="grid gap-3.5">
         <TeamRoleEditor
           editable={!sending}
           editorRole={viewerRole}
@@ -219,39 +221,45 @@ export function TeamInviteView({
           value={membership}
         />
       </section>
-      <section aria-label="Projects" className="tm-section">
-        <span className="tm-block-text">
-          <h2 className="tm-block-title">Projects</h2>
-          <span className="tm-block-desc">{inviteReachLine(membership, projects.length)}</span>
-        </span>
+      <section aria-label="Projects" className="grid gap-3.5">
+        <SectionHeader line={inviteReachLine(membership, projects.length)} title="Projects" />
         {level === null || projects.length === 0 ? null : (
           <>
-            <ul aria-label="Projects to give" className="tm-invite-projects">
+            <ul
+              aria-label="Projects to give"
+              className="grid gap-0.5 rounded-card bg-muted p-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,var(--muted))]"
+            >
               {projects.map((project) => (
                 <li key={project.key}>
-                  <label className="tm-invite-project">
-                    <Checkbox
-                      checked={picked.includes(project.key)}
-                      disabled={sending}
-                      onCheckedChange={(on) => {
-                        const others = picked.filter((key) => key !== project.key);
-                        setOwnPicks(on === true ? [...others, project.key] : others);
-                      }}
-                    />
-                    <span className="tm-pick-name">{project.name}</span>
-                  </label>
+                  <Row
+                    lead={
+                      <Checkbox
+                        checked={picked.includes(project.key)}
+                        disabled={sending}
+                        onCheckedChange={(on) => {
+                          const others = picked.filter((key) => key !== project.key);
+                          setOwnPicks(on === true ? [...others, project.key] : others);
+                        }}
+                      />
+                    }
+                    pressable
+                    render={<label />}
+                    size="sm"
+                    title={project.name}
+                  />
                 </li>
               ))}
             </ul>
             {pickedNone ? (
-              <span className="tm-block-desc" data-part="no-pick">
+              <span
+                className="text-body leading-4.5 text-pretty text-muted-foreground"
+                data-part="no-pick"
+              >
                 {noPickLine(membership)}
               </span>
             ) : offered.levels.length > 1 ? (
-              <div className="tm-role">
-                <h2 className="tm-block-title" id={`${id}-level`}>
-                  Access
-                </h2>
+              <div className="grid gap-2.5">
+                <SectionHeader id={`${id}-level`} title="Access" />
                 <RadioGroup
                   aria-labelledby={`${id}-level`}
                   layout="columns"
@@ -275,15 +283,17 @@ export function TeamInviteView({
                 </RadioGroup>
               </div>
             ) : (
-              <span className="tm-block-desc">
+              <span className="text-body leading-4.5 text-pretty text-muted-foreground">
                 {LEVEL_WORDS[level]} access: {lowerFirst(ACCESS_LEVEL_LINES[level])}
               </span>
             )}
           </>
         )}
       </section>
-      <div className="tm-actions">
-        {trouble === null ? null : <p role="alert">{trouble}</p>}
+      <div className="flex items-center justify-end gap-2">
+        {trouble === null ? null : (
+          <Failure className="me-auto" cause={trouble} role="alert" size="line" />
+        )}
         <Button aria-busy={sending || undefined} disabled={sending} type="submit">
           {sending ? "Inviting…" : "Invite"}
         </Button>
@@ -321,7 +331,7 @@ export function TeamInvitePage() {
   return (
     <SettingsPageContainer width="wide">
       {team.view.kind === "people" && !mayInvite ? (
-        <p className="tm-empty">Only an organization owner or admin can invite.</p>
+        <EmptyState>Only an organization owner or admin can invite.</EmptyState>
       ) : (
         <TeamInviteView
           actions={actions}

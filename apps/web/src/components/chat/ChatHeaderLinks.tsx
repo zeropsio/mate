@@ -29,10 +29,13 @@ import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresse
 const sitesButton = (
   <Button
     aria-label="Open the Mate's sites"
-    data-chat-header-ghost
+    // A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle:
+    // Sites stands there only while the Mate's name is alone on it. A Review, a task's state or a
+    // crew takes its room; the menu's row and the panel's Browser still lead to every address.
+    className="max-sm:[[data-chat-header]:has([data-conversation-strip]_:is(.chat-header-review,[data-zerops-surface=mate-task-session],[data-conversation-crew]))_&]:hidden"
     data-header-sites=""
     size="sm"
-    variant="ghost"
+    variant="sidebar"
   />
 );
 const sitesWords = (
@@ -167,11 +170,11 @@ export function HeaderLinksView({
     return (
       <HeldLink>
         {projectInMenu ? null : (
-          <Button data-chat-header-ghost size="sm" variant="ghost">
+          <Button size="sm" variant="sidebar">
             {projectWords}
           </Button>
         )}
-        <Button data-chat-header-ghost size="sm" variant="ghost">
+        <Button size="sm" variant="sidebar">
           {sitesWords}
         </Button>
       </HeldLink>
@@ -191,7 +194,7 @@ export function HeaderLinksView({
       )}
       {sites ?? (
         <HeldLink>
-          <Button data-chat-header-ghost size="sm" variant="ghost">
+          <Button size="sm" variant="sidebar">
             {sitesWords}
           </Button>
         </HeldLink>
@@ -220,11 +223,10 @@ export function ProjectPageLink({
         render={
           <Button
             aria-label={label}
-            data-chat-header-ghost
             data-zerops-surface="header-project-page"
             onClick={onOpen}
             size="sm"
-            variant="ghost"
+            variant="sidebar"
           />
         }
       >

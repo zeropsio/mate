@@ -257,22 +257,6 @@
 .run-now[data-run-now="worked"] .run-now-head {
   white-space: normal;
 }
-/* A fact of what the run came to, beside its time: a quiet chip, two at most. */
-.run-now-fact {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0 8px;
-  border-radius: var(--radius-control);
-  background: var(--run-now);
-  font-size: var(--text-line);
-  line-height: 22px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-muted-foreground);
-}
-.run-now-fact:first-of-type {
-  margin-left: 12px;
-}
 /* On a phone the facts rarely fit beside the time, and wrapped one by one each stood on a line of
    its own, hung 8 px in by its margin. There the line wraps as a row of things 8 px apart: the
    facts take the second line together, on the words' own edge. */
@@ -282,9 +266,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
-  }
-  .run-now[data-run-now="worked"] .run-now-fact {
-    margin-left: 0;
   }
 }
 .run-now-clock {
@@ -335,6 +316,7 @@
   font-size: 0;
   color: transparent;
   background: transparent;
+  transition: background-color var(--duration-quick) var(--ease-out-strong);
 }
 .run-now[data-run-head] > [data-run-now-fold]:hover {
   background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
@@ -526,25 +508,12 @@
   align-items: center;
   justify-content: center;
 }
-/* Quick calls folded into one row: its count in ink between its words; while
-   its burst goes on, in a chip that turns — of one width, so the words beside
-   it never shift as it ticks. */
-.run-quick-count {
+/* A folded burst's count, in figures of one width; while it ticks, of at least two, so the pill
+   around it (a Badge) keeps its width. */
+.run-quick-number {
   font-variant-numeric: tabular-nums;
 }
-.run-quick-count[data-ticking] {
-  display: inline-flex;
-  height: 20px;
-  align-items: center;
-  gap: 4px;
-  margin-inline: 2px;
-  padding: 0 6px;
-  border-radius: var(--radius-control);
-  background: var(--run-now);
-  vertical-align: top;
-  font-weight: 500;
-}
-.run-quick-count[data-ticking] > .run-quick-number {
+.run-quick-number[data-ticking] {
   min-width: 2ch;
   text-align: center;
 }
@@ -834,8 +803,9 @@
     scrollbar-color: var(--app-scrollbar-thumb) transparent;
   }
 }
+/* Focused by keyboard, it wears the kit's outline (a bare press's): the ring's ink, 2 px out. */
 .run-scroll:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
   border-radius: var(--radius-card);
 }
@@ -917,28 +887,6 @@
    taken back as Show work's ease ended, 2026-11-12). */
 .run-later-feed {
   display: flow-root;
-}
-/* Its 24 px of ground stand in the line's 20, so the words keep their
-   centre. */
-[data-run-now-fold] {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-block: -2px;
-  margin-right: -8px;
-  padding: 2px 8px;
-  border-radius: var(--radius-control);
-  font-size: var(--text-body);
-  line-height: 20px;
-  color: var(--color-muted-foreground);
-  cursor: pointer;
-  transition:
-    color var(--duration-quick) var(--ease-out-strong),
-    background-color var(--duration-quick) var(--ease-out-strong);
-}
-[data-run-now-fold]:hover {
-  color: var(--color-foreground);
-  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into

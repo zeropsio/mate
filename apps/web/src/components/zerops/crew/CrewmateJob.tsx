@@ -38,6 +38,7 @@ import {
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 
+import { Failure } from "../../ui/failure";
 import { Input } from "../../ui/input";
 import { Radio, RadioGroup } from "../../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
@@ -503,9 +504,7 @@ function JobForm({
       <CrewViewFoot>
         <CrewIssues issues={blockers} />
         {commands.error === null ? null : (
-          <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-            {commands.error}
-          </p>
+          <Failure cause={commands.error} role="alert" size="line" />
         )}
         <span className="text-line leading-4.5 text-muted-foreground">
           {lock !== null

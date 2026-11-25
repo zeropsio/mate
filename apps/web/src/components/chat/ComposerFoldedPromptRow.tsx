@@ -57,7 +57,6 @@ export function ComposerFoldedPromptRow({
         shape="round"
         size="icon-md"
         disabled={sendDisabled}
-        data-composer-primary=""
         aria-label={collapsedComposerPrimaryActionLabel}
         onPointerDown={(event) => event.preventDefault()}
         onClick={(event) => {

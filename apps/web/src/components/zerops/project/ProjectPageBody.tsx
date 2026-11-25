@@ -105,6 +105,7 @@ import {
 import { MERGING_TITLE } from "../projectMerging/projectMerging.logic";
 import { spendProjectIds } from "../projects/projectSpend.logic";
 import { ProjectCreditLine } from "../projects/ProjectCreditLine";
+import { RealName } from "~/components/ui/real-name";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -896,8 +897,7 @@ function Brought({
   const more = brought.length - shown.length;
   return (
     <p className="pp-brought" data-zerops-surface="project-brought">
-      <span className="real-name">{version}</span> brought:{" "}
-      {shown.map((pull) => pull.title).join(" · ")}
+      <RealName>{version}</RealName> brought: {shown.map((pull) => pull.title).join(" · ")}
       {more > 0 ? (
         <>
           {" · "}
@@ -1378,7 +1378,7 @@ function GroupWords({ group }: { readonly group: ChangeGroup }) {
   return (
     <>
       {group.label.slice(0, -tag.length)}
-      <span className="real-name">{tag}</span>
+      <RealName>{tag}</RealName>
     </>
   );
 }
@@ -1390,7 +1390,7 @@ function MainNamed({ words }: { readonly words: string }) {
   return (
     <>
       {before}
-      <span className="real-name">main</span>
+      <RealName>main</RealName>
       {after}
     </>
   );

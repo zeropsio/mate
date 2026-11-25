@@ -63,7 +63,7 @@ import type { CrewFailureCause, UseCrewCommand } from "../../../zerops/crew/useC
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
 import { Button } from "../../ui/button";
-import { FailureDetails } from "../../ui/failure";
+import { Failure, FailureDetails } from "../../ui/failure";
 import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
@@ -302,28 +302,38 @@ export function CrewSetup(props: CrewSetupProps) {
       {members === null ? null : members.length === 0 ? (
         <div className="mt-2 flex flex-col gap-2" data-crew-setup-start>
           {proposal.state.kind === "proposing" ? (
-            <div className="crew-option" data-crew-proposing role="status">
-              <MateFace shape={mate.shape} size={24} state="working" tint={mate.tint ?? "amber"} />
-              <span className="font-medium text-body leading-5">
-                {crewProposingWord(mate.name)}
-              </span>
-              <CrewTextButton label={CREW_SETUP_WORDS.stopProposing} onPress={proposal.cancel} />
+            <div data-crew-proposing role="status">
+              <CrewChoice
+                end={
+                  <CrewTextButton
+                    label={CREW_SETUP_WORDS.stopProposing}
+                    onPress={proposal.cancel}
+                  />
+                }
+                lead={
+                  <MateFace
+                    shape={mate.shape}
+                    size={24}
+                    state="working"
+                    tint={mate.tint ?? "amber"}
+                  />
+                }
+                title={crewProposingWord(mate.name)}
+              />
             </div>
           ) : proposal.state.kind === "failed" ? (
-            <div className="crew-option" data-crew-proposal-failed role="alert">
-              <MateFace shape={mate.shape} size={24} state="idle" tint={mate.tint ?? "amber"} />
-              <span className="text-line leading-4.5 text-status-failed-text">
-                {crewProposalFailure(proposal.state.cause, mate.name)}
-              </span>
-              {suggestPress.disabled ? (
-                <span />
-              ) : (
-                <CrewTextButton
-                  label={CREW_SETUP_WORDS.proposeAgain}
-                  onPress={() => void suggest()}
-                />
-              )}
-            </div>
+            <Failure
+              action={
+                suggestPress.disabled ? undefined : (
+                  <CrewTextButton
+                    label={CREW_SETUP_WORDS.proposeAgain}
+                    onPress={() => void suggest()}
+                  />
+                )
+              }
+              cause={crewProposalFailure(proposal.state.cause, mate.name)}
+              data-crew-proposal-failed=""
+            />
           ) : (
             <CrewChoice
               disabled={suggestPress.disabled}
@@ -430,9 +440,7 @@ export function CrewSetup(props: CrewSetupProps) {
       <CrewViewFoot>
         <CrewIssues issues={home.issues.filter((issue) => issue.code !== "file-missing")} />
         {startFailure !== null || commands.error === null ? null : (
-          <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-            {commands.error}
-          </p>
+          <Failure cause={commands.error} role="alert" size="line" />
         )}
         {/* Said from the start, under a Start still waiting too: a roster landing fills who's
             on it and adds no note above Start. */}
@@ -441,9 +449,11 @@ export function CrewSetup(props: CrewSetupProps) {
         </span>
         {startFailure === null ? null : (
           <div className="flex flex-col gap-1" data-crew-start-failure>
-            <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-              {crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
-            </p>
+            <Failure
+              cause={crewNamingTheMate(crewStartFailedWords(startFailure.reason), mate.name)}
+              role="alert"
+              size="line"
+            />
             {startFailure.detail === null || startFailure.detail.trim() === "" ? null : (
               <FailureDetails>{startFailure.detail}</FailureDetails>
             )}

@@ -23,6 +23,12 @@ const ROWS = [
   },
 ];
 
+const PEOPLE = [
+  { name: "Ada Lovelace", levels: ["Full", "Full", "Read"] },
+  { name: "Karel Novák", levels: ["Read", "Full", "Full"] },
+  { name: "Eva Dvořák", levels: ["–", "Full", "Read"] },
+];
+
 export default defineKitSection({
   id: "table",
   title: "Table",
@@ -73,6 +79,34 @@ export default defineKitSection({
                 >
                   <TableCell>{row.name}</TableCell>
                   <TableCell>{row.runtime}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Specimen>
+      <Specimen label='<Table size="md"> · <TableHead scope="row" sticky> · its first column on the ground, scrolled'>
+        <div className="w-80 max-w-full rounded-card border bg-card">
+          <Table size="md">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-36" sticky>
+                  <span className="sr-only">Person</span>
+                </TableHead>
+                <TableHead className="min-w-28">Production</TableHead>
+                <TableHead className="min-w-28">Stage</TableHead>
+                <TableHead className="min-w-28">Preview</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {PEOPLE.map((person) => (
+                <TableRow key={person.name}>
+                  <TableHead className="min-w-36" scope="row" sticky>
+                    {person.name}
+                  </TableHead>
+                  {person.levels.map((level, index) => (
+                    <TableCell key={index}>{level}</TableCell>
+                  ))}
                 </TableRow>
               ))}
             </TableBody>

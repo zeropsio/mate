@@ -6,6 +6,7 @@ import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
@@ -68,7 +69,7 @@ function OpenChanges({
           </div>
         </Card>
       ) : repository?.coverage === "complete" ? (
-        <p className="text-body text-muted-foreground">No open changes.</p>
+        <EmptyState size="line">No open changes.</EmptyState>
       ) : null}
     </section>
   );

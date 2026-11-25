@@ -16,6 +16,7 @@ import { GitPullRequestIcon, PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 
 import { drawn } from "../projects/flowSteps";
 import { FaceCard, FaceCardLine, FaceCards } from "./FaceCard";
@@ -23,7 +24,11 @@ import type { MateRowProps } from "./MateRow";
 
 /** The grid of a project's Mates: `MateCard`s, `ComingMateCard`s, then its `AddMateCard`. */
 export function MateCards({ children }: { readonly children: ReactNode }) {
-  return <FaceCards label="Mates">{children}</FaceCards>;
+  return (
+    <FaceCards label="Mates" phone="lying">
+      {children}
+    </FaceCards>
+  );
 }
 
 /** Changes of a Mate's that wait for review: how many, and whether on the viewer. */
@@ -78,7 +83,7 @@ export function MateCard({
         foot={
           footed ? (
             // Its doors, then a verb only it has (Start, an answer it waits for).
-            <span className="mc-foot">
+            <span className={FOOT}>
               {doors}
               {actions}
             </span>
@@ -90,8 +95,9 @@ export function MateCard({
         ruled
         stamp={time}
         title={
-          <span className="mc-name">
-            <span>{name}</span>
+          // Its name with its mark after it: the name gives way, the mark never.
+          <span className="inline-flex max-w-full items-center gap-1.5 align-top">
+            <span className="min-w-0 truncate">{name}</span>
             {mark}
           </span>
         }
@@ -103,14 +109,17 @@ export function MateCard({
           </FaceCardLine>
         ) : (
           // Two facts, a line each: what it says, then that a change of its waits.
-          <span className="mc-two">
+          <span className="grid h-9 max-w-full min-w-0 justify-items-center">
             <FaceCardLine tone={reading.tone}>{line ?? reading.text}</FaceCardLine>
             <FaceCardLine
               data-zerops-surface="card-mate-changes"
               tone={changes.mine ? "ink" : undefined}
             >
-              <span className="mc-change">
-                <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+              <span>
+                <GitPullRequestIcon
+                  aria-hidden="true"
+                  className="relative top-0.5 me-1 inline-block size-3.5"
+                />
                 {changes.says ?? changesWaitLine(changes.count)}
               </span>
             </FaceCardLine>
@@ -150,7 +159,7 @@ export function ComingMateCard({
       <FaceCard
         data-zerops-surface="mate-coming"
         figure={face}
-        foot={drawn(menu) ? <span className="mc-foot">{menu}</span> : null}
+        foot={drawn(menu) ? <span className={FOOT}>{menu}</span> : null}
         footHeld
         press={onOpen === undefined ? undefined : <Button onClick={onOpen} variant="bare" />}
         rest="middle"
@@ -185,25 +194,42 @@ export function AddMateCard({
   readonly line: string;
   readonly alone?: boolean;
 }) {
+  const lying =
+    "max-sm:grid-cols-[48px_minmax(0,1fr)] max-sm:justify-items-start max-sm:gap-x-3 max-sm:gap-y-0 max-sm:pt-3 max-sm:pe-9 max-sm:pb-3 max-sm:ps-3 max-sm:text-start max-sm:*:col-start-2";
   return (
-    <li className="grid" data-alone={alone || undefined}>
+    <li className={cn("grid", alone && "col-span-full")}>
       <Button
-        className="grid"
+        className="group/add grid"
         data-zerops-surface="add-mate"
         disabled={why !== null}
         onClick={onAdd}
         variant="bare"
       >
-        <span className="tm-card mc-add">
-          <span className="tm-card-body">
-            <span aria-hidden="true" className="mc-add-mark">
+        <span className="relative flex min-w-0 flex-col rounded-card text-center outline-1 -outline-offset-1 outline-foreground/16 outline-dashed transition-colors duration-150 ease-out-strong group-enabled/add:group-hover/add:bg-foreground/4 max-sm:text-start">
+          <span
+            className={cn(
+              "grid min-w-0 flex-1 content-center justify-items-center gap-1 rounded-card px-4 pt-6.5 pb-5.5",
+              lying,
+            )}
+          >
+            <span
+              aria-hidden="true"
+              className="mb-2 flex size-10 items-center justify-center rounded-full bg-foreground/4 text-muted-foreground group-disabled/add:opacity-55 *:size-5 max-sm:size-12"
+            >
               <PlusIcon />
             </span>
-            <span className="tm-card-name">Add a Mate</span>
-            <span className="tm-card-mail mc-add-line">{why ?? line}</span>
+            <span className="max-w-full truncate text-emphasis leading-5 font-medium text-foreground group-disabled/add:opacity-55">
+              Add a Mate
+            </span>
+            <span className="max-w-full overflow-hidden text-body leading-4.5 text-balance text-ellipsis text-muted-foreground">
+              {why ?? line}
+            </span>
           </span>
         </span>
       </Button>
     </li>
   );
 }
+
+/** A card's foot: its doors, then a verb only it has, centred on one line while they fit. */
+const FOOT = "flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 max-sm:justify-start";

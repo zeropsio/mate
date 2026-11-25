@@ -13,30 +13,23 @@
     line-height: 22px;
   }
 
-  /* ==== a project's Review and Release tags, and its changes popover ==== */
+  /* ==== a project's Review and Release doors, and its changes popover ==== */
 
-  /* A project's Review and Release tags: 22 px, 12/16 · 500, a control's corner, 6 px apart; the
-     conversation header's door (`.chat-header-review`) joins them into one pill. */
+  /* A project's Review and Release doors (`ProjectReviewTags`), which the conversation header joins
+     into one pill (`.chat-header-review`): each tag is a half of it. */
   .menu-tags {
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 6px;
   }
 
   .menu-tag {
     display: inline-flex;
     flex: none;
     align-items: center;
-    height: 22px;
-    padding: 0 8px;
-    border-radius: var(--radius-control);
-    font-size: var(--text-caption);
-    font-weight: 500;
     line-height: 16px;
     white-space: nowrap;
     transition:
-      box-shadow 150ms var(--ease-out-strong),
       background-color 150ms var(--ease-out-strong),
       scale 150ms var(--ease-out-strong);
   }
@@ -48,339 +41,13 @@
     flex: none;
   }
 
-  /* Review: quiet, the card's ground in a hairline that firms under the pointer and while its
-     popover is open. */
-  .menu-tag-review {
-    background-color: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--sidebar-foreground);
-  }
-
-  [data-popup-open] > .menu-tag-review {
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-  }
-
-  /* Every change in it waits on the people who merge (`reviewTagOf`): it asks the person nothing,
-     and says so in the quiet ink its mark wears while a Mate still works. */
-  [data-quiet] > .menu-tag-review {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* A release that is somebody else's to make (`releaseWaitsOnViewer`): a door still, on the
-     Review tag's quiet ground, never the row's one loud word. */
-  [data-quiet] > .menu-tag-release {
-    background-color: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* Release: the solid primary — what waits for production is the row's one loud word. */
-  .menu-tag-release {
-    background-color: var(--primary);
-    color: var(--primary-foreground);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    :hover > .menu-tag-review {
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-    }
-
-    :not([data-quiet]):hover > .menu-tag-release {
-      background-image: linear-gradient(var(--zerops-press-shade) 0 0);
-    }
-
-    [data-quiet]:hover > .menu-tag-release {
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-    }
-  }
-
   [data-menu-tag][data-phase="exit"] {
     pointer-events: none;
   }
 
-  /* The Mac panel while there is nothing to show (`ZeropsMacPanel`): the Mac's glyph, a headline
-     and one plain line in the middle of its room, then the person's steps on the Mac in one card,
-     each command in its own field with its copy button. */
-  .mac-wait {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 100%;
-    max-width: 32rem;
-    margin: 56px auto 0;
-    padding-inline: 16px;
-    text-align: center;
-  }
-
-  .mac-wait-glyph {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 56px;
-    height: 56px;
-    margin-bottom: 16px;
-    border-radius: var(--radius-card);
-    background: var(--muted);
-    color: var(--muted-foreground);
-  }
-
-  .mac-wait-glyph > svg {
-    width: 28px;
-    height: 28px;
-    stroke-width: 1.5;
-  }
-
-  .mac-wait-badge {
-    position: absolute;
-    inset-inline-end: -5px;
-    bottom: -5px;
-    display: grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 9999px;
-    background: var(--background);
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--muted-foreground);
-  }
-
-  .mac-wait-glyph[data-status="unreachable"] .mac-wait-badge {
-    color: var(--zerops-status-attention-text);
-  }
-
-  .mac-wait-badge > svg {
-    width: 13px;
-    height: 13px;
-  }
-
-  .mac-wait-title {
-    font-size: var(--text-emphasis);
-    font-weight: 600;
-    line-height: 22px;
-    color: var(--foreground);
-  }
-
-  .mac-wait-line {
-    margin-top: 4px;
-    font-size: var(--text-body);
-    line-height: 20px;
-    color: var(--muted-foreground);
-    text-wrap: pretty;
-  }
-
-  .mac-wait-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    width: 100%;
-    margin-top: 24px;
-    padding: 16px;
-    border-radius: var(--radius-card);
-    background: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
-    text-align: left;
-  }
-
-  .mac-wait-step {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr);
-    align-items: start;
-    column-gap: 12px;
-    row-gap: 8px;
-  }
-
-  .mac-wait-num {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 9999px;
-    background: var(--muted);
-    color: var(--muted-foreground);
-    font-size: var(--text-caption);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .mac-wait-step-words {
-    padding-top: 1px;
-    font-size: var(--text-body);
-    line-height: 20px;
-    color: var(--foreground);
-  }
-
-  .mac-wait-step-field {
-    grid-column: 2;
-  }
-
-  /* The box the Mac's frame sits in: a flat card's edge. */
-  .mac-frame {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid var(--zerops-flat-card-border);
-    border-radius: var(--radius-card);
-  }
-
-  .mac-command {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    min-height: 36px;
-    padding-inline: 12px 4px;
-    border-radius: var(--radius-control);
-    background: var(--muted);
-  }
-
-  .mac-command-text {
-    flex: 1;
-    min-width: 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-caption);
-    line-height: var(--text-caption--line-height);
-    color: var(--foreground);
-    overflow-wrap: anywhere;
-    user-select: all;
-  }
-
-  /* What the Mac needs before it pairs: each thing, how to get it, its command where it has one. */
-  .mac-ready {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: var(--radius-card);
-    background: color-mix(in oklab, var(--muted) 60%, transparent);
-  }
-
-  .mac-ready-item {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .mac-ready-name {
-    font-size: var(--text-body);
-    font-weight: 600;
-    line-height: 18px;
-    color: var(--foreground);
-  }
-
-  .mac-ready-optional {
-    margin-inline-start: 6px;
-    font-weight: 500;
-    color: var(--muted-foreground);
-  }
-
-  .mac-ready-how {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 12px;
-    font-size: var(--text-body);
-    line-height: 18px;
-    color: var(--muted-foreground);
-  }
-
-  .mac-ready-how code {
-    font-family: var(--font-mono);
-    font-size: var(--text-caption);
-    color: var(--foreground);
-  }
-
-  .mac-ready-item > .mac-command {
-    background: var(--background);
-  }
-
-  /* Pairing again, for when nothing else helps: folded under the steps. */
-  .mac-wait-more {
-    width: 100%;
-    margin-top: 14px;
-    text-align: left;
-  }
-
-  .mac-wait-more > summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-inline-start: 4px;
-    font-size: var(--text-body);
-    color: var(--muted-foreground);
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-  }
-
-  .mac-wait-more > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .mac-wait-more > summary:hover {
-    color: var(--foreground);
-  }
-
-  .mac-wait-more-mark {
-    width: 14px;
-    height: 14px;
-    transition: rotate 150ms var(--ease-out-strong);
-  }
-
-  .mac-wait-more[open] .mac-wait-more-mark {
-    rotate: 180deg;
-  }
-
-  .mac-wait-more > .mac-command {
-    margin-top: 10px;
-  }
-
-  .mac-wait-update {
-    margin-top: 20px;
-  }
-
-  /* The way out of a pairing, at the panel's foot: quiet until opened. */
-  .mac-remove {
-    width: 100%;
-    max-width: 32rem;
-    margin: 32px auto 0;
-    padding-inline: 16px;
-  }
-
-  .mac-remove > summary {
-    width: fit-content;
-    margin-inline: auto;
-    font-size: var(--text-body);
-    color: var(--muted-foreground);
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-  }
-
-  .mac-remove > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .mac-remove > summary:hover {
-    color: var(--foreground);
-  }
-
-  .mac-remove-body .mac-wait-steps {
-    margin-top: 12px;
-  }
-
-  .mac-remove-forget {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 6px 12px;
-    margin-top: 14px;
-    font-size: var(--text-body);
-    color: var(--muted-foreground);
-  }
-
   /* What waits in a project, marked after its row's name and nothing more (`ProjectReviewMarks`):
-     a change waiting on a review, what waits for production; a small number where there are more.
-     A press is the row's. */
+     the kit's Badge pills — a change waiting on a review, what waits for production; a small
+     number where there are more. A press is the row's. */
   .menu-marks {
     display: inline-flex;
     flex: none;
@@ -397,7 +64,7 @@
     flex: 0 1000000000 auto;
     flex-wrap: wrap;
     min-width: 0;
-    height: 18px;
+    height: 20px;
     overflow: hidden;
     margin-inline: 7px 1px;
   }
@@ -409,60 +76,15 @@
     margin-inline-end: -6px;
   }
 
-  /* Each on a chip of its own colour, so it stands apart from the name before it. */
-  .menu-mark {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    height: 18px;
-    padding-inline: 5px;
-    border-radius: var(--radius-mark);
-    background: color-mix(in oklab, currentColor 11%, transparent);
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* The header's blue (`chat-header-review`): the mark and the door it stands for, one colour. */
-  .menu-mark-merge {
-    color: var(--primary);
-  }
-
-  /* Its Mate still works on every change it stands for: there, quieter, asking nothing yet. */
-  .menu-mark-merge[data-in-progress] {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* A door: its press opens what waits for production (`ProjectReviewMarks`). */
-  .menu-mark-release {
-    color: var(--primary);
+  /* The release mark is a door inside the row's press (a press cannot hold another): the pointer
+     opens what waits for production from it, and its pill firms under the pointer as a tag's does. */
+  [data-menu-mark-door] {
     cursor: pointer;
-    transition: background-color var(--duration-quick) var(--ease-out-strong);
+    transition: box-shadow var(--duration-quick) var(--ease-out-strong);
   }
 
-  .menu-mark-release:hover {
-    background: color-mix(in oklab, currentColor 20%, transparent);
-  }
-
-  /* Somebody else's release: there, as quiet as a change its Mate still works on. */
-  .menu-mark-release[data-quiet] {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* This tab's run on its project's row: under way in the busy ink, stopped in the failed one. */
-  .menu-mark-release[data-run="releasing"] {
-    color: var(--zerops-status-busy-text);
-  }
-
-  .menu-mark-release[data-run="failed"] {
-    color: var(--zerops-status-failed-text);
-  }
-
-  .menu-mark-icon {
-    flex: none;
-    width: 12px;
-    height: 12px;
+  [data-menu-mark-door]:hover {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
   }
 
   /* The conversation's header holds what waits on the person right after the Mate's name
@@ -504,10 +126,6 @@
     gap: 6px;
     height: 100%;
     padding: 0 10px 0 11px;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    color: inherit;
     font-size: var(--text-body);
     font-weight: 600;
   }
@@ -563,7 +181,6 @@
   @media (hover: hover) and (pointer: fine) {
     .chat-header-review [data-menu-tag]:hover > .menu-tag {
       background: var(--zerops-press-shade);
-      box-shadow: none;
     }
   }
 
@@ -587,51 +204,23 @@
     text-align: end;
   }
 
-  /* A popover of what is to review: 340 px under its tag, aligned to its end, its own scroll past
-     480 px, the heading held at its top. */
-  .menu-tagpop {
-    width: min(340px, calc(100vw - 16px));
-    max-height: min(480px, 70vh, var(--available-height));
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 0 6px 6px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    background-color: var(--card);
-    color: var(--card-foreground);
-    box-shadow: var(--zerops-shadow-popup);
-    outline: none;
-    transform-origin: var(--transform-origin);
-    transition:
-      opacity var(--duration-base) var(--ease-out-strong),
-      scale var(--duration-base) var(--ease-out-strong);
-  }
-
-  .menu-tagpop:is([data-starting-style], [data-ending-style]) {
-    opacity: 0;
-    scale: 0.98;
-  }
-
-  .menu-tagpop[data-ending-style] {
-    transition-duration: var(--duration-quick);
-  }
-
+  /* A popover of what is to review (the kit's PopoverPopup): its title held at its top, its
+     items scrolling under it past 480 px. */
   .menu-tagpop-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    max-height: min(480px, 70vh, var(--available-height));
     outline: none;
   }
 
-  .menu-tagpop-title {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 12px 10px 6px;
-    background-color: var(--card);
-    font-size: var(--text-body);
-    font-weight: 600;
-    line-height: 18px;
+  .menu-tagpop-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+    padding: 0 6px 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   /* An item that leaves fades and the list closes over it; one that arrives opens its place. */
@@ -746,13 +335,8 @@
       display: none;
     }
 
-    .menu-tagpop,
     .menu-tagpop-row {
       transition: opacity var(--duration-quick) var(--ease-out-strong);
-    }
-
-    .menu-tagpop:is([data-starting-style], [data-ending-style]) {
-      scale: 1;
     }
   }
 
@@ -1033,12 +617,6 @@
     height: 13px;
   }
 
-  @container menu-row (max-width: 400px) {
-    .zerops-sites-tag .menu-tag-word {
-      display: none;
-    }
-  }
-
   /* A project with no Mate: its mark where a face would stand. */
   .menu-project-mark {
     display: grid;
@@ -1061,21 +639,6 @@
   }
 
   /* ==== end of the menu by project ==== */
-
-  /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
-     column, "Draft" and its words in the second line's 14/20 — never a tinted pill (the owner,
-     2026-10-12: "ugly nonfitting"). */
-  .menu-draft {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: center;
-    height: 36px;
-    padding: 0 8px;
-    border-radius: var(--radius-control);
-    font-size: var(--text-body);
-    line-height: 20px;
-  }
 
   /* The words' second ink: what the person asked, and the crew's one fact.
      The name is the ink itself and the answer muted, so the three lines of a
@@ -1278,110 +841,6 @@
     }
   }
   /* ---- end of the crew as mini Mates ---- */
-
-  /* The one selected band (`SidebarSelectedBand`): behind every row of the
-     list, which is its own stacking context, over the open Mate's unit — its
-     row and its crew's line. Its own box is where it stands, and paints nothing. */
-  .menu-band {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: -1;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  /* What it shows: four nested layers of one size, each clipping to the row's corners, the
-     innermost filled; what all four leave is the band (`bandLayers`). A slide to a newly opened
-     Mate shifts them and nothing else, so its edges travel together with true corners. Layers of
-     their own from the start: a slide runs on the compositor while the page it opens is drawn,
-     never waiting on that draw to begin. */
-  .menu-band-layer {
-    position: absolute;
-    inset: 0;
-    overflow: clip;
-    border-radius: var(--radius-card);
-    will-change: transform;
-  }
-
-  .menu-band > .menu-band-layer {
-    inset: 0 auto auto 0;
-  }
-
-  /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
-  .menu-band-layer:empty {
-    background: var(--sidebar-row-active);
-  }
-
-  .menu-band[data-on] {
-    opacity: 1;
-  }
-
-  /* A Mate's state as one dot (`MateDot`), the same on a row, the rail and a card: one meaning
-     per colour (S3) — amber needs you, blue finished and unseen (the blue of what clicks), red
-     broken, the Mate's own tint at work. */
-  .menu-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-  }
-
-  .menu-dot[data-dot="attention"] {
-    background: var(--zerops-status-attention);
-  }
-
-  .menu-dot[data-dot="unread"] {
-    background: var(--info-foreground);
-  }
-
-  .menu-dot[data-dot="failed"] {
-    background: var(--zerops-status-failed);
-  }
-
-  .menu-dot[data-dot="working"] {
-    background: color-mix(
-      in oklab,
-      var(--menu-dot-tint, var(--sidebar-muted-foreground)) 80%,
-      var(--sidebar-foreground)
-    );
-  }
-
-  /* Hung in the gap before its text, as the working clock's mark is: nothing beside it moves. */
-  .menu-dot[data-place="before"] {
-    position: absolute;
-    top: 50%;
-    right: calc(100% + 5px);
-    margin-top: -3px;
-  }
-
-  .menu-dot[data-place="corner"] {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    z-index: 6;
-    width: 9px;
-    height: 9px;
-    box-shadow: 0 0 0 2px var(--menu-ground);
-  }
-
-  .menu-dot[data-place="inline"] {
-    display: inline-block;
-  }
-}
-
-/* A dot that arrives while the person watches scales in, once (T6); with
-   reduced motion it only fades in (T8). */
-@media (prefers-reduced-motion: no-preference) {
-  .menu-dot[data-arrived] {
-    animation: menu-dot-in var(--duration-base) var(--ease-out-strong) backwards;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .menu-dot[data-arrived] {
-    animation: menu-dot-fade var(--duration-base) var(--ease-out-strong) backwards;
-  }
 }
 
 /* p26/row — a working Mate's clock reads as a live clock, not a timestamp (the owner,
@@ -1430,76 +889,6 @@
   --menu-clock-tint: var(--zerops-mate-tint-slate);
 }
 
-/* Mate messages — a message another of the person's Mates sent, or its answer, wears that Mate's
-   hue so it reads as another voice at a glance (the owner, 2026-11-17: "in the color of the bot or
-   something, to make it distinct"): a wash of the hue on the card, its edge in the hue, the sender's
-   name in the hue mixed into the ink, as the menu's clocks mix it, so it holds its contrast in light
-   and dark. */
-[data-mate-tint="coral"] {
-  --mate-tint: var(--zerops-mate-tint-coral);
-}
-
-[data-mate-tint="amber"] {
-  --mate-tint: var(--zerops-mate-tint-amber);
-}
-
-[data-mate-tint="olive"] {
-  --mate-tint: var(--zerops-mate-tint-olive);
-}
-
-[data-mate-tint="sky"] {
-  --mate-tint: var(--zerops-mate-tint-sky);
-}
-
-[data-mate-tint="violet"] {
-  --mate-tint: var(--zerops-mate-tint-violet);
-}
-
-[data-mate-tint="rose"] {
-  --mate-tint: var(--zerops-mate-tint-rose);
-}
-
-[data-mate-tint="sand"] {
-  --mate-tint: var(--zerops-mate-tint-sand);
-}
-
-[data-mate-tint="slate"] {
-  --mate-tint: var(--zerops-mate-tint-slate);
-}
-
-.mate-letter {
-  border: 1px solid color-mix(in oklab, var(--mate-tint) 45%, var(--border));
-  background-color: color-mix(in oklab, var(--mate-tint) 12%, var(--card));
-}
-
-.dark .mate-letter {
-  border-color: color-mix(in oklab, var(--mate-tint) 35%, var(--border));
-  background-color: color-mix(in oklab, var(--mate-tint) 10%, var(--card));
-}
-
-.mate-letter-from {
-  color: color-mix(in oklab, var(--mate-tint) 45%, var(--foreground));
-  font-weight: 600;
-}
-
-.dark .mate-letter-from {
-  color: color-mix(in oklab, var(--mate-tint) 62%, var(--foreground));
-}
-
-/* A Mate named with `@` in the person's words: its face and name in a chip of its hue, mixed as
-   the letter's are so the name holds its contrast in light and dark. */
-.mate-mention {
-  border: 1px solid color-mix(in oklab, var(--mate-tint) 40%, var(--border));
-  background-color: color-mix(in oklab, var(--mate-tint) 16%, var(--card));
-  color: color-mix(in oklab, var(--mate-tint) 45%, var(--foreground));
-}
-
-.dark .mate-mention {
-  border-color: color-mix(in oklab, var(--mate-tint) 35%, var(--border));
-  background-color: color-mix(in oklab, var(--mate-tint) 14%, var(--card));
-  color: color-mix(in oklab, var(--mate-tint) 62%, var(--foreground));
-}
-
 .menu-clock-mark {
   position: absolute;
   top: 50%;
@@ -1533,38 +922,12 @@
   }
 }
 
-@keyframes menu-dot-in {
-  from {
-    scale: 0;
-    opacity: 0;
-  }
-}
-
-@keyframes menu-dot-fade {
-  from {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .menu-chief-lit:not([data-travel]) {
-    transition:
-      opacity var(--duration-base) var(--ease-out-strong),
-      transform var(--duration-slow) var(--ease-out-strong);
-  }
-}
-
-:root {
-  --person-l: 0.74;
-  --person-c: 0.07;
-  --person-ink-l: 0.2;
-  --person-ink-c: 0.06;
-}
-
-:root.dark {
-  --person-l: 0.49;
-  --person-ink-l: 1;
-  --person-ink-c: 0;
-}
-
 /* ==== end of the menu's rows ==== */
+
+/* What waits on the person arrives with a small rise, once. */
+@keyframes chat-review-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
+  }
+}

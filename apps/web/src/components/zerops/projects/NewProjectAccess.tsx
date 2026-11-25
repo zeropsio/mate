@@ -9,6 +9,10 @@ import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { EmptyState } from "../../ui/empty";
+import { Row } from "../../ui/row";
+import { SectionHeader } from "../../ui/section";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { PersonAvatar } from "../primitives";
@@ -46,19 +50,27 @@ export function NewProjectAccess({
   const [adding, setAdding] = useState(false);
   const candidates = view.kind === "people" && view.invite ? view.candidates : [];
   return (
-    <section aria-label={label} className="np-access" data-zerops-surface="new-project-access">
-      <div className="np-access-head">
-        <h3 className="np-access-name">{label}</h3>
-        {summary === null ? null : (
-          <p className="np-access-line" data-zerops-access="line">
-            {summary.line}
-            {summary.changes === null ? null : (
-              <span className="text-foreground"> · {summary.changes}</span>
-            )}
-          </p>
-        )}
-      </div>
-      <div className="np-access-body">
+    <section
+      aria-label={label}
+      className="flex flex-col gap-3"
+      data-zerops-surface="new-project-access"
+    >
+      <SectionHeader
+        level={3}
+        line={
+          summary === null ? undefined : (
+            <span data-zerops-access="line">
+              {summary.line}
+              {summary.changes === null ? null : (
+                <span className="text-foreground"> · {summary.changes}</span>
+              )}
+            </span>
+          )
+        }
+        title={label}
+      />
+      {/* The press, or the Add people card, over the people, 24 px apart. */}
+      <div className="flex flex-col gap-6">
         {candidates.length === 0 ? null : adding ? (
           <AddPeopleCard
             candidates={candidates}
@@ -117,9 +129,8 @@ function AddPeopleCard({
       return level === undefined ? rest : { ...rest, [clientUserId]: level };
     });
   return (
-    <div
+    <Card
       aria-labelledby={titleId}
-      className="np-add"
       data-zerops-surface="add-people"
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
@@ -127,21 +138,24 @@ function AddPeopleCard({
         onClose();
       }}
       role="group"
+      size="md"
     >
-      <div className="np-add-head">
-        <span className="np-add-title" id={titleId}>
-          Add people
-        </span>
-        <Button
-          aria-label="Close"
-          className="-my-0.5 -me-0.5"
-          onClick={onClose}
-          size="icon-xs"
-          variant="ghost"
-        >
-          <XIcon aria-hidden="true" />
-        </Button>
-      </div>
+      <SectionHeader
+        action={
+          <Button
+            aria-label="Close"
+            className="-me-0.5"
+            onClick={onClose}
+            size="icon-xs"
+            variant="ghost"
+          >
+            <XIcon aria-hidden="true" />
+          </Button>
+        }
+        level={3}
+        // The card is named by its title alone, not by the Close beside it.
+        title={<span id={titleId}>Add people</span>}
+      />
       <InputGroup>
         <InputGroupAddon>
           <SearchIcon aria-hidden="true" />
@@ -156,56 +170,66 @@ function AddPeopleCard({
         />
       </InputGroup>
       {typed === "" ? null : shown.length === 0 ? (
-        <p className="np-add-empty">Nobody matches “{typed}”.</p>
+        <EmptyState size="row">Nobody matches “{typed}”.</EmptyState>
       ) : (
-        <ul aria-label="People in the organization" className="np-add-list">
+        <ul aria-label="People in the organization" className="m-0 flex flex-col">
           {shown.map((candidate) => {
             const level = ticked[candidate.clientUserId];
             return (
-              <li
-                className="np-add-row"
-                data-picked={level !== undefined || undefined}
-                key={candidate.clientUserId}
-              >
-                <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={24} />
-                <span className="np-add-who">
-                  <span className="np-add-name">{candidate.name}</span>
-                  <span className="np-add-role">
+              <Row
+                badges={
+                  <span className="text-caption text-muted-foreground">
                     {candidate.pending ? `${candidate.role} · invited` : candidate.role}
                   </span>
-                </span>
-                <ToggleGroup
-                  aria-label={`Access for ${candidate.name}`}
-                  onValueChange={(value) => {
-                    const next = value[0];
-                    pick(
-                      candidate.clientUserId,
-                      next === "read" || next === "full" ? next : undefined,
-                    );
-                  }}
-                  size="segmented-sm"
-                  value={level === undefined ? [] : [level]}
-                  variant="segmented"
-                >
-                  <ToggleGroupItem value="read">Read</ToggleGroupItem>
-                  <ToggleGroupItem value="full">Full</ToggleGroupItem>
-                </ToggleGroup>
-              </li>
+                }
+                control={
+                  <ToggleGroup
+                    aria-label={`Access for ${candidate.name}`}
+                    onValueChange={(value) => {
+                      const next = value[0];
+                      pick(
+                        candidate.clientUserId,
+                        next === "read" || next === "full" ? next : undefined,
+                      );
+                    }}
+                    size="segmented-sm"
+                    value={level === undefined ? [] : [level]}
+                    variant="segmented"
+                  >
+                    <ToggleGroupItem value="read">Read</ToggleGroupItem>
+                    <ToggleGroupItem value="full">Full</ToggleGroupItem>
+                  </ToggleGroup>
+                }
+                key={candidate.clientUserId}
+                lead={
+                  <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={20} />
+                }
+                picked={level !== undefined}
+                render={<li />}
+                size="sm"
+                title={candidate.name}
+              />
             );
           })}
         </ul>
       )}
       {picks.length === 0 && typed === "" ? null : (
-        <dl aria-label="What Read and Full give" className="np-add-hints">
+        // What Read and Full give, in caption, the word first.
+        <dl
+          aria-label="What Read and Full give"
+          className="m-0 flex flex-col gap-0.5 text-caption leading-4.25"
+        >
           {(["read", "full"] as const).map((one) => (
             <div key={one}>
-              <dt>{one === "read" ? "Read" : "Full"}</dt>
-              <dd>{ACCESS_LEVEL_LINES[one]}</dd>
+              <dt className="me-1 inline font-semibold text-foreground">
+                {one === "read" ? "Read" : "Full"}
+              </dt>
+              <dd className="m-0 inline text-muted-foreground">{ACCESS_LEVEL_LINES[one]}</dd>
             </div>
           ))}
         </dl>
       )}
-      <div className="np-add-foot">
+      <div className="flex justify-end gap-2">
         <Button onClick={onClose} size="sm" variant="ghost">
           Cancel
         </Button>
@@ -217,6 +241,6 @@ function AddPeopleCard({
               : `Add ${String(picks.length)} people`}
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }

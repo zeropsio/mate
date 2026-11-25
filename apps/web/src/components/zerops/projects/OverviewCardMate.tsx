@@ -1,4 +1,12 @@
 /**
+ * Whose Mate it is (`MateOwnerMark`), on the corner of a card's 64 px face, ringed in the card's
+ * lift; and on a row's 32 px face, 14 px, ringed in the row's ground.
+ */
+export const OWNER_ON_CARD =
+  "top-auto -right-0.75 -bottom-0.75 left-auto size-5.5 text-caption ring-2 ring-muted";
+export const OWNER_ON_ROW = "ov-mate-owner";
+
+/**
  * A Mate on its project's card, read as its row in the menu reads it: the one face (`mateFace`,
  * from the same facts — up as `mateAwake` says it, its activity, whose it is, its change's review,
  * its life), the same owner's mark (`ownerBadge`), the same line 2 (`mateRowSecond`) and the same
@@ -416,7 +424,7 @@ export function OverviewCardMate({
         tint={tint}
       />
       {badge === null ? null : (
-        <MateOwnerMark className={card ? "mc-owner" : "ov-mate-owner"} seat={badge} />
+        <MateOwnerMark className={card ? OWNER_ON_CARD : OWNER_ON_ROW} seat={badge} />
       )}
     </>
   );
@@ -431,8 +439,11 @@ export function OverviewCardMate({
         <MateDeletionWaitingWords userId={second.waitsOn} />
       ) : marked && card ? (
         // A card's line wraps: the change's mark before its title.
-        <span className="mc-change" data-zerops-surface="card-mate-change">
-          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+        <span data-zerops-surface="card-mate-change">
+          <GitPullRequestIcon
+            aria-hidden="true"
+            className="relative top-0.5 me-1 inline-block size-3.5"
+          />
           {reading.text}
         </span>
       ) : marked ? (

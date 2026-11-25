@@ -19,6 +19,7 @@ import { useState } from "react";
 import { withBrief } from "../../../zerops/crew/crewHome";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome";
+import { Failure } from "../../ui/failure";
 import { Input } from "../../ui/input";
 import { crewRewriteBlockers } from "./CrewEditors.logic";
 import { crewGoalFields, crewGoalMarkdown, type CrewGoalFields } from "./CrewGoal.logic";
@@ -139,9 +140,7 @@ function GoalForm({
       <CrewViewFoot>
         <CrewIssues issues={blockers} />
         {commands.error === null ? null : (
-          <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-            {commands.error}
-          </p>
+          <Failure cause={commands.error} role="alert" size="line" />
         )}
         <span className="text-line leading-4.5 text-muted-foreground">
           {tooLong

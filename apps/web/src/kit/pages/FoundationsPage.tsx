@@ -235,11 +235,14 @@ function TypePage() {
   );
 }
 
-const SPACING_STEPS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16] as const;
+const SPACING_STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, 8, 10, 12, 16] as const;
 const SPACING_WIDTH: Readonly<Record<(typeof SPACING_STEPS)[number], string>> = {
   1: "w-1",
+  1.5: "w-1.5",
   2: "w-2",
+  2.5: "w-2.5",
   3: "w-3",
+  3.5: "w-3.5",
   4: "w-4",
   5: "w-5",
   6: "w-6",
@@ -252,7 +255,7 @@ const SPACING_WIDTH: Readonly<Record<(typeof SPACING_STEPS)[number], string>> = 
 function SpacingPage() {
   return (
     <KitDocument
-      line={`Every gap, padding and line height is a multiple of ${SPACING_UNIT} px. A heading hugs its rows; groups stand at least twice as far apart.`}
+      line={`Every gap, padding and line height is a multiple of ${SPACING_UNIT} px, or a half-step of ${SPACING_UNIT / 2} px where a whole step reads too tight. A value moving onto the grid moves up: room over squeezing. A heading hugs its rows; groups stand at least twice as far apart.`}
       title="Spacing"
     >
       <Card variant="flat">
@@ -261,6 +264,9 @@ function SpacingPage() {
             <code className="w-24 shrink-0 font-mono font-medium text-caption">
               {step} · {step * SPACING_UNIT} px
             </code>
+            <span className="w-16 shrink-0 text-caption text-muted-foreground">
+              {Number.isInteger(step) ? "" : "half-step"}
+            </span>
             <span className={`h-4 shrink-0 rounded-mark bg-primary/50 ${SPACING_WIDTH[step]}`} />
             <code className="font-mono text-caption text-muted-foreground">
               gap-{step} p-{step} m-{step}

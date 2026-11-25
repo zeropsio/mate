@@ -26,11 +26,14 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
+import { Failure } from "../ui/failure";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
+import { RailTip } from "./SidebarRailTip";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
@@ -172,18 +175,19 @@ export function SidebarWaitingCount({
 }) {
   const words = waitingCountWords(items);
   return (
-    <span className={seat === "rail" ? "menu-rail-count" : "menu-top-count"}>
+    // Its seat: on a rail tile's corner, the menu's ground around it cutting it out of the tile;
+    // or beside Overview, an 18 px circle in the theme's own red, the one every other count in
+    // the app wears, so it reads from across the screen.
+    <span
+      className={
+        seat === "rail"
+          ? "absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5"
+          : "ms-2 grid flex-none *:grid *:h-4.5 *:min-w-4.5 *:place-items-center *:rounded-full *:bg-destructive! *:px-1.25 *:text-2xs *:leading-3.5 *:font-bold *:text-fill-ink! *:tabular-nums *:transition-[background-color,scale] *:duration-150 *:ease-out-strong pointer-fine:*:hover:bg-destructive/90! *:data-popup-open:bg-destructive/90! motion-safe:*:active:scale-96"
+      }
+    >
       <SidebarWaitingPopover
         items={items}
-        tooltip={
-          <span className="menu-rail-tip">
-            <span className="menu-rail-tip-name">
-              Waiting on you
-              <span className="menu-rail-tip-key">⌥↓</span>
-            </span>
-            <span className="menu-rail-tip-line">{words.line}</span>
-          </span>
-        }
+        tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
         trigger={
           <Button
             aria-label={words.label}
@@ -193,7 +197,7 @@ export function SidebarWaitingCount({
             // fades in where it stands (`fadeFillIn`).
             ref={fadeFillIn}
             shape="round"
-            // The headline's pill draws its own red (`menu-top-count`); the rail's is the kit's.
+            // The headline's pill draws its own red (its seat's); the rail's is the kit's.
             {...(seat === "rail" ? { size: "2xs", variant: "warning" } : { variant: "bare" })}
           />
         }
@@ -222,14 +226,20 @@ export function WaitingList({
   const listed = items.filter((item) => !gone.has(item.key));
   return (
     <>
-      <div className="menu-wait-head">
-        <span className="menu-wait-heading">Waiting on you</span>
-        <span className="menu-wait-key">
-          <Kbd>⌥↓</Kbd>
-          next
-        </span>
+      <div className="px-2 py-1.5">
+        <SectionHeader
+          action={
+            // A key's hint means nothing under a finger.
+            <span className="inline-flex items-center gap-1.5 text-body text-muted-foreground pointer-coarse:hidden">
+              <Kbd>⌥↓</Kbd>
+              next
+            </span>
+          }
+          level={3}
+          title="Waiting on you"
+        />
       </div>
-      <div className="menu-wait-items">
+      <div className="-mb-3">
         {listed.map((item) => (
           <WaitingEntry
             item={item}
@@ -297,14 +307,14 @@ function WaitingEntry({
   };
   return (
     <div
-      className="menu-wait-item"
+      className="mb-3 grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 rounded-control p-2"
       data-waiting-kind={item.kind}
       data-waiting-key={item.key}
       ref={element}
     >
-      <span className="menu-wait-face" aria-hidden="true">
+      <span className="flex h-8" aria-hidden="true">
         {item.kind === "release" ? (
-          <span className="menu-wait-letter">
+          <span className="grid size-8 place-items-center rounded-full bg-foreground/7 text-body font-semibold">
             {item.release.name.trim().charAt(0).toUpperCase()}
           </span>
         ) : (
@@ -316,14 +326,14 @@ function WaitingEntry({
           />
         )}
       </span>
-      <div className="menu-wait-body">
-        <p className="menu-wait-title" data-waiting-title="">
+      <div className="min-w-0 pt-1.5">
+        <p className="truncate text-body font-semibold" data-waiting-title="">
           {waitingTitle(item)}
         </p>
-        <p className="menu-wait-text">
+        <p className="mt-0.5 line-clamp-2 text-body empty:hidden">
           {item.kind === "release" ? releaseWaitingLine(item.release) : item.mate.text}
         </p>
-        <div className="menu-wait-actions">
+        <div className="mt-3 flex flex-wrap gap-2">
           {item.kind === "release" ? (
             <ReviewButton
               label={WAITING_VERBS.release}
@@ -660,9 +670,7 @@ export function Replying({
         children
       )}
       {error === undefined ? null : (
-        <p className="menu-wait-error" role="alert">
-          {error}
-        </p>
+        <Failure cause={error} className="mt-2 basis-full" role="alert" size="line" />
       )}
     </>
   );

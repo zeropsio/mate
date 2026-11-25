@@ -52,7 +52,7 @@ export function ZeropsReadOnlyConversationFooter({
     <div className="mx-auto w-full min-w-0 max-w-3xl" data-zerops-read-only-conversation="true">
       {/* The composer's main surface: with a banner attached above, the shell hands its glass and
           outline to this element. */}
-      <div data-chat-composer-main-surface="true" className="relative z-10 min-w-0">
+      <div data-chat-composer-main-surface="true" className="relative z-10 min-w-0 rounded-sheet">
         {approval !== undefined ? (
           <ComposerPendingApprovalPanel
             approval={approval}

@@ -22,10 +22,19 @@ export default definePlayground({
     title: { kind: "text", note: "names the rows under it" },
     count: { kind: "text", note: "how many, beside the title" },
     action: { kind: "text", note: "its one action at the line's end; empty: none" },
+    actionWraps: { kind: "boolean", note: "on a phone, the action on a line of its own" },
+    line: { kind: "text", note: "what the section is for, under its title; empty: none" },
     level: { kind: "enum", options: LEVELS, note: "3 inside a sheet or a panel" },
   },
-  initial: { title: "People", count: "3", action: "Add access", level: "2" },
-  render: ({ title, count, action, level }) => (
+  initial: {
+    title: "People",
+    count: "3",
+    action: "Add access",
+    actionWraps: false,
+    line: "",
+    level: "2",
+  },
+  render: ({ title, count, action, actionWraps, line, level }) => (
     <div className="w-[28rem]">
       <Section
         action={
@@ -35,8 +44,10 @@ export default definePlayground({
             </Button>
           )
         }
+        actionWraps={actionWraps}
         count={count === "" ? undefined : count}
         level={level === "3" ? 3 : 2}
+        line={line === "" ? undefined : line}
         title={title}
       >
         <Card variant="flat">
@@ -52,7 +63,7 @@ export default definePlayground({
       </Section>
     </div>
   ),
-  jsx: ({ title, count, action, level }) =>
+  jsx: ({ title, count, action, actionWraps, line, level }) =>
     jsxElement(
       "Section",
       {
@@ -62,6 +73,8 @@ export default definePlayground({
           action === ""
             ? undefined
             : jsxCode(`<Button size="sm" variant="ghost">${action}</Button>`),
+        actionWraps: actionWraps ? true : undefined,
+        line: line === "" ? undefined : line,
         level: level === "3" ? 3 : undefined,
       },
       '<Card variant="flat">\n  <Row … />\n</Card>',
@@ -70,6 +83,7 @@ export default definePlayground({
     do: [
       "Head a group of rows with it: the heading hugs its rows, groups stand twice as far apart.",
       "Give it one action at most, a ghost Button at the line's end.",
+      "Say what the section is for in its line when its title alone does not.",
       "Use level 3 inside a sheet or a panel whose page already has its h2.",
     ],
     dont: [

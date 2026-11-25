@@ -49,7 +49,6 @@ import {
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
 import { BranchToolbarEnvModeSelector } from "./BranchToolbarEnvModeSelector";
 import { PreviousWorktreeItemContent } from "./PreviousWorktreeItemContent";
-import { ComposerControl } from "./chat/ComposerControl";
 import {
   Menu,
   MenuGroup,
@@ -60,6 +59,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "./ui/menu";
+import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { MiddleTruncate } from "./ui/middle-truncate";
 
@@ -138,11 +138,9 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   const isLocked = envLocked || envModeLocked;
   const EnvironmentIcon = activeEnvironment?.isPrimary ? MonitorIcon : CloudIcon;
   const icon = showEnvironmentIndicator ? (
-    // Button's base styles apply `-mx-0.5` to descendant SVGs, which eats 4px
-    // out of whatever gap we set. mx-0! cancels that so gap-0.5 reads as 2px.
     <span className="inline-flex shrink-0 items-center gap-0.5">
-      <EnvironmentIcon className="size-3 shrink-0 mx-0!" />
-      <WorkspaceIcon className="size-3 shrink-0 mx-0!" />
+      <EnvironmentIcon className="size-3 shrink-0" />
+      <WorkspaceIcon className="size-3 shrink-0" />
     </span>
   ) : (
     <WorkspaceIcon className="size-3 shrink-0" />
@@ -158,7 +156,8 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 text-body font-medium text-muted-foreground/70 sm:h-6 md:hidden">
+      // Locked, it reads as the picker's words without the press: the xs Button's measure and ink.
+      <span className="inline-flex min-h-6 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 font-medium text-line text-muted-foreground md:hidden">
         {triggerContent}
       </span>
     );
@@ -167,7 +166,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
   return (
     <Menu>
       <MenuTrigger
-        render={<ComposerControl size="xs" />}
+        render={<Button size="xs" variant="ghost-muted" />}
         className="min-w-0 max-w-[48%] flex-1 justify-start md:hidden"
         data-composer-shortcut={[
           showEnvironmentPicker && !envLocked ? "composer.host" : "",

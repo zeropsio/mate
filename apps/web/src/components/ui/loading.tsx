@@ -14,11 +14,17 @@ import { Skeleton } from "./skeleton";
  * `shape` draws a ready stand-in; `children` draws a surface's own (built from `Skeleton`). `room`
  * holds a surface's whole room and paints nothing: for code that arrives in a beat.
  *
+ * `words` says the read as one quiet line instead ("Comparing in HQ…"): its label, muted body text,
+ * for a read whose stand-in has no shape to take, or slow enough that what it waits on matters; it
+ * stands where `EmptyState size="line"` and `Failure size="line"` would. The words are its message,
+ * read as they stand (no hidden copy, no busy mark), so inside a live region that stays mounted
+ * (a form's one line under its press) a screen reader hears them when they come.
+ *
  * `quiet` is for a read that usually lands at once: the stand-in holds its place unpainted for the
  * app's one hold (`STILL_READING_HOLD_MS`), so a read that lands within it never paints a stand-in
  * it takes back, and one that outlasts it paints in place, moving nothing.
  */
-type LoadingShape = "room" | "line" | "lines" | "rows" | "cards" | "page";
+type LoadingShape = "room" | "line" | "words" | "lines" | "rows" | "cards" | "page";
 
 function LoadingRows({ count }: { readonly count: number }) {
   return (
@@ -63,13 +69,23 @@ function LoadingCards({ count }: { readonly count: number }) {
   );
 }
 
-function LoadingShapeView({ shape, count }: { readonly shape: LoadingShape; count: number }) {
+function LoadingShapeView({
+  shape,
+  count,
+  label,
+}: {
+  readonly shape: LoadingShape;
+  readonly count: number;
+  readonly label: string;
+}) {
   switch (shape) {
     // A surface whose code arrives in a beat: its room held, nothing painted that it takes back.
     case "room":
       return null;
     case "line":
       return <Skeleton className="h-3 w-40" />;
+    case "words":
+      return <span className="block text-pretty text-body text-muted-foreground">{label}…</span>;
     case "lines":
       return <LoadingLines count={count} />;
     case "rows":
@@ -115,10 +131,12 @@ function Loading({
   readonly quiet?: boolean;
 }) {
   const held = useHeld(quiet);
+  // Words say themselves; a shape's stand-in is named for assistive technology and marked busy.
+  const said = (children === undefined || children === null) && shape === "words";
   return (
     <div
-      aria-busy="true"
-      aria-label={label}
+      aria-busy={said ? undefined : true}
+      aria-label={said ? undefined : label}
       className={cn(
         "min-w-0",
         shape === "room" && "flex h-full min-h-32 flex-1 self-stretch",
@@ -129,7 +147,7 @@ function Loading({
       role="status"
       {...props}
     >
-      {children ?? <LoadingShapeView count={count} shape={shape} />}
+      {children ?? <LoadingShapeView count={count} label={label} shape={shape} />}
     </div>
   );
 }

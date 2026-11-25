@@ -25,7 +25,10 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ChevronDownIcon, EllipsisIcon, PlusIcon, SearchIcon, TextIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -58,7 +61,16 @@ import {
 } from "./vaultGroups.logic";
 import { VaultLines } from "./VaultLines";
 import { VaultPartName } from "./VaultPartName";
-import { VaultManagedRows, VaultRow, type VaultRowActivity } from "./VaultRow";
+import {
+  VAULT_CHEVRON_CLASS,
+  VAULT_ROW_BODY_CLASS,
+  VAULT_ROW_CLASS,
+  VAULT_ROW_WORDS_CLASS,
+  VAULT_ROWS_CLASS,
+  VaultManagedRows,
+  VaultRow,
+  type VaultRowActivity,
+} from "./VaultRow";
 import { diffVaultText, pasteIntoText, vaultToText, type VaultText } from "./vaultText.logic";
 
 /** What the account knows of one row's write: in flight, or refused with the platform's code. */
@@ -446,11 +458,11 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     const failed = view.status === "failed";
     return (
       <div
-        className="vault-panel flex h-full min-h-0 flex-col bg-background"
+        className="@container flex h-full min-h-0 flex-col bg-background"
         data-vault-panel={failed ? "failed" : "unread"}
       >
         {header}
-        <div className="vault-canvas min-h-0 flex-1 border-t border-transparent">
+        <div className="min-h-0 flex-1 border-t border-transparent">
           {failed ? (
             <div className="grid gap-6 px-3 pt-1 pb-12" data-vault-list>
               {failure}
@@ -569,9 +581,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         level={3}
         title={<VaultPartName mateName={mateName} scope={section.scope} />}
       >
-        <div className="vault-box">
-          <div className="vault-rows">{section.entries.map(rowOf)}</div>
-        </div>
+        <Card className="overflow-hidden">
+          <div className={VAULT_ROWS_CLASS}>{section.entries.map(rowOf)}</div>
+        </Card>
       </Section>
     );
     const needs = vaultNeeds(vaultGroups(view, { kind: "everything" }, ""));
@@ -642,14 +654,14 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           </div>
         )}
         {made.length > 0 ? (
-          <div className="vault-box" data-vault-made>
-            <div className="vault-rows">
+          <Card className="overflow-hidden" data-vault-made>
+            <div className={VAULT_ROWS_CLASS}>
               {made.map((scope) => {
                 const open = openMade.has(scope.id);
                 const { words } = serviceWords(scope);
                 return (
                   <Collapsible
-                    render={<div className="vault-row" />}
+                    render={<div className={VAULT_ROW_CLASS} />}
                     data-open={open ? "" : undefined}
                     data-vault-app={scope.hostname}
                     key={scope.id}
@@ -662,7 +674,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                     }
                     open={open}
                   >
-                    <CollapsibleTrigger className="flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                    <CollapsibleTrigger className="group/trigger flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                       <span className="font-mono text-caption text-foreground">
                         {scope.hostname}
                       </span>
@@ -675,15 +687,17 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                           ? "1 value set by Zerops"
                           : `${scope.values.length} values set by Zerops`}
                       </span>
-                      <ChevronDownIcon
-                        aria-hidden="true"
-                        className="vault-chevron size-4 shrink-0 text-muted-foreground"
-                      />
+                      <ChevronDownIcon aria-hidden="true" className={VAULT_CHEVRON_CLASS} />
                     </CollapsibleTrigger>
-                    <div className="vault-row-body" inert={!open}>
-                      <div>
+                    <div
+                      className={VAULT_ROW_BODY_CLASS}
+                      data-open={open ? "" : undefined}
+                      inert={!open}
+                    >
+                      <div className={VAULT_ROW_WORDS_CLASS} data-open={open ? "" : undefined}>
                         {open ? (
-                          <div className="vault-rows vault-made-rows">
+                          // A service Zerops runs, unfolded: its values under its line.
+                          <div className={cn(VAULT_ROWS_CLASS, "border-t border-border/70")}>
                             <VaultManagedRows onReveal={props.onReveal} scope={scope} />
                           </div>
                         ) : null}
@@ -693,7 +707,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                 );
               })}
             </div>
-          </div>
+          </Card>
         ) : null}
         {mates.length === 0 || forAll.length + own.length + made.length === 0 ? (
           mates.map(sectionOf)
@@ -716,15 +730,15 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
 
   return (
     <div
-      className="vault-panel flex h-full min-h-0 flex-col bg-background"
+      className="@container flex h-full min-h-0 flex-col bg-background"
       data-vault-panel={view.status}
     >
       {header}
       <div
         className={
           scrolled
-            ? "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
-            : "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-transparent [scrollbar-width:thin]"
+            ? "min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
+            : "min-h-0 flex-1 overflow-y-auto border-t border-transparent [scrollbar-width:thin]"
         }
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         ref={scroller}
@@ -770,9 +784,9 @@ function HeldSection({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-h-7 items-center">{label}</div>
-      <div className="vault-box">
-        <div className="vault-rows">{children}</div>
-      </div>
+      <Card className="overflow-hidden">
+        <div className={VAULT_ROWS_CLASS}>{children}</div>
+      </Card>
     </div>
   );
 }

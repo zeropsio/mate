@@ -12,6 +12,9 @@ import { Button } from "../ui/button";
 import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { EmptyState } from "../ui/empty";
+import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 
 interface TakeOverPerson {
   readonly userId: string;
@@ -56,43 +59,47 @@ function TakeOverRow({
         ? `Replaced by one you mint; the Mate stays with ${owner.name}.`
         : "Its owner is leaving: pick who gets the Mate.";
   return (
-    <li className="tm-block-head" data-token={item.tokenId}>
-      <span className="tm-block-text">
-        <span className="tm-block-title">
-          {kindWords[item.kind]} · {item.label}
-        </span>
-        <span className="tm-block-desc">{line}</span>
-      </span>
-      {picks ? (
-        <Select value={picked ?? ""} onValueChange={(value) => setPicked(value || null)}>
-          <SelectTrigger
+    <Row
+      control={
+        <>
+          {picks ? (
+            <Select value={picked ?? ""} onValueChange={(value) => setPicked(value || null)}>
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-48"
+                aria-label={`New owner of ${item.label}`}
+              >
+                <SelectValue>
+                  {candidates.find(({ userId }) => userId === picked)?.name ?? "New owner"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {candidates.map(({ userId, name }) => (
+                  <SelectItem key={userId} hideIndicator value={userId}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          ) : null}
+          <Button
+            aria-busy={busy || undefined}
+            disabled={busy || (picks && picked === null)}
+            onClick={() => onReplace(picks && picked !== null ? picked : undefined)}
             size="sm"
-            className="w-full sm:w-48"
-            aria-label={`New owner of ${item.label}`}
+            variant="secondary"
           >
-            <SelectValue>
-              {candidates.find(({ userId }) => userId === picked)?.name ?? "New owner"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {candidates.map(({ userId, name }) => (
-              <SelectItem key={userId} hideIndicator value={userId}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      ) : null}
-      <Button
-        aria-busy={busy || undefined}
-        disabled={busy || (picks && picked === null)}
-        onClick={() => onReplace(picks && picked !== null ? picked : undefined)}
-        size="sm"
-        variant="secondary"
-      >
-        {item.inUse ? "Replace" : "Delete"}
-      </Button>
-    </li>
+            {item.inUse ? "Replace" : "Delete"}
+          </Button>
+        </>
+      }
+      data-token={item.tokenId}
+      line={line}
+      lineWraps
+      render={<li />}
+      size="sm"
+      title={`${kindWords[item.kind]} · ${item.label}`}
+    />
   );
 }
 
@@ -117,20 +124,17 @@ export function MemberTakeOverView({
   if (list.state === "withheld") return null;
   const working = action.kind === "working";
   return (
-    <section aria-label="Before removing" className="tm-section">
-      <span className="tm-block-text">
-        <h2 className="tm-block-title">Before removing</h2>
-        <span className="tm-block-desc">
-          Zerops refuses to remove {memberName} while a token they made exists. Replace each one
-          here: HQ makes its successor with your sign-in and deletes theirs.
-        </span>
-      </span>
+    <section aria-label="Before removing" className="grid gap-3.5">
+      <SectionHeader
+        line={`Zerops refuses to remove ${memberName} while a token they made exists. Replace each one here: HQ makes its successor with your sign-in and deletes theirs.`}
+        title="Before removing"
+      />
       {list.state === "known" ? (
         <>
           {list.list.items.length === 0 ? (
-            <p className="tm-empty">Nothing of theirs is in use by HQ.</p>
+            <EmptyState size="row">Nothing of theirs is in use by HQ.</EmptyState>
           ) : (
-            <ul className="tm-section">
+            <ul className="grid gap-3.5">
               {list.list.items.map((item) => (
                 <TakeOverRow
                   busy={working}
@@ -144,12 +148,15 @@ export function MemberTakeOverView({
             </ul>
           )}
           {list.list.otherTokens > 0 ? (
-            <p className="tm-trouble" role="status">
-              {list.list.otherTokens === 1
-                ? "They made 1 other token HQ does not use"
-                : `They made ${list.list.otherTokens} other tokens HQ does not use`}
-              ; Zerops refuses the removal until it is deleted in Zerops.
-            </p>
+            <Failure
+              cause={`${
+                list.list.otherTokens === 1
+                  ? "They made 1 other token HQ does not use"
+                  : `They made ${list.list.otherTokens} other tokens HQ does not use`
+              }; Zerops refuses the removal until it is deleted in Zerops.`}
+              role="status"
+              size="line"
+            />
           ) : null}
         </>
       ) : list.state === "failed" ? (
@@ -165,14 +172,13 @@ export function MemberTakeOverView({
         <Loading count={2} label="Their tokens" shape="rows" />
       )}
       {action.kind === "failed" || action.kind === "unresolved" ? (
-        <p className="tm-trouble" role="alert">
-          {action.words}
-        </p>
+        <Failure cause={action.words} role="alert" size="line" />
       ) : last?.answer?.replaced === true && !last.answer.oldDeleted ? (
-        <p className="tm-trouble" role="status">
-          Replaced, but Zerops kept the old token ({last.answer.reason ?? "refused"}): it stays
-          listed to delete.
-        </p>
+        <Failure
+          cause={`Replaced, but Zerops kept the old token (${last.answer.reason ?? "refused"}): it stays listed to delete.`}
+          role="status"
+          size="line"
+        />
       ) : null}
     </section>
   );

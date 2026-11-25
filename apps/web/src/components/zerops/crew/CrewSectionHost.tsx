@@ -400,7 +400,8 @@ export function CrewSectionHost({
   return (
     <section className="flex flex-1 flex-col" data-zerops-crew>
       <div
-        className="crew-view flex flex-1 flex-col"
+        // A view slides 24 px in from the right; back, the column from the left.
+        className="flex flex-1 flex-col data-[enter=back]:motion-safe:animate-crew-view-back data-[enter=forward]:motion-safe:animate-crew-view-forward data-enter:motion-reduce:animate-zerops-appear"
         data-crew-screen={screen}
         data-enter={shown.enter ?? undefined}
         key={screen}

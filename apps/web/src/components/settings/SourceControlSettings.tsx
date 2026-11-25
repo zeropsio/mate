@@ -26,14 +26,8 @@ import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "../ui/empty";
+import { EmptyState } from "../ui/empty";
+import { Failure } from "../ui/failure";
 import { Skeleton } from "../ui/skeleton";
 import {
   NumberField,
@@ -465,31 +459,28 @@ export function EmptySourceControlDiscovery({
   readonly isPending: boolean;
   readonly onScan: () => void;
 }) {
-  const hasError = error !== null;
+  const scan = (
+    <Button size="sm" variant="secondary" onClick={onScan} disabled={isPending}>
+      {isPending ? <Spinner size="sm" /> : <RefreshCwIcon className="size-3.5" />}
+      Scan
+    </Button>
+  );
 
   return (
     <SettingsSection id={searchableSetting("source-control").id} title="Server environment">
-      <Empty>
-        <EmptyMedia variant="icon">
-          <GitPullRequestIcon />
-        </EmptyMedia>
-        <EmptyHeader>
-          <EmptyTitle>
-            {hasError ? "Could not scan the server environment" : "Nothing detected yet"}
-          </EmptyTitle>
-          <EmptyDescription>
-            {hasError
-              ? error
-              : "Install Git on the server, add optional hosting integrations or credentials your workspace needs, then rescan."}
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button size="sm" variant="secondary" onClick={onScan} disabled={isPending}>
-            {isPending ? <Spinner size="sm" /> : <RefreshCwIcon className="size-3.5" />}
-            Scan
-          </Button>
-        </EmptyContent>
-      </Empty>
+      {error === null ? (
+        <EmptyState
+          action={scan}
+          level={3}
+          mark={<GitPullRequestIcon className="size-8 text-muted-foreground" />}
+          title="Nothing detected yet"
+        >
+          Install Git on the server, add optional hosting integrations or credentials your workspace
+          needs, then rescan.
+        </EmptyState>
+      ) : (
+        <Failure action={scan} cause="Could not scan the server environment" details={error} />
+      )}
     </SettingsSection>
   );
 }

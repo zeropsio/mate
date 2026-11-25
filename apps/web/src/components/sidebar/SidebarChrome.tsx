@@ -94,7 +94,10 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
  */
 export function SidebarOverviewLink({ current }: { readonly current: boolean }) {
   return (
-    <span className="menu-overview">
+    // On the Mates' faces' column. It lights only under the pointer, never while its page is
+    // open: at rest it keeps the squares' muted ink and no ground (`!` over the button's
+    // current-page ground and ink).
+    <span className="ms-[calc(var(--sidebar-content-inset)+1px+12px)] flex [&>[aria-current=page]:not(:hover,[data-popup-open])]:bg-transparent! [&>[aria-current=page]:not(:hover,[data-popup-open])]:text-muted-foreground!">
       <Tooltip>
         <TooltipTrigger
           render={

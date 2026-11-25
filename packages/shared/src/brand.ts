@@ -581,7 +581,11 @@ export const ICON_MAP = {
   failed: "CircleAlert",
 } as const satisfies Record<string, string>;
 
-/** Spacing sits on a 4 px grid: every gap, padding and line height is a multiple of it. */
+/**
+ * Spacing sits on a 4 px grid, with 2 px half-steps (6, 10, 14 px) where a whole step reads too
+ * tight or too loose. A value that moves onto the grid moves up: room over squeezing (the owner,
+ * 2026-11-25: "I like more whitespace"). Pixels.
+ */
 export const SPACING_UNIT = 4;
 
 /**

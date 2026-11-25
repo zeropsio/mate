@@ -12,7 +12,8 @@ import { cn } from "~/lib/utils";
  * surfaces, so it never reads as a press (a press is a Button, a rectangle). Five tones carry
  * meaning, never decoration: `neutral` for a fact, `info` for work under way, `success` for
  * done or running, `warning` for what needs the person, `danger` for what broke and for
- * Production.
+ * Production. The neutral pill's ground is a step of the ink, so it shows on the page, a card
+ * and a tinted tray alike.
  */
 const badgeVariants = cva(
   "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
@@ -33,7 +34,7 @@ const badgeVariants = cva(
       },
     },
     compoundVariants: [
-      { form: "pill", tone: "neutral", className: "bg-status-off-surface text-foreground" },
+      { form: "pill", tone: "neutral", className: "bg-foreground/6 text-foreground" },
       { form: "pill", tone: "info", className: "bg-status-busy-surface text-status-busy-text" },
       { form: "pill", tone: "success", className: "bg-status-ok-surface text-status-ok-text" },
       {
@@ -49,6 +50,14 @@ const badgeVariants = cva(
     ],
   },
 );
+
+/**
+ * A door: a pill that opens what it names (a menu row's environment tag, a project's release
+ * mark). It stays a pill, never a Button's rectangle; its hairline firms in its own ink under the
+ * pointer and while what it opens is open — on itself, or on the bare press around it.
+ */
+const DOOR =
+  "cursor-pointer transition-shadow duration-150 ease-out-strong hover:inset-ring-1 hover:inset-ring-current/30 data-popup-open:inset-ring-1 data-popup-open:inset-ring-current/30 [:hover>&]:inset-ring-1 [:hover>&]:inset-ring-current/30 [[data-popup-open]>&]:inset-ring-1 [[data-popup-open]>&]:inset-ring-current/30 motion-reduce:transition-none";
 
 const DOT_TONE = {
   neutral: "bg-status-off",
@@ -73,6 +82,8 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
   readonly tone?: BadgeTone;
   /** The one size: 20 px, caption type. */
   readonly size?: "sm";
+  /** A pill that opens what it names (`DOOR`). */
+  readonly door?: boolean;
 } & (
     | { readonly dot?: false; readonly pulse?: never; readonly children: ReactNode }
     | {
@@ -102,6 +113,7 @@ function Badge({
   className,
   tone = "neutral",
   size: _size,
+  door = false,
   dot,
   pulse,
   render,
@@ -117,6 +129,7 @@ function Badge({
     className: cn(
       badgeVariants({ form, tone }),
       wraps && "shrink items-start whitespace-normal",
+      door && DOOR,
       className,
     ),
     "data-slot": "badge",

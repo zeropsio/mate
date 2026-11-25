@@ -92,7 +92,7 @@ export function ReviewConversation({
   const { state } = comments;
   return (
     <ReviewSection
-      aside={state.kind === "read" ? changeConversationCount(remarks) : undefined}
+      count={state.kind === "read" ? changeConversationCount(remarks) : undefined}
       fold={fold}
       title="Conversation"
     >
@@ -120,10 +120,10 @@ export function ReviewConversation({
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
       ) : readOnly ? (
-        <p className="rv-say-note">You have Read access, so you can read this conversation.</p>
+        <p className="rv-note">You have Read access, so you can read this conversation.</p>
       ) : null}
       {commentable && asker === undefined && reaches !== undefined ? (
-        <p className="rv-say-note">{reaches} sees this on the change.</p>
+        <p className="rv-note">{reaches} sees this on the change.</p>
       ) : null}
     </ReviewSection>
   );

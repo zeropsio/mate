@@ -295,7 +295,7 @@ function HarnessPage() {
     <ToastProvider>
       <div className="flex h-dvh bg-background text-foreground">
         <aside
-          className="shrink-0 border-e border-border bg-sidebar"
+          className="shrink-0 border-e border-border bg-sidebar max-md:hidden"
           style={{ width: MENU_WIDTH }}
         />
         <main className="min-w-0 flex-1 overflow-y-auto">

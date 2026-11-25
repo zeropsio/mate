@@ -21,6 +21,7 @@ import type { CrewSummary } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
+import { Failure } from "../../ui/failure";
 import { Button, InlineButton } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
@@ -131,7 +132,8 @@ export function CrewHead({
       </div>
       <div className="flex h-5 items-center gap-2 text-line">
         <span
-          className="crew-mode min-w-0 truncate text-line tabular-nums text-muted-foreground"
+          // Its words change in place: its height never moves.
+          className="min-w-0 truncate data-arrived:animate-zerops-appear text-line tabular-nums text-muted-foreground"
           data-arrived={arrived ? "" : undefined}
           data-crew-mode
           key={mode.words}
@@ -149,11 +151,7 @@ export function CrewHead({
           />
         )}
       </div>
-      {error === null ? null : (
-        <p className="text-line leading-4.5 text-status-failed-text" role="alert">
-          {error}
-        </p>
-      )}
+      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
     </div>
   );
 }

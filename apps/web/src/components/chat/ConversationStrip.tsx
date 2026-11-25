@@ -125,10 +125,9 @@ function MateChatsMenu({
           render={
             <Button
               aria-label={`${mateName}'s chats`}
-              data-chat-header-ghost
               data-conversation-chats
               size="icon-xs"
-              variant="ghost-muted"
+              variant="sidebar"
             />
           }
         >
@@ -271,10 +270,12 @@ function MatePill({
           // The badge stands beside the face's slot, never in it: the opening stage moves its own
           // face into the slot, and the cut holds for whichever face stands there.
           <span className="relative flex shrink-0">
-            <span className="conversation-face-cut flex">
+            {/* The owner's 12 px mark on the 24 px face's corner, cut out of the face with a 2 px
+                gap all round, as the menu's row wears it. */}
+            <span className="flex [mask-image:radial-gradient(circle_8px_at_20px_20px,transparent_7.5px,currentColor_8px)]">
               <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
             </span>
-            <MateOwnerMark className="conversation-owner" seat={owner} />
+            <MateOwnerMark className="top-3.5 left-3.5 size-3 text-5xs" seat={owner} />
           </span>
         )}
         {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
@@ -286,7 +287,9 @@ function MatePill({
   return (
     <div
       className={cn(
-        "conversation-mate flex h-8 min-w-0 items-center",
+        // A control's corners, on the menu's selected band while its chat is open; the band coming
+        // and going changes no width.
+        "flex h-8 min-w-0 items-center rounded-control data-opens:hover:bg-sidebar-row-hover",
         // Only the persona's label gives way to the line's end; the name never does.
         persona != null ? "min-w-0 shrink" : "shrink-0",
       )}
@@ -314,7 +317,9 @@ function MatePill({
       {/* After what waits on the person, so arriving late it moves nothing already placed. */}
       {persona == null ? null : (
         <span
-          className="conversation-persona flex min-w-0 shrink overflow-hidden"
+          // Arriving after its line stands, it fades in where it stays: the name before it never
+          // moves.
+          className="flex min-w-0 shrink overflow-hidden data-arrived:animate-zerops-appear"
           data-arrived={personaArrived ? "" : undefined}
         >
           {persona}
@@ -501,7 +506,6 @@ function MoreCrew({
         render={
           <Button
             className={cn("h-7", !shown && "invisible absolute start-0 top-0")}
-            data-chat-header-ghost
             data-conversation-more
             size="xs"
             tabIndex={shown ? undefined : -1}

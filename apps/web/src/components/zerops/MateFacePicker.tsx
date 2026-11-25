@@ -21,6 +21,8 @@ import {
 } from "@t3tools/shared/brand";
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Button } from "../ui/button";
 import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { MateFace } from "./primitives";
@@ -48,17 +50,31 @@ const SHAPE_WORDS: Record<MateShapeId, string> = {
   pick: "Guitar pick",
 };
 
-/** A tint as the stylesheet reads it: the palette's own token, so both themes hold. */
+/** A tint as the marks read it (`--mate-face-tint`): the palette's own token, so both themes hold. */
 function tintStyle(tint: MateTintId): CSSProperties {
   return { "--mate-face-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties;
 }
+
+/** An option's mark, in the tint it is given; its ring, the mark's own outline a gap out, 2 px on
+ * screen whatever the mark's scale, which the kit's swatch shows on the one picked. */
+const MARK_CLASS = "fill-(--mate-face-tint)";
+const RING_CLASS = "stroke-(--mate-face-tint)";
 
 /** A colour's option: a dot, and its ring a gap out. */
 function tintMark() {
   return (
     <>
-      <circle className="mate-face-ring" cx="18" cy="18" data-slot="radio-swatch-ring" r="15.5" />
-      <circle className="mate-face-mark" cx="18" cy="18" r="12" />
+      <circle
+        className={RING_CLASS}
+        cx="18"
+        cy="18"
+        data-slot="radio-swatch-ring"
+        fill="none"
+        r="15.5"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle className={MARK_CLASS} cx="18" cy="18" r="12" />
     </>
   );
 }
@@ -68,13 +84,16 @@ function shapeMark(shape: MateShapeId) {
   return (
     <>
       <path
-        className="mate-face-ring"
+        className={RING_CLASS}
         d={MATE_SHAPES[shape].d}
         data-slot="radio-swatch-ring"
+        fill="none"
+        strokeWidth={2}
         transform="translate(1 1) scale(0.34)"
+        vectorEffect="non-scaling-stroke"
       />
       <path
-        className="mate-face-mark"
+        className={MARK_CLASS}
         d={MATE_SHAPES[shape].d}
         transform="translate(5 5) scale(0.26)"
       />
@@ -92,35 +111,74 @@ function ringAngle(side: "left" | "right", index: number, count: number): number
 }
 
 /**
+ * A ring's measures: its stage, the face at full size and how far the options stand out from
+ * the middle (each option's seat: `PickerRow`). `page` is New project's Mate step (a 264 × 250 stage,
+ * the face 200 px, 60 % of it open, options 34 px); `dialog` is the add-Mate dialog (200 × 189,
+ * the face 152 px, keeping two thirds of it open so the ring has air, options 26 px).
+ */
+const RING = {
+  page: {
+    stage: "h-62.5 w-66",
+    face: "group-data-open/ring:scale-60",
+    hero: "size-50",
+    radius: 112,
+  },
+  dialog: {
+    stage: "h-47.25 w-50",
+    face: "group-data-open/ring:scale-66",
+    hero: "size-38",
+    radius: 84,
+  },
+} as const;
+
+/**
  * The face as its page's hero, with its colours and shapes as a ring around it (the owner,
  * 2026-11-23): shut, the face alone, large; open, the face a touch smaller and the options
- * coming out from its middle to their places, the colours down the left and the shapes down the
- * right; shutting, they go back into the middle and fade. Shut, the options are inert.
+ * coming out from its middle to their places, one after another, the colours down the left and
+ * the shapes down the right; shutting, they go back into the middle and fade, and the face grows
+ * back. Shut, the options are inert. Reduced motion keeps the fades.
  */
 export function MateFaceRing({
   face,
   open,
+  size,
+  className,
   onPickTint,
   onPickShape,
 }: {
   readonly face: ZeropsMateFace;
   readonly open: boolean;
+  readonly size: keyof typeof RING;
+  /** Its place in the form (its margins). */
+  readonly className?: string;
   readonly onPickTint: (tint: MateTintId) => void;
   readonly onPickShape: (shape: MateShapeId) => void;
 }) {
+  const ring = RING[size];
   return (
-    <div className="mate-face-ring-stage" data-open={open ? "" : undefined}>
-      <span className="mate-face-ring-face">
-        <MateFacePreview className="mate-face-ring-hero" face={face} tracks />
+    <div
+      className={cn("group/ring relative grid place-items-center", ring.stage, className)}
+      data-open={open ? "" : undefined}
+    >
+      <span
+        className={cn(
+          "grid place-items-center transition-[scale] duration-260 ease-out-strong motion-reduce:transition-none",
+          ring.face,
+        )}
+      >
+        <MateFacePreview className={ring.hero} face={face} tracks />
       </span>
-      <div className="mate-face-ring-options" inert={!open}>
+      <div className="absolute inset-0" inert={!open}>
         <PickerRow
           className="contents"
           label="Color"
           onPick={onPickTint}
           optionStyle={tintStyle}
           options={MATE_TINT_IDS}
-          place={(index) => ringPlace(ringAngle("left", index, MATE_TINT_IDS.length), index)}
+          place={(index) =>
+            ringPlace(ringAngle("left", index, MATE_TINT_IDS.length), index, ring.radius)
+          }
+          ring={size}
           value={face.tint}
           words={TINT_WORDS}
         >
@@ -132,7 +190,10 @@ export function MateFaceRing({
           onPick={onPickShape}
           optionStyle={() => tintStyle(face.tint)}
           options={MATE_SHAPE_IDS}
-          place={(index) => ringPlace(ringAngle("right", index, MATE_SHAPE_IDS.length), index)}
+          place={(index) =>
+            ringPlace(ringAngle("right", index, MATE_SHAPE_IDS.length), index, ring.radius)
+          }
+          ring={size}
           value={face.shape}
           words={SHAPE_WORDS}
         >
@@ -143,10 +204,27 @@ export function MateFaceRing({
   );
 }
 
-/** An option's place on the ring, and its turn as the ring opens. */
-function ringPlace(angle: number, index: number): CSSProperties {
-  return { "--ring-angle": `${angle}deg`, "--ring-turn": index } as CSSProperties;
+/**
+ * An option's place on the ring, `radius` out from the middle at `angle`, and its turn: each
+ * option sets off 24 ms after the one before as the ring opens, 12 ms as it shuts.
+ */
+function ringPlace(angle: number, index: number, radius: number): CSSProperties {
+  const turn = (angle * Math.PI) / 180;
+  return {
+    "--ring-x": `${(radius * Math.sin(turn)).toFixed(2)}px`,
+    "--ring-y": `${(-radius * Math.cos(turn)).toFixed(2)}px`,
+    "--ring-open-delay": `${index * 24}ms`,
+    "--ring-shut-delay": `${index * 12}ms`,
+  } as CSSProperties;
 }
+
+/**
+ * An option's seat on a ring: its swatch fills it, so every option is drawn around the very point
+ * it travels to. Shut, it rests in the middle, small and unseen; open, it travels out to its
+ * place. Reduced motion leaves it in its place and only fades it.
+ */
+const SEAT_CLASS =
+  "absolute translate-0 scale-40 opacity-0 transition-[translate,scale,opacity] delay-(--ring-shut-delay) duration-260 ease-in-out-strong group-data-open/ring:translate-x-(--ring-x) group-data-open/ring:translate-y-(--ring-y) group-data-open/ring:scale-100 group-data-open/ring:opacity-100 group-data-open/ring:delay-(--ring-open-delay) group-data-open/ring:ease-out-strong motion-reduce:translate-x-(--ring-x) motion-reduce:translate-y-(--ring-y) motion-reduce:scale-100 motion-reduce:transition-opacity";
 
 export function MateFacePicker({
   face,
@@ -294,12 +372,15 @@ function PickerRow<T extends string>({
   optionStyle,
   onPick,
   place,
+  ring,
   className = "flex justify-between",
   children,
 }: {
   readonly label: string;
   /** Where each option stands, where they are not a row (`MateFaceRing`). */
   readonly place?: (index: number) => CSSProperties;
+  /** The ring it stands on, whose measures its seats take. */
+  readonly ring?: keyof typeof RING;
   readonly className?: string;
   readonly options: ReadonlyArray<T>;
   readonly value: T;
@@ -335,7 +416,16 @@ function PickerRow<T extends string>({
         return place === undefined ? (
           swatch
         ) : (
-          <span className="mate-face-ring-seat" key={option} style={place(index)}>
+          <span
+            className={cn(
+              SEAT_CLASS,
+              ring === "dialog"
+                ? "top-[calc(50%-13px)] left-[calc(50%-13px)] size-6.5"
+                : "top-[calc(50%-17px)] left-[calc(50%-17px)] size-8.5",
+            )}
+            key={option}
+            style={place(index)}
+          >
             {swatch}
           </span>
         );
@@ -370,11 +460,15 @@ export function MateFacePreview({
     setShown({ face, before: shown.face, turn: shown.turn + 1 });
   }
   return (
-    <span className="mate-face-preview" data-zerops-surface="mate-face-preview">
+    <span
+      className="grid shrink-0 *:col-start-1 *:row-start-1"
+      data-zerops-surface="mate-face-preview"
+    >
+      {/* The face before fades out under the new one and rests unseen, so one whose fade never
+          ran is gone all the same. */}
       {shown.before === undefined ? null : (
         <MateFace
-          className={className}
-          data-mate-face-preview="out"
+          className={cn(className, "animate-face-out opacity-0")}
           key={`out-${shown.turn}`}
           onAnimationEnd={(event) => {
             if (event.target !== event.currentTarget) return;
@@ -389,8 +483,7 @@ export function MateFacePreview({
         />
       )}
       <MateFace
-        className={className}
-        data-mate-face-preview={shown.turn === 0 ? undefined : "in"}
+        className={shown.turn === 0 ? className : cn(className, "motion-safe:animate-face-in")}
         key={`in-${shown.turn}`}
         shape={shown.face.shape}
         size={64}

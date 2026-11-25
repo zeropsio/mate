@@ -28,17 +28,37 @@ import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
+import { Card } from "../ui/card";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
+import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
+import { cn } from "~/lib/utils";
 
 /** How long a copy button says so. */
 const COPIED_MS = 2_000;
 
-/** One command for the Mac's Terminal, its copy button inside the field. */
-export function MacCommand({ command }: { readonly command: string }) {
+/**
+ * One command for the Mac's Terminal, its copy button inside the field: mono words to select
+ * whole, on the muted ground, or on the page's where it stands in an inset card.
+ */
+export function MacCommand({
+  command,
+  inset = false,
+}: {
+  readonly command: string;
+  readonly inset?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   return (
-    <span className="mac-command">
-      <code className="mac-command-text">{command}</code>
+    <span
+      className={cn(
+        "flex min-h-9 min-w-0 items-center gap-1 rounded-control ps-3 pe-1",
+        inset ? "bg-background" : "bg-muted",
+      )}
+    >
+      <code className="min-w-0 flex-1 font-mono text-caption text-foreground wrap-anywhere select-all">
+        {command}
+      </code>
       <Button
         aria-label={copied ? "Copied" : "Copy the command"}
         onClick={() => {
@@ -72,24 +92,22 @@ function macStep({
   readonly more?: ReactNode;
 }) {
   return (
-    <li className="mac-wait-step" key={words}>
-      <span aria-hidden="true" className="mac-wait-num">
-        {n}
-      </span>
-      <span className="mac-wait-step-words">{words}</span>
+    <li className="grid grid-cols-[24px_minmax(0,1fr)] items-start gap-x-3 gap-y-2" key={words}>
+      <StepNumber n={n} />
+      <span className="pt-0.5 text-body text-foreground">{words}</span>
       {command === undefined ? null : (
-        <span className="mac-wait-step-field">
+        <span className="col-start-2">
           <MacCommand command={command} />
         </span>
       )}
-      {more === undefined ? null : <span className="mac-wait-step-field">{more}</span>}
+      {more === undefined ? null : <span className="col-start-2">{more}</span>}
     </li>
   );
 }
 
-/** A command that readies the Mac itself, not one of the Mate's own. */
+/** A command that readies the Mac itself, not one of the Mate's own, in the inset card. */
 function SetupCommand({ command }: { readonly command: string }) {
-  return <MacCommand command={command} />;
+  return <MacCommand command={command} inset />;
 }
 
 /** A page to install from, opened beside the app. */
@@ -102,6 +120,11 @@ function InstallLink({ href, children }: { readonly href: string; readonly child
   );
 }
 
+/** Each thing the Mac needs: its name, then how to get it. */
+const READY_NAME_CLASS = "text-body leading-4.5 font-semibold text-foreground";
+const READY_HOW_CLASS =
+  "flex flex-wrap items-center gap-x-3 gap-y-1 text-body leading-4.5 text-muted-foreground";
+
 /**
  * What the Mac needs before it pairs (the owner, 2026-10-12: "this should like say zcli +
  * wgtools etc and link to install"), as the pairing script checks it: zcli signed in, WireGuard
@@ -111,42 +134,50 @@ function InstallLink({ href, children }: { readonly href: string; readonly child
  */
 function macReady() {
   return (
-    <ul className="mac-ready" data-zerops-mac-ready>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">zcli, signed in</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
-          <InstallLink href={zeropsTokenManagementUrl()}>Make a token</InstallLink>
-          <span>
-            then <code>zcli login &lt;token&gt;</code>
+    <Card data-zerops-mac-ready variant="inset">
+      <ul className="flex flex-col gap-3 px-3.5 py-3">
+        <li className="flex flex-col gap-1.5">
+          <span className={READY_NAME_CLASS}>zcli, signed in</span>
+          <span className={READY_HOW_CLASS}>
+            <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
+            <InstallLink href={zeropsTokenManagementUrl()}>Make a token</InstallLink>
+            <span>
+              then{" "}
+              <code className="font-mono text-caption text-foreground">
+                zcli login &lt;token&gt;
+              </code>
+            </span>
           </span>
-        </span>
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">WireGuard tools, for the VPN</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
-          <span>then</span>
-        </span>
-        <SetupCommand command="brew install wireguard-tools" />
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">Node.js 22.12 or newer</span>
-        <span className="mac-ready-how">
-          <InstallLink href="https://nodejs.org/en/download">The nodejs.org installer</InstallLink>
-          <span>not Homebrew's: macOS keeps node's permissions across its updates</span>
-        </span>
-      </li>
-      <li className="mac-ready-item">
-        <span className="mac-ready-name">
-          Xcode's command-line tools <span className="mac-ready-optional">optional</span>
-        </span>
-        <span className="mac-ready-how">
-          <span>For the smooth live view and building apps.</span>
-        </span>
-        <SetupCommand command="xcode-select --install" />
-      </li>
-    </ul>
+        </li>
+        <li className="flex flex-col gap-1.5">
+          <span className={READY_NAME_CLASS}>WireGuard tools, for the VPN</span>
+          <span className={READY_HOW_CLASS}>
+            <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
+            <span>then</span>
+          </span>
+          <SetupCommand command="brew install wireguard-tools" />
+        </li>
+        <li className="flex flex-col gap-1.5">
+          <span className={READY_NAME_CLASS}>Node.js 22.12 or newer</span>
+          <span className={READY_HOW_CLASS}>
+            <InstallLink href="https://nodejs.org/en/download">
+              The nodejs.org installer
+            </InstallLink>
+            <span>not Homebrew's: macOS keeps node's permissions across its updates</span>
+          </span>
+        </li>
+        <li className="flex flex-col gap-1.5">
+          <span className={READY_NAME_CLASS}>
+            Xcode's command-line tools{" "}
+            <span className="ms-1.5 font-medium text-muted-foreground">optional</span>
+          </span>
+          <span className={READY_HOW_CLASS}>
+            <span>For the smooth live view and building apps.</span>
+          </span>
+          <SetupCommand command="xcode-select --install" />
+        </li>
+      </ul>
+    </Card>
   );
 }
 
@@ -158,13 +189,20 @@ function stepList(
     readonly more?: ReactNode;
   }>,
   name: string,
+  /** Its room above: 24 px under the panel's line, 12 px under *Remove this Mac*. */
+  room: "under-line" | "under-press" = "under-line",
 ) {
   return (
-    <ol className="mac-wait-steps" data-zerops-mac-steps={name}>
-      {steps.map((step, index) =>
-        macStep({ command: step.command, more: step.more, n: index + 1, words: step.words }),
-      )}
-    </ol>
+    <Card
+      className={room === "under-line" ? "mt-6 w-full" : "mt-3 w-full"}
+      data-zerops-mac-steps={name}
+    >
+      <ol className="flex flex-col gap-4 p-4 text-left">
+        {steps.map((step, index) =>
+          macStep({ command: step.command, more: step.more, n: index + 1, words: step.words }),
+        )}
+      </ol>
+    </Card>
   );
 }
 
@@ -211,13 +249,20 @@ function macSteps({
         status,
       )}
       {pair === undefined ? null : (
-        <details className="mac-wait-more" data-zerops-mac-again>
-          <summary>
+        <Collapsible data-zerops-mac-again render={<div className="mt-3.5 w-full text-left" />}>
+          <CollapsibleTrigger className="group/more ms-1 inline-flex items-center gap-1.5 rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
             Still not answering? Pair it again
-            <ChevronDownIcon aria-hidden="true" className="mac-wait-more-mark" />
-          </summary>
-          <MacCommand command={pair} />
-        </details>
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="size-3.5 transition-[rotate] duration-150 ease-out-strong group-data-panel-open/more:rotate-180 motion-reduce:transition-none"
+            />
+          </CollapsibleTrigger>
+          <CollapsiblePanel>
+            <div className="pt-2.5">
+              <MacCommand command={pair} />
+            </div>
+          </CollapsiblePanel>
+        </Collapsible>
       )}
     </>
   );
@@ -234,11 +279,19 @@ function macGlyph(status: MacWaitKind) {
           ? RefreshCwIcon
           : undefined;
   return (
-    <span aria-hidden="true" className="mac-wait-glyph" data-status={status}>
-      <LaptopIcon />
+    <span
+      aria-hidden="true"
+      className="relative mb-4 grid size-14 place-items-center rounded-card bg-muted text-muted-foreground"
+    >
+      <LaptopIcon className="size-7" strokeWidth={1.5} />
       {Badge === undefined ? null : (
-        <span className="mac-wait-badge">
-          <Badge />
+        <span
+          className={cn(
+            "absolute -end-1.25 -bottom-1.25 grid size-6 place-items-center rounded-full bg-background inset-ring inset-ring-border",
+            status === "unreachable" ? "text-status-attention-text" : "text-muted-foreground",
+          )}
+        >
+          <Badge className="size-3.25" />
         </span>
       )}
     </span>
@@ -256,9 +309,14 @@ type MacWaitKind = "not-paired" | "unreachable" | "no-helper" | "no-app" | "unav
 function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
   const [remove, vpn] = removeCommands;
   return (
-    <details className="mac-remove" data-zerops-mac-remove>
-      <summary>Remove this Mac</summary>
-      <div className="mac-remove-body">
+    <Collapsible
+      data-zerops-mac-remove
+      render={<div className="mx-auto mt-8 w-full max-w-lg px-4" />}
+    >
+      <CollapsibleTrigger className="mx-auto flex rounded-mark text-body text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        Remove this Mac
+      </CollapsibleTrigger>
+      <CollapsiblePanel>
         {stepList(
           [
             {
@@ -269,15 +327,16 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
             { words: "Then disconnect the VPN, if nothing else needs it.", command: vpn },
           ],
           "remove",
+          "under-press",
         )}
-        <p className="mac-remove-forget">
+        <p className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-body text-muted-foreground">
           Mac gone, or not answering?
           <Button onClick={forget} size="sm" variant="destructive">
             Forget it here
           </Button>
         </p>
-      </div>
-    </details>
+      </CollapsiblePanel>
+    </Collapsible>
   );
 }
 
@@ -384,15 +443,18 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
           <MicroLabel>{live?.macName ?? "Mac"}</MicroLabel>
         </div>
       ) : (
-        <div className="mac-wait" data-zerops-mac-wait={wait.kind}>
+        <div
+          className="mx-auto mt-14 flex w-full max-w-lg flex-col items-center px-4 text-center"
+          data-zerops-mac-wait={wait.kind}
+        >
           {macGlyph(wait.kind)}
-          <h3 className="mac-wait-title">{wait.title}</h3>
-          <p className="mac-wait-line" data-zerops-mac-line>
+          <h3 className="text-emphasis leading-5.5 font-semibold text-foreground">{wait.title}</h3>
+          <p className="mt-1 text-body text-pretty text-muted-foreground" data-zerops-mac-line>
             {wait.line}
           </p>
           {steps}
           {view === "unavailable" ? (
-            <div className="mac-wait-update">
+            <div className="mt-5">
               <ZeropsMateUpdateControl environmentId={environmentId}>
                 {({ line: update }) => update}
               </ZeropsMateUpdateControl>
@@ -408,7 +470,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
       {frame !== undefined ? (
         <LiveFrameViewer
           alt={live?.app === undefined ? "The app on the Mac" : `${live.app} on ${macName}`}
-          boxClassName="mac-frame"
+          boxClassName="relative overflow-hidden rounded-card border border-(--zerops-flat-card-border)"
           canvasData={{ "data-zerops-mac-input-disabled": inputDisabled }}
           frame={frame}
           inputDisabled={inputDisabled}

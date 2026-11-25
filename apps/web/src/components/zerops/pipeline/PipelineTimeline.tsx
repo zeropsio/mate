@@ -20,7 +20,9 @@ import type { JSX } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { InlineButton } from "../../ui/button";
+import { EmptyState } from "../../ui/empty";
 import { StepGlyph, type StepGlyphState } from "../primitives";
 import { PipelineCalculating } from "../operation/PipelineStepList";
 
@@ -62,7 +64,7 @@ export function PipelineTimeline({
     return live ? (
       <PipelineCalculating aria-label={label} />
     ) : (
-      <p className="text-muted-foreground text-body">No steps are kept for this pipeline.</p>
+      <EmptyState size="line">No steps are kept for this pipeline.</EmptyState>
     );
   }
   return (
@@ -151,27 +153,32 @@ function FailureCause({
     return null;
   }
   return (
-    <div
-      className="mt-2 flex flex-col gap-1 rounded-control bg-destructive/8 px-3 py-2 text-body"
-      data-zerops-pipeline-cause
-    >
+    <Alert className="mt-2" data-zerops-pipeline-cause="" surface="tint" variant="error">
       {error?.command === undefined ? null : (
-        <p>
+        <AlertTitle>
           <code className="font-mono">{error.command}</code>
           {error.exit === undefined ? " failed." : ` ended with ${error.exit}.`}
-        </p>
+        </AlertTitle>
       )}
-      {words === undefined ? null : <p className="wrap-anywhere">{words}</p>}
-      {error === undefined || error.code === "" ? null : (
-        <p className="font-mono text-muted-foreground text-caption">{error.code}</p>
+      {words === undefined &&
+      (error === undefined || error.code === "") &&
+      onServiceLog === undefined ? null : (
+        <AlertDescription>
+          {words === undefined ? null : (
+            <p className="m-0 wrap-anywhere text-foreground">{words}</p>
+          )}
+          {error === undefined || error.code === "" ? null : (
+            <p className="m-0 font-mono text-caption">{error.code}</p>
+          )}
+          {onServiceLog === undefined ? null : (
+            <p className="m-0">
+              <InlineButton onClick={onServiceLog}>
+                Show the service's log around the failure
+              </InlineButton>
+            </p>
+          )}
+        </AlertDescription>
       )}
-      {onServiceLog === undefined ? null : (
-        <p>
-          <InlineButton onClick={onServiceLog}>
-            Show the service's log around the failure
-          </InlineButton>
-        </p>
-      )}
-    </div>
+    </Alert>
   );
 }

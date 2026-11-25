@@ -9,9 +9,10 @@ const SHAPES = variantsOf<LoadingShape>({
   cards: true,
   page: true,
   line: true,
+  words: true,
   room: true,
 });
-// A count draws that many of a shape that repeats; `line` and `room` are one of themselves.
+// A count draws that many of a shape that repeats; `line`, `words` and `room` are one of themselves.
 const COUNTED: ReadonlySet<LoadingShape> = new Set(["rows", "lines", "cards", "page"]);
 const COUNTS = ["1", "2", "3", "5"] as const;
 
@@ -23,7 +24,7 @@ export default definePlayground({
     shape: {
       kind: "enum",
       options: SHAPES,
-      note: "shaped like what comes; room holds the place and paints nothing",
+      note: "shaped like what comes; words says the read in a line; room paints nothing",
     },
     count: {
       kind: "enum",
