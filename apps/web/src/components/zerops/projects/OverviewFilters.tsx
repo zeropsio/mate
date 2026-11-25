@@ -10,6 +10,7 @@ import { fadeFillOver } from "~/lib/loadFills";
 import { useCardRowFirstFilled } from "./cardRowFill";
 import { OverviewFiltersStandIn } from "./OverviewStandIn";
 
+import { Badge } from "../../ui/badge";
 import { Tab } from "../../ui/tab-strip";
 import { Button } from "../../ui/button";
 import { EmptyState } from "../../ui/empty";
@@ -73,7 +74,8 @@ export function OverviewFilters({
           <>
             {filter.label}
             {filter.count === undefined ? null : (
-              <span className="ov-filter-count">{filter.count}</span>
+              // What waits on the viewer is counted in the menu's amber.
+              <Badge tone={filter.show === "waiting" ? "warning" : "neutral"}>{filter.count}</Badge>
             )}
           </>
         );

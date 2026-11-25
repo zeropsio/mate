@@ -67,7 +67,7 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
 import { spendProjectIds } from "./projectSpend.logic";
@@ -595,16 +595,21 @@ function MoreLink({
   readonly label: string;
   readonly linked?: boolean;
 }) {
-  if (!linked)
-    return (
-      <span className="ov-more" data-quiet="">
-        + {more} more
-      </span>
-    );
+  // Its room stands around the words, as the rows' own over and beside it.
   return (
-    <Link aria-label={label} className="ov-more" params={{ groupId }} to="/group/$groupId/flow">
-      + {more} more
-    </Link>
+    <span className="justify-self-start px-1.5 py-0.5 text-body text-muted-foreground leading-5">
+      {linked ? (
+        <InlineButton
+          aria-label={label}
+          render={<Link params={{ groupId }} to="/group/$groupId/flow" />}
+          tone="muted"
+        >
+          + {more} more
+        </InlineButton>
+      ) : (
+        <>+ {more} more</>
+      )}
+    </span>
   );
 }
 

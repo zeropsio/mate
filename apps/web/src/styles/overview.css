@@ -367,25 +367,6 @@ a.ov-card-site:hover {
   }
 }
 
-/* "+ N more": the rest of a list, on the project's page. */
-.ov-more {
-  justify-self: start;
-  padding: 2px 6px;
-  border-radius: var(--radius-control);
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  line-height: 20px;
-}
-
-.ov-more:hover {
-  color: var(--foreground);
-}
-
-.ov-more:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
 /* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
 .ov-mates {
   display: grid;
@@ -478,8 +459,6 @@ a.ov-card-site:hover {
   align-self: center;
 }
 
-/* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
-   change waits on its reviewers, white where it waits on the viewer. */
 /* A change on a card's Mate: its mark, its title, and its Review at its end — on the line's own
    20 px, so the card does not grow by it. */
 .ov-mate-change {
@@ -1725,10 +1704,6 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
 }
 
-/* One part of the page's column: the card's ground, its name, then what it holds. */
-
-/* Its name on its rows' own inset: a row's hover runs to the section's padding, its words 8 px in. */
-
 /* A release or Put it live run on production: its line, then its address or its cause. */
 .ov-run {
   display: grid;
@@ -2179,8 +2154,8 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--zerops-status-failed-text);
 }
 
-/* The overview's filter: quiet pills under its title, the current one inked; what waits on you
-   counted in the menu's amber. */
+/* The overview's filter: quiet tabs under its title, the current one inked, each with its count's
+   Badge. */
 .ov-filters {
   display: flex;
   flex-wrap: wrap;
@@ -2188,21 +2163,7 @@ label.tm-advanced-row:not([data-disabled]) {
   margin-top: -6px;
 }
 
-.ov-filter-count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-/* A finger takes a filter: its pill keeps its size, its touch reaches 44 px. */
+/* A finger takes a filter: its tab keeps its size, its touch reaches 44 px. */
 @media (pointer: coarse) {
   .ov-filters > * {
     position: relative;
@@ -2213,18 +2174,8 @@ label.tm-advanced-row:not([data-disabled]) {
     inset: -8px 0;
     content: "";
   }
-
-  .ov-filter-count {
-    font-size: var(--text-caption);
-  }
 }
 
-[data-show="waiting"] > .ov-filter-count {
-  background: var(--zerops-status-attention-surface);
-  color: var(--zerops-status-attention-text);
-}
-
-/* A filter that leaves nothing: a calm face, what it would show, and the way back. */
 /* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
 .ov-change-face {
   display: flex;
