@@ -19,7 +19,7 @@ import {
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenGrid } from "../Specimen";
 
-function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
+function SampleCard({ variant }: { readonly variant?: "default" | "flat" | "sheet" }) {
   return (
     <Card variant={variant}>
       <CardHeader>
@@ -62,6 +62,11 @@ function CardSpecimens() {
             <span className="font-medium text-body">Deploy failed</span>
             <span className="text-caption text-muted-foreground">The build stopped at step 3.</span>
           </Card>
+        </div>
+      </Specimen>
+      <Specimen label='<Card variant="sheet">: a card standing alone among its kind'>
+        <div className="w-80">
+          <SampleCard variant="sheet" />
         </div>
       </Specimen>
       <Specimen label="<Card pressable>: the whole card one press (hover, focus, data-highlighted)">

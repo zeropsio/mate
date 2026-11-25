@@ -8,7 +8,11 @@ export default definePlayground({
   name: "Card",
   imports: 'import { Card } from "~/components/ui/card";',
   controls: {
-    variant: { kind: "enum", options: ["default", "flat", "inset"], note: "flat is the app's" },
+    variant: {
+      kind: "enum",
+      options: ["default", "flat", "inset", "sheet"],
+      note: "flat is the app's; sheet a card standing alone among its kind",
+    },
     size: { kind: "enum", options: ["none", "sm", "md"], note: "its padding" },
     tone: { kind: "enum", options: ["default", "failed"], note: "failed: a thing that broke" },
     action: { kind: "boolean", note: "a press at its end" },
