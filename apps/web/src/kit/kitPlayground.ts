@@ -102,11 +102,15 @@ export function definePlayground<
   };
 }
 
+/** A prop's value as JSX source carries it: a number is written in braces (`size={64}`). */
+type JsxValue = KitArgValue | number;
+
 /** A prop as JSX writes it, or nothing when it is the component's default. */
-function jsxProp(name: string, value: KitArgValue | undefined, fallback?: KitArgValue): string[] {
+function jsxProp(name: string, value: JsxValue | undefined, fallback?: JsxValue): string[] {
   if (value === undefined || value === fallback) return [];
   if (value === true) return [name];
   if (value === false) return [`${name}={false}`];
+  if (typeof value === "number") return [`${name}={${value}}`];
   return [`${name}="${value}"`];
 }
 
@@ -116,9 +120,9 @@ function jsxProp(name: string, value: KitArgValue | undefined, fallback?: KitArg
  */
 export function jsxElement(
   tag: string,
-  props: Readonly<Record<string, KitArgValue | undefined>>,
+  props: Readonly<Record<string, JsxValue | undefined>>,
   children?: string,
-  defaults: Readonly<Record<string, KitArgValue>> = {},
+  defaults: Readonly<Record<string, JsxValue>> = {},
 ): string {
   const parts = Object.entries(props).flatMap(([name, value]) =>
     jsxProp(name, value, defaults[name]),
