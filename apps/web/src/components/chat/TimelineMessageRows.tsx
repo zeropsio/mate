@@ -37,9 +37,7 @@ import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 import { Text } from "~/components/ui/text";
 import { MessageBubble } from "~/components/ui/message-bubble";
-
-/** A picture sent with a message: its frame over the bubble. */
-const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
@@ -272,9 +270,9 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                   // picture would clip the press's focus ring too.
                   <div key={image.id} className="grid">
                     {state?._tag === "Failure" ? (
-                      <div className={MESSAGE_IMAGE_FRAME}>
+                      <PictureFrame>
                         <ImageUnavailable reason={state.reason} />
-                      </div>
+                      </PictureFrame>
                     ) : image.previewUrl ? (
                       <Button
                         className="block size-full cursor-zoom-in"
@@ -282,7 +280,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                         onClick={() => expandImage(image)}
                         variant="bare"
                       >
-                        <span className={cn("block h-full", MESSAGE_IMAGE_FRAME)}>
+                        <PictureFrame className="h-full">
                           <AssetImage
                             loading="lazy"
                             decoding="async"
@@ -291,17 +289,14 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                             className="block max-h-[220px] w-full object-contain"
                             style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
                           />
-                        </span>
+                        </PictureFrame>
                       </Button>
                     ) : (
-                      <div
-                        className={cn(
-                          "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs",
-                          MESSAGE_IMAGE_FRAME,
-                        )}
-                      >
-                        {image.name}
-                      </div>
+                      <PictureFrame>
+                        <span className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                          {image.name}
+                        </span>
+                      </PictureFrame>
                     )}
                   </div>
                 );

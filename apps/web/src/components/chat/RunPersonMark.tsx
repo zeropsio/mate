@@ -7,6 +7,7 @@ import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { echoOfMessage } from "./messagePictures.logic";
 import type { RecordItem } from "./MessagesTimeline.logic";
 import { TimelineRowCtx } from "./timelineContext";
+import { PictureFrame } from "~/components/ui/picture-frame";
 import { Button } from "~/components/ui/button";
 import { Loading } from "~/components/ui/loading";
 import { MessageBubble } from "~/components/ui/message-bubble";
@@ -104,15 +105,15 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
             }
             variant="bare"
           >
-            <span className="block size-full overflow-hidden rounded-control border border-border/60 bg-card">
+            <PictureFrame className="size-full" size="control">
               <AssetImage
                 loading="lazy"
                 decoding="async"
                 alt={picture.name}
-                className="block size-full object-contain"
+                className="block size-full object-cover object-top"
                 src={src}
               />
-            </span>
+            </PictureFrame>
           </Button>
         ),
       )}
