@@ -6,18 +6,17 @@
  * shows each line's time.
  */
 import type { BuildLogLine } from "@t3tools/client-runtime/zerops/activity/buildLog";
-import { CheckIcon, CopyIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
-import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
-import { cn } from "~/lib/utils";
 import { formatTimestamp } from "~/timestampFormat";
 import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import type { PipelineLog, PipelineLogKind } from "~/zerops/activity/usePipeline";
 
 import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
+import { CodeBlock, LogView } from "../../ui/code-block";
+import { CopyButton } from "../../ui/copy-button";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 import { emptyLogWords } from "../ZeropsBuildLog";
 import { Loading } from "~/components/ui/loading";
@@ -39,9 +38,6 @@ const FAILED_SEVERITY_MAX = 3;
 
 /** The most lines a log's read brings: one that holds this many is cut at its start. */
 const SHOWN_LINES_MAX = 500;
-
-/** How long a copy says so. */
-const COPIED_MS = 1_200;
 
 export function PipelineViewer({
   projectId,
@@ -125,7 +121,11 @@ function LogPane({
         <Button aria-pressed={times} onClick={() => setTimes(!times)} size="sm" variant="ghost">
           {times ? "Hide times" : "Show times"}
         </Button>
-        <CopyLines lines={lines} />
+        <CopyButton
+          disabled={lines.length === 0}
+          label="the log"
+          value={() => lines.map((line) => line.text).join("\n")}
+        />
       </Text>
       {lines.length === 0 && emptyLogWords(status) === null ? (
         <Card className="h-96 md:h-140">
@@ -164,89 +164,18 @@ function LogLines({
   readonly times: boolean;
   readonly format: Parameters<typeof formatTimestamp>[1];
 }): JSX.Element {
-  const scrollerRef = useRef<HTMLOListElement>(null);
-  const followingRef = useRef(true);
-  useLayoutEffect(() => {
-    const scroller = scrollerRef.current;
-    if (scroller === null) return;
-    // A line arriving, or the frame changing size (its lines wrap anew), keeps the newest in
-    // sight while the reader follows it.
-    const pin = () => {
-      if (followingRef.current) scroller.scrollTop = scroller.scrollHeight;
-    };
-    pin();
-    const added = new MutationObserver(pin);
-    added.observe(scroller, { childList: true });
-    const resized = new ResizeObserver(pin);
-    resized.observe(scroller);
-    return () => {
-      added.disconnect();
-      resized.disconnect();
-    };
-  }, []);
   return (
-    <Card className="overflow-hidden" variant="inset">
-      <ol
-        aria-label="Log"
-        aria-live={live ? "polite" : undefined}
-        className="h-96 overflow-y-auto py-2 font-mono text-caption leading-5 md:h-140"
-        data-zerops-pipeline-log
-        onScroll={(event) => {
-          const scroller = event.currentTarget;
-          followingRef.current =
-            scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 4;
-        }}
-        ref={scrollerRef}
-      >
-        {lines.map((line) => (
-          <li
-            className={cn(
-              "flex gap-3 px-3",
-              line.severity <= FAILED_SEVERITY_MAX &&
-                "bg-destructive/8 text-destructive-foreground",
-            )}
-            data-zerops-pipeline-log-severity={line.severity}
-            key={line.id}
-          >
-            {times ? (
-              <time
-                className="shrink-0 select-none text-muted-foreground tabular-nums"
-                dateTime={line.at}
-              >
-                {formatTimestamp(line.at, format)}
-              </time>
-            ) : null}
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{line.text}</span>
-          </li>
-        ))}
-      </ol>
-    </Card>
-  );
-}
-
-function CopyLines({ lines }: { readonly lines: ReadonlyArray<BuildLogLine> }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <Button
-      aria-label={copied ? "Copied the log" : "Copy the log"}
-      disabled={lines.length === 0}
-      onClick={() => {
-        const text = lines.map((line) => line.text).join("\n");
-        void writeTextToClipboard(text, "log").then(
-          () => setCopied(true),
-          () => setCopied(false),
-        );
-      }}
-      size="icon-sm"
-      variant="ghost"
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </Button>
+    <LogView
+      height="pane"
+      label="Log"
+      lines={lines.map((line) => ({
+        id: line.id,
+        text: line.text,
+        ...(times ? { time: formatTimestamp(line.at, format), at: line.at } : {}),
+        ...(line.severity <= FAILED_SEVERITY_MAX ? { tone: "failed" as const } : {}),
+      }))}
+      live={live}
+    />
   );
 }
 
@@ -257,40 +186,14 @@ function ConfigPane({
   readonly config: string;
   readonly setup: string | null;
 }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
   return (
     <div className="flex min-h-0 flex-col gap-2">
-      <Text className="flex items-center gap-2" render={<div />} variant="note">
-        <span className="min-w-0 flex-1 truncate">
-          {setup === null ? "As the pipeline ran it" : `As the pipeline ran it, setup ${setup}`}
-        </span>
-        <Button
-          aria-label={copied ? "Copied zerops.yaml" : "Copy zerops.yaml"}
-          onClick={() => {
-            void writeTextToClipboard(config, "zerops.yaml").then(
-              () => setCopied(true),
-              () => setCopied(false),
-            );
-          }}
-          size="icon-sm"
-          variant="ghost"
-        >
-          {copied ? <CheckIcon /> : <CopyIcon />}
-        </Button>
+      <Text render={<p />} truncate variant="note">
+        {setup === null ? "As the pipeline ran it" : `As the pipeline ran it, setup ${setup}`}
       </Text>
-      <Card variant="inset">
-        <pre
-          className="h-96 overflow-auto px-3 py-2 font-mono text-caption leading-5 md:h-140"
-          data-zerops-pipeline-config
-        >
-          {config}
-        </pre>
-      </Card>
+      <CodeBlock copy="zerops.yaml" height="pane" title="zerops.yaml" wrap={false}>
+        {config}
+      </CodeBlock>
     </div>
   );
 }

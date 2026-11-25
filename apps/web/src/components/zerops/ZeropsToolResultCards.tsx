@@ -15,6 +15,7 @@ import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
+import { LogView, type LogTone } from "~/components/ui/code-block";
 
 type ReadResultOf<K extends ZeropsReadResult["kind"]> = Extract<ZeropsReadResult, { kind: K }>;
 
@@ -31,10 +32,10 @@ function placeholderKeys(count: number): ReadonlyArray<string> {
   return Array.from({ length: count }, (_, index) => `placeholder-${index}`);
 }
 
-const LOG_SEVERITY_CLASS: Record<ReadResultOf<"logs">["lines"][number]["severity"], string> = {
-  error: "text-destructive-foreground",
-  warning: "text-warning-foreground",
-  info: "text-foreground",
+const LOG_TONE: Record<ReadResultOf<"logs">["lines"][number]["severity"], LogTone> = {
+  error: "failed",
+  warning: "warning",
+  info: "default",
 };
 
 function clockTime(at: string | undefined): string | undefined {
@@ -55,35 +56,21 @@ function LogsBody({ readResult }: { readonly readResult: ReadResultOf<"logs"> })
           <span className="min-w-0 text-muted-foreground">{readResult.filter}</span>
         </div>
       ) : null}
-      <Card variant="inset">
-        <ol
-          aria-label={`Log of ${readResult.service}`}
-          className="max-h-40 space-y-0.5 overflow-auto px-2 py-1.5 font-mono text-caption leading-relaxed"
-          data-zerops-read-lines
-        >
-          {readResult.pending
-            ? placeholderKeys(PLACEHOLDER_ROWS).map((key, index) => (
-                <li key={key}>
-                  <Placeholder className={index === PLACEHOLDER_ROWS - 1 ? "w-1/2" : "w-5/6"} />
-                </li>
-              ))
-            : readResult.lines.map((line) => {
-                const time = clockTime(line.at);
-                return (
-                  <li
-                    className="whitespace-pre-wrap break-words"
-                    data-zerops-log-severity={line.severity}
-                    key={line.id}
-                  >
-                    {time !== undefined ? (
-                      <span className="mr-2 text-muted-foreground tabular-nums">{time}</span>
-                    ) : null}
-                    <span className={LOG_SEVERITY_CLASS[line.severity]}>{line.text}</span>
-                  </li>
-                );
-              })}
-        </ol>
-      </Card>
+      <LogView
+        height="sm"
+        label={`Log of ${readResult.service}`}
+        lines={readResult.lines.map((line) => {
+          const time = clockTime(line.at);
+          return {
+            id: line.id,
+            text: line.text,
+            ...(time === undefined ? {} : { time }),
+            ...(line.at === undefined ? {} : { at: line.at }),
+            tone: LOG_TONE[line.severity],
+          };
+        })}
+        pending={readResult.pending}
+      />
       {readResult.pending ? (
         <Placeholder className="w-1/3" />
       ) : readResult.counts !== undefined || readResult.note !== undefined ? (

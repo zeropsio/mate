@@ -6,6 +6,7 @@ import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from "re
 import { cn } from "~/lib/utils";
 
 import { CopyButton } from "./copy-button";
+import { Skeleton } from "./skeleton";
 
 /**
  * The ground every block of machine text stands on: the code ground and ink, a hairline, a
@@ -143,6 +144,9 @@ const LOG_LINE_TONE: Record<LogTone, string> = {
   quiet: "text-muted-foreground",
 };
 
+/** The stand-in lines' widths while a log is read: two long, the last short. */
+const PENDING_WIDTHS = ["w-5/6", "w-4/6", "w-1/2"] as const;
+
 /** Within this many pixels of the end, the reader is at the newest line, and the log follows. */
 const FOLLOW_SLACK_PX = 4;
 
@@ -150,7 +154,8 @@ const FOLLOW_SLACK_PX = 4;
  * Lines a machine wrote, one by one: a build's log, a service's log, a failed phase's tail. The
  * code ground, monospace 12/20, each line wrapped under itself; a failed line tinted across the
  * whole width so it stands out in a long scroll, a warning in its ink. Times, when the lines carry
- * them, stand in a column of their own. A `live` log follows its newest line while the reader is at
+ * them, stand in a column of their own. While its lines are read (`pending`), three stand-in lines
+ * hold their room. A `live` log follows its newest line while the reader is at
  * the end, and stops following the moment they scroll up. `height` as `CodeBlock`'s; a streaming
  * log stands in a `pane` so arriving lines never move the page.
  *
@@ -159,6 +164,7 @@ const FOLLOW_SLACK_PX = 4;
 function LogView({
   lines,
   label,
+  pending = false,
   live = false,
   copy,
   tone = "default",
@@ -169,6 +175,8 @@ function LogView({
   readonly lines: ReadonlyArray<LogLine>;
   /** What the log is, for the reader of the page: "Build log", "Log of api". */
   readonly label: string;
+  /** Its lines are being read: stand-in lines hold their room. */
+  readonly pending?: boolean;
   /** Lines still arrive: announced politely, and the end followed. */
   readonly live?: boolean;
   /** What Copy copies, after "Copy" ("the log"): a Copy press in the corner when given. */
@@ -218,27 +226,35 @@ function LogView({
         }}
         ref={scrollerRef}
       >
-        {lines.map((line) => (
-          <li
-            className={cn(
-              "flex gap-3 px-3",
-              copy !== undefined && "pe-10",
-              LOG_LINE_TONE[line.tone ?? "default"],
-            )}
-            data-tone={line.tone ?? "default"}
-            key={line.id}
-          >
-            {timed ? (
-              <time
-                className="shrink-0 text-muted-foreground tabular-nums select-none"
-                dateTime={line.at}
+        {pending
+          ? PENDING_WIDTHS.map((width) => (
+              <li aria-hidden="true" className="flex h-5 items-center px-3" key={width}>
+                <Skeleton className={cn("h-3", width)} />
+              </li>
+            ))
+          : lines.map((line) => (
+              <li
+                className={cn(
+                  "flex gap-3 px-3",
+                  copy !== undefined && "pe-10",
+                  LOG_LINE_TONE[line.tone ?? "default"],
+                )}
+                data-tone={line.tone ?? "default"}
+                key={line.id}
               >
-                {line.time}
-              </time>
-            ) : null}
-            <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-anywhere">{line.text}</span>
-          </li>
-        ))}
+                {timed ? (
+                  <time
+                    className="shrink-0 text-muted-foreground tabular-nums select-none"
+                    dateTime={line.at}
+                  >
+                    {line.time}
+                  </time>
+                ) : null}
+                <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-anywhere">
+                  {line.text}
+                </span>
+              </li>
+            ))}
       </ol>
       {copy === undefined ? null : (
         <span className="absolute end-1 top-1" data-slot="log-view-corner">
