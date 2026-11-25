@@ -238,27 +238,12 @@ export const isProviderReadyToRun = (provider: ProviderReadinessFields): boolean
 /**
  * Whether an instance is a ready agent Mate signs nobody in to — OpenCode, which runs on free
  * models with no account: ready to run, and its sign-in read as signed in. A driver that says
- * `ready` with a sign-in it could not read (`unknown`) never stands in for a sign-in. The agents
- * people sign in to never count here: the agent-auth feed answers for them
- * ({@link mateRunsWithoutSignIn}).
+ * `ready` with a sign-in it could not read (`unknown`) never counts. The
+ * agents people sign in to never count here: the agent-auth feed answers for them. Whether one
+ * stands in for the person's sign-in is `standsInForSignIn` (`openCodeKeyProviders`): OpenCode on
+ * its free models alone does not.
  */
 export const isAgentWithoutSignInReady = (provider: ProviderReadinessFields): boolean =>
   agentIdForDriverKind(provider.driver) === undefined &&
   isProviderReadyToRun(provider) &&
   provider.auth.status === "authenticated";
-
-/**
- * Whether a Mate waits on nobody's sign-in (the overview's `runsWithoutSignIn`): an agent Mate
- * signs nobody in to is ready, or an agent's row runs on an environment token its
- * container verified — the token flag set and the agent's own check signed in. Nobody signed that
- * token in, so it seats the Mate's maker like the first. A token the check has not confirmed, or
- * refused, does not count; an interactive sign-in keeps its signer (D6).
- */
-export const mateRunsWithoutSignIn = (
-  providers: ReadonlyArray<ProviderReadinessFields>,
-  agents: ReadonlyArray<Pick<ZeropsAgentAuth, "state" | "providerAuth">>,
-): boolean =>
-  providers.some(isAgentWithoutSignInReady) ||
-  agents.some(
-    (agent) => agent.state === "authorized-token" && agent.providerAuth === "authenticated",
-  );

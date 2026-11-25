@@ -21,9 +21,14 @@ import {
   type ProviderInstanceEnvironmentVariable,
   type ServerSettings,
   type ServerSettingsPatch,
+  type ZeropsAgentAuth,
 } from "@t3tools/contracts";
 
-import { isProviderReadyToRun, type ProviderReadinessFields } from "./zeropsAgentAuth.ts";
+import {
+  isAgentWithoutSignInReady,
+  isProviderReadyToRun,
+  type ProviderReadinessFields,
+} from "./zeropsAgentAuth.ts";
 
 /**
  * A model an organization may pick for its automated Mates (Settings › Automation), as models.dev
@@ -134,7 +139,7 @@ export function openCodeKeyProviderOfModel(
 }
 
 /** What the OpenCode checks read of a provider instance (`ServerProvider`). */
-type OpenCodeProviderFields = Omit<ProviderReadinessFields, "models"> & {
+export type OpenCodeProviderFields = Omit<ProviderReadinessFields, "models"> & {
   readonly instanceId: ProviderInstanceId;
   readonly models: ReadonlyArray<{
     readonly slug: string;
@@ -209,6 +214,44 @@ export function openCodeFreeModelChosen(
     openCodeKeyProviderOfModel(defaultModel.model) === undefined
   );
 }
+
+/**
+ * Whether an instance stands in for the person's sign-in, so a Mate may run on it before they
+ * sign in to an agent of their own: a ready agent Mate signs nobody in to
+ * (`isAgentWithoutSignInReady`), OpenCode only on a model key the person set (`openCodeRunsOnKey`)
+ * or once they chose it as the Mate's default model (`openCodeChosen`). OpenCode's free models
+ * never stand in by being there: they are listed with no account, sooner or later as OpenCode
+ * starts, and nothing may start on them until the person chooses them.
+ */
+export function standsInForSignIn(
+  provider: OpenCodeProviderFields,
+  /** The Mate's default model (its settings' `defaultModelSelection`). */
+  defaultModel: Pick<ModelSelection, "instanceId"> | null | undefined,
+): boolean {
+  return (
+    isAgentWithoutSignInReady(provider) &&
+    (provider.driver !== "opencode" ||
+      openCodeRunsOnKey([provider]) ||
+      openCodeChosen([provider], defaultModel))
+  );
+}
+
+/**
+ * Whether a Mate waits on nobody's sign-in (the overview's `runsWithoutSignIn`): an instance
+ * stands in for it (`standsInForSignIn`), or an agent's row runs on an environment token its
+ * container verified — the token flag set and the agent's own check signed in. Nobody signed that
+ * token in, so it seats the Mate's maker like the first. A token the check has not confirmed, or
+ * refused, does not count; an interactive sign-in keeps its signer (D6).
+ */
+export const mateRunsWithoutSignIn = (
+  providers: ReadonlyArray<OpenCodeProviderFields>,
+  agents: ReadonlyArray<Pick<ZeropsAgentAuth, "state" | "providerAuth">>,
+  defaultModel: Pick<ModelSelection, "instanceId"> | null | undefined,
+): boolean =>
+  providers.some((provider) => standsInForSignIn(provider, defaultModel)) ||
+  agents.some(
+    (agent) => agent.state === "authorized-token" && agent.providerAuth === "authenticated",
+  );
 
 /** An OpenCode model slug (`provider/model`) of the provider's: its default for automated Mates. */
 export const automatedOpenCodeModel = (

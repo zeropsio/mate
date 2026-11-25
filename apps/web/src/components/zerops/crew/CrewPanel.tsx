@@ -74,7 +74,11 @@ export function CrewPanel({
   if (
     whoLivesHere.kind === "mate" &&
     agentAuth !== null &&
-    zeropsAgentSignInRequired(agentAuth, serverConfig?.providers)
+    zeropsAgentSignInRequired(
+      agentAuth,
+      serverConfig?.providers,
+      serverConfig?.settings.defaultModelSelection,
+    )
   ) {
     return (
       <div className="h-full" data-crew-panel="no-agent">

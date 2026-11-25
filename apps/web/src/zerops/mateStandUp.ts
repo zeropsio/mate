@@ -22,10 +22,6 @@ import {
   type ZeropsAgentAuthSnapshot,
   type ZeropsUserId,
 } from "@t3tools/contracts";
-import {
-  zeropsOtherAgentReady,
-  type OtherAgentFields,
-} from "@t3tools/client-runtime/zerops/agentLogin";
 import { turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import type { ZeropsMateIdentity } from "./mateIdentities";
@@ -133,9 +129,7 @@ export function mateStandUpHoldsComposer(input: {
 export function mateStandUpSignedIn(
   snapshot: ZeropsAgentAuthSnapshot,
   viewer: ZeropsUserId,
-  providers?: ReadonlyArray<OtherAgentFields>,
 ): boolean {
-  if (zeropsOtherAgentReady(providers)) return true;
   return snapshot.agents.some(
     (agent) =>
       turnRefusal({ agent, signer: agent.authorizedBy?.subject, person: viewer }) === undefined,
