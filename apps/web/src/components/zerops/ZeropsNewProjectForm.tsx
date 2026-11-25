@@ -29,8 +29,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import { cn } from "~/lib/utils";
-
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
@@ -41,6 +39,7 @@ import { Spinner } from "../ui/spinner";
 import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import { MateNameText } from "./MateNameText";
+import { PressLine } from "./PressLine";
 import { useMateShuffle } from "./useMateShuffle";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import {
@@ -430,29 +429,22 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
   );
 }
 
-/**
- * The one quiet line, beside the button it is about: what it waits on, or why the Mate's name
- * will not do. It holds its room.
- */
+/** The one quiet line, beside the button it is about: what it waits on, or why it will not do. */
 export function NewProjectLine({
   form,
   className,
 }: {
   readonly form: NewProjectForm;
+  /** Layout: whether it holds its room while it says nothing. */
   readonly className?: string;
 }) {
   return (
-    <p
-      aria-live="polite"
-      className={cn(
-        "min-h-4 text-line leading-4",
-        form.failed === undefined ? "text-muted-foreground" : "text-status-failed-text",
-        className,
-      )}
+    <PressLine
+      className={className}
       id={LINE}
-    >
-      {form.line}
-    </p>
+      refusal={form.failed}
+      waiting={form.failed === undefined ? form.line : undefined}
+    />
   );
 }
 
@@ -606,7 +598,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             label={`Add ${form.botName.replace(/\s+/g, " ").trim() || "mate"} to your project`}
             size="lg"
           />
-          <NewProjectLine className="text-center" form={form} />
+          {/* Saying nothing, it gives the column's gap back. */}
+          <NewProjectLine className="text-center empty:-mt-2.5" form={form} />
           {forecast}
           <Button
             className="w-full"
@@ -643,9 +636,12 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           <Button className="w-full" data-zerops-new-project="start" size="lg" type="submit">
             Start a project
           </Button>
-          <p aria-live="polite" className="new-project-unnamed" id={LINE}>
-            {form.unnamed ? NAME_YOUR_PROJECT : null}
-          </p>
+          {/* A missing name, under the press; saying nothing, it gives the column's gap back. */}
+          <PressLine
+            className="text-center empty:-mt-4"
+            id={LINE}
+            refusal={form.unnamed ? NAME_YOUR_PROJECT : undefined}
+          />
         </div>
         <div className="new-project-advanced">
           <Collapsible className="flex flex-col">

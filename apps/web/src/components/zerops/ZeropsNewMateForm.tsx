@@ -56,6 +56,7 @@ import { NewMatePersona } from "../persona/NewMatePersona";
 import { MateFaceRing } from "./MateFacePicker";
 import { MateNameText } from "./MateNameText";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
+import { PressLine } from "./PressLine";
 import { useMateShuffle } from "./useMateShuffle";
 
 /** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
@@ -371,17 +372,13 @@ export function ZeropsNewMateForm({
             {words.button}
           </Button>
           {/* The one quiet line under the button it is about: what Add waits on, or why it
-              refused. */}
-          <p
-            aria-live="polite"
-            className={cn(
-              "new-mate-line",
-              error === undefined ? "text-muted-foreground" : "text-status-failed-text",
-            )}
+              refused. Saying nothing, it gives the foot's gap back. */}
+          <PressLine
+            className="text-center empty:-mt-2.5"
             id={`${id}-line`}
-          >
-            {line}
-          </p>
+            refusal={error}
+            waiting={error === undefined ? line : undefined}
+          />
           <Button
             aria-expanded={options}
             className="w-full"
@@ -415,11 +412,7 @@ export function ZeropsNewMateForm({
               {action.label}
             </Button>
           )}
-          {line === undefined ? null : (
-            <p aria-live="polite" className="sr-only" id={`${id}-line`}>
-              {line}
-            </p>
-          )}
+          <PressLine className="sr-only" id={`${id}-line`} waiting={line} />
         </DialogFooter>
       )}
     </form>

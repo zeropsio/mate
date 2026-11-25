@@ -197,7 +197,7 @@ function FirstRunForm({
           </NewProjectFields>
           <div className="first-run-create">
             <CreateProjectButton form={form} size="lg" />
-            <NewProjectLine form={form} />
+            <NewProjectLine className="min-h-5" form={form} />
             {forecast}
           </div>
         </>

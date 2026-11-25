@@ -554,27 +554,6 @@
   margin-bottom: 22px;
 }
 
-/* The quiet line under the press says nothing most of the time, and then takes no room. */
-.new-project-mate > p[aria-live]:empty {
-  min-height: 0;
-  margin-top: -10px;
-}
-
-/* A missing name, in red under the press; it says nothing until then, and then takes no room. */
-.new-project-unnamed {
-  min-height: 1rem;
-  margin: 0;
-  color: var(--color-status-failed-text);
-  font-size: var(--text-line);
-  line-height: 1rem;
-  text-align: center;
-}
-
-.new-project-unnamed:empty {
-  min-height: 0;
-  margin-top: -16px;
-}
-
 /* The region and the people, 40 px apart, opening under it. */
 .new-project-advanced-fields {
   display: flex;
@@ -715,16 +694,6 @@
 
 [data-zerops-surface="new-mate-form"][data-options] .new-mate-foot {
   border-top: 1px solid var(--border);
-}
-
-.new-mate-line {
-  font-size: var(--text-body);
-  line-height: 18px;
-  text-align: center;
-}
-
-.new-mate-line:empty {
-  display: none;
 }
 
 /* The options' press turns its chevron while they show. */
