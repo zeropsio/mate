@@ -4,7 +4,7 @@ import { Row } from "~/components/ui/row";
 import { Section } from "~/components/ui/section";
 import { PersonAvatar } from "~/components/zerops/primitives";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 
 /** Its heading's level: 2 on a page, 3 inside a sheet or a panel. */
 const LEVELS = ["2", "3"] as const;
@@ -58,8 +58,10 @@ export default definePlayground({
       {
         title,
         count: count === "" ? undefined : count,
-        [`action={<Button size="sm" variant="ghost">${action}</Button>}`]:
-          action === "" ? undefined : true,
+        action:
+          action === ""
+            ? undefined
+            : jsxCode(`<Button size="sm" variant="ghost">${action}</Button>`),
         level: level === "3" ? 3 : undefined,
       },
       '<Card variant="flat">\n  <Row … />\n</Card>',

@@ -4,8 +4,8 @@ import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
 import { MateFace } from "~/components/zerops/primitives";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
-import { PICTURES, pictureOf } from "./people";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
+import { PICTURES, pictureOf, pictureSource } from "./people";
 
 /** `person`: a colleague's Mate; `nobody`: a Mate nobody has signed in yet. */
 const SEATS = ["person", "nobody"] as const;
@@ -41,16 +41,15 @@ export default definePlayground({
     </span>
   ),
   jsx: ({ seat, owner, picture }) =>
-    jsxElement(
-      "MateOwnerMark",
-      seat === "nobody"
-        ? { 'seat={{ kind: "nobody", label: "Nobody\'s Mate yet" }}': true }
-        : {
-            [`seat={{ kind: "person", mark: ownerMark({ name: "${owner}", avatarUrl: ${
-              picture === "none" ? "null" : "avatarUrl"
-            }, initials: "" }) }}`]: true,
-          },
-    ),
+    jsxElement("MateOwnerMark", {
+      seat: jsxCode(
+        seat === "nobody"
+          ? '{ kind: "nobody", label: "Nobody\'s Mate yet" }'
+          : `{ kind: "person", mark: ownerMark({ name: "${owner}", avatarUrl: ${
+              pictureSource(picture) ?? "null"
+            }, initials: "" }) }`,
+      ),
+    }),
   usage: {
     do: [
       "Seat it on the corner of a colleague's Mate's face, cut out of the face (menu-face-cut).",

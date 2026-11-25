@@ -4,7 +4,7 @@ import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 
 /** How much the sheet holds: a short change, or one long enough that its body scrolls. */
 const LENGTHS = ["short", "long"] as const;
@@ -81,10 +81,10 @@ export default definePlayground({
     jsxElement(
       "ZeropsReviewDialog",
       {
-        "open={open}": true,
-        "onOpenChange={setOpen}": true,
-        "onClosed={forget}": true,
-        "from={pressed}": true,
+        open: jsxCode("open"),
+        onOpenChange: jsxCode("setOpen"),
+        onClosed: jsxCode("forget"),
+        from: jsxCode("pressed"),
         labelledBy: "review-title",
       },
       `<ScrollArea scrollFade>\n  <h2 id="review-title">${title}</h2>\n  …\n</ScrollArea>`,

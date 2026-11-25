@@ -6,7 +6,7 @@ import { Button } from "~/components/ui/button";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 import { FaceCard, FaceCardLine, FaceCards } from "~/components/zerops/system/FaceCard";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 import { PICTURES, pictureOf } from "./people";
 
@@ -103,8 +103,8 @@ export default definePlayground({
   jsx: (args) => {
     const figure =
       args.figure === "mate"
-        ? `figure={<MateFace size={64} state="working" tint="${args.tint}" />}`
-        : `figure={<PersonAvatar name="${args.title}" size={64} />}`;
+        ? `<MateFace size={64} state="working" tint="${args.tint}" />`
+        : `<PersonAvatar name="${args.title}" size={64} />`;
     const line =
       args.line === ""
         ? undefined
@@ -117,14 +117,14 @@ export default definePlayground({
     return jsxElement(
       "FaceCard",
       {
-        [figure]: true,
+        figure: jsxCode(figure),
         title: args.title,
-        [`chips={<Badge>${args.figure === "mate" ? "Working" : "Owner"}</Badge>}`]: args.chips
-          ? true
+        chips: args.chips
+          ? jsxCode(`<Badge>${args.figure === "mate" ? "Working" : "Owner"}</Badge>`)
           : undefined,
         stamp: args.stamp === "" ? undefined : args.stamp,
-        'foot={<Button size="xs" variant="ghost">…</Button>}': args.foot ? true : undefined,
-        'press={<Button variant="bare" />}': args.pressable ? true : undefined,
+        foot: args.foot ? jsxCode('<Button size="xs" variant="ghost">…</Button>') : undefined,
+        press: args.pressable ? jsxCode('<Button variant="bare" />') : undefined,
         ruled: args.ruled,
         faded: args.faded,
         rest: args.rest,

@@ -14,7 +14,7 @@ import { useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "~/components/ui/button";
 import { Tab, TabPress, TabStrip, useTabStripCompact } from "~/components/ui/tab-strip";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 const SIZES = variantsOf<NonNullable<ComponentProps<typeof Tab>["size"]>>({ sm: true, md: true });
@@ -119,15 +119,15 @@ export default definePlayground({
       "TabStrip",
       {
         activeId: "Vault",
-        "items={pages}": true,
-        "onSelect={setActive}": true,
-        'action={<Button aria-label="Add a page" size="icon-sm" variant="ghost">…</Button>}': action
-          ? true
+        items: jsxCode("pages"),
+        onSelect: jsxCode("setActive"),
+        action: action
+          ? jsxCode('<Button aria-label="Add a page" size="icon-sm" variant="ghost">…</Button>')
           : undefined,
       },
       jsxElement(
         "Tab",
-        { "active={page.id === active}": true, "tabId={page.id}": true, size },
+        { active: jsxCode("page.id === active"), tabId: jsxCode("page.id"), size },
         "<TabPress>{page.icon}{page.label}</TabPress>",
         { size: "sm" },
       ),

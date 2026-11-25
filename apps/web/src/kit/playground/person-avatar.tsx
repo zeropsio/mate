@@ -1,6 +1,6 @@
 import { PersonAvatar, type MateFaceSize } from "~/components/zerops/primitives";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 import { PICTURES, pictureOf, pictureSource } from "./people";
 
@@ -37,7 +37,7 @@ export default definePlayground({
       "PersonAvatar",
       {
         name,
-        ...(source === undefined ? {} : { [`picture=${source}`]: true }),
+        picture: source === undefined ? undefined : jsxCode(source),
         size: Number(size),
       },
       undefined,

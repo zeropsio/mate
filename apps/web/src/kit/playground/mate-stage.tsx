@@ -4,7 +4,7 @@ import { CrewSectionEmpty } from "~/components/zerops/crew/CrewSection";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { ArrivalStage, NotCreatedStage } from "../sections/mate-stage";
 import { variantsOf } from "../specimenLabel";
 import { WREN, type BirthAge } from "../states/fixtures";
@@ -62,33 +62,30 @@ export default definePlayground({
   jsx: ({ stage, name, tint }) =>
     stage === "details failed"
       ? jsxElement("MateDetailFailure", {
-          "mate={mate}": true,
+          mate: jsxCode("mate"),
           message: "Zerops did not answer within 20 seconds.",
-          "again={again}": true,
+          again: jsxCode("again"),
         })
       : stage === "no crew"
         ? jsxElement("CrewSectionEmpty", {
-            [`mate={{ name: "${name}", tint: "${tint}" }}`]: true,
-            "lock={null}": true,
-            "error={null}": true,
-            "onSetUp={setUp}": true,
-            "onSignIn={signIn}": true,
+            mate: jsxCode(`{ name: "${name}", tint: "${tint}" }`),
+            lock: jsxCode("null"),
+            error: jsxCode("null"),
+            onSetUp: jsxCode("setUp"),
+            onSignIn: jsxCode("signIn"),
           })
         : jsxElement("MateEmptyStateView", {
-            "mate={mate}": true,
-            ...(stage === "coming up"
-              ? {
-                  'coming={{ kind: "coming", sentence, below: <ComingBelow … /> }}': true,
-                }
-              : stage === "not created"
-                ? {
-                    'coming={{ kind: "failed", sentence, below: <ComingBelow onTryAgain … /> }}': true,
-                  }
-                : {}),
-            "phase={null}": true,
-            "signIn={null}": true,
-            "signInRequired={false}": true,
-            "unknown={null}": true,
+            mate: jsxCode("mate"),
+            coming:
+              stage === "coming up"
+                ? jsxCode('{ kind: "coming", sentence, below: <ComingBelow … /> }')
+                : stage === "not created"
+                  ? jsxCode('{ kind: "failed", sentence, below: <ComingBelow onTryAgain … /> }')
+                  : undefined,
+            phase: jsxCode("null"),
+            signIn: jsxCode("null"),
+            signInRequired: false,
+            unknown: jsxCode("null"),
           }),
   usage: {
     do: [

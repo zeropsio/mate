@@ -2,7 +2,7 @@ import { FileIcon, TerminalIcon } from "lucide-react";
 
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 
 /** The tab's own mark, which the close press stands in for under the pointer. */
 const ICONS = ["file", "terminal"] as const;
@@ -35,7 +35,7 @@ export default definePlayground({
       "PanelTabCloseButton",
       {
         label: `Close ${name}`,
-        "onClick={close}": true,
+        onClick: jsxCode("close"),
         tooltip: tooltip === "" ? undefined : tooltip,
       },
       icon === "terminal" ? "<TerminalIcon />" : "<FileIcon />",

@@ -18,5 +18,5 @@ export function pictureOf(picture: KitPicture): string | null {
 
 /** How the JSX names the picture it was given. */
 export function pictureSource(picture: KitPicture): string | undefined {
-  return picture === "picture" ? "{avatarUrl}" : picture === "broken" ? "{brokenUrl}" : undefined;
+  return picture === "picture" ? "avatarUrl" : picture === "broken" ? "brokenUrl" : undefined;
 }

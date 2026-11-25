@@ -9,7 +9,7 @@ import type { CSSProperties } from "react";
 import { MateFace, type MateFaceSize } from "~/components/zerops/primitives";
 import { MATE_MOMENTS } from "~/zerops/mateMoments.logic";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 // Every state the face draws, read from the lids that draw it: a new state appears here by itself.
@@ -90,7 +90,7 @@ export default definePlayground({
         state,
         size: Number(size),
         gaze: gaze === "level" ? undefined : gaze,
-        [`cues={[{ moment: "${moment}", key: "…" }]}`]: moment === "none" ? undefined : true,
+        cues: moment === "none" ? undefined : jsxCode(`[{ moment: "${moment}", key: "…" }]`),
         mark,
         restarting,
         paces,

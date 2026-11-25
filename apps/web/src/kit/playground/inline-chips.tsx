@@ -2,7 +2,7 @@ import { SkillChip } from "~/components/chat/SkillInlineText";
 import { TerminalContextInlineChip } from "~/components/chat/TerminalContextInlineChip";
 import type { TerminalContextKind } from "~/lib/terminalContext";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 /** What the chip names: terminal lines, a table (both `TerminalContextKind`), or a skill. */
@@ -53,7 +53,7 @@ export default definePlayground({
     chip === "skill"
       ? jsxElement("SkillChip", {
           rawText: `$${label}`,
-          [`skill={{ name: "${label}", displayName: "${label}" }}`]: true,
+          skill: jsxCode(`{ name: "${label}", displayName: "${label}" }`),
         })
       : jsxElement(
           "TerminalContextInlineChip",

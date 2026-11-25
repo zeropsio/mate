@@ -5,7 +5,7 @@ import { ErrorLine } from "~/components/chat/ConversationRows";
 import { RunLine } from "~/components/chat/RunChat";
 import { TimelineRowActivityCtx, TimelineRowCtx } from "~/components/chat/timelineContext";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 import { ROW_SHARED, ROW_WORKING } from "../states/fixtures";
 
@@ -111,10 +111,11 @@ export default definePlayground({
   jsx: (args) =>
     args.line === "run"
       ? jsxElement("RunLine", {
-          [`status={{ live: ${String(args.live)}, face: "${args.live ? "working" : args.face}", startedAt, endedAt: ${
-            args.live ? "null" : "endedAt"
-          }, waitingSince: ${args.live && args.waiting ? "waitingSince" : "null"}, waitedMs: 0, worked: true }}`]:
-            true,
+          status: jsxCode(
+            `{ live: ${String(args.live)}, face: "${args.live ? "working" : args.face}", startedAt, endedAt: ${
+              args.live ? "null" : "endedAt"
+            }, waitingSince: ${args.live && args.waiting ? "waitingSince" : "null"}, waitedMs: 0, worked: true }`,
+          ),
         })
       : jsxElement(
           "ErrorLine",
@@ -122,7 +123,7 @@ export default definePlayground({
             label: args.label,
             detail: args.detail === "" ? undefined : args.detail,
             calm: args.calm,
-            "onDismiss={dismiss}": args.dismissible ? true : undefined,
+            onDismiss: args.dismissible ? jsxCode("dismiss") : undefined,
           },
           undefined,
           { calm: false },

@@ -5,7 +5,7 @@ import { Button } from "~/components/ui/button";
 import { PageHeader } from "~/components/ui/page-header";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 const SIZES = variantsOf<NonNullable<ComponentProps<typeof PageHeader>["size"]>>({
@@ -18,9 +18,9 @@ const ACTIONS = ["none", "one", "two"] as const;
 
 const LEAD_JSX: Readonly<Record<(typeof LEADS)[number], string | undefined>> = {
   none: undefined,
-  person: 'lead={<PersonAvatar name="Petra Malá" size={64} />}',
-  mate: 'lead={<MateFace size={64} state="idle" tint="olive" />}',
-  icon: "lead={<KeyRoundIcon />}",
+  person: '<PersonAvatar name="Petra Malá" size={64} />',
+  mate: '<MateFace size={64} state="idle" tint="olive" />',
+  icon: "<KeyRoundIcon />",
 };
 
 export default definePlayground({
@@ -84,12 +84,16 @@ export default definePlayground({
       "PageHeader",
       {
         size,
-        ...(leadProp === undefined ? {} : { [leadProp]: true }),
+        lead: leadProp === undefined ? undefined : jsxCode(leadProp),
         title,
         count: count === "" ? undefined : count,
         line: line === "" ? undefined : line,
-        'actions={<Button size="sm">Invite people</Button>}': actions === "one" ? true : undefined,
-        "actions={<>…</>}": actions === "two" ? true : undefined,
+        actions:
+          actions === "one"
+            ? jsxCode('<Button size="sm">Invite people</Button>')
+            : actions === "two"
+              ? jsxCode("<>…</>")
+              : undefined,
       },
       undefined,
       { size: "page" },
