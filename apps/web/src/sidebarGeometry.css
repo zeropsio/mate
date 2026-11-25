@@ -1,12 +1,12 @@
 /* Loaded by the document before its first frame, shared with the rendered menu. */
 :root {
   --sidebar-content-inset: 0.75rem;
-  /* The headline (Overview and the squares) is the desktop's top bar; the Chief's row stands 8 px
+  /* The headline (Overview and the squares) is the desktop's top bar; the Chief's row stands right
      under it, the list's first. */
   --sidebar-menu-headline-height: 4.0625rem;
   --sidebar-chief-row-height: 66px;
   --sidebar-menu-header-height: calc(
-    var(--sidebar-menu-headline-height) + 8px + var(--sidebar-chief-row-height)
+    var(--sidebar-menu-headline-height) + var(--sidebar-chief-row-height)
   );
 }
 

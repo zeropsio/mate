@@ -5510,13 +5510,8 @@ code {
     }
   }
 
-  /* 8 px under the headline, and the projects a row's 6 px under it: the list's own 16 px above
-     its first row is the Chief's room. */
-  .menu-list-chief {
-    padding-top: 8px;
-  }
-
-  /* `!important` over the list's own top padding utility. */
+  /* Right under the headline, and the projects a row's 6 px under it; `!important` over the list's
+     own top padding utility. */
   .menu-list-chief + [data-zerops-surface="sidebar-environments"] {
     padding-top: 6px !important;
   }
