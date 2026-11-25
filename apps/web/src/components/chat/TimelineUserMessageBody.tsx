@@ -3,6 +3,7 @@ import { Fragment, memo, use, useState, type ReactNode } from "react";
 import { ReviewCommentDiff } from "./ReviewCommentDiff";
 import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { type ParsedTerminalContextEntry } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
@@ -302,7 +303,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   const fenceLanguage = comment.fenceLanguage ?? "diff";
 
   return (
-    <div className="space-y-2 rounded-card border border-border/70 bg-background/70 p-3">
+    <Card size="sm" variant="flat">
       <div className="space-y-1">
         <div className="text-message-foreground text-caption font-medium">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}
@@ -328,6 +329,6 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
       {fenceLanguage === "diff" && comment.diff.trim().length > 0 && (
         <ReviewCommentDiff comment={comment} theme={ctx.resolvedTheme} />
       )}
-    </div>
+    </Card>
   );
 }
