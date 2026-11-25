@@ -47,6 +47,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
+import { Meter } from "~/components/ui/meter";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -549,13 +550,7 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
           <MetricRange metric={metric} />
         </div>
         {metric.fraction === undefined ? null : (
-          <div aria-hidden="true" className="mt-1 h-0.5 w-full rounded-full bg-border">
-            <div
-              className="h-full rounded-full bg-info"
-              data-zerops-service-metric-fill
-              style={{ width: `${Math.round(metric.fraction * 100)}%` }}
-            />
-          </div>
+          <Meter className="mt-1" tone="info" value={metric.fraction} />
         )}
       </div>
     </div>

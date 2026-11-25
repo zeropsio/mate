@@ -22,6 +22,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
+import { Meter } from "~/components/ui/meter";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import type { PlaceServiceRow } from "../place/place.logic";
@@ -234,24 +235,11 @@ function ServiceMeter({
           </span>
         )}
       </div>
-      <div
-        aria-hidden="true"
-        className={cn(
-          "h-1 overflow-hidden rounded-full",
-          tone === "ok" ? "bg-status-ok/15" : "bg-muted-foreground/15",
-        )}
-      >
-        {fill === undefined ? null : (
-          <div
-            className={cn(
-              "h-full w-full origin-left rounded-full transition-transform duration-260 ease-out-strong motion-reduce:transition-none",
-              fill.high ? "bg-status-attention" : tone === "ok" ? "bg-status-ok" : "bg-info",
-            )}
-            data-zerops-meter-high={fill.high || undefined}
-            style={{ transform: `scaleX(${String(fill.fraction)})` }}
-          />
-        )}
-      </div>
+      <Meter
+        data-zerops-meter-high={fill?.high || undefined}
+        tone={fill?.high === true ? "warning" : tone === "ok" ? "success" : "info"}
+        value={fill?.fraction ?? 0}
+      />
     </div>
   );
 }
