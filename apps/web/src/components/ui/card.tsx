@@ -11,13 +11,15 @@ import { cn } from "~/lib/utils";
  * inside another, set apart by a deeper tint instead of a second border — depth shows as tint.
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
  * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
- * card one press.
+ * card one press. `tone="failed"` wears its hairline in the failed ink: a thing that broke, on its
+ * own card (a tool call that failed).
  */
 const cardVariants = cva("", {
   defaultVariants: {
     variant: "default",
     size: "none",
     pressable: false,
+    tone: "default",
   },
   variants: {
     variant: {
@@ -30,6 +32,10 @@ const cardVariants = cva("", {
       none: "",
       sm: "gap-2 px-3.5 py-3",
       md: "gap-3 p-4",
+    },
+    tone: {
+      default: "",
+      failed: "border-status-failed/35",
     },
     /**
      * A card whose whole body is one press (a launcher's page, a thing it opens): a `<button>`, or
@@ -47,11 +53,12 @@ interface CardProps extends useRender.ComponentProps<"div"> {
   variant?: VariantProps<typeof cardVariants>["variant"];
   size?: VariantProps<typeof cardVariants>["size"];
   pressable?: boolean;
+  tone?: VariantProps<typeof cardVariants>["tone"];
 }
 
-function Card({ className, render, variant, size, pressable = false, ...props }: CardProps) {
+function Card({ className, render, variant, size, pressable = false, tone, ...props }: CardProps) {
   const defaultProps = {
-    className: cn(cardVariants({ className, variant, size, pressable })),
+    className: cn(cardVariants({ className, variant, size, pressable, tone })),
     "data-slot": "card",
     ...(pressable && render === undefined ? { type: "button" as const } : {}),
   };

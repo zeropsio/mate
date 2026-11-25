@@ -56,6 +56,14 @@ function CardSpecimens() {
           <SampleCard variant="flat" />
         </div>
       </Specimen>
+      <Specimen label='<Card variant="flat" tone="failed">: a thing that broke'>
+        <div className="w-80">
+          <Card size="sm" tone="failed" variant="flat">
+            <span className="font-medium text-body">Deploy failed</span>
+            <span className="text-caption text-muted-foreground">The build stopped at step 3.</span>
+          </Card>
+        </div>
+      </Specimen>
       <Specimen label="<Card pressable>: the whole card one press (hover, focus, data-highlighted)">
         <div className="grid w-96 grid-cols-2 gap-2">
           <Card pressable>

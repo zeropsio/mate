@@ -10,12 +10,13 @@ export default definePlayground({
   controls: {
     variant: { kind: "enum", options: ["default", "flat", "inset"], note: "flat is the app's" },
     size: { kind: "enum", options: ["none", "sm", "md"], note: "its padding" },
+    tone: { kind: "enum", options: ["default", "failed"], note: "failed: a thing that broke" },
     action: { kind: "boolean", note: "a press at its end" },
   },
-  initial: { variant: "flat", size: "md", action: true },
-  render: ({ variant, size, action }) => (
+  initial: { variant: "flat", size: "md", tone: "default", action: true },
+  render: ({ variant, size, tone, action }) => (
     <div className="w-80">
-      <Card size={size} variant={variant}>
+      <Card size={size} tone={tone} variant={variant}>
         <span className="font-semibold text-emphasis">Production</span>
         <span className="text-body text-muted-foreground">3 services, all running.</span>
         {action ? (
@@ -28,10 +29,10 @@ export default definePlayground({
       </Card>
     </div>
   ),
-  jsx: ({ variant, size, action }) =>
+  jsx: ({ variant, size, tone, action }) =>
     jsxElement(
       "Card",
-      { variant, size },
+      { variant, size, tone },
       [
         "<span>Production</span>",
         "<span>3 services, all running.</span>",
@@ -39,7 +40,7 @@ export default definePlayground({
       ]
         .filter((part) => part !== "")
         .join("\n"),
-      { variant: "default", size: "none" },
+      { variant: "default", size: "none", tone: "default" },
     ),
   usage: {
     do: [
