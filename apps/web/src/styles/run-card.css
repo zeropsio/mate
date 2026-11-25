@@ -257,7 +257,9 @@
 .run-now[data-run-now="worked"] .run-now-head {
   white-space: normal;
 }
-/* A fact of what the run came to, beside its time: a quiet chip, two at most. */
+/* A fact of what the run came to, beside its time: a quiet chip, two at most, on the working row's
+   ground (`--run-now`). Not a neutral Badge: that pill's ground is the tray's own colour, so on the
+   tray it shows no edge at all. */
 .run-now-fact {
   display: inline-block;
   margin-left: 8px;
