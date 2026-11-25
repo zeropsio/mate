@@ -29,7 +29,6 @@ import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const PERSONA = params.get("persona") ?? "none";
 const ORG = params.get("org") ?? "ready";
 const MATE_STATE = params.get("mate") ?? "ready";
@@ -196,8 +195,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

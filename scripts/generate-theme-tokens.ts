@@ -65,7 +65,8 @@ export interface ThemeTokenProjectionOutput {
   readonly target:
     | "apps/web/index.html"
     | "apps/web/public/favicon.svg"
-    | "apps/web/src/index.css"
+    | "apps/web/src/styles/foundation.css"
+    | "apps/web/src/styles/tokens.css"
     | "apps/mobile/global.css";
   readonly path: string;
   readonly contents: string;
@@ -261,13 +262,13 @@ const projectWebThemeTokens = (source: string): string =>
 
 const rem = (pixels: number): string => `${pixels / 16}rem`;
 
-// The scale's Tailwind theme: `text-caption`…`text-display`, `rounded-control|card|sheet` and the
-// two easings as `ease-*` utilities.
+// The scale's Tailwind theme: every `text-*` step, `rounded-mark|control|card|sheet` and the two
+// easings as `ease-*` utilities.
 const renderWebScaleTokens = (): string =>
   [
-    ...Object.entries(TYPE_SCALE).flatMap(([step, { fontSize, lineHeight }]) => [
-      `  --text-${step}: ${rem(fontSize)};`,
-      `  --text-${step}--line-height: ${rem(lineHeight)};`,
+    ...Object.entries(TYPE_SCALE).flatMap(([step, type]) => [
+      `  --text-${step}: ${rem(type.fontSize)};`,
+      `  --text-${step}--line-height: ${"relative" in type ? `calc(${type.lineHeight} / ${type.fontSize})` : rem(type.lineHeight)};`,
     ]),
     ...Object.entries(RADII).map(([step, radius]) => `  --radius-${step}: ${rem(radius)};`),
     `  --ease-out-strong: ${MOTION.easing.out};`,
@@ -304,21 +305,26 @@ const renderWebThemeColors = (): string => {
   ].join("\n");
 };
 
-const projectWebStylesheetTokens = (source: string): string =>
+/** The scale's tokens, inside the theme block of the stylesheet's foundation. */
+const projectWebFoundationTokens = (source: string): string =>
+  replaceGeneratedRegion(
+    source,
+    renderWebScaleTokens(),
+    "apps/web/src/styles/foundation.css",
+    WEB_SCALE_TOKEN_MARKERS,
+  );
+
+/** The motion scale and the palette, in the stylesheet's tokens. */
+const projectWebPaletteTokens = (source: string): string =>
   replaceGeneratedRegion(
     replaceGeneratedRegion(
-      replaceGeneratedRegion(
-        source,
-        renderWebScaleTokens(),
-        "apps/web/src/index.css",
-        WEB_SCALE_TOKEN_MARKERS,
-      ),
+      source,
       renderWebMotionTokens(),
-      "apps/web/src/index.css",
+      "apps/web/src/styles/tokens.css",
       WEB_MOTION_TOKEN_MARKERS,
     ),
     renderWebThemeColors(),
-    "apps/web/src/index.css",
+    "apps/web/src/styles/tokens.css",
     WEB_THEME_COLOR_MARKERS,
   );
 
@@ -348,7 +354,8 @@ export function getThemeTokenProjectionOutputs(
   const webPath = NodePath.join(repositoryRoot, "apps/web/index.html");
   const webFaviconPath = NodePath.join(repositoryRoot, "apps/web/public/favicon.svg");
   const mobilePath = NodePath.join(repositoryRoot, "apps/mobile/global.css");
-  const stylesheetPath = NodePath.join(repositoryRoot, "apps/web/src/index.css");
+  const foundationPath = NodePath.join(repositoryRoot, "apps/web/src/styles/foundation.css");
+  const tokensPath = NodePath.join(repositoryRoot, "apps/web/src/styles/tokens.css");
   return [
     {
       target: "apps/web/index.html",
@@ -361,9 +368,14 @@ export function getThemeTokenProjectionOutputs(
       contents: renderZeropsFaviconSvg(),
     },
     {
-      target: "apps/web/src/index.css",
-      path: stylesheetPath,
-      contents: projectWebStylesheetTokens(NodeFS.readFileSync(stylesheetPath, "utf8")),
+      target: "apps/web/src/styles/foundation.css",
+      path: foundationPath,
+      contents: projectWebFoundationTokens(NodeFS.readFileSync(foundationPath, "utf8")),
+    },
+    {
+      target: "apps/web/src/styles/tokens.css",
+      path: tokensPath,
+      contents: projectWebPaletteTokens(NodeFS.readFileSync(tokensPath, "utf8")),
     },
     {
       target: "apps/mobile/global.css",

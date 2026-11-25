@@ -35,7 +35,7 @@ function OpenChanges({
 >) {
   return (
     <section aria-label="Open changes" className="flex flex-col gap-2">
-      <h2 className="text-base font-medium text-foreground">Open changes</h2>
+      <h2 className="text-emphasis font-medium text-foreground">Open changes</h2>
       {changesFailure === undefined ? null : (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-body text-status-failed" role="alert">
@@ -127,12 +127,7 @@ function HomeAt({
                 onOpen={(entry) => navigate(atCommit(entryTarget(entry)))}
               />
             ) : (
-              <GitNotRead
-                view={top}
-                reading="Reading source…"
-                at={{ appId, repo }}
-                onAgain={again}
-              />
+              <GitNotRead view={top} subject="The source" at={{ appId, repo }} onAgain={again} />
             )}
           </div>
         </Card>

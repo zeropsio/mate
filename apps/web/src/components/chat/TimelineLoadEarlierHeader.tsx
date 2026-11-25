@@ -1,7 +1,8 @@
 import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 
-// Header row shown when older turns exist beyond the loaded window. A quiet
-// press, no spinner animation; the label change is the loading indicator.
+// Header row shown when older turns exist beyond the loaded window. A quiet press; while the
+// turns are on their way it holds its words and shows the kit's spinner beside them.
 export function TimelineLoadEarlierHeader({
   loading,
   onLoadEarlier,
@@ -21,7 +22,8 @@ export function TimelineLoadEarlierHeader({
           onClick={onLoadEarlier}
           disabled={loading}
         >
-          {loading ? "Loading earlier turns…" : "Load earlier turns"}
+          {loading ? <Spinner aria-label="Earlier turns" /> : null}
+          Load earlier turns
         </Button>
       </div>
     </div>

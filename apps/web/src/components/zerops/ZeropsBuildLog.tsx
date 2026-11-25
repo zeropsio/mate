@@ -26,6 +26,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Loading } from "~/components/ui/loading";
 
 export interface ZeropsBuildLogLine {
   readonly id: string;
@@ -52,13 +53,14 @@ interface ZeropsBuildLogProps {
 const FAILED_SEVERITY_MAX = 3;
 
 /** What a log with no line to draw says in its dialog: read failed, still reading, or gone. */
-export function emptyLogWords(status: ZeropsBuildLogStatus): string {
+/** What an empty log says; `null` while it is on its way (its place draws the kit's stand-in). */
+export function emptyLogWords(status: ZeropsBuildLogStatus): string | null {
   switch (status) {
     case "error":
       return "Couldn't read this build's log from Zerops.";
     case "idle":
     case "loading":
-      return "Reading this build's log…";
+      return null;
     default:
       return "Zerops keeps no lines of this build's log.";
   }
@@ -119,7 +121,9 @@ export function ZeropsBuildLog({
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
-            {lines.length === 0 ? (
+            {lines.length === 0 && emptyLogWords(status) === null ? (
+              <Loading count={4} label="This build's log" shape="lines" />
+            ) : lines.length === 0 ? (
               <p className="text-muted-foreground text-body" data-zerops-build-log-empty>
                 {emptyLogWords(status)}
               </p>

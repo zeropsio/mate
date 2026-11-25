@@ -165,7 +165,7 @@ function Progress({
       >
         <div
           className={cn(
-            "h-full w-full origin-left rounded-full transition-transform duration-200 ease-drawer motion-reduce:transition-none",
+            "h-full w-full origin-left rounded-full transition-transform duration-200 ease-out-strong motion-reduce:transition-none",
             state === "failed" ? "bg-destructive" : state === "done" ? "bg-success" : "bg-primary",
           )}
           style={{ transform: `scaleX(${fraction})` }}

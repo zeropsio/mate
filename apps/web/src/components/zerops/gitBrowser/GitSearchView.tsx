@@ -2,7 +2,6 @@
  * The repository's search page at the commit its branch, tag or commit names: a file by name
  * (the finder) or lines by content (`git grep` on HQ), each match opening its file at its line.
  */
-import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import { grepFiles } from "@t3tools/client-runtime/zerops/gitBrowse/grep";
 import { GitPath } from "@t3tools/shared/hqGitBrowse/common";
 import {
@@ -22,10 +21,10 @@ import { Toggle } from "~/components/ui/toggle";
 import { Toggle as GroupToggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { useHeldFor } from "~/zerops/useHeldFor";
 import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitFileFinder, gitPageAnchor } from "./GitFileFinder";
+import { Loading } from "~/components/ui/loading";
 
 /** Lines mounted at first and added on each "Show more": each is highlighted. */
 const RESULTS_PAGE = 100;
@@ -87,7 +86,6 @@ function ContentResults({
     () => (answer === null ? 0 : new Set(answer.matches.map((match) => match.path)).size),
     [answer],
   );
-  const slow = useHeldFor(view.state === "unread", STILL_READING_HOLD_MS);
   const unreadable = view.state === "refused" && view.reason === "invalid" && regex;
   return answer !== null ? (
     <>
@@ -175,11 +173,7 @@ function ContentResults({
       ) : null}
     </>
   ) : view.state === "unread" ? (
-    slow ? (
-      <p className="text-body text-muted-foreground" role="status">
-        Searching…
-      </p>
-    ) : null
+    <Loading count={4} label="Matches" quiet shape="lines" />
   ) : view.state === "known" ? null : (
     <GitReadStopped
       view={view}
@@ -323,7 +317,6 @@ function ContentSearch({
 export function GitSearchView(props: GitRepoPageProps) {
   const { appId, repo, home, search, navigate, hrefOf, onHomeAgain } = props;
   const scope = search.scope ?? "name";
-  const slow = useHeldFor(home.state === "unread", STILL_READING_HOLD_MS);
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <ToggleGroup
@@ -371,11 +364,7 @@ export function GitSearchView(props: GitRepoPageProps) {
           />
         )
       ) : home.state === "unread" ? (
-        slow ? (
-          <p className="text-body text-muted-foreground" role="status">
-            Reading the repository…
-          </p>
-        ) : null
+        <Loading count={3} label="The repository" quiet shape="lines" />
       ) : (
         <GitReadStopped view={home} at={{ appId, repo }} onAgain={onHomeAgain} />
       )}

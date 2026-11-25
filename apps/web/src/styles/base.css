@@ -1,0 +1,540 @@
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  :where([data-slot="menu-popup"], [data-slot="select-popup"], [data-slot="popover-popup"]):focus,
+  :where(
+    [data-slot="menu-popup"],
+    [data-slot="select-popup"],
+    [data-slot="popover-popup"]
+  ):focus-visible {
+    @apply outline-none ring-0;
+  }
+  html,
+  body {
+    background-color: var(--app-chrome-background);
+  }
+  body {
+    @apply text-foreground relative;
+  }
+}
+
+@layer components {
+  @keyframes settings-search-target-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+    50% {
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary) 70%, transparent);
+    }
+  }
+
+  [data-settings-page-scroll] div.settings-search-target-pulse,
+  [data-settings-page-scroll] section.settings-search-target-pulse > div:first-child {
+    animation: settings-search-target-pulse 650ms ease-in-out 2;
+    border-radius: var(--radius-card);
+  }
+
+  /* The pulse is the destination indicator; without it (reduced motion), the
+     focus outline takes over, so exactly one indicator shows at a time. */
+  [data-settings-page-scroll] .settings-search-target-pulse:focus {
+    outline: none;
+  }
+
+  /* The left menu's row a jump landed on — a project's heading, a stop, a
+     change — rings once where it stands, so the eye finds it after the
+     scroll. Once, never a loop. While it rings, the focus ring of the
+     control in it waits, and takes over once it is done; with reduced motion
+     the focus ring says it alone. */
+  @keyframes zerops-reveal-flash {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+    18%,
+    55% {
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-ring) 60%, transparent);
+    }
+  }
+
+  [data-zerops-flash] {
+    border-radius: var(--radius-control);
+    animation: zerops-reveal-flash 1.3s ease-out 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    [data-zerops-flash] :focus-visible {
+      box-shadow: none !important;
+    }
+  }
+
+  /* An ask above the composer is cut by the composer's own edge, so a ring around it would not
+     show: it lights its ground once instead (`showWaitingAsk`). */
+  @keyframes zerops-ask-dock-flash {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    18%,
+    55% {
+      background-color: color-mix(in oklab, var(--color-ring) 14%, transparent);
+    }
+  }
+
+  [data-chat-composer-asks][data-zerops-flash] {
+    border-radius: 0;
+    animation-name: zerops-ask-dock-flash;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-zerops-flash] {
+      animation: none;
+    }
+  }
+
+  .chat-composer-shoulder-tab {
+    border-color: var(
+      --chat-composer-outline,
+      color-mix(in srgb, var(--contrast-foreground) 8%, transparent)
+    );
+    background: color-mix(
+      in srgb,
+      var(--chat-composer-glass-surface, var(--card)) var(--glass-opacity),
+      transparent
+    );
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
+    box-shadow: var(--zerops-shadow-tab);
+
+    @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+      background: var(--chat-composer-glass-surface, var(--card));
+    }
+  }
+
+  .chat-composer-banner-stack-cap {
+    background: color-mix(
+      in srgb,
+      var(--chat-composer-attached-surface) var(--glass-opacity),
+      transparent
+    );
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
+    /* The next notice's edge peeking above the front one. */
+    width: 96%;
+    border-color: var(--chat-composer-attached-outline);
+    box-shadow: var(--zerops-shadow-card);
+
+    @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+      background: var(--chat-composer-attached-surface);
+    }
+  }
+
+  /* Mirror the run-context strip above the composer. These surfaces deliberately
+     own no card fill or border themselves: a masked pseudo-element draws the
+     same inset glass, 16px outer corners, quiet outline, and open attachment
+     seam as the strip below. */
+  .chat-composer-drawer-surface,
+  .chat-composer-top-drawer {
+    --chat-composer-attachment-overlap: calc(1rem + 1px);
+    --chat-composer-attached-surface: var(--chat-composer-glass-surface, var(--card));
+    --chat-composer-attached-tint: transparent;
+    position: relative;
+    isolation: isolate;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none;
+
+    @variant dark {
+      --chat-composer-attached-surface: var(
+        --chat-composer-glass-surface,
+        color-mix(in srgb, var(--background) 96%, var(--foreground))
+      );
+    }
+  }
+
+  .chat-composer-drawer-attached,
+  .chat-composer-top-drawer {
+    padding-bottom: var(--chat-composer-attachment-overlap);
+  }
+
+  [data-chat-composer-form="true"],
+  .chat-composer-drawer-slot,
+  .chat-composer-top-drawer {
+    --chat-composer-drawer-inset: 1.375rem;
+  }
+
+  .chat-composer-drawer-slot,
+  .chat-composer-top-drawer {
+    --chat-composer-attachment-overlap: calc(1rem + 1px);
+    width: calc(100% - var(--chat-composer-drawer-inset) - var(--chat-composer-drawer-inset));
+    max-width: calc(48rem - var(--chat-composer-drawer-inset) - var(--chat-composer-drawer-inset));
+    margin-inline: auto;
+    margin-bottom: calc(-1 * var(--chat-composer-attachment-overlap));
+  }
+
+  :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)::before {
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border: 1px solid var(--chat-composer-attached-outline);
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    background:
+      linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
+      linear-gradient(
+        to top,
+        transparent 0 var(--chat-composer-attachment-overlap),
+        var(--zerops-seam-shade) var(--chat-composer-attachment-overlap),
+        transparent calc(var(--chat-composer-attachment-overlap) + 10px)
+      ),
+      color-mix(in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent);
+    -webkit-backdrop-filter: var(--glass-backdrop);
+    backdrop-filter: var(--glass-backdrop);
+    -webkit-mask-image: linear-gradient(
+      to top,
+      transparent 0 var(--chat-composer-attachment-overlap),
+      black var(--chat-composer-attachment-overlap)
+    );
+    mask-image: linear-gradient(
+      to top,
+      transparent 0 var(--chat-composer-attachment-overlap),
+      black var(--chat-composer-attachment-overlap)
+    );
+    box-shadow: var(--zerops-shadow-drawer);
+    content: "";
+
+    @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+      background:
+        linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)),
+        var(--chat-composer-attached-surface) !important;
+    }
+  }
+
+  .chat-composer-drawer-slot + .chat-composer-drawer-slot::before,
+  .chat-composer-drawer-slot + :has(.chat-composer-top-drawer) .chat-composer-top-drawer::before {
+    border-top: 0;
+    border-radius: 0;
+  }
+
+  .chat-composer-top-drawer {
+    z-index: 0;
+  }
+
+  /* A notice stands on the card, fully clear of it: none of it reaches under the card, and its
+     own card ends a hair above the composer's, its bottom edge and corners in view. The notice's
+     bottom padding grows by that hair. */
+  .chat-composer-drawer-slot {
+    --chat-composer-attachment-overlap: 0px;
+  }
+
+  .chat-composer-drawer-slot .chat-composer-drawer-surface {
+    --chat-composer-attachment-overlap: 0.25rem;
+  }
+
+  .chat-composer-drawer-slot .chat-composer-drawer-surface::before {
+    bottom: var(--chat-composer-attachment-overlap);
+    border-radius: var(--radius-card);
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
+  }
+
+  :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="info"] {
+    --chat-composer-attached-outline: color-mix(in srgb, var(--info) 32%, transparent);
+    --chat-composer-attached-tint: color-mix(in srgb, var(--info) 4%, transparent);
+  }
+
+  :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="success"] {
+    --chat-composer-attached-outline: color-mix(in srgb, var(--success) 32%, transparent);
+    --chat-composer-attached-tint: color-mix(in srgb, var(--success) 4%, transparent);
+  }
+
+  :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="warning"] {
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
+  }
+
+  /* The composer is the one white surface on screen, because that is where
+     the person acts (S5): the card, opaque, with a ring of ink and a soft
+     shadow — no glass, so nothing scrolling under it shows through, and the
+     run's card, a quiet tray now, never outshines it. */
+  .chat-composer-glass-shell {
+    --chat-composer-attachment-overlap: calc(1rem + 1px);
+    --chat-composer-glass-surface: var(--card);
+    --chat-composer-outline: color-mix(in oklab, var(--foreground) 12%, transparent);
+
+    isolation: isolate;
+  }
+
+  .chat-composer-glass-shell::before {
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    border-radius: var(--composer-radius);
+    background: var(--chat-composer-glass-surface);
+    content: "";
+  }
+
+  .chat-composer-glass-shell-with-context {
+    --chat-composer-context-extension: 2.25rem;
+  }
+
+  /* The joined shape exists for a strip: a shell told to expect one whose
+     toolbar then has nothing to say (a Mate's conversation) keeps the plain
+     composer surface, not two shoulders hanging below its corners. */
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
+    /* The composer's corner (a sheet's) and the strip's (a card's), each with its curve's control
+       offset: a quarter circle drawn as one cubic curve. */
+    --shell-corner: var(--composer-radius);
+    --shell-corner-control: calc(var(--shell-corner) * 0.4475);
+    --strip-corner: var(--radius-card);
+    --strip-corner-control: calc(var(--strip-corner) * 0.4475);
+    border-radius: 0;
+    /*
+     * One continuous layer: the composer joined to its strip. The strip is
+     * inset 1.375rem per side, so the step-in positions and their curve
+     * controls stay in rem to keep tracking it at non-default interface font
+     * sizes; the two corners are the radius roles'.
+     */
+    clip-path: shape(
+      from 0 var(--shell-corner),
+      curve to var(--shell-corner) 0 with 0 var(--shell-corner-control) /
+        var(--shell-corner-control) 0,
+      line to calc(100% - var(--shell-corner)) 0,
+      curve to 100% var(--shell-corner) with calc(100% - var(--shell-corner-control)) 0 / 100%
+        var(--shell-corner-control),
+      line to 100% calc(100% - var(--chat-composer-context-extension) - 1.375rem),
+      curve to calc(100% - 1.375rem) calc(100% - var(--chat-composer-context-extension)) with 100%
+        calc(100% - var(--chat-composer-context-extension) - 0.6156rem) / calc(100% - 0.6156rem)
+        calc(100% - var(--chat-composer-context-extension)),
+      line to calc(100% - 1.375rem) calc(100% - var(--strip-corner)),
+      curve to calc(100% - 1.375rem - var(--strip-corner)) 100% with calc(100% - 1.375rem)
+        calc(100% - var(--strip-corner-control)) /
+        calc(100% - 1.375rem - var(--strip-corner-control)) 100%,
+      line to calc(1.375rem + var(--strip-corner)) 100%,
+      curve to 1.375rem calc(100% - var(--strip-corner)) with
+        calc(1.375rem + var(--strip-corner-control)) 100% / 1.375rem
+        calc(100% - var(--strip-corner-control)),
+      line to 1.375rem calc(100% - var(--chat-composer-context-extension)),
+      curve to 0 calc(100% - var(--chat-composer-context-extension) - 1.375rem) with 0.6156rem
+        calc(100% - var(--chat-composer-context-extension)) / 0
+        calc(100% - var(--chat-composer-context-extension) - 0.6156rem),
+      line to 0 var(--shell-corner),
+      close
+    );
+  }
+
+  @media (min-width: 40rem) {
+    .chat-composer-glass-shell-with-context {
+      /* The xs toolbar controls shrink by 4px at Tailwind's sm breakpoint. */
+      --chat-composer-context-extension: 2rem;
+    }
+  }
+
+  .chat-composer-glass-host {
+    border-radius: var(--composer-radius);
+    box-shadow: var(--chat-composer-shadow);
+  }
+
+  .chat-composer-glass-host::after {
+    pointer-events: none;
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    border: 1px solid var(--chat-composer-outline);
+    border-radius: inherit;
+    content: "";
+  }
+
+  /* A top attachment cannot share the shell's single clipped backdrop: it
+     needs the composer surface and outline to paint in front of its overlap.
+     Split the glass into exact surfaces while a drawer or tab is present; the
+     default composer keeps the cheaper continuous layer. */
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )::before,
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )
+    .chat-composer-glass-host::after {
+    display: none;
+  }
+
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )
+    .chat-composer-glass-host {
+    box-shadow: none;
+  }
+
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )
+    .chat-composer-glass-host
+    [data-chat-composer-main-surface="true"] {
+    background: var(--chat-composer-glass-surface);
+    box-shadow: var(--chat-composer-shadow);
+
+    &::after {
+      pointer-events: none;
+      position: absolute;
+      z-index: 20;
+      inset: 0;
+      border: 1px solid var(--chat-composer-outline);
+      border-radius: inherit;
+      content: "";
+    }
+  }
+
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(.chat-composer-top-drawer)
+    )
+    .chat-composer-glass-host
+    [data-chat-composer-mobile-collapsed="true"] {
+    min-height: var(--chat-composer-attachment-overlap);
+  }
+
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)
+    .chat-composer-glass-host::after,
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip):is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )
+    [data-chat-composer-main-surface="true"]::after {
+    /* Keep the attachment seam open; the strip continues the outer outline below. Only where the
+       strip stands: a shell told to expect one that never comes (a Mate's conversation) keeps its
+       whole bottom edge. */
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 100%,
+      calc(100% - 22px) 100%,
+      calc(100% - 22px) calc(100% - 2px),
+      22px calc(100% - 2px),
+      22px 100%,
+      0 100%
+    );
+  }
+
+  .chat-composer-context-strip {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .chat-composer-context-strip::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border: 1px solid var(--zerops-attachment-edge, var(--chat-composer-outline));
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    background:
+      linear-gradient(
+        to bottom,
+        transparent 0 1rem,
+        var(--zerops-seam-shade) 1rem,
+        transparent calc(1rem + 10px)
+      ),
+      var(--zerops-attachment-lift);
+    /* Start the strip outline exactly where the composer's curve reaches its tangent. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
+    mask-image: linear-gradient(to bottom, transparent 0 1rem, black 1rem);
+    box-shadow: var(--zerops-shadow-drawer);
+    content: "";
+  }
+
+  .chat-composer-glass-shell:is(
+      .chat-composer-glass-shell-attached,
+      :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
+    )
+    .chat-composer-context-strip {
+    &::before {
+      background:
+        linear-gradient(
+          to bottom,
+          transparent 0 1rem,
+          var(--zerops-seam-shade) 1rem,
+          transparent calc(1rem + 10px)
+        ),
+        linear-gradient(var(--zerops-attachment-lift), var(--zerops-attachment-lift)),
+        color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
+    }
+  }
+
+  @supports not (clip-path: shape(from 0 0, line to 1px 1px)) {
+    .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)::before {
+      inset-block-end: var(--chat-composer-context-extension);
+      border-radius: var(--composer-radius);
+      clip-path: none;
+    }
+
+    .chat-composer-context-strip::before {
+      background:
+        linear-gradient(
+          to bottom,
+          transparent 0 1rem,
+          var(--zerops-seam-shade) 1rem,
+          transparent calc(1rem + 10px)
+        ),
+        linear-gradient(var(--zerops-attachment-lift), var(--zerops-attachment-lift)),
+        color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent);
+      -webkit-backdrop-filter: var(--glass-backdrop);
+      backdrop-filter: var(--glass-backdrop);
+    }
+  }
+}
+
+/* Safe-area inset utilities for surfaces that opt into edge-to-edge rendering.
+   Insets resolve to 0 when the browser already constrains the layout viewport
+   to the safe area. */
+/* A strip that scrolls sideways under a pointer or a swipe but draws no bar:
+   the browser strip's filmstrip keeps its newest frame in view by itself. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+@utility pl-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+}
+@utility pr-safe {
+  padding-right: max(env(safe-area-inset-right), 0px);
+}
+
+/* Grain texture for chrome surfaces that float above the body (see the
+   --surface-grain note). Layered over the element's background-color, so it
+   composes with bg-* utilities. */
+@utility surface-grain {
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: var(--surface-grain-size);
+}
+
+/* Suppress all transitions during theme changes */
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+}

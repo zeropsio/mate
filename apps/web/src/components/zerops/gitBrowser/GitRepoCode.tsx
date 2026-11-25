@@ -46,9 +46,7 @@ function Folder({
 }) {
   const { view, again } = useGitBrowse({ appId, repo, read: "tree", params: { sha, path } }, true);
   if (view.state !== "known")
-    return (
-      <GitNotRead view={view} reading="Reading source…" at={{ appId, repo }} onAgain={again} />
-    );
+    return <GitNotRead view={view} subject="The source" at={{ appId, repo }} onAgain={again} />;
   const target = (entry: { readonly path: string; readonly type: string }): RepoPathTarget => ({
     path: entry.path,
     kind: entry.type === "folder" ? "tree" : "file",
@@ -85,9 +83,7 @@ function FileAt({
   const { view, again } = useGitBrowse({ appId, repo, read: "blob", params: { sha, path } }, true);
   if (view.state === "refused" && view.reason === "not_a_file") return folder;
   if (view.state !== "known")
-    return (
-      <GitNotRead view={view} reading="Reading source…" at={{ appId, repo }} onAgain={again} />
-    );
+    return <GitNotRead view={view} subject="The source" at={{ appId, repo }} onAgain={again} />;
   return (
     <>
       {view.failed ? <Stale onAgain={again} /> : null}

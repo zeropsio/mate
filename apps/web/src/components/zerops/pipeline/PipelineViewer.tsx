@@ -19,6 +19,7 @@ import type { PipelineLog, PipelineLogKind } from "~/zerops/activity/usePipeline
 import { Button } from "../../ui/button";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 import { emptyLogWords } from "../ZeropsBuildLog";
+import { Loading } from "~/components/ui/loading";
 
 export type PipelineOutput = PipelineLogKind | "config";
 
@@ -124,7 +125,11 @@ function LogPane({
         </Button>
         <CopyLines lines={lines} />
       </div>
-      {lines.length === 0 ? (
+      {lines.length === 0 && emptyLogWords(status) === null ? (
+        <div className="h-96 rounded-card border p-4 md:h-140">
+          <Loading count={8} label="The log" shape="lines" />
+        </div>
+      ) : lines.length === 0 ? (
         <p
           className="flex h-96 items-center justify-center rounded-card bg-muted/60 text-muted-foreground text-body md:h-140"
           data-zerops-pipeline-log-empty

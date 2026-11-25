@@ -18,6 +18,7 @@ import { CommitRow } from "./GitCommitsView";
 import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
 import type { PickerChange } from "./GitRefPicker.logic";
 import { GitRefPicker } from "./GitRefPicker";
+import { Loading } from "~/components/ui/loading";
 
 type CompareProps = Pick<
   GitRepoPageProps,
@@ -34,7 +35,9 @@ function GitCompareSummary({
   return (
     <div className="flex min-w-0 flex-col gap-4 pb-4">
       <header className="flex min-w-0 flex-col gap-1">
-        <h2 className="text-base font-medium break-words text-foreground">{summary.headline}</h2>
+        <h2 className="text-emphasis font-medium break-words text-foreground">
+          {summary.headline}
+        </h2>
         {summary.cut === null ? null : (
           <p className="text-caption text-muted-foreground">{summary.cut}</p>
         )}
@@ -105,12 +108,7 @@ function CompareState({
   readonly onAgain: () => void;
 }) {
   if (view.state === "known") return null;
-  if (view.state === "unread")
-    return (
-      <p className="text-body text-muted-foreground" role="status">
-        Reading the compare…
-      </p>
-    );
+  if (view.state === "unread") return <Loading count={3} label="The comparison" shape="lines" />;
   return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
 }
 

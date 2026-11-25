@@ -102,7 +102,7 @@ export function PlaceNextCard({
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2.5">
             {lead}
-            <span className="min-w-0 text-base font-semibold text-foreground">{title}</span>
+            <span className="min-w-0 text-emphasis font-semibold text-foreground">{title}</span>
           </div>
           {line === "" ? null : <span className="text-body text-muted-foreground">{line}</span>}
         </div>

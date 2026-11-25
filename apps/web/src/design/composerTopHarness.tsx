@@ -51,7 +51,6 @@ import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const ONLY = params.get("n");
 const ONLY_ASK = params.get("ask");
 const ONLY_STANDING = params.get("standing");
@@ -478,8 +477,6 @@ function Harness() {
     </TooltipProvider>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

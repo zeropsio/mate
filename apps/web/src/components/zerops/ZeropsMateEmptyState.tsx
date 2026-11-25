@@ -44,7 +44,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type ReactElement,
   type RefObject,
@@ -331,7 +330,7 @@ export interface MateEmptyComing {
  * keeps the face where it stood.
  */
 export const MATE_EMPTY_HEADLINE_CLASS =
-  "text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl";
+  "text-center text-title font-normal tracking-tight text-foreground sm:text-display";
 export const MATE_EMPTY_FACE_CLASS = "size-16 sm:size-18";
 
 /** What the stage says, from where the Mate is and whose stand-up it is. */
@@ -582,12 +581,11 @@ function ArrivalComposition({
           greets="detail"
           onRestartCycle={onRestartCycle}
           cues={stoodUp === undefined ? undefined : [stoodUp]}
-          paces={pacing}
+          paces={pacing && pace}
           restarting={restarting}
           shape={mate.shape}
           size={64}
           state={state}
-          style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
           tint={mate.tint}
           tracks={tracks}
         />

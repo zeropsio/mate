@@ -96,7 +96,6 @@ import type { SharedBirth } from "@t3tools/client-runtime/data";
 import { sharedBirthPresentation } from "~/zerops/sharedBirths";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const MENU_WIDTH = 435;
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -1697,7 +1696,6 @@ function HarnessPage() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own with the app's three pages, so a card's name, a place's line and a crumb go
 // where they go in the app, by the app's own transition (`pagesViewTransition`).
 const rootRoute = createRootRoute({ component: HarnessPage });

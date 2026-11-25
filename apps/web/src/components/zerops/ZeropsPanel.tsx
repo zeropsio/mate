@@ -58,6 +58,7 @@ import { MatePanelColumn } from "./MatePanelPlaces";
 import { MicroLabel } from "./primitives";
 import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
+import { Loading } from "~/components/ui/loading";
 
 export function ZeropsPanel({
   threadRef,
@@ -318,11 +319,7 @@ export function ZeropsPanel({
  * so one honest, non-committal message covers both.
  */
 export function ZeropsPanelPlaceholder() {
-  return (
-    <p className="text-muted-foreground text-body" data-zerops-panel-placeholder>
-      Reading the project…
-    </p>
-  );
+  return <Loading count={4} data-zerops-panel-placeholder label="The project" shape="rows" />;
 }
 
 /** The card's place while the agent-auth feed has no snapshot: checking, or why not. */

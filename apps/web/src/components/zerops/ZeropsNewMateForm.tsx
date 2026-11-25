@@ -274,9 +274,9 @@ export function ZeropsNewMateForm({
         <div className="min-h-0 overflow-hidden">
           <div
             className={cn(
-              "px-6 pt-1 pb-6 text-pretty transition-[opacity,visibility] ease-out",
+              "px-6 pt-1 pb-6 text-pretty transition-[opacity,visibility] ease-out-strong",
               // The form is gone before the reason shows: never both at once.
-              closed === undefined ? "invisible opacity-0 duration-100" : "delay-100 duration-200",
+              closed === undefined ? "invisible opacity-0 duration-150" : "delay-100 duration-200",
             )}
           >
             <DialogDescription>{closed?.reason ?? reason}</DialogDescription>
@@ -294,8 +294,8 @@ export function ZeropsNewMateForm({
         <div className="min-h-0 overflow-hidden">
           <div
             className={cn(
-              "new-mate-body transition-[opacity,visibility] ease-out",
-              closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
+              "new-mate-body transition-[opacity,visibility] ease-out-strong",
+              closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-150",
             )}
             inert={closed !== undefined}
           >

@@ -135,7 +135,7 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/chat-markdown.css",
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-frame::before{animation:ultrathink-rainbow 10s linear infinite}",
     "owner": "maintainers",

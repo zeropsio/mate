@@ -45,7 +45,6 @@ import {
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const viewerRole = params.get("viewer") ?? "OWNER";
 const MENU_WIDTH = 435;
 
@@ -318,7 +317,6 @@ const router = createRouter({
   history: createMemoryHistory(),
 });
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <RouterProvider router={router} />

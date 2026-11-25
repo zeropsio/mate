@@ -1,4 +1,5 @@
 /** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
+import { EmptyState } from "../ui/empty";
 import { Card } from "../ui/card";
 import {
   gitRepositoryLine,
@@ -24,15 +25,19 @@ import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
+import { Loading } from "~/components/ui/loading";
 
 /** How long a first read may keep the page to its one line before it shows what it has. */
 const FIRST_READ_PATIENCE_MS = 1_500;
 
 function Reading() {
   return (
-    <p className="text-body text-muted-foreground" role="status" data-zerops-surface="git-reading">
-      Reading repositories and changes…
-    </p>
+    <Loading
+      count={4}
+      data-zerops-surface="git-reading"
+      label="Repositories and changes"
+      shape="page"
+    />
   );
 }
 
@@ -235,7 +240,7 @@ export function ZeropsGitOverview({
                     ) : changeRows.length === 1 ? (
                       changeRows
                     ) : repository.coverage === "complete" ? (
-                      <p className="mt-2 text-caption text-muted-foreground">No open changes.</p>
+                      <EmptyState size="row">No open changes.</EmptyState>
                     ) : null}
                   </div>
                 );
@@ -276,7 +281,7 @@ export function ZeropsGitOverview({
           </Button>
         </div>
       ) : (
-        <p className="text-body text-muted-foreground">No open changes.</p>
+        <EmptyState size="row">No open changes.</EmptyState>
       )}
     </>
   );

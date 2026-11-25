@@ -236,7 +236,7 @@ function JobForm({
       <div className="mt-3 flex items-center gap-3" data-crew-job-head>
         <MateFace size={32} state="idle" tint={tint} />
         <span className="flex min-w-0 flex-col">
-          <span className="truncate font-semibold text-base leading-6">
+          <span className="truncate font-semibold text-emphasis">
             {draft.displayName.trim() === ""
               ? lead
                 ? CREW_JOB_WORDS.newLeadTitle

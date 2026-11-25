@@ -81,7 +81,7 @@ export function ZeropsGitCommitView({
   readonly onRetry: () => void;
 }) {
   const short = commit.sha.slice(0, 7);
-  const loading = <DiffPanelLoadingState label="Loading commit…" />;
+  const loading = <DiffPanelLoadingState label="The commit's changes" />;
 
   return (
     <section

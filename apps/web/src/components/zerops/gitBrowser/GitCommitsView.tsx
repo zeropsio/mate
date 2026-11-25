@@ -19,6 +19,7 @@ import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { changeTitle, type PickerChange } from "./GitRefPicker.logic";
 import { GitWhen } from "./GitWhen";
+import { Loading } from "~/components/ui/loading";
 
 const ROW_HEIGHT = 55;
 const DAY_HEIGHT = 32;
@@ -135,11 +136,7 @@ function ListEnd({
 }) {
   if (last === undefined) return null;
   if (last.state === "unread")
-    return (
-      <p className="px-4 py-3 text-body text-muted-foreground" role="status">
-        Reading the history…
-      </p>
-    );
+    return <Loading className="mx-4 my-3" count={3} label="The history" shape="lines" />;
   if (last.state !== "known")
     return (
       <div className="px-4 py-3">
@@ -218,7 +215,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   return (
     <section aria-label="History" className="flex min-w-0 flex-col gap-2">
       {path === "" ? null : (
-        <h2 className="min-w-0 break-all text-base font-medium text-foreground">
+        <h2 className="min-w-0 break-all text-emphasis font-medium text-foreground">
           History of <span className="font-mono">{path}</span>
         </h2>
       )}
@@ -255,12 +252,7 @@ export function GitCommitsView(props: GitRepoPageProps) {
     ) : (
       <HistoryAt {...props} sha={home.answer.sha} />
     );
-  if (home.state === "unread")
-    return (
-      <p className="text-body text-muted-foreground" role="status">
-        Reading the repository…
-      </p>
-    );
+  if (home.state === "unread") return <Loading count={3} label="The repository" shape="lines" />;
   return (
     <GitReadStopped
       view={home}

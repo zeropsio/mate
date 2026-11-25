@@ -102,11 +102,25 @@ export function definePlayground<
   };
 }
 
+/** A prop JSX writes in braces: a handler, a variable, an element (`open={open}`). */
+export interface JsxCode {
+  readonly code: string;
+}
+
+export const jsxCode = (code: string): JsxCode => ({ code });
+
+/**
+ * A prop's value as JSX source carries it: a number (`size={64}`) and code are written in braces.
+ */
+type JsxValue = KitArgValue | number | JsxCode;
+
 /** A prop as JSX writes it, or nothing when it is the component's default. */
-function jsxProp(name: string, value: KitArgValue | undefined, fallback?: KitArgValue): string[] {
+function jsxProp(name: string, value: JsxValue | undefined, fallback?: JsxValue): string[] {
   if (value === undefined || value === fallback) return [];
+  if (typeof value === "object") return [`${name}={${value.code}}`];
   if (value === true) return [name];
   if (value === false) return [`${name}={false}`];
+  if (typeof value === "number") return [`${name}={${value}}`];
   return [`${name}="${value}"`];
 }
 
@@ -116,9 +130,9 @@ function jsxProp(name: string, value: KitArgValue | undefined, fallback?: KitArg
  */
 export function jsxElement(
   tag: string,
-  props: Readonly<Record<string, KitArgValue | undefined>>,
+  props: Readonly<Record<string, JsxValue | undefined>>,
   children?: string,
-  defaults: Readonly<Record<string, KitArgValue>> = {},
+  defaults: Readonly<Record<string, JsxValue>> = {},
 ): string {
   const parts = Object.entries(props).flatMap(([name, value]) =>
     jsxProp(name, value, defaults[name]),
@@ -128,7 +142,7 @@ export function jsxElement(
     inline.length > 64 ? `${tag}\n${parts.map((part) => `  ${part}`).join("\n")}\n` : inline;
   if (children === undefined || children === "") return `<${open} />`;
   const body =
-    children.includes("\n") || children.startsWith("<")
+    children.includes("\n") || children.startsWith("<") || open.includes("\n")
       ? `\n${children
           .split("\n")
           .map((line) => `  ${line}`)

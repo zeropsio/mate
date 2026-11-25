@@ -1,10 +1,10 @@
 import {
-  ClipboardListIcon,
   LayersIcon,
   type LucideIcon,
   PaletteIcon,
   RectangleHorizontalIcon,
   RowsIcon,
+  SmileIcon,
   WorkflowIcon,
 } from "lucide-react";
 import type { MouseEvent } from "react";
@@ -15,6 +15,7 @@ import { Row } from "~/components/ui/row";
 import { Section } from "~/components/ui/section";
 
 import type { KitSection } from "../kitSection";
+import { KIT_OMISSIONS } from "../omissions";
 import { KIT_GUARD_COUNTS, KIT_GUARDS, useKitSourceCounts } from "../shell/kitCounts";
 import { isComponentSection, type KitShellFlow } from "../shell/kitPages";
 import { KitDocument } from "./KitDocument";
@@ -31,7 +32,10 @@ const PRINCIPLES = [
   ["Blue acts, teal identifies", "Blue is for what acts; teal is the Mate's identity."],
   ["Tokens only", "Palette and contrast come from the shared tokens, never a literal."],
   ["A mark says its word", "A status mark carries its word, or an accessible name."],
-  ["One scale", "Five type steps, a 4 px grid, four radii, three durations."],
+  [
+    "One scale",
+    "Twelve type steps in brand.ts, a 4 px grid, four radii, three durations; nothing between them.",
+  ],
   ["Radii run parallel", "An outer radius is the inner one plus the space between them."],
   [
     "An action is a Button",
@@ -64,7 +68,7 @@ function StatTile({
   );
 }
 
-/** The kit's front page: what it is, how big it is, how far the app is from it, where to start. */
+/** The kit's front page: what it is, how big it is, how far the app is from it, where to start, and what it leaves out. */
 export function OverviewPage({
   sections,
   flows,
@@ -84,7 +88,7 @@ export function OverviewPage({
     ["foundations:colour", "Colour", "Every theme role, light and dark", PaletteIcon],
     ["button", "Button", "The one action, every variant", RectangleHorizontalIcon],
     ["row", "Row", "One row for every list", RowsIcon],
-    ["census", "Census", "The looks still home-made", ClipboardListIcon],
+    ["mate-face", "MateFace", "A Mate in every tint and state", SmileIcon],
     ...(flows[0] === undefined
       ? []
       : [
@@ -191,6 +195,27 @@ export function OverviewPage({
           <LayersIcon aria-hidden="true" className="size-3.5" />
           From the design guide, docs/internals/zerops/design-system.md §3.
         </p>
+      </Section>
+
+      <Section count={KIT_OMISSIONS.length} title="Not shown">
+        <Card variant="flat">
+          <div className="flex flex-col p-1">
+            {KIT_OMISSIONS.map((omission) => (
+              <Row
+                key={omission.name}
+                line={
+                  <>
+                    {omission.reason}{" "}
+                    <code className="font-mono text-muted-foreground/80">{omission.source}</code>
+                  </>
+                }
+                lineWraps
+                size="sm"
+                title={<code className="font-mono">{omission.name}</code>}
+              />
+            ))}
+          </div>
+        </Card>
       </Section>
     </KitDocument>
   );

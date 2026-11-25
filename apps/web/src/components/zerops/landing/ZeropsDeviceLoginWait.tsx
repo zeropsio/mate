@@ -42,7 +42,7 @@ export function ZeropsDeviceLoginWait({
       )}
       <p className="text-caption text-muted-foreground" aria-live="polite">
         If Zerops shows a code, it's{" "}
-        <span className="block pt-1 font-mono text-2xl font-medium tracking-widest text-foreground">
+        <span className="block pt-1 font-mono text-display font-medium tracking-widest text-foreground">
           {progress.userCode}
         </span>
       </p>

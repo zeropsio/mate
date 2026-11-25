@@ -5,23 +5,26 @@
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
+import { EmptyState } from "~/components/ui/empty";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
+import { Loading } from "~/components/ui/loading";
 
 /** Missing commit facts are pending, not evidence of an empty branch. */
 export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
   return (
-    <p className="text-body text-muted-foreground">
+    <EmptyState size="row">
       {pending === true ? "Commit metadata is pending." : "No commits on this branch yet."}
-    </p>
+    </EmptyState>
   );
 }
 
 /** A read not answered yet: reading, or waiting for HQ before it can. */
-function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
+function GitReading({ busy, subject }: { readonly busy: boolean; readonly subject: string }) {
+  if (busy) return <Loading count={3} label={subject} shape="lines" />;
   return (
     <p className="text-body text-muted-foreground" role="status">
-      {busy ? words : "Waiting for HQ…"}
+      Waiting for HQ…
     </p>
   );
 }
@@ -88,16 +91,17 @@ export function GitReadStopped({
 /** A read not answered: still reading, waiting for HQ, or why it ended. */
 export function GitNotRead({
   view,
-  reading,
+  subject,
   at,
   onAgain,
 }: {
   readonly view: Exclude<GitBrowseState<unknown>, { readonly state: "known" }>;
-  readonly reading: string;
+  /** What is on its way, named for its stand-in: "The source". */
+  readonly subject: string;
   readonly at: GitRepoAt | null;
   readonly onAgain: () => void;
 }) {
-  if (view.state === "unread") return <GitReading busy={view.busy} words={reading} />;
+  if (view.state === "unread") return <GitReading busy={view.busy} subject={subject} />;
   return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
 }
 
@@ -144,12 +148,7 @@ export function GitAtCommit({
     ) : (
       children(home.answer, home.answer.sha)
     );
-  if (home.state === "unread")
-    return (
-      <p className="text-body text-muted-foreground" role="status">
-        Reading the repository…
-      </p>
-    );
+  if (home.state === "unread") return <Loading count={3} label="The repository" shape="lines" />;
   return (
     <GitReadStopped
       view={home}

@@ -29,6 +29,7 @@ import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import { AddressesDomains, type WebMode } from "./AddressesDomains";
 import { Confirm, CopyButton, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
 import { AddressesZerops } from "./AddressesZerops";
+import { Loading } from "~/components/ui/loading";
 
 /** The project's own IPv4 as billing offers it. */
 export type OwnIpv4Offer =
@@ -230,7 +231,7 @@ function SheetHeader({
   return (
     <div className="flex shrink-0 items-center gap-2.5 py-4 ps-6 pe-4">
       {/* A phone reads the title whole, on two lines where one cuts it. */}
-      <h2 className="truncate font-semibold text-lg max-sm:line-clamp-2 max-sm:whitespace-normal">
+      <h2 className="truncate font-semibold text-title max-sm:line-clamp-2 max-sm:whitespace-normal">
         {projectName}'s addresses
       </h2>
       {places.length > 1 ? (
@@ -383,7 +384,7 @@ function IpSection({
           tone="default"
         >
           {ipv4.state === "reading" ? (
-            <p>Reading its price…</p>
+            <Loading label="Its price" shape="line" />
           ) : price === undefined ? (
             <p>
               Its price can't be read here. Check it in Zerops before you buy.{" "}

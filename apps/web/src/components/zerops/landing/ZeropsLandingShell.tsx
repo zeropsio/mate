@@ -14,6 +14,7 @@ import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { cn } from "~/lib/utils";
 
+import { Failure } from "../../ui/failure";
 import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateMark } from "../../MateMark";
@@ -38,7 +39,7 @@ export function ZeropsLandingShell({
       <div className="w-full max-w-md space-y-6">
         <MateMark playful className="mx-auto h-20 w-auto" />
         <div className="space-y-1.5 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+          <h1 className="text-title font-semibold tracking-tight text-foreground">{title}</h1>
           <p className="text-body text-muted-foreground">{description}</p>
         </div>
 
@@ -174,14 +175,7 @@ function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | 
 
 export function FormError({ message }: { readonly message: string | null }) {
   if (!message) return null;
-  return (
-    <p
-      role="alert"
-      className="rounded-control border border-border bg-muted/35 px-3 py-2 text-body text-foreground"
-    >
-      {message}
-    </p>
-  );
+  return <Failure cause={message} />;
 }
 
 /**

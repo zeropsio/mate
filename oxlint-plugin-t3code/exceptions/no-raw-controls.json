@@ -24,99 +24,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/ServiceBrowserLink.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
     "owner": "kit pass",
     "reason": "the anchor of a link behaviour (it opens a preview beside the chat when one serves the address); it has no look of its own, its caller or a markdown link draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerFoldedAnswerRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body\", customAnswer ? \"text-foreground\" : \"text-placeholder\", !multiSelect && \"px-3 py-2\", )}",
-    "owner": "kit pass",
-    "reason": "the folded composer's words, drawn in the editor's own type so opening it changes no letter; a press only to open the editor",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerFoldedPromptRow.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none\", COMPOSER_PROMPT_TYPE_CLASS_NAME, words ? \"text-foreground\" : \"text-placeholder\", )}",
-    "owner": "kit pass",
-    "reason": "the folded composer's words, drawn in the editor's own type so opening it changes no letter; a press only to open the editor",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"picture-chip\"",
-    "owner": "kit pass",
-    "reason": "a note pinned on the picture at its mark, drawn as the note it opens",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ConversationStrip.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className={cn( \"conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring\", chats === null ? \"pe-3\" : \"pe-1\", opens ? \"cursor-pointer\" : \"cursor-default\", )}",
-    "owner": "kit pass",
-    "reason": "the conversation line's Mate: the line's travelling band draws its ground (.conversation-band), the press is its bare hit target",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"absolute inset-0 z-0 cursor-zoom-out\"",
-    "owner": "kit pass",
-    "reason": "an invisible press filling the room around the expanded picture, so a click beside it closes; it has no look",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/RunNowLine.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"run-now-fold\"",
-    "owner": "kit pass",
-    "reason": "the run card's head toggle: an invisible overlay its line's own words stand over (the head's chevron and Show work are those words)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/TimelineMinimap.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70\"",
-    "owner": "kit pass",
-    "reason": "an invisible press over the minimap that picks the message under the pointer; it has no look",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
-    "owner": "kit pass",
-    "reason": "a range input: the kit has no slider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
-    "owner": "kit pass",
-    "reason": "a range input: the kit has no slider",
     "expires": "never"
   },
   {
@@ -157,22 +69,6 @@
     "fingerprint": "<a> className={file.className}",
     "owner": "kit pass",
     "reason": "a file chip inside a rendered description: the markdown renderer's own chip (ChatMarkdown's file-link class), so a file reads the same in every rendered text",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/review/ReviewDescription.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"rv-pic-open\"",
-    "owner": "kit pass",
-    "reason": "the picture itself is the press that opens its viewer: an image filling its box, which no kit press draws",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/ProjectLineParts.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<button> className=\"ln-bead\"",
-    "owner": "kit pass",
-    "reason": "a bead on the project line is the press itself: a drawn mark in its change's tint and state, the line's own picture, which no kit press draws",
     "expires": "never"
   }
 ]

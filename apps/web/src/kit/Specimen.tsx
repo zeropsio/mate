@@ -3,8 +3,8 @@ import { Fragment, type ReactNode } from "react";
 import { specimenLabel } from "./specimenLabel";
 
 /**
- * One rendered thing and the exact props it rendered with. A home-made specimen also names the file
- * it was copied from, so a census row leads back to the code it stands for.
+ * One rendered thing and the exact props it rendered with, and the file that draws it when that is
+ * not the section's own.
  */
 export function Specimen({
   label,

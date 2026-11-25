@@ -1,0 +1,111 @@
+.arrival-failure-details {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+  text-align: center;
+}
+
+.arrival-failure-details pre,
+.arrival-failure-details p {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+/* A page the Mate published, above its answer (`PublishedPage.tsx`): its title and the page in a
+   frame that holds its height from its first paint — the page's remembered height, else a first
+   box — then stands at the page's own height, however tall. */
+.published-page {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+.published-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+/* Open full shows where the pointer is on the page, or a key reaches it; always on touch. */
+.published-page-head > button {
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+.published-page:hover .published-page-head > button,
+.published-page:focus-within .published-page-head > button {
+  opacity: 1;
+}
+@media (hover: none), (pointer: coarse) {
+  .published-page-head > button {
+    opacity: 1;
+  }
+}
+.published-page-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.published-page-frame {
+  /* The page is the answer: it stands at its full height on the conversation's own ground, with
+     no card around it. Before a client ever measured it, a modest first box it glides from. */
+  height: 240px;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+}
+.published-page-frame[data-glide] {
+  transition: height 260ms var(--ease-out-strong);
+}
+.published-page-frame[data-state="reading"] {
+  background: var(--muted);
+}
+.published-page-frame[data-full] {
+  height: min(80svh, 900px);
+  transition: none;
+}
+.published-page-frame > iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.published-page-left {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.published-page-left > p {
+  margin: 0;
+}
+.published-page-failed {
+  margin: 0;
+  padding: 12px;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+  .published-page-frame {
+    transition: none;
+  }
+}
+
+/* What waits on the person arrives in the header with a small rise, once. */
+@keyframes chat-review-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
+  }
+}

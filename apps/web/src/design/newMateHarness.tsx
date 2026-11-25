@@ -41,7 +41,6 @@ import { HarnessAccess } from "./accessFixtures";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "recipe";
 const NAME = params.get("name") ?? "Quinn";
 const AUTOMATED = params.get("automated");
@@ -256,8 +255,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

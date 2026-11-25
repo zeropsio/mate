@@ -1242,7 +1242,7 @@ function NewRepositoryRow({
     <div
       aria-checked={checked}
       aria-label={`New repository ${account}/${created.name}`}
-      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out hover:bg-accent/60 focus-visible:bg-accent"
+      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out-strong hover:bg-accent/60 focus-visible:bg-accent"
       onClick={(event) => {
         if (!checked && event.detail > 0) typeNext.current = true;
         onPick();
@@ -1538,7 +1538,7 @@ function progressStep(
               Paused
             </Badge>
           </p>
-          <p className="text-lg font-medium">{repo} is connected, and the two mains differ</p>
+          <p className="text-title font-medium">{repo} is connected, and the two mains differ</p>
           <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
             commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
@@ -1591,7 +1591,7 @@ function progressStep(
               In sync
             </Badge>
           </p>
-          <p className="text-lg font-medium">{repo} is on GitHub</p>
+          <p className="text-title font-medium">{repo} is on GitHub</p>
           <p className="text-body text-muted-foreground">
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.

@@ -77,7 +77,7 @@ export const THEME_COLOR_ROLES = [
 export type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
 
 /**
- * The web stylesheet's custom properties each role paints, projected into `apps/web/src/index.css`
+ * The web stylesheet's custom properties each role paints, projected into `apps/web/src/styles/tokens.css`
  * by `scripts/generate-theme-tokens.ts`; a role with none is painted only by the native clients
  * and the boot frame.
  */

@@ -42,6 +42,7 @@ import {
 import { useDiffRepositories } from "./useDiffRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
 import { Button } from "./ui/button";
+import { Loading } from "./ui/loading";
 import { Switch } from "./ui/switch";
 import {
   Combobox,
@@ -454,6 +455,9 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
                 ) : null}
               </p>
             ) : null}
+            {refPresentation.loading ? (
+              <Loading className="mx-3 my-2" count={3} label="Branches" shape="lines" />
+            ) : null}
             {refPresentation.emptyMessage ? (
               <ComboboxEmpty>{refPresentation.emptyMessage}</ComboboxEmpty>
             ) : null}
@@ -547,12 +551,12 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
   const state: ReactNode = !activeThread ? (
     // A conversation on its way in loads; only no conversation at all asks for one.
     routeThreadRef ? (
-      <DiffPanelLoadingState label="Loading conversation..." />
+      <DiffPanelLoadingState label="The conversation's changes" />
     ) : (
       <CodeChangesEmpty title="Select a thread to see its changes." />
     )
   ) : shown.kind === "reading" ? (
-    <DiffPanelLoadingState label="Reading git..." />
+    <DiffPanelLoadingState label="The changes" />
   ) : shown.kind === "no-code" ? (
     <CodeChangesEmpty title="No code here yet." />
   ) : shown.kind === "nothing-outside-main" ? (
@@ -579,9 +583,7 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
     />
   ) : isLoadingPreview || preview === null ? (
     <DiffPanelLoadingState
-      label={
-        selectedGitScope === "unstaged" ? "Loading working tree diff..." : "Loading branch diff..."
-      }
+      label={selectedGitScope === "unstaged" ? "The uncommitted changes" : "The branch's changes"}
     />
   ) : nothingShown && shownChoice ? (
     <CodeChangesEmpty title={shownChoice.nothing} />

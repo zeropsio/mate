@@ -53,7 +53,7 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x:
   };
 }
 
-/** The drawer's curve (`--ease-drawer`), gentler at the start than the strong ease-out. */
+/** The run rooms' curve (index.css `--animate-room-in`), gentler at the start than the strong ease-out. */
 export const drawerEase = cubicBezier(0.32, 0.72, 0, 1);
 
 /**

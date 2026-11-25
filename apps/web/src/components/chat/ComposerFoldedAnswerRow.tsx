@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { Button } from "../ui/button";
+
 export function ComposerFoldedAnswerRow({
   customAnswer,
   multiSelect,
@@ -26,19 +28,23 @@ export function ComposerFoldedAnswerRow({
           !multiSelect && "p-0",
         )}
       >
-        <button
-          type="button"
-          className={cn(
-            "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-body",
-            customAnswer ? "text-foreground" : "text-placeholder",
-            !multiSelect && "px-3 py-2",
-          )}
+        <Button
+          variant="bare"
+          className="min-w-0 flex-1"
           onPointerDown={(event) => event.preventDefault()}
           onClick={onExpand}
           aria-label="Write custom answer"
         >
-          {customAnswer || "Write custom answer"}
-        </button>
+          <span
+            className={cn(
+              "block truncate py-1.5 text-left text-body",
+              customAnswer ? "text-foreground" : "text-placeholder",
+              !multiSelect && "px-3 py-2",
+            )}
+          >
+            {customAnswer || "Write custom answer"}
+          </span>
+        </Button>
         {tasksBadge}
         {stashBadge}
         {multiSelect ? actions : null}

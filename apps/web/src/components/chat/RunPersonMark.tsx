@@ -10,6 +10,8 @@ import type { RecordItem } from "./MessagesTimeline.logic";
 import { BUBBLE_PAD, BUBBLE_SHAPE, WORDS } from "./RunBubble";
 import { TimelineRowCtx } from "./timelineContext";
 import { Button } from "~/components/ui/button";
+import { Loading } from "~/components/ui/loading";
+import { Skeleton } from "~/components/ui/skeleton";
 
 /**
  * Where the person's words reached the Mate, on their side, in their bubble:
@@ -83,12 +85,9 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
     <span className="flex min-w-0 flex-wrap gap-1.5" data-person-pictures>
       {shown.map(({ picture, src }) =>
         src === null ? (
-          <span
-            key={picture.id}
-            aria-label={`Loading ${picture.name}`}
-            className="block h-16 w-24 rounded-control bg-foreground/5"
-            role="status"
-          />
+          <Loading key={picture.id} label={picture.name}>
+            <Skeleton className="h-16 w-24" surface="card" />
+          </Loading>
         ) : (
           <Button
             key={picture.id}

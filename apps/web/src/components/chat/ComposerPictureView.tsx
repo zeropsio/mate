@@ -417,7 +417,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !layout || !editable) return;
     const target = event.target as HTMLElement;
-    if (target.closest(".picture-chip")) return;
+    if (target.closest("[data-picture-chip]")) return;
     event.preventDefault();
     frameRef.current?.setPointerCapture(event.pointerId);
     const point = clampToView(toSource(event));
@@ -639,14 +639,14 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                 {mode === "mark"
                   ? marks.map((mark, index) =>
                       index === noteFor || mark.note.length === 0 ? null : (
-                        <button
+                        <Button
                           key={mark.id}
                           ref={(element) => {
                             if (element) chipRefs.current.set(index, element);
                             else chipRefs.current.delete(index);
                           }}
-                          type="button"
-                          className="picture-chip"
+                          variant="bare"
+                          data-picture-chip=""
                           data-selected={index === selected ? "true" : undefined}
                           aria-label={`Note ${index + 1}: ${mark.note}. Edit it`}
                           onClick={() => {
@@ -655,7 +655,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                           }}
                         >
                           {mark.note}
-                        </button>
+                        </Button>
                       ),
                     )
                   : null}

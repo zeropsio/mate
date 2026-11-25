@@ -23,6 +23,7 @@ import { Skeleton } from "../ui/skeleton";
 import { activityLine, type ActivityNames } from "./activitySettings.logic";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { EmptyState } from "~/components/ui/empty";
 
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -94,7 +95,7 @@ function ActivityPage({
     );
   const lines = read.page.entries.map((entry) => activityLine(entry, names));
   if (before === null && lines.length === 0)
-    return <p className="px-3 text-body text-muted-foreground">Nothing has happened here yet.</p>;
+    return <EmptyState size="row">Nothing has happened here yet.</EmptyState>;
   return (
     <>
       {read.stale ? (

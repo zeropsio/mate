@@ -36,7 +36,6 @@ import {
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const MENU_WIDTH = 435;
 
 const member = (
@@ -214,7 +213,6 @@ function HarnessPage() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <HarnessPage />

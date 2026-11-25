@@ -1,3 +1,4 @@
+import { Loading } from "./ui/loading";
 import { Skeleton } from "./ui/skeleton";
 
 export function DiffPanelHeaderSkeleton() {
@@ -53,28 +54,25 @@ function DiffCodeLineSkeleton({ width }: { width: "short" | "medium" | "long" })
   );
 }
 
+/** A diff on its way: its files' headers and lines at their size. `label` names what comes. */
 export function DiffPanelLoadingState(props: { label: string }) {
   return (
-    <div
-      className="min-h-0 flex-1 overflow-hidden bg-background"
-      role="status"
-      aria-live="polite"
-      aria-label={props.label}
-    >
-      <DiffFileHeaderSkeleton titleWidth="medium" />
-      <div className="flex h-6 items-center gap-2 px-2 pr-3">
-        <div className="h-px flex-1 bg-border/40" />
-        <Skeleton shape="pill" className="h-2.5 w-24" />
-        <div className="h-px flex-1 bg-border/40" />
-      </div>
-      <div className="space-y-2 px-3 py-2">
-        <DiffCodeLineSkeleton width="medium" />
-        <DiffCodeLineSkeleton width="long" />
-        <DiffCodeLineSkeleton width="short" />
-      </div>
-      <DiffFileHeaderSkeleton titleWidth="short" />
-      <DiffFileHeaderSkeleton titleWidth="long" />
-      <span className="sr-only">{props.label}</span>
+    <div className="min-h-0 flex-1 overflow-hidden bg-background">
+      <Loading label={props.label}>
+        <DiffFileHeaderSkeleton titleWidth="medium" />
+        <div className="flex h-6 items-center gap-2 px-2 pr-3">
+          <div className="h-px flex-1 bg-border/40" />
+          <Skeleton shape="pill" className="h-2.5 w-24" />
+          <div className="h-px flex-1 bg-border/40" />
+        </div>
+        <div className="space-y-2 px-3 py-2">
+          <DiffCodeLineSkeleton width="medium" />
+          <DiffCodeLineSkeleton width="long" />
+          <DiffCodeLineSkeleton width="short" />
+        </div>
+        <DiffFileHeaderSkeleton titleWidth="short" />
+        <DiffFileHeaderSkeleton titleWidth="long" />
+      </Loading>
     </div>
   );
 }

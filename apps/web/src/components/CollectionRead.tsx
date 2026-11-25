@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CollectionPresentation } from "../state/query";
+import { Loading } from "./ui/loading";
 
 export function CollectionRead<A>({
   presentation,
@@ -18,6 +19,10 @@ export function CollectionRead<A>({
           {presentation.message}
           {presentation.retained && showItems ? " Showing last-known data." : null}
         </p>
+      ) : null}
+      {presentation.state === "loading" && !showItems ? (
+        // On its way with nothing kept: lines where its rows will be.
+        <Loading className="mx-4 my-3" count={3} label={presentation.subject} shape="lines" />
       ) : null}
       {showItems || presentation.state === "ready" ? (
         !showItems && emptyLabel ? (

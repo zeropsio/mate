@@ -47,6 +47,8 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTime } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
+import { Skeleton } from "../ui/skeleton";
+import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -231,7 +233,8 @@ function IconStat({
 }: {
   icon: ReactNode;
   label: string;
-  value: string;
+  /** `null` while it is on its way: a stand-in at the figure's size. */
+  value: string | null;
   detail?: string | undefined;
   tone?: "default" | "warning" | "danger";
 }) {
@@ -245,12 +248,12 @@ function IconStat({
       </div>
       <div
         className={cn(
-          "mt-2.5 truncate font-mono text-2xl font-semibold tracking-tighter tabular-nums text-foreground",
+          "mt-2.5 truncate font-mono text-title font-semibold tracking-tighter tabular-nums text-foreground",
           tone === "warning" && "text-warning-foreground",
           tone === "danger" && "text-destructive",
         )}
       >
-        {value}
+        {value ?? <Skeleton aria-label={label} className="my-1.5 h-5 w-20" role="status" />}
       </div>
       {detail ? (
         <div className="mt-1.5 truncate text-3xs text-muted-foreground/60">{detail}</div>
@@ -949,9 +952,11 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
                     onClick={telemetry.refresh}
                     aria-label="Refresh resource telemetry"
                   >
-                    <RefreshCwIcon
-                      className={cn("size-3", telemetry.isPending && "animate-spin")}
-                    />
+                    {telemetry.isPending ? (
+                      <Spinner size="xs" />
+                    ) : (
+                      <RefreshCwIcon className="size-3" />
+                    )}
                   </Button>
                 }
               />
@@ -981,13 +986,13 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<CpuIcon className="size-3.5" />}
               label="Current CPU"
-              value={allT3 ? `${allT3.currentCpuPercent.toFixed(1)}%` : "..."}
+              value={allT3 ? `${allT3.currentCpuPercent.toFixed(1)}%` : null}
               detail={allT3 ? `${formatCpuTime(allT3.cpuTimeMs)} observed CPU time` : undefined}
             />
             <IconStat
               icon={<MemoryStickIcon className="size-3.5" />}
               label="Resident memory"
-              value={allT3 ? formatBytes(allT3.currentRssBytes) : "..."}
+              value={allT3 ? formatBytes(allT3.currentRssBytes) : null}
               detail={
                 allT3 ? `${formatBytes(allT3.peakRssBytes)} combined process peaks` : undefined
               }
@@ -995,7 +1000,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<ActivityIcon className="size-3.5" />}
               label="Process count"
-              value={allT3 ? String(allT3.processCount) : "..."}
+              value={allT3 ? String(allT3.processCount) : null}
               detail={
                 allT3 ? `${allT3.processStarts} starts · ${allT3.processExits} exits` : undefined
               }
@@ -1003,13 +1008,13 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<HardDriveIcon className="size-3.5" />}
               label="Read throughput"
-              value={allT3 ? formatRate(allT3.ioReadBytesPerSecond) : "..."}
+              value={allT3 ? formatRate(allT3.ioReadBytesPerSecond) : null}
               detail={allT3 ? `${formatBytes(allT3.ioReadBytes)} observed` : undefined}
             />
             <IconStat
               icon={<DatabaseIcon className="size-3.5" />}
               label="Write throughput"
-              value={allT3 ? formatRate(allT3.ioWriteBytesPerSecond) : "..."}
+              value={allT3 ? formatRate(allT3.ioWriteBytesPerSecond) : null}
               detail={allT3 ? `${formatBytes(allT3.ioWriteBytes)} observed` : undefined}
               tone={
                 allT3 && allT3.ioWriteBytesPerSecond >= 10 * 1_024 * 1_024
@@ -1023,7 +1028,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               icon={<GaugeIcon className="size-3.5" />}
               label="CPU speed limit"
               value={
-                snapshot ? (speedLimit === null ? "Unknown" : `${speedLimit.toFixed(0)}%`) : "..."
+                snapshot ? (speedLimit === null ? "Unknown" : `${speedLimit.toFixed(0)}%`) : null
               }
               detail={snapshot ? `${snapshot.power.thermalState} thermal state` : undefined}
               tone={speedLimit !== null && speedLimit < 80 ? "warning" : "default"}
@@ -1063,7 +1068,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         headerAction={
           collectorNeedsRetry ? (
             <Button size="sm" variant="secondary" disabled={isRetrying} onClick={retryCollector}>
-              <RotateCcwIcon className={cn("size-3", isRetrying && "animate-spin")} />
+              {isRetrying ? <Spinner size="xs" /> : <RotateCcwIcon className="size-3" />}
               Retry monitor
             </Button>
           ) : null
@@ -1201,7 +1206,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               onClick={history.refresh}
               aria-label="Refresh resource history"
             >
-              <RefreshCwIcon className={cn("size-3", history.isPending && "animate-spin")} />
+              {history.isPending ? <Spinner size="xs" /> : <RefreshCwIcon className="size-3" />}
             </Button>
           </div>
         }
@@ -1209,7 +1214,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.buckets, {
-              loading: "Loading resource history...",
+              subject: "Resource history",
               unavailable: "Resource history unavailable.",
             })}
             emptyLabel="No resource samples in this window."
@@ -1218,7 +1223,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </CollectionRead>
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.topProcesses, {
-              loading: "Loading resource history...",
+              subject: "Resource history",
               unavailable: "Resource history unavailable.",
             })}
           >
@@ -1269,7 +1274,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
           <CollectionRead
             presentation={collectionPresentation(telemetry, (data) => data.attribution.entries, {
-              loading: "Loading application I/O...",
+              subject: "Application I/O",
               unavailable: "Application I/O unavailable.",
             })}
           >

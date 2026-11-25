@@ -115,11 +115,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-// The app sets the appearance on the document element (`useTheme.ts`), so the harness does the
-// same.
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 // The review dialog reads the location (a pipeline opened over it), so the harness stands in a
 // router of its own.
 const router = createRouter({

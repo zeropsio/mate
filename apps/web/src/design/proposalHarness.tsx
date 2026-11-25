@@ -53,7 +53,6 @@ import { ProductionAsks } from "./productionAskHarness";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FAIL = params.get("fail") === "1";
 const MENU = Number(params.get("menu") ?? 435);
 const ONLY_MCP = params.get("only") === "mcp";
@@ -707,8 +706,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

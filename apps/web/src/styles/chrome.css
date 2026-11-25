@@ -1,0 +1,318 @@
+/* The banners floating over the composer are a translucent lift over the
+   canvas, in the raised-surface role; the composer and its own top drawer
+   wear the card (`.chat-composer-glass-shell`). */
+:is(.chat-composer-banner-stack-cap, .chat-composer-drawer-surface) {
+  --chat-composer-attached-surface: var(--surface-raised);
+}
+
+:is(.chat-composer-banner-stack-cap, .chat-composer-drawer-surface, .chat-composer-top-drawer):is(
+  :not([data-variant]),
+  [data-variant="default"]
+) {
+  --chat-composer-attached-outline: var(--chat-composer-outline, var(--toolbar-border));
+
+  @variant dark {
+    --chat-composer-attached-outline: var(
+      --chat-composer-outline,
+      color-mix(in srgb, var(--input) 30%, var(--background))
+    );
+  }
+}
+
+/* Workspace actions use a small, separate chrome hierarchy: the toolbar roles,
+   so the thread toolbar never falls back to the default dark-mode whites. */
+[data-chat-header] {
+  background-color: var(--toolbar-background);
+  color: var(--contrast-toolbar-foreground);
+}
+
+[data-chat-header] [data-slot="button"],
+[data-chat-header] [data-slot="menu-trigger"],
+[data-chat-header] [data-toolbar-control] {
+  --control-icon-color: var(--contrast-toolbar-control-foreground);
+  background-color: var(--toolbar-control);
+  border-color: var(--contrast-toolbar-border);
+  color: var(--contrast-toolbar-control-foreground);
+}
+
+/* The panel layout toggles stay ghost: they render both inside the header and
+   in the titlebar strip, so filling them would make them change appearance as
+   the panel opens. They only take the themed foreground; hover and pressed
+   keep the base ghost accent. The tooltip trigger's data-slot wins over the
+   toggle's when the trigger renders the toggle, so match both. */
+[data-panel-layout-controls] [data-slot="toggle"],
+[data-panel-layout-controls] [data-slot="tooltip-trigger"],
+[data-workspace-titlebar-controls] [data-slot="toggle"],
+[data-workspace-titlebar-controls] [data-slot="tooltip-trigger"] {
+  --control-icon-color: var(--contrast-toolbar-foreground);
+  color: var(--contrast-toolbar-foreground);
+}
+
+[data-panel-layout-controls] [data-slot="toggle"]:disabled,
+[data-panel-layout-controls] [data-slot="tooltip-trigger"]:disabled,
+[data-workspace-titlebar-controls] [data-slot="toggle"]:disabled,
+[data-workspace-titlebar-controls] [data-slot="tooltip-trigger"]:disabled {
+  --control-icon-color: color-mix(
+    in oklab,
+    var(--contrast-toolbar-foreground) 55%,
+    var(--toolbar-background)
+  );
+  color: color-mix(in oklab, var(--contrast-toolbar-foreground) 55%, var(--toolbar-background));
+}
+
+[data-chat-header] [data-slot="button"]:hover,
+[data-chat-header] [data-slot="button"][data-pressed],
+[data-chat-header] [data-slot="menu-trigger"]:hover,
+[data-chat-header] [data-slot="menu-trigger"][data-pressed],
+[data-chat-header] [data-toolbar-control]:hover,
+[data-chat-header] [data-toolbar-control][data-pressed] {
+  background-color: var(--toolbar-control-hover);
+}
+
+[data-chat-header] [data-slot="separator"] {
+  background-color: var(--contrast-toolbar-border);
+}
+
+[data-app-sidebar] {
+  border-color: color-mix(in srgb, var(--contrast-sidebar-foreground) 10%, transparent);
+
+  @variant dark {
+    border-color: color-mix(in srgb, var(--contrast-sidebar-foreground) 8%, transparent);
+  }
+}
+
+/* Contrast stays in ordinary custom properties so both Tailwind utilities and
+   global/imperative chrome styles resolve the same adjusted role. */
+:root {
+  --contrast-toolbar-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-foreground) var(--appearance-contrast-base),
+      var(--toolbar-background)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-toolbar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--toolbar-border) var(--appearance-contrast-base), transparent),
+    var(--toolbar-foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-toolbar-control-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--toolbar-control-foreground) var(--appearance-contrast-base),
+      var(--toolbar-control)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-input: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent),
+    var(--foreground) var(--appearance-contrast-border-boost)
+  );
+  --contrast-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-muted-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-placeholder: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-label: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-icon-muted: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-card-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-popover-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-accent-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-secondary-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--secondary-foreground) var(--appearance-contrast-base),
+      var(--secondary)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-message-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--message-foreground) var(--appearance-contrast-base),
+      var(--message-surface)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-foreground: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-muted-foreground: color-mix(
+    in oklab,
+    color-mix(
+      in oklab,
+      var(--sidebar-muted-foreground) var(--appearance-contrast-base),
+      var(--sidebar)
+    ),
+    var(--appearance-contrast-target) var(--appearance-contrast-boost)
+  );
+  --contrast-sidebar-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent),
+    var(--sidebar-foreground) var(--appearance-contrast-border-boost)
+  );
+}
+
+body {
+  /* Reference the theme token (not a literal stack) so the Settings ->
+     Appearance runtime override of --font-sans reaches all interface text. */
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  min-height: calc(100svh + env(safe-area-inset-top));
+  overscroll-behavior: none;
+  /* A tap shows the control's own pressed look, not the browser's grey box over it, and two
+     quick taps are two taps, never a zoom; a pinch still zooms. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-right: var(--desktop-window-right-resize-inset);
+}
+
+.electron-windows {
+  --desktop-window-right-resize-inset: 6px;
+}
+
+/* App-chrome grain. Baked into each surface's own background (behind
+   content) rather than a fixed overlay on top: a full-viewport overlay
+   forces the compositor to re-blend every frame any animation produces,
+   which multiplied idle GPU cost. The overlay's 0.035 opacity lives in the
+   SVG rect instead. Surfaces that float over the body (e.g. the inset main
+   card) must opt in via the surface-grain utility, or they lose the
+   grain's subtle brightening and stand out against the body. */
+:root {
+  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  --surface-grain-size: 256px 256px;
+}
+
+body {
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: var(--surface-grain-size);
+}
+
+pre,
+code {
+  font-family: var(--font-mono);
+}
+
+/* Code blocks in chat carry the size preference. Scoped to chat markdown
+   rather than every pre: a global rule would beat text-size utilities and
+   inherited sizes on unrelated pre surfaces (terminal previews, approvals).
+   Inline code stays relative to its sentence so it never towers over prose;
+   diffs and file previews take the size through --diffs-font-size. A plain
+   block (the hidden one holding a block's place until Shiki colours it) takes
+   the size on its pre too, as Shiki's does: its lines are as tall, and the
+   conversation does not move when the colours land. */
+.chat-markdown .chat-markdown-shiki .shiki,
+.chat-markdown pre:has(> code),
+.chat-markdown pre code {
+  font-size: var(--font-size-code, inherit);
+}
+
+/* @pierre/diffs surfaces (diffs, file previews, annotatable code, search
+   lines) render inside shadow roots but consult these hooks with their own
+   literal stacks as fallback. Custom properties inherit across the shadow
+   boundary, so defining them once here routes every code surface through the
+   appearance font tokens. */
+:root {
+  --diffs-font-family: var(--font-mono);
+  --diffs-header-font-family: var(--font-sans);
+}
+
+/* Window drag region (frameless titlebar) */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.drag-region button,
+.drag-region input,
+.drag-region textarea,
+.drag-region select,
+.drag-region a {
+  -webkit-app-region: no-drag;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: var(--app-scrollbar-width);
+  height: var(--app-scrollbar-width);
+}
+
+/* A box scrolling both ways (a build log) meets its two bars in a corner that
+   the platform paints white unless told otherwise. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border-radius: var(--radius-mark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}

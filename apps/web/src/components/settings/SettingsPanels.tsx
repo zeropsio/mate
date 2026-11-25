@@ -1,7 +1,7 @@
-import { ArchiveIcon, ArchiveX, ChevronRightIcon, LoaderIcon, SettingsIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveX, ChevronRightIcon, SettingsIcon } from "lucide-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { Link } from "@tanstack/react-router";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -76,6 +76,8 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
+import { EmptyState } from "../ui/empty";
+import { Loading } from "../ui/loading";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -119,6 +121,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Slider } from "../ui/slider";
 import { Switch } from "../ui/switch";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
@@ -906,20 +909,6 @@ export function AppearanceSettingsPanel() {
   const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
-  const glassOpacityRatio =
-    (settings.glassOpacity - MIN_GLASS_OPACITY) / (MAX_GLASS_OPACITY - MIN_GLASS_OPACITY);
-  const glassOpacitySliderStyle = {
-    "--settings-slider-progress": `${glassOpacityRatio * 100}%`,
-    "--settings-slider-fill-offset": `${0.5 - glassOpacityRatio}rem`,
-  } as CSSProperties;
-  const appearanceContrastRatio =
-    (settings.appearanceContrast - MIN_APPEARANCE_CONTRAST) /
-    (MAX_APPEARANCE_CONTRAST - MIN_APPEARANCE_CONTRAST);
-  const appearanceContrastSliderStyle = {
-    "--settings-slider-progress": `${appearanceContrastRatio * 100}%`,
-    "--settings-slider-fill-offset": `${0.5 - appearanceContrastRatio}rem`,
-  } as CSSProperties;
-
   return (
     <SettingsPageContainer>
       <SettingsSection id="appearance" title="Appearance">
@@ -975,25 +964,14 @@ export function AppearanceSettingsPanel() {
               >
                 {settings.appearanceContrast}%
               </output>
-              <input
+              <Slider
                 aria-label="Contrast"
-                className="settings-slider min-w-0 flex-1"
+                className="min-w-0 flex-1"
                 id="appearance-contrast"
                 max={MAX_APPEARANCE_CONTRAST}
                 min={MIN_APPEARANCE_CONTRAST}
-                onChange={(event) => {
-                  const appearanceContrast = Number(event.currentTarget.value);
-                  if (
-                    Number.isInteger(appearanceContrast) &&
-                    appearanceContrast >= MIN_APPEARANCE_CONTRAST &&
-                    appearanceContrast <= MAX_APPEARANCE_CONTRAST
-                  ) {
-                    updateSettings({ appearanceContrast });
-                  }
-                }}
+                onValueChange={(appearanceContrast) => updateSettings({ appearanceContrast })}
                 step={5}
-                style={appearanceContrastSliderStyle}
-                type="range"
                 value={settings.appearanceContrast}
               />
             </div>
@@ -1021,25 +999,14 @@ export function AppearanceSettingsPanel() {
               >
                 {settings.glassOpacity}%
               </output>
-              <input
+              <Slider
                 aria-label="Glass opacity"
-                className="settings-slider min-w-0 flex-1"
+                className="min-w-0 flex-1"
                 id="glass-opacity"
                 max={MAX_GLASS_OPACITY}
                 min={MIN_GLASS_OPACITY}
-                onChange={(event) => {
-                  const glassOpacity = Number(event.currentTarget.value);
-                  if (
-                    Number.isInteger(glassOpacity) &&
-                    glassOpacity >= MIN_GLASS_OPACITY &&
-                    glassOpacity <= MAX_GLASS_OPACITY
-                  ) {
-                    updateSettings({ glassOpacity });
-                  }
-                }}
+                onValueChange={(glassOpacity) => updateSettings({ glassOpacity })}
                 step={5}
-                style={glassOpacitySliderStyle}
-                type="range"
                 value={settings.glassOpacity}
               />
             </div>
@@ -1697,7 +1664,7 @@ function FoldedSettingsSection({
     <section className="space-y-3">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="group flex min-h-8 w-full items-center gap-2 px-3 sm:px-4">
-          <h2 className="text-lg font-semibold tracking-tight text-muted-foreground transition-colors group-hover:text-foreground">
+          <h2 className="text-emphasis font-semibold tracking-tight text-muted-foreground transition-colors group-hover:text-foreground">
             {title}
           </h2>
           <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90" />
@@ -2648,27 +2615,23 @@ export function ArchivedThreadsPanel() {
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
         >
-          <SettingsRow
-            title={
-              <span className="inline-flex items-center gap-2">
-                {isLoadingArchive ? (
-                  <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
-                ) : (
+          {isLoadingArchive ? (
+            <Loading count={2} label="Archived chats" shape="rows" />
+          ) : archiveError ? (
+            <SettingsRow
+              title={
+                <span className="inline-flex items-center gap-2">
                   <ArchiveIcon className="size-3.5 text-muted-foreground" />
-                )}
-                {isLoadingArchive
-                  ? "Loading archived threads"
-                  : archiveError
-                    ? "Could not load archived threads"
-                    : "No archived threads"}
-              </span>
-            }
-            description={
-              isLoadingArchive
-                ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
-            }
-          />
+                  Could not load archived threads
+                </span>
+              }
+              description={archiveError}
+            />
+          ) : (
+            <EmptyState mark={<ArchiveIcon />} size="row">
+              No archived chats. A chat you archive shows up here.
+            </EmptyState>
+          )}
         </SettingsSection>
       ) : (
         archivedGroups.map(({ project, threads: projectThreads }, index) => (

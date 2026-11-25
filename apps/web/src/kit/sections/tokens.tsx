@@ -5,15 +5,7 @@ import { Button } from "~/components/ui/button";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
-
-/** The type steps as utilities; the class names are static so the guard can read them. */
-const TYPE_CLASS: Readonly<Record<keyof typeof TYPE_SCALE, string>> = {
-  caption: "text-caption",
-  body: "text-body",
-  emphasis: "text-emphasis",
-  title: "text-title",
-  display: "text-display",
-};
+import { TYPE_CLASS } from "../typeSteps";
 
 const SPACING_STEPS = [1, 2, 3, 4, 6, 8] as const;
 const SPACING_WIDTH: Readonly<Record<(typeof SPACING_STEPS)[number], string>> = {
@@ -57,7 +49,7 @@ function MotionSpecimen({ step }: { readonly step: keyof typeof MOTION.duration 
 function TokenSpecimens() {
   return (
     <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Type: five steps">
+      <SpecimenBlock title="Type: one scale">
         <div className="flex flex-col gap-3">
           {Object.entries(TYPE_SCALE).map(([step, { fontSize, lineHeight }]) => (
             <div className="flex items-baseline gap-4" key={step}>

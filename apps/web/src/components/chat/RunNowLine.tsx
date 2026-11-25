@@ -1,3 +1,4 @@
+import { MOTION } from "@t3tools/shared/brand";
 import { ChevronDownIcon } from "lucide-react";
 import {
   Fragment,
@@ -199,7 +200,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
 }
 
 /** How long the words a line leaves take to go: their fade, and a frame to spare. */
-const LINE_LEAVES_MS = 160;
+const LINE_LEAVES_MS = MOTION.duration.quick + 16;
 
 /**
  * The words the now line just left, as it last drew them, while they fade
@@ -375,16 +376,16 @@ export function NowLine({
     >
       {/* The whole line is the work's toggle: its words say what it opens. */}
       {toggle === null ? null : (
-        <button
+        <Button
           aria-expanded={toggle.open}
-          className="run-now-fold"
+          data-run-now-fold=""
           onClick={toggle.onToggle}
           onFocus={toggle.onIntent}
           onPointerEnter={toggle.onIntent}
-          type="button"
+          variant="bare"
         >
           {toggle.open ? "Hide work" : "Show work"}
-        </button>
+        </Button>
       )}
       {ctx.speaker.helper ? (
         <HelperFace />

@@ -82,7 +82,7 @@ export function resourceTelemetryProcessPresentation(
         (native !== undefined && Option.isNone(native.lastSampleAt)),
     },
     (data) => data.processes,
-    { loading: "Loading live processes...", unavailable: "Live processes unavailable." },
+    { subject: "Live processes", unavailable: "Live processes unavailable." },
     native ? Option.getOrNull(native.lastError) : null,
   );
 }

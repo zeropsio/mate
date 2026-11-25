@@ -52,6 +52,9 @@ export type CollectionReadState = "ready" | "failed" | "loading" | "unavailable"
 export interface CollectionPresentation<A> {
   readonly state: CollectionReadState;
   readonly items: ReadonlyArray<A>;
+  /** What the collection is, for its stand-in's accessible name: "Live processes". */
+  readonly subject: string;
+  /** Words for a read that failed or has nothing to give; a read on its way says none. */
   readonly message: string | null;
   readonly retained: boolean;
 }
@@ -60,7 +63,7 @@ export interface CollectionPresentation<A> {
 export function collectionPresentation<A, Item>(
   query: Pick<EnvironmentQueryView<A>, "data" | "error" | "isPending" | "read">,
   select: (data: A) => ReadonlyArray<Item>,
-  labels: { readonly loading: string; readonly unavailable: string },
+  labels: { readonly subject: string; readonly unavailable: string },
   responseError: string | null = null,
 ): CollectionPresentation<Item> {
   const error = query.error ?? responseError;
@@ -88,14 +91,8 @@ export function collectionPresentation<A, Item>(
   return {
     state,
     items: query.data === null ? [] : select(query.data),
-    message:
-      state === "failed"
-        ? error
-        : state === "loading"
-          ? labels.loading
-          : state === "unavailable"
-            ? labels.unavailable
-            : null,
+    subject: labels.subject,
+    message: state === "failed" ? error : state === "unavailable" ? labels.unavailable : null,
     retained: query.data !== null && state !== "ready",
   };
 }

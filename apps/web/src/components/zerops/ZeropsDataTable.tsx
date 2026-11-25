@@ -50,6 +50,7 @@ import { Checkbox } from "../ui/checkbox";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
+import { Spinner } from "~/components/ui/spinner";
 
 /** How far below the last row the next page starts loading. */
 
@@ -350,9 +351,7 @@ export function ZeropsDataTable({
           </span>
 
           {loadMorePending ? (
-            <span className="text-muted-foreground" data-zerops-data-table-loading>
-              Loading…
-            </span>
+            <Spinner aria-label="More rows" data-zerops-data-table-loading size="xs" tone="muted" />
           ) : null}
 
           {hasMore ? (

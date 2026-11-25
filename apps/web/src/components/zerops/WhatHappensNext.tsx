@@ -41,9 +41,9 @@ export function WhatHappensNext({
           <div
             aria-hidden={shown ? undefined : true}
             className={cn(
-              "col-start-1 row-start-1 flex flex-col gap-1 transition-[opacity,visibility] ease-out",
+              "col-start-1 row-start-1 flex flex-col gap-1 transition-[opacity,visibility] ease-out-strong",
               // The one leaving is gone before the one arriving shows: never both at once.
-              shown ? "delay-100 duration-200" : "invisible opacity-0 duration-100",
+              shown ? "delay-100 duration-200" : "invisible opacity-0 duration-150",
             )}
             data-zerops-next={shown ? "shown" : "held"}
             key={key}

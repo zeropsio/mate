@@ -1,5 +1,7 @@
 import { parseMateImageSource } from "@t3tools/client-runtime/data";
 import { useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react";
+import { Spinner } from "~/components/ui/spinner";
+
 import { useMateImage } from "./MateImages";
 
 export function AssetDownloadLink({
@@ -56,7 +58,7 @@ export function AssetDownloadLink({
       {requested && original.read.kind === "failed" ? (
         <small role="status">{original.read.reason}</small>
       ) : requested && original.read.kind !== "ready" ? (
-        <small role="status">Loading original</small>
+        <Spinner aria-label="The original" size="xs" tone="muted" />
       ) : null}
     </>
   );

@@ -597,16 +597,40 @@ export const RADII = {
 } as const;
 
 /**
- * The one type scale: five steps, the sizes the owner's design canvas is built on. A size between
- * two steps takes the nearer one. Pixels.
+ * The one type scale, every font size the web client draws. Pixels; a size between two steps takes
+ * the nearer one.
+ *
+ * - caption, body, emphasis, title, display: the five steps the owner's design canvas is built on.
+ * - 2xs 11 and 3xs 10: dense metadata (badges, counters, keyboard hints, diagnostics tables).
+ * - 4xs 8 and 5xs 7: the badges overlaid on a provider's icon.
+ * - line, 13 on a 20 px line: the conversation's quiet voice (a work line, a message sent into a
+ *   running turn, an event, a log step's activity).
+ * - prose, 14 on a 22.75 px line: the conversation's prose (what the person wrote, what the Mate
+ *   answered and asked, the answers to its questions) at one size; the owner, 2026-09-26: "14px
+ *   everywhere was better".
+ * - typed, 16 on 24: what a phone's field types at; iOS zooms the page onto a field under 16 px.
+ *   Not `field`: `text-field` is already the field's colour (`--color-field`).
+ *
+ * A `relative` step's line is a ratio of its size, so text sized in em inside it keeps the
+ * proportion (prose's headings and code); every other step holds its line's pixels.
  */
 export const TYPE_SCALE = {
+  "5xs": { fontSize: 7, lineHeight: 7, relative: true },
+  "4xs": { fontSize: 8, lineHeight: 8, relative: true },
+  "3xs": { fontSize: 10, lineHeight: 14, relative: true },
+  "2xs": { fontSize: 11, lineHeight: 16, relative: true },
   caption: { fontSize: 12, lineHeight: 16 },
+  line: { fontSize: 13, lineHeight: 20, relative: true },
   body: { fontSize: 14, lineHeight: 20 },
+  prose: { fontSize: 14, lineHeight: 22.75, relative: true },
   emphasis: { fontSize: 15, lineHeight: 24 },
+  typed: { fontSize: 16, lineHeight: 24 },
   title: { fontSize: 20, lineHeight: 28 },
   display: { fontSize: 28, lineHeight: 36 },
-} as const;
+} as const satisfies Record<
+  string,
+  { readonly fontSize: number; readonly lineHeight: number; readonly relative?: true }
+>;
 
 /**
  * Only what the person did animates. Three durations in milliseconds; one strong ease-out for

@@ -9,6 +9,7 @@ import { LegendList } from "@legendapp/list/react";
 import { FileIcon, FolderIcon, LinkIcon, PackageIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 
+import { EmptyState } from "~/components/ui/empty";
 import { Row } from "~/components/ui/row";
 
 /** Rows drawn as a plain list; a longer folder draws only the rows in view. */
@@ -75,7 +76,7 @@ export function GitDirectoryList({ entries, truncated, hrefOf, onOpen }: GitDire
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {entries.length === 0 && !truncated ? (
-        <p className="text-body text-muted-foreground">No files here.</p>
+        <EmptyState size="row">No files here.</EmptyState>
       ) : entries.length > PLAIN_ROWS ? (
         <LegendList<GitTreeEntry>
           data={entries as Array<GitTreeEntry>}

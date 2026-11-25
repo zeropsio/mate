@@ -22,8 +22,8 @@ import { Kbd, KbdGroup } from "~/components/ui/kbd";
 import { SelectButton } from "~/components/ui/select";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 
-import type { KitFlow, KitFlowState } from "../kitFlows";
-import { FlowFrame, flowSrc, type FlowTheme } from "./flowFrame";
+import { flowSrc, type FlowTheme, type KitFlow, type KitFlowState } from "../kitFlows";
+import { FlowFrame } from "./flowFrame";
 import { FlowGrid } from "./flowGrid";
 import { useHeldScroll } from "./heldScroll";
 

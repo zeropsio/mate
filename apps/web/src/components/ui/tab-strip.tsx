@@ -44,9 +44,15 @@ interface TabStripProps {
 /** Whether the strip folds the tabs other than the open one to their icons (`tabsCompact`). */
 const TabStripCompactContext = createContext(false);
 
-/** Inside a `TabStrip`: whether its tabs other than the open one show only their icons. */
-function useTabStripCompact(): boolean {
-  return useContext(TabStripCompactContext);
+/** Whether this tab shows only its icon: the strip folds, and it is not the open one. */
+const TabFoldedContext = createContext(false);
+
+/**
+ * Inside a `Tab`: whether it shows only its icon, its name left to a tooltip or a screen reader.
+ * A face that draws itself differently when folded reads it; `TabLabel` follows it by itself.
+ */
+function useTabFolded(): boolean {
+  return useContext(TabFoldedContext);
 }
 
 /** The open tab, clear of the strip's faded edges. */
@@ -219,8 +225,8 @@ interface TabProps extends useRender.ComponentProps<"div">, VariantProps<typeof 
 }
 
 /** One tab: filled while open, quiet otherwise, lit under the pointer. */
-function Tab({ className, render, tabId, active, size, ...props }: TabProps) {
-  const compact = useTabStripCompact() && !active;
+function Tab({ className, render, tabId, active, size, children, ...props }: TabProps) {
+  const folded = useContext(TabStripCompactContext) && !active;
   const defaultProps = {
     className: cn(
       tabVariants({ size }),
@@ -232,13 +238,19 @@ function Tab({ className, render, tabId, active, size, ...props }: TabProps) {
     "data-slot": "tab",
     "data-tab-id": tabId,
     "data-active-tab": active ? "true" : "false",
-    "data-tab-compact": compact ? "true" : "false",
+    "data-tab-compact": folded ? "true" : "false",
+    children: <TabFoldedContext value={folded}>{children}</TabFoldedContext>,
   };
   return useRender({
     defaultTagName: "div",
     props: mergeProps<"div">(defaultProps, props),
     render,
   });
+}
+
+/** A tab's name beside its icon: while the tab is folded, only a screen reader hears it. */
+function TabLabel({ children }: { readonly children: ReactNode }) {
+  return <span className={useTabFolded() ? "sr-only" : "truncate"}>{children}</span>;
 }
 
 /**
@@ -261,4 +273,4 @@ function TabPress({ className, render, ...props }: useRender.ComponentProps<"but
   });
 }
 
-export { Tab, TabPress, TabStrip, useTabStripCompact };
+export { Tab, TabLabel, TabPress, TabStrip, useTabFolded };

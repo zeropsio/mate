@@ -105,9 +105,10 @@ function CommandSpecimens() {
           </CommandDialogPopup>
         </CommandDialog>
       </Specimen>
-      <Specimen label="<Command> inline, without <CommandInput> (it takes focus on mount)">
+      <Specimen label="<Command> inline (its field waits to be pressed)">
         <div className="w-96 rounded-sheet border">
           <Command items={GROUPS}>
+            <CommandInput placeholder="Search projects and actions" />
             <CommandPanel>
               <Results />
             </CommandPanel>

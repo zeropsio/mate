@@ -1,20 +1,15 @@
 /**
- * Fixture facts the state census renders its real components with: a Mate's birth at three
- * ages, the showcase scenes' operation cards. Static and local:
- * nothing here reads an account, a project or a Mate.
+ * Fixture facts the kit's state pages render real components with: a Mate's birth at three ages,
+ * a conversation's row around its working line. Static and local: nothing here reads an account,
+ * a project or a Mate.
  */
 import {
   deriveBirthProgress,
   type BirthFacts,
   type BirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import {
-  deriveZeropsThreadModel,
-  type ZeropsOperation,
-} from "@t3tools/client-runtime/zerops/model";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { EnvironmentId } from "@t3tools/contracts";
-import { listShowcaseScenes } from "@t3tools/shared/showcaseScenes";
 
 import type {
   TimelineRowActivityState,
@@ -115,27 +110,6 @@ export function failedBirthProgress(nowMs: number): BirthProgress {
     },
     nowMs,
   );
-}
-
-/** Every operation card the showcase scenes hold, as a conversation derives them. */
-function showcaseOperations(): ReadonlyArray<ZeropsOperation> {
-  return listShowcaseScenes().flatMap((scene) =>
-    Object.values(scene.threadActivities).flatMap((activities) =>
-      // Each scene's turn as the one running: a call still in flight stays running.
-      deriveZeropsThreadModel({
-        activities,
-        runningTurnId: activities.at(-1)?.turnId ?? null,
-      }).entries.flatMap((entry) => (entry.kind === "operation" ? [entry.operation] : [])),
-    ),
-  );
-}
-
-let operations: ReadonlyArray<ZeropsOperation> | null = null;
-
-/** The first showcase operation in `phase`, or null where the scenes hold none. */
-export function showcaseOperation(phase: ZeropsOperation["phase"]): ZeropsOperation | null {
-  operations ??= showcaseOperations();
-  return operations.find((operation) => operation.phase === phase) ?? null;
 }
 
 /** A conversation's row state with nothing behind it: what a run's line reads around it. */

@@ -283,7 +283,7 @@ export function ExpressPanel({
           <header className="flex items-center gap-3">
             <ExpressMark className="size-10 shrink-0 rounded-control shadow-xs/10" />
             <div className="flex min-w-0 flex-col">
-              <h2 className="text-base font-semibold leading-6">Adobe Express</h2>
+              <h2 className="text-emphasis font-semibold">Adobe Express</h2>
               <p className="text-muted-foreground text-body leading-5">
                 {`Design here; what you save goes into your message to ${mate ?? "this Mate"}.`}
               </p>

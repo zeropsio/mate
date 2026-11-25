@@ -129,9 +129,6 @@ function Harness() {
   );
 }
 
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

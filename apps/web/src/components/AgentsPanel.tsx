@@ -56,6 +56,8 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Row } from "~/components/ui/row";
+import { Loading } from "~/components/ui/loading";
+import { EmptyState } from "~/components/ui/empty";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -348,7 +350,7 @@ function WorkflowScriptView({
         ) : result._tag === "Failure" ? (
           <p className="text-caption text-destructive-foreground">Could not load the script.</p>
         ) : (
-          <p className="text-caption text-muted-foreground">Loading…</p>
+          <Loading count={3} label="The script" shape="lines" />
         )}
       </div>
     </div>
@@ -762,13 +764,11 @@ export function AgentsPanel({
 
   if (!model.hasAgents) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-        <Bot aria-hidden className="size-6 text-muted-foreground/60" />
-        <p className="text-body font-medium">No helpers yet</p>
-        <p className="max-w-56 text-caption text-muted-foreground">
-          When {mate?.name ?? "this Mate"} starts helpers, each shows here with what it does now,
-          and opens onto its own work.
-        </p>
+      <div className="flex h-full flex-col">
+        <EmptyState mark={<Bot aria-hidden className="size-6 text-muted-foreground" />}>
+          No helpers yet. When {mate?.name ?? "this Mate"} starts helpers, each shows here with what
+          it does now.
+        </EmptyState>
       </div>
     );
   }

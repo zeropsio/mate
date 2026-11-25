@@ -26,12 +26,10 @@ export type KitPageRef =
   | { readonly kind: "foundation"; readonly foundation: (typeof FOUNDATIONS)[number] }
   | { readonly kind: "component"; readonly section: KitSection }
   | { readonly kind: "flow"; readonly flow: KitShellFlow }
-  | { readonly kind: "census"; readonly at: string | undefined }
   | { readonly kind: "missing"; readonly page: string };
 
-/** A component is a section the system offers; the home-made ones are the census's. */
-export const isComponentSection = (section: KitSection) =>
-  section.group !== "Home-made" && section.kind !== "Foundations";
+/** A component is a section the system offers; the tokens' section is a foundation. */
+export const isComponentSection = (section: KitSection) => section.kind !== "Foundations";
 
 export function resolveKitPage(
   page: string | undefined,
@@ -39,8 +37,6 @@ export function resolveKitPage(
   flows: readonly KitShellFlow[],
 ): KitPageRef {
   if (page === undefined || page === "overview") return { kind: "overview" };
-  if (page === "census") return { kind: "census", at: undefined };
-  if (page.startsWith("census:")) return { kind: "census", at: page.slice("census:".length) };
   if (page.startsWith("foundations:")) {
     const foundation = FOUNDATIONS.find(({ id }) => `foundations:${id}` === page);
     return foundation === undefined
@@ -53,12 +49,11 @@ export function resolveKitPage(
   }
   const section = sections.find(({ id }) => id === page);
   if (section === undefined) return { kind: "missing", page };
-  if (section.group === "Home-made") return { kind: "census", at: section.id };
   if (section.kind === "Foundations") return { kind: "foundation", foundation: FOUNDATIONS[0] };
   return { kind: "component", section };
 }
 
-/** The same page, as the shell keys what it renders: a census anchor is still the census. */
+/** The page as the shell keys what it renders. */
 export function kitPageKey(ref: KitPageRef): string {
   switch (ref.kind) {
     case "overview":
@@ -69,17 +64,15 @@ export function kitPageKey(ref: KitPageRef): string {
       return ref.section.id;
     case "flow":
       return `flow:${ref.flow.id}`;
-    case "census":
-      return "census";
     case "missing":
       return `missing:${ref.page}`;
   }
 }
 
-export const NAV_GROUPS = ["Overview", "Foundations", "Components", "Flows", "Census"] as const;
+export const NAV_GROUPS = ["Overview", "Foundations", "Components", "Flows"] as const;
 export type NavGroupName = (typeof NAV_GROUPS)[number];
 
-/** One entry in the navigation: a page, a flow's state, or a census section's place. */
+/** One entry in the navigation: a page, or a flow's state. */
 export interface NavEntry {
   /** Unique across the navigation; also the entry's DOM id's suffix. */
   readonly key: string;
@@ -150,29 +143,6 @@ export function kitNavEntries(
       });
     }
   }
-  entries.push({
-    key: "census",
-    group: "Census",
-    label: "All home-made looks",
-    page: "census",
-    depth: 0,
-  });
-  for (const section of sections.filter((candidate) => candidate.group === "Home-made")) {
-    entries.push({
-      key: `census:${section.id}`,
-      group: "Census",
-      label: section.title,
-      page: `census:${section.id}`,
-      depth: 0,
-    });
-  }
-  entries.push({
-    key: "census:not-shown",
-    group: "Census",
-    label: "Not shown",
-    page: "census:not-shown",
-    depth: 0,
-  });
   return entries;
 }
 

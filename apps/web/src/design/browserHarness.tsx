@@ -22,7 +22,6 @@ import { mateAddresses } from "@t3tools/client-runtime/zerops/mateAddresses";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const TAB = params.get("tab") ?? "list";
 const MENU = Number(params.get("menu") ?? 435);
 const MAXIMIZED = params.get("max") === "1";
@@ -124,8 +123,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

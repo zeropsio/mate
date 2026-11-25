@@ -1,0 +1,292 @@
+/* The palette and the hand-written tokens: the Zerops colours generated from packages/shared
+   (`generated:theme-colors`), the motion scale (`generated:motion-tokens`), and the --zerops-*
+   values per appearance. */
+:root {
+  color-scheme: light;
+  --destructive: var(--error);
+  --destructive-foreground: var(--error-foreground);
+  --info: #0077cc;
+  --info-foreground: var(--color-blue-700);
+  --success: #00cc55;
+  --success-foreground: #0f7a38;
+  --zerops-status-ok: #66bb6a;
+  --zerops-status-ok-surface: #e8f7ec;
+  --zerops-status-ok-text: #2e7d32;
+  --zerops-status-busy: #42a5f5;
+  --zerops-status-busy-surface: #eff9fd;
+  /* Light had no busy text colour, so every word that asked for one inherited
+     the body's — a blue chip with black text beside an amber chip with amber
+     text. Same mistake, same fix, as the failed text below. */
+  --zerops-status-busy-text: #1565c0;
+  --zerops-status-attention: #ffa726;
+  --zerops-status-attention-surface: #fff4e0;
+  --zerops-status-attention-text: #a26000;
+  --zerops-status-failed: #ef5350;
+  --zerops-status-failed-surface: #fdefef;
+  /* Only the dark block defined this, so every error line that asked for it
+     — the rename dialog, the environment-creation dialog, two on the projects
+     page — resolved to nothing in light and inherited the body colour. Dark
+     enough to read on the surface above, like its ok and attention siblings. */
+  --zerops-status-failed-text: #c62828;
+  /* The timeline's spine. Opaque on purpose: drawn with an alpha the branch's
+     arc paints over the line it leaves and the overlap comes out half again as
+     dark, which reads as a notch cut into the spine. */
+  --zerops-rail: #c3c7cc;
+  --zerops-status-off: #bdbdbd;
+  --zerops-status-off-surface: #f3f5f7;
+  --zerops-flat-card-border: transparent;
+  --zerops-mint-panel: #e8f7ec;
+  /* A popup's lift; a raised surface's edge: a hairline under it, in dark a highlight on its top. */
+  --zerops-shadow-popup: 0 16px 40px -18px rgb(0 0 0 / 55%);
+  --zerops-shadow-edge: 0 1px rgb(0 0 0 / 4%);
+  /* A field's ground, its autofilled ground and its invalid focus ring; a surface's ground stops
+     inside its border, while in dark it runs under the border's translucent white. */
+  --zerops-field: var(--color-background);
+  --zerops-field-autofill: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+  --zerops-field-invalid: color-mix(in oklab, var(--color-destructive) 16%, transparent);
+  --zerops-ground-clip: padding-box;
+  /* A block set into a surface (a setting's row): a grey ground and a hairline in light; in dark
+     the ground alone sets it apart. */
+  --zerops-well: var(--color-secondary);
+  --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
+  /* A field-like press (an outline toggle) under the pointer and pressed: the hover's accent and a
+     step of input in light; in dark, input over its translucent ground, then input itself. */
+  --zerops-field-hover: var(--color-accent);
+  --zerops-field-pressed: color-mix(in oklab, var(--color-input) 64%, transparent);
+  /* A segmented control's chosen segment and a segment under the pointer, on the track's input
+     tint: the page's ground, half of it on hover; in dark, more input. */
+  --zerops-segment: var(--color-background);
+  --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
+  /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
+  --zerops-shimmer: rgb(255 255 255 / 64%);
+  /* A lift's shadow: a surface held off the page (a drawer or strip hanging under the composer,
+     the crew's composer, a floating bar or card), a tab standing on the composer, a dialog; and a
+     card at rest on the page, a contact shade and a soft fall. */
+  --zerops-shadow-drawer: 0 12px 28px -18px rgb(0 0 0 / 40%);
+  --zerops-shadow-tab: 0 -8px 24px -18px rgb(0 0 0 / 45%);
+  --zerops-shadow-dialog: 0 24px 64px -24px rgb(0 0 0 / 65%);
+  --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px -12px rgb(0 0 0 / 8%);
+  /* A dim behind a dialog that leaves the page readable under it. */
+  --zerops-scrim: rgb(0 0 0 / 8%);
+  /* A press's shade over a solid fill (the blue Release tag, the review door): darker ink, alike
+     in both appearances, since what lies under it is the fill itself. */
+  --zerops-press-shade: rgb(0 0 0 / 14%);
+  /* The composer's attachments in dark: a shade just past the seam where they meet it, and a faint
+     lift of their glass; light draws neither. */
+  --zerops-seam-shade: transparent;
+  --zerops-attachment-lift: transparent;
+  /* The ink on a vivid fill that is no theme's own (a person's accent, a count's dot): white in
+     both appearances. */
+  --zerops-fill-ink: var(--color-white);
+  /* A skill named in a message: a fuchsia chip, its words darker in light and lighter in dark. */
+  --zerops-skill-edge: color-mix(in oklab, var(--color-fuchsia-500) 25%, transparent);
+  --zerops-skill-surface: color-mix(in oklab, var(--color-fuchsia-500) 12%, transparent);
+  --zerops-skill-text: var(--color-fuchsia-700);
+  /* A Mate's colour: one of eight per agent, none of them the brand teal
+     (brand.ts MATE_TINT_IDS); the eyes are ink on these light discs. */
+  --zerops-mate-tint-coral: #ef8f78;
+  --zerops-mate-tint-amber: #e9b645;
+  --zerops-mate-tint-olive: #a9bf5a;
+  --zerops-mate-tint-sky: #7fb7e6;
+  --zerops-mate-tint-violet: #ab97e3;
+  --zerops-mate-tint-rose: #e98bb5;
+  --zerops-mate-tint-sand: #d9a874;
+  --zerops-mate-tint-slate: #8ea3c2;
+  --zerops-mate-face-ink: #17130f;
+  --zerops-mate-mark-side: #2d716b;
+  /* The glossary's "update role": teal, alongside the mark, the identity
+     pill tint and the connected/authorized dots — never the status
+     palette's amber "attention" (design-system.md, 2026-09-09). */
+  --zerops-update-role: #0f8f83;
+  --zerops-process-step-column: 30px;
+  --zerops-process-step-glyph-size: 17px;
+
+  @variant dark {
+    color-scheme: dark;
+    --info: #58a6ff;
+    --info-foreground: var(--color-blue-400);
+    --success: #56d364;
+    --success-foreground: #56d364;
+    --zerops-status-ok: #56d364;
+    --zerops-status-ok-surface: #19261d;
+    --zerops-status-ok-text: #56d364;
+    --zerops-status-busy: #58a6ff;
+    --zerops-status-busy-surface: #192328;
+    --zerops-status-busy-text: #58a6ff;
+    --zerops-status-attention: #e8a33d;
+    --zerops-status-attention-surface: #23231b;
+    --zerops-status-attention-text: #ffb74d;
+    --zerops-status-failed: #f47067;
+    --zerops-status-failed-surface: #241f1e;
+    --zerops-status-failed-text: #f47067;
+    --zerops-rail: #3f4650;
+    --zerops-status-off: #5e6e69;
+    --zerops-status-off-surface: #1c2221;
+    --zerops-flat-card-border: rgba(255, 255, 255, 0.06);
+    --zerops-mint-panel: #19261d;
+    --zerops-shadow-popup: 0 18px 44px -18px rgb(0 0 0 / 80%);
+    --zerops-shadow-edge: 0 -1px rgb(255 255 255 / 6%);
+    --zerops-field: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-field-autofill: color-mix(in oklab, var(--color-foreground) 8%, transparent);
+    --zerops-field-invalid: color-mix(in oklab, var(--color-destructive) 24%, transparent);
+    --zerops-ground-clip: border-box;
+    --zerops-well: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-well-edge: transparent;
+    --zerops-field-hover: color-mix(in oklab, var(--color-input) 64%, transparent);
+    --zerops-field-pressed: var(--color-input);
+    --zerops-segment: color-mix(in oklab, var(--color-input) 72%, transparent);
+    --zerops-segment-hover: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-shimmer: rgb(255 255 255 / 4%);
+    --zerops-shadow-drawer: 0 14px 32px -18px rgb(0 0 0 / 75%);
+    --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);
+    --zerops-shadow-dialog: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
+    --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px -12px rgb(0 0 0 / 40%);
+    --zerops-scrim: rgb(0 0 0 / 30%);
+    --zerops-seam-shade: rgb(0 0 0 / 18%);
+    --zerops-attachment-lift: rgb(255 255 255 / 2%);
+    /* The context strip's own hairline in dark; light draws it in the composer's outline. */
+    --zerops-attachment-edge: rgb(255 255 255 / 7%);
+    --zerops-skill-text: var(--color-fuchsia-300);
+    --zerops-mate-tint-coral: #b85f4b;
+    --zerops-mate-tint-amber: #9c7420;
+    --zerops-mate-tint-olive: #6f8436;
+    --zerops-mate-tint-sky: #3f7fb3;
+    --zerops-mate-tint-violet: #6f5aab;
+    --zerops-mate-tint-rose: #ad5580;
+    --zerops-mate-tint-sand: #9c6f42;
+    --zerops-mate-tint-slate: #556b8d;
+    --zerops-mate-face-ink: #f4efe6;
+    --zerops-mate-mark-side: #8ad4cb;
+    --zerops-update-role: #5cd6cb;
+    --zerops-process-step-column: 30px;
+    --zerops-process-step-glyph-size: 17px;
+  }
+  /* The motion scale (brand.ts MOTION) for hand-written CSS: `var(--duration-base)`. */
+  /* generated:motion-tokens start */
+  --duration-quick: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 260ms;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:motion-tokens end */
+}
+
+/* generated:theme-colors start */
+:root {
+  --background: oklch(0.985 0.002 255);
+  --app-chrome-background: oklch(0.985 0.002 255);
+  --toolbar-background: oklch(0.985 0.002 255);
+  --toolbar-foreground: oklch(0.217787 0 0);
+  --toolbar-border: oklch(0.898587 0.0192 248.042);
+  --toolbar-control: oklch(0.95504 0.001935 255);
+  --toolbar-control-foreground: oklch(0.217787 0 0);
+  --toolbar-control-hover: oklch(0.924843 0.001869 255);
+  --card: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --popover: oklch(1 0 0);
+  --foreground: oklch(0.217787 0 0);
+  --card-foreground: oklch(0.217787 0 0);
+  --popover-foreground: oklch(0.217787 0 0);
+  --border: oklch(0.906701 0 0);
+  --input: oklch(0.898587 0.0192 248.042);
+  --ring: oklch(0.560114 0.15773 249.804);
+  --secondary: oklch(0.969196 0.003426 247.858);
+  --secondary-foreground: oklch(0.217787 0 0);
+  --muted: oklch(0.968441 0.004181 236.497);
+  --muted-foreground: oklch(0.517771 0.01847 239.388);
+  --placeholder: oklch(0.492609 0 0);
+  --secondary-label: oklch(0.501005 0.017755 242.041);
+  --icon-muted: oklch(0.517771 0.01847 239.388);
+  --error: oklch(0.531406 0.216928 27.574);
+  --error-foreground: oklch(0.531406 0.216928 27.574);
+  --error-surface: oklch(0.963138 0.01516 17.42);
+  --warning: oklch(0.797179 0.163777 69.616);
+  --warning-foreground: oklch(0.557046 0.158291 45.359);
+  --warning-surface: oklch(0.976643 0.011959 67.686);
+  --update: oklch(0.683777 0.1203 184.922);
+  --update-foreground: oklch(0.474135 0.084101 183.733);
+  --update-surface: oklch(0.959725 0.027239 191.09);
+  --accent: oklch(0.962441 0.004188 236.498);
+  --accent-foreground: oklch(0.217787 0 0);
+  --message-surface: oklch(0.950987 0.006266 255.476);
+  --message-foreground: oklch(0.217787 0 0);
+  --primary: oklch(0.560114 0.15773 249.804);
+  --message-action: oklch(0.560114 0.15773 249.804);
+  --primary-foreground: oklch(1 0 0);
+  --message-action-foreground: oklch(1 0 0);
+  --message-action-hover: oklch(0.476566 0.132387 249.275);
+  --code-background: oklch(0.968441 0.004181 236.497);
+  --code-foreground: oklch(0.217787 0 0);
+  --sidebar: oklch(0.962 0.004 255);
+  --sidebar-foreground: oklch(0.217787 0 0);
+  --sidebar-muted-foreground: oklch(0.362632 0.014881 240.327);
+  --sidebar-control-surface: oklch(0.932789 0.00387 255);
+  --sidebar-row-hover: oklch(0.932789 0.00387 255);
+  --sidebar-row-active: oklch(1 0 0);
+  --sidebar-row-selected: oklch(1 0 0);
+  --sidebar-border: oklch(0.906701 0 0);
+  --terminal-background: oklch(0.968441 0.004181 236.497);
+  --terminal-foreground: oklch(0.217787 0 0);
+  --terminal-cursor: oklch(0.532656 0.094683 183.341);
+  --terminal-selection-background: oklch(0.906438 0.034574 238.693);
+
+  @variant dark {
+    --background: oklch(0.164609 0.005276 173.621);
+    --app-chrome-background: oklch(0.164609 0.005276 173.621);
+    --toolbar-background: oklch(0.164609 0.005276 173.621);
+    --toolbar-foreground: oklch(0.944756 0.005952 170.443);
+    --toolbar-border: oklch(0.29592 0.012924 180.424);
+    --toolbar-control: oklch(0.244218 0.010816 176.214);
+    --toolbar-control-foreground: oklch(0.944756 0.005952 170.443);
+    --toolbar-control-hover: oklch(0.311898 0.012787 180.507);
+    --card: oklch(0.207783 0.007827 182.122);
+    --surface-raised: oklch(0.244218 0.010816 176.214);
+    --popover: oklch(0.26005 0.011968 178.488);
+    --foreground: oklch(0.944756 0.005952 170.443);
+    --card-foreground: oklch(0.944756 0.005952 170.443);
+    --popover-foreground: oklch(0.944756 0.005952 170.443);
+    --border: oklch(0.29592 0.012924 180.424);
+    --input: oklch(0.311898 0.012787 180.507);
+    --ring: oklch(0.744234 0.139646 246.851);
+    --secondary: oklch(0.280612 0.011784 178.616);
+    --secondary-foreground: oklch(0.944756 0.005952 170.443);
+    --muted: oklch(0.21557 0.009169 184.301);
+    --muted-foreground: oklch(0.737586 0.018219 173.85);
+    --placeholder: oklch(0.523335 0.020759 174.667);
+    --secondary-label: oklch(0.626728 0.018381 177.916);
+    --icon-muted: oklch(0.737586 0.018219 173.85);
+    --error: oklch(0.56 0.141955 21.457);
+    --error-foreground: oklch(0.687547 0.141955 21.457);
+    --error-surface: oklch(0.286951 0.013453 17.963);
+    --warning: oklch(0.797179 0.163777 69.616);
+    --warning-foreground: oklch(0.828671 0.14524 73.542);
+    --warning-surface: oklch(0.37084 0.017057 78.071);
+    --update: oklch(0.823225 0.154794 175.318);
+    --update-foreground: oklch(0.865024 0.133145 178.864);
+    --update-surface: oklch(0.304264 0.043442 180.881);
+    --accent: oklch(0.280612 0.011784 178.616);
+    --accent-foreground: oklch(0.944756 0.005952 170.443);
+    --message-surface: oklch(0.26 0.009 178);
+    --message-foreground: oklch(0.944756 0.005952 170.443);
+    --primary: oklch(0.560114 0.15773 249.804);
+    --message-action: oklch(0.560114 0.15773 249.804);
+    --primary-foreground: oklch(1 0 0);
+    --message-action-foreground: oklch(1 0 0);
+    --message-action-hover: oklch(0.64065 0.1821 250.158);
+    --code-background: oklch(0.198946 0.007897 182.062);
+    --code-foreground: oklch(0.911927 0.009473 171.779);
+    --sidebar: oklch(0.207783 0.007827 182.122);
+    --sidebar-foreground: oklch(0.944756 0.005952 170.443);
+    --sidebar-muted-foreground: oklch(0.737586 0.018219 173.85);
+    --sidebar-control-surface: oklch(0.244218 0.010816 176.214);
+    --sidebar-row-hover: oklch(0.244218 0.010816 176.214);
+    --sidebar-row-active: oklch(0.26005 0.011968 178.488);
+    --sidebar-row-selected: oklch(0.280612 0.011784 178.616);
+    --sidebar-border: oklch(0.29592 0.012924 180.424);
+    --terminal-background: oklch(0.164609 0.005276 173.621);
+    --terminal-foreground: oklch(0.944756 0.005952 170.443);
+    --terminal-cursor: oklch(0.823225 0.154794 175.318);
+    --terminal-selection-background: oklch(0.336701 0.052155 249.615);
+  }
+}
+/* generated:theme-colors end */

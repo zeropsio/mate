@@ -43,6 +43,7 @@ import { SectionLabel } from "./system";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
+import { Loading } from "~/components/ui/loading";
 
 /**
  * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
@@ -226,7 +227,7 @@ export function GitStopDetail({
               </ul>
             )
           ) : releases === undefined ? (
-            <p className="rv-note">Reading release history…</p>
+            <Loading count={3} label="Release history" shape="lines" />
           ) : releases.length === 0 ? (
             <p className="rv-note">No releases recorded.</p>
           ) : (

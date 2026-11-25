@@ -114,10 +114,11 @@ type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
   /** One completed restart loop, for the words alongside it. Never a readiness signal. */
   readonly onRestartCycle?: (() => void) | undefined;
   /**
-   * It works on something it was asked to stand up: it paces back and forth, as far either way
-   * as its caller's `--mate-face-pace` says. With reduced motion, the still state.
+   * It works on something it was asked to stand up: it paces back and forth, as many pixels either
+   * way of where it stands as the number says (a caller measures the room it has, a headline's
+   * width), or its own width when `true`. With reduced motion, the still state.
    */
-  readonly paces?: boolean | undefined;
+  readonly paces?: boolean | number | undefined;
   /** A large face alone on its page: its eyes follow the person's pointer (`trackGaze`). */
   readonly tracks?: boolean | undefined;
 };
@@ -323,6 +324,7 @@ function MateShapeFace({
     "--mate-face-origin": `${shape.origin[0]}% ${shape.origin[1]}%`,
     // Mates at work do not turn in step: each its own beat in the cycle.
     "--mate-face-phase": String(MATE_TINT_IDS.indexOf(tint)),
+    ...(paces === false ? {} : { "--mate-face-pace": `${paces === true ? size : paces}px` }),
     ...style,
   } as CSSProperties;
   // Each part that moves on its own is an HTML box over the whole face holding its own drawing
@@ -334,7 +336,7 @@ function MateShapeFace({
       className={cn("relative block shrink-0", SIZE_CLASS[size], className)}
       data-mate-face-gaze={gaze}
       data-mate-face-moment={moment}
-      data-mate-face-pacing={paces ? "" : undefined}
+      data-mate-face-pacing={paces === false ? undefined : ""}
       data-mate-face-restarting={restarting ? "" : undefined}
       data-mate-face-tracks={tracks ? "" : undefined}
       data-mate-face-shape={shapeId}

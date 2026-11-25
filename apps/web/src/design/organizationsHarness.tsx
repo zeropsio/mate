@@ -15,7 +15,6 @@ import { ZeropsOrganizationChoice } from "~/components/zerops/ZeropsOrganization
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 
 const ORGANIZATIONS: ReadonlyArray<ZeropsOrganization> = [
   { id: "c-north", name: "Northwind Studio", membershipId: "cu-north", roleCode: "OWNER" },
@@ -57,7 +56,6 @@ function HarnessPage() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <HarnessPage />

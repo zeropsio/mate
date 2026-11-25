@@ -245,8 +245,6 @@ const ACTIVITIES: OrchestrationThreadActivity[] = [
 ];
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
 const width = Number(params.get("width") ?? 520);
 const open = params.get("open");
 

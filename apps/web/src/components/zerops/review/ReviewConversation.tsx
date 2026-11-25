@@ -28,6 +28,7 @@ import {
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
+import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
@@ -185,9 +186,9 @@ function RemarksSkeleton({
       {hidden === 0 ? null : <li aria-hidden="true" className="rv-remark-skeleton" data-fold="" />}
       {Array.from({ length: count - hidden }, (_, index) => (
         <li aria-hidden="true" className="rv-remark-skeleton" key={index}>
-          <span />
-          <span />
-          <span />
+          <Skeleton className="row-span-2 size-5" shape="pill" surface="card" />
+          <Skeleton className="my-1.25 h-2.5 w-24" shape="pill" surface="card" />
+          <Skeleton className="my-1.5 h-2.5 w-[64%]" shape="pill" surface="card" />
         </li>
       ))}
     </ol>

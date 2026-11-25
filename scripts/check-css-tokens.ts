@@ -281,10 +281,12 @@ export const offScaleProperty = (property: string, value: string): ScaleProperty
   const isShorthand = name === "transition" || name === "animation";
   if (!isTransitionLength && !isShorthand) return undefined;
   const offScale = topLevelItems(value).some((item) => {
-    // A shorthand's first time is its duration; the second is a delay.
-    const duration = tokens(item)
-      .map(millisecondsOf)
-      .find((ms) => ms !== undefined);
+    // A shorthand's first time is its duration, a scale step's variable included; the second is
+    // a delay.
+    const first = tokens(item).find(
+      (token) => millisecondsOf(token) !== undefined || token.startsWith("var(--duration-"),
+    );
+    const duration = first === undefined ? undefined : millisecondsOf(first);
     return (
       duration !== undefined &&
       duration <= LONGEST_TRANSITION_MS &&
@@ -316,11 +318,15 @@ export const countOffScaleDeclarations = (
 /**
  * The web stylesheets' off-scale declarations when the scale landed. A budget only shrinks: a
  * change that removes some lowers it; a new size, corner or length between the steps is refused.
+ * The lengths left are measured choreographies, not a press's answer or a surface arriving: the
+ * settings search target's double pulse, the crew mini's cheer and turn, a focused overview
+ * card's ring, the Mate face moments' study frames, and reduced motion's 1 ms finish that still
+ * ends a review step's leaving animation.
  */
 export const OFF_SCALE_BUDGET: Readonly<Record<ScaleProperty, number>> = {
-  "font-size": 38,
+  "font-size": 0,
   "border-radius": 3,
-  duration: 105,
+  duration: 10,
 };
 
 const WEB_CSS_PREFIX = "apps/web/src/";

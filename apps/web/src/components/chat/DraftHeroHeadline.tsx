@@ -267,7 +267,7 @@ export function DraftHeroHeadline({
         aria-label={headingLabel}
         // Its project still read: the line stands empty in its place, never "no project".
         aria-hidden={kind === "reading" ? true : undefined}
-        className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
+        className="mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display"
       >
         {kind === "reading" ? (
           "\u00a0"

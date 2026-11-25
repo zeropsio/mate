@@ -15,9 +15,6 @@ import { ProjectSpendRowView } from "~/components/zerops/projects/ProjectSpend";
 import { joinSpend, type SpendState } from "~/components/zerops/projects/projectSpend.logic";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-
 const TODAY = "2026-10-18";
 const DAYS = Array.from({ length: 30 }, (_, at) =>
   new Date(Date.parse("2026-09-19T00:00:00.000Z") + at * 86_400_000).toISOString().slice(0, 10),
@@ -104,7 +101,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

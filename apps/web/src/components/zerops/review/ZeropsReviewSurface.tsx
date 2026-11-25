@@ -33,7 +33,6 @@ import {
   Maximize2Icon,
   RotateCcwIcon,
   TagIcon,
-  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -47,9 +46,11 @@ import {
   type RefObject,
 } from "react";
 
+import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
 import { Row } from "~/components/ui/row";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { Failure } from "~/components/ui/failure";
 import { Button, InlineButton } from "~/components/ui/button";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
@@ -76,6 +77,7 @@ import {
   tryItEverything,
   tryItWords,
 } from "./ZeropsReview.logic";
+import { Loading } from "~/components/ui/loading";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -814,16 +816,19 @@ export function ReviewFailed({
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
-    <div className="rv-failed" role="status">
-      <TriangleAlertIcon aria-hidden="true" />
-      <span className="min-w-0">
-        {what} <span className="rv-failed-why">{reason}</span>
-      </span>
-      {onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="sm" variant="link">
-          Try again
-        </Button>
-      )}
+    <div className="rv-failed">
+      <Failure
+        action={
+          onRetry === undefined ? undefined : (
+            <Button onClick={onRetry} size="sm" variant="secondary">
+              Try again
+            </Button>
+          )
+        }
+        cause={what}
+      >
+        {reason}
+      </Failure>
     </div>
   );
 }
@@ -833,7 +838,12 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
   return (
     <div aria-hidden="true" className="rv-skeleton">
       {Array.from({ length: lines }, (_, index) => (
-        <span key={index} />
+        <Skeleton
+          className={index === lines - 1 ? "h-3 w-[62%]" : "h-3"}
+          key={index}
+          shape="pill"
+          surface="card"
+        />
       ))}
     </div>
   );
@@ -922,10 +932,12 @@ export function ReviewFiles({
   }
   if (files === undefined) {
     return (
-      <div aria-busy="true" className="rv-files">
-        <div className="rv-file-skeleton">
-          <span />
-        </div>
+      <div className="rv-files">
+        <Loading label="The files">
+          <div className="rv-file-skeleton">
+            <Skeleton className="h-2.5 w-2/5" shape="pill" surface="card" />
+          </div>
+        </Loading>
       </div>
     );
   }
@@ -1037,7 +1049,9 @@ export function ReviewDiff({
   if (diff.kind === "reading") {
     return (
       <div className="rv-diff">
-        <p className="rv-diff-note">Reading the diff…</p>
+        <Loading label="The diff">
+          <ReviewSkeleton lines={3} />
+        </Loading>
         {opener}
       </div>
     );

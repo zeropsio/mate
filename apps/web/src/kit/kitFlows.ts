@@ -3,12 +3,34 @@
  * the kit's components. A build serves them only where it carries the harness (the dev server, a
  * Mate's preview, the hosted harness); production lists none and bundles none.
  */
+/** The appearance a harness page draws in. */
+export type FlowTheme = "light" | "dark";
+
+/** The one query parameter that names a harness page's appearance: `?theme=dark`, else light. */
+const THEME_PARAM = "theme";
+
+/** The appearance a harness page's query asks for (`harnessPage.ts` paints it). */
+export const flowThemeOf = (search: string): FlowTheme =>
+  new URLSearchParams(search).get(THEME_PARAM) === "dark" ? "dark" : "light";
+
+/** A state's page in one appearance: the flow's address, the state's query, then its theme. */
+export const flowSrc = (
+  flow: KitFlow,
+  state: KitFlowState | undefined,
+  theme: FlowTheme | undefined,
+): string => {
+  const params = new URLSearchParams(state?.search ?? "");
+  if (theme !== undefined) params.set(THEME_PARAM, theme);
+  const query = params.toString();
+  return query === "" ? flow.href : `${flow.href}?${query}`;
+};
+
 export interface KitFlowState {
   /** Unique in its flow, `idle`. */
   readonly id: string;
   /** A few words for what the page shows, `Idle`. */
   readonly label: string;
-  /** The query, without `?` and without `theme`, that shows it; empty for the page's default. */
+  /** The query, without `?` and without its theme, that shows it; empty for the page's default. */
   readonly search: string;
 }
 

@@ -5,7 +5,7 @@
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-import { InlineButton } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { CutText } from "./ChangeRow";
 import {
@@ -193,17 +193,16 @@ function Bead({
               tabIndex={0}
             />
           ) : (
-            <button
+            <Button
               aria-label={label}
-              className="ln-bead"
-              data-mark={bead.mark}
-              data-tint={bead.tint}
               data-zerops-change={bead.key}
               onClick={(event) => {
                 onOpenChange(pull, event.currentTarget);
               }}
-              type="button"
-            />
+              variant="bare"
+            >
+              <span className="ln-bead" data-mark={bead.mark} data-tint={bead.tint} />
+            </Button>
           )
         }
       />

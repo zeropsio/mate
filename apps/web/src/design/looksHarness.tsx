@@ -30,14 +30,11 @@ import { RunChat } from "~/components/chat/RunChat";
 import { setRunFold } from "~/components/chat/runCard.logic";
 import { stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
-import { writeAppearanceModePreference } from "~/hooks/useTheme";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const unit = params.get("unit") ?? "mermaid";
-// The answer's code and diagrams follow the app's appearance setting, not the root class.
-writeAppearanceModePreference(appearance);
 
 const NOW = Date.now();
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
@@ -181,7 +178,7 @@ const SHARED: TimelineRowSharedState = {
   routeThreadKey: "harness",
   threadRef: null,
   markdownCwd: undefined,
-  resolvedTheme: appearance,
+  resolvedTheme: harnessAppearance,
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-local"),
@@ -290,7 +287,6 @@ class Shows extends Component<{ readonly children: ReactNode }, { readonly error
   }
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Shows>

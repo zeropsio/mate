@@ -269,14 +269,14 @@ function HqPicture({
       style={box === null ? undefined : { aspectRatio: box.aspectRatio, width: box.width }}
     >
       {state.kind === "read" ? (
-        <button
+        <Button
           aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
-          className="rv-pic-open"
+          data-rv-pic-open=""
           onClick={(event) => {
             const view = pictureView(event.currentTarget);
             if (view !== null) onOpen(view);
           }}
-          type="button"
+          variant="bare"
         >
           <img
             loading="lazy"
@@ -288,7 +288,7 @@ function HqPicture({
             src={state.src}
             width={box === null ? undefined : width}
           />
-        </button>
+        </Button>
       ) : (
         <PictureLine alt={alt} />
       )}

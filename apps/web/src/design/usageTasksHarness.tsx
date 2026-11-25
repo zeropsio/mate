@@ -15,8 +15,6 @@ import { createRoot } from "react-dom/client";
 import { UsageMateTaskRowsView } from "~/components/usage/UsageAutomated";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const nothing = () => {};
 
 const task = (at: number, mate: "tea-raya" | "tea-nova"): HqAppTask => {
@@ -115,7 +113,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

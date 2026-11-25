@@ -41,6 +41,8 @@ import {
 } from "./runCardContext";
 import { type ChatLine } from "./runChatLine";
 import { Button } from "~/components/ui/button";
+import { Loading } from "~/components/ui/loading";
+import { Skeleton } from "~/components/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Its calls
@@ -116,11 +118,9 @@ function StepPicture({
   const name = path.split("/").pop() || path;
   if (asset._tag === "Loading") {
     return (
-      <span
-        aria-label="Loading the picture"
-        className="block h-20 w-32 rounded-control bg-foreground/5"
-        role="status"
-      />
+      <Loading label={name}>
+        <Skeleton className="h-20 w-32" surface="card" />
+      </Loading>
     );
   }
   if (asset._tag !== "Success") {

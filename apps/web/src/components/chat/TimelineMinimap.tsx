@@ -133,9 +133,9 @@ export function TimelineMinimap({
               if (previousItem) onSelect(previousItem);
             }}
           />
-          <button
+          <Button
             aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
-            className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="absolute inset-y-0 left-0 w-full"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
               if (timelineMinimapEventTargetsPreview(event.target)) {
@@ -177,7 +177,7 @@ export function TimelineMinimap({
               }
               event.preventDefault();
             }}
-            type="button"
+            variant="bare"
           >
             <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
             {items.map((item, index) => {
@@ -246,7 +246,7 @@ export function TimelineMinimap({
                 </span>
               </span>
             ) : null}
-          </button>
+          </Button>
           <TimelineMinimapNavigationButton
             direction="next"
             disabled={nextItem === null}

@@ -18,7 +18,8 @@ const SANITIZED_HTML_SELECTOR = [
   ...SKIPPED_CLASS_NAMES.map((className) => `.${className}`),
 ].join(", ");
 
-const LIST_ITEM_CHECKBOX = ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]';
+/** A task list item's state, as `ChatMarkdown` draws it: a checkbox or a mark, `data-task`. */
+const LIST_ITEM_TASK = ":scope > [data-task], :scope > p > [data-task]";
 
 interface MarkdownClipboardPayload {
   text: string;
@@ -123,8 +124,8 @@ function serializeTable(table: Element): string {
 }
 
 function serializeListItem(item: Element, ordered: boolean, index: number): string {
-  const checkbox = item.querySelector<HTMLInputElement>(LIST_ITEM_CHECKBOX);
-  const task = checkbox ? `[${checkbox.checked ? "x" : " "}] ` : "";
+  const state = item.querySelector(LIST_ITEM_TASK)?.getAttribute("data-task");
+  const task = state == null ? "" : `[${state === "done" ? "x" : " "}] `;
   const bullet = ordered ? `${index}. ` : "- ";
   const marker = `${bullet}${task}`;
   let content = serializeChildren(item)
@@ -417,10 +418,10 @@ function cloneWithListMarkers(range: Range, container: Element): void {
     clone = clone?.firstChild ?? null;
     if (!(clone instanceof Element) || !(source instanceof Element)) continue;
     if (source.tagName === "LI" && clone.tagName === "LI") {
-      const checkbox = source.querySelector(LIST_ITEM_CHECKBOX);
-      if (checkbox && !clone.querySelector(LIST_ITEM_CHECKBOX)) {
+      const task = source.querySelector(LIST_ITEM_TASK);
+      if (task && !clone.querySelector(LIST_ITEM_TASK)) {
         // Appended, so the first-child chain stays intact for nested items.
-        clone.append(checkbox.cloneNode(false));
+        clone.append(task.cloneNode(false));
       }
       continue;
     }

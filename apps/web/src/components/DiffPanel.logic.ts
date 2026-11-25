@@ -173,7 +173,7 @@ export function baseRefPresentation(
   remote: EnvironmentQueryView<VcsListRefsResult>,
   headRef?: string | null,
 ) {
-  const labels = { loading: "Loading refs...", unavailable: "Refs unavailable." };
+  const labels = { subject: "Branches", unavailable: "Refs unavailable." };
   const localView = collectionPresentation(
     local,
     (data) => data.refs.filter((ref) => ref.name !== headRef),
@@ -188,6 +188,9 @@ export function baseRefPresentation(
     canRetry: localView.state === "failed" || remoteView.state === "failed",
     retained: localView.retained || remoteView.retained,
     message: messages.length > 0 ? messages.join(" ") : null,
+    loading:
+      (localView.state === "loading" || remoteView.state === "loading") &&
+      localView.items.length + remoteView.items.length === 0,
     emptyMessage:
       localView.state === "ready" && remoteView.state === "ready" ? "No matching refs." : null,
   };

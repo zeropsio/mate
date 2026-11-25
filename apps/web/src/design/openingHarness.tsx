@@ -44,7 +44,6 @@ import "../index.css";
 const HARNESS_ENVIRONMENT = EnvironmentId.make("environment-opening-harness");
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 type Answer = Exclude<ConversationWriter["kind"], "unknown">;
 const ANSWERS: ReadonlyArray<Answer> = ["you", "someone", "nobody-yet"];
 const asAnswer = (value: string | null): Answer | undefined =>
@@ -244,8 +243,6 @@ const sample = () => {
 };
 requestAnimationFrame(sample);
 (window as unknown as { __opening: { frames: FooterFrame[] } }).__opening = { frames };
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

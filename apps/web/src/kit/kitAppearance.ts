@@ -29,7 +29,7 @@ export interface KitSearch {
   readonly appearance?: KitView;
   /** Set on the frames of the "both" view and on "Open alone": the canvas alone, no shell. */
   readonly pane?: true;
-  /** `overview` when unset; `foundations:colour`, a section's id, `flow:<id>`, `census[:<id>]`. */
+  /** `overview` when unset; `foundations:colour`, a section's id, `flow:<id>`. */
   readonly page?: string;
   /** A component page's tab: `playground`, `variants` or `usage`. */
   readonly tab?: string;

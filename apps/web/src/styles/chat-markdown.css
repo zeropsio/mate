@@ -1,0 +1,696 @@
+/* Chat markdown rendering */
+
+/* Readings of one renderer. The log (narration, tool output) takes its muted
+   body from the root's utility classes; an answer and the person's own words
+   read at the conversation's prose size (`--text-prose`), the answer in the
+   full foreground. The type below is sized in em, so it follows whichever
+   body it sits in. */
+.chat-markdown[data-variant="answer"] {
+  font-size: var(--text-prose);
+  line-height: var(--text-prose--line-height);
+  color: var(--contrast-foreground);
+}
+
+/* The person's own words read at the answer's size, in their bubble's ink. */
+.chat-markdown[data-variant="person"] {
+  font-size: var(--text-prose);
+  line-height: var(--text-prose--line-height);
+}
+
+/* A word breaks only when it cannot fit a line by itself. Unlike `anywhere`,
+   this leaves min-content whole-word, so a short label never splits mid-word
+   ("Tit / an") and a table column never shrinks to a letter. */
+.chat-markdown {
+  overflow-wrap: break-word;
+}
+
+/* Long tokens (addresses, paths, hashes) are what cannot fit: they alone break
+   anywhere, and only once they are wider than the line. */
+.chat-markdown a,
+.chat-markdown :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+/* In a table they are words of their column: whole-word at its min-content, so
+   a short one never splits ("ope / n"), and a long one widens the table, whose
+   container scrolls. */
+.chat-markdown :is(th, td) :is(a, :not(pre) > code) {
+  overflow-wrap: break-word;
+}
+
+.chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* A paragraph never ends on one word alone: the last lines are balanced
+   where the browser can (a progressive refinement; elsewhere it wraps as ever).
+   Not while the words still stream in: balancing moves earlier words from
+   line to line as each new one lands. */
+.chat-markdown:not([data-streaming]) :where(p, li, blockquote) {
+  text-wrap: pretty;
+}
+
+/* The blocks' rhythm, at the lowest specificity so any rule below can adjust it. */
+.chat-markdown :where(p, ul, ol, blockquote, pre, .chat-markdown-table-container) {
+  margin: 0.65rem 0;
+}
+
+/* A card drawn in an answer (a Mate's picture ask) keeps its own rhythm: its gaps, not the
+   answer's paragraph margins. */
+.chat-markdown :where(.chat-markdown-island) :where(p, ul, ol, blockquote, pre, figure, dl, dd) {
+  margin: 0;
+}
+
+.chat-markdown .chat-markdown-island :is(ul, ol) {
+  padding-left: 0;
+  list-style: none;
+}
+
+.chat-markdown .chat-markdown-island li:where([data-md-li]) + li {
+  margin-top: 0;
+}
+
+/* The heading scale, set against an answer's 15 px body: h1 and h2 19/26 with
+   28 px above and 8 below, h3 16.5/24 with 20 and 6, h4 to h6 the body's own
+   size and line in the muted ink with 16 and 4. A heading is never smaller
+   than the text under it, or it reads as one more bold lead-in. Margins are in
+   the heading's own em. */
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  font-weight: 600;
+  color: var(--contrast-foreground);
+}
+
+.chat-markdown h1,
+.chat-markdown h2 {
+  margin: calc(28em / 19) 0 calc(8em / 19);
+  font-size: calc(19em / 15);
+  line-height: calc(26 / 19);
+}
+
+.chat-markdown h3 {
+  margin: calc(20em / 16.5) 0 calc(6em / 16.5);
+  font-size: calc(16.5em / 15);
+  line-height: calc(24 / 16.5);
+}
+
+.chat-markdown h4,
+.chat-markdown h5,
+.chat-markdown h6 {
+  margin: calc(16em / 15) 0 calc(4em / 15);
+  font-size: 1em;
+  color: var(--contrast-muted-foreground);
+}
+
+/* A heading owns the gap under it; the block that follows adds none.
+
+   Why no rule in this sheet puts `+` or `~` after a bare tag or `*`: the browser keys a sibling
+   rule by the class, id or attribute of the element before the combinator, and a rule with none
+   of them is asked about every element added or removed anywhere. Where its subject is also bare
+   (`* + *`, `h2 + *`, `tr + tr > *`), the answer was to restyle everything under the parent: one
+   row scrolling into a conversation restyled all of its rows, about 400 elements for 30 new ones.
+   So a heading carries `data-md-heading` and a list item `data-md-li` (`ChatMarkdown`,
+   `RepoMarkdown`, and the one list a card draws inside an answer, `AskSteps`), and elsewhere
+   "not the first" is said by position: `:where()` and a repeated tag keep each rule's weight. */
+.chat-markdown h1:where([data-md-heading]) + *,
+.chat-markdown h2:where([data-md-heading]) + *,
+.chat-markdown h3:where([data-md-heading]) + *,
+.chat-markdown h4:where([data-md-heading]) + *,
+.chat-markdown h5:where([data-md-heading]) + *,
+.chat-markdown h6:where([data-md-heading]) + * {
+  margin-top: 0;
+}
+
+.chat-markdown ul {
+  /* Reset for nested uls under a widened ol — --list-gutter is an inherited
+     custom property, so without this a task-list under a 3+ digit ordered
+     list would inherit the outer gutter instead of its own default. */
+  --list-gutter: 1.25rem;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+
+/* --list-gutter defaults to the same 1.25rem as .chat-markdown ul, but
+   ChatMarkdown's `ol` renderer widens it (via inline style) for lists whose
+   widest marker is 3+ characters, so item 100+ isn't clipped by list-style-position:
+   outside painting the marker past the padding box. Reset it here too so a
+   nested ol without its own widened marker doesn't inherit the outer one. */
+.chat-markdown ol {
+  --list-gutter: 1.25rem;
+  padding-left: var(--list-gutter, 1.25rem);
+  list-style-type: decimal;
+}
+
+/* Markers stay quiet: the words carry the item, the marker only says one began. */
+.chat-markdown li::marker {
+  color: var(--contrast-muted-foreground);
+}
+
+.chat-markdown ol > li::marker {
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-markdown ul ul {
+  list-style-type: circle;
+}
+
+.chat-markdown ol ol {
+  list-style-type: lower-alpha;
+}
+
+/* 6 px between items at a 15 px body. */
+.chat-markdown li:where([data-md-li]) + li {
+  margin-top: calc(6em / 15);
+}
+
+/* A nested list hangs from a hairline under its parent's text, one item gap
+   below it. The line is a faint cut of the markers' ink, which holds on the
+   canvas where the border token disappears. */
+.chat-markdown li > :is(ul, ol) {
+  margin: calc(6em / 15) 0 0;
+  border-left: 1px solid color-mix(in srgb, var(--contrast-muted-foreground) 30%, transparent);
+}
+
+/* A third level (and any deeper) reads as the second: the same marker, on the
+   second level's guide and indent, so an outline cannot staircase off the
+   column. */
+.chat-markdown li li > :is(ul, ol) {
+  border-left: none;
+  padding-left: 0;
+}
+
+/* GitHub-style task lists: the checkbox replaces the list marker. */
+.chat-markdown li.task-list-item {
+  list-style-type: none;
+}
+
+.chat-markdown li.task-list-item [data-task] {
+  margin: 0 0.35em 0.15em calc(-1 * var(--list-gutter, 1.25rem));
+  vertical-align: middle;
+}
+
+/* A task list the Mate wrote is its steps, not a form: an open step is a
+   ring and a done one the to-do list's green dot, where a disabled checkbox
+   looked pressable and never was (Nova, 2026-09-28, a plan of nine). A list
+   the person may tick keeps its checkboxes. */
+.chat-markdown li.task-list-item [data-task][role="img"] {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.55em;
+  height: 0.55em;
+  margin-inline-end: 0.6em;
+  border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 55%, transparent);
+  border-radius: 999px;
+  vertical-align: 0.1em;
+}
+
+.chat-markdown li.task-list-item [data-task="done"][role="img"] {
+  border-color: var(--color-status-ok);
+  background: var(--color-status-ok);
+}
+
+/* Markdown assumes inline images — GitHub comments lay button images out in a row — and the
+   Tailwind preflight's block-level img would stack them one per line. */
+.chat-markdown img {
+  display: inline-block;
+}
+
+/* p25/links */
+/* A link in an answer is part of its sentence: the sentence's ink, told apart
+   by a quiet rule under its words that inks in under a pointer or a focus. It
+   was the saturated info blue, which read as a button in the middle of a line
+   (the owner, 2026-09-30). A file, a change or an Express design is a chip,
+   not a sentence's word, and keeps its own box. */
+.chat-markdown a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.chat-markdown
+  a:not(.chat-markdown-file-link, [data-zerops-change-chip], [data-express-design-chip]) {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);
+  transition: text-decoration-color var(--duration-quick) var(--ease-out-strong);
+}
+
+.chat-markdown
+  a:not(.chat-markdown-file-link, [data-zerops-change-chip], [data-express-design-chip]):hover,
+.chat-markdown
+  a:not(
+    .chat-markdown-file-link,
+    [data-zerops-change-chip],
+    [data-express-design-chip]
+  ):focus-visible {
+  text-decoration-color: currentcolor;
+}
+
+.chat-markdown blockquote {
+  border-left: 2px solid var(--contrast-border);
+  padding-left: 0.8rem;
+  color: var(--contrast-muted-foreground);
+}
+
+/* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as the chat's one bubble
+   (the run card's `BUBBLE_SHAPE`: 16 px round, 10 px down) on a faint tint
+   of their tone, their words 20 px in, on the edge a list item's start, the
+   label run into the first line in the tone's ink: no edge bar, no heading of
+   its own (the owner, 2026-09-28: "it looks like some default card of some
+   basic docs software"). A note is neutral, a tip the ok green, the important
+   thing the blue of what the person can act on, a warning the attention
+   amber, a caution the failure red. */
+.chat-markdown .chat-markdown-callout {
+  display: flow-root;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--callout-tone) 9%, transparent);
+  padding: 0.625rem 1.25rem;
+  color: inherit;
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="note"] {
+  --callout-tone: var(--zerops-status-off);
+  --callout-ink: var(--contrast-muted-foreground);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="tip"] {
+  --callout-tone: var(--zerops-status-ok);
+  --callout-ink: var(--zerops-status-ok-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="important"] {
+  --callout-tone: var(--message-action);
+  --callout-ink: var(--message-action);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="warning"] {
+  --callout-tone: var(--zerops-status-attention);
+  --callout-ink: var(--zerops-status-attention-text);
+}
+
+.chat-markdown .chat-markdown-callout[data-alert="caution"] {
+  --callout-tone: var(--zerops-status-failed);
+  --callout-ink: var(--zerops-status-failed-text);
+}
+
+/* The label, at the text's own size, set off by its weight and its tone's ink
+   pulled a quarter toward the text: the status inks are set for white cards,
+   and on the canvas, under the tint, the label needs the extra contrast in
+   both themes. It stands on its own line over what follows. */
+.chat-markdown .chat-markdown-callout-label {
+  margin: 0 0 0.25em;
+  color: color-mix(in oklab, var(--callout-ink) 75%, var(--contrast-foreground));
+  font-weight: 600;
+}
+
+/* Before a paragraph it runs into the first line. Only there: a list's first
+   bullet hangs in the gutter the label would stand in, and a code block or a
+   table has no first line to run into. */
+.chat-markdown .chat-markdown-callout-label:has(+ p) {
+  float: left;
+  margin: 0 0.45em 0 0;
+}
+
+.chat-markdown .chat-markdown-callout-label + * {
+  margin-top: 0;
+}
+
+.chat-markdown .chat-markdown-callout > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown section[data-footnotes] {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--contrast-border);
+  padding-top: 0.75rem;
+  color: var(--contrast-muted-foreground);
+  font-size: var(--text-caption);
+}
+
+.chat-markdown section[data-footnotes] ol {
+  margin: 0;
+}
+
+.chat-markdown section[data-footnotes] li:where([data-md-li]) + li {
+  margin-top: 0.35rem;
+}
+
+.chat-markdown a[data-footnote-ref],
+.chat-markdown a[data-footnote-backref] {
+  display: inline-flex;
+  min-width: 1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-mark);
+  text-decoration: none;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+/* Code in a sentence is marked, not caged: a tint of the ink behind it and no
+   rule round it. With a border every token drew four lines, and a sentence
+   naming five files read as a row of buttons. It hugs its punctuation: 3 px
+   at its sides and no margin, where 5 px pushed commas away ("Login , Boards ,"). */
+.chat-markdown :not(pre) > code {
+  margin: 0;
+  border-radius: var(--radius-mark);
+  background: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
+  padding: 0.125rem 0.1875rem;
+  color: var(--contrast-foreground);
+  /* 12 px in the log's 14, 13 in an answer's 15: a step below its sentence. */
+  font-size: 0.86em;
+}
+
+.chat-markdown .chat-markdown-file-link,
+.chat-markdown .chat-markdown-file-link:hover {
+  color: var(--contrast-foreground);
+  text-decoration: none;
+}
+
+/* A thought's code and file names are words it thinks, not things to press:
+   mono in the thought's own faint ink, no chip — a chip stood out of the
+   italics as the loudest thing in them (Nova, 2026-09-28). A file name still
+   opens its file, underlined under the pointer. */
+.chat-markdown.chat-markdown-aside :not(pre) > code {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link {
+  display: inline;
+  height: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link > :first-child {
+  display: none;
+}
+
+.chat-markdown.chat-markdown-aside .chat-markdown-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-markdown .chat-markdown-file-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 70%, transparent);
+}
+
+.chat-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--contrast-border);
+  border-radius: var(--radius-card);
+  background: var(--code-background);
+  color: var(--code-foreground);
+  padding: 0.8rem 0.9rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--contrast-border) 78%, transparent) transparent;
+}
+
+.chat-markdown pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown pre::-webkit-scrollbar {
+  height: 7px;
+}
+
+.chat-markdown pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--contrast-border) 78%, transparent);
+}
+
+.chat-markdown .chat-markdown-codeblock-header {
+  color: color-mix(in srgb, var(--code-foreground) 72%, transparent);
+}
+
+.chat-markdown .chat-markdown-codeblock pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.chat-markdown .chat-markdown-codeblock[data-wrap="true"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-markdown .chat-markdown-shiki .shiki {
+  background: transparent !important;
+}
+
+/* Tables: row separators only, a step below the body (13/20 at an answer's
+   15 px), headers in the muted ink and the case they were written in. Cells
+   wrap at word boundaries (the root's break-word keeps each column's
+   min-content whole-word), so a table is as wide as the column unless its
+   words alone are wider; only then does its container scroll sideways. */
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(13em / 15);
+  line-height: calc(20 / 13);
+}
+
+/* Columns size block pictures, rather than pictures sizing their columns.
+   A percentage-sized picture participating in automatic table sizing can
+   alternate the column widths and row height on each measurement. Its slot
+   excludes intrinsic image widths, including when the bytes first decode. */
+.chat-markdown :is(th, td) [data-markdown-image-block] {
+  contain: inline-size;
+  width: 100%;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-markdown thead th {
+  border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
+  padding-block: 0.55rem;
+  font-weight: 600;
+  color: var(--contrast-muted-foreground);
+}
+
+.chat-markdown tbody td {
+  border-bottom: 1px solid color-mix(in srgb, var(--contrast-border) 60%, transparent);
+}
+
+/* The last column keeps clear of the copy that stands on the table's corner
+   (24 px, shown under the pointer and always on a touch screen), so a header
+   or a number set to the right is never under it. */
+.chat-markdown .chat-markdown-table-container :is(th, td):last-child {
+  padding-inline-end: 2.25rem;
+}
+
+:root {
+  --diff-addition: var(--success);
+  --diff-deletion: var(--destructive);
+  --diff-addition-foreground: light-dark(var(--color-emerald-600), var(--color-emerald-400));
+  --diff-deletion-foreground: light-dark(var(--color-red-600), var(--color-red-400));
+}
+
+:root[data-diff-color-scheme="blue-orange"] {
+  --diff-addition: light-dark(var(--color-blue-600), var(--color-blue-400));
+  --diff-deletion: light-dark(var(--color-orange-600), var(--color-orange-400));
+  --diff-addition-foreground: var(--diff-addition);
+  --diff-deletion-foreground: var(--diff-deletion);
+  --diffs-addition-color-override: var(--diff-addition);
+  --diffs-deletion-color-override: var(--diff-deletion);
+  --trees-status-added-override: var(--diff-addition);
+  --trees-status-deleted-override: var(--diff-deletion);
+  --trees-status-untracked-override: var(--diff-addition);
+  --trees-git-added-color-override: var(--diff-addition);
+  --trees-git-deleted-color-override: var(--diff-deletion);
+  --trees-git-untracked-color-override: var(--diff-addition);
+}
+
+.diff-render-surface diffs-container {
+  border: 0;
+  border-radius: 0;
+  overflow: clip;
+  background: var(--code-background);
+  color: var(--code-foreground);
+}
+
+/* Pierre's file renderer owns its own surface tokens. Keep the root of a file
+   preview on the same themeable code surface as the diff panel. */
+.diff-render-surface diffs-container,
+.file-preview-virtualizer diffs-container {
+  --diffs-bg: var(--code-background) !important;
+  --diffs-light-bg: var(--code-background) !important;
+  --diffs-dark-bg: var(--code-background) !important;
+  background-color: var(--code-background) !important;
+  color: var(--code-foreground) !important;
+}
+
+@keyframes ultrathink-rainbow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes ultrathink-chroma-shift {
+  0% {
+    filter: hue-rotate(0deg) saturate(1.2);
+  }
+  100% {
+    filter: hue-rotate(360deg) saturate(1.2);
+  }
+}
+
+.ultrathink-frame {
+  --ultrathink-spectrum: linear-gradient(
+    120deg,
+    #ff6b6b 0%,
+    #f59e0b 18%,
+    #22c55e 36%,
+    #14b8a6 54%,
+    #3b82f6 72%,
+    #ec4899 90%,
+    #ff6b6b 100%
+  );
+  position: relative;
+}
+
+.ultrathink-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background-image: var(--ultrathink-spectrum);
+  background-size: 220% 220%;
+  pointer-events: none;
+  filter: saturate(0.82) brightness(0.92);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: ultrathink-rainbow 10s linear infinite;
+}
+
+.ultrathink-frame > * {
+  position: relative;
+}
+
+.ultrathink-chroma {
+  animation: ultrathink-chroma-shift 10s linear infinite;
+}
+
+/* A run's card is drawn a slice per row, and rows stand on eighth-of-a-pixel
+   positions, each clipped to its own box by the list (`contain: content`):
+   where two slices met, each row's clip snapped away from the joint and the
+   page showed through as a hairline across the card and a notch in its side
+   (under a run's status line, 2026-09-29). A slice with another under it now
+   paints past its box — its row keeps layout and style containment, not
+   paint — and lays a strip of its ground and its sides across the joint, so
+   no edge falls in the joint's pixel. (An outer shadow is clipped at the very
+   edge it had to cover; a strip beneath went under the pane's own ground.)
+   The strip hangs off the slice's row, whose box is the tray's border box: hung
+   off the bordered tray a pixel outside its padding box, it snapped to another
+   device pixel than the tray's own sides at a fractional pixel ratio. And a
+   side is drawn one of two ways: along its corners' curve where the box has a
+   radius, snapped to whole device pixels where it has none — at the owner's
+   1.58× the top slice's side took one device column and the middle slice's
+   two, and the side jogged at every joint (2026-09-29). So every slice and
+   strip takes a radius, the middle ones one nobody can see, and all their
+   sides are drawn the same way. A card drawn whole has no joints. The row
+   is the list's own bare div, so the test runs on every div: it looks for
+   the timeline's row root first, so on any other div it stops at its
+   children — or at the room a slice joining in sight opens in. */
+.timeline-legend-list
+  .legend-list-content-container
+  > div
+  > div:has(
+    > [data-timeline-root] > :is([data-card-slice="top"], [data-card-slice="middle"]),
+    > [data-timeline-root]
+      > [data-row-room]
+      > :is([data-card-slice="top"], [data-card-slice="middle"])
+  ) {
+  contain: layout style !important;
+}
+
+:is([data-card-slice="top"], [data-card-slice="middle"]) {
+  position: relative;
+}
+
+:is([data-card-slice="top"], [data-card-slice="middle"]):not([data-card-whole])::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  border-radius: 0.05px;
+  bottom: -1.5px;
+  height: 3px;
+  border-inline: 1px solid var(--run-tray-ring);
+  background: var(--run-tray);
+  pointer-events: none;
+}
+
+/* The timeline shows a conversation once the list has put it in place (its
+   rows are held at opacity 0 until then). It was a cut from nothing to the
+   whole conversation in one frame on every switch between Mates; it now
+   comes in over 200 ms. Only the showing is eased: hiding stays instant, so
+   rows the list has not placed yet are never seen on their way out. */
+.timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
+  transition: opacity var(--duration-base) var(--ease-out-strong);
+}
+
+.timeline-legend-list .legend-list-content-container > div[style*="opacity: 0"] {
+  transition-duration: 0ms;
+}
+
+/* The conversation its own draft just became: the draft's frame showed its rows, so they show
+   again in place at once — eased in, they would read as the message thrown away and resent. */
+[data-timeline-from-draft]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  transition-duration: 0ms;
+}
+
+/* Placement runs again when the draft's conversation mounts; its already visible rows stay shown. */
+[data-timeline-from-draft][data-timeline-placing],
+[data-timeline-from-draft][data-timeline-placing]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
+    transition: none;
+  }
+}

@@ -22,6 +22,7 @@ import { cn } from "../../lib/utils";
 import { useEnvironments, usePrimaryEnvironment } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
+import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
@@ -484,7 +485,7 @@ export function EmptySourceControlDiscovery({
         </EmptyHeader>
         <EmptyContent>
           <Button size="sm" variant="secondary" onClick={onScan} disabled={isPending}>
-            <RefreshCwIcon className={cn("size-3.5", isPending && "animate-spin")} />
+            {isPending ? <Spinner size="sm" /> : <RefreshCwIcon className="size-3.5" />}
             Scan
           </Button>
         </EmptyContent>
@@ -539,7 +540,7 @@ export function SourceControlSettingsPanel() {
             disabled={discovery.isPending}
             aria-label="Rescan server environment"
           >
-            <RefreshCwIcon className={cn("size-3", discovery.isPending && "animate-spin")} />
+            {discovery.isPending ? <Spinner size="xs" /> : <RefreshCwIcon className="size-3" />}
           </Button>
         }
       />

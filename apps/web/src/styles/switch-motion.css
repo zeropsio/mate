@@ -1,0 +1,184 @@
+/* ==== Pass 16 · motion across switches ==== */
+
+/* A conversation is out of sight until it stands where it stays: a reading
+   position put back (the list places a row from estimates first, and the
+   frame after corrected it by 96 px), or the end reached and held for two
+   frames. It then eases in as the list shows a conversation (200 ms);
+   hiding is instant. */
+[data-timeline-thread] {
+  transition: opacity var(--duration-base) var(--ease-out-strong);
+}
+
+[data-timeline-thread][data-timeline-placing] {
+  opacity: 0;
+  transition-duration: 0ms;
+}
+
+/* p25/switch */
+/* Rows handed over from a Mate's own view take its at-work face's place as they stand. */
+[data-timeline-thread][data-timeline-arrives="at-once"] {
+  transition-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-timeline-thread] {
+    transition: none;
+  }
+}
+
+/* Opening is one story, and its end holds nothing back: the moment the conversation is placed,
+   the stage's words and face fade where they stand — its eyes opening as they go — while the
+   conversation fades in under them, whole 150 ms later. The stage hands over in place — no face
+   flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar at
+   the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
+   nothing overflows the column for a frame and narrows it by a scrollbar. */
+:root {
+  --duration-conversation-wake: 150ms; /* The eyes blink open as the stage goes. */
+  --duration-conversation-exit: 150ms; /* The stage's words and face fade where they stand. */
+  --duration-conversation-rise: 150ms; /* The conversation fades in under them. */
+  /* The conversation comes in as the stage goes: one fade, in place (`loadFills`: whatever it
+     holds for the menu's fill is held before this starts). */
+  --delay-conversation-rise: 0ms;
+  /* What is left of the conversation's rise once the eyes have opened. */
+  --duration-conversation-handoff: calc(
+    var(--delay-conversation-rise) + var(--duration-conversation-rise) -
+      var(--duration-conversation-wake) + 1ms
+  );
+}
+
+[data-opening-face] {
+  /* The decorative portal lets the header button own pointer events after landing. */
+  pointer-events: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Stage-owned eyes are solid drawings throughout; only their height opens. */
+[data-opening-actor]:not([data-opening-actor="complete"])
+  :is([data-mate-face-eye], [data-mate-face-shut]) {
+  transition: none;
+}
+
+[data-opening-actor="wake"] [data-mate-face-eye] {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: conversation-eye-open var(--duration-conversation-wake) var(--ease-out-strong) both;
+}
+
+[data-conversation-opening="hand-off"] {
+  animation: conversation-handoff var(--duration-conversation-handoff) linear;
+}
+
+/* From the moment the conversation is placed, through the eyes' opening and what is left after
+   it: one exit, not started again as the stage goes from one to the other. */
+:is([data-conversation-opening="wake"], [data-conversation-opening="hand-off"]) > * {
+  animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
+}
+
+/* The real footer stays laid out and measured throughout. Hidden content accepts the input
+   that ends the sequence; it is never replaced by a guessed footer or a second conversation.
+
+   Each of these rules tests three attributes on purpose: the `:has()` rules they replace weighed
+   (0,3,0), and the rules of this sheet they must win over — a persona arriving
+   (`.conversation-persona[data-arrived]`) — were written against that weight. */
+[data-opening-waits-whole="held"]:not([data-opening-waits-whole="arrives"]):not(
+    [data-opening-waits-whole=""]
+  ) {
+  opacity: 0;
+  transition: none;
+}
+
+[data-opening-waits-whole="arrives"]:not([data-opening-waits-whole="held"]):not(
+    [data-opening-waits-whole=""]
+  ) {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    var(--delay-conversation-rise) backwards;
+}
+
+/* The conversation's foot (`ConversationOpeningWaits foot`): unseen while the stage waits, and
+   taking no keys (it is inert under the stage); it arrives with the conversation, as the timeline
+   does, and the composer takes the caret in that frame (`ConversationOpeningArrival`). No box
+   stands ahead of it: an empty one stood for as long as a slow Mate took to open. */
+[data-opening-waits-foot="held"] {
+  opacity: 0;
+  transition: none;
+}
+
+[data-opening-waits-foot="arrives"] {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    var(--delay-conversation-rise) backwards;
+}
+
+/* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
+   with it — wherever the opening stands while the route changes. Each part carries the
+   opening's state itself (`ConversationOpeningWaits`): a `:has()` on an ancestor restyles
+   everything under it for every node added there. */
+[data-opening-waits="held"]:not([data-opening-waits="arrives"]):not([data-opening-waits=""]) > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The header's name and subject, while the stage says the Mate: their place held, unseen —
+   until the conversation arrives, and they with it. */
+[data-opening-header="yields"]:not([data-opening-arrives]) > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-conversation-avatar][data-opening-arrives]:not([data-opening-arrives="held"]) > *,
+[data-opening-header][data-opening-arrives]:not([data-opening-header=""]) > *,
+[data-opening-waits="arrives"]:not([data-opening-waits="held"]):not([data-opening-waits=""]) > * {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    var(--delay-conversation-rise) backwards;
+}
+
+[data-conversation-opening="complete"] {
+  visibility: hidden;
+}
+
+@keyframes conversation-eye-open {
+  0%,
+  20% {
+    transform: scaleY(0.04);
+  }
+  65%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes conversation-stage-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes conversation-arrive {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Animation completion advances presentation only, never source readiness. */
+@keyframes conversation-handoff {
+  from {
+    --conversation-handoff: 0;
+  }
+  to {
+    --conversation-handoff: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-conversation-opening],
+  [data-opening-actor],
+  [data-opening-actor] [data-mate-face-eye],
+  [data-conversation-avatar][data-opening-arrives] > *,
+  [data-conversation-footer] {
+    animation: none !important;
+    transition: none;
+  }
+}
+
+/* ==== end of motion across switches ==== */

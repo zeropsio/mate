@@ -11,15 +11,7 @@ import type { SelectedLineRange } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/editor";
 import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
-import {
-  CheckIcon,
-  ChevronRight,
-  Code2,
-  CopyIcon,
-  Eye,
-  FolderTree,
-  LoaderCircle,
-} from "lucide-react";
+import { CheckIcon, ChevronRight, Code2, CopyIcon, Eye, FolderTree } from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -42,6 +34,8 @@ import { toastManager } from "~/lib/toasts";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { Failure } from "../ui/failure";
+import { Spinner } from "~/components/ui/spinner";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
@@ -137,7 +131,7 @@ function WorkspaceImagePreview(props: {
     </div>
   ) : (
     <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-      <LoaderCircle className="size-5 animate-spin" />
+      <Spinner size="lg" />
     </div>
   );
 }
@@ -542,10 +536,8 @@ function initialExplorerOpen(): boolean {
 /** Why the file could not be shown, with the path it tried and the folder it looked in. */
 export function FileReadFailure({ message }: { readonly message: string }) {
   return (
-    <div role="alert" className="flex min-h-0 flex-1 flex-col overflow-auto">
-      <p className="my-auto break-words px-6 py-6 text-center text-caption leading-relaxed text-destructive">
-        {message}
-      </p>
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
+      <Failure cause="This file couldn't be read." details={message} />
     </div>
   );
 }
@@ -853,7 +845,7 @@ function WorkspaceFilePreviewPanel({
             <FileReadFailure message={file.error} />
           ) : relativePath && file.data === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
-              <LoaderCircle className="size-5 animate-spin" />
+              <Spinner size="lg" />
             </div>
           ) : relativePath && file.data ? (
             isMarkdown && renderMarkdown ? (

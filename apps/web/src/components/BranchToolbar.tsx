@@ -1,4 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { MOTION } from "@t3tools/shared/brand";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import {
   ChevronDownIcon,
@@ -157,7 +158,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 
   if (isLocked) {
     return (
-      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 text-sm font-medium text-muted-foreground/70 sm:h-6 md:hidden">
+      <span className="inline-flex h-7 min-w-0 max-w-[48%] flex-1 items-center justify-start gap-1 rounded-control border border-transparent px-1.75 text-body font-medium text-muted-foreground/70 sm:h-6 md:hidden">
         {triggerContent}
       </span>
     );
@@ -251,9 +252,6 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
     </Menu>
   );
 });
-
-const COMPOSER_CONTEXT_MOTION_DURATION_MS = 180;
-const COMPOSER_CONTEXT_MOTION_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 /**
  * The width a label takes when shown, clipped parts included.
@@ -382,8 +380,8 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
           { transform: "translate3d(0, 0, 0)" },
         ],
         {
-          duration: COMPOSER_CONTEXT_MOTION_DURATION_MS,
-          easing: COMPOSER_CONTEXT_MOTION_EASING,
+          duration: MOTION.duration.base,
+          easing: MOTION.easing.out,
           fill: "backwards",
         },
       );

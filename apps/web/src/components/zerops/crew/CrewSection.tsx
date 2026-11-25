@@ -85,7 +85,7 @@ export function CrewSectionEmpty({
           <span className="crew-seat" />
         </span>
       </div>
-      <h2 className="mt-5 font-semibold text-base leading-6">{crewGiveCrewTitle(mate.name)}</h2>
+      <h2 className="mt-5 font-semibold text-emphasis">{crewGiveCrewTitle(mate.name)}</h2>
       <p className="mt-1.5 max-w-100 text-muted-foreground text-body leading-5.5">
         {crewGiveCrewLine(mate.name)}
       </p>

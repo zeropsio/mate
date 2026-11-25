@@ -29,6 +29,7 @@ import { Loading } from "../ui/loading";
 import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { EmptyState } from "~/components/ui/empty";
 
 export function PersonaTemplatesSettings() {
   const read = useOrgPersonaTemplates();
@@ -189,7 +190,7 @@ export function PersonaTemplatesView({
             </div>
           )}
           {read.templates.length === 0 && editor === null ? (
-            <p className="px-3 text-body text-muted-foreground">No templates yet.</p>
+            <EmptyState size="row">No templates yet.</EmptyState>
           ) : null}
           {read.templates.map((template) =>
             editorProps !== null && editorInRow && editor?.templateId === template.id ? (

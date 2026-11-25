@@ -33,9 +33,6 @@ import {
 import { MateFace } from "~/components/zerops/primitives";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
   service,
   port,
@@ -457,7 +454,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

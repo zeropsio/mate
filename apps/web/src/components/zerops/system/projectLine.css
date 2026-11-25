@@ -191,7 +191,7 @@
   background: var(--ln-tint, var(--ln-track));
   box-shadow: 0 0 0 2px var(--ln-ground);
   cursor: pointer;
-  transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: transform var(--duration-quick) var(--ease-out-strong);
 }
 
 /* Its press reaches the beads beside it and the track's whole height. */
@@ -201,8 +201,10 @@
   content: "";
 }
 
+/* A bead that opens its change is drawn inside its press, which takes the focus and the mark. */
 .ln-bead:hover,
-.ln-bead:focus-visible {
+.ln-bead:focus-visible,
+:focus-visible > .ln-bead {
   transform: scale(1.25);
 }
 
@@ -213,7 +215,7 @@
 
 /* The bead of the change whose row in the list is pointed at: a ring in the ink, outside its
    mark's, that takes no room. */
-.ln-bead[data-marked] {
+[data-marked] > .ln-bead {
   outline: 1.5px solid var(--foreground);
   outline-offset: 4px;
 }
@@ -235,7 +237,7 @@
   background: color-mix(in oklab, var(--foreground) 5%, var(--ln-ground));
 }
 
-span.ln-bead {
+.ln-bead[role="img"] {
   cursor: default;
 }
 
@@ -311,7 +313,7 @@ span.ln-bead {
   display: grid;
   min-width: 0;
   grid-template-rows: 104px 0fr;
-  transition: grid-template-rows 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: grid-template-rows var(--duration-base) var(--ease-out-strong);
 }
 
 .ln-fold[data-open] {
@@ -323,8 +325,8 @@ span.ln-bead {
   grid-column: 1;
   grid-row: 1;
   transition:
-    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
-    visibility 200ms;
+    opacity var(--duration-base) var(--ease-out-strong),
+    visibility var(--duration-base);
 }
 
 .ln-pane[data-pane="full"] {

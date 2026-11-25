@@ -26,6 +26,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+import { FieldError } from "../ui/field";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { RadioCard, RadioGroup } from "../ui/radio-group";
@@ -350,7 +351,9 @@ function EnvironmentForm({
               value={name}
             />
             {showErrors && errors.name !== undefined ? (
-              <FieldError>{errors.name}</FieldError>
+              <FieldError match role="alert">
+                {errors.name}
+              </FieldError>
             ) : null}
           </div>
 
@@ -412,7 +415,9 @@ function EnvironmentForm({
                   )}
                 </RadioGroup>
                 {showErrors && held === undefined && errors.recipe !== undefined ? (
-                  <FieldError>{errors.recipe}</FieldError>
+                  <FieldError match role="alert">
+                    {errors.recipe}
+                  </FieldError>
                 ) : null}
               </div>
             </>
@@ -446,14 +451,6 @@ function agentSwitchNote(role: ZeropsEnvironmentRole): string {
     return "Only if someone will build directly in stage.";
   }
   return "A Mate you can talk to, with a workspace of its own.";
-}
-
-export function FieldError({ children }: { readonly children: string }) {
-  return (
-    <p className="text-caption text-status-failed-text" role="alert">
-      {children}
-    </p>
-  );
 }
 
 export function ZeropsEnvironmentCreationDialog({

@@ -378,11 +378,6 @@ function sample(which: keyof typeof TRIGGERS, frames = 45) {
 
 (window as unknown as { __pickerHarness: unknown }).__pickerHarness = { sample };
 
-// The app sets the appearance on the document element (`useTheme.ts`), so the
-// harness does the same.
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

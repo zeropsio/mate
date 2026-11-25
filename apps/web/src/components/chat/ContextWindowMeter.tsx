@@ -94,21 +94,14 @@ export function ContextWindowMeter(props: {
                   stroke={usageColor}
                   strokeWidth={radius}
                   strokeDasharray={`${wedgeLength} ${wedgeCircumference}`}
-                  className="transition-[stroke-dasharray,stroke] duration-500 ease-out motion-reduce:transition-none"
+                  className="transition-[stroke-dasharray,stroke] duration-260 ease-out-strong motion-reduce:transition-none"
                 />
               </svg>
             </span>
           </Button>
         }
       />
-      <PopoverPopup
-        tooltipStyle
-        side="top"
-        align="end"
-        padding="none"
-        width="sm"
-        className="text-left whitespace-normal"
-      >
+      <PopoverPopup side="top" align="end" padding="none" width="sm">
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
             <div className="font-medium text-muted-foreground text-caption">Context Window</div>
@@ -137,7 +130,7 @@ export function ContextWindowMeter(props: {
               aria-label="Context window usage"
             >
               <div
-                className="h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none"
+                className="h-full rounded-full transition-[width,background-color] duration-260 ease-out-strong motion-reduce:transition-none"
                 style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}
               />
             </div>

@@ -50,7 +50,7 @@ function Input({
     "h-8.5 w-full min-w-0 rounded-[inherit] px-[calc(--spacing(3)-1px)] leading-8.5 outline-none placeholder:text-placeholder sm:h-7.5 sm:leading-7.5 [transition:background-color_5000000s_ease-in-out_0s]",
     // Below 640 even the compact field types at 16 px: a smaller one makes iOS zoom the page.
     size === "compact" &&
-      "h-7 px-[calc(--spacing(2.5)-1px)] text-base leading-7 sm:h-7 sm:text-caption sm:leading-7",
+      "h-7 px-[calc(--spacing(2.5)-1px)] text-typed leading-7 sm:h-7 sm:text-caption sm:leading-7",
     size === "sm" && "h-7.5 px-[calc(--spacing(2.5)-1px)] leading-7.5 sm:h-6.5 sm:leading-6.5",
     size === "lg" && "h-9.5 leading-9.5 sm:h-8.5 sm:leading-8.5",
     // A form that is the page's hero: a large button's height, typed at prose size.
@@ -104,7 +104,7 @@ function Input({
             "rounded-mark bg-background px-0.5 ring-1 ring-ring has-aria-invalid:ring-destructive",
           !unstyled &&
             size !== "inline" &&
-            "relative inline-flex w-full rounded-control border border-input bg-field bg-clip-ground text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-edge has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-field-invalid has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-field-autofill has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm",
+            "relative inline-flex w-full rounded-control border border-input bg-field bg-clip-ground text-typed text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-edge has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-field-invalid has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-field-autofill has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-body",
           !unstyled && size === "compact" && "rounded-control",
           font === "mono" && "font-mono tabular-nums",
           className,

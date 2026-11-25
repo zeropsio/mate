@@ -79,9 +79,9 @@ import {
   type MateStandUpPhase,
 } from "~/zerops/mateStandUp";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 
 const ADA = "u-ada";
 const WREN: ZeropsMateIdentity = {
@@ -637,7 +637,7 @@ const SHARED: TimelineRowSharedState = {
   routeThreadKey: "harness",
   threadRef: null,
   markdownCwd: undefined,
-  resolvedTheme: appearance,
+  resolvedTheme: harnessAppearance,
   workspaceRoot: undefined,
   skills: [],
   activeThreadEnvironmentId: EnvironmentId.make("environment-harness"),
@@ -1182,7 +1182,7 @@ function Header({ state }: { readonly state: HarnessState }) {
             state={state.mate.connected ? "idle" : "sleep"}
             tint={state.mate.tint}
           />
-          <span className="font-semibold text-base">{state.mate.name}</span>
+          <span className="font-semibold text-emphasis">{state.mate.name}</span>
         </span>
       ) : null}
       {state.crew === true ? (
@@ -1244,8 +1244,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

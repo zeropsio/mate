@@ -46,6 +46,7 @@ import {
 } from "../gitMirror.logic";
 import { GithubTokenFields } from "./GithubTokenFields";
 import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress";
+import { Loading } from "~/components/ui/loading";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
 interface RepoRowActions {
@@ -144,7 +145,7 @@ interface RepoRowsViewProps {
 export function RepoRowsView(props: RepoRowsViewProps) {
   const listed = props.repos?.filter((entry) => entry.name !== RECIPE_REPO);
   if (listed === undefined)
-    return <p className="px-2 text-caption text-muted-foreground">Reading repositories…</p>;
+    return <Loading className="mx-2" count={3} label="Repositories" shape="rows" />;
   const someUnconnected = listed.some((entry) => entry.remote == null);
   // The ⋯ seat is held in every row where any row may fill it: the verbs end at one edge.
   const seat = listed.some(

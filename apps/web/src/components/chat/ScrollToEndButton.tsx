@@ -30,7 +30,7 @@ export function ScrollToEndButton({
           reader hears, and a button still focused as it goes (a click
           or a key focused it) lets the focus go with it. */}
       <span
-        className="pointer-events-auto rounded-full shadow-lg/8 transition-[opacity,translate,scale] duration-200 ease-out not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
+        className="pointer-events-auto rounded-full shadow-lg/8 transition-[opacity,translate,scale] duration-200 ease-out-strong not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
         data-shown={showScrollToBottom ? "" : undefined}
       >
         <Button

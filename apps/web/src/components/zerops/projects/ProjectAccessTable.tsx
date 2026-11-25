@@ -57,6 +57,7 @@ import {
 } from "./accessTable.logic";
 import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectAccessChips";
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
+import { Loading } from "~/components/ui/loading";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -150,7 +151,7 @@ export function ProjectAccessTable({
     <section aria-label={label} className="ov-sec" data-zerops-surface="access-table">
       <h3 className="ov-sec-name">{label}</h3>
       {view.kind === "reading" ? (
-        <p className="ov-sec-empty">Reading who has access…</p>
+        <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
         <p className="ov-sec-empty">{view.line}</p>
       ) : phone ? (

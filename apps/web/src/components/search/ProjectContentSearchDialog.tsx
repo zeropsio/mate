@@ -1,5 +1,4 @@
 import type { ProjectContentMatch } from "@t3tools/contracts";
-import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
@@ -11,6 +10,8 @@ import { useProjectContentSearch } from "~/state/queries";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { EmptyState } from "../ui/empty";
+import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
@@ -94,9 +95,7 @@ export function EmptyContentSearchDialog() {
       testId="project-content-search"
       value=""
     >
-      <p className="m-auto px-6 text-center text-muted-foreground text-body">
-        Open a project to search its files.
-      </p>
+      <EmptyState>Open a project to search its files.</EmptyState>
     </CommandPaletteContent>
   );
 }
@@ -229,7 +228,7 @@ function OpenContentSearchDialog(props: {
         <div className="flex h-9 shrink-0 items-center border-b px-3 text-caption text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
-              <LoaderCircle className="size-3.5 animate-spin" /> Searching…
+              <Spinner size="sm" /> Searching…
             </span>
           ) : search.error ? (
             <span className="text-destructive">{search.error}</span>

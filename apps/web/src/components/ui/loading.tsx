@@ -1,3 +1,5 @@
+import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
+import { useEffect, useState } from "react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
@@ -11,6 +13,10 @@ import { Skeleton } from "./skeleton";
  *
  * `shape` draws a ready stand-in; `children` draws a surface's own (built from `Skeleton`). `room`
  * holds a surface's whole room and paints nothing: for code that arrives in a beat.
+ *
+ * `quiet` is for a read that usually lands at once: the stand-in holds its place unpainted for the
+ * app's one hold (`STILL_READING_HOLD_MS`), so a read that lands within it never paints a stand-in
+ * it takes back, and one that outlasts it paints in place, moving nothing.
  */
 type LoadingShape = "room" | "line" | "lines" | "rows" | "cards" | "page";
 
@@ -80,10 +86,22 @@ function LoadingShapeView({ shape, count }: { readonly shape: LoadingShape; coun
   }
 }
 
+/** Whether a quiet stand-in is still within its hold. One timer, from its first frame. */
+function useHeld(quiet: boolean): boolean {
+  const [over, setOver] = useState(!quiet);
+  useEffect(() => {
+    if (over) return;
+    const timer = setTimeout(() => setOver(true), STILL_READING_HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [over]);
+  return !over;
+}
+
 function Loading({
   label,
   shape = "rows",
   count = 3,
+  quiet = false,
   children,
   className,
   ...props
@@ -93,7 +111,10 @@ function Loading({
   readonly shape?: LoadingShape;
   /** How many rows, cards or lines the stand-in draws: as many as are expected, when known. */
   readonly count?: number;
+  /** Holds its place unpainted for the app's one hold before it draws. */
+  readonly quiet?: boolean;
 }) {
+  const held = useHeld(quiet);
   return (
     <div
       aria-busy="true"
@@ -101,6 +122,7 @@ function Loading({
       className={cn(
         "min-w-0",
         shape === "room" && "flex h-full min-h-32 flex-1 self-stretch",
+        held && "invisible",
         className,
       )}
       data-slot="loading"

@@ -35,12 +35,9 @@ const TAB_LABEL: Readonly<Record<ComponentTab, string>> = {
   usage: "Usage",
 };
 
-const STATUS: Readonly<
-  Record<KitGroup, { tone: "success" | "neutral" | "warning"; label: string }>
-> = {
+const STATUS: Readonly<Record<KitGroup, { tone: "success" | "neutral"; label: string }>> = {
   Chosen: { tone: "success", label: "Chosen" },
   Kit: { tone: "neutral", label: "Kit" },
-  "Home-made": { tone: "warning", label: "Home-made" },
 };
 
 /** The tabs a section has: a playground only where one is defined, usage where it is written. */

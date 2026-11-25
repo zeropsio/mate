@@ -72,12 +72,12 @@ export function CrewHead({
   return (
     <div className="flex flex-col gap-0.5 px-4 pt-4 @max-md:pt-3" data-crew-head>
       <div className="flex h-7 items-center gap-2">
-        <span className="flex min-w-0 text-base leading-6">
+        <span className="flex min-w-0 text-emphasis">
           <CrewTip side="bottom" tip={goal.hover}>
             {onGoal === null ? (
               <span
                 className={cn(
-                  "min-w-0 truncate font-semibold text-base leading-6",
+                  "min-w-0 truncate font-semibold text-emphasis",
                   goal.placeholder ? "text-muted-foreground" : "text-foreground",
                 )}
                 data-crew-goal-title

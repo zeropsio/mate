@@ -48,7 +48,6 @@ import type { AppRouter } from "~/router";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "idle";
 const SERVICES = params.get("services") ?? "3";
 const MENU_WIDTH = 435;
@@ -420,7 +419,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 openAccountLifetime("design-delete-harness");
 
 // The menu asks the account's projects which environments an application has: none here, the
