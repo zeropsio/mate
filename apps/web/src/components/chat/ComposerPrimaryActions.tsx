@@ -138,7 +138,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     // stop has not failed. Beside the blue send it can never be mistaken for it.
     <Button
       aria-label={stop.label}
-      data-composer-primary=""
       disabled={stop.disabled}
       onClick={stop.onClick}
       shape="round"
@@ -275,7 +274,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       size="icon-md"
       className="size-9 hover:scale-105 active:scale-95 sm:size-8"
       {...pointerFocusProps}
-      data-composer-primary=""
       aria-description={sendHint ?? undefined}
       disabled={held || !hasSendableContent}
       aria-label={
