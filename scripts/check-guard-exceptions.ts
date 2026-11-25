@@ -165,6 +165,7 @@ export const RATCHET_RULES = [
   "prefer-item-grounds",
   "prefer-text",
   "no-sized-slot-icon",
+  "prefer-failure",
   "no-infinite-motion",
   "no-legacy-vocabulary",
   "require-static-classes",

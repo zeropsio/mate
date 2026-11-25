@@ -271,6 +271,13 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/prefer-item-grounds` (a theme ground or a step of the ink behind a
     `hover` variant, in a class string with no resting ground of its own); its ledger only shrinks
 
+- **R17** — A failure is said in one form: an action's refusal is `Failure size="line"` (what
+  failed, why, its one action, the source's words under Details), a value's error is `Text
+  variant="error"`, a place that failed is `Failure`; a notice across a panel's edge is `Alert
+  surface="band"`
+  - _Enforced by:_ `t3code/prefer-failure` (a plain element whose class string is a failure's ink
+    with a type step or an alert/status role, beside only its place); its ledger only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
