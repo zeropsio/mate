@@ -79,7 +79,6 @@ import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { appChunk } from "~/lib/appChunks";
 
-import { ArrivalSpinner } from "./ZeropsArrivalSteps";
 import {
   abbreviatedCode,
   agentSignInSteps,
@@ -830,7 +829,7 @@ function PasteCodeStep({
             <span className="arrival-field" data-sign-in-checking>
               <span className="arrival-field-value">{abbreviatedCode(checking)}</span>
               <span className="flex-1" />
-              <ArrivalSpinner className="arrival-spin" />
+              <Spinner aria-hidden="true" size="sm" tone="muted" />
               <span>{words.checking}</span>
             </span>
           )}
@@ -871,7 +870,7 @@ function TypeCodeStep({
       <span />
       <span className="arrival-open-step-field flex items-center gap-2">
         <span className="arrival-code" data-sign-in-device-code>
-          {code ?? <ArrivalSpinner className="arrival-spin" />}
+          {code ?? <Spinner aria-hidden="true" size="sm" tone="muted" />}
         </span>
         {code === undefined ? null : (
           <Button
@@ -890,7 +889,7 @@ function TypeCodeStep({
         )}
       </span>
       <span className="arrival-open-step-hint">
-        <ArrivalSpinner className="arrival-spin" />
+        <Spinner aria-hidden="true" size="sm" tone="muted" />
         {words.typeHint}
       </span>
     </div>
@@ -914,7 +913,7 @@ function ApproveStep({
       <span className="arrival-open-step-words">{words.approve}</span>
       <span />
       <span className="arrival-open-step-hint">
-        {waiting ? <ArrivalSpinner className="arrival-spin" /> : null}
+        {waiting ? <Spinner aria-hidden="true" size="sm" tone="muted" /> : null}
         {words.approveHint}
       </span>
     </div>

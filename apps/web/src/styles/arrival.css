@@ -866,44 +866,13 @@
   line-height: 16px;
 }
 
+/* A service: the kit's dot and its name; one that stays empty reads quieter still. */
 .arrival-service {
   display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
 }
 
 .arrival-service[data-state="empty"] {
   color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
-}
-
-.arrival-service-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-}
-
-.arrival-service[data-state="ok"] .arrival-service-dot {
-  background: var(--zerops-status-ok);
-}
-
-.arrival-service[data-state="busy"] .arrival-service-dot {
-  background: radial-gradient(circle, var(--zerops-status-busy) 0 1.4px, transparent 1.9px);
-  box-shadow: inset 0 0 0 1.5px var(--zerops-status-busy);
-}
-
-.arrival-service[data-state="waiting"] .arrival-service-dot {
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--foreground) 26%, transparent);
-}
-
-.arrival-service[data-state="empty"] .arrival-service-dot {
-  box-sizing: border-box;
-  border: 1px dashed color-mix(in oklab, var(--foreground) 30%, transparent);
-}
-
-.arrival-service[data-state="failed"] .arrival-service-dot {
-  background: var(--zerops-status-failed);
 }
 
 /* p25/arrival: under the sign-in, the runtimes still coming up after the Mate answered, quiet
@@ -934,39 +903,6 @@
   .arrival-runtimes {
     transition: none;
   }
-}
-
-.arrival-glyph-track {
-  fill: none;
-  stroke: color-mix(in oklab, var(--foreground) 12%, transparent);
-  stroke-width: 1.75;
-}
-
-.arrival-glyph-arc {
-  fill: none;
-  stroke: var(--zerops-status-busy);
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  transform-origin: 8px 8px;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .arrival-glyph-arc {
-    animation: arrival-spin 1s steps(8) infinite;
-  }
-}
-
-@keyframes arrival-spin {
-  to {
-    rotate: 360deg;
-  }
-}
-
-.arrival-spin {
-  display: block;
-  flex: none;
-  width: 14px;
-  height: 14px;
 }
 
 /* The stage while it asks for a sign-in, to the owner's design (2026-11-23): the face 120 px, the
