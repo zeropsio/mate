@@ -521,11 +521,9 @@ function RailTileView({
     <div
       aria-current={tile.holdsCurrent ? "true" : undefined}
       aria-label={name}
-      className={
-        tile.open
-          ? "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card bg-rail-group pb-1.5 [--menu-ground:var(--color-rail-group)] [--menu-rail-hover:var(--color-rail-group-hover)]"
-          : "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
-      }
+      // Open, the project's Mates stand on its group's ground, which their faces cut out of.
+      className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
+      data-rail-open={tile.open ? "" : undefined}
       data-zerops-surface="sidebar-rail-project"
       role="group"
     >

@@ -28,6 +28,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
 import { Card } from "../ui/card";
 import { CopyLine } from "../ui/copy-line";
+import { LogoTile } from "../ui/logo-tile";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
@@ -229,11 +230,8 @@ function macGlyph(status: MacWaitKind) {
           ? RefreshCwIcon
           : undefined;
   return (
-    <span
-      aria-hidden="true"
-      className="relative mb-4 grid size-14 place-items-center rounded-card bg-muted text-muted-foreground"
-    >
-      <LaptopIcon className="size-7" strokeWidth={1.5} />
+    <LogoTile className="relative mb-4" size="xl">
+      <LaptopIcon strokeWidth={1.5} />
       {Badge === undefined ? null : (
         <span
           className={cn(
@@ -244,7 +242,7 @@ function macGlyph(status: MacWaitKind) {
           <Badge className="size-3.25" />
         </span>
       )}
-    </span>
+    </LogoTile>
   );
 }
 

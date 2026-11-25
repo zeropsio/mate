@@ -277,12 +277,10 @@ function ReleaseRow({
   };
   return (
     <li
-      className={cn(
-        "group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border",
-        // What is live is found without reading a pill: the one row with a surface at rest.
-        live ? "border-status-ok/25 bg-status-ok-surface/50" : "border-transparent",
-        open && !live && "bg-item-hover",
-      )}
+      // What is live is found without reading a pill: the one row with a surface at rest; an
+      // opened row stays lit.
+      className="group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border border-transparent data-release-open:not-data-zerops-release-live:bg-item-hover data-zerops-release-live:border-status-ok/25 data-zerops-release-live:bg-status-ok-surface/50"
+      data-release-open={open ? "" : undefined}
       data-zerops-environment-row="true"
       data-zerops-release={release.tag}
       data-zerops-release-live={live || undefined}

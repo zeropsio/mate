@@ -9,6 +9,7 @@ import { ChevronDownIcon, CircleAlertIcon, DicesIcon, LockIcon } from "lucide-re
 import { useState } from "react";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
@@ -77,16 +78,8 @@ export function VaultAddCard(props: VaultAddCardProps) {
     if (event.key === "Escape") props.onCancel();
   };
 
-  return (
-    // A card raised over the list it adds to.
-    <div
-      className={
-        props.framed === false
-          ? undefined
-          : "rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border"
-      }
-      data-vault-add
-    >
+  const body = (
+    <>
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
         New value in
         <Menu>
@@ -200,7 +193,13 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </Text>
         )}
       </div>
-    </div>
+    </>
+  );
+  // A card raised over the list it adds to, unless its place draws one.
+  return props.framed === false ? (
+    <div data-vault-add>{body}</div>
+  ) : (
+    <Card data-vault-add>{body}</Card>
   );
 }
 
@@ -241,31 +240,24 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           {which === "sensitive" ? <LockIcon aria-hidden="true" className="size-3" /> : null}
           {label}
         </div>
-        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
-          <div
-            aria-hidden="true"
-            // One mark per line, at the line's height.
-            className="py-2 text-center *:block *:h-5 font-mono font-medium text-caption leading-5"
-          >
-            {lineStarts(lines).map(({ start, line }) => {
-              const mark = diff.marks[which][line] ?? null;
-              return (
-                <span className={mark === null ? undefined : MARK_CLASS[mark]} key={start}>
-                  {mark}
-                </span>
-              );
-            })}
-          </div>
-          <Textarea
-            aria-label={`${label} values as text`}
-            onChange={(event) =>
-              props.onChange({ ...props.text, [which]: event.currentTarget.value })
-            }
-            size="code"
-            spellCheck={false}
-            value={props.text[which]}
-          />
-        </div>
+        <Textarea
+          aria-label={`${label} values as text`}
+          // One mark per line, at the line's height.
+          gutter={lineStarts(lines).map(({ start, line }) => {
+            const mark = diff.marks[which][line] ?? null;
+            return (
+              <span className={mark === null ? undefined : MARK_CLASS[mark]} key={start}>
+                {mark}
+              </span>
+            );
+          })}
+          onChange={(event) =>
+            props.onChange({ ...props.text, [which]: event.currentTarget.value })
+          }
+          size="code"
+          spellCheck={false}
+          value={props.text[which]}
+        />
       </div>
     );
   };
@@ -343,11 +335,10 @@ export function VaultReview(props: VaultReviewProps) {
       </div>
       {lines.map(({ write, line }) => (
         <div
-          className={
-            line.guarded && !forced.has(write.key)
-              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
-              : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5"
-          }
+          // A line held back until it is forced stands on the warning's ground, out to the
+          // section's edge; the others are parted by a rule.
+          className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5 data-held:-mx-2 data-held:rounded-control data-held:border-transparent data-held:bg-warning-surface data-held:px-2"
+          data-held={line.guarded && !forced.has(write.key) ? "" : undefined}
           data-vault-review-line={write.key}
           key={`${write.kind}:${write.key}`}
         >

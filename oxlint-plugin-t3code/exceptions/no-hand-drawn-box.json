@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/SidebarDraftRows.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<li> className={cn( \"list-none rounded-card transition-colors duration-150 ease-out-strong\", props.isActive ? \"bg-sidebar-row-active\" : \"hover:bg-sidebar-row-hover\", )}",
-    "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerPictureView.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"line-clamp-2 cursor-pointer whitespace-normal rounded-control bg-popover px-2.25 py-1.25 text-left text-body text-popover-foreground shadow-popup ring-1 ring-border group-hover/chip:ring-2 group-hover/chip:ring-annotation group-data-selected/chip:ring-2 group-data-selected/chip:ring-annotation\"",
@@ -32,57 +24,9 @@
     "expires": "surface:floating"
   },
   {
-    "path": "apps/web/src/components/zerops/SidebarRail.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={ tile.open ? \"flex w-20 flex-none flex-col items-center gap-0.5 rounded-card bg-rail-group pb-1.5 [--menu-ground:var(--color-rail-group)] [--menu-rail-hover:var(--color-rail-group-hover)]\" : \"flex w-20 flex-none flex-col items-center gap-0.5 rounded-card\" }",
-    "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarSelectedBand.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"absolute inset-0 overflow-clip rounded-card will-change-transform bg-sidebar-row-active\"",
-    "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"mx-3.5 mb-3.5 h-32 overflow-hidden rounded-control bg-muted text-foreground inset-ring inset-ring-border [--terminal-background:var(--muted)] [--terminal-cursor:var(--foreground)] [--terminal-foreground:var(--foreground)] [--terminal-selection-background:color-mix(in_oklab,var(--foreground)_20%,transparent)]\"",
-    "owner": "unify pass",
-    "reason": "code or machine output in a box of its own; it moves onto the code family's kit piece",
-    "expires": "surface:code"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"flex h-10.5 items-center gap-2 rounded-control bg-card px-3 text-body whitespace-nowrap text-muted-foreground inset-ring inset-ring-input\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"inline-flex h-9 items-center rounded-control bg-muted px-3 font-mono text-title leading-none font-medium tracking-wider text-foreground select-all inset-ring inset-ring-border\"",
-    "owner": "unify pass",
-    "reason": "code or machine output in a box of its own; it moves onto the code family's kit piece",
-    "expires": "surface:code"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMacPanel.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"relative mb-4 grid size-14 place-items-center rounded-card bg-muted text-muted-foreground\"",
-    "owner": "unify pass",
-    "reason": "an icon or a face on a tile of its own; it moves onto the identity family's tile",
-    "expires": "surface:identity"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<li> className={cn( \"group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border\", // What is live is found without reading a pill: the one row with a surface at rest. live ? \"border-status-ok/25 bg-status-ok-surface/50\" : \"border-transparent\", open && !live && \"bg-item-hover\", )}",
     "owner": "unify pass",
     "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
     "expires": "surface:choices"
@@ -96,30 +40,6 @@
     "expires": "surface:choices"
   },
   {
-    "path": "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"relative z-1 mt-2.5 flex flex-col rounded-card bg-well px-3 py-1 ring-1 ring-foreground/8\"",
-    "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
-  },
-  {
-    "path": "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<section> className=\"mt-10 flex w-full max-w-md flex-col rounded-card border border-foreground/7 bg-run-tray px-4 py-3\"",
-    "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
-  },
-  {
-    "path": "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"me-1.5 inline-flex rounded-control bg-muted px-1.5 font-medium text-foreground\"",
-    "owner": "unify pass",
-    "reason": "a small mark drawn as a box (a tag, a count, a readout); it moves onto the marks family's kit piece",
-    "expires": "surface:marks"
-  },
-  {
     "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className=\"grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-control bg-card p-2 shadow-edge @max-[17rem]/waits:grid-cols-[24px_minmax(0,1fr)] @max-[17rem]/waits:items-start @max-[17rem]/waits:gap-y-1.5\"",
@@ -128,43 +48,11 @@
     "expires": "surface:containers"
   },
   {
-    "path": "apps/web/src/components/zerops/projects/ProjectHistory.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<li> className={cn( \"grid min-w-0 rounded-control transition-colors duration-150 ease-out-strong\", open ? \"bg-item-hover pb-1.5\" : \"has-[>[data-hist-head]:hover]:bg-item-hover\", )}",
-    "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
-  },
-  {
     "path": "apps/web/src/components/zerops/system/FaceCard.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className={cn( // A person or a Mate lifted off the page; its ground lit under the pointer adds to the // lift. The lift's own accent, a step under it, is what a quiet press lights on it. \"relative flex min-w-0 flex-col rounded-card bg-muted text-center transition-[background-color,box-shadow] duration-150 ease-out-strong [--accent:color-mix(in_oklab,var(--foreground)_6%,var(--muted))]\", \"has-[>[data-face-card-press]:hover]:bg-foreground/9 has-[>[data-face-card-press]:hover]:inset-ring has-[>[data-face-card-press]:hover]:inset-ring-border\", \"has-[>[data-face-card-press]:focus-visible]:ring-2 has-[>[data-face-card-press]:focus-visible]:ring-ring has-[>[data-face-card-press]:focus-visible]:ring-offset-2 has-[>[data-face-card-press]:focus-visible]:ring-offset-background\", phone === \"rows\" && \"max-sm:bg-transparent max-sm:text-left\", phone === \"lying\" && \"max-sm:text-start\", )}",
     "owner": "unify pass",
     "reason": "an icon or a face on a tile of its own; it moves onto the identity family's tile",
     "expires": "surface:identity"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring\"",
-    "owner": "unify pass",
-    "reason": "a field's or a composer's own box; no kit piece draws a composer yet",
-    "expires": "surface:composer"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={ line.guarded && !forced.has(write.key) ? \"-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5\" : \"grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5\" }",
-    "owner": "unify pass",
-    "reason": "a message to the person in a tinted block; it moves onto the notices family's kit piece",
-    "expires": "surface:notices"
-  },
-  {
-    "path": "apps/web/src/components/zerops/vault/VaultEditors.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className={ props.framed === false ? undefined : \"rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border\" }",
-    "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
   }
 ]

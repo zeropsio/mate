@@ -26,7 +26,7 @@ import type {
   ZeropsAgentLoginState,
   ZeropsUserId,
 } from "@t3tools/contracts";
-import { ArrowRightIcon, ArrowUpRightIcon, CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowRightIcon, ArrowUpRightIcon, RotateCcwIcon } from "lucide-react";
 import {
   lazy,
   Suspense,
@@ -55,6 +55,9 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
+import { CodeFrame } from "~/components/ui/code-block";
+import { CopyLine } from "~/components/ui/copy-line";
 import { Row } from "~/components/ui/row";
 import {
   Dialog,
@@ -103,8 +106,6 @@ const TerminalViewport = lazy(
 );
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
-
-const COPIED_MS = 2_000;
 
 /** An agent as a sign-in shows it: its row, and what a login beyond the defaults calls it. */
 export type SignInAgent = Pick<ZeropsAgentAuth, "agentId" | "login"> &
@@ -520,12 +521,11 @@ function OpenCard({
       >
         <div className="min-h-0 overflow-hidden">
           {attempt === undefined ? null : (
-            <div
-              className="mx-3.5 mb-3.5 h-32 overflow-hidden rounded-control bg-muted text-foreground inset-ring inset-ring-border [--terminal-background:var(--muted)] [--terminal-cursor:var(--foreground)] [--terminal-foreground:var(--foreground)] [--terminal-selection-background:color-mix(in_oklab,var(--foreground)_20%,transparent)]"
-              data-arrival-terminal
-            >
-              {showTerminal ? terminal(agentId, attempt) : null}
-            </div>
+            <CodeFrame className="mx-3.5 mb-3.5 h-32" data-arrival-terminal>
+              <div className="size-full [--terminal-background:var(--color-code)] [--terminal-cursor:var(--color-code-foreground)] [--terminal-foreground:var(--color-code-foreground)] [--terminal-selection-background:color-mix(in_oklab,var(--color-code-foreground)_20%,transparent)]">
+                {showTerminal ? terminal(agentId, attempt) : null}
+              </div>
+            </CodeFrame>
           )}
         </div>
       </div>
@@ -757,20 +757,21 @@ function PasteCodeStep({
               value={value}
             />
           ) : (
-            // Claude's code while it is checked: the field's own box, the code's ends in mono, and
-            // the check.
-            // As tall as the field it replaces, its border included, so nothing under it moves.
-            <span
-              className="flex h-10.5 items-center gap-2 rounded-control bg-card px-3 text-body whitespace-nowrap text-muted-foreground inset-ring inset-ring-input"
-              data-sign-in-checking
-            >
-              <span className="font-mono text-line text-foreground">
-                {abbreviatedCode(checking)}
-              </span>
-              <span className="flex-1" />
-              <Spinner aria-hidden="true" size="sm" tone="muted" />
-              <span>{words.checking}</span>
-            </span>
+            // Claude's code while it is checked: the field itself, read only, the code's ends in
+            // mono, and the check at its end; the field's own height, so nothing under it moves.
+            <InputGroup data-sign-in-checking>
+              <InputGroupInput
+                aria-label={words.paste}
+                font="mono"
+                readOnly
+                size="xl"
+                value={abbreviatedCode(checking)}
+              />
+              <InputGroupAddon align="inline-end">
+                <Spinner aria-hidden="true" size="sm" tone="muted" />
+                <Text variant="description">{words.checking}</Text>
+              </InputGroupAddon>
+            </InputGroup>
           )}
         </span>
       )}
@@ -796,40 +797,18 @@ function TypeCodeStep({
   readonly code: string | undefined;
   readonly words: ReturnType<typeof agentSignInWords>;
 }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), COPIED_MS);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
   return (
     <div className={STEP_CLASS} data-sign-in-step="code">
       <StepNumber n={2} />
       <span className={STEP_WORDS_CLASS}>{words.type}</span>
-      <span className={cn(STEP_FIELD_CLASS, "flex items-center gap-2")}>
-        {/* Codex's code, to type on OpenAI's page. */}
-        <span
-          className="inline-flex h-9 items-center rounded-control bg-muted px-3 font-mono text-title leading-none font-medium tracking-wider text-foreground select-all inset-ring inset-ring-border"
-          data-sign-in-device-code
-        >
-          {code ?? <Spinner aria-hidden="true" size="sm" tone="muted" />}
-        </span>
-        {code === undefined ? null : (
-          <Button
-            onClick={() => {
-              void navigator.clipboard.writeText(code).then(
-                () => setCopied(true),
-                () => undefined,
-              );
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-            {copied ? words.copied : words.copy}
-          </Button>
-        )}
-      </span>
+      {/* Codex's code, to type on OpenAI's page; Copy at its end. */}
+      <CopyLine
+        className={STEP_FIELD_CLASS}
+        data-sign-in-device-code
+        label="the code"
+        size="lg"
+        value={code ?? null}
+      />
       <span className={STEP_HINT_CLASS}>
         <Spinner aria-hidden="true" size="sm" tone="muted" />
         {words.typeHint}

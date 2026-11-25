@@ -263,8 +263,6 @@ export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null
     typeHint: `${it} signs in by itself once you do.`,
     approve: `Approve ${them} on ${site}'s page.`,
     approveHint: `${it} signs in by itself once you do.`,
-    copy: "Copy",
-    copied: "Copied",
     tryAgain: "Try again",
     signedIn: `Signed in with ${name}.`,
   };
