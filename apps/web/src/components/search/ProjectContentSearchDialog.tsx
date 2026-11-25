@@ -231,9 +231,9 @@ function OpenContentSearchDialog(props: {
               <Spinner size="sm" /> Searching…
             </span>
           ) : search.error ? (
-            <span className="text-destructive">{search.error}</span>
+            <Text variant="error">{search.error}</Text>
           ) : search.invalidRegex ? (
-            <span className="text-destructive">Invalid regular expression</span>
+            <Text variant="error">Invalid regular expression</Text>
           ) : (
             `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
           )}

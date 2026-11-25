@@ -1,5 +1,6 @@
 "use client";
 
+import { Failure } from "~/components/ui/failure";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -453,7 +454,7 @@ export function ProviderModelsSection({
       )}
 
       {driverKind !== "antigravity" && error ? (
-        <p className="mt-2 text-caption text-destructive">{error}</p>
+        <Failure cause={error} className="mt-2" role="alert" size="line" />
       ) : null}
     </div>
   );

@@ -253,9 +253,7 @@ export function ProjectMergingView({
             {saving ? "Saving…" : "Save"}
           </Button>
           {press.kind === "refused" ? (
-            <span className="min-w-0 text-body text-destructive-foreground" role="alert">
-              {press.words}
-            </span>
+            <Failure cause={press.words} className="min-w-0" role="alert" size="line" />
           ) : tooMany === undefined ? null : (
             <Text className="min-w-0" variant="description">
               {tooMany}

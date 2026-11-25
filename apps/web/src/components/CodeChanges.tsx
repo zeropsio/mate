@@ -6,6 +6,7 @@
  * beside them, marked so) or what is not committed alone — under where the Mate's work is (`top`).
  * `CodePage` draws it; this reads it.
  */
+import { Failure } from "~/components/ui/failure";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
@@ -604,10 +605,7 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
         </Card>
       ) : null}
       {previewError && files.length > 0 ? (
-        <div className="flex items-center gap-2">
-          <p className="text-2xs text-error/80">{previewError}</p>
-          {tryAgain}
-        </div>
+        <Failure action={tryAgain} cause={previewError} size="line" />
       ) : null}
     </>
   );

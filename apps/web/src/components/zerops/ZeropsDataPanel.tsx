@@ -17,6 +17,7 @@
  * reads its projection and expresses detail intents; drafts, selection, sort and layout
  * remain local. The adapter fences superseded calls and appends pages in their own target.
  */
+import { Failure } from "~/components/ui/failure";
 import {
   buildSortPage,
   buildFilteredTableStatement,
@@ -1019,10 +1020,9 @@ export function ZeropsDataPanel({
         This value can't be browsed yet.
       </Text>
     ) : (
-      <div className="space-y-1 text-caption" data-zerops-data-grid-error>
-        <p className="text-destructive-foreground">Couldn't load rows</p>
-        <p className="text-muted-foreground">{gridNotice.message}</p>
-      </div>
+      <Failure cause="Couldn't load rows" data-zerops-data-grid-error size="line">
+        {gridNotice.message}
+      </Failure>
     );
 
   // One grid region, so a query result replaces the table model rather than

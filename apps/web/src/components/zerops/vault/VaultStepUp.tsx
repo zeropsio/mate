@@ -3,6 +3,7 @@
  * it's them in HQ (`403 notInSudoMode` otherwise), and its sudo lasts about two hours. This is that confirmation, offered where a reveal was refused for it: on the click, HQ's
  * sudo prompt (`zeropsHq.ts`); once the session is in sudo, the reveal runs again.
  */
+import { Failure } from "~/components/ui/failure";
 import { useState } from "react";
 
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -40,11 +41,7 @@ export function VaultStepUp({ onConfirmed }: { readonly onConfirmed: () => void 
       <Button disabled={state.kind === "asking"} onClick={confirm} size="sm" variant="secondary">
         Confirm in Zerops
       </Button>
-      {state.kind === "failed" ? (
-        <span className="text-destructive-foreground" role="alert">
-          {state.message}
-        </span>
-      ) : null}
+      {state.kind === "failed" ? <Failure cause={state.message} role="alert" size="line" /> : null}
     </span>
   );
 }

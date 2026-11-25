@@ -12,6 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { Failure } from "~/components/ui/failure";
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import {
   MOTION,
@@ -1076,9 +1077,7 @@ function TaskBoardView({
     return (
       // The board's read failed: HQ's words, and the way to read again.
       <div className={LINE}>
-        <span className="min-w-0 flex-1 text-body leading-5 text-status-failed-text" role="alert">
-          {read.words}
-        </span>
+        <Failure cause={read.words} className="min-w-0 flex-1" role="alert" size="line" />
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
           Try again
         </Button>

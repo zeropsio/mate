@@ -4,6 +4,7 @@
  * two words hold one room, so the button keeps its width. A refusal stays under the question, on
  * a line that is always there.
  */
+import { Failure } from "~/components/ui/failure";
 import { cn } from "~/lib/utils";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import { emptyMateLine } from "./projects/emptyApps.logic";
@@ -54,9 +55,7 @@ export function ZeropsDeleteProjectForm({
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        <p className="min-h-4 text-caption text-status-failed-text" role="alert">
-          {error}
-        </p>
+        <Failure cause={error} className="min-h-5" role="alert" size="line" />
       </DialogPanel>
       <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">

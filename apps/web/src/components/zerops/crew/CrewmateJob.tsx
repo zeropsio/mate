@@ -14,6 +14,7 @@
  * crew* stands at the footer's far end. A login the viewer may not run is
  * not saved onto a crewmate (D6): Save waits, saying why.
  */
+import { Text } from "~/components/ui/text";
 import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_JOB_WORDS,
@@ -555,9 +556,9 @@ function NameField({
         value={draft.displayName}
       />
       {nameTaken ? (
-        <span className="text-line leading-4.5 text-status-failed-text">
+        <Text role="alert" variant="error">
           {CREW_JOB_WORDS.nameTaken}
-        </span>
+        </Text>
       ) : null}
     </div>
   );

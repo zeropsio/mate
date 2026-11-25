@@ -1,5 +1,6 @@
 "use client";
 
+import { Failure } from "~/components/ui/failure";
 import { PlusIcon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ProviderDriverKind, ServerProviderModel } from "@t3tools/contracts";
@@ -376,7 +377,7 @@ export function CustomModelEditor({
           </div>
         </div>
 
-        {error ? <p className="text-caption text-destructive">{error}</p> : null}
+        {error ? <Failure cause={error} role="alert" size="line" /> : null}
 
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={handleSave}>

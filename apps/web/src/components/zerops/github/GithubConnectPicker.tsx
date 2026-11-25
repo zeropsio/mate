@@ -15,6 +15,7 @@
  * press, a card's starts with it, as every ask's does, and ends in what the card adds
  * (`footerEnd`: its *Not now*).
  */
+import { Failure } from "~/components/ui/failure";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { OperationStopped, type RepoGovernanceRead } from "@t3tools/client-runtime/data";
@@ -721,11 +722,7 @@ function refusalWords(cause: unknown): string {
 }
 
 function Refusal({ words }: { readonly words: string | null }) {
-  return words === null ? null : (
-    <p className="text-body text-destructive-foreground" role="alert">
-      {words}
-    </p>
-  );
+  return words === null ? null : <Failure cause={words} role="alert" size="line" />;
 }
 
 /** GitHub app or token: the two ways in, as a segmented control. */

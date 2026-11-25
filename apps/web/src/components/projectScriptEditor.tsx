@@ -320,7 +320,11 @@ export function ProjectScriptEditorDialog({
                   onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
                 />
               </label>
-              {validationError && <p className="text-body text-destructive">{validationError}</p>}
+              {validationError && (
+                <Text render={<p />} role="alert" variant="error">
+                  {validationError}
+                </Text>
+              )}
             </form>
           </DialogPanel>
           <DialogFooter variant="bare">

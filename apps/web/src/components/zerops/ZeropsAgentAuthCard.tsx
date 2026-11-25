@@ -545,9 +545,9 @@ function ZeropsAgentAuthRow({
         )}
         {agent.verification?.reason === undefined &&
         agent.registration?.reason === undefined ? null : (
-          <p className="text-caption leading-4 text-destructive">
+          <Text render={<p />} variant="error">
             {agent.verification?.reason ?? agent.registration?.reason}
-          </p>
+          </Text>
         )}
         {(agentAuthAction(agent) === "check-again" ||
           agentAuthAction(agent) === "register-again") &&
@@ -797,15 +797,19 @@ function ZeropsLoginRow({
           )}
         </div>
         {login.verification?.reason === undefined ? null : (
-          <p className="text-caption leading-4 text-destructive">{login.verification.reason}</p>
+          <Text render={<p />} variant="error">
+            {login.verification.reason}
+          </Text>
         )}
         {status?.error === undefined ? null : (
-          <p
-            className="w-full text-caption leading-4 text-destructive @sm:text-right"
+          <Text
+            className="w-full @sm:text-right"
             data-zerops-login-error
+            render={<p />}
+            variant="error"
           >
             {status.error}
-          </p>
+          </Text>
         )}
       </div>
     </div>
@@ -850,7 +854,9 @@ function AddLoginControl({
           + Add another login
         </Button>
         {error === undefined ? null : (
-          <p className="ps-1.5 text-caption leading-4 text-destructive">{error}</p>
+          <Text className="ps-1.5" render={<p />} variant="error">
+            {error}
+          </Text>
         )}
       </div>
     );
@@ -1177,12 +1183,14 @@ function ZeropsAgentAuthActionButton({
         </Button>
       ) : null}
       {signOutError === undefined ? null : (
-        <p
-          className="w-full text-caption leading-4 text-destructive @sm:text-right"
+        <Text
+          className="w-full @sm:text-right"
           data-zerops-agent-sign-out-error
+          render={<p />}
+          variant="error"
         >
           {signOutError}
-        </p>
+        </Text>
       )}
     </div>
   );

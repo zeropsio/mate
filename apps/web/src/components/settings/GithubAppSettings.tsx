@@ -213,9 +213,9 @@ export function GithubAppView({
   // One line, whatever lands: a refusal, the return from GitHub, or where it stands.
   const line =
     problem !== null ? (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {problem}
-      </span>
+      </Text>
     ) : back !== null ? (
       <span role="status">{back}</span>
     ) : section.kind === "reading" || (section.kind === "apps" && apps.length === 0 && manage) ? (

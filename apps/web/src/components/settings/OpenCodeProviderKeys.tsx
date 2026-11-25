@@ -1,3 +1,4 @@
+import { Failure } from "~/components/ui/failure";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -163,7 +164,7 @@ function OpenCodeFreeModelsRow({
           ? `New conversations start on ${modelName}. Nothing is billed.`
           : `Runs OpenCode on its free models, ${modelName} first. Nothing is billed.`}
       </Text>
-      {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
+      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
     </div>
   );
 }
@@ -302,7 +303,7 @@ export function OpenCodeProviderKeyRow({
           Runs OpenCode on {provider.models}, billed to your key.
         </Text>
       )}
-      {error === null ? null : <p className="text-caption leading-4 text-destructive">{error}</p>}
+      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
     </div>
   );
 }

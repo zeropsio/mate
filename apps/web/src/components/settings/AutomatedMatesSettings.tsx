@@ -58,9 +58,9 @@ export function OrganizationKeyView({
   // One line, whatever lands: a refusal, a write under way, or where the key stands.
   const line =
     problem !== null ? (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {problem}
-      </span>
+      </Text>
     ) : read.keys.state === "failed" ? (
       couldntRead(`the organization's ${provider.name} key`, read.keys.words)
     ) : read.keys.state === "withheld" ? (

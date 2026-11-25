@@ -10,6 +10,7 @@
  * `McpPanelBody` draws a list it is given and reports what the person does; `McpPanel` feeds it
  * from the Mate (`useMcpServers`). The harness (`/design-mcp.html`) draws the body over a fixture.
  */
+import { Failure } from "~/components/ui/failure";
 import {
   mcpAgentCannot,
   type EnvironmentId,
@@ -281,12 +282,13 @@ export function McpPanelBody(props: {
         </RightPanelPageEdge>
 
         {state.error === null ? null : (
-          <p className="text-line leading-4.5 text-destructive-foreground" role="alert">
-            {MCP_WORDS.readFailed} {state.error}{" "}
-            <InlineButton onClick={props.onRetry} tone="muted">
-              {MCP_WORDS.tryAgain}
-            </InlineButton>
-          </p>
+          <Failure
+            action={<InlineButton onClick={props.onRetry}>{MCP_WORDS.tryAgain}</InlineButton>}
+            cause={MCP_WORDS.readFailed}
+            details={state.error}
+            role="alert"
+            size="line"
+          />
         )}
 
         {adding && state.list !== null ? (

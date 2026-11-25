@@ -119,11 +119,8 @@ export function CrewIssues({ issues }: { readonly issues: ReadonlyArray<CrewDefi
   return (
     <ul className="space-y-1" role="alert">
       {issues.map((issue) => (
-        <li
-          className="text-line leading-4.5 text-status-failed-text"
-          key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}
-        >
-          {issue.message}
+        <li key={`${issue.code}:${issue.path}:${issue.handle ?? ""}`}>
+          <Failure cause={issue.message} size="line" />
         </li>
       ))}
     </ul>

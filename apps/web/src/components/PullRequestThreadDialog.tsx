@@ -1,3 +1,4 @@
+import { Failure } from "~/components/ui/failure";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
@@ -254,7 +255,7 @@ export function PullRequestThreadDialog({
             </Text>
           ) : null}
 
-          {errorMessage ? <p className="text-destructive text-caption">{errorMessage}</p> : null}
+          {errorMessage ? <Failure cause={errorMessage} role="alert" size="line" /> : null}
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="secondary" size="sm" onClick={() => onOpenChange(false)}>

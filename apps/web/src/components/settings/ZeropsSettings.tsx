@@ -8,6 +8,7 @@
  * about — the account, the organization — without repeating it.
  */
 
+import { Failure } from "~/components/ui/failure";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useAutoUpdatePolicy } from "~/zerops/useAutoUpdatePolicy";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -98,9 +99,7 @@ export function ZeropsSettings() {
             )
           }
         />
-        {error ? (
-          <p className="px-3 text-body text-destructive-foreground sm:px-4">{error}</p>
-        ) : null}
+        {error ? <Failure cause={error} className="mx-3 sm:mx-4" role="alert" size="line" /> : null}
         {organizations.length > 0 ? (
           <SettingsRow
             {...searchableSetting("zerops-organizations")}
