@@ -1788,14 +1788,6 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: var(--text-caption);
 }
 
-.ov-sec-name {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  font-weight: 600;
-  line-height: 20px;
-}
-
 /* A card's sections: on the card itself, a hairline over each. */
 .ov-sec {
   display: grid;

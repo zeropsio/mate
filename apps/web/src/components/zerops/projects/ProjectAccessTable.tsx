@@ -58,6 +58,7 @@ import {
 import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectAccessChips";
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
+import { SectionLabel } from "../system/SectionLabel";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -149,7 +150,7 @@ export function ProjectAccessTable({
 
   return (
     <section aria-label={label} className="ov-sec" data-zerops-surface="access-table">
-      <h3 className="ov-sec-name">{label}</h3>
+      <SectionLabel level={3}>{label}</SectionLabel>
       {view.kind === "reading" ? (
         <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (

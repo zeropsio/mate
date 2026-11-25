@@ -246,7 +246,7 @@ function ReadAccessSection({
     );
   return (
     <section aria-label="Read access" className="ov-sec" data-zerops-surface="read-access">
-      <h3 className="ov-sec-name">Read access</h3>
+      <SectionLabel level={3}>Read access</SectionLabel>
       {body}
     </section>
   );
