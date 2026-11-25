@@ -261,7 +261,7 @@
 }
 
 /* GitHub's alerts (`> [!NOTE]` to `> [!CAUTION]`) as the chat's one bubble
-   (the run card's `BUBBLE_SHAPE`: 16 px round, 10 px down) on a faint tint
+   (a `MessageBubble`: 12 px round, 10 px down) on a faint tint
    of their tone, their words 20 px in, on the edge a list item's start, the
    label run into the first line in the tone's ink: no edge bar, no heading of
    its own (the owner, 2026-09-28: "it looks like some default card of some
