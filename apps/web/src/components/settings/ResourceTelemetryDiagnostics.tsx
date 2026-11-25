@@ -47,6 +47,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTime } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
+import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
@@ -232,7 +233,8 @@ function IconStat({
 }: {
   icon: ReactNode;
   label: string;
-  value: string;
+  /** `null` while it is on its way: a stand-in at the figure's size. */
+  value: string | null;
   detail?: string | undefined;
   tone?: "default" | "warning" | "danger";
 }) {
@@ -251,7 +253,7 @@ function IconStat({
           tone === "danger" && "text-destructive",
         )}
       >
-        {value}
+        {value ?? <Skeleton aria-label={label} className="my-1.5 h-5 w-20" role="status" />}
       </div>
       {detail ? (
         <div className="mt-1.5 truncate text-3xs text-muted-foreground/60">{detail}</div>
@@ -984,13 +986,13 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<CpuIcon className="size-3.5" />}
               label="Current CPU"
-              value={allT3 ? `${allT3.currentCpuPercent.toFixed(1)}%` : "..."}
+              value={allT3 ? `${allT3.currentCpuPercent.toFixed(1)}%` : null}
               detail={allT3 ? `${formatCpuTime(allT3.cpuTimeMs)} observed CPU time` : undefined}
             />
             <IconStat
               icon={<MemoryStickIcon className="size-3.5" />}
               label="Resident memory"
-              value={allT3 ? formatBytes(allT3.currentRssBytes) : "..."}
+              value={allT3 ? formatBytes(allT3.currentRssBytes) : null}
               detail={
                 allT3 ? `${formatBytes(allT3.peakRssBytes)} combined process peaks` : undefined
               }
@@ -998,7 +1000,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<ActivityIcon className="size-3.5" />}
               label="Process count"
-              value={allT3 ? String(allT3.processCount) : "..."}
+              value={allT3 ? String(allT3.processCount) : null}
               detail={
                 allT3 ? `${allT3.processStarts} starts · ${allT3.processExits} exits` : undefined
               }
@@ -1006,13 +1008,13 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             <IconStat
               icon={<HardDriveIcon className="size-3.5" />}
               label="Read throughput"
-              value={allT3 ? formatRate(allT3.ioReadBytesPerSecond) : "..."}
+              value={allT3 ? formatRate(allT3.ioReadBytesPerSecond) : null}
               detail={allT3 ? `${formatBytes(allT3.ioReadBytes)} observed` : undefined}
             />
             <IconStat
               icon={<DatabaseIcon className="size-3.5" />}
               label="Write throughput"
-              value={allT3 ? formatRate(allT3.ioWriteBytesPerSecond) : "..."}
+              value={allT3 ? formatRate(allT3.ioWriteBytesPerSecond) : null}
               detail={allT3 ? `${formatBytes(allT3.ioWriteBytes)} observed` : undefined}
               tone={
                 allT3 && allT3.ioWriteBytesPerSecond >= 10 * 1_024 * 1_024
@@ -1026,7 +1028,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               icon={<GaugeIcon className="size-3.5" />}
               label="CPU speed limit"
               value={
-                snapshot ? (speedLimit === null ? "Unknown" : `${speedLimit.toFixed(0)}%`) : "..."
+                snapshot ? (speedLimit === null ? "Unknown" : `${speedLimit.toFixed(0)}%`) : null
               }
               detail={snapshot ? `${snapshot.power.thermalState} thermal state` : undefined}
               tone={speedLimit !== null && speedLimit < 80 ? "warning" : "default"}

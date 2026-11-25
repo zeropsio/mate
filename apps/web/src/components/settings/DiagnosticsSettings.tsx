@@ -34,6 +34,7 @@ import { shellEnvironment } from "../../state/shell";
 import { useEnvironment } from "../../state/environments";
 import { useLastRouteEnvironmentId } from "../../zerops/accountEnvironments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
@@ -95,7 +96,8 @@ function StatBlock({
   tone = "default",
 }: {
   label: string;
-  value: string;
+  /** `null` while it is on its way: a stand-in at the figure's size. */
+  value: string | null;
   tooltip?: ReactNode;
   tone?: "default" | "warning" | "danger";
 }) {
@@ -123,7 +125,7 @@ function StatBlock({
           tone === "danger" && "text-destructive",
         )}
       >
-        {value}
+        {value ?? <Skeleton aria-label={label} className="my-1.5 h-4 w-16" role="status" />}
       </div>
     </div>
   );
@@ -992,21 +994,21 @@ export function DiagnosticsSettingsPanel() {
         <StatsGrid>
           <StatBlock
             label="Child Processes"
-            value={processData ? formatCount(processData.processCount) : "..."}
+            value={processData ? formatCount(processData.processCount) : null}
           />
           <StatBlock
             label="CPU"
-            value={processData ? `${processData.totalCpuPercent.toFixed(1)}%` : "..."}
+            value={processData ? `${processData.totalCpuPercent.toFixed(1)}%` : null}
             tooltip="Total CPU across live child processes of the current server process. The desktop shell and other parent processes are not included."
           />
           <StatBlock
             label="Memory"
-            value={processData ? formatBytes(processData.totalRssBytes) : "..."}
+            value={processData ? formatBytes(processData.totalRssBytes) : null}
             tooltip="Total resident memory across live child processes of the current server process. The desktop shell and other parent processes are not included."
           />
           <StatBlock
             label="Server PID"
-            value={processData ? String(processData.serverPid) : "..."}
+            value={processData ? String(processData.serverPid) : null}
           />
         </StatsGrid>
         <CollectionRead presentation={processPresentation}>
@@ -1041,21 +1043,21 @@ export function DiagnosticsSettingsPanel() {
         <StatsGrid>
           <StatBlock
             label="CPU Time"
-            value={resourceData ? formatCpuTime(resourceData.totalCpuSecondsApprox) : "..."}
+            value={resourceData ? formatCpuTime(resourceData.totalCpuSecondsApprox) : null}
             tooltip="Approximate active CPU time for the Zerops Mate server root process and its descendants during the selected window. It grows only while sampled processes use CPU and older samples leave as the window moves."
           />
           <StatBlock
             label="Samples"
-            value={resourceData ? formatCount(resourceData.retainedSampleCount) : "..."}
+            value={resourceData ? formatCount(resourceData.retainedSampleCount) : null}
             tooltip="In-memory process samples retained by the server. This resets when the server restarts."
           />
           <StatBlock
             label="Interval"
-            value={resourceData ? formatDuration(resourceData.sampleIntervalMs) : "..."}
+            value={resourceData ? formatDuration(resourceData.sampleIntervalMs) : null}
           />
           <StatBlock
             label="Processes"
-            value={resourceData ? formatCount(resourceData.topProcesses.length) : "..."}
+            value={resourceData ? formatCount(resourceData.topProcesses.length) : null}
           />
         </StatsGrid>
         <CollectionRead
@@ -1104,15 +1106,15 @@ export function DiagnosticsSettingsPanel() {
         }
       >
         <StatsGrid>
-          <StatBlock label="Spans" value={data ? formatCount(data.recordCount) : "..."} />
+          <StatBlock label="Spans" value={data ? formatCount(data.recordCount) : null} />
           <StatBlock
             label="Failures"
-            value={data ? formatCount(data.failureCount) : "..."}
+            value={data ? formatCount(data.failureCount) : null}
             tone={data && data.failureCount > 0 ? "danger" : "default"}
           />
           <StatBlock
             label="Slow Spans"
-            value={data ? formatCount(data.slowSpanCount) : "..."}
+            value={data ? formatCount(data.slowSpanCount) : null}
             tooltip={
               data
                 ? `Spans with a duration of ${formatDuration(data.slowSpanThresholdMs)} or longer.`
@@ -1122,7 +1124,7 @@ export function DiagnosticsSettingsPanel() {
           />
           <StatBlock
             label="Parse Errors"
-            value={data ? formatCount(data.parseErrorCount) : "..."}
+            value={data ? formatCount(data.parseErrorCount) : null}
             tone={data && data.parseErrorCount > 0 ? "warning" : "default"}
           />
         </StatsGrid>
