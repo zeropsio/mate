@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { cn } from "~/lib/utils";
 import { MateDot } from "../MateDot";
 import { drawn } from "../projects/flowSteps";
 import type { CardMateReading } from "../projects/projectCard.logic";
@@ -61,18 +62,23 @@ export function MateRow({
   const lifted = reading.lift !== undefined;
   return (
     <div
-      className="ov-mate"
+      className={cn(
+        MATE,
+        lifted
+          ? "bg-foreground/4 shadow-edge [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]"
+          : "has-[[data-ov-mate-open]:hover]:bg-foreground/3",
+      )}
       data-lift={lifted ? reading.lift?.kind : undefined}
       data-zerops-surface="card-mate"
       role="listitem"
     >
-      <span className="ov-mate-face">{face}</span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
+      <span className="relative flex h-8">{face}</span>
+      <span className="flex min-w-0 flex-col">
+        <span className={LINE_ONE}>
           {onOpen === undefined ? (
-            <span className="ov-mate-name">{name}</span>
+            <span className={NAME}>{name}</span>
           ) : (
-            <span className="ov-mate-name">
+            <span className={NAME}>
               {/* The name opens the Mate: its press spans the row, under the row's own presses. */}
               <InlineButton
                 aria-label={`Open ${name}`}
@@ -87,23 +93,26 @@ export function MateRow({
           )}
           {mark}
           {parts.length === 0 ? null : (
-            <span className="ov-mate-parts" data-zerops-surface="card-mate-parts">
+            // Its parts between its name and its time: they wrap onto further lines inside the
+            // card, so neither the name nor the time gives way.
+            <span
+              className="flex min-w-0 flex-1 basis-0 flex-wrap gap-x-1.5 text-caption leading-4"
+              data-zerops-surface="card-mate-parts"
+            >
               {parts.map((part) => (
                 <MateRowPart key={part.key} mate={name} part={part} />
               ))}
             </span>
           )}
-          <span className="ov-mate-time">{time}</span>
+          <span className="ms-auto inline-flex flex-none items-center gap-1.5 ps-2.5 text-caption leading-4.5 whitespace-nowrap text-muted-foreground tabular-nums">
+            {time}
+          </span>
         </span>
         {/* Cut at the card's edge, its whole is the row's press away: its conversation. */}
-        <span
-          className="ov-mate-l2"
-          data-tone={reading.tone}
-          data-wrap={lifted ? "true" : undefined}
-        >
-          {line ?? reading.text}
-        </span>
-        {drawn(actions) ? <span className="ov-acts">{actions}</span> : null}
+        <span className={lineTwo(reading.tone, lifted)}>{line ?? reading.text}</span>
+        {drawn(actions) ? (
+          <span className="relative z-1 mt-3 flex flex-wrap gap-1.5">{actions}</span>
+        ) : null}
       </span>
     </div>
   );
@@ -137,17 +146,17 @@ export function ComingMateRow({
     <div
       // Under way it is busy; stopped, nothing is coming until someone continues it.
       aria-busy={stopped ? undefined : true}
-      className="ov-mate"
+      className={cn(MATE, "has-[[data-ov-mate-open]:hover]:bg-foreground/3")}
       data-zerops-surface="mate-coming"
       role="listitem"
     >
-      <span className="ov-mate-face">{face}</span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
+      <span className="relative flex h-8">{face}</span>
+      <span className="flex min-w-0 flex-col">
+        <span className={LINE_ONE}>
           {onOpen === undefined ? (
-            <span className="ov-mate-name">{name}</span>
+            <span className={NAME}>{name}</span>
           ) : (
-            <span className="ov-mate-name">
+            <span className={NAME}>
               {/* The name opens the Mate: its press spans the row, under the row's own presses. */}
               <InlineButton
                 aria-label={`Open ${name}`}
@@ -161,11 +170,14 @@ export function ComingMateRow({
             </span>
           )}
         </span>
-        <span className="ov-mate-l2" data-tone={stopped ? "attention" : undefined}>
-          {line}
-        </span>
+        <span className={lineTwo(stopped ? "attention" : undefined, false)}>{line}</span>
       </span>
-      {drawn(menu) ? <span className="ov-mate-end">{menu}</span> : null}
+      {/* A row's end, past its words: its ⋯, a column of its own only here. */}
+      {drawn(menu) ? (
+        <span className="relative z-1 col-start-3 row-start-1 flex items-center self-center">
+          {menu}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -186,7 +198,7 @@ function MateRowPart({ mate, part }: { readonly mate: string; readonly part: Mat
       <TooltipTrigger
         render={
           url === undefined ? (
-            <span className="ov-mate-preview" data-off="" />
+            <span className="relative z-1 inline-flex h-5.5 flex-none cursor-default items-center gap-px rounded-control px-1 text-caption leading-4 text-muted-foreground/60" />
           ) : (
             <InlineButton
               aria-label={`Open ${mate}'s ${service}`}
@@ -220,5 +232,32 @@ export function MateRowTime({
       {dot === undefined ? null : <MateDot place="inline" tone={dot} />}
       <span data-zerops-surface="card-mate-time">{children}</span>
     </>
+  );
+}
+
+/** A Mate on a card: its face, its name and time, its line; what waits on you lifted. */
+const MATE =
+  "relative grid grid-cols-[32px_minmax(0,1fr)] items-start gap-x-3 rounded-card px-1.5 py-2 transition-[background-color,box-shadow] duration-200 ease-out-strong motion-reduce:transition-opacity";
+const LINE_ONE = "flex min-h-5.5 min-w-0 items-start gap-1.5";
+/** The name keeps its own width, up to most of the line: parts wrap beside it, never over it. */
+const NAME =
+  "max-w-[65%] min-w-0 flex-none truncate text-left text-emphasis leading-5.5 font-medium";
+
+/**
+ * What was asked, over the answer: the menu row's second ink, cut at the card's edge; lifted, two
+ * lines. A line that holds a change holds its Review, whose outline is drawn outside its box: the
+ * line must not cut it.
+ */
+function lineTwo(tone: CardMateReading["tone"] | "attention" | undefined, wraps: boolean): string {
+  return cn(
+    "mt-px block min-h-5 min-w-0 text-body leading-5 has-[>[data-zerops-surface=card-mate-change]]:overflow-visible",
+    wraps ? "line-clamp-2 text-pretty" : "truncate",
+    tone === "ink"
+      ? "text-foreground"
+      : tone === "failed"
+        ? "text-status-failed-text"
+        : tone === "attention"
+          ? "text-status-attention-text"
+          : "text-muted-foreground",
   );
 }

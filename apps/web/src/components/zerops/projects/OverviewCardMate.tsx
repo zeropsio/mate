@@ -4,7 +4,12 @@
  */
 export const OWNER_ON_CARD =
   "top-auto -right-0.75 -bottom-0.75 left-auto size-5.5 text-caption ring-2 ring-muted";
-export const OWNER_ON_ROW = "ov-mate-owner";
+export const OWNER_ON_ROW =
+  "top-auto -right-1 -bottom-0.75 left-auto size-3.5 text-4xs ring-2 ring-card";
+
+/** A change on a card's Mate's line: its mark, its title cut, its Review. */
+export const MATE_CHANGE =
+  "flex min-w-0 items-center gap-1.5 [&>[data-slot=button]]:-my-0.5 [&>[data-slot=button]]:flex-none";
 
 /**
  * A Mate on its project's card, read as its row in the menu reads it: the one face (`mateFace`,
@@ -447,12 +452,11 @@ export function OverviewCardMate({
           {reading.text}
         </span>
       ) : marked ? (
-        <span className="ov-mate-change" data-zerops-surface="card-mate-change">
-          <GitPullRequestIcon
-            aria-hidden="true"
-            className="inline-block size-3.5 flex-none align-[-2px]"
-          />
-          <span className="ov-mate-change-title">{reading.text}</span>
+        // A change on a card's Mate: its mark, its title, and its Review at its end, on the
+        // line's own 20 px (the Review stands in it, a little over its edges).
+        <span className={MATE_CHANGE} data-zerops-surface="card-mate-change">
+          <GitPullRequestIcon aria-hidden="true" className="size-3.5 flex-none" />
+          <span className="min-w-0 flex-1 truncate">{reading.text}</span>
           {reviewButton}
         </span>
       ) : undefined))

@@ -67,7 +67,11 @@ import {
   projectWaits,
 } from "~/components/zerops/projects/projectCard.logic";
 import { OverviewFilters } from "~/components/zerops/projects/OverviewFilters";
-import { OWNER_ON_CARD, OWNER_ON_ROW } from "~/components/zerops/projects/OverviewCardMate";
+import {
+  MATE_CHANGE,
+  OWNER_ON_CARD,
+  OWNER_ON_ROW,
+} from "~/components/zerops/projects/OverviewCardMate";
 import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import {
   ZeropsProjectsFlow,
@@ -1623,12 +1627,9 @@ function HarnessPage() {
                     key={entry.id}
                     line={
                       review === null ? undefined : (
-                        <span className="ov-mate-change" data-zerops-surface="card-mate-change">
-                          <GitPullRequestIcon
-                            aria-hidden="true"
-                            className="inline-block size-3.5 flex-none align-[-2px]"
-                          />
-                          <span className="ov-mate-change-title">{reading.text}</span>
+                        <span className={MATE_CHANGE} data-zerops-surface="card-mate-change">
+                          <GitPullRequestIcon aria-hidden="true" className="size-3.5 flex-none" />
+                          <span className="min-w-0 flex-1 truncate">{reading.text}</span>
                           {review}
                         </span>
                       )

@@ -18,6 +18,7 @@ import { useOpenReview } from "~/zerops/review";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Badge } from "../ui/badge";
+import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { FailureDetails } from "../ui/failure";
 import { useGroupName } from "./review/reviewReads";
@@ -69,14 +70,23 @@ export interface PutLiveRowProps {
   readonly onEnd?: (() => void) | undefined;
 }
 
+/** A run's line: what it does, and at its end what it has to say. */
+const RUN_LINE =
+  "flex min-h-7 min-w-0 items-center gap-2 [&>:last-child:not(:first-child)]:ms-auto";
+
 /** The run on production: under way, or stopped with its one action. */
 export function PutLiveRow(props: PutLiveRowProps) {
   const { standing } = props;
   const progress = putLiveProgress(props.project, standing);
   if (standing.kind === "going")
     return (
-      <div aria-label={progress.title} className="ov-run" data-zerops-production-run="progress">
-        <p className="ov-run-line" data-tone="releasing">
+      // A Put it live run on production: its line, then its cause and its one action.
+      <div
+        aria-label={progress.title}
+        className="grid min-w-0 gap-1 text-line leading-5"
+        data-zerops-production-run="progress"
+      >
+        <p className={cn(RUN_LINE, "text-status-busy-text")}>
           <PutLiveProgress since={standing.since} step={progress.step} />
         </p>
       </div>
@@ -94,17 +104,21 @@ export function PutLiveRow(props: PutLiveRowProps) {
               onPress: props.onContinue,
             };
   return (
-    <div className="ov-run" data-zerops-production-run="failed" role="status">
-      <p className="ov-run-line" data-tone="failed">
+    <div
+      className="grid min-w-0 gap-1 text-line leading-5"
+      data-zerops-production-run="failed"
+      role="status"
+    >
+      <p className={cn(RUN_LINE, "text-status-failed-text")}>
         <Badge aria-label="Failed" dot tone="warning" />
         <span className="truncate">{progress.title}</span>
       </p>
-      <div className="ov-run-cause">
+      <div className="text-caption leading-5 text-muted-foreground">
         {progress.step}
         {details === null ? null : <FailureDetails>{details}</FailureDetails>}
       </div>
       {action === undefined && props.onEnd === undefined ? null : (
-        <p className="ov-run-acts">
+        <p className="flex flex-wrap items-center gap-2.5">
           {action === undefined ? null : (
             <Button onClick={action.onPress} size="sm">
               {action.label}

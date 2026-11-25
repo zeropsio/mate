@@ -16,6 +16,7 @@ import { Button } from "../../ui/button";
 import { EmptyState } from "../../ui/empty";
 import { MateFace } from "../primitives";
 import { overviewFilterTabs, type OverviewShow } from "./projectsView.logic";
+import { FILTERS } from "./overviewLayout";
 
 /** How long the filters keep their seats for the cards' first fill before they stand alone. */
 const FILTERS_WAIT_FOR_CARDS_MS = 1_500;
@@ -63,7 +64,7 @@ export function OverviewFilters({
   return (
     <nav
       aria-label="Show projects"
-      className="ov-filters"
+      className={FILTERS}
       data-zerops-surface="overview-filters"
       // Taking their seats' place, they fade in where they stand, as the cards do.
       ref={stoodIn ? fadeFillOver : undefined}

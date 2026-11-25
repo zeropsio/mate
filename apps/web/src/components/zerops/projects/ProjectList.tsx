@@ -36,11 +36,11 @@ function OtherProject<T>({
   const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
   return (
     <li
-      className="ov-other-row"
+      className="group/other -ms-2 flex h-10 min-w-0 items-center gap-2.5 rounded-control px-2 text-body transition-colors duration-150 ease-out-strong hover:bg-foreground/3"
       data-zerops-group={entry.group.groupId}
       id={`project-${entry.group.groupId}`}
     >
-      <span className="ov-other-name">
+      <span className="flex w-37.5 flex-none font-medium *:font-medium">
         <GroupName entry={entry} />
       </span>
       {held === undefined ? (
@@ -48,9 +48,11 @@ function OtherProject<T>({
           <PlaceLine density="compact" groupId={entry.group.groupId} line={line} />
         )
       ) : (
-        <span className="ov-place-words">{held}</span>
+        <span className="min-w-0 truncate text-muted-foreground tabular-nums">{held}</span>
       )}
-      <span className="ov-other-menu">{props.renderGroupMenu(entry)}</span>
+      <span className="ms-auto flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/other:opacity-100 focus-within:opacity-100 has-data-popup-open:opacity-100 motion-reduce:transition-none">
+        {props.renderGroupMenu(entry)}
+      </span>
     </li>
   );
 }
@@ -65,9 +67,14 @@ export function OtherProjects<T>({
 }) {
   if (groups.length === 0) return null;
   return (
-    <section aria-label="Other projects" className="ov-other" data-zerops-surface="other-projects">
-      <h2 className="ov-other-title">Other projects</h2>
-      <ul>
+    // Under the cards: the projects without a Mate, a line each.
+    <section
+      aria-label="Other projects"
+      className="mt-10 grid justify-items-start"
+      data-zerops-surface="other-projects"
+    >
+      <h2 className="mb-1 text-caption font-medium text-muted-foreground">Other projects</h2>
+      <ul className="grid w-[min(100%,560px)]">
         {groups.map((entry) => (
           <OtherProject entry={entry} key={entry.group.groupId} props={props} />
         ))}

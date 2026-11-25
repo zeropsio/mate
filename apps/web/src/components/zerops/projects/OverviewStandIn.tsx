@@ -14,6 +14,8 @@ import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "../system/PhoneBar";
+import { Card } from "~/components/ui/card";
+import { CARD_ROOM, FILTERS, RAIL, ROW, ROW_CARD } from "./overviewLayout";
 
 /** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
 function TitleRow() {
@@ -49,23 +51,27 @@ export function ProjectCardStandIn({
     <div
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
-      className="ov-card gap-3"
+      className={ROW_CARD}
       id={id}
       ref={ref}
       role={label === undefined ? undefined : "listitem"}
     >
-      <div className="flex items-center gap-2.5 px-1">
-        <Skeleton className="size-8 shrink-0" shape="pill" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <Skeleton className="h-3.5 w-2/5" />
-          <Skeleton className="h-3 w-3/5" />
+      <Card className="min-h-0 w-full" variant="sheet">
+        <div className={cn(CARD_ROOM, "gap-3")}>
+          <div className="flex items-center gap-2.5 px-1">
+            <Skeleton className="size-8 shrink-0" shape="pill" />
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-2/5" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2.5 px-1 pt-2 pb-2">
+            <Skeleton className="h-3 w-4/5" />
+            <Skeleton className="h-3 w-3/5" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
         </div>
-      </div>
-      <div className="flex flex-col gap-2.5 px-1 pt-2 pb-2">
-        <Skeleton className="h-3 w-4/5" />
-        <Skeleton className="h-3 w-3/5" />
-        <Skeleton className="h-3 w-2/3" />
-      </div>
+      </Card>
     </div>
   );
 }
@@ -80,8 +86,8 @@ export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
   const cards = count ?? remembered;
   return (
     <Loading label="Your projects">
-      <div className="ov-rail">
-        <div className="ov-row" data-overview-stand-in-cards="">
+      <div className={RAIL}>
+        <div className={ROW} data-overview-stand-in-cards="">
           {Array.from({ length: cards }, (_, index) => (
             <ProjectCardStandIn key={index} />
           ))}
@@ -94,7 +100,7 @@ export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
 /** The filters' seats: where the page's filters stand once its cards do (`OverviewFilters`). */
 export function OverviewFiltersStandIn() {
   return (
-    <div className="ov-filters" aria-hidden="true">
+    <div aria-hidden="true" className={FILTERS}>
       <Skeleton className="h-7 w-12" shape="pill" />
       <Skeleton className="h-7 w-32" shape="pill" />
       <Skeleton className="h-7 w-16" shape="pill" />

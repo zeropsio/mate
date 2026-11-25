@@ -34,6 +34,7 @@ import {
   type ProjectPeopleInput,
 } from "~/components/zerops/projects/projectPeople.logic";
 import "../index.css";
+import { Card } from "~/components/ui/card";
 
 const params = new URLSearchParams(location.search);
 const MENU_WIDTH = 435;
@@ -119,6 +120,9 @@ const AS_OWNER: ProjectPeopleInput = {
 const KNOWN = APP.members;
 const OWNER_TABLE = accessTable(AS_OWNER);
 
+/** A project card's own room, as the overview's card holds its sections. */
+const ROOM = { padding: "18px 12px 10px" } as const;
+
 function HarnessPage() {
   const stage = accessTable({ ...APP, projects: [APP.projects[1]!] });
   return (
@@ -129,7 +133,7 @@ function HarnessPage() {
       />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="flex w-full flex-col gap-6 px-4 pt-6 pb-12 md:px-6">
-          <article className="ov-card" data-harness="owner">
+          <Card data-harness="owner" render={<article />} style={ROOM} variant="sheet">
             <ProjectAccessTable
               focus={params.has("focus") ? "stage" : undefined}
               onAdd={() => {}}
@@ -144,8 +148,8 @@ function HarnessPage() {
               }}
               view={OWNER_TABLE}
             />
-          </article>
-          <article className="ov-card" data-harness="developer">
+          </Card>
+          <Card data-harness="developer" render={<article />} style={ROOM} variant="sheet">
             <ProjectAccessTable
               stacked={params.has("stacked")}
               view={accessTable({
@@ -153,8 +157,13 @@ function HarnessPage() {
                 viewer: { roleCode: "BASIC_USER", membershipId: "cu-me" },
               })}
             />
-          </article>
-          <article className="ov-card" data-harness="place" style={{ maxWidth: 560 }}>
+          </Card>
+          <Card
+            data-harness="place"
+            render={<article />}
+            style={{ ...ROOM, maxWidth: 560 }}
+            variant="sheet"
+          >
             <PlaceAccessSummary
               change={
                 <span className="justify-self-start text-body">
@@ -166,8 +175,8 @@ function HarnessPage() {
               summary={columnPeople(stage, "stage")}
               unread={null}
             />
-          </article>
-          <article className="ov-card" style={{ maxWidth: 560 }}>
+          </Card>
+          <Card render={<article />} style={{ ...ROOM, maxWidth: 560 }} variant="sheet">
             <ProjectAccessChips
               onAdd={() => {}}
               onChoose={() => {}}
@@ -176,8 +185,8 @@ function HarnessPage() {
                 projects: [{ projectId: "otto", kind: "mate", name: "Otto" }],
               })}
             />
-          </article>
-          <article className="ov-card" style={{ maxWidth: 560 }}>
+          </Card>
+          <Card render={<article />} style={{ ...ROOM, maxWidth: 560 }} variant="sheet">
             <ProjectAccessChips
               onAdd={() => {}}
               onChoose={() => {}}
@@ -190,23 +199,23 @@ function HarnessPage() {
                 list: [{ clientUserId: "cu-jan", roleCode: "ADMIN" }],
               })}
             />
-          </article>
+          </Card>
           {params.has("pick") ? (
-            <article className="ov-card" style={{ maxWidth: 360, padding: 0 }}>
+            <Card render={<article />} style={{ maxWidth: 360, padding: 0 }} variant="sheet">
               <AddAccessPicker
                 candidates={OWNER_TABLE.kind === "table" ? OWNER_TABLE.candidates : []}
                 onAdd={() => {}}
               />
-            </article>
+            </Card>
           ) : null}
-          <article className="ov-card" style={{ maxWidth: 560 }}>
+          <Card render={<article />} style={{ ...ROOM, maxWidth: 560 }} variant="sheet">
             <ProjectAccessTable
               view={accessTable({
                 ...APP,
                 members: { known: false, status: "failed", refused: true, list: [] },
               })}
             />
-          </article>
+          </Card>
         </div>
       </main>
     </div>

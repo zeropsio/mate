@@ -414,6 +414,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-sites-flash: sites-flash 1200ms ease-out;
   /* A face card just added grows in once, top first (`motion-overview.css`). */
   --animate-card-arrive: card-arrive var(--duration-base) var(--ease-out-strong);
+  /* A project card the overview was opened to rings once (`motion-overview.css`). */
+  --animate-card-ring: card-ring 900ms var(--ease-out-strong);
   /* A review's description read for and not there: it folds shut and the section after it glides
      up into its place (`motion-review.css`). */
   --animate-review-what-folds: review-what-folds var(--duration-base) var(--ease-out-strong)
