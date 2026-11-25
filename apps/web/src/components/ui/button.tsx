@@ -14,7 +14,7 @@ import { cn } from "~/lib/utils";
  * message-action ink, `scrim` a ghost on a picture's dark stage, `warning` a count that opens what
  * waits, `bare` a press whose content is its look.
  * Sizes: `md` by default, `sm` in dense rows, `xs` for a row's verb within its line (a change's
- * Review, everywhere it stands), `2xs` a count on a tile's corner, `lg` only for a page's one hero
+ * Review, everywhere it stands; 24 px, a step taller on a phone like the kit's xs Select), `2xs` a count on a tile's corner, `lg` only for a page's one hero
  * action; `icon-sm` and `icon-md` are the square forms of `sm` and `md`, `icon-xs` a 24 px one in
  * a card's head. A button is a rectangle on the control radius;
  * a label is a Badge pill, so an action never reads as a tag.
@@ -40,7 +40,7 @@ const controlVariants = cva(
         /** A count on a tile's corner (the rail's Waiting count): 20 px, the Badge pill's height. */
         "2xs":
           "h-5 min-w-5 gap-1 px-[calc(--spacing(1.5)-1px)] py-0 text-2xs [&_svg:not([class*='size-'])]:size-3",
-        xs: "h-fit min-h-6 gap-1 px-[calc(--spacing(2)-1px)] py-0 text-line [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-fit min-h-7 gap-1 px-[calc(--spacing(2)-1px)] py-0 text-line sm:min-h-6 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-fit min-h-7 gap-1.5 px-[calc(--spacing(2.5)-1px)] py-[calc(--spacing(1)-1px)] text-body [&_svg:not([class*='size-'])]:size-3.5",
         md: "h-fit min-h-8 gap-1.5 px-[calc(--spacing(3)-1px)] py-[calc(--spacing(1)-1px)] text-body",
         lg: "h-fit min-h-10 gap-2 px-[calc(--spacing(4)-1px)] py-[calc(--spacing(1)-1px)] text-body",
