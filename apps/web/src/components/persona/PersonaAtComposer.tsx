@@ -50,13 +50,18 @@ function Glyph(props: { readonly icon: LucideIcon }) {
 
 function DescribedRadioItem(props: {
   readonly value: string;
+  readonly icon: LucideIcon;
   readonly label: string;
   readonly description: string;
 }) {
   const id = useId();
+  const Icon = props.icon;
   return (
-    <MenuRadioItem aria-describedby={id} value={props.value} variant="check">
-      <MenuItemText description={props.description} descriptionId={id} label={props.label} />
+    <MenuRadioItem aria-describedby={id} value={props.value}>
+      <span className="flex min-w-0 items-start gap-2.5">
+        <Icon aria-hidden="true" className="mt-1" />
+        <MenuItemText description={props.description} descriptionId={id} label={props.label} />
+      </span>
     </MenuRadioItem>
   );
 }
@@ -96,7 +101,7 @@ export function PersonaControl(props: {
         </span>
         <ChevronDownIcon aria-hidden="true" />
       </MenuTrigger>
-      <MenuPopup align="start" side="top" width="md">
+      <MenuPopup align="start" side="top" width="lg">
         <MenuGroup>
           <MenuGroupLabel>How {props.mateName} works with you</MenuGroupLabel>
           <MenuRadioGroup
@@ -106,6 +111,7 @@ export function PersonaControl(props: {
             {props.choices.map((choice) => (
               <DescribedRadioItem
                 description={choice.description}
+                icon={choice.icon}
                 key={choice.key}
                 label={choice.name}
                 value={choice.key}
@@ -113,6 +119,7 @@ export function PersonaControl(props: {
             ))}
             <DescribedRadioItem
               description={`${props.mateName} works as it does by default.`}
+              icon={DramaIcon}
               label="None"
               value={NONE}
             />
@@ -197,11 +204,16 @@ export function travelInto(from: HTMLElement, label: HTMLElement | null): void {
   if (label === null || prefersReducedMotion()) return;
   const start = (from.querySelector("svg") ?? from).getBoundingClientRect();
   const end = (label.querySelector("svg") ?? label).getBoundingClientRect();
+  // Something already on screen moving to a new place: eased in and out, so the eye can follow it.
+  const tokens = getComputedStyle(label);
   label.animate(
     [
       { transform: `translate(${start.left - end.left}px, ${start.top - end.top}px)` },
       { transform: "translate(0, 0)" },
     ],
-    { duration: 320, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+    {
+      duration: Number.parseFloat(tokens.getPropertyValue("--duration-slow")),
+      easing: tokens.getPropertyValue("--ease-in-out-strong"),
+    },
   );
 }
