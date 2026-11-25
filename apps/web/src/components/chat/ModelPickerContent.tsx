@@ -992,9 +992,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   />
                 </ComboboxListVirtualized>
               </div>
-              <ComboboxEmpty>
-                <span className="block py-4 text-caption">No models found</span>
-              </ComboboxEmpty>
+              <ComboboxEmpty>No model matches.</ComboboxEmpty>
             </div>
           </Combobox>
         )}

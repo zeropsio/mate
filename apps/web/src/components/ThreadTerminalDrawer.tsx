@@ -1,3 +1,4 @@
+import { EmptyState } from "~/components/ui/empty";
 import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
@@ -86,7 +87,6 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
-import { Text } from "~/components/ui/text";
 import { Separator } from "~/components/ui/separator";
 
 interface TerminalInputTarget {
@@ -1676,16 +1676,16 @@ export default function ThreadTerminalDrawer({
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
         {resizeHandle}
-        <Text
-          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center"
-          render={<div />}
-          variant="description"
+        <EmptyState
+          action={
+            <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
+              {newTerminalActionLabel}
+            </Button>
+          }
+          className="min-h-0"
         >
-          <p>No terminal sessions for this thread yet.</p>
-          <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
-            {newTerminalActionLabel}
-          </Button>
-        </Text>
+          No terminal sessions for this thread yet.
+        </EmptyState>
       </aside>
     );
   }
