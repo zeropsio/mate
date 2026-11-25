@@ -274,6 +274,15 @@ export function ChosenFailure() {
           <Failure cause="Zerops didn't let you read their project access." />
         </div>
       </Specimen>
+      <Specimen label='<Failure size="line" cause /> · an action refused where it stands'>
+        <div className="w-[480px]">
+          <Failure
+            cause="Only an organization owner can change an owner's or admin's access."
+            role="alert"
+            size="line"
+          />
+        </div>
+      </Specimen>
       <Specimen label='<Failure size="page" …> · open Details: nothing above moves'>
         <StateFrame size="page">
           <Failure

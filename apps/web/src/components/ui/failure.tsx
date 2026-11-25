@@ -36,7 +36,9 @@ function FailureDetails({
 /**
  * Something failed: the cause in the person's words, the one action that fixes it, and the
  * source's own words folded under Details. Never a spinner beside it. `inline` stands in the place
- * that failed (a card, a list, a panel); `page` is a whole page that failed, in a fixed frame.
+ * that failed (a card, a list, a panel); `page` is a whole page that failed, in a fixed frame;
+ * `line` is an action's refusal said where the action stands (under a form, beside its buttons, in
+ * a card's foot): the cause alone, one red line of body text that wraps, no box and no mark.
  */
 function Failure({
   cause,
@@ -57,8 +59,20 @@ function Failure({
   readonly details?: React.ReactNode;
   /** A page's mark: the subject's face or icon. */
   readonly mark?: React.ReactNode;
-  readonly size?: "inline" | "page";
+  readonly size?: "inline" | "page" | "line";
 }) {
+  if (size === "line") {
+    return (
+      <span
+        className="block text-pretty text-body text-status-failed-text"
+        data-size="line"
+        data-slot="failure"
+        {...props}
+      >
+        {cause}
+      </span>
+    );
+  }
   const folded =
     details === undefined || details === null || details === "" ? null : (
       <FailureDetails>{details}</FailureDetails>

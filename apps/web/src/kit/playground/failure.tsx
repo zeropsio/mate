@@ -6,8 +6,9 @@ import { Failure } from "~/components/ui/failure";
 import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 
 // `mark` is a page's only, so size and mark are one choice here.
-const FORMS = ["inline", "page", "page with mark"] as const;
-const sizeOf = (form: (typeof FORMS)[number]) => (form === "inline" ? "inline" : "page");
+const FORMS = ["inline", "line", "page", "page with mark"] as const;
+const sizeOf = (form: (typeof FORMS)[number]) =>
+  form === "inline" || form === "line" ? form : "page";
 
 const MARK_CODE = '<BoxIcon className="size-12 text-muted-foreground" />';
 
@@ -19,7 +20,7 @@ export default definePlayground({
     form: {
       kind: "enum",
       options: FORMS,
-      note: "page for a whole page that failed, marked with its subject",
+      note: "line for an action's refusal where it stands (its cause only); page for a whole page that failed, marked with its subject",
     },
     cause: { kind: "text", note: "what went wrong, in the person's words" },
     children: { kind: "text", note: "one more line: what is kept, what happens next" },
@@ -71,17 +72,19 @@ export default definePlayground({
       {
         size: sizeOf(form),
         cause,
-        action: action
-          ? jsxCode(
-              form === "inline"
-                ? '<Button size="sm" variant="secondary">Try again</Button>'
-                : '<Button variant="secondary">Try again</Button>',
-            )
-          : undefined,
-        details: details === "" ? undefined : details,
+        // A line is its cause alone.
+        action:
+          action && form !== "line"
+            ? jsxCode(
+                form === "inline"
+                  ? '<Button size="sm" variant="secondary">Try again</Button>'
+                  : '<Button variant="secondary">Try again</Button>',
+              )
+            : undefined,
+        details: details === "" || form === "line" ? undefined : details,
         mark: form === "page with mark" ? jsxCode(MARK_CODE) : undefined,
       },
-      children,
+      form === "line" ? "" : children,
       { size: "inline" },
     ),
   usage: {
@@ -90,6 +93,7 @@ export default definePlayground({
       "Say the cause as the person sees it, then the one action that fixes it.",
       "Fold the source's own words under Details, for whoever reports it.",
       "Use size page when the whole page could not open, with its subject's mark.",
+      "Use size line for an action's refusal where the action stands: under its form, beside its buttons.",
     ],
     dont: [
       "Put a spinner beside it or retry on a timer the person cannot see.",
