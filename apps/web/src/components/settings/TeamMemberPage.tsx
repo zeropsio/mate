@@ -59,6 +59,7 @@ import { MemberTakeOverView } from "./MemberTakeOver";
 import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
 import { EmptyState } from "../ui/empty";
 import { SectionHeader } from "../ui/section";
+import { Separator } from "../ui/separator";
 
 /** What the page asks HQ to start; each rejects with what to tell the person. */
 export interface TeamMemberActions {
@@ -225,7 +226,7 @@ export function TeamMemberView({
         ) : null}
       </section>
 
-      <div aria-hidden="true" className="tm-rule" />
+      <Separator />
 
       <section aria-label="Project access" className="tm-section">
         {grants === null && held === null ? (
@@ -279,11 +280,11 @@ export function TeamMemberView({
         <>
           {end === "remove" && takeOver !== undefined ? (
             <>
-              <div aria-hidden="true" className="tm-rule" />
+              <Separator />
               {takeOver}
             </>
           ) : null}
-          <div aria-hidden="true" className="tm-rule" />
+          <Separator />
           <section aria-label="Danger zone" className="tm-section">
             <SectionHeader
               action={

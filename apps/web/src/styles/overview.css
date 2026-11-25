@@ -1501,11 +1501,6 @@ label.tm-advanced-row:not([data-disabled]) {
   }
 }
 
-.tm-rule {
-  height: 1px;
-  background: var(--ov-rule);
-}
-
 .tm-names {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
