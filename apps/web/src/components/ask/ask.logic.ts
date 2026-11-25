@@ -29,6 +29,15 @@ export type AskState =
 
 export type AskStateKind = AskState["kind"];
 
+/** A short name for an ask a Mate set up in its words (a fence's), the same each time they are read. */
+export function askKeyOf(source: string): string {
+  let hash = 5381;
+  for (let index = 0; index < source.length; index++) {
+    hash = ((hash << 5) + hash + source.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
 /** The second button of every ask: the Mate can ask again. Never Decline or Dismiss. */
 export const NOT_NOW = "Not now";
 

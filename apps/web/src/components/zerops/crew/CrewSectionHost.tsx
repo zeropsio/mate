@@ -266,6 +266,7 @@ export function CrewSectionHost({
           mate={{ name: mateName, tint: mate?.tint, shape: mate?.shape }}
           onAskPorts={askPorts}
           proposeWith={proposeWith}
+          proposed={view.proposed}
           onClose={() => setView(null)}
           onEditCrewmate={(handle) => setView({ kind: "job", handle })}
           startLock={access.home}
