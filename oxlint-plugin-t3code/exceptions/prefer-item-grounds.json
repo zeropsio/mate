@@ -14,13 +14,5 @@
     "owner": "unify pass",
     "reason": "a face card standing on its own muted ground (the class string before it), lit a step deeper and ringed under the pointer: a surface of its own, not a row's ground",
     "expires": "never"
-  },
-  {
-    "path": "apps/web/src/contextMenuFallback.ts",
-    "kind": "TemplateElement",
-    "fingerprint": "} text-foreground hover:bg-accent hover:text-accent-foreground`",
-    "owner": "unify pass",
-    "reason": "the context menu built outside React draws the kit Menu's highlighted item (menu.tsx's data-highlighted ground); it moves when Menu does",
-    "expires": "never"
   }
 ]

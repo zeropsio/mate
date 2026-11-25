@@ -207,13 +207,10 @@ export const ACCESS_CHIPS = "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(168p
 export const ACCESS_CHIPS_WIDE =
   "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-2";
 
-/**
- * A chip: a pill lifted off its card, its face and words, a ⋮ where it has a menu. A quiet press's
- * hover on it is a step over the lift.
- */
+/** A chip: a pill lifted off its card, its face and words, a ⋮ where it has a menu. */
 export function accessChip(menu: boolean): string {
   return cn(
-    "grid h-12 grid-cols-[minmax(0,1fr)] items-center rounded-full bg-foreground/4 px-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]",
+    "grid h-12 grid-cols-[minmax(0,1fr)] items-center rounded-full bg-foreground/4 px-1.5",
     menu && "grid-cols-[minmax(0,1fr)_auto] pe-1",
   );
 }

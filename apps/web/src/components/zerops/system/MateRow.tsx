@@ -64,9 +64,7 @@ export function MateRow({
     <div
       className={cn(
         MATE,
-        lifted
-          ? "bg-foreground/4 shadow-edge [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]"
-          : "has-[[data-ov-mate-open]:hover]:bg-item-hover",
+        lifted ? "bg-foreground/4 shadow-edge" : "has-[[data-ov-mate-open]:hover]:bg-item-hover",
       )}
       data-lift={lifted ? reading.lift?.kind : undefined}
       data-zerops-surface="card-mate"
