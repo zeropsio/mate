@@ -52,6 +52,14 @@ export function ChosenLoading() {
           </div>
         </Specimen>
       ))}
+      <Specimen
+        label='<Loading label="…" quiet /> · unpainted for the hold, then in place'
+        source="apps/web/src/components/ui/loading.tsx"
+      >
+        <div className="w-[440px] rounded-card border p-4">
+          <Loading count={3} label="Your projects" quiet shape="rows" />
+        </div>
+      </Specimen>
     </Chosen>
   );
 }
