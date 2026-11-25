@@ -1,4 +1,5 @@
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
+import { CodeBlock } from "~/components/ui/code-block";
 import { memo, use, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
@@ -255,9 +256,6 @@ function buildToolCallExpandedBody(
   return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
 
-const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
-
 const TOOL_ACTION_ICON: Record<
   Exclude<ReturnType<typeof toolGroupAction>, "other">,
   WorkEntryIconName
@@ -445,11 +443,11 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       </div>
       {expanded && canExpand && expandedBody ? (
         <div
-          className="mt-1 ms-5 cursor-default border-s border-border/45 ps-3 pt-0.5"
+          className="mt-1 ms-5 cursor-default"
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          <CodeBlock height="md">{expandedBody}</CodeBlock>
         </div>
       ) : null}
       {workEntry.questionAnswer ? (
