@@ -223,7 +223,7 @@ export function placedMenuRows(input: {
   /** Where HQ places each project (`placementsOf`). */
   readonly placements: HqPlacements;
   /** HQ's name for each project it places. */
-  readonly names: ReadonlyMap<string, string>;
+  readonly names: ReadonlyMap<string, string | undefined>;
   readonly projects: ReadonlyArray<ZeropsProject>;
   readonly candidates: ReadonlyArray<CandidateRow>;
   readonly gone: ReadonlySet<string>;
@@ -258,7 +258,9 @@ export function placedMenuRows(input: {
 }
 
 /** HQ's name for each project its structure places. */
-export function placedNames(structure: MatePlacementStructure): ReadonlyMap<string, string> {
+export function placedNames(
+  structure: MatePlacementStructure,
+): ReadonlyMap<string, string | undefined> {
   return new Map([
     ...structure.apps.flatMap((app) =>
       app.projects.map((project) => [project.projectId, project.name] as const),

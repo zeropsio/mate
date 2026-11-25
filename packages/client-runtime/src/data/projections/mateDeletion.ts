@@ -63,7 +63,7 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   if (deletion.kind === "none" || deletion.kind === "needs") return NONE;
   if (kind === APP_DELETION && deletion.kind === "failed") return NONE;
   if (deletion.kind === "going") return DELETING;
-  return deletion;
+  return { kind: "failed", failure: deletion.failure };
 }
 
 /** A Mate's deletion from its project as the listing joins HQ's placement onto it. */

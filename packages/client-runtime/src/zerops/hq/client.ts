@@ -213,7 +213,7 @@ export interface HqStructure {
   readonly ungrouped: ReadonlyArray<
     {
       readonly projectId: string;
-      readonly name: string;
+      readonly name?: string | undefined;
       readonly mate: HqMate;
       /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
       readonly operation?: HqOperation;
@@ -233,7 +233,7 @@ export interface HqStructure {
     readonly projects: ReadonlyArray<
       {
         readonly projectId: string;
-        readonly name: string;
+        readonly name?: string | undefined;
         readonly kind: string;
         readonly mate: HqMate | null | undefined;
         /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */

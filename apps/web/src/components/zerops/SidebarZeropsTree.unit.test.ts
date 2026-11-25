@@ -98,7 +98,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   expect(mateGoing(none)).toBe(false);
 });
 
-// witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", failure: operation.failure }; → return { kind: "failed", failure: { step: operation.failure.step, code: operation.failure.code, at: operation.failure.at, origin: operation.failure.origin } };
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", id: operation.id, failure: operation.failure }; → return { kind: "failed", id: operation.id, failure: { step: operation.failure.step, code: operation.failure.code, at: operation.failure.at, origin: operation.failure.origin } };
 it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why", () => {
   const at = "2026-11-22T10:00:00.000Z";
   // HQ reads navigation for one person: it offers the deletion's Continue to its maker alone.
