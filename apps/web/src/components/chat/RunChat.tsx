@@ -767,7 +767,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               }}
               now={row.live ? now : null}
               outcome={settled ? outcome : null}
-              settledHere={watchedLive && motionAllowed}
+              // Only once it ended: a card that came in live drew "Working" from nothing beside
+              // its standing clock, a blink as the card arrived.
+              settledHere={watchedLive && settled && motionAllowed}
               status={row.status}
             />
           )}
