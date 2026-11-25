@@ -57,6 +57,7 @@ import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
 import { Spinner } from "../ui/spinner";
+import { StepNumber } from "../ui/step-number";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
@@ -683,9 +684,7 @@ function OpenCardSteps({
   if (steps.kind === "signed-in") {
     return (
       <div className="arrival-open-step" data-sign-in-outcome="signed-in">
-        <span className="arrival-num" data-done="">
-          <CheckIcon aria-hidden="true" className="size-3" />
-        </span>
+        <StepNumber n={1} state="done" />
         <span className="arrival-open-step-words">{words.signedIn}</span>
         <span />
       </div>
@@ -694,9 +693,7 @@ function OpenCardSteps({
   if (steps.kind === "failed") {
     return (
       <div className="arrival-open-step" data-sign-in-outcome="failed">
-        <span className="arrival-num" data-failed="">
-          !
-        </span>
+        <StepNumber n={1} state="failed" />
         <span className="arrival-open-step-words" role="alert">
           {steps.why}
         </span>
@@ -712,9 +709,7 @@ function OpenCardSteps({
   return (
     <>
       <div className="arrival-open-step" data-sign-in-step="page">
-        <span className="arrival-num" data-done={pageDone ? "" : undefined}>
-          {pageDone ? <CheckIcon aria-hidden="true" className="size-3" /> : "1"}
-        </span>
+        <StepNumber n={1} state={pageDone ? "done" : "todo"} />
         <span className="arrival-open-step-words" data-quiet={pageDone ? "" : undefined}>
           {pageDone ? words.opened : words.open}
         </span>
@@ -796,7 +791,7 @@ function PasteCodeStep({
   }, [checking, disabled, focus]);
   return (
     <div className="arrival-open-step" data-sign-in-step="code">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{terminal ? words.terminal : words.paste}</span>
       <span />
       {terminal ? null : (
@@ -842,7 +837,7 @@ function PasteCodeStep({
       ) : (
         // What happens then, as the third step.
         <span className="arrival-open-step-then">
-          <span className="arrival-num">3</span>
+          <StepNumber n={3} />
           <span className="arrival-open-step-words">{words.pasteHint}</span>
         </span>
       )}
@@ -865,7 +860,7 @@ function TypeCodeStep({
   }, [copied]);
   return (
     <div className="arrival-open-step" data-sign-in-step="code">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{words.type}</span>
       <span />
       <span className="arrival-open-step-field flex items-center gap-2">
@@ -909,7 +904,7 @@ function ApproveStep({
 }) {
   return (
     <div className="arrival-open-step" data-sign-in-step="approve">
-      <span className="arrival-num">2</span>
+      <StepNumber n={2} />
       <span className="arrival-open-step-words">{words.approve}</span>
       <span />
       <span className="arrival-open-step-hint">

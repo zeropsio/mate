@@ -85,27 +85,14 @@
 
   .mac-wait-step {
     display: grid;
-    grid-template-columns: 22px minmax(0, 1fr);
+    grid-template-columns: 24px minmax(0, 1fr);
     align-items: start;
     column-gap: 12px;
     row-gap: 8px;
   }
 
-  .mac-wait-num {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 9999px;
-    background: var(--muted);
-    color: var(--muted-foreground);
-    font-size: var(--text-caption);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
   .mac-wait-step-words {
-    padding-top: 1px;
+    padding-top: 2px;
     font-size: var(--text-body);
     line-height: 20px;
     color: var(--foreground);

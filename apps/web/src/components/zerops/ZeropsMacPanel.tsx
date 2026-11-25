@@ -28,6 +28,7 @@ import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
+import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
 
 /** How long a copy button says so. */
@@ -73,9 +74,7 @@ function macStep({
 }) {
   return (
     <li className="mac-wait-step" key={words}>
-      <span aria-hidden="true" className="mac-wait-num">
-        {n}
-      </span>
+      <StepNumber n={n} />
       <span className="mac-wait-step-words">{words}</span>
       {command === undefined ? null : (
         <span className="mac-wait-step-field">

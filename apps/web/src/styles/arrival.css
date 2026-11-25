@@ -1151,35 +1151,6 @@
   color: var(--zerops-status-failed-text);
 }
 
-.arrival-num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 9999px;
-  background: var(--muted);
-  box-shadow: inset 0 0 0 1px var(--border);
-  color: var(--foreground);
-  font-size: var(--text-caption);
-  line-height: 1;
-  font-weight: 500;
-}
-
-.arrival-num[data-done] {
-  background: color-mix(in oklab, var(--zerops-status-ok) 24%, transparent);
-  box-shadow: none;
-  color: var(--zerops-status-ok-text);
-}
-
-.arrival-num[data-failed] {
-  background: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
-  box-shadow: none;
-  color: var(--zerops-status-failed-text);
-}
-
-/* A quiet press inside the sign-in: muted, underlined, 13 px. */
-
 /* Claude's code while it is checked: the field's own box, the code's ends and the check. */
 .arrival-field {
   display: flex;
