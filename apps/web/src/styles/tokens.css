@@ -60,6 +60,12 @@
      tint: the page's ground, half of it on hover; in dark, more input. */
   --zerops-segment: var(--color-background);
   --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
+  /* A pressable item's ground under the pointer or the keyboard's cursor, and the ground of the
+     one picked among its list (the tab open, the take on stage): a step of the ink over whatever
+     ground the item stands on, so a card, a well, a popup and the page light alike; in dark, a
+     step more. */
+  --zerops-item-hover: color-mix(in oklab, var(--color-foreground) 4%, transparent);
+  --zerops-item-picked: color-mix(in oklab, var(--color-foreground) 7%, transparent);
   /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
   --zerops-shimmer: rgb(255 255 255 / 64%);
   /* A lift's shadow: a surface held off the page (a drawer or strip hanging under the composer,
@@ -156,6 +162,8 @@
     --zerops-field-pressed: var(--color-input);
     --zerops-segment: color-mix(in oklab, var(--color-input) 72%, transparent);
     --zerops-segment-hover: color-mix(in oklab, var(--color-input) 32%, transparent);
+    --zerops-item-hover: color-mix(in oklab, var(--color-foreground) 6%, transparent);
+    --zerops-item-picked: color-mix(in oklab, var(--color-foreground) 10%, transparent);
     --zerops-shimmer: rgb(255 255 255 / 4%);
     --zerops-shadow-drawer: 0 14px 32px -18px rgb(0 0 0 / 75%);
     --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);

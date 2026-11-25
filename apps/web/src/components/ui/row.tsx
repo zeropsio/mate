@@ -36,27 +36,34 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
       bar: "min-h-8 w-full gap-2 rounded-control pe-3.5",
     },
     /**
-     * The whole row opens something: `true` lights its own ground under the pointer; `band` leaves
-     * that to its list, whose one band slides to the row lit (the menu).
+     * The whole row opens or picks something: `true` lights its own ground (`bg-item-hover`) under
+     * the pointer and while `data-highlighted` (a list's arrow keys stepping through rows that keep
+     * focus on the list, a search field's results); `band` leaves that to its list, whose one band
+     * slides to the row lit (the menu).
      */
     pressable: {
-      true: "w-full cursor-pointer select-none transition-colors duration-150 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:hover:bg-transparent",
+      true: "w-full cursor-pointer select-none transition-colors duration-150 ease-out-strong not-aria-disabled:[:hover,[data-highlighted]]:bg-item-hover focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default motion-reduce:transition-none",
       band: "w-full cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default",
       false: "",
     },
-    /** Picked among its list (a take on the stage): it stands on the accent ground. */
+    /**
+     * The one picked among its list, the one it shows (the tab open, the take on stage, the
+     * conversation in view): it stands on `bg-item-picked`, and stays on it under the pointer. A
+     * choice of a value says so with its own mark instead (`RadioRow`, a check box).
+     */
     picked: {
-      true: "bg-accent/70",
+      true: "bg-item-picked",
       false: "",
     },
   },
   compoundVariants: [
-    // On the run card's tray the line lights as quietly as the card's other lines.
     {
-      size: "bar",
       pressable: true,
-      className: "hover:bg-foreground/4 focus-visible:ring-inset",
+      picked: true,
+      className: "not-aria-disabled:[:hover,[data-highlighted]]:bg-item-picked",
     },
+    // On the run card's tray the line's keyboard ring stays inside the card.
+    { size: "bar", pressable: true, className: "focus-visible:ring-inset" },
   ],
 });
 
@@ -273,9 +280,9 @@ const rowColumnsVariants = cva(
   {
     defaultVariants: { pressable: false, ground: "none" },
     variants: {
-      /** As a slotted row's: `true` lights its own ground; `band` leaves that to its list. */
+      /** As a slotted row's: `true` lights its own ground (`bg-item-hover`); `band` leaves that to its list. */
       pressable: {
-        true: "cursor-pointer transition-colors duration-150 ease-out-strong hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+        true: "cursor-pointer transition-colors duration-150 ease-out-strong [:hover,:focus-visible,[data-highlighted]]:bg-item-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
         band: "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring",
         false: "",
       },

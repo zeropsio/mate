@@ -528,6 +528,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-pressed: var(--zerops-field-pressed);
   --color-segment: var(--zerops-segment);
   --color-segment-hover: var(--zerops-segment-hover);
+  --color-item-hover: var(--zerops-item-hover);
+  --color-item-picked: var(--zerops-item-picked);
   --color-shimmer: var(--zerops-shimmer);
   /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
      draws its eyes and mouth in. */

@@ -228,15 +228,19 @@ interface TabProps extends useRender.ComponentProps<"div">, VariantProps<typeof 
   readonly active: boolean;
 }
 
-/** One tab: filled while open, quiet otherwise, lit under the pointer. */
+/**
+ * One tab: on the picked ground (`bg-item-picked`) while open, quiet otherwise, lit
+ * (`bg-item-hover`) under the pointer. A page's own views (`size="md"`) are tabs too: a switch
+ * between what one page shows (open changes or all of them, a filter) is a strip of `Tab`s.
+ */
 function Tab({ className, render, tabId, active, size, children, ...props }: TabProps) {
   const folded = useContext(TabStripCompactContext) && !active;
   const defaultProps = {
     className: cn(
       tabVariants({ size }),
       active
-        ? "bg-accent text-foreground"
-        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        ? "bg-item-picked text-foreground"
+        : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
       className,
     ),
     "data-slot": "tab",
