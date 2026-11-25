@@ -51,8 +51,7 @@ export function resolveSelectedProviderEnvironmentId(
 
 export type ProviderEnvironmentAccess =
   | { readonly kind: "editable" }
-  /** `reason` distinguishes waiting on the device from waiting on permissions. */
-  | { readonly kind: "loading"; readonly reason: "config" | "permissions" }
+  | { readonly kind: "loading" }
   | { readonly kind: "read-only" }
   | { readonly kind: "unavailable" }
   | { readonly kind: "error" };
@@ -150,10 +149,10 @@ export function classifyProviderEnvironmentAccess(input: {
     return { kind: "unavailable" };
   }
   if (!input.hasServerConfig) {
-    return { kind: "loading", reason: "config" };
+    return { kind: "loading" };
   }
   if (input.operateAccess === "pending") {
-    return { kind: "loading", reason: "permissions" };
+    return { kind: "loading" };
   }
   if (input.operateAccess === "denied") {
     return { kind: "read-only" };

@@ -54,6 +54,8 @@ import {
 } from "./ThreadStatusIndicators";
 import { ComposerControl } from "./chat/ComposerControl";
 import { Button } from "./ui/button";
+import { Loading } from "./ui/loading";
+import { Spinner } from "./ui/spinner";
 import { Switch } from "./ui/switch";
 import { getVirtualizedScrollFadeClassName } from "./ui/scroll-area";
 import {
@@ -316,13 +318,15 @@ export function BranchToolbarBranchSelector({
         : null;
   const [isBranchActionPending, startBranchActionTransition] = useTransition();
   const totalBranchCount = branchRefState.data?.totalCount ?? 0;
-  const branchStatusText = isInitialBranchesLoadPending
-    ? "Loading refs..."
-    : isFetchingNextPage
-      ? "Loading more refs..."
-      : hasNextPage
-        ? `Showing ${refs.length} of ${totalBranchCount} refs`
-        : null;
+  const branchStatus = isInitialBranchesLoadPending ? (
+    <Loading className="mx-3 my-2" count={3} label="Branches" shape="lines" />
+  ) : isFetchingNextPage ? (
+    <ComboboxStatus>
+      <Spinner aria-label="More branches" size="xs" tone="muted" />
+    </ComboboxStatus>
+  ) : hasNextPage ? (
+    <ComboboxStatus>{`Showing ${refs.length} of ${totalBranchCount} refs`}</ComboboxStatus>
+  ) : null;
 
   // ---------------------------------------------------------------------------
   // Branch actions
@@ -891,7 +895,7 @@ export function BranchToolbarBranchSelector({
               </TooltipPopup>
             </Tooltip>
           ) : null}
-          {branchStatusText ? <ComboboxStatus>{branchStatusText}</ComboboxStatus> : null}
+          {branchStatus}
         </div>
       </ComboboxPopup>
     </Combobox>

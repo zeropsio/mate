@@ -76,7 +76,8 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { Spinner } from "../ui/spinner";
+import { EmptyState } from "../ui/empty";
+import { Loading } from "../ui/loading";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -2649,27 +2650,23 @@ export function ArchivedThreadsPanel() {
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}
           title={searchableSetting("archive").title}
         >
-          <SettingsRow
-            title={
-              <span className="inline-flex items-center gap-2">
-                {isLoadingArchive ? (
-                  <Spinner size="sm" tone="muted" />
-                ) : (
+          {isLoadingArchive ? (
+            <Loading count={2} label="Archived chats" shape="rows" />
+          ) : archiveError ? (
+            <SettingsRow
+              title={
+                <span className="inline-flex items-center gap-2">
                   <ArchiveIcon className="size-3.5 text-muted-foreground" />
-                )}
-                {isLoadingArchive
-                  ? "Loading archived threads"
-                  : archiveError
-                    ? "Could not load archived threads"
-                    : "No archived threads"}
-              </span>
-            }
-            description={
-              isLoadingArchive
-                ? "Checking connected environments."
-                : (archiveError ?? "Archived threads will appear here.")
-            }
-          />
+                  Could not load archived threads
+                </span>
+              }
+              description={archiveError}
+            />
+          ) : (
+            <EmptyState mark={<ArchiveIcon />} size="row">
+              No archived chats. A chat you archive shows up here.
+            </EmptyState>
+          )}
         </SettingsSection>
       ) : (
         archivedGroups.map(({ project, threads: projectThreads }, index) => (

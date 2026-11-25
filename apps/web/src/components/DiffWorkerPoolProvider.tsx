@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTheme } from "../hooks/useTheme";
 import { resolveDiffThemeName, type DiffThemeName } from "../lib/diffPresentation";
+import { Loading } from "~/components/ui/loading";
 
 class DiffWorkerError extends Schema.TaggedError<DiffWorkerError>()("DiffWorkerError", {
   operation: Schema.Literals(["create-worker", "get-render-options", "set-render-options"]),
@@ -66,16 +67,7 @@ function DiffWorkerReady({ children, fallback }: { children?: ReactNode; fallbac
     };
   }, [ready, workerPool]);
 
-  return ready
-    ? children
-    : (fallback ?? (
-        <div
-          role="status"
-          className="flex min-h-0 flex-1 items-center justify-center p-4 text-caption text-muted-foreground"
-        >
-          Loading code...
-        </div>
-      ));
+  return ready ? children : (fallback ?? <Loading label="The code" shape="room" />);
 }
 
 export function DiffWorkerPoolProvider({

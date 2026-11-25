@@ -1529,7 +1529,9 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     // Reserve the size already observed for this conversation occurrence.
     return (
       <span
-        {...(reading ? { role: "status", "aria-label": "Loading image" } : {})}
+        {...(reading
+          ? { role: "status", "aria-busy": true, "aria-label": props.alt || "The picture" }
+          : {})}
         className={cn(
           "my-1 block max-w-full rounded-control",
           room.width === undefined && "aspect-video w-full max-w-[30rem]",

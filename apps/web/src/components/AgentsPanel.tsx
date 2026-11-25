@@ -56,6 +56,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Row } from "~/components/ui/row";
+import { Loading } from "~/components/ui/loading";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -348,7 +349,7 @@ function WorkflowScriptView({
         ) : result._tag === "Failure" ? (
           <p className="text-caption text-destructive-foreground">Could not load the script.</p>
         ) : (
-          <p className="text-caption text-muted-foreground">Loading…</p>
+          <Loading count={3} label="The script" shape="lines" />
         )}
       </div>
     </div>

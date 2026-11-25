@@ -847,7 +847,7 @@ function HarnessCode({ scenario, top }: { readonly scenario: Scenario; readonly 
       sectionTitle="Not on main"
       state={
         scenario.changes === "reading" ? (
-          <DiffPanelLoadingState label="Reading git..." />
+          <DiffPanelLoadingState label="The changes" />
         ) : scenario.changes === "no-code" ? (
           <CodeChangesEmpty title="No code here yet." />
         ) : scenario.changes === "nothing" ? (

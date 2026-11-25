@@ -945,12 +945,12 @@ export function DiagnosticsSettingsPanel() {
   const processPresentation = collectionPresentation(
     { data: processData, error: processError, isPending: isProcessPending },
     (data) => data.processes,
-    { loading: "Loading live processes...", unavailable: "Live processes unavailable." },
+    { subject: "Live processes", unavailable: "Live processes unavailable." },
     processDiagnosticsError?.message,
   );
   const resourceQuery = { data: resourceData, error: resourceError, isPending: isResourcePending };
   const resourceLabels = {
-    loading: "Loading process resource samples...",
+    subject: "Process resource samples",
     unavailable: "Process resource history unavailable.",
   };
   const bucketPresentation = collectionPresentation(

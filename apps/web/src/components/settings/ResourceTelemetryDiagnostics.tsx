@@ -1212,7 +1212,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.buckets, {
-              loading: "Loading resource history...",
+              subject: "Resource history",
               unavailable: "Resource history unavailable.",
             })}
             emptyLabel="No resource samples in this window."
@@ -1221,7 +1221,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </CollectionRead>
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.topProcesses, {
-              loading: "Loading resource history...",
+              subject: "Resource history",
               unavailable: "Resource history unavailable.",
             })}
           >
@@ -1272,7 +1272,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
           <CollectionRead
             presentation={collectionPresentation(telemetry, (data) => data.attribution.entries, {
-              loading: "Loading application I/O...",
+              subject: "Application I/O",
               unavailable: "Application I/O unavailable.",
             })}
           >

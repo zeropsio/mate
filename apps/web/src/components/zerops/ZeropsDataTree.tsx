@@ -30,6 +30,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Row } from "~/components/ui/row";
 import { cn } from "~/lib/utils";
+import { Loading } from "~/components/ui/loading";
 
 interface ZeropsDataTreeProps {
   readonly rootPath: ZeropsDataConsolePath;
@@ -117,13 +118,13 @@ function renderNodeList({
   if (entry === undefined || !entry.loaded) {
     if (failedKeys.has(key)) return <></>;
     return (
-      <p
-        className="text-muted-foreground text-caption"
+      <Loading
+        className="my-1"
         data-zerops-data-tree-loading={key}
+        label="Its contents"
+        shape="line"
         style={{ paddingLeft: depth * 12 }}
-      >
-        Loading…
-      </p>
+      />
     );
   }
 

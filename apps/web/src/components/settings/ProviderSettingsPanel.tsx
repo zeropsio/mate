@@ -107,6 +107,7 @@ import {
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
 } from "./ProviderSettingsPanel.logic";
+import { Loading } from "../ui/loading";
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 
@@ -197,23 +198,22 @@ function EnvironmentUnavailableRow({
   readonly access: Exclude<ProviderEnvironmentAccess, { kind: "editable" | "read-only" }>;
   readonly deviceTabs?: ReactNode;
 }) {
-  const isLoading = access.kind === "loading";
-  const title = isLoading
-    ? "Loading provider settings"
-    : access.kind === "error"
+  if (access.kind === "loading") {
+    return (
+      <SettingsSection title="Providers">
+        {deviceTabs}
+        <Loading count={3} label="Provider settings" shape="rows" />
+      </SettingsSection>
+    );
+  }
+  const title =
+    access.kind === "error"
       ? "Could not connect to this device"
       : "Provider settings are unavailable";
-  const description = isLoading
-    ? access.reason === "permissions"
-      ? "Checking what this session is allowed to change."
-      : `Waiting for ${environment.label}'s configuration.`
-    : connectionStatusText(environment.connection);
-  // No spinner: this state can persist indefinitely for a wedged device, and a
-  // continuously repainting animation would run the whole time.
   return (
     <SettingsSection title="Providers">
       {deviceTabs}
-      <SettingsRow title={title} description={description} />
+      <SettingsRow title={title} description={connectionStatusText(environment.connection)} />
     </SettingsSection>
   );
 }

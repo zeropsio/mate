@@ -80,6 +80,8 @@ import { ZeropsDataTable, type ZeropsDataTableSort } from "./ZeropsDataTable";
 import { ZeropsDataTree } from "./ZeropsDataTree";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Badge } from "~/components/ui/badge";
+import { Loading } from "~/components/ui/loading";
+import { Spinner } from "~/components/ui/spinner";
 
 interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -1136,7 +1138,7 @@ export function ZeropsDataPanel({
         scrollRegionRef={gridScrollRef}
         {...(tableModel.rows.length === 0 &&
         (gridNoticeView !== undefined || detailTime === undefined)
-          ? { notice: gridNoticeView ?? <p>Loading detail…</p> }
+          ? { notice: gridNoticeView ?? <Loading count={4} label="The rows" shape="lines" /> }
           : {})}
         {...(queryState || filtered ? {} : { onRequestCount: handleTableCount })}
         {...(gridSort ? { sort: gridSort } : {})}
@@ -1241,9 +1243,7 @@ export function ZeropsDataPanel({
           </Button>
         </div>
       ) : null}
-      {selectedState?.pending ? (
-        <p className="text-caption text-muted-foreground">Loading detail…</p>
-      ) : null}
+      {selectedState?.pending ? <Spinner aria-label="The detail" size="xs" tone="muted" /> : null}
       {detailTime !== undefined ? (
         <p className="text-caption text-muted-foreground">
           Last read {new Date(detailTime).toLocaleTimeString()}
@@ -1347,12 +1347,13 @@ export function ZeropsDataPanel({
             <span>Read only</span>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate">
-              {database.summary?.maskedConnection ??
-                (database.readStates.summary?.pending
-                  ? "Loading connection summary…"
-                  : "No connection summary")}
-            </span>
+            {database.summary === undefined && database.readStates.summary?.pending ? (
+              <Loading label="The connection summary" shape="line" />
+            ) : (
+              <span className="truncate">
+                {database.summary?.maskedConnection ?? "No connection summary"}
+              </span>
+            )}
             {database.summary ? (
               <Button
                 size="sm"
