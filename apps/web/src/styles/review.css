@@ -898,14 +898,6 @@
   column-gap: 12px;
   align-items: center;
 }
-.rv-commit-skeleton span {
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-.rv-commit-skeleton span:first-child {
-  width: 48%;
-}
 
 /* A release: what goes out, one line per change — its Mate's face, its number and title, and its
    Mate on the right. */
@@ -913,45 +905,8 @@
   display: grid;
   margin: 0 -12px;
 }
-.rv-relrow {
-  display: grid;
-  min-height: 44px;
-  grid-template-columns: 18px minmax(0, 1fr);
-  grid-template-areas:
-    "face title"
-    "face sub";
-  column-gap: 12px;
-  align-content: center;
-  padding: 4px 8px;
-  border-radius: var(--radius-control);
-}
-.rv-relrow > :first-child {
-  grid-area: face;
-  align-self: start;
-  margin-top: 1px;
-}
-.rv-relrow-t {
-  display: block;
-  grid-area: title;
-  overflow: hidden;
-  font-size: var(--text-body);
-  line-height: 20px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.rv-relrow-sub {
-  display: block;
-  grid-area: sub;
-  overflow: hidden;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--muted-foreground);
-}
 .rv-on {
   display: flex;
-  grid-area: sub;
   align-items: center;
   gap: 4px;
   font-size: var(--text-caption);
@@ -963,7 +918,6 @@
   color: var(--zerops-status-failed-text);
 }
 .rv-relrow-go {
-  grid-area: go;
   align-self: center;
   width: 14px;
   height: 14px;
@@ -983,15 +937,6 @@
 @media (hover: none) {
   .rv-relrow-go {
     opacity: 1;
-  }
-}
-/* A phone reads a change's title whole, on two lines where one cuts it. */
-@media (max-width: 39.999rem) {
-  .rv-relrow-t {
-    display: -webkit-box;
-    white-space: normal;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -1310,67 +1255,6 @@
   line-height: 18px;
   color: var(--foreground);
 }
-.put-live-shape {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
-  border-radius: var(--radius-card);
-  cursor: pointer;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    border-color 150ms var(--ease-out-strong);
-}
-.put-live-shape:hover {
-  background: color-mix(in oklab, var(--accent) 50%, transparent);
-}
-.put-live-shape[data-chosen] {
-  border-color: color-mix(in oklab, var(--primary) 40%, transparent);
-  background: color-mix(in oklab, var(--primary) 5%, transparent);
-}
-.put-live-shape:has([data-disabled]) {
-  cursor: default;
-}
-/* An answer's room while the setup files are read, at the height its words take, no words. */
-.put-live-shape-held {
-  display: block;
-  height: 76px;
-  border-radius: var(--radius-card);
-  background: var(--muted);
-}
-.put-live-shape-held + .put-live-shape-held {
-  margin-top: 2px;
-}
-.put-live-shape-held[data-long] {
-  height: 112px;
-}
-.put-live-shape-body {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 1px;
-}
-.put-live-shape-t {
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
-  color: var(--foreground);
-}
-.put-live-shape-m {
-  margin-top: 2px;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.put-live-skel {
-  display: block;
-  height: 12px;
-  margin-block: 3px;
-  border-radius: 999px;
-  background: var(--muted);
-}
 .rv-plan {
   display: grid;
   margin: 0;
@@ -1469,14 +1353,18 @@
   background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
   color: var(--zerops-status-attention-text);
 }
-.rv-pmark[data-mark="skeleton"] {
-  border-color: transparent;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
 @media (prefers-reduced-motion: reduce) {
   .rv-pmark {
     transition: none;
   }
+}
+/* A mark still being read: its round's place, the kit's stand-in in it. */
+.rv-pmark-room {
+  display: flex;
+  grid-area: mark;
+  width: 22px;
+  height: 22px;
+  margin-top: 8px;
 }
 .rv-pstep-t {
   grid-area: title;
@@ -1535,11 +1423,6 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
 }
-/* The field's place in a value step still being read: the height the field stands at. */
-.rv-pstep-more > .rv-pskel-field {
-  height: 28px;
-  border-radius: var(--radius-control);
-}
 .rv-pstep-more > p {
   margin: 0;
   font-size: var(--text-caption);
@@ -1557,26 +1440,6 @@
   font-size: var(--text-caption);
   line-height: 16px;
   white-space: pre;
-}
-/* Words still being read, in the place and size they will stand. */
-.rv-pskel {
-  display: block;
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-/* A change's row before it is listed: its face, its title and its line, in their sizes. */
-.rv-relrow[data-skeleton] .rv-pskel:first-child {
-  width: 18px;
-  height: 18px;
-}
-.rv-relrow[data-skeleton] .rv-relrow-t {
-  margin: 5px 0;
-}
-.rv-relrow[data-skeleton] .rv-relrow-sub,
-.rv-pskel[data-line] {
-  height: 8px;
-  margin: 4px 0;
 }
 /* The version it tags, in words, until the person asks to change it. */
 .rv-version-row {

@@ -13,6 +13,7 @@ import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "
 
 import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
@@ -224,17 +225,26 @@ export function ReleasePlan({
 function ValueStepRoom() {
   return (
     <li aria-hidden="true" className="rv-pstep" data-release-step="value-room">
-      <span className="rv-pmark" data-mark="skeleton" />
+      <MarkRoom />
       <span className="rv-pstep-t">
-        <span className="rv-pskel my-1.25 w-36" />
+        <Skeleton className="my-1.25 h-2.5 w-36" shape="pill" surface="card" />
       </span>
       <span className="rv-pstep-l">
-        <span className="rv-pskel w-56" data-line="" />
+        <Skeleton className="my-1 h-2 w-56" shape="pill" surface="card" />
       </span>
       <span className="rv-pstep-more">
-        <span className="rv-pskel rv-pskel-field" />
+        <Skeleton className="h-7" surface="card" />
       </span>
     </li>
+  );
+}
+
+/** A step's mark, still being read: its round, in the mark's place and size. */
+function MarkRoom() {
+  return (
+    <span aria-hidden="true" className="rv-pmark-room">
+      <Skeleton className="size-full" shape="pill" surface="card" />
+    </span>
   );
 }
 
@@ -410,7 +420,7 @@ function PlanStep({
       {unread === "unsaid" ? null : unread === "reading" ? (
         // The line it will say, in its place and height.
         <p aria-hidden="true" className="rv-pstep-l">
-          <span className="rv-pskel w-28" data-line="" />
+          <Skeleton className="my-1 h-2 w-28" shape="pill" surface="card" />
         </p>
       ) : (
         <PlanStepLine acts={acts} running={running} step={step} />
@@ -505,12 +515,28 @@ export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
       {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
         // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
         <li className="rv-pstep" key={at}>
-          <span className="rv-pmark" data-mark="skeleton" />
+          <MarkRoom />
           <span aria-hidden="true" className="rv-pstep-t">
-            <span className={`rv-pskel my-1.25 ${["w-36", "w-44", "w-52"][index]!}`} />
+            <Skeleton
+              className={
+                index === 0
+                  ? "my-1.25 h-2.5 w-36"
+                  : index === 1
+                    ? "my-1.25 h-2.5 w-44"
+                    : "my-1.25 h-2.5 w-52"
+              }
+              shape="pill"
+              surface="card"
+            />
           </span>
           <span aria-hidden="true" className="rv-pstep-l">
-            <span className={`rv-pskel ${["w-60", "w-56", "w-48"][index]!}`} data-line="" />
+            <Skeleton
+              className={
+                index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"
+              }
+              shape="pill"
+              surface="card"
+            />
           </span>
         </li>
       ))}

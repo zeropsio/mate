@@ -72,6 +72,8 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
+import { Skeleton } from "~/components/ui/skeleton";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
@@ -1031,7 +1033,9 @@ function OutsideCommitsList({
   const { list } = outside;
   // Not counted yet: its line's place, never a sentence the count takes back.
   if (list.state === "pending") {
-    return <span aria-hidden="true" className="rv-pskel mt-2.5 w-44" />;
+    return (
+      <Skeleton aria-hidden="true" className="mt-2.5 h-2.5 w-44" shape="pill" surface="card" />
+    );
   }
   return (
     <>
@@ -1321,7 +1325,9 @@ export function ReleaseReadingView({
         held: { by: stateId, words: RELEASE_READING },
         onPress: () => undefined,
       }}
-      subtitle={<span aria-hidden="true" className="rv-pskel my-1 w-56" />}
+      subtitle={
+        <Skeleton aria-hidden="true" className="my-1 h-2.5 w-56" shape="pill" surface="card" />
+      }
       title="Release"
       titleId={titleId}
       verdict={{
@@ -1353,11 +1359,20 @@ function ReleaseRowsSkeleton({ count }: { readonly count: number }) {
   return (
     <div aria-busy="true" className="rv-rel">
       {Array.from({ length: Math.max(1, Math.min(count, ROWS_SHOWN)) }, (_, index) => (
-        <div aria-hidden="true" className="rv-relrow" data-skeleton="" key={index}>
-          <span className="rv-pskel" />
-          <span className={`rv-pskel rv-relrow-t ${index % 2 === 0 ? "w-64" : "w-48"}`} />
-          <span className="rv-pskel rv-relrow-sub w-28" />
-        </div>
+        <Row
+          aria-hidden="true"
+          key={index}
+          lead={<Skeleton className="size-4.5" shape="pill" surface="card" />}
+          line={<Skeleton className="my-1 h-2 w-28" shape="pill" surface="card" />}
+          size="sm"
+          title={
+            <Skeleton
+              className={index % 2 === 0 ? "h-2.5 w-64" : "h-2.5 w-48"}
+              shape="pill"
+              surface="card"
+            />
+          }
+        />
       ))}
     </div>
   );

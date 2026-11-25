@@ -7,6 +7,7 @@
 import { historyAge, shortCommit, type ChangeReadoutCommit } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
+import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
@@ -67,8 +68,8 @@ export function ReviewCommits({
         <ol aria-busy="true" className="rv-commits">
           {Array.from({ length: COMMITS_PENDING }, (_, index) => (
             <li aria-hidden="true" className="rv-commit-skeleton" key={index}>
-              <span />
-              <span />
+              <Skeleton className="h-2.5 w-[48%]" shape="pill" surface="card" />
+              <Skeleton className="h-2.5" shape="pill" surface="card" />
             </li>
           ))}
         </ol>
