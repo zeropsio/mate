@@ -14,6 +14,7 @@ import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { cn } from "~/lib/utils";
 
+import { Card } from "../../ui/card";
 import { Failure } from "../../ui/failure";
 import { Button, InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
@@ -43,7 +44,9 @@ export function ZeropsLandingShell({
           <p className="text-body text-muted-foreground">{description}</p>
         </div>
 
-        <div className={cn(LANDING_CARD, "px-6 py-6")}>{children}</div>
+        <Card variant="sheet">
+          <div className="px-6 py-6">{children}</div>
+        </Card>
 
         {foot === undefined ? null : (
           <p className="text-center text-caption text-muted-foreground">{foot}</p>
@@ -52,10 +55,6 @@ export function ZeropsLandingShell({
     </ZeropsHostedFrame>
   );
 }
-
-// Solid, as app.zerops.io's card is: HQ's page in it is transparent, and over a see-through card
-// its form hardly stands off the page.
-const LANDING_CARD = "rounded-sheet border border-border/55 bg-card shadow-sm/5";
 
 /**
  * HQ's sign-in in the landing's card, the whole composition: HQ's page draws the heading, Mate's mark
@@ -81,8 +80,10 @@ export function ZeropsHqSignInFrame({
     <ZeropsHostedFrame bar={false} centered tall footer={<ZeropsByline />}>
       {/* HQ's page pads its own content: the frame takes the card's whole width, and the card its
           height. HQ's page is transparent; the card's corners hold whatever it paints. */}
-      <div className={cn(LANDING_CARD, "w-full max-w-md self-start overflow-hidden py-2")}>
-        <div className="relative" style={{ height }}>
+      {/* Solid, as app.zerops.io's card is: HQ's page in it is transparent, and over a see-through
+          card its form hardly stands off the page. */}
+      <Card className="w-full max-w-md self-start overflow-hidden" variant="sheet">
+        <div className="relative my-2" style={{ height }}>
           {shown ? null : <Spinner size="lg" className="absolute inset-0 m-auto" />}
           {src === null ? null : (
             // The address is HQ's, built by the session package from this build's own settings.
@@ -99,7 +100,7 @@ export function ZeropsHqSignInFrame({
             />
           )}
         </div>
-      </div>
+      </Card>
     </ZeropsHostedFrame>
   );
 }
