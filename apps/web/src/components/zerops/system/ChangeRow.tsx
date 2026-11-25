@@ -27,6 +27,7 @@ import { Button, InlineButton } from "../../ui/button";
 import { Row } from "../../ui/row";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
+import { BeadMark } from "./BeadMark";
 import { changeReviewable, type RowStanding } from "./ChangeRow.logic";
 import { LedgerRows, PageRows } from "./pageRows";
 import { lineChangeKey, type LineBead } from "./projectLine.logic";
@@ -166,12 +167,7 @@ export function ChangeRow(props: ChangeRowProps) {
     );
   const mark =
     ledger && bead !== undefined ? (
-      <i
-        aria-hidden="true"
-        className="ln-bead ov-change-bead"
-        data-mark={bead.mark}
-        data-tint={bead.tint}
-      />
+      <BeadMark className="ov-change-bead" mark={bead.mark} tint={bead.tint} />
     ) : face === undefined || face === null ? (
       pull === undefined ? (
         <span aria-hidden="true" className="ov-change-face" />

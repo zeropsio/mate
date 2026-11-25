@@ -4,7 +4,6 @@
 @import "./sidebarGeometry.css";
 @import "./components/zerops/primitives/MateFaceMoments.css";
 @import "./components/zerops/project/projectPage.css";
-@import "./components/zerops/system/projectLine.css";
 @import "tailwindcss";
 
 /* The app's own styles, in cascade order: the foundation (variants, tokens, utilities), the

@@ -78,7 +78,7 @@ import { appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
-import { CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
+import { BeadMark, CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -1235,11 +1235,7 @@ function TaskBoardView({
                 <li className="ov-change-row pa-row" data-zerops-task={row.id} key={row.id}>
                   <RowPress onOpen={board.onOpen} route={row.route}>
                     <span className="pa-lead">
-                      <i
-                        aria-hidden="true"
-                        className="ln-bead ov-change-bead"
-                        data-tint={mate?.tint}
-                      />
+                      <BeadMark className="ov-change-bead" mark={undefined} tint={mate?.tint} />
                     </span>
                     <RowText failed={row.outcome === "failed"} title={row.title} why={row.detail} />
                     <span className="pa-facts">

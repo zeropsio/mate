@@ -1,3 +1,4 @@
+export { BeadMark } from "./BeadMark";
 export { ChangeList, ChangeRow, CutText } from "./ChangeRow";
 export {
   changeReviewable,

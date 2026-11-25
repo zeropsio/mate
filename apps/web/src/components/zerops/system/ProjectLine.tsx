@@ -36,7 +36,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ProjectLineFull, type ProjectLineFullActs } from "./ProjectLineFull";
 import {
   Caption,
+  LineNode,
+  LineRail,
+  lineColumns,
   SegmentBeads,
+  STATION_NAME,
   useTrackWidths,
   type OpenLineChange,
   type ShowLineGroup,
@@ -75,6 +79,27 @@ interface ProjectLineProps {
 
 const UNREAD: ProjectLineView = { stations: [], segments: [] };
 
+/**
+ * The line's ground and the inks mixed from it: the track, a faint dash, a count's chip. A bead
+ * is cut out of the track by a ring of the ground. Its width is a container: under 700 px it is
+ * compact.
+ */
+const LINE =
+  "@container/line relative min-w-0 [--ln-chip:color-mix(in_oklab,var(--foreground)_9%,var(--ln-ground))] [--ln-faint:color-mix(in_oklab,var(--foreground)_20%,var(--ln-ground))] [--ln-ground:var(--ov-ground,var(--card))] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,var(--ln-ground))]";
+
+/**
+ * 104 px in every state as a card of its own, 98 px as the masthead of a page's Changes card: its
+ * sides then are the rows' under it (18 px: the card's 8 and a row's 10), so its first dot stands
+ * over the column of their beads.
+ */
+const PICTURE = {
+  card: "box-border grid h-[104px] min-w-0 pt-4 pr-6 pl-7 sm:@max-[700px]/line:px-5 max-sm:px-4",
+  band: "box-border grid h-[98px] min-w-0 px-4.5 pt-3.5",
+};
+
+/** A station's name, the track, the count: 20, 16 and 16 px, 8 px between. */
+const COLUMN = "relative grid min-w-0 grid-rows-[20px_16px_16px] content-start gap-y-2";
+
 export function ProjectLine({
   view,
   held = false,
@@ -91,6 +116,7 @@ export function ProjectLine({
   const band = surface === "page";
   const picture = (
     <LinePicture
+      band={band}
       held={held}
       onOpenChange={onOpenChange}
       onShowGroup={onShowGroup}
@@ -102,8 +128,7 @@ export function ProjectLine({
     <div
       aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className={band ? "ln ln-band" : "ln rounded-card border border-border/70 bg-card"}
-      data-stations={String((view ?? UNREAD).stations.length)}
+      className={band ? LINE : `${LINE} rounded-card border border-border/70 bg-card`}
       data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"
       role="group"
@@ -111,27 +136,28 @@ export function ProjectLine({
       {here === undefined ? (
         picture
       ) : (
-        <div
-          className="ln-fold"
-          data-moved={moved ? "" : undefined}
-          data-open={open ? "" : undefined}
-        >
-          <div
-            className="ln-pane"
-            data-hidden={open ? "" : undefined}
-            data-pane="picture"
-            inert={open}
-          >
+        // The picture and, behind it, the line in full, in one card: the picture keeps its height,
+        // the full line takes it and the room it needs under it, and the card's height travels
+        // between the two while one fades into the other.
+        <div className={FOLD[band ? "band" : "card"][open ? "open" : "shut"]}>
+          <div className={open ? `${PANE} invisible opacity-0` : PANE} inert={open}>
             {picture}
           </div>
           {open || moved ? (
+            // Drawn when it is first asked for, it fades in from nothing then, and stands whole where
+            // the page opens with it.
             <div
-              className="ln-pane"
-              data-hidden={open ? undefined : ""}
-              data-pane="full"
+              className={
+                open
+                  ? moved
+                    ? `${PANE} row-span-2 min-h-0 overflow-hidden starting:opacity-0`
+                    : `${PANE} row-span-2 min-h-0 overflow-hidden`
+                  : `${PANE} row-span-2 min-h-0 overflow-hidden invisible opacity-0`
+              }
               inert={!open}
             >
               <ProjectLineFull
+                band={band}
                 groupId={here.groupId}
                 held={held}
                 onOpenChange={onOpenChange}
@@ -146,7 +172,16 @@ export function ProjectLine({
         </div>
       )}
       {full === undefined ? null : (
-        <span className="ln-corner" data-leads={full.kind === "page" ? "" : undefined}>
+        // The way to the line in full, in the card's corner, whichever of the two shows. Where it
+        // leads to the project's page (a panel's picture, which never grows) it stands in the
+        // corner under production, which holds no word: a panel is too narrow to clear its name.
+        <span
+          className={
+            full.kind === "page"
+              ? "absolute right-1.5 bottom-1.5 z-1 flex"
+              : "absolute top-2 right-2 z-1 flex sm:@max-[700px]/line:top-1 sm:@max-[700px]/line:right-1 max-sm:top-auto max-sm:bottom-1"
+          }
+        >
           <Tooltip>
             <TooltipTrigger
               render={
@@ -191,13 +226,28 @@ export function ProjectLine({
  * The picture itself: the stations, the track, the beads, a count under each segment. `places`:
  * each station as the line in full knows it, whose dot then wears its state.
  */
+const PANE =
+  "col-start-1 row-start-1 min-w-0 transition-[opacity,visibility] duration-200 ease-out-strong motion-reduce:transition-none";
+const FOLD = {
+  card: {
+    shut: "grid min-w-0 grid-rows-[104px_0fr] transition-[grid-template-rows] duration-200 ease-out-strong motion-reduce:transition-none",
+    open: "grid min-w-0 grid-rows-[104px_1fr] transition-[grid-template-rows] duration-200 ease-out-strong motion-reduce:transition-none",
+  },
+  band: {
+    shut: "grid min-w-0 grid-rows-[98px_0fr] transition-[grid-template-rows] duration-200 ease-out-strong motion-reduce:transition-none",
+    open: "grid min-w-0 grid-rows-[98px_1fr] transition-[grid-template-rows] duration-200 ease-out-strong motion-reduce:transition-none",
+  },
+};
+
 function LinePicture({
   view,
   held,
   places,
+  band,
   onOpenChange,
   onShowGroup,
 }: {
+  readonly band: boolean;
   readonly view: ProjectLineView | undefined;
   readonly held: boolean;
   readonly places: ReadonlyArray<LineStationFull> | undefined;
@@ -207,38 +257,25 @@ function LinePicture({
   const { stations, segments } = view ?? UNREAD;
   const [widths, track] = useTrackWidths(segments.length);
   return (
-    <div className="ln-grid">
+    <div className={`${PICTURE[band ? "band" : "card"]} ${lineColumns(stations.length)}`}>
       {stations.map((station, at) => {
         const segment = segments[at];
         const place = held ? undefined : places?.find((each) => each.kind === station.kind);
         return (
-          <div
-            className="ln-col"
-            data-kind={station.kind}
-            data-seg={segment?.key}
-            key={station.kind}
-          >
-            <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>
+          <div className={COLUMN} data-kind={station.kind} key={station.kind}>
+            <span className={station.kind === "main" ? `${STATION_NAME} font-mono` : STATION_NAME}>
               {station.name}
             </span>
             <div
-              className="ln-track"
+              className="relative min-w-0"
               ref={(element) => {
                 track(at, element);
               }}
             >
-              {segment === undefined ? null : (
-                <span
-                  aria-hidden="true"
-                  className="ln-rail"
-                  data-track={held ? "solid" : segment.track}
-                />
-              )}
-              <span
-                aria-hidden="true"
-                className="ln-node"
-                data-node={held ? "solid" : (place?.node ?? station.node)}
-                data-tone={place?.tone}
+              {segment === undefined ? null : <LineRail track={held ? "solid" : segment.track} />}
+              <LineNode
+                node={held ? "solid" : (place?.node ?? station.node)}
+                tone={band ? place?.tone : undefined}
               />
               {segment === undefined || held ? null : (
                 <SegmentBeads
@@ -248,7 +285,8 @@ function LinePicture({
                 />
               )}
             </div>
-            <div className="ln-foot">
+            {/* Under the track: a segment's count. */}
+            <div className="grid min-w-0 content-start justify-items-start pe-4.5 @max-[700px]/line:pe-2">
               {held || segment === undefined ? null : (
                 <Caption onShowGroup={onShowGroup} segment={segment} />
               )}
