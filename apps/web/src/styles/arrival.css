@@ -815,6 +815,24 @@
   text-align: center;
 }
 
+/* A stop's diagnostics (`MateStateDetails`): a centred disclosure whose words read from the start,
+   long ones scrolling in their own box. */
+.arrival-failure-details {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+  text-align: center;
+}
+
+.arrival-failure-details pre,
+.arrival-failure-details p {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
