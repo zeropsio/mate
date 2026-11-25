@@ -1,10 +1,12 @@
 import { useState } from "react";
 
+import { Badge } from "~/components/ui/badge";
 import { Label } from "~/components/ui/label";
 import {
   Radio,
   RadioCard,
   RadioGroup,
+  RadioRow,
   RadioSwatch,
   RadioSwatchGroup,
 } from "~/components/ui/radio-group";
@@ -46,6 +48,18 @@ const REGIONS = [
   { value: "prg1", name: "EU Central", city: "Prague", latency: "Latency: 54 ms" },
   { value: "ny1", name: "US East", city: "New York", latency: "Latency: 145 ms" },
   { value: "sea1", name: "US West", city: "Seattle", latency: "" },
+] as const;
+
+const REPOSITORIES = [
+  { value: "acme/storefront", line: "Private · connected now", badge: null },
+  { value: "acme/storefront-api", line: "Private · name matches", badge: "Suggested" },
+  { value: "acme/marketing", line: "Another project holds it", badge: null },
+] as const;
+
+const EFFORTS = [
+  { value: "low", name: "Low", meta: null },
+  { value: "medium", name: "Medium", meta: "Default" },
+  { value: "high", name: "High", meta: null },
 ] as const;
 
 const TINTS = ["coral", "amber", "olive", "sky", "violet", "rose", "sand", "slate"] as const;
@@ -144,6 +158,51 @@ export default defineKitSection({
                     <span>{region.city}</span>
                     <span className="mt-2 block min-h-4.5">{region.latency}</span>
                   </RadioCard>
+                ))}
+              </RadioGroup>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="A choice from a list too long or too wordy for cards: the radio leads, the row presses."
+        title="Rows"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen
+            label='<RadioGroup layout="list"> · <RadioRow title line badges>'
+            note="A repository to connect, one taken"
+          >
+            <div className="w-full max-w-96">
+              <RadioGroup aria-label="Repository" defaultValue="acme/storefront" layout="list">
+                {REPOSITORIES.map((repository) => (
+                  <RadioRow
+                    badges={
+                      repository.badge === null ? undefined : (
+                        <Badge tone="info">{repository.badge}</Badge>
+                      )
+                    }
+                    disabled={repository.value === "acme/marketing"}
+                    key={repository.value}
+                    line={repository.line}
+                    title={repository.value}
+                    value={repository.value}
+                  />
+                ))}
+              </RadioGroup>
+            </div>
+          </Specimen>
+          <Specimen label='<RadioRow size="xs" meta>' note="An effort, in a popup">
+            <div className="w-full max-w-64">
+              <RadioGroup aria-label="Effort" defaultValue="medium" layout="list">
+                {EFFORTS.map((effort) => (
+                  <RadioRow
+                    key={effort.value}
+                    meta={effort.meta ?? undefined}
+                    size="xs"
+                    title={effort.name}
+                    value={effort.value}
+                  />
                 ))}
               </RadioGroup>
             </div>
