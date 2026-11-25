@@ -190,6 +190,7 @@ export function SettingsRow({
             </>
           ) : undefined
         }
+        fieldUnder
         lineWraps
         size="sm"
         title={title}
@@ -255,7 +256,9 @@ export function SettingsPageContainer({
   return (
     <SettingsSearchTargetProvider targetId={targetId} onTargetHandled={clearTargetHash}>
       <div
-        className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem]"
+        // On a phone the desktop's 10 and 11 px notes (a count, a table's head, a sample's label)
+        // are 12 px.
+        className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem] max-sm:[&_.text-2xs]:text-caption max-sm:[&_.text-3xs]:text-caption"
         data-settings-page-scroll
       >
         {/* On a phone the page's gutter is its rows' own inset: their words start 16 px in. */}
