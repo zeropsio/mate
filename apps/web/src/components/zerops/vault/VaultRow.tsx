@@ -30,6 +30,7 @@ import { useState, type ReactNode } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
 import { MiddleTruncate } from "../../ui/middle-truncate";
@@ -503,37 +504,35 @@ function RowBody(props: VaultRowProps) {
       </div>
 
       {locking ? (
-        <div
-          aria-label={`Hide ${props.label}`}
-          className="grid gap-2.5 rounded-control bg-muted/60 px-3 py-2.5 text-line leading-4.75"
-          role="alertdialog"
-        >
-          <p>
-            {mates
-              ? `Nobody reads it back once it's hidden. You can still show it to yourself here, and ${props.mateName ?? "your Mate"} still gets it.`
-              : `Nobody reads it back once it's hidden, ${props.mateName ?? "your Mate"} included. You can still show it to yourself here, and your apps still get it.`}
-          </p>
-          <div className="flex justify-end gap-1.5">
-            <Button onClick={() => setLocking(false)} size="sm" variant="ghost">
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setLocking(false);
-                props.onWrite({
-                  kind: "update",
-                  id: value.id,
-                  key: value.key,
-                  value: value.value ?? "",
-                  sensitive: true,
-                });
-              }}
-              size="sm"
-            >
-              Hide it
-            </Button>
+        <Card aria-label={`Hide ${props.label}`} role="alertdialog" variant="inset">
+          <div className="grid gap-2.5 px-3 py-2.5 text-line leading-4.75">
+            <p>
+              {mates
+                ? `Nobody reads it back once it's hidden. You can still show it to yourself here, and ${props.mateName ?? "your Mate"} still gets it.`
+                : `Nobody reads it back once it's hidden, ${props.mateName ?? "your Mate"} included. You can still show it to yourself here, and your apps still get it.`}
+            </p>
+            <div className="flex justify-end gap-1.5">
+              <Button onClick={() => setLocking(false)} size="sm" variant="ghost">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setLocking(false);
+                  props.onWrite({
+                    kind: "update",
+                    id: value.id,
+                    key: value.key,
+                    value: value.value ?? "",
+                    sensitive: true,
+                  });
+                }}
+                size="sm"
+              >
+                Hide it
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       ) : null}
 
       {guard ? (
