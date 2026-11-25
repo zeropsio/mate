@@ -62,6 +62,7 @@ import { IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
@@ -577,50 +578,48 @@ function BotGroup({
         </Text>
       )}
       {removing ? (
-        <div
-          className="grid gap-2 rounded-control bg-muted/40 p-3"
-          data-zerops-surface="settings-github-remove"
-          role="group"
-        >
-          <Text render={<p />} variant="heading">
-            Remove {app.name} from {organization ?? "this organization"}?
-          </Text>
-          {app.uses.length === 0 ? (
-            <Text render={<p />} variant="note">
-              No repository in Mate is connected through it.
+        <Card variant="inset">
+          <div className="grid gap-2 p-3" data-zerops-surface="settings-github-remove" role="group">
+            <Text render={<p />} variant="heading">
+              Remove {app.name} from {organization ?? "this organization"}?
             </Text>
-          ) : (
-            <>
+            {app.uses.length === 0 ? (
               <Text render={<p />} variant="note">
-                These stop until they're connected through another bot or a token:
+                No repository in Mate is connected through it.
               </Text>
-              <ul className="grid gap-1 text-caption">
-                {app.uses.map((use) => (
-                  <li
-                    className="text-foreground"
-                    key={`${use.application ?? ""}/${use.repo ?? use.fullName}`}
-                  >
-                    {use.application === null || use.repo === null
-                      ? "A project you can't open"
-                      : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
-                    → <Text variant="code">{use.fullName}</Text>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <Text render={<p />} variant="note">
-            The bot stays on GitHub: delete it in its settings there.
-          </Text>
-          <div className="flex gap-2">
-            <Button disabled={busy} onClick={onRemove} size="sm" variant="destructive">
-              Remove bot
-            </Button>
-            <Button onClick={onCancelRemove} size="sm" variant="ghost">
-              Cancel
-            </Button>
+            ) : (
+              <>
+                <Text render={<p />} variant="note">
+                  These stop until they're connected through another bot or a token:
+                </Text>
+                <ul className="grid gap-1 text-caption">
+                  {app.uses.map((use) => (
+                    <li
+                      className="text-foreground"
+                      key={`${use.application ?? ""}/${use.repo ?? use.fullName}`}
+                    >
+                      {use.application === null || use.repo === null
+                        ? "A project you can't open"
+                        : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
+                      → <Text variant="code">{use.fullName}</Text>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <Text render={<p />} variant="note">
+              The bot stays on GitHub: delete it in its settings there.
+            </Text>
+            <div className="flex gap-2">
+              <Button disabled={busy} onClick={onRemove} size="sm" variant="destructive">
+                Remove bot
+              </Button>
+              <Button onClick={onCancelRemove} size="sm" variant="ghost">
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       ) : null}
     </li>
   );

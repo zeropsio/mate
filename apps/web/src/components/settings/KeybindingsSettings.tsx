@@ -75,6 +75,7 @@ import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 function KeybindingPill({ value }: { value: string }) {
   const parts = value.split("+");
@@ -663,18 +664,20 @@ function WhenExpressionBuilder({
             onRemove={() => updateExpressionValue(undefined)}
           />
         ) : (
-          <div className="rounded-control border border-dashed border-border/80 bg-muted/15 p-3">
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={addRootCondition}>
-                <PlusIcon className="size-3.5" />
-                Condition
-              </Button>
-              <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
-                <PlusIcon className="size-3.5" />
-                Group
-              </Button>
+          <Card variant="slot">
+            <div className="p-3">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={addRootCondition}>
+                  <PlusIcon className="size-3.5" />
+                  Condition
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
+                  <PlusIcon className="size-3.5" />
+                  Group
+                </Button>
+              </div>
             </div>
-          </div>
+          </Card>
         )}
         {parseError ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-card border border-destructive/30 bg-background/75 p-4 text-center text-caption text-destructive backdrop-blur-xs">

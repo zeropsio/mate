@@ -68,6 +68,8 @@ import {
   type ProviderStatusKey,
 } from "./providerStatus";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { Separator } from "~/components/ui/separator";
 
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -282,7 +284,7 @@ function ProviderEnvironmentSection(props: {
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
         </Text>
       ) : (
-        <div className="overflow-hidden rounded-control border border-border/70">
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -356,7 +358,7 @@ function ProviderEnvironmentSection(props: {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </Card>
       )}
       <Text variant="note">
         Sensitive values are stored separately and are not returned to the app after saving.
@@ -778,9 +780,9 @@ export function ProviderInstanceCard({
                     ) : null}
                     {onRunVersionAction && updateCommand ? (
                       <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        <Separator aria-hidden className="flex-1" />
                         or, update manually using
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        <Separator aria-hidden className="flex-1" />
                       </div>
                     ) : null}
                     {updateCommand ? (

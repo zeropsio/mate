@@ -153,6 +153,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 const WORKTREE_SUBMODULES_OPTIONS = ["recursive", "top-level", "none"] as const;
 // The select's value for an unset setting, which leaves the choice to t3.json.
@@ -667,7 +668,7 @@ function BackgroundActivityAdvancedDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          <div className="overflow-hidden rounded-card border bg-card text-card-foreground">
+          <Card className="overflow-hidden">
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
                 <div className="text-body font-medium">Shared policy</div>
@@ -883,7 +884,7 @@ function BackgroundActivityAdvancedDialog({
                 </label>
               ))}
             </div>
-          </div>
+          </Card>
         </DialogPanel>
         <DialogFooter>
           <Button

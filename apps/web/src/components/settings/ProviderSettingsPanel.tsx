@@ -111,6 +111,7 @@ import { Loading } from "../ui/loading";
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** An environment's connection as its tab's dot: work under way while it connects. */
 const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
@@ -982,7 +983,7 @@ export function EnvironmentProviderSettings({
           />
         ) : null}
         <div className="space-y-1">
-          <div className="overflow-hidden rounded-card border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <Card className="overflow-hidden lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
             <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
               <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-2xs font-medium text-muted-foreground">
                 <span>Provider</span>
@@ -1036,7 +1037,7 @@ export function EnvironmentProviderSettings({
                 </Text>
               )}
             </div>
-          </div>
+          </Card>
 
           <UsageProviderSettings
             key={environmentId}

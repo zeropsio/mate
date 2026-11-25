@@ -64,6 +64,7 @@ import {
 import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 const HISTORY_WINDOWS = [
   { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
@@ -968,7 +969,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-sm/5">
+        <Card className="overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-muted/45 via-muted/20 to-transparent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -1062,7 +1063,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               />
             </div>
           ) : null}
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1077,123 +1078,127 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           ) : null
         }
       >
-        <div className="grid overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
-          <div className="px-4 py-4 sm:px-5">
-            <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                <BatteryIcon className="size-3.5" />
-              </span>
-              Host state
-            </div>
-            {hasHostPowerSignal && snapshot ? (
-              <>
-                <DetailRow
-                  label="Power source"
-                  value={booleanStateLabel(snapshot.power.onBattery, {
-                    true: "Battery",
-                    false: "External power",
-                  })}
-                />
-                <DetailRow
-                  label="Low power mode"
-                  value={booleanStateLabel(snapshot.power.lowPowerMode, {
-                    true: "Enabled",
-                    false: "Disabled",
-                  })}
-                />
-                <DetailRow
-                  label="Idle"
-                  value={`${booleanStateLabel(snapshot.power.idle, {
-                    true: "Idle",
-                    false: "Active",
-                  })}${
-                    snapshot.power.idleSeconds === null
-                      ? ""
-                      : ` · ${Math.round(snapshot.power.idleSeconds)}s`
-                  }`}
-                />
-                <DetailRow
-                  label="Session"
-                  value={
-                    snapshot.power.suspended
-                      ? "Suspended"
-                      : booleanStateLabel(snapshot.power.locked, {
-                          true: "Locked",
-                          false: "Unlocked",
-                        })
-                  }
-                />
-                <DetailRow
-                  label="Thermal"
-                  value={snapshot.power.thermalState}
-                  valueClassName={
-                    snapshot.power.thermalState === "serious" ||
-                    snapshot.power.thermalState === "critical"
-                      ? "text-destructive"
-                      : undefined
-                  }
-                />
-              </>
-            ) : (
-              <div className="rounded-card border border-dashed border-border/70 bg-muted/20 px-4 py-5">
-                <Text render={<div />} variant="heading">
-                  Desktop host signals not connected
-                </Text>
-                <p className="mt-1.5 max-w-sm text-2xs leading-relaxed text-muted-foreground/70">
-                  Power, idle, lock, and thermal state are supplied by the desktop host. Process
-                  telemetry remains fully active in this browser session.
-                </p>
+        <Card className="overflow-hidden">
+          <div className="grid md:grid-cols-2 md:divide-x md:divide-border/60">
+            <div className="px-4 py-4 sm:px-5">
+              <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
+                  <BatteryIcon className="size-3.5" />
+                </span>
+                Host state
               </div>
-            )}
-          </div>
-          <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
-            <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                <GaugeIcon className="size-3.5" />
-              </span>
-              Collection health
+              {hasHostPowerSignal && snapshot ? (
+                <>
+                  <DetailRow
+                    label="Power source"
+                    value={booleanStateLabel(snapshot.power.onBattery, {
+                      true: "Battery",
+                      false: "External power",
+                    })}
+                  />
+                  <DetailRow
+                    label="Low power mode"
+                    value={booleanStateLabel(snapshot.power.lowPowerMode, {
+                      true: "Enabled",
+                      false: "Disabled",
+                    })}
+                  />
+                  <DetailRow
+                    label="Idle"
+                    value={`${booleanStateLabel(snapshot.power.idle, {
+                      true: "Idle",
+                      false: "Active",
+                    })}${
+                      snapshot.power.idleSeconds === null
+                        ? ""
+                        : ` · ${Math.round(snapshot.power.idleSeconds)}s`
+                    }`}
+                  />
+                  <DetailRow
+                    label="Session"
+                    value={
+                      snapshot.power.suspended
+                        ? "Suspended"
+                        : booleanStateLabel(snapshot.power.locked, {
+                            true: "Locked",
+                            false: "Unlocked",
+                          })
+                    }
+                  />
+                  <DetailRow
+                    label="Thermal"
+                    value={snapshot.power.thermalState}
+                    valueClassName={
+                      snapshot.power.thermalState === "serious" ||
+                      snapshot.power.thermalState === "critical"
+                        ? "text-destructive"
+                        : undefined
+                    }
+                  />
+                </>
+              ) : (
+                <Card variant="slot">
+                  <div className="px-4 py-5">
+                    <Text render={<div />} variant="heading">
+                      Desktop host signals not connected
+                    </Text>
+                    <p className="mt-1.5 max-w-sm text-2xs leading-relaxed text-muted-foreground/70">
+                      Power, idle, lock, and thermal state are supplied by the desktop host. Process
+                      telemetry remains fully active in this browser session.
+                    </p>
+                  </div>
+                </Card>
+              )}
             </div>
-            {snapshot ? (
-              <>
-                <HealthSource label="Native process monitor" health={snapshot.health.native} />
-                <HealthSource label="Electron main process" health={snapshot.health.desktop} />
-                <DetailRow
-                  label="Collection time"
-                  value={formatDurationMicros(snapshot.health.collectionDurationMicros)}
-                />
-                <DetailRow
-                  label="Process scan"
-                  value={`${snapshot.health.retainedProcessCount}/${snapshot.health.scannedProcessCount} retained`}
-                />
-                <DetailRow
-                  label="Inaccessible"
-                  value={String(snapshot.health.inaccessibleProcessCount)}
-                  valueClassName={
-                    snapshot.health.inaccessibleProcessCount > 0
-                      ? "text-warning-foreground"
-                      : undefined
-                  }
-                />
-                <DetailRow
-                  label="Sidecar"
-                  value={Option.match(snapshot.health.sidecarVersion, {
-                    onNone: () => "Unavailable",
-                    onSome: (version) =>
-                      `${version}${Option.match(snapshot.health.sidecarPid, {
-                        onNone: () => "",
-                        onSome: (pid) => ` · PID ${pid}`,
-                      })}`,
-                  })}
-                />
-                <DetailRow label="Restarts" value={String(snapshot.health.restartCount)} />
-              </>
-            ) : (
-              <Text className="py-4" render={<div />} variant="note">
-                Waiting for collector health.
-              </Text>
-            )}
+            <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
+              <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
+                  <GaugeIcon className="size-3.5" />
+                </span>
+                Collection health
+              </div>
+              {snapshot ? (
+                <>
+                  <HealthSource label="Native process monitor" health={snapshot.health.native} />
+                  <HealthSource label="Electron main process" health={snapshot.health.desktop} />
+                  <DetailRow
+                    label="Collection time"
+                    value={formatDurationMicros(snapshot.health.collectionDurationMicros)}
+                  />
+                  <DetailRow
+                    label="Process scan"
+                    value={`${snapshot.health.retainedProcessCount}/${snapshot.health.scannedProcessCount} retained`}
+                  />
+                  <DetailRow
+                    label="Inaccessible"
+                    value={String(snapshot.health.inaccessibleProcessCount)}
+                    valueClassName={
+                      snapshot.health.inaccessibleProcessCount > 0
+                        ? "text-warning-foreground"
+                        : undefined
+                    }
+                  />
+                  <DetailRow
+                    label="Sidecar"
+                    value={Option.match(snapshot.health.sidecarVersion, {
+                      onNone: () => "Unavailable",
+                      onSome: (version) =>
+                        `${version}${Option.match(snapshot.health.sidecarPid, {
+                          onNone: () => "",
+                          onSome: (pid) => ` · PID ${pid}`,
+                        })}`,
+                    })}
+                  />
+                  <DetailRow label="Restarts" value={String(snapshot.health.restartCount)} />
+                </>
+              ) : (
+                <Text className="py-4" render={<div />} variant="note">
+                  Waiting for collector health.
+                </Text>
+              )}
+            </div>
           </div>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1214,7 +1219,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.buckets, {
               subject: "Resource history",
@@ -1232,7 +1237,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           >
             {(processes) => <HistoryProcessTable processes={processes} />}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1246,7 +1251,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           ) : null
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <CollectionRead
             presentation={resourceTelemetryProcessPresentation(telemetry)}
             emptyLabel="No processes"
@@ -1259,7 +1264,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               />
             )}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1269,7 +1274,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           <span className="text-3xs text-muted-foreground/55">Logical bytes by operation</span>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <div className="bg-muted/15 px-4 py-3 text-2xs leading-relaxed text-muted-foreground sm:px-5">
             Native counters identify which process is reading or writing. These application-level
             counters identify known Zerops Mate operations so process spikes can be correlated with
@@ -1283,7 +1288,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           >
             {(entries) => <AttributionTable entries={entries} />}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
     </>
   );

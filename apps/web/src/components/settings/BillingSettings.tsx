@@ -39,6 +39,7 @@ import { formatUsd, joinSpend, moneyParts } from "../zerops/projects/projectSpen
 import { SettingsPageContainer } from "./settingsLayout";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -178,10 +179,11 @@ function BalanceCard({
   const balance = billing.balance;
   const total = billing.total;
   return (
-    <section
+    <Card
       aria-label="Balance"
-      className="overflow-hidden rounded-card border border-border/70 bg-card"
+      className="overflow-hidden"
       data-zerops-surface="billing-balance"
+      render={<section />}
     >
       <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -224,7 +226,7 @@ function BalanceCard({
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 

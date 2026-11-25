@@ -13,6 +13,8 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { StepNumber } from "~/components/ui/step-number";
 
 export function ConnectCard({
   onSubmit,
@@ -70,7 +72,11 @@ export function ConnectCard({
 
 /** The surface a row's press unfolds: edged in both themes, a step in from the row. */
 export function FlowSurface({ children }: { readonly children: ReactNode }) {
-  return <div className="rounded-card border border-border bg-muted/40 p-4">{children}</div>;
+  return (
+    <Card variant="inset">
+      <div className="p-4">{children}</div>
+    </Card>
+  );
 }
 
 /** One step: its number, a short title, one line of help, and what it takes. */
@@ -87,12 +93,7 @@ export function ConnectStep({
 }) {
   return (
     <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-3">
-      <span
-        aria-hidden
-        className="mt-px flex size-5 items-center justify-center rounded-full border border-border bg-background text-2xs font-medium text-muted-foreground tabular-nums"
-      >
-        {n}
-      </span>
+      <StepNumber className="mt-px" n={n} size="sm" />
       <div className="grid min-w-0 gap-3">
         <div className="grid gap-0.5">
           <Text render={<p />} variant="heading">
