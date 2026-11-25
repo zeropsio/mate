@@ -65,7 +65,7 @@ function InstallLink({ href, children }: { readonly href: string; readonly child
   return (
     <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
       {children}
-      <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+      <ArrowUpRightIcon aria-hidden="true" />
     </InlineButton>
   );
 }

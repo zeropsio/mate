@@ -115,7 +115,7 @@ function StatBlock({
             <TooltipTrigger
               render={
                 <InlineButton aria-label={`${label} details`} tone="muted">
-                  <InfoIcon className="size-3" />
+                  <InfoIcon />
                 </InlineButton>
               }
             />

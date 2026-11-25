@@ -185,7 +185,7 @@ function HistoryRow({
                   somewhere; a chevron at a row's start opens it in place. */}
               <ChevronRightIcon
                 aria-hidden="true"
-                className="size-3.5 shrink-0 self-center text-muted-foreground/60"
+                className="self-center text-muted-foreground/60"
               />
             </InlineButton>
           )}

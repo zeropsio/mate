@@ -332,7 +332,7 @@ function PlaceServiceLine({
               tone="plain"
             >
               Open in Zerops
-              <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+              <ExternalLinkIcon aria-hidden="true" className="text-muted-foreground" />
             </InlineButton>
           )}
         </span>

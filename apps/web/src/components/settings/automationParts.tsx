@@ -135,7 +135,7 @@ export function OutLink({
   return (
     <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
       {children}
-      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
     </InlineButton>
   );
 }

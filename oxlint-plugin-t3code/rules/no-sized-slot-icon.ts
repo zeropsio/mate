@@ -19,6 +19,7 @@ const TEST_FILE_PATTERN =
 const SIZES_ITS_ICONS = new Set([
   "Badge",
   "Button",
+  "InlineButton",
   "MenuCheckboxItem",
   "MenuItem",
   "MenuRadioItem",
@@ -58,7 +59,8 @@ const sizedClassName = (element: ESTree.JSXOpeningElement): ESTree.JSXAttribute 
 
 /**
  * A lucide icon given a size where a kit piece already sizes it: a `Row`'s lead, or an icon
- * standing directly inside a `Button`, `Badge` or menu item. The piece sizes the
+ * standing directly inside a `Button`, an `InlineButton` (the size of its words), a `Badge` or a
+ * menu item. The piece sizes the
  * icon by its own size (one size per slot, `design-system.md`), so an icon there names none.
  * Other icons (a file's type, a product's logo) draw themselves and are not reported.
  */
@@ -67,7 +69,7 @@ export default defineRule({
     type: "problem",
     docs: {
       description:
-        "Disallow sizing a lucide icon where a kit piece already sizes it (a Row's lead, a Button, a Badge, a menu item).",
+        "Disallow sizing a lucide icon where a kit piece already sizes it (a Row's lead, a Button, an InlineButton, a Badge, a menu item).",
     },
   },
   create(context) {

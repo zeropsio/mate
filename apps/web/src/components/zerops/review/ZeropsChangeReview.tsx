@@ -1446,7 +1446,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 ? pull.pullRequest
                 : { number: pull.pullRequest.number, state: pull.pullRequest.state },
             )}
-            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
           </InlineButton>
         )
       }
@@ -1669,7 +1669,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               ·{" "}
               <InlineButton render={<a href={github.url} rel="noreferrer" target="_blank" />}>
                 See them on GitHub
-                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
               </InlineButton>
             </li>
           </ul>

@@ -202,7 +202,7 @@ export function ProductionOutside({ address }: { readonly address: string | null
                 tone="plain"
               >
                 <span className="truncate">{outsideAddressShown(address)}</span>
-                <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
+                <ArrowUpRightIcon aria-hidden="true" />
               </InlineButton>
             </>
           )}

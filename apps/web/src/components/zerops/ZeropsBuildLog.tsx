@@ -105,7 +105,7 @@ export function ZeropsBuildLog({
         tone="muted"
       >
         Log
-        <ChevronRightIcon aria-hidden="true" className="size-3 shrink-0" />
+        <ChevronRightIcon aria-hidden="true" />
       </InlineButton>
       <Dialog
         onOpenChange={(next) => {

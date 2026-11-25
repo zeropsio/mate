@@ -355,7 +355,7 @@ export function ChangeRow(props: ChangeRowProps) {
             tone="muted"
           >
             {pullRequestName(github)}
-            <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+            <ArrowUpRightIcon aria-hidden="true" />
           </InlineButton>
         </span>
       )}

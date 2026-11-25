@@ -1858,7 +1858,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               {" · "}
               <InlineButton render={<a href={open.url} rel="noreferrer" target="_blank" />}>
                 {open.host}
-                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
               </InlineButton>
             </>
           ) : null}

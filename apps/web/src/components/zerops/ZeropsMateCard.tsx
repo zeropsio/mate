@@ -36,7 +36,7 @@ function PreviewLink({ url }: { readonly url: string }) {
         data-zerops-surface="mate-preview"
         render={<a href={url} rel="noreferrer" target="_blank" />}
       >
-        <ExternalLinkIcon aria-hidden="true" className="size-3" />
+        <ExternalLinkIcon aria-hidden="true" />
         Preview
       </InlineButton>
     </span>

@@ -199,7 +199,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
             <span className="min-w-0 truncate">{selected.displayName}</span>
             <ChevronDownIcon
               aria-hidden
-              className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
+              className="text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
             />
           </InlineButton>
         ) : projectsRead ? (

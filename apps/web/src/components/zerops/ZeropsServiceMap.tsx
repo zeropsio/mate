@@ -575,7 +575,7 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <ServiceName className="flex-1" row={row} />
         <ArrowUpRightIcon
           aria-hidden="true"
-          className="size-3.5 shrink-0 self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
+          className="self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
         />
       </InlineButton>
       {row.meta.length === 0 ? null : (

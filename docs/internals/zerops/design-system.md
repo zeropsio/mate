@@ -284,7 +284,8 @@ numbered steps of these. Every ask is the same card, in two densities.
 
 - **R15** — An icon in a kit slot takes the slot's size
   - _Enforced by:_ `t3code/no-sized-slot-icon` (a lucide icon with a `size-*` class as a `Row`'s
-    `lead` or directly inside a `Button`, `Badge` or menu item); its ledger only shrinks
+    `lead` or directly inside a `Button`, `InlineButton`, `Badge` or menu item); its ledger only
+    shrinks
 
 - **R16** — A pressable item lights on `bg-item-hover` (a disclosure stays lit while open) and
   the one its list shows stands on `bg-item-picked`; a chosen value says itself in its own mark

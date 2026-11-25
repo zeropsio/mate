@@ -116,7 +116,7 @@ export function PlaceLine({
             tone="muted"
           >
             <span className="truncate">{address.host}</span>
-            <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
+            <ArrowUpRightIcon aria-hidden="true" />
           </InlineButton>
         </>
       )}

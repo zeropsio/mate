@@ -344,7 +344,7 @@ function DeployConfigLink({
         }
         tone="muted"
       >
-        <FileCodeIcon aria-hidden="true" className="size-3 shrink-0" />
+        <FileCodeIcon aria-hidden="true" />
         <span className="truncate">{path}</span>
       </InlineButton>
     </span>

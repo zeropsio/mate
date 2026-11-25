@@ -279,7 +279,7 @@ export function MateTaskCardView({
             <span className="ms-auto shrink-0">
               <InlineButton render={<a href={link.url} rel="noreferrer" target="_blank" />}>
                 {link.words}
-                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
               </InlineButton>
             </span>
           )}
@@ -335,7 +335,7 @@ export function MateTaskCardView({
                   render={<a href={pullRequest.url} rel="noreferrer" target="_blank" />}
                 >
                   {pullRequestName(pullRequest)}
-                  <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                  <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
                 </InlineButton>
                 {pullRequest.state === "open" && pullRequest.checks !== undefined ? (
                   <span>checks {pullRequest.checks}</span>
