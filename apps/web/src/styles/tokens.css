@@ -178,9 +178,6 @@
   --toolbar-background: oklch(0.985 0.002 255);
   --toolbar-foreground: oklch(0.217787 0 0);
   --toolbar-border: oklch(0.898587 0.0192 248.042);
-  --toolbar-control: oklch(0.95504 0.001935 255);
-  --toolbar-control-foreground: oklch(0.217787 0 0);
-  --toolbar-control-hover: oklch(0.924843 0.001869 255);
   --card: oklch(1 0 0);
   --surface-raised: oklch(1 0 0);
   --popover: oklch(1 0 0);
@@ -236,9 +233,6 @@
     --toolbar-background: oklch(0.164609 0.005276 173.621);
     --toolbar-foreground: oklch(0.944756 0.005952 170.443);
     --toolbar-border: oklch(0.29592 0.012924 180.424);
-    --toolbar-control: oklch(0.244218 0.010816 176.214);
-    --toolbar-control-foreground: oklch(0.944756 0.005952 170.443);
-    --toolbar-control-hover: oklch(0.311898 0.012787 180.507);
     --card: oklch(0.207783 0.007827 182.122);
     --surface-raised: oklch(0.244218 0.010816 176.214);
     --popover: oklch(0.26005 0.011968 178.488);

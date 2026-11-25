@@ -423,7 +423,6 @@ const contrastPairs = [
   ["secondaryForeground", "secondary", 4.5],
   ["mutedForeground", "muted", 4.5],
   ["toolbarForeground", "toolbar", 4.5],
-  ["toolbarControlForeground", "toolbarControl", 4.5],
   ["sidebarForeground", "sidebar", 4.5],
   ["sidebarMutedForeground", "sidebar", 4.5],
   ["codeForeground", "codeBackground", 4.5],
