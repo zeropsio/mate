@@ -119,6 +119,25 @@
   --zerops-stage-foreground: #f4f5f7;
   /* Notes on a picture: their pink is burnt into the copy the Mate sees, the same in both. */
   --zerops-annotation: #e5267a;
+  /* A chart's series, in the order a chart hands them out (`SERIES_COLORS`): eight hues stepped per
+     appearance and checked as a set, on the card, for lightness, chroma and colour-blind
+     separation between neighbours. */
+  --zerops-series-1: #2a78d6;
+  --zerops-series-2: #eb6834;
+  --zerops-series-3: #1baf7a;
+  --zerops-series-4: #eda100;
+  --zerops-series-5: #e87ba4;
+  --zerops-series-6: #008300;
+  --zerops-series-7: #6250d6;
+  --zerops-series-8: #e34948;
+  /* A coding agent's own colour in usage charts: its brand's hue, or an ink for a monochrome mark,
+     the same in both appearances. */
+  --zerops-agent-codex: var(--contrast-foreground);
+  --zerops-agent-claude: #d97757;
+  --zerops-agent-grok: color-mix(in oklab, var(--contrast-foreground) 72%, var(--background));
+  --zerops-agent-cursor: #8b8b8b;
+  --zerops-agent-opencode: #5b9bbd;
+  --zerops-agent-antigravity: #8c7bd1;
   /* The run's card: a quiet tray one small step above the canvas, with a hairline edge
      (chat-markdown.css draws the joints between its slices with them). */
   --run-tray: oklch(0.968 0.004 255.5);
@@ -128,6 +147,14 @@
     color-scheme: dark;
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
     --run-tray: oklch(0.19 0.007 180);
+    --zerops-series-1: #3987e5;
+    --zerops-series-2: #d95926;
+    --zerops-series-3: #199e70;
+    --zerops-series-4: #c98500;
+    --zerops-series-5: #d55181;
+    --zerops-series-6: #0ca30c;
+    --zerops-series-7: #9085e9;
+    --zerops-series-8: #e66767;
     --info: #58a6ff;
     --info-foreground: var(--color-blue-400);
     --success: #56d364;
