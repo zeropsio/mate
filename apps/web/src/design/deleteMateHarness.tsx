@@ -8,8 +8,10 @@
  * platform answering; `refused` — the platform's reason under the field; `colleague` — Quinn is
  * Theo's; `menu` — Fen's menu open, Quinn's deletion as HQ's navigation shows it (`&deletion=`
  * `deleting` — HQ runs it; `waiting` — it waits for its maker's Continue; `failed` — Zerops
- * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `&services=0|1|3|unread`
- * counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
+ * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `last` —
+ * Quinn is the last Mate of Acme Docs, so its Delete is the project's, with Quinn first in what
+ * goes; `last-deleting` — its name typed and pressed, HQ deleting Quinn before the project;
+ * `&services=0|1|3|unread` counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
  * in the app. Open it at 1786 × 1000. `window.__deleteHarness.answer()` answers a pending press on
  * cue, and `deleteQuinn()` has HQ's navigation show Quinn's deletion running, so a frame sampler
  * can watch its row take the news.
@@ -34,8 +36,15 @@ import { createRoot } from "react-dom/client";
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import { SidebarZeropsTree } from "~/components/zerops/SidebarZeropsTree";
 import { mateDeletionLine } from "~/components/zerops/SidebarMateRow.logic";
+import { ZeropsDeleteApplicationForm } from "~/components/zerops/ZeropsDeleteApplicationDialog";
+import { deleteApplicationWords } from "~/components/zerops/ZeropsDeleteApplicationDialog.logic";
 import { ZeropsDeleteMateDialog } from "~/components/zerops/ZeropsDeleteMateDialog";
-import { deleteMateVerb, deleteMateWords } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
+import {
+  deleteMateServiceCount,
+  deleteMateVerb,
+  deleteMateWords,
+} from "~/components/zerops/ZeropsDeleteMateDialog.logic";
+import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -107,6 +116,20 @@ const FEN = mate("Fen", ["api", "db"]);
 const QUINN = mate("Quinn", QUINN_SERVICES);
 const ADA = mate("Ada", ["web"]);
 const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
+
+/** Quinn alone in Acme Docs: its Delete deletes the project. */
+const LAST = STATE === "last" || STATE === "last-deleting";
+const ACME = "Acme Docs";
+const ACME_WORDS = deleteApplicationWords(
+  {
+    appId: "acme",
+    name: ACME,
+    stages: [{ projectId: "acme-docs-stage", name: "acme-docs-stage" }],
+    productions: [{ branch: "release" }],
+  },
+  { repos: ["docs", "zerops-recipe"], openChanges: 2 },
+  { name: "Quinn", services: deleteMateServiceCount(QUINN) },
+);
 
 /** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */
 const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
@@ -290,10 +313,8 @@ declare global {
 }
 
 /** Types the name into the dialog's field as a person would: React hears the input. */
-function typeInto(value: string): void {
-  const input = document.querySelector<HTMLInputElement>(
-    '[data-zerops-surface="delete-mate-form"] input',
-  );
+function typeInto(form: string, value: string): void {
+  const input = document.querySelector<HTMLInputElement>(`[data-zerops-surface="${form}"] input`);
   if (input === null) return;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
@@ -336,16 +357,17 @@ function Harness() {
   // The states past the first are reached the way a person reaches them: the name typed, the
   // button pressed, the platform's refusal arriving.
   useEffect(() => {
-    if (!dialog || STATE === "idle" || STATE === "colleague") return;
+    if (!dialog || STATE === "idle" || STATE === "colleague" || STATE === "last") return;
+    const form = LAST ? "delete-application-form" : "delete-mate-form";
     const typing = window.setTimeout(() => {
-      typeInto("Quinn");
+      typeInto(form, LAST ? ACME : "Quinn");
     }, 250);
     const pressing =
-      STATE === "deleting" || STATE === "refused"
+      STATE === "deleting" || STATE === "refused" || STATE === "last-deleting"
         ? window.setTimeout(() => {
             document
               .querySelector<HTMLButtonElement>(
-                '[data-zerops-surface="delete-mate-form"] button[type="submit"]',
+                `[data-zerops-surface="${form}"] button[type="submit"]`,
               )
               ?.click();
           }, 450)
@@ -388,12 +410,35 @@ function Harness() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <SidebarProvider className="block">
-        <Menu candidates={matesWith(quinnDeletion)} />
+        <Menu candidates={LAST ? [QUINN] : matesWith(quinnDeletion)} />
       </SidebarProvider>
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
         <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
       </main>
-      {dialog && open ? (
+      {LAST ? (
+        <Dialog onOpenChange={setOpen} open={open}>
+          <DialogPopup className="max-w-md">
+            <ZeropsDeleteApplicationForm
+              error={null}
+              // Pressed: HQ took Quinn's deletion and deletes it before the project.
+              hold={
+                pending
+                  ? { words: "Waiting for HQ to delete its Mate…", failed: false, details: null }
+                  : undefined
+              }
+              name={ACME}
+              onCancel={() => setOpen(false)}
+              onConfirm={() => {
+                setPressed((count) => count + 1);
+                setPending(true);
+              }}
+              pending={pending}
+              running={pending}
+              words={ACME_WORDS}
+            />
+          </DialogPopup>
+        </Dialog>
+      ) : dialog && open ? (
         <ZeropsDeleteMateDialog
           error={error}
           failed={failed}
