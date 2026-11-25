@@ -124,7 +124,10 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
 /**
  * A place that holds nothing yet: its mark, one line saying what will be here, and at most one
  * action — none when the viewer has nothing to do. `row` stands where a list's rows would be;
- * `section` fills a panel or a card; `page` fills a whole route. Shown only once the source has
+ * `section` fills a panel or a card; `page` fills a whole route; `line` is the quiet sentence where
+ * a section's few lines would stand ("Nothing released yet.", "No pushes recorded."): muted body
+ * text that wraps, no box and no mark, its action after its words — beside `Loading shape="words"`
+ * and `Failure size="line"`, the same place's other two states. Shown only once the source has
  * answered that there is nothing: before that the place is loading, after a refusal it failed.
  */
 function EmptyState({
@@ -132,20 +135,39 @@ function EmptyState({
   children,
   action,
   size = "section",
-}: {
+  className,
+  ...props
+}: Omit<React.HTMLAttributes<HTMLElement>, "children"> & {
   /** The place's own icon or the subject's face. */
   readonly mark?: React.ReactNode;
   /** The one line: what will be here, true for this viewer. */
   readonly children: React.ReactNode;
   readonly action?: React.ReactNode;
-  readonly size?: "row" | "section" | "page";
+  readonly size?: "line" | "row" | "section" | "page";
 }) {
+  if (size === "line") {
+    return (
+      <span
+        className={cn("block text-pretty text-body text-muted-foreground", className)}
+        data-size="line"
+        data-slot="empty"
+        {...props}
+      >
+        {children}
+        {action === undefined || action === null ? null : <> {action}</>}
+      </span>
+    );
+  }
   if (size === "row") {
     return (
       <div
-        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-body [&_svg]:size-4 [&_svg]:shrink-0"
+        className={cn(
+          "flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-body [&_svg]:size-4 [&_svg]:shrink-0",
+          className,
+        )}
         data-size="row"
         data-slot="empty"
+        {...props}
       >
         {mark}
         <span className="min-w-0 flex-1">{children}</span>
@@ -154,7 +176,7 @@ function EmptyState({
     );
   }
   return (
-    <Empty size={size === "page" ? "default" : "compact"}>
+    <Empty className={className} size={size === "page" ? "default" : "compact"} {...props}>
       {mark === undefined || mark === null ? null : <EmptyMedia>{mark}</EmptyMedia>}
       <EmptyDescription>{children}</EmptyDescription>
       {action === undefined || action === null ? null : <EmptyContent>{action}</EmptyContent>}

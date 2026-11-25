@@ -1,6 +1,8 @@
 import { CircleAlertIcon } from "lucide-react";
 import type * as React from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./alert";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./collapsible";
 import { StatusPage } from "./status-page";
@@ -61,6 +63,7 @@ function Failure({
   details,
   mark,
   size = "inline",
+  className,
   ...props
 }: Omit<React.HTMLAttributes<HTMLElement>, "children"> & {
   /** What went wrong, in the person's words: the headline. */
@@ -78,7 +81,7 @@ function Failure({
   if (size === "line") {
     return (
       <span
-        className="block text-pretty text-body text-status-failed-text"
+        className={cn("block text-pretty text-body text-status-failed-text", className)}
         data-size="line"
         data-slot="failure"
         {...props}
@@ -95,6 +98,7 @@ function Failure({
     return (
       <StatusPage
         actions={action}
+        className={className}
         data-slot="failure"
         footer={folded}
         mark={mark}
@@ -106,7 +110,13 @@ function Failure({
     );
   }
   return (
-    <Alert controlAlignment="first-line" data-slot="failure" variant="error" {...props}>
+    <Alert
+      className={className}
+      controlAlignment="first-line"
+      data-slot="failure"
+      variant="error"
+      {...props}
+    >
       <CircleAlertIcon aria-hidden="true" />
       <AlertTitle>{cause}</AlertTitle>
       {children === undefined && folded === null ? null : (

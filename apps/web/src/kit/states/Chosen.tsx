@@ -38,6 +38,17 @@ const SHAPES: ReadonlyArray<{ readonly shape: LoadingShape; readonly count: numb
   { shape: "room", count: 1 },
 ];
 
+/** One place's three quiet states, each a line where its few lines would stand. */
+function QuietLines() {
+  return (
+    <div className="flex w-[440px] flex-col gap-3 rounded-card border p-4">
+      <Loading label="Reading who has access" shape="words" />
+      <EmptyState size="line">Nobody has access yet.</EmptyState>
+      <Failure cause="Couldn’t read who has access to Production." size="line" />
+    </div>
+  );
+}
+
 export function ChosenLoading() {
   return (
     <Chosen>
@@ -53,6 +64,17 @@ export function ChosenLoading() {
         </Specimen>
       ))}
       <Specimen
+        label='<Loading label="Comparing in HQ" shape="words" /> · the read said in one quiet line'
+        source="apps/web/src/components/ui/loading.tsx"
+      >
+        <div className="w-[440px] rounded-card border p-4">
+          <Loading label="Comparing in HQ" shape="words" />
+        </div>
+      </Specimen>
+      <Specimen label="A place's three quiet lines: Loading words · EmptyState line · Failure line">
+        <QuietLines />
+      </Specimen>
+      <Specimen
         label='<Loading label="…" quiet /> · unpainted for the hold, then in place'
         source="apps/web/src/components/ui/loading.tsx"
       >
@@ -67,7 +89,18 @@ export function ChosenLoading() {
 export function ChosenEmpty() {
   return (
     <Chosen>
-      <Specimen label='<EmptyState size="row">' source="apps/web/src/components/ui/empty.tsx">
+      <Specimen
+        label='<EmptyState size="line"> · a quiet sentence, no box and no mark'
+        source="apps/web/src/components/ui/empty.tsx"
+      >
+        <div className="w-[440px] rounded-card border p-4">
+          <EmptyState size="line">Nothing released yet.</EmptyState>
+        </div>
+      </Specimen>
+      <Specimen label="A place's three quiet lines: Loading words · EmptyState line · Failure line">
+        <QuietLines />
+      </Specimen>
+      <Specimen label='<EmptyState size="row">'>
         <div className="w-[440px] rounded-card border">
           <EmptyState mark={<InboxIcon />} size="row">
             No open ports on this service.
@@ -273,6 +306,9 @@ export function ChosenFailure() {
         <div className="w-[480px]">
           <Failure cause="Zerops didn't let you read their project access." />
         </div>
+      </Specimen>
+      <Specimen label="A place's three quiet lines: Loading words · EmptyState line · Failure line">
+        <QuietLines />
       </Specimen>
       <Specimen label='<Failure size="line" cause /> · an action refused where it stands'>
         <div className="w-[480px]">
