@@ -5506,16 +5506,16 @@ code {
   .menu-top-count > button {
     display: grid;
     place-items: center;
-    min-width: 28px;
-    height: 20px;
-    padding: 0 8px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
     border-radius: 9999px;
-    /* The theme's red darkened until white figures read at WCAG AA (at least 4.5:1). */
-    background: color-mix(in oklab, var(--destructive) 80%, black);
+    /* The theme's own red, the one every other count in the app wears. */
+    background: var(--destructive);
     color: var(--color-white);
-    font-size: 12px;
-    line-height: 16px;
-    font-weight: 600;
+    font-size: 11px;
+    line-height: 14px;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
     transition:
       background-color 150ms var(--ease-out-strong),
@@ -5524,7 +5524,7 @@ code {
 
   @media (hover: hover) and (pointer: fine) {
     .menu-top-count > button:is(:hover, [data-popup-open]) {
-      background: color-mix(in oklab, var(--destructive) 70%, black);
+      background: color-mix(in oklab, var(--destructive) 88%, black);
     }
   }
 
