@@ -114,6 +114,10 @@ export function parseCrewAsk(source: string): CrewAsk | null {
   };
 }
 
+/** What the goal says before its first heading: what the crew builds and why. */
+export const crewAskGoalLead = (goal: string): string =>
+  (goal.split(/^#{1,6}\s/mu)[0] ?? goal).trim() || goal;
+
 /** An agent as a fence names it, as its driver: Claude Code's is `claudeAgent`. */
 const driverOf = (agent: string): string =>
   agent === "claude" || agent === "claude-code" ? "claudeAgent" : agent;

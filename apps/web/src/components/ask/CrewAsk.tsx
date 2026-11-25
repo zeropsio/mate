@@ -26,6 +26,7 @@ import {
   type CrewAsk,
   crewAskRunsOn,
   crewAskRunsOnWords,
+  crewAskGoalLead,
   crewAskSeats,
   parseCrewAsk,
 } from "./crewAsk.logic";
@@ -164,8 +165,8 @@ export function CrewAskCardView({
             <Text render={<figcaption />} variant="note">
               Goal
             </Text>
-            <div className="line-clamp-4 whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
-              {ask.goal}
+            <div className="line-clamp-3 whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
+              {crewAskGoalLead(ask.goal)}
             </div>
           </figure>
           <Card variant="inset">
