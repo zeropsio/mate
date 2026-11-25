@@ -123,7 +123,7 @@ export function ZeropsByline() {
         render={<a href="https://zerops.io" rel="noreferrer" target="_blank" />}
         tone="muted"
       >
-        <ZeropsMark className="me-1 size-3.5" />
+        <ZeropsMark className="me-1 size-3.5" variant="company" />
         Mate by Zerops
       </InlineButton>
     </span>
@@ -199,7 +199,7 @@ export function ZeropsSignInActions({
   return (
     <div className="space-y-3">
       <Button className="w-full" onClick={onContinue}>
-        <ZeropsMark className="size-4" tone="current" />
+        <ZeropsMark className="size-4" tone="current" variant="company" />
         Continue with your Zerops account
       </Button>
       <Text className="text-center" render={<p />} variant="note">
