@@ -100,7 +100,8 @@ import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
-import { cn } from "~/lib/utils";
+import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
 import { Button } from "../ui/button";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
@@ -1503,35 +1504,43 @@ export function ZeropsStopPane({
               // slot holds their rows' shape; one that runs nothing says so once they are.
               runs === undefined ? null : (
                 <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                  <div className={cn(PLACE_CARD_CLASS, "p-1.5")}>
+                  <Card className="min-w-0" size="rows">
                     <ReleaseRowsWaiting />
-                  </div>
+                  </Card>
                 </PlaceSection>
               )
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                <Card
                   data-zerops-surface="place-releases-unrecorded"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  {`No releases are recorded for this production; it runs ${runs}.`}
-                </p>
+                  <EmptyState size="line">
+                    {`No releases are recorded for this production; it runs ${runs}.`}
+                  </EmptyState>
+                </Card>
               </PlaceSection>
             ) : nextShown ? null : (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                <Card
                   data-zerops-surface="place-releases-empty"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  No releases yet. A release puts what is merged on main live here, and each one is
-                  listed with the way back to it.
-                </p>
+                  <EmptyState size="line">
+                    No releases yet. A release puts what is merged on main live here, and each one
+                    is listed with the way back to it.
+                  </EmptyState>
+                </Card>
               </PlaceSection>
             )}
 
             {!production || releases.length === 0 ? null : (
               <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
-                <div className={cn(PLACE_CARD_CLASS, "@container/releases p-1.5")}>
+                <Card className="@container/releases min-w-0" size="rows">
                   <ReleaseList>
                     <ZeropsReleaseRows
                       {...(carried === undefined
@@ -1567,7 +1576,7 @@ export function ZeropsStopPane({
                       </ReleaseListFoot>
                     )}
                   </ReleaseList>
-                </div>
+                </Card>
               </PlaceSection>
             )}
 
@@ -1587,7 +1596,7 @@ export function ZeropsStopPane({
                   </SectionLabel>
                 }
               >
-                <div className={cn(PLACE_CARD_CLASS, "px-4 py-3")}>
+                <Card className="min-w-0" size="md">
                   {recordedHistory !== undefined ? (
                     <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
                   ) : servicesWaiting ? (
@@ -1614,7 +1623,7 @@ export function ZeropsStopPane({
                       tags={tags}
                     />
                   )}
-                </div>
+                </Card>
               </PlaceSection>
             )}
           </div>
@@ -1746,12 +1755,16 @@ export function ZeropsStopPane({
               )}
               {servicesWaiting || table.length > 0 || missingSlots.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                <Card
                   data-zerops-surface="place-services-empty"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  Nothing runs here yet. Its services appear as its first deploy lands.
-                </p>
+                  <EmptyState size="line">
+                    Nothing runs here yet. Its services appear as its first deploy lands.
+                  </EmptyState>
+                </Card>
               )}
               {projectId === undefined || tierStops.length === 0 ? null : (
                 <StopTierStops
@@ -1806,9 +1819,6 @@ export function ZeropsStopPane({
     </DetailShell>
   );
 }
-
-/** A card of the place's page: a hairline and the card ground. */
-const PLACE_CARD_CLASS = "min-w-0 rounded-card border border-border/70 bg-card";
 
 /**
  * One section of the place's page: its label hugging its card, every section well apart from the

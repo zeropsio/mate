@@ -7,19 +7,18 @@
  */
 import { ChevronRightIcon, KeyRoundIcon, RotateCwIcon } from "lucide-react";
 
+import { Card } from "~/components/ui/card";
 import { Row } from "~/components/ui/row";
+import { Separator } from "~/components/ui/separator";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { VaultOverview, VaultOverviewPart } from "../vault/vaultOverview.logic";
 import { VaultPartName } from "../vault/VaultPartName";
 import { EmptyState } from "~/components/ui/empty";
 
-const CARD = "flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5";
 /** A row that opens the drawer: it fills under the pointer and on focus, as the page's rows do. */
 /** Where a row leads, at its end: every row of the card is a door, so it is said at rest. */
 const GOES = "size-4 shrink-0 text-muted-foreground/70";
 const QUIET = "px-3 py-2.5 text-body text-muted-foreground";
-/** Between what every app gets and each app's own: a hairline inside the rows' own inset. */
-const RULE = "mx-3 my-1.5 border-t border-border/70";
 /** A part's row while the vault is read: its height, a name and its counts. */
 const HELD = "flex h-10 items-center justify-between px-3";
 
@@ -37,7 +36,13 @@ export function PlaceVaultCard({
   if (overview.state === "reading")
     return (
       // The settled shape while it is read: two parts, a name and its counts each.
-      <div aria-busy="true" className={CARD} data-zerops-surface="place-vault" data-state="reading">
+      <Card
+        aria-busy="true"
+        className="min-w-0"
+        data-state="reading"
+        data-zerops-surface="place-vault"
+        size="rows"
+      >
         <div aria-hidden="true" className={HELD}>
           <Skeleton className="h-3 w-24" surface="card" />
           <Skeleton className="h-3 w-28" surface="card" />
@@ -46,13 +51,18 @@ export function PlaceVaultCard({
           <Skeleton className="h-3 w-16" surface="card" />
           <Skeleton className="h-3 w-20" surface="card" />
         </div>
-      </div>
+      </Card>
     );
   if (overview.state === "unreadable")
     return (
-      <div className={CARD} data-zerops-surface="place-vault" data-state="unreadable">
+      <Card
+        className="min-w-0"
+        data-state="unreadable"
+        data-zerops-surface="place-vault"
+        size="rows"
+      >
         <p className={QUIET}>Couldn&rsquo;t read the vault</p>
-      </div>
+      </Card>
     );
   const forAll = overview.parts.filter((part) => part.hostname === null);
   const own = overview.parts.filter((part) => part.hostname !== null);
@@ -80,7 +90,7 @@ export function PlaceVaultCard({
     />
   );
   return (
-    <div className={CARD} data-zerops-surface="place-vault" data-state="read">
+    <Card className="min-w-0" data-state="read" data-zerops-surface="place-vault" size="rows">
       {overview.needs.map((need) => (
         <Row
           data-zerops-vault-need={need.kind}
@@ -114,11 +124,13 @@ export function PlaceVaultCard({
         <>
           {forAll.map(rowOf)}
           {forAll.length === 0 || own.length === 0 ? null : (
-            <div aria-hidden="true" className={RULE} data-zerops-vault-rule="" />
+            <div aria-hidden="true" className="px-3 py-1.5" data-zerops-vault-rule="">
+              <Separator />
+            </div>
           )}
           {own.map(rowOf)}
         </>
       )}
-    </div>
+    </Card>
   );
 }

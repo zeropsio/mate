@@ -23,6 +23,7 @@ import { useState, type ReactNode } from "react";
 
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { Button, InlineButton } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { MenuGroup, MenuGroupLabel, MenuItem, MenuSeparator } from "../../ui/menu";
 import { MiddleTruncate } from "../../ui/middle-truncate";
 import { Row } from "../../ui/row";
@@ -105,30 +106,29 @@ export function PlaceServicesWaiting() {
       data-zerops-surface="place-services-waiting"
     >
       {[0, 1].map((card) => (
-        <li
-          className="flex min-w-0 flex-col gap-3.5 rounded-card border border-border/70 bg-card px-4 pt-3.5 pb-4"
-          key={card}
-        >
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="flex h-5 items-center gap-2">
-              <Skeleton className="h-3 w-16" surface="card" />
-              <Skeleton className="h-3 w-20" surface="card" />
-            </span>
-            <span className="flex h-4 items-center">
-              <Skeleton className="h-3 w-44 max-w-full" surface="card" />
-            </span>
+        <Card className="min-w-0" key={card} render={<li />}>
+          <div className="flex min-w-0 flex-col gap-3.5 px-4 pt-3.5 pb-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="flex h-5 items-center gap-2">
+                <Skeleton className="h-3 w-16" surface="card" />
+                <Skeleton className="h-3 w-20" surface="card" />
+              </span>
+              <span className="flex h-4 items-center">
+                <Skeleton className="h-3 w-44 max-w-full" surface="card" />
+              </span>
+            </div>
+            <div className="grid min-w-0 grid-cols-3 items-end gap-x-4">
+              {[0, 1, 2].map((meter) => (
+                <div className="flex min-w-0 flex-col gap-1.5" key={meter}>
+                  <span className="flex h-4 items-center">
+                    <Skeleton className="h-3 w-12" surface="card" />
+                  </span>
+                  <Skeleton className="h-1 w-full" shape="pill" surface="card" />
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid min-w-0 grid-cols-3 items-end gap-x-4">
-            {[0, 1, 2].map((meter) => (
-              <div className="flex min-w-0 flex-col gap-1.5" key={meter}>
-                <span className="flex h-4 items-center">
-                  <Skeleton className="h-3 w-12" surface="card" />
-                </span>
-                <Skeleton className="h-1 w-full" shape="pill" surface="card" />
-              </div>
-            ))}
-          </div>
-        </li>
+        </Card>
       ))}
     </ul>
   );
@@ -159,28 +159,32 @@ export function PlaceMissingService({
   readonly byRelease?: boolean;
 }) {
   return (
-    <li
-      className="flex min-w-0 items-center justify-between gap-3 rounded-card border border-dashed border-border py-3 ps-4 pe-3"
+    <Card
+      className="min-w-0"
       data-zerops-missing-service={hostname}
       data-zerops-surface="stop-not-in-zerops"
+      render={<li />}
+      variant="slot"
     >
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
-        {answer === undefined ? (
-          <span className="truncate text-caption text-muted-foreground">
-            {absentWords(byRelease)}
-          </span>
-        ) : (
-          <span
-            className="truncate text-caption text-muted-foreground"
-            data-zerops-job-state={answer.state}
-          >
-            {answer.line}
-          </span>
-        )}
-      </span>
-      {verb}
-    </li>
+      <div className="flex min-w-0 items-center justify-between gap-3 py-3 ps-4 pe-3">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
+          {answer === undefined ? (
+            <span className="truncate text-caption text-muted-foreground">
+              {absentWords(byRelease)}
+            </span>
+          ) : (
+            <span
+              className="truncate text-caption text-muted-foreground"
+              data-zerops-job-state={answer.state}
+            >
+              {answer.line}
+            </span>
+          )}
+        </span>
+        {verb}
+      </div>
+    </Card>
   );
 }
 
@@ -406,10 +410,7 @@ export function PlaceAddressCard({
     ordered.length === 0 &&
     shownOffers.length === 0;
   return (
-    <div
-      className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5"
-      data-zerops-surface="place-addresses"
-    >
+    <Card className="min-w-0" data-zerops-surface="place-addresses" size="rows">
       <div className="empty:hidden px-3 py-1">
         <StopPublicAccessStatus access={publicAccess} />
       </div>
@@ -466,6 +467,6 @@ export function PlaceAddressCard({
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }

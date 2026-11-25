@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from "react";
 
+import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 
 import type { columnPeople } from "../projects/accessTable.logic";
@@ -24,40 +25,39 @@ export function PlaceAccessCard({
   const words = accessBreakdown(people);
   const more = people.length - ACCESS_FACES;
   return (
-    <div
-      className="flex min-w-0 items-center gap-3.5 rounded-card border border-border/70 bg-card px-4 py-3.5"
-      data-zerops-surface="place-access"
-    >
-      {summary === null ? (
-        unread
-      ) : people.length === 0 ? (
-        <EmptyState size="line">Nobody has access yet.</EmptyState>
-      ) : (
-        <>
-          <span aria-hidden="true" className="flex shrink-0 ps-2">
-            {people.slice(0, ACCESS_FACES).map((person) => (
-              <PersonAvatar
-                className="-ms-2 ring-2 ring-card"
-                key={person.key}
-                name={person.name}
-                picture={person.avatarUrl}
-                size={32}
-              />
-            ))}
-            {more <= 0 ? null : (
-              <span className="relative -ms-2 flex size-8 items-center justify-center rounded-full bg-accent text-caption font-medium text-muted-foreground ring-2 ring-card tabular-nums">
-                {`+${String(more)}`}
-              </span>
-            )}
-          </span>
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-body text-foreground">{words.count}</span>
-            {words.split === "" ? null : (
-              <span className="truncate text-caption text-muted-foreground">{words.split}</span>
-            )}
-          </span>
-        </>
-      )}
-    </div>
+    <Card className="min-w-0" data-zerops-surface="place-access">
+      <div className="flex min-w-0 items-center gap-3.5 px-4 py-3.5">
+        {summary === null ? (
+          unread
+        ) : people.length === 0 ? (
+          <EmptyState size="line">Nobody has access yet.</EmptyState>
+        ) : (
+          <>
+            <span aria-hidden="true" className="flex shrink-0 ps-2">
+              {people.slice(0, ACCESS_FACES).map((person) => (
+                <PersonAvatar
+                  className="-ms-2 ring-2 ring-card"
+                  key={person.key}
+                  name={person.name}
+                  picture={person.avatarUrl}
+                  size={32}
+                />
+              ))}
+              {more <= 0 ? null : (
+                <span className="relative -ms-2 flex size-8 items-center justify-center rounded-full bg-accent text-caption font-medium text-muted-foreground ring-2 ring-card tabular-nums">
+                  {`+${String(more)}`}
+                </span>
+              )}
+            </span>
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-body text-foreground">{words.count}</span>
+              {words.split === "" ? null : (
+                <span className="truncate text-caption text-muted-foreground">{words.split}</span>
+              )}
+            </span>
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
