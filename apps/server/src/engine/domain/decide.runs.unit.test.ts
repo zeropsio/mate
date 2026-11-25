@@ -387,3 +387,61 @@ it("ED40: A run's end says why it broke off: a prompt that outgrew the context r
   const finished = play([...running, ended(1, { kind: "completed", reason: "end_turn" })]);
   expect(finished.events.find((e) => e._tag === "RunEnded")).not.toHaveProperty("detail");
 });
+
+// witness: apps/server/src/engine/domain/decide.runs.ts | told.whereWith(withLostWorkNote(b, run), run) → withLostWorkNote(b, run)
+it("ED141: A run's send carries the where text its admission read, on each send of that run and on no other run's, and a run whose read said nothing sends its message as it is; breaks: after a compaction or an idle close the agent asks zcp where it is before it can act, or the next message repeats a stale block", () => {
+  const block = "<zerops-where>\nW\n</zerops-where>\n\ngo";
+  expect(play([send("go")]).effects).toMatchObject([
+    { kind: "run.prepare", payload: { where: {} } },
+  ]);
+  expect(
+    play([
+      {
+        command: {
+          _tag: "BindLease",
+          lease: { alias: "webpool-1", pool: "webpool", branch: "feat-x" },
+        },
+        by: { kind: "engine" },
+      },
+      send("go"),
+    ]).effects,
+  ).toMatchObject([{ kind: "run.prepare", payload: { where: { lease: "webpool-1" } } }]);
+  expect(play([send("/compact")]).effects[0]?.payload).not.toHaveProperty("where");
+
+  const first = [send("go"), prepared(1, { kind: "ok", value: { where: "W" } }), opened(1)];
+  expect(play(first).effects).toMatchObject([{ kind: "provider.send", payload: { text: block } }]);
+  const undelivered = settled(r(1), "provider.send", {
+    kind: "failed",
+    reason: "no live session",
+    undelivered: true,
+  });
+  expect(play([...first, undelivered, opened(1, { session: "s2", n: 2 })]).effects).toMatchObject([
+    { kind: "provider.send", payload: { text: block } },
+  ]);
+  const next = play([
+    ...first,
+    settled(r(1), "provider.send", { kind: "ok" }),
+    turnEnded,
+    send("next"),
+    prepared(2),
+  ]);
+  expect(next.effects).toMatchObject([{ kind: "provider.send", payload: { text: "next" } }]);
+  expect(next.state.runs[r(2)]?.where).toBeUndefined();
+
+  const agent = {
+    instanceId: "first",
+    driver: "claude",
+    model: null,
+    profile: { kind: "mate" },
+  } as const;
+  const replaced = [
+    { _tag: "AssignAgent", agent } as const,
+    send("go"),
+    { _tag: "AssignAgent", agent: { ...agent, instanceId: "second" } } as const,
+    prepared(1, { kind: "ok", value: { where: "W" } }),
+  ];
+  expect(play(replaced).effects).toMatchObject([{ kind: "run.prepare", payload: { where: {} } }]);
+  const reread = play([...replaced, settled(r(1), "run.prepare", { kind: "ok" }, 2), opened(1)]);
+  expect(reread.effects).toMatchObject([{ kind: "provider.send", payload: { text: "go" } }]);
+  expect(reread.state.runs[r(1)]?.where).toBeUndefined();
+});

@@ -5,7 +5,7 @@
  * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what
  * another instance of a driver left on a thread (`HandedOverResume`) and what each provider
  * reports of its signed-in account's usage (`ProviderUsageFeed`) and how an archived conversation's
- * branch goes back to its pool (`LeaseRelease`). The engine imports these,
+ * branch goes back to its pool (`LeaseRelease`), and where the work stands (`WorkWhere`). The engine imports these,
  * never `zerops/` and no provider file but `ProviderService`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
@@ -190,3 +190,11 @@ export class LeaseRelease extends Context.Service<
     }) => Effect.Effect<LeaseReleaseResult>;
   }
 >()("t3/engine/ports/LeaseRelease") {}
+
+/** The work's current orientation for a run, absent outside a Zerops project. */
+export class WorkWhere extends Context.Service<
+  WorkWhere,
+  {
+    readonly read: (input: { readonly lease?: string }) => Effect.Effect<string | null>;
+  }
+>()("t3/engine/ports/WorkWhere") {}

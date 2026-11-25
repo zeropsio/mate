@@ -792,7 +792,7 @@ const whereAnswer = JSON.stringify({
 
 // witness: apps/server/src/zerops/ZeropsCli.ts | ...(input.lease === undefined ? [] : ["--lease", input.lease]), → ...[],
 it.effect(
-  "ZC+1: zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's",
+  "ZC22: zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's",
   () =>
     Effect.gen(function* () {
       const plain = zcpAnswering({ stdout: whereAnswer }, "9.275.0");
@@ -812,7 +812,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsCli.ts | if (code !== 0) return { outcome: "none", reason: `exit ${code}` } as const; → if (false && code !== 0) return { outcome: "none", reason: `exit ${code}` } as const;
 it.effect(
-  "ZC+2: A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message",
+  "ZC23: A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message",
   () =>
     Effect.gen(function* () {
       const timeout = new ProcessRunner.ProcessTimeoutError({
@@ -843,7 +843,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsCli.ts | const ZCP_WHERE_SINCE = "9.275.0"; → const ZCP_WHERE_SINCE = "0.0.0";
 it.effect(
-  "ZC+3: A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know",
+  "ZC24: A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know",
   () =>
     Effect.gen(function* () {
       for (const version of ["9.274.0", "9.274.0-3-gabc", "dev"]) {

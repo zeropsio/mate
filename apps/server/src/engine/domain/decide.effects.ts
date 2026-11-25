@@ -47,6 +47,11 @@ export interface SessionOpenedValue {
   readonly brief?: string;
 }
 
+/** What a `run.prepare` effect read for the run. */
+export interface RunPreparedValue {
+  readonly where?: string;
+}
+
 export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");

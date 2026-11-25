@@ -1,4 +1,4 @@
-next: ZC22
+next: ZC25
 
 - ZC1 — `mate serve --help` advertises every flag of zcp's launch contract: `--mode`, `--host`, `--port`, `--base-path`, `--base-dir`, `--no-browser` and `--auto-bootstrap-project-from-cwd`
 - ZC2 — A Mate whose container zcp launched takes its public origin from the platform's `zeropsSubdomain`, with no variable set by hand
@@ -21,6 +21,6 @@ next: ZC22
 - ZC19 — A check that zcp fails keeps and returns the last good update line
 - ZC20 — The update line relays zcp's reading of itself and whether, and why, only a restart gets the Mate current
 - ZC21 — A local re-read of zcp's status relays a postponed update with since, what for and why, and the update line publishes it
-- ZC+1 — zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's
-- ZC+2 — A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message
-- ZC+3 — A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know
+- ZC22 — zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's
+- ZC23 — A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message
+- ZC24 — A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know

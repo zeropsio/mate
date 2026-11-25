@@ -21,6 +21,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { EventDraft } from "./command.ts";
+import * as told from "./told.ts";
 import { activeRun, type ConversationState, type RunRecord } from "./state.ts";
 import {
   ENGINE,
@@ -131,6 +132,9 @@ const askAdmission = (b: StepBuilder, run: RunRecord): void => {
     instanceId: b.state.agent?.instanceId ?? null,
     principal: run.principal,
     trigger: run.trigger,
+    ...(told.hearsWhere(run)
+      ? { where: b.state.lease === null ? {} : { lease: b.state.lease.alias } }
+      : {}),
   });
 };
 
@@ -177,7 +181,7 @@ export const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): vo
   if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
     const selection = selectionOf(b.state);
-    const text = withBrief(b, run, withLostWorkNote(b, run));
+    const text = withBrief(b, run, told.whereWith(withLostWorkNote(b, run), run));
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
