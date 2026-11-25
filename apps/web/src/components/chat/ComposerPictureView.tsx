@@ -39,6 +39,7 @@ import { Separator } from "../ui/separator";
 import { StepNumber } from "../ui/step-number";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
+import { Toolbar } from "../ui/toolbar";
 import { toastManager } from "~/lib/toasts";
 import { Text } from "~/components/ui/text";
 
@@ -777,7 +778,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
             </Popover>
           </div>
           <div className="flex flex-none justify-center px-3 pt-2.5 pb-3.5">
-            <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-card border border-border bg-popover p-1.5 text-popover-foreground shadow-popup">
+            <Toolbar aria-label="Picture" size="md">
               {editable ? (
                 <>
                   <Button
@@ -842,7 +843,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
               <Button ref={doneRef} onClick={close}>
                 Done
               </Button>
-            </div>
+            </Toolbar>
           </div>
         </div>
       </DialogMediaPopup>

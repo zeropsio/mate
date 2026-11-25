@@ -30,6 +30,17 @@ function OverlaySpecimens() {
               </Overlay>
             </OverlayStage>
           </Specimen>
+          <Specimen label={specimenLabel({ kind: "veil", shown: true })}>
+            <OverlayStage>
+              <span className="flex h-full flex-col gap-2 rounded-card bg-foreground/4 p-3">
+                <span className="h-8 rounded-control bg-foreground/6" />
+                <span className="h-8 rounded-control bg-foreground/6" />
+              </span>
+              <Overlay kind="veil" shown>
+                Fix the expression above to edit it here.
+              </Overlay>
+            </OverlayStage>
+          </Specimen>
           <Specimen label={specimenLabel({ kind: "hint", shown: true })}>
             <OverlayStage>
               <Overlay kind="hint" shown>

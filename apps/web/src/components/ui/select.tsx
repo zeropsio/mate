@@ -27,8 +27,9 @@ const selectTriggerVariants = cva(
       variant: {
         default:
           "w-full min-w-36 border-input bg-field bg-clip-ground text-foreground shadow-xs/5 ring-ring/24 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] not-data-disabled:not-focus-visible:not-aria-invalid:not-data-pressed:before:shadow-edge pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-field-invalid [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='text-'])]:text-icon-muted [[data-disabled],:focus-visible,[aria-invalid],[data-pressed]]:shadow-none",
+        /** A quiet trigger: lit on the item's hover ground under the pointer and while open. */
         ghost:
-          "border-transparent text-secondary-label focus-visible:ring-2 focus-visible:ring-ring data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent [:hover,[data-pressed]]:text-foreground",
+          "border-transparent text-secondary-label focus-visible:ring-2 focus-visible:ring-ring [:hover,[data-pressed]]:bg-item-hover [:hover,[data-pressed]]:text-foreground",
       },
       size: {
         compact:
@@ -188,6 +189,11 @@ function SelectPopup({
   );
 }
 
+/**
+ * One choice. The one under the cursor, the pointer's or the arrow keys', lights on the item's
+ * hover ground (`bg-item-hover`); the chosen one stands on the picked ground (`bg-item-picked`)
+ * and stays on it under the cursor: the item draws no check, so its ground is its mark.
+ */
 function SelectItem({
   className,
   children,
@@ -199,7 +205,7 @@ function SelectItem({
   return (
     <SelectPrimitive.Item
       className={cn(
-        "flex min-h-10 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-control px-2 py-1 text-body outline-none data-selected:bg-foreground/[0.08] data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex min-h-10 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-control px-2 py-1 text-body outline-none data-selected:bg-item-picked data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:not-data-selected:bg-item-hover data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="select-item"

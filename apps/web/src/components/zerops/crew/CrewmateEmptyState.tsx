@@ -38,6 +38,7 @@ import { mateFaceFor } from "../../../zerops/agentActivity";
 import type { ZeropsMateIdentity } from "../../../zerops/mateIdentities";
 import { useOpenReview } from "../../../zerops/review";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Card } from "../../ui/card";
 import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
@@ -162,23 +163,27 @@ export function CrewmateEmptyState({
               <span>{model.whose}</span>
             </Text>
             {model.job === "" && model.work.length === 0 ? null : (
-              <section
-                className="mt-10 flex w-full max-w-md flex-col rounded-card border border-foreground/7 bg-run-tray px-4 py-3"
+              <Card
+                className="mt-10 w-full max-w-md"
                 data-crewmate-card
+                render={<section />}
+                variant="well"
               >
-                {model.job === "" ? null : (
-                  <CrewmateJobLine job={model.job} onChangeJob={crew.onChangeJob} />
-                )}
-                {model.work.length === 0 ? null : (
-                  <CrewmateWork
-                    environmentId={environmentId}
-                    first={model.job === ""}
-                    more={model.more}
-                    onShowAll={readOlder}
-                    work={model.work}
-                  />
-                )}
-              </section>
+                <div className="flex flex-col px-4 py-3">
+                  {model.job === "" ? null : (
+                    <CrewmateJobLine job={model.job} onChangeJob={crew.onChangeJob} />
+                  )}
+                  {model.work.length === 0 ? null : (
+                    <CrewmateWork
+                      environmentId={environmentId}
+                      first={model.job === ""}
+                      more={model.more}
+                      onShowAll={readOlder}
+                      work={model.work}
+                    />
+                  )}
+                </div>
+              </Card>
             )}
           </>
         )}

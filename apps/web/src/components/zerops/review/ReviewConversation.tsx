@@ -38,6 +38,7 @@ import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
+import { ComposerFrame } from "~/components/ui/composer-frame";
 import { Text } from "~/components/ui/text";
 
 /** What was being written on each change, kept while the tab is open. */
@@ -271,7 +272,7 @@ function SayBox({
   return (
     <>
       {/* The one box: a quiet line that grows as it is written in, its two verbs at its end. */}
-      <div className="flex items-end gap-1.5 rounded-card bg-card py-1.25 ps-3 pe-1.25 inset-ring-1 inset-ring-foreground/12 transition-shadow duration-150 ease-out-strong focus-within:inset-ring-foreground/22 focus-within:ring-3 focus-within:ring-ring/24">
+      <ComposerFrame size="card">
         <Textarea
           aria-label="Say something on this change"
           className="flex-1"
@@ -314,7 +315,7 @@ function SayBox({
             {changeAskLabel(asker.name)}
           </SayVerb>
         )}
-      </div>
+      </ComposerFrame>
       {trouble === null ? null : (
         <Failure cause={trouble} className="mt-1.5" role="alert" size="line" />
       )}

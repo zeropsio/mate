@@ -234,10 +234,8 @@ function ReleaseRow({
       open={open}
       render={
         <li
-          className={cn(
-            "grid min-w-0 rounded-control transition-colors duration-150 ease-out-strong",
-            open ? "bg-item-hover pb-1.5" : "has-[>[data-hist-head]:hover]:bg-item-hover",
-          )}
+          className="grid min-w-0 rounded-control transition-colors duration-150 ease-out-strong not-data-open:has-[>[data-hist-head]:hover]:bg-item-hover data-open:bg-item-hover data-open:pb-1.5"
+          data-open={open ? "" : undefined}
         />
       }
     >

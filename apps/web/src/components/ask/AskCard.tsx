@@ -6,11 +6,12 @@
  * changes with the state, so the card stays where the person saw it. Production is the only red:
  * its chip and its main press. Props only: each kind's container reads its source.
  */
-import { Children, Fragment, type ReactNode, useState } from "react";
+import { Children, type ReactNode, useState } from "react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { Fact, Facts } from "../ui/facts";
 import { Spinner } from "../ui/spinner";
 import { StepNumber, type StepNumberState } from "../ui/step-number";
 import { useReportAskOnScreen } from "./askReveal";
@@ -350,23 +351,13 @@ export function AskFacts({
 }) {
   return (
     <Card size="sm" variant="inset">
-      <dl className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-caption">
+      <Facts mono>
         {rows.map((row) => (
-          <Fragment key={row.label}>
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd className="min-w-0 break-words">
-              {row.was === undefined ? (
-                row.value
-              ) : (
-                <>
-                  <del className="text-muted-foreground">{row.was}</del> →{" "}
-                  <ins className="font-medium no-underline">{row.value}</ins>
-                </>
-              )}
-            </dd>
-          </Fragment>
+          <Fact key={row.label} label={row.label} was={row.was}>
+            {row.value}
+          </Fact>
         ))}
-      </dl>
+      </Facts>
     </Card>
   );
 }

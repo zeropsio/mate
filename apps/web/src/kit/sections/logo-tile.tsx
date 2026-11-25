@@ -1,4 +1,4 @@
-import { BoxIcon, PaletteIcon } from "lucide-react";
+import { BoxIcon, LaptopIcon, PaletteIcon } from "lucide-react";
 
 import { ClaudeAI, OpenAI, OpenCodeIcon } from "~/components/Icons";
 import { LogoTile } from "~/components/ui/logo-tile";
@@ -12,6 +12,11 @@ function LogoTileSpecimens() {
     <Specimens>
       <SpecimenBlock title="Sizes">
         <SpecimenGrid>
+          <Specimen label='size="xl"' note="The head of a place's empty or waiting state">
+            <LogoTile size="xl">
+              <LaptopIcon strokeWidth={1.5} />
+            </LogoTile>
+          </Specimen>
           <Specimen label='size="lg"' note="An lg row's or a picker's start">
             <LogoTile size="lg">
               <ClaudeAI />

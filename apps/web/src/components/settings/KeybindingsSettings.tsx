@@ -77,6 +77,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { Overlay } from "~/components/ui/overlay";
 import { List } from "~/components/ui/list";
 
 function KeybindingPill({ value }: { value: string }) {
@@ -353,82 +354,81 @@ function WhenExpressionNodeEditor({
       : [condition.identifier];
 
     return (
-      <div className="flex items-center gap-2 rounded-control border border-border/70 bg-background/60 px-2 py-2">
-        <Toggle
-          pressed={condition.negated}
-          onPressedChange={(pressed) => onChange(setConditionNegated(node, pressed))}
-          aria-label={`Negate ${condition.identifier}`}
-          variant="outline"
-          size="compact"
-          className="min-w-10"
-        >
-          Not
-        </Toggle>
-        <WhenVariableSelect
-          value={condition.identifier}
-          variables={variables}
-          unknownIdentifiers={unknownIdentifiers}
-          onChange={(value) => onChange(setConditionIdentifier(node, value))}
-        />
-        {onRemove ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="size-7"
-            aria-label="Remove condition"
-            onClick={onRemove}
-          >
-            <MinusIcon />
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (node.type === "not") {
-    return (
-      <div
-        className={cn(
-          "space-y-2 rounded-card border border-border/70 bg-muted/20 p-2",
-          depth > 0 && "border-border/50 bg-background/50",
-        )}
-      >
-        <div className="flex items-center gap-2">
+      <Card variant="inset">
+        <div className="flex items-center gap-2 p-2">
           <Toggle
-            pressed
-            onPressedChange={(pressed) => onChange(pressed ? node : node.node)}
-            aria-label="Negate group"
+            pressed={condition.negated}
+            onPressedChange={(pressed) => onChange(setConditionNegated(node, pressed))}
+            aria-label={`Negate ${condition.identifier}`}
             variant="outline"
             size="compact"
             className="min-w-10"
           >
             Not
           </Toggle>
+          <WhenVariableSelect
+            value={condition.identifier}
+            variables={variables}
+            unknownIdentifiers={unknownIdentifiers}
+            onChange={(value) => onChange(setConditionIdentifier(node, value))}
+          />
           {onRemove ? (
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="ml-auto size-7"
-              aria-label="Remove negated group"
+              className="size-7"
+              aria-label="Remove condition"
               onClick={onRemove}
             >
               <MinusIcon />
             </Button>
           ) : null}
         </div>
-        <div className="relative pl-4">
-          <span className="absolute top-0 bottom-0 left-1.5 w-px bg-border/70" aria-hidden />
-          <span className="absolute top-4 left-1.5 h-px w-2.5 bg-border/70" aria-hidden />
-          <WhenExpressionNodeEditor
-            node={node.node}
-            variables={variables}
-            depth={depth + 1}
-            onChange={(next) => onChange({ type: "not", node: next })}
-          />
+      </Card>
+    );
+  }
+
+  if (node.type === "not") {
+    return (
+      <Card variant="well">
+        <div className="space-y-2 p-2">
+          <div className="flex items-center gap-2">
+            <Toggle
+              pressed
+              onPressedChange={(pressed) => onChange(pressed ? node : node.node)}
+              aria-label="Negate group"
+              variant="outline"
+              size="compact"
+              className="min-w-10"
+            >
+              Not
+            </Toggle>
+            {onRemove ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="ml-auto size-7"
+                aria-label="Remove negated group"
+                onClick={onRemove}
+              >
+                <MinusIcon />
+              </Button>
+            ) : null}
+          </div>
+          <div className="relative pl-4">
+            <span className="absolute top-0 bottom-0 left-1.5 w-px bg-border/70" aria-hidden />
+            <span className="absolute top-4 left-1.5 h-px w-2.5 bg-border/70" aria-hidden />
+            <WhenExpressionNodeEditor
+              node={node.node}
+              variables={variables}
+              depth={depth + 1}
+              onChange={(next) => onChange({ type: "not", node: next })}
+            />
+          </div>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -495,71 +495,68 @@ function WhenExpressionNodeEditor({
   };
 
   return (
-    <div
-      className={cn(
-        "space-y-2 rounded-card border border-border/60 bg-muted/10 p-2",
-        depth > 0 && "border-border/70 bg-background/55",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={operator} onValueChange={(value) => setOperator(value as BooleanOperator)}>
-          <SelectTrigger size="compact" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false}>
-            <SelectItem value="and">and</SelectItem>
-            <SelectItem value="or">or</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
-          <PlusIcon />
-          Condition
-        </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
-          <PlusIcon />
-          Group
-        </Button>
-        {onRemove ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="ml-auto size-7"
-            aria-label="Remove group"
-            onClick={onRemove}
-          >
-            <MinusIcon />
+    <Card variant="well">
+      <div className="space-y-2 p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={operator} onValueChange={(value) => setOperator(value as BooleanOperator)}>
+            <SelectTrigger size="compact" className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false} matchTriggerWidth={false}>
+              <SelectItem value="and">and</SelectItem>
+              <SelectItem value="or">or</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
+            <PlusIcon />
+            Condition
           </Button>
-        ) : null}
+          <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
+            <PlusIcon />
+            Group
+          </Button>
+          {onRemove ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="ml-auto size-7"
+              aria-label="Remove group"
+              onClick={onRemove}
+            >
+              <MinusIcon />
+            </Button>
+          ) : null}
+        </div>
+        <div className="space-y-2">
+          {childEntries.map(({ child, key }) => (
+            <div key={key} className="relative pl-4">
+              <span
+                className={cn(
+                  "absolute top-0 bottom-0 left-1.5 w-px",
+                  depth === 0 ? "bg-border" : "bg-border/70",
+                )}
+                aria-hidden
+              />
+              <span
+                className={cn(
+                  "absolute top-4 left-1.5 h-px w-2.5",
+                  depth === 0 ? "bg-border" : "bg-border/70",
+                )}
+                aria-hidden
+              />
+              <WhenExpressionNodeEditor
+                node={child}
+                variables={variables}
+                depth={depth + 1}
+                onChange={(next) => updateChild(child, next)}
+                onRemove={() => removeChild(child)}
+              />
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="space-y-2">
-        {childEntries.map(({ child, key }) => (
-          <div key={key} className="relative pl-4">
-            <span
-              className={cn(
-                "absolute top-0 bottom-0 left-1.5 w-px",
-                depth === 0 ? "bg-border" : "bg-border/70",
-              )}
-              aria-hidden
-            />
-            <span
-              className={cn(
-                "absolute top-4 left-1.5 h-px w-2.5",
-                depth === 0 ? "bg-border" : "bg-border/70",
-              )}
-              aria-hidden
-            />
-            <WhenExpressionNodeEditor
-              node={child}
-              variables={variables}
-              depth={depth + 1}
-              onChange={(next) => updateChild(child, next)}
-              onRemove={() => removeChild(child)}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -681,11 +678,9 @@ function WhenExpressionBuilder({
             </div>
           </Card>
         )}
-        {parseError ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-card border border-destructive/30 bg-background/75 p-4 text-center text-caption text-destructive backdrop-blur-xs">
-            Fix the expression above to continue editing visually.
-          </div>
-        ) : null}
+        <Overlay kind="veil" shown={parseError !== null}>
+          Fix the expression above to continue editing visually.
+        </Overlay>
       </div>
     </div>
   );

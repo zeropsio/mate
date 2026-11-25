@@ -9,7 +9,10 @@ import { cn } from "~/lib/utils";
 /**
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
  * inside another (a well set into its surface), set apart by a step of the ink under it instead of
- * a second border — depth shows as tint, on a page, a card and a tray alike; `sheet` is a card that
+ * a second border — depth shows as tint, on a page, a card and a tray alike (a condition, a fact
+ * list, a quoted message); `well` is the larger well a working area stands in, at the card's corner
+ * so what it holds keeps its corners parallel to it: the run card's working row and its browser, a
+ * crew lead's plan, rows to pick under their cards, a group of conditions; `sheet` is a card that
  * stands alone as its own surface, side by side with its kind (the overview's project cards): the
  * default card at the sheet's radius; `slot` is the place a thing will stand before it is there (a
  * service the setup declares and Zerops lacks, a section with nothing yet): a dashed hairline and
@@ -36,6 +39,7 @@ const cardVariants = cva("", {
         "relative flex flex-col rounded-card border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge",
       flat: "relative flex flex-col rounded-card border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
       inset: "relative flex flex-col rounded-control bg-foreground/4 text-card-foreground",
+      well: "relative flex flex-col rounded-card bg-foreground/5 text-card-foreground",
       sheet:
         "relative flex flex-col rounded-sheet border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-sheet)-1px)] before:shadow-edge",
       slot: "relative flex flex-col rounded-card border border-dashed border-border",

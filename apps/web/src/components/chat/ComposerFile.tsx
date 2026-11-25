@@ -14,6 +14,7 @@ import { formatAttachmentUploadProgress } from "~/lib/attachmentUploadState";
 import { fileChipName } from "~/lib/composerFiles";
 import { inferEntryKindFromPath } from "../../pierre-icons";
 import { Button } from "../ui/button";
+import { PictureFrame } from "../ui/picture-frame";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatPictureBytes } from "./ComposerPictureView";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -107,9 +108,10 @@ export function ComposerFile({ id }: { readonly id: string }) {
         ? "Not uploaded"
         : formatPictureBytes(file.sizeBytes);
   return (
-    // A quiet card as tall as a picture, so a row of pictures and files reads as one gallery.
+    // In a picture's frame, as tall as a picture, so a row of pictures and files reads as one
+    // gallery; a ring when focused or picked, amber when its upload did not go through.
     <span
-      className="group/file relative inline-flex h-20 w-42 max-w-full cursor-default flex-col justify-between rounded-control bg-foreground/4 px-3 py-2.5 leading-normal text-foreground outline-none ring-1 ring-foreground/14 transition-shadow duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring in-data-composer-chip-selected:ring-2 in-data-composer-chip-selected:ring-ring data-[status=failed]:ring-2 data-[status=failed]:ring-warning"
+      className="group/file relative inline-flex h-20 w-42 max-w-full cursor-default rounded-control outline-none transition-shadow duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring in-data-composer-chip-selected:ring-2 in-data-composer-chip-selected:ring-ring data-[status=failed]:ring-2 data-[status=failed]:ring-warning"
       data-composer-file={id}
       data-status={file.status}
       role="group"
@@ -117,12 +119,16 @@ export function ComposerFile({ id }: { readonly id: string }) {
       aria-label={`File ${file.number}, ${file.name}, ${formatPictureBytes(file.sizeBytes)}`}
       onKeyDown={onKeyDown}
     >
-      <AttachedFileFace
-        name={file.name}
-        detail={detail}
-        theme={resolvedTheme}
-        nameChars={CARD_NAME_CHARS}
-      />
+      <PictureFrame className="size-full" size="control">
+        <span className="flex size-full flex-col justify-between px-3 py-2.5 leading-normal text-foreground">
+          <AttachedFileFace
+            name={file.name}
+            detail={detail}
+            theme={resolvedTheme}
+            nameChars={CARD_NAME_CHARS}
+          />
+        </span>
+      </PictureFrame>
       {file.status === "failed" ? (
         <span className="absolute right-2 bottom-2 flex">
           <Button

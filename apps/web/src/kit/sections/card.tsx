@@ -182,6 +182,20 @@ function CardSpecimens() {
             </div>
           </Specimen>
           <Specimen
+            label='variant="well" size="md" · variant="well" size="rows"'
+            note="The well a working area stands in, at the card's corner"
+          >
+            <div className="flex w-full max-w-[28rem] flex-col gap-3 rounded-sheet bg-run-tray p-3.75">
+              <Card size="md" variant="well">
+                <p className="m-0 text-body">What the Mate does this moment.</p>
+              </Card>
+              <Card size="rows" variant="well">
+                <Row pressable render={<button type="button" />} size="sm" title="storefront" />
+                <Row pressable render={<button type="button" />} size="sm" title="api" />
+              </Card>
+            </div>
+          </Specimen>
+          <Specimen
             label="<CardFrame> · <CardFrameHeader> · <CardFrameFooter>"
             note="A frame around two cards"
           >

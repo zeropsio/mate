@@ -10,8 +10,8 @@ export default definePlayground({
   controls: {
     variant: {
       kind: "enum",
-      options: ["default", "flat", "inset", "sheet", "slot", "wash"],
-      note: "flat is the app's; sheet a card standing alone among its kind; slot a place not filled yet; wash a card that stands out in its tone",
+      options: ["default", "flat", "inset", "well", "sheet", "slot", "wash"],
+      note: "flat is the app's; inset a small well, well the one a working area stands in; sheet a card standing alone among its kind; slot a place not filled yet; wash a card that stands out in its tone",
     },
     size: {
       kind: "enum",

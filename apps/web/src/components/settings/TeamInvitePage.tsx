@@ -17,6 +17,7 @@ import { useEffect, useId, useState } from "react";
 import { toastManager } from "~/lib/toasts";
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import { EmptyState } from "../ui/empty";
 import { Failure } from "../ui/failure";
@@ -234,7 +235,13 @@ export function TeamInviteView({
         <SectionHeader line={inviteReachLine(membership, projects.length)} title="Projects" />
         {level === null || projects.length === 0 ? null : (
           <>
-            <ul aria-label="Projects to give" className="grid gap-0.5 rounded-card bg-muted p-1.5">
+            <Card
+              aria-label="Projects to give"
+              className="grid gap-0.5"
+              render={<ul />}
+              size="rows"
+              variant="well"
+            >
               {projects.map((project) => (
                 <li key={project.key}>
                   <Row
@@ -255,7 +262,7 @@ export function TeamInviteView({
                   />
                 </li>
               ))}
-            </ul>
+            </Card>
             {pickedNone ? (
               <span
                 className="text-body leading-4.5 text-pretty text-muted-foreground"

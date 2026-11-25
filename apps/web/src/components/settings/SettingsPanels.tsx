@@ -78,6 +78,7 @@ import { buildThreadRouteParams } from "../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { EmptyState } from "../ui/empty";
 import { Loading } from "../ui/loading";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -962,12 +963,11 @@ export function AppearanceSettingsPanel() {
           }
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
-              <output
-                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
-                htmlFor="appearance-contrast"
-              >
-                {settings.appearanceContrast}%
-              </output>
+              <span className="flex w-12 shrink-0 justify-center">
+                <Badge count render={<output htmlFor="appearance-contrast" />}>
+                  {settings.appearanceContrast}%
+                </Badge>
+              </span>
               <Slider
                 aria-label="Contrast"
                 className="min-w-0 flex-1"
@@ -997,12 +997,11 @@ export function AppearanceSettingsPanel() {
           }
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
-              <output
-                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
-                htmlFor="glass-opacity"
-              >
-                {settings.glassOpacity}%
-              </output>
+              <span className="flex w-12 shrink-0 justify-center">
+                <Badge count render={<output htmlFor="glass-opacity" />}>
+                  {settings.glassOpacity}%
+                </Badge>
+              </span>
               <Slider
                 aria-label="Glass opacity"
                 className="min-w-0 flex-1"

@@ -983,11 +983,11 @@ export function EnvironmentProviderSettings({
         ) : null}
         <div className="space-y-1">
           <Card className="overflow-hidden lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
-            <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
-              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-2xs font-medium text-muted-foreground">
-                <span>Provider</span>
-                <span>On</span>
-              </div>
+            <div className="border-b border-rule lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
+              <PanelBar className="justify-between">
+                <span className="text-2xs font-medium text-muted-foreground">Provider</span>
+                <span className="text-2xs font-medium text-muted-foreground">On</span>
+              </PanelBar>
               <List className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {rows.map((row) => renderProviderInstance(row, "list"))}
               </List>

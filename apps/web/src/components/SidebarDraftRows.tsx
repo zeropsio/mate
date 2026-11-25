@@ -19,7 +19,6 @@ import {
 } from "../composerDraftStore";
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { stripInlinePicturePlaceholders } from "../lib/composerPictures";
-import { cn } from "~/lib/utils";
 import { Button } from "./ui/button";
 import { Row } from "./ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -77,10 +76,8 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   return (
     // The menu's one-line row; its ground is the menu's, as a Mate's unit's is.
     <li
-      className={cn(
-        "list-none rounded-card transition-colors duration-150 ease-out-strong",
-        props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-      )}
+      className="list-none rounded-card transition-colors duration-150 ease-out-strong not-data-active:hover:bg-sidebar-row-hover data-active:bg-sidebar-row-active"
+      data-active={props.isActive ? "" : undefined}
     >
       <Row
         data-testid="sidebar-draft-row"

@@ -65,6 +65,7 @@ import {
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
+import { LogoTile } from "~/components/ui/logo-tile";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 import {
@@ -1152,9 +1153,9 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           <div className="grid md:grid-cols-2 md:divide-x md:divide-border/60">
             <div className="px-4 py-4 sm:px-5">
               <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-                <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                  <BatteryIcon className="size-3.5" />
-                </span>
+                <LogoTile size="sm">
+                  <BatteryIcon />
+                </LogoTile>
                 Host state
               </div>
               {hasHostPowerSignal && snapshot ? (
@@ -1222,9 +1223,9 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             </div>
             <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
               <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-                <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                  <GaugeIcon className="size-3.5" />
-                </span>
+                <LogoTile size="sm">
+                  <GaugeIcon />
+                </LogoTile>
                 Collection health
               </div>
               {snapshot ? (

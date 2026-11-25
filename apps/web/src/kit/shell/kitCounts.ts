@@ -198,10 +198,16 @@ const WEB_CLIENT = "apps/web/";
 // `phases.json` is the data layer's migration record, not a guard's ledger.
 const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> = import.meta.glob<
   readonly LedgerEntry[]
->(["../../../../../oxlint-plugin-t3code/exceptions/*.json", "!**/phases.json"], {
-  eager: true,
-  import: "default",
-});
+>(
+  [
+    "../../../../../oxlint-plugin-t3code/exceptions/*.json",
+    "!../../../../../oxlint-plugin-t3code/exceptions/phases.json",
+  ],
+  {
+    eager: true,
+    import: "default",
+  },
+);
 
 /** A guard's ledger: the places still to fix, and those it keeps on purpose (`expires: "never"`). */
 export interface KitGuardCount {

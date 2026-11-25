@@ -79,7 +79,7 @@ export function CommitRow({
   const change = item.change;
   const title = changeTitle(item, changes);
   return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
+    <div className="flex min-w-0 items-center gap-3 border-b border-rule px-4 py-2">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="truncate text-body text-foreground">{item.subject}</p>
         <Text className="flex min-w-0 flex-wrap items-center gap-x-2" render={<p />} variant="note">

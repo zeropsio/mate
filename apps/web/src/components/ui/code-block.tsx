@@ -45,6 +45,27 @@ const codeHeightVariants = cva("min-h-0 overflow-auto", {
 });
 
 type CodeTone = "default" | "error";
+
+/**
+ * The frame alone, for machine text another renderer draws inside it: a highlighter's lines under
+ * the header it draws (an answer's code block), a terminal (the sign-in's login). Its ground,
+ * hairline and corner are `CodeBlock`'s, so every block of machine text stands alike; text the
+ * page draws itself is a `CodeBlock`, never this.
+ */
+function CodeFrame({
+  tone = "default",
+  className,
+  ...props
+}: ComponentProps<"div"> & { readonly tone?: CodeTone }) {
+  return (
+    <div
+      className={cn(codeFrameVariants({ tone }), className)}
+      data-slot="code-frame"
+      data-tone={tone}
+      {...props}
+    />
+  );
+}
 type CodeHeight = "auto" | "sm" | "md" | "pane";
 
 /**
@@ -266,4 +287,12 @@ function LogView({
   );
 }
 
-export { CodeBlock, LogView, type CodeHeight, type CodeTone, type LogLine, type LogTone };
+export {
+  CodeBlock,
+  CodeFrame,
+  LogView,
+  type CodeHeight,
+  type CodeTone,
+  type LogLine,
+  type LogTone,
+};

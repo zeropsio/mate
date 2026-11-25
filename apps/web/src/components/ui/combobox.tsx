@@ -187,6 +187,11 @@ function ComboboxPopup({
   );
 }
 
+/**
+ * One choice. The one under the cursor, the pointer's or the arrow keys', lights on the item's
+ * hover ground (`bg-item-hover`); a chosen one stands on the picked ground (`bg-item-picked`)
+ * and stays on it under the cursor: the item draws no check, so its ground is its mark.
+ */
 function ComboboxItem({
   className,
   children,
@@ -198,7 +203,7 @@ function ComboboxItem({
   return (
     <ComboboxPrimitive.Item
       className={cn(
-        "flex min-h-10 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-control px-2 py-1 text-body outline-none not-data-disabled:hover:bg-accent data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:bg-foreground/[0.08] data-selected:text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-accent [&[data-highlighted][data-selected]]:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex min-h-10 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-control px-2 py-1 text-body outline-none not-data-disabled:not-data-selected:[:hover,[data-highlighted]]:bg-item-hover data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:bg-item-picked data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="combobox-item"

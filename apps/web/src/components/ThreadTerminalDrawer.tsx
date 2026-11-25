@@ -88,6 +88,7 @@ import {
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
 import { Separator } from "~/components/ui/separator";
+import { Toolbar } from "~/components/ui/toolbar";
 
 interface TerminalInputTarget {
   readonly environmentId: EnvironmentId;
@@ -1717,7 +1718,7 @@ export default function ThreadTerminalDrawer({
                 "pointer-events-none absolute right-2 top-2 z-20 max-sm:static max-sm:flex max-sm:justify-end max-sm:bg-(--terminal-background) max-sm:px-2 max-sm:pt-2 max-sm:pb-1"
           }
         >
-          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-control border border-border/80 bg-background shadow-xs">
+          <Toolbar aria-label="Terminal" className="pointer-events-auto">
             {/* Half a phone's width is no terminal: the splits stay off it. */}
             <span className="contents max-sm:hidden">
               <TerminalActionButton
@@ -1747,7 +1748,7 @@ export default function ThreadTerminalDrawer({
             >
               <Trash2 className="size-3.25" />
             </TerminalActionButton>
-          </div>
+          </Toolbar>
         </div>
       )}
 

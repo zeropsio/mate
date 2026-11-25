@@ -77,6 +77,7 @@ import {
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 import { List } from "~/components/ui/list";
+import { Fact, Facts } from "~/components/ui/facts";
 
 export const MCP_WORDS = {
   builtIn: "Built in",
@@ -806,15 +807,6 @@ function ToolRow(props: {
 }
 
 /** One label column down every open row, so values line up across the tab. */
-function Fact(props: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <>
-      <dt className="text-caption leading-5 text-muted-foreground">{props.label}</dt>
-      <dd className="m-0 min-w-0 text-caption leading-5">{props.children}</dd>
-    </>
-  );
-}
-
 const TOOLS_SHOWN = 6;
 
 /** A tool's name, its description on hover where the server gave one. */
@@ -860,7 +852,7 @@ function ToolFacts(props: {
   const unmarked = row.tools.filter((tool) => tool.mark === null);
   const error = row.note?.kind === "error" ? row.note.text : null;
   return (
-    <dl className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-3 gap-y-1.5" data-mcp-facts>
+    <Facts data-mcp-facts>
       {reads.length > 0 ? (
         <Fact label={MCP_WORDS.reads}>
           <ToolNames tools={reads} />
@@ -927,7 +919,7 @@ function ToolFacts(props: {
       )}
       {row.managed ? <Fact label={MCP_WORDS.comesWith}>{MCP_WORDS.everyMate}</Fact> : null}
       {row.origin === "repo" ? <Fact label={MCP_WORDS.keptIn}>{MCP_WORDS.fromRepo}</Fact> : null}
-    </dl>
+    </Facts>
   );
 }
 

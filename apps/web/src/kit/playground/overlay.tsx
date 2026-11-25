@@ -5,7 +5,7 @@ import { Overlay } from "~/components/ui/overlay";
 import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { OverlayStage } from "../sections/overlay";
 
-const KINDS = ["drop", "hint"] as const;
+const KINDS = ["drop", "veil", "hint"] as const;
 
 export default definePlayground({
   section: "overlay",
@@ -15,7 +15,7 @@ export default definePlayground({
     kind: {
       kind: "enum",
       options: KINDS,
-      note: "drop: over its surface, a target; hint: over the window, a held key",
+      note: "drop: over its surface, a target; veil: over a surface not usable now; hint: over the window, a held key",
     },
     shown: { kind: "boolean", note: "it eases in and out instead of mounting" },
     icon: { kind: "boolean", note: "a glyph before the words, in the primary ink" },

@@ -30,6 +30,7 @@ import {
 } from "./pictureAsk.logic";
 import { Text } from "~/components/ui/text";
 import { PictureFrame } from "~/components/ui/picture-frame";
+import { Fact, Facts } from "~/components/ui/facts";
 
 interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
@@ -302,14 +303,13 @@ function PictureFacts({
   return (
     <div className="flex min-w-0 items-start gap-3">
       {picture}
-      <dl className="grid min-w-0 flex-1 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
+      <Facts className="flex-1">
         {rows.map((row) => (
-          <div className="contents" key={row.label}>
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
-          </div>
+          <Fact key={row.label} label={row.label}>
+            {row.value}
+          </Fact>
         ))}
-      </dl>
+      </Facts>
     </div>
   );
 }

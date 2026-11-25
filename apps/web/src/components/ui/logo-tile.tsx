@@ -11,8 +11,9 @@ import { cn } from "~/lib/utils";
  *
  * Sizes follow the row they lead (`Row`): `md` (32 px) an `md` row's or a card's start, `lg`
  * (36 px) an `lg` row's or a picker's start, both raised on a hairline; `sm` (22 px) a compact
- * line, flat. The mark inside takes the size its tile gives it: an icon or a logo 16, 18 or 14 px,
- * letters in the tile's own type. `ground="menu"` is the tile on the menu's ground: flat, in the
+ * line, flat; `xl` (56 px, the card's corner) the mark that heads a place's empty or waiting state
+ * (the Mac panel's laptop), raised the same way. The mark inside takes the size its tile gives
+ * it: an icon or a logo 16, 18, 14 or 28 px, letters in the tile's own type. `ground="menu"` is the tile on the menu's ground: flat, in the
  * menu's tint and its muted ink. Decorative: the name beside it says what it is.
  */
 const logoTileVariants = cva(
@@ -24,6 +25,7 @@ const logoTileVariants = cva(
         sm: "size-5.5 text-3xs [&_svg:not([class*='size-'])]:size-3.5",
         md: "size-8 text-body [&_svg:not([class*='size-'])]:size-4",
         lg: "size-9 text-body [&_svg:not([class*='size-'])]:size-4.5",
+        xl: "size-14 rounded-card text-title [&_svg:not([class*='size-'])]:size-7",
       },
       ground: {
         card: "bg-accent text-foreground",
@@ -31,7 +33,7 @@ const logoTileVariants = cva(
       },
     },
     compoundVariants: [
-      { size: ["md", "lg"], ground: "card", className: "border border-border/60 shadow-xs" },
+      { size: ["md", "lg", "xl"], ground: "card", className: "border border-border/60 shadow-xs" },
     ],
   },
 );

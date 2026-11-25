@@ -39,6 +39,7 @@ import {
   spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
+import { Alert, AlertAction } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
@@ -884,22 +885,9 @@ export function PauseBlock({
       </div>
     );
   }
-  return (
-    <div
-      className={cn(
-        // Resumed, the same block goes quiet — history, not a state to act
-        // on: a line like an event's — and keeps
-        // its height: newer rows may already sit under it.
-        "relative grid gap-3 rounded-card border py-3 text-center",
-        history
-          ? "border-x-0 border-transparent text-muted-foreground"
-          : "border-border bg-muted/35 px-3.5",
-      )}
-      data-conversation-pause={
-        resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused"
-      }
-      role="status"
-    >
+  const pause = resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused";
+  const words = (
+    <div className="grid gap-3">
       <div className="flex min-w-0 flex-col items-center gap-1 text-line" data-pause-head>
         <span className="font-medium">
           {history
@@ -928,7 +916,24 @@ export function PauseBlock({
       <Text render={<p />} variant="remark" data-pause-detail>
         {detail}
       </Text>
+    </div>
+  );
+  // Resumed, the same block goes quiet — history, not a state to act on: a line like an
+  // event's — and keeps its height (its edge's room, its 12 px): newer rows may already sit
+  // under it.
+  return history ? (
+    <div
+      className="relative grid gap-3 border-y border-transparent py-3 text-center text-muted-foreground"
+      data-conversation-pause={pause}
+      role="status"
+    >
+      {words}
       {actions}
     </div>
+  ) : (
+    <Alert data-conversation-pause={pause} layout="centered">
+      {words}
+      {actions === null || actions === undefined ? null : <AlertAction>{actions}</AlertAction>}
+    </Alert>
   );
 }

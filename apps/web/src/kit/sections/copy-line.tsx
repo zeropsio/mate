@@ -41,6 +41,9 @@ export default defineKitSection({
               value={null}
             />
           </Specimen>
+          <Specimen label='size="lg"' note="A code typed by hand on another page">
+            <CopyLine label="the code" size="lg" value="K7QD-M2XW" />
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock note="The place's own label names it, over or beside it." title="Named">

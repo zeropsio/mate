@@ -7,6 +7,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from "./alert";
 import { InlineButton } from "./button";
 import { CodeBlock } from "./code-block";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./collapsible";
+import { Fact, Facts } from "./facts";
 import { StatusPage } from "./status-page";
 
 /**
@@ -54,14 +55,13 @@ function DetailsPanel({
     <CollapsiblePanel>
       <div className="pt-2 text-left">
         {fields !== undefined ? (
-          <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
+          <Facts mono>
             {fields.map((field) => (
-              <div className="contents" key={field.label}>
-                <dt className="text-muted-foreground">{field.label}</dt>
-                <dd className="m-0 font-mono text-foreground/80 wrap-anywhere">{field.value}</dd>
-              </div>
+              <Fact key={field.label} label={field.label}>
+                {field.value}
+              </Fact>
             ))}
-          </dl>
+          </Facts>
         ) : typeof children === "string" ? (
           <FailureWords words={children} />
         ) : (

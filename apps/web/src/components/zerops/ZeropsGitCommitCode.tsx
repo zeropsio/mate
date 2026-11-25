@@ -20,6 +20,7 @@ import { reviewEnvironment } from "~/state/review";
 import { useAtomCommand } from "~/state/use-atom-command";
 
 import { AnnotatableCodeView } from "../diffs/AnnotatableCodeView";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Text } from "~/components/ui/text";
 import { CodeBlock } from "~/components/ui/code-block";
@@ -87,9 +88,9 @@ export default function ZeropsGitCommitCode({
   return (
     <>
       {source.truncated ? (
-        <p className="shrink-0 border-b border-border px-3 py-1.5 text-2xs text-muted-foreground">
+        <Alert className="shrink-0" surface="band" variant="warning">
           This commit is larger than the preview limit; the changes shown are incomplete.
-        </p>
+        </Alert>
       ) : null}
       {patch?.kind === "raw" ? (
         <div className="min-h-0 flex-1 overflow-auto p-3">

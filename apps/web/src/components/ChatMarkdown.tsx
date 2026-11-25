@@ -86,6 +86,10 @@ import { Checkbox } from "./ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsible";
 import { ScrollArea } from "./ui/scroll-area";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
+import { CodeFrame } from "./ui/code-block";
+import { PictureFrame } from "./ui/picture-frame";
+import { Toolbar } from "./ui/toolbar";
+import { Text } from "./ui/text";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import {
   PreferredEditorEnvironmentRequiredError,
@@ -641,27 +645,29 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
           shows while the table is under the pointer or holds the focus (always
           on a touch screen). On a line of its own under every table it cost
           the answer a row of air for one icon. */}
-      <div className="absolute end-0 top-1 flex items-center rounded-control bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
-        <Menu>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <MenuTrigger
-                  render={
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={copyLabel} />
-                  }
-                />
-              }
-            >
-              {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
-            </TooltipTrigger>
-            <TooltipPopup side="top">{copyLabel}</TooltipPopup>
-          </Tooltip>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
-            <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
-          </MenuPopup>
-        </Menu>
+      <div className="absolute end-0 top-1 flex opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+        <Toolbar aria-label="Table">
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label={copyLabel} />
+                    }
+                  />
+                }
+              >
+                {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            </Tooltip>
+            <MenuPopup align="end">
+              <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
+              <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
+            </MenuPopup>
+          </Menu>
+        </Toolbar>
       </div>
     </div>
   );
@@ -836,11 +842,7 @@ function MarkdownCodeBlock({
   );
 
   return (
-    <div
-      className="chat-markdown-codeblock my-2.5 overflow-hidden rounded-card border border-border bg-code leading-snug text-code-foreground"
-      data-language={language}
-      data-wrap={wrapped ? "true" : "false"}
-    >
+    <CodeFrame className="my-2.5" data-language={language}>
       <div className="chat-markdown-codeblock-header flex items-center justify-between gap-2 pt-1.5 pr-1.5 pb-0 pl-3 select-none">
         <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-2xs">
           <MarkdownCodeBlockTitleContent
@@ -907,8 +909,10 @@ function MarkdownCodeBlock({
           </Tooltip>
         </span>
       </div>
-      {children}
-    </div>
+      <div className="chat-markdown-codeblock leading-snug" data-wrap={wrapped ? "true" : "false"}>
+        {children}
+      </div>
+    </CodeFrame>
   );
 }
 
@@ -1399,11 +1403,14 @@ function ChatMarkdownImageFallback(props: {
   readonly reason?: string | undefined;
 }) {
   return (
-    <span className="my-1 inline-flex items-center gap-1.5 rounded-control border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground">
-      <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
-      {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
-      {props.reason ? ` · ${props.reason}` : null}
-    </span>
+    // The picture's own frame, holding why it is not there.
+    <PictureFrame className="my-1 inline-flex max-w-full" size="control">
+      <Text className="inline-flex min-w-0 items-center gap-1.5 px-2 py-1" variant="note">
+        <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
+        {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
+        {props.reason ? ` · ${props.reason}` : null}
+      </Text>
+    </PictureFrame>
   );
 }
 
