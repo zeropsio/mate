@@ -144,7 +144,6 @@ import {
 } from "./SettingsPanels.logic";
 import {
   PolicyTooltip,
-  SETTINGS_PICKER_TRIGGER_CLASSNAME,
   SettingResetButton,
   SettingsPageContainer,
   SettingsRow,
@@ -2429,7 +2428,6 @@ export function GeneralSettingsPanel() {
                   model={textGenModel}
                   instanceEntries={textGenerationModelInstanceEntries}
                   modelOptionsByInstance={textGenerationModelOptionsByInstance}
-                  triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                   onInstanceModelChange={(instanceId, model) => {
                     updateSettings({
                       textGenerationModelSelection: resolveAppModelSelectionState(
@@ -2460,7 +2458,6 @@ export function GeneralSettingsPanel() {
                     planModeEnabled={
                       settings.planModeEnabled || selectsPlanAgent(textGenModelOptions)
                     }
-                    triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
                     onModelOptionsChange={(nextOptions) => {
                       updateSettings({
                         textGenerationModelSelection: resolveAppModelSelectionState(

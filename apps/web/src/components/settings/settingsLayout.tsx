@@ -236,9 +236,6 @@ export function SettingResetButton({
  * settings row: drop the composer's max-width so the trigger sizes to its
  * label instead.
  */
-export const SETTINGS_PICKER_TRIGGER_CLASSNAME =
-  "min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground";
-
 export function SettingsPageContainer({
   children,
   className,

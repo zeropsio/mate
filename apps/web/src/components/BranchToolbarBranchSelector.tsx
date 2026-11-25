@@ -52,7 +52,6 @@ import {
   prStatusIndicator,
   resolveThreadPr,
 } from "./ThreadStatusIndicators";
-import { ComposerControl } from "./chat/ComposerControl";
 import { Button } from "./ui/button";
 import { Loading } from "./ui/loading";
 import { Spinner } from "./ui/spinner";
@@ -785,7 +784,7 @@ export function BranchToolbarBranchSelector({
           onContextMenu={(event) => handleBranchContextMenu(event, resolvedActiveBranch)}
         >
           <ComboboxTrigger
-            render={<ComposerControl size="xs" />}
+            render={<Button size="xs" variant="ghost-muted" />}
             className="min-w-0 max-w-full"
             disabled={isInitialBranchesLoadPending || isBranchActionPending}
           >
