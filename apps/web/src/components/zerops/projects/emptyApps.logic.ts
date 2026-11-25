@@ -61,17 +61,6 @@ export function emptyMateLine(contents: HqAppContents | undefined): string {
 }
 
 /**
- * What HQ still holds of a project, on its row beside its name: a deletion under way, or records
- * held where no Mate is left. Nothing where HQ holds nothing, or has not answered for it.
- */
-export function heldLine(mates: number, contents: HqAppContents | undefined): string | undefined {
-  if (contents === undefined) return undefined;
-  if (contents.deletingProjectIds.length > 0 || (mates === 0 && !contents.empty))
-    return emptyMateLine(contents);
-  return undefined;
-}
-
-/**
  * Which *Delete* a project's menu offers, where it has no Mate in it and the person writes the
  * structure (`delete_app`; `projectDeleteOffered`, the menu's rule): on HQ's empty answer the plain
  * one, whose dialog has nothing to list (`empty`); on HQ's word that it still holds code or

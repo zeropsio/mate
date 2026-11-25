@@ -1,12 +1,13 @@
-next: MN79
+next: MN87
 
+- MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
 - MN3 — Direct Git setup with an address other than the application's sole connected repository never overwrites it, and an invalid address or a reserved or malformed branch cannot advance setup
 - MN4 — Adopting existing code is accepted only with fresh tips of every connected repository, and unread repository evidence is never read as an empty application
 - MN5 — The jump box finds but never offers writing to a Mate somebody else signed in, and offers a new project only where the viewer's role offers one
 - MN6 — A sign-in dialog shows only its own attempt's outcome, never an earlier attempt's; a login still running is running however old, and a cancelled one shows none
-- MN7 — Deleting a project deletes its stages' Zerops projects and keeps its productions'; a Git-branch production has no Zerops project and is listed as staying, also with the last Mate
+- MN7 — Deleting a project deletes its stages' Zerops projects and a production's only once the person slid it; a production not slid, one Mate did not make, one on a Git branch and one the person cannot see are listed as staying
 - MN8 — Deleting a Mate is confirmed only by its name typed as spelled, spaces inside included
 - MN9 — A new stage keeps the people who could see its project
 - MN10 — A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform
@@ -22,7 +23,6 @@ next: MN79
 - MN20 — A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming
 - MN21 — A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)
 - MN22 — A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)
-- MN23 — A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again
 - MN24 — A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why
 - MN25 — A stage or a production this page asked for offers Start again at its own tier once HQ's environment operation of it ended failed, and never while it runs, for a deploy key, or for an operation started elsewhere; breaks: a failed stage's card offers only Dismiss, or a running one offers a second start
 - MN26 — A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added
@@ -51,7 +51,6 @@ next: MN79
 - MN48 — Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts
 - MN49 — HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again
 - MN50 — Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is
-- MN51 — A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays
 - MN52 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
 - MN53 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
 - MN54 — A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it
@@ -78,3 +77,10 @@ next: MN79
 - MN75 — A new Mate HQ says is coming offers no Try now unless its container failed at Zerops, and turns failed with HQ's reason for each refusal code HQ put on its birth, a code this build does not know in its details, its way out its birth's Delete; breaks: Try now on a Mate with no server does nothing, a refused Mate waits as coming forever or offers a Delete HQ does not, or a failed container loses its stop and start
 - MN76 — A new Mate whose hello HQ refused stops its arrival's row on the step that waited for that hello, failed, and nowhere else; breaks: the failed page still spins on Starting under its failed headline
 - MN78 — A change that waits on the person reads "Ready for your review" on the project's line and under "Waiting on you" only where nothing stops it: one whose GitHub checks failed, or that anything else stops, keeps that word.
+- MN79 — A repository's row says where its code also lives from its remote on any host, else what it follows, else that it is only in Mate; breaks: a repository on another host than GitHub reads as only in Mate
+- MN80 — The menu says how many kept-code questions are open in one line and none when there is none; breaks: the menu offers the answer in a second place, or says nothing while a question waits
+- MN82 — A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page
+- MN83 — A Mate's or a project's Delete offers exactly what the person may delete: a Mate that is not its project's last goes alone, the last Mate of a project the person may not delete whole goes alone keeping the project, the last Mate of one they may delete offers the choice, and a project HQ deletes, waits on or failed to delete shows that; breaks: the last Mate's Delete deletes a project holding a Mate still being set up or a Stage the person cannot delete
+- MN84 — The whole project's Delete sends one project deletion naming its last Mate, every Stage and only the Productions slid, and no Mate deletion; the last Mate's Delete alone sends one Mate deletion that keeps its project's code; breaks: a Production not slid is deleted, or the Mate and the project are deleted by two starts
+- MN85 — A project's Delete opens only once every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid
+- MN86 — A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage

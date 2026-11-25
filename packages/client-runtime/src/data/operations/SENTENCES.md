@@ -19,7 +19,7 @@ next: OP64
 - OP60 — A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again
-- OP34 — Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself
+- OP34 — Deleting an application with its code sends HQ one start under one id naming its last Mate, exactly its reviewed stages and its confirmed productions, and the web deletes no Mate, stage or production project itself
 - OP35 — A colleague's merge ends a pending Close without claiming it was closed
 - OP36 — A release HQ records as refused ends failed, in HQ's words
 - OP37 — A Git production release waits for HQ's ready preflight

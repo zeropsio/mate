@@ -214,9 +214,9 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }), → try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages.slice(1) }),
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | ...(intent.mate === undefined ? {} : { mate: intent.mate }), → ...{},
 it.effect(
-  "OP34: Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself",
+  "OP34: Deleting an application with its code sends HQ one start under one id naming its last Mate, exactly its reviewed stages and its confirmed productions, and the web deletes no Mate, stage or production project itself",
   () =>
     Effect.gen(function* () {
       const sent: unknown[] = [];
@@ -227,16 +227,30 @@ it.effect(
         deleteApp: async (...args) => {
           sent.push(["delete-app", ...args]);
         },
+        startMateDeletion: async (...args) => {
+          sent.push(["start-mate-deletion", ...args]);
+        },
       });
       yield* operations.submit({
         kind: "start-app-deletion",
         orgId: ORG,
         appId: "app-1",
         id: "op-1",
+        mate: "p-mate",
         stages: ["p-stage-a", "p-stage-b"],
+        productions: ["p-prod"],
       });
       expect(sent).toEqual([
-        ["start-app-deletion", "app-1", { id: "op-1", stages: ["p-stage-a", "p-stage-b"] }],
+        [
+          "start-app-deletion",
+          "app-1",
+          {
+            id: "op-1",
+            mate: "p-mate",
+            stages: ["p-stage-a", "p-stage-b"],
+            productions: ["p-prod"],
+          },
+        ],
       ]);
     }),
 );

@@ -7,8 +7,9 @@
  * hold one room, so the button keeps its width and nothing beside it moves. A refusal keeps the
  * dialog open and says the platform's reason under the field, on a line that is always there.
  *
- * The last Mate of its project never opens it: its Delete is the project's own, which deletes the
- * Mate and then the project (`ZeropsDeleteApplicationDialog`).
+ * Its words end with what stays of its project (`deletionOffer`). The last Mate of a project the
+ * person may delete whole never opens it: its Delete offers the choice of the Mate alone or the
+ * whole project (`ZeropsDeleteApplicationDialog`).
  */
 import { Text } from "~/components/ui/text";
 import { useId, useState } from "react";

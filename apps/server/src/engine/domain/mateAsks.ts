@@ -53,11 +53,15 @@ const SentResult = Schema.Struct({
 });
 const decodeSentResult = Schema.decodeUnknownOption(SentResult);
 
+/** The tool's name without a driver's MCP server prefix. */
+export const bareToolName = (name: string): string =>
+  name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/u, "");
+
 /** The message a closed `zerops_message_mate` call sent; none for any other call or a refusal. */
 const sentMessageOf = (body: ItemBody): Omit<AwaitedAnswer, "ordinal" | "at"> | undefined => {
   if (body.kind !== "call" || body.state !== "done" || body.result === undefined) return undefined;
   const { toolName, resultText } = body.result;
-  if (toolName.replace(/^mcp__[^_]+(?:_[^_]+)*?__/u, "") !== MATE_MESSAGE_TOOL) return undefined;
+  if (bareToolName(toolName) !== MATE_MESSAGE_TOOL) return undefined;
   if (resultText === undefined) return undefined;
   let parsed: unknown;
   try {

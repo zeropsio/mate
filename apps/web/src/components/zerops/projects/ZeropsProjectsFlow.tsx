@@ -16,7 +16,6 @@ import type {
   ZeropsEnvironmentRole,
   CanonicalGroup,
 } from "@t3tools/client-runtime/zerops";
-import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -46,8 +45,6 @@ export interface ProjectsFlowGroup<T> {
     readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
   };
   readonly flow: GroupFlow;
-  /** What HQ holds of it (`applicationContents`): a deletion under way, records left. */
-  readonly contents?: HqAppContents | undefined;
   /** Its Mates' activity, HQ's word or their sockets', as the row's line reads it (`projectRowLine`). */
   readonly activities: ReadonlyArray<RowMateActivity>;
   /** Why its changes are not known, where they are not: the row says so (`projectRowLine`). */
@@ -131,6 +128,8 @@ export type MateLayout = "card" | "row" | "page-card";
 export interface ZeropsProjectsFlowProps<T> {
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
+  /** A standing that takes precedence over the project's places. */
+  readonly heldWords?: ((groupId: string) => string | undefined) | undefined;
   /** The projects no group holds, with the one verb each row offers. */
   /** Source coverage for rows whose HQ placement has not been read. */
   readonly placementNotice?: string | undefined;

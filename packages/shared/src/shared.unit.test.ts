@@ -23,6 +23,7 @@ import {
   attachPermission,
   changePermission,
   createAppPermission,
+  deleteProjectPermission,
   deployPermission,
   detachPermission,
   mateRecordPermission,
@@ -311,6 +312,8 @@ function decide(call: PermissionCall, facts: PermissionFacts): Decision {
       return releasePermission(facts, call.projectIds, call.production, call.mergers);
     case "detachPermission":
       return detachPermission(facts, call.projectId, call.held);
+    case "deleteProjectPermission":
+      return deleteProjectPermission(facts, call.projectId);
   }
 }
 

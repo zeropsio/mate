@@ -19,6 +19,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as RcMap from "effect/RcMap";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
 import type {
   CommandResult,
   ConversationId,
@@ -126,6 +127,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
   options: ConversationsOptions = {},
 ) {
   const store = yield* EngineStore;
+  const sql = yield* SqlClient.SqlClient;
   const signals = yield* EngineSignals;
   const registered = Option.getOrElse(yield* Effect.serviceOption(OwnerDomains), () => []);
 
@@ -162,7 +164,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
           options.mailboxCapacity === undefined ? {} : { mailboxCapacity: options.mailboxCapacity },
           domain === conversationDomain
             ? // A conversation's commit writes its watch lines; an unknown event writes none.
-              (events) => watchCommit(owner, events as ReadonlyArray<KnownEngineEvent>)
+              (events) => watchCommit(sql, owner, events as ReadonlyArray<KnownEngineEvent>)
             : undefined,
         )) as AnyActor;
       }),

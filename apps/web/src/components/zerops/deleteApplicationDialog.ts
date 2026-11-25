@@ -1,20 +1,21 @@
 /**
  * Which project's Delete dialog is open (`ZeropsDeleteApplicationDialog`): one at a time, opened
- * from the menu row of a project without a Mate, or by its last Mate's Delete, which deletes that
- * Mate first. Closed by the person, or once HQ deleted the project; closed while its last Mate's
- * deletion runs, it is only out of sight, and still starts the project's once HQ let go of the Mate.
+ * from the menu row of a project without a Mate, or by the Delete of a project's last Mate the
+ * person may delete with its project (`deletionOffer`'s `last-choice`). Closed by the person, or
+ * once HQ deleted the project. Its start runs at HQ: closing it stops nothing.
  */
 import { create } from "zustand";
 
 import { randomUUID } from "~/lib/utils";
-import type { DeleteApplicationTarget } from "./ZeropsDeleteApplicationDialog.logic";
 
-/** The project's last Mate, which its Delete deletes before the project. */
+/** The project's last Mate, whose Delete opened it. */
 export interface DeleteApplicationMate {
   readonly projectId: string;
   readonly name: string;
   /** Every service that goes with its environment (`deleteMateServiceCount`); unread: `undefined`. */
   readonly services: number | undefined;
+  /** Whose Mate it is, where that is a colleague, as its own dialog says it. */
+  readonly owner: string | undefined;
   /** HQ took its deletion: a viewer in its conversation leaves it. */
   readonly leave: () => void;
 }
@@ -22,22 +23,20 @@ export interface DeleteApplicationMate {
 interface DeleteApplicationRequest {
   /** One per opening: a project opened again is a new dialog. */
   readonly id: string;
-  readonly target: DeleteApplicationTarget;
+  readonly appId: string;
+  /** Its name, as HQ holds it: the dialog asks for it typed. */
+  readonly name: string;
   readonly mate?: DeleteApplicationMate | undefined;
-  /** Out of sight while what it started runs on. */
-  readonly hidden: boolean;
 }
 
 interface DeleteApplicationDialogState {
   readonly request: DeleteApplicationRequest | null;
-  readonly open: (request: Pick<DeleteApplicationRequest, "target" | "mate">) => void;
-  readonly hide: () => void;
+  readonly open: (request: Omit<DeleteApplicationRequest, "id">) => void;
   readonly close: () => void;
 }
 
 export const useDeleteApplicationDialog = create<DeleteApplicationDialogState>((set) => ({
   request: null,
-  open: (request) => set({ request: { ...request, id: randomUUID(), hidden: false } }),
-  hide: () => set(({ request }) => ({ request: request && { ...request, hidden: true } })),
+  open: (request) => set({ request: { ...request, id: randomUUID() } }),
   close: () => set({ request: null }),
 }));

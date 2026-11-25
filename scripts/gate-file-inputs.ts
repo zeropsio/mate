@@ -5,6 +5,7 @@ import { Visitor } from "oxc-parser";
 export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/attachments/attachments.unit.test.ts": [],
   "apps/server/src/auth/auth.unit.test.ts": [],
+  "apps/server/src/engine/read/runTiming.unit.test.ts": [],
   "apps/server/src/provider/launch/launch.unit.test.ts": [],
   "apps/server/src/workspace/workspace.unit.test.ts": [],
   "apps/server/src/zerops/credentials/credentials.unit.test.ts": [],

@@ -71,15 +71,18 @@ export function deleteMateWords(input: {
   readonly services: number | undefined;
   /** Whose Mate it is, where that is a colleague — "Ada's Mate", as its row says it. */
   readonly owner: string | undefined;
+  /** What stays of its project (`deletionOffer`), its last sentence; absent: it stands in none. */
+  readonly stays?: string | undefined;
 }): DeleteMateWords {
-  const { name, environment, owner } = input;
+  const { name, environment, owner, stays } = input;
   const whose = owner === undefined ? "" : `${name} is ${owner}'s Mate. `;
   return {
     title: `Delete ${name}?`,
     body:
       `${whose}The environment ${environment} goes from Zerops ${whatGoesWithIt(input.services)}, ` +
       `and ${name}'s conversations go with it. Anything ${name} hasn't pushed is lost. ` +
-      "This can't be undone.",
+      "This can't be undone." +
+      (stays === undefined ? "" : ` ${stays}`),
     label: `Type ${name} to confirm`,
     submit: `Delete ${name}`,
     pending: MATE_DELETING_WORD,

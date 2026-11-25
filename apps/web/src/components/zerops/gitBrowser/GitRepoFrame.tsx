@@ -13,7 +13,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "~/components/WorkspaceBreadcrumb";
 import { Badge } from "~/components/ui/badge";
-import { Button, InlineButton } from "~/components/ui/button";
+import { Button } from "~/components/ui/button";
 import { PageHeader } from "~/components/ui/page-header";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
@@ -25,8 +25,12 @@ import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
 import { GitStorageFigure } from "./GitStorageFigure";
+import { RepositoryUpkeep } from "../github/RepositoryUpkeep";
+import { GitHomeAgain } from "./GitAtCommit";
 import type { PickerChange } from "./GitRefPicker.logic";
 import { Text } from "~/components/ui/text";
+import { GitBrowserLink } from "./GitBrowserLink";
+import { InPhoneBar } from "../system/PhoneBar";
 
 /** How HQ follows GitHub, in one line. */
 const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
@@ -35,6 +39,50 @@ const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
     : mirror.syncedAt === null
       ? "Not synced with GitHub yet"
       : `Synced with GitHub ${formatRelativeTimeLabel(mirror.syncedAt)}`;
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Facts supplied by the held home read; storage keeps its own existing control. */
+export function GitRepoFacts({
+  about,
+  storage,
+  again,
+}: {
+  readonly about: GitHomeAbout | null;
+  readonly storage: ReactNode;
+  readonly again?: ReactNode;
+}) {
+  const where =
+    about?.remote === null
+      ? "Only in Mate"
+      : about?.mirror
+        ? mirrorLine(about.mirror)
+        : "On GitHub";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {about === null ? null : (
+        <>
+          <Text variant="note">
+            {about.remote !== null && about.mirror?.syncedAt ? (
+              <GitWhen at={about.mirror.syncedAt}>{where}</GitWhen>
+            ) : (
+              where
+            )}
+          </Text>
+          <Text variant="note">
+            <GitWhen at={about.updatedAt}>
+              Updated {formatRelativeTimeLabel(about.updatedAt)}
+            </GitWhen>
+          </Text>
+          <Text variant="note">{count(about.branchCount, "branch", "branches")}</Text>
+          <Text variant="note">{count(about.tagCount, "tag", "tags")}</Text>
+        </>
+      )}
+      {storage}
+      {again}
+    </div>
+  );
+}
 
 /** What the picker's button says the pages read. */
 const readingLabel = (home: GitBrowseState<GitHome>, rev: string | undefined) => {
@@ -77,14 +125,14 @@ function ClonePopover({
 }
 
 export function GitRepoHeading({
+  appId,
   project,
   repo,
-  onBack,
   actions,
 }: {
+  readonly appId: string;
   readonly project: string;
   readonly repo: string;
-  readonly onBack: () => void;
   readonly actions?: ReactNode;
 }) {
   return (
@@ -94,23 +142,65 @@ export function GitRepoHeading({
       tag={repo === "group" ? <Badge>Setup</Badge> : undefined}
       title={repo}
       trail={
-        <WorkspaceBreadcrumb ariaLabel="Repository">
-          <WorkspaceBreadcrumbItem>
-            <InlineButton onClick={onBack} tone="muted">
-              Git
-            </InlineButton>
-          </WorkspaceBreadcrumbItem>
-          <WorkspaceBreadcrumbSeparator />
-          <WorkspaceBreadcrumbItem className="min-w-0 shrink">
-            <span className="min-w-0 truncate">{project}</span>
-          </WorkspaceBreadcrumbItem>
-          <WorkspaceBreadcrumbSeparator />
-          <WorkspaceBreadcrumbItem className="min-w-0 shrink" current>
-            <span className="min-w-0 truncate">{repo}</span>
-          </WorkspaceBreadcrumbItem>
-        </WorkspaceBreadcrumb>
+        <InPhoneBar>
+          <WorkspaceBreadcrumb ariaLabel="Repository">
+            <WorkspaceBreadcrumbItem>
+              <GitBrowserLink to={{}} tone="muted">
+                Git
+              </GitBrowserLink>
+            </WorkspaceBreadcrumbItem>
+            <WorkspaceBreadcrumbSeparator />
+            <WorkspaceBreadcrumbItem className="min-w-0 shrink">
+              <GitBrowserLink to={{ appId }} tone="muted">
+                {project}
+              </GitBrowserLink>
+            </WorkspaceBreadcrumbItem>
+            <WorkspaceBreadcrumbSeparator />
+            <WorkspaceBreadcrumbItem className="min-w-0 shrink" current>
+              <span className="min-w-0 truncate">{repo}</span>
+            </WorkspaceBreadcrumbItem>
+          </WorkspaceBreadcrumb>
+        </InPhoneBar>
       }
     />
+  );
+}
+
+/** The tabs and their picker, using the held open-change count. */
+export function GitRepoTabs({
+  view,
+  openChanges,
+  picker,
+  onTab,
+}: {
+  readonly view: GitView;
+  readonly openChanges: number | undefined;
+  readonly picker: ReactNode;
+  readonly onTab: (view: GitView) => void;
+}) {
+  const active = GIT_VIEW_TABS.find((tab) => tab.views.includes(view)) ?? GIT_VIEW_TABS[0]!;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {picker}
+      <ToggleGroup
+        aria-label="Repository page"
+        variant="segmented"
+        value={[active.label]}
+        onValueChange={(value) => {
+          const tab = GIT_VIEW_TABS.find((candidate) => candidate.label === value[0]) ?? active;
+          onTab(tab.views[0]!);
+        }}
+      >
+        {GIT_VIEW_TABS.map((tab) => (
+          <Toggle key={tab.label} value={tab.label}>
+            {tab.label}
+            {tab.label === "Changes" && openChanges !== undefined
+              ? ` ${String(openChanges)}`
+              : null}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+    </div>
   );
 }
 
@@ -121,8 +211,10 @@ export function GitRepoFrame({
   rev,
   view,
   home,
+  onHomeAgain,
   changes,
-  onBack,
+  openChanges,
+  banner,
   onPick,
   onTab,
 }: {
@@ -132,87 +224,77 @@ export function GitRepoFrame({
   readonly rev: string | undefined;
   readonly view: GitView;
   readonly home: GitBrowseState<GitHome>;
+  readonly onHomeAgain: () => void;
   readonly changes: ReadonlyArray<PickerChange>;
-  readonly onBack: () => void;
+  readonly openChanges: number | undefined;
+  readonly banner?: ReactNode;
   readonly onPick: (rev: string) => void;
   readonly onTab: (view: GitView) => void;
 }) {
   const about = home.state === "known" ? home.answer.about : null;
-  // A tab opens its first page; which one is lit follows the page shown.
-  const active = GIT_VIEW_TABS.find((tab) => tab.views.includes(view)) ?? GIT_VIEW_TABS[0]!;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <GitRepoHeading
-        project={project}
-        repo={repo}
-        onBack={onBack}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {about?.remote ? (
-              <Button
-                render={
-                  <a
-                    href={githubRepositoryUrl(about.remote)}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  />
-                }
-                size="sm"
-                variant="secondary"
-              >
-                <GitHubIcon aria-hidden="true" />
-                Open on GitHub
-              </Button>
-            ) : null}
-            <ClonePopover
-              appId={appId}
-              repo={repo}
-              project={project}
-              sha={home.state === "known" ? home.answer.sha : null}
-            />
-          </div>
-        }
-      />
-      <GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />
-      {about?.mirror ? (
-        <Text render={<p />} variant="note">
-          {about.mirror.syncedAt === null ? (
-            mirrorLine(about.mirror)
-          ) : (
-            <GitWhen at={about.mirror.syncedAt}>{mirrorLine(about.mirror)}</GitWhen>
-          )}
-        </Text>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <GitRefPicker
-          appId={appId}
-          repo={repo}
-          label={readingLabel(home, rev)}
-          kind={home.state === "known" ? home.answer.ref.kind : null}
-          changes={changes}
-          mounted={about?.remote != null}
-          onPick={onPick}
-        />
-        <ToggleGroup
-          aria-label="Repository page"
-          variant="segmented"
-          value={[active.label]}
-          onValueChange={(value) => {
-            // The lit tab, pressed again, opens its first page.
-            const tab = GIT_VIEW_TABS.find((candidate) => candidate.label === value[0]) ?? active;
-            onTab(tab.views[0]!);
-          }}
-        >
-          {GIT_VIEW_TABS.map((tab) => (
-            <Toggle key={tab.label} value={tab.label}>
-              {tab.label}
-            </Toggle>
-          ))}
-        </ToggleGroup>
-        <Text render={<p />} variant="note">
-          Browsing source does not switch a Mate’s checkout.
-        </Text>
-      </div>
-    </div>
+    <RepositoryUpkeep key={`${appId}:${repo}`} appId={appId} project={project} repo={repo}>
+      {({ menu, status, storage }) => (
+        <div className="flex min-w-0 flex-col gap-3">
+          <GitRepoHeading
+            appId={appId}
+            project={project}
+            repo={repo}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                {about?.remote ? (
+                  <Button
+                    render={
+                      <a
+                        href={githubRepositoryUrl(about.remote)}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      />
+                    }
+                    size="sm"
+                    variant="secondary"
+                  >
+                    <GitHubIcon aria-hidden="true" />
+                    Open on GitHub
+                  </Button>
+                ) : null}
+                <ClonePopover
+                  appId={appId}
+                  repo={repo}
+                  project={project}
+                  sha={home.state === "known" ? home.answer.sha : null}
+                />
+                {menu}
+              </div>
+            }
+          />
+          <GitRepoFacts
+            about={about}
+            storage={<GitStorageFigure view={storage} storage={about?.storage} />}
+            again={
+              home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
+            }
+          />
+          {status}
+          {banner}
+          <GitRepoTabs
+            view={view}
+            openChanges={openChanges}
+            onTab={onTab}
+            picker={
+              <GitRefPicker
+                appId={appId}
+                repo={repo}
+                label={readingLabel(home, rev)}
+                kind={home.state === "known" ? home.answer.ref.kind : null}
+                changes={changes}
+                mounted={about?.remote != null}
+                onPick={onPick}
+              />
+            }
+          />
+        </div>
+      )}
+    </RepositoryUpkeep>
   );
 }

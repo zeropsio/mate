@@ -85,6 +85,8 @@ export interface ReleaseCreationFailure {
 export interface ReleaseCreation {
   readonly tag: string;
   readonly state: "creating" | "created" | "failed";
+  /** HQ refused it: Zerops was never asked. */
+  readonly refused?: true;
   /** HQ's words for a creation that failed, where they say something (`creationReason`). */
   readonly reason: string | undefined;
   /** The services it creates, as HQ names them; `undefined` from an HQ that names none. */
@@ -332,6 +334,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
                     {
                       tag: job.ref,
                       state,
+                      ...(job.state === "refused" ? { refused: true } : {}),
                       reason: creationReason(job.reason),
                       services: job.services,
                       at: job.at,

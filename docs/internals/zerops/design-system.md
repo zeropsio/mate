@@ -66,6 +66,8 @@ One word for each thing:
 - **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
   planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.
+- **Code kept**, **Setup kept** — a project's code or only its setup remains when nothing is placed;
+  **Keep its code?**, **Keep code**, **Delete code…** ask about it. Never "Kept Git" or "Keep its Git?".
 - **No access** — a project HQ does not list for this person, explained under it as **Deleted or access removed**.
   HQ never says which of the two it was, so no surface does.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.

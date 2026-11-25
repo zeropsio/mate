@@ -1366,7 +1366,7 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     },
   },
   {
-    id: "release-create-refused",
+    id: "release-plan-unreadable",
     label: "Release · the plan could not be read, with Review again",
     props: {
       over: {
@@ -1619,6 +1619,28 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
         progress: {
           creation: creationOf("failed", {
             reason: "Internal Server Error",
+            at: secondsAgo(250),
+            endedAt: secondsAgo(65),
+          }),
+          deploys: [],
+        },
+      },
+    },
+  },
+  {
+    id: "release-create-refused",
+    label: "Release · stopped, HQ refused the creation",
+    props: {
+      outcome: { kind: "failed", detail: "Its production deploy failed", services: [] },
+      press: { kind: "done" },
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        creation: NO_CREATION,
+        progress: {
+          creation: creationOf("failed", {
+            refused: true,
+            reason: "web's zerops.yaml at 914369c has no setup app-preview",
             at: secondsAgo(250),
             endedAt: secondsAgo(65),
           }),

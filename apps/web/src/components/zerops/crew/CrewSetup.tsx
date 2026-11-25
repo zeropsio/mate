@@ -51,15 +51,17 @@ import {
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
 import {
+  crewFromAsk,
   crewFromProposal,
   crewFromTemplate,
   type CrewTemplateId,
 } from "@t3tools/shared/crewTemplates";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { withBrief } from "../../../zerops/crew/crewHome";
 import { useCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
+import type { CrewTabProposal } from "../../../zerops/crew/crewTab";
 import type { CrewFailureCause, UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome } from "../../../zerops/crew/useCrewHome";
 import { useCrewProposal } from "../../../zerops/crew/useCrewProposal";
@@ -96,6 +98,8 @@ interface CrewSetupProps {
   };
   /** Where *Let Fen suggest a crew* runs, or why it can't for this viewer. */
   readonly proposeWith: CrewProposeWith;
+  /** A crew the Mate set up in its conversation, which the setup opens filled in with. */
+  readonly proposed?: CrewTabProposal | undefined;
   readonly onClose: () => void;
   /** Opens a crewmate's job; `null` adds one. */
   readonly onEditCrewmate: (handle: string | null) => void;
@@ -147,13 +151,13 @@ export function CrewSetup(props: CrewSetupProps) {
   }, [onClose, ready]);
 
   /** The definition with the goal as written, titled from its first sentence while it has no title. */
-  const withGoal = (base: CrewDefinition): CrewDefinition => {
-    if (goal.trim() === "") return base;
+  const withGoal = (base: CrewDefinition, written = goal): CrewDefinition => {
+    if (written.trim() === "") return base;
     const fields = crewGoalFields(base.brief);
     const markdown = crewGoalMarkdown({
       ...fields,
-      body: goal,
-      title: fields.title === "" ? crewGoalTitleOf(goal) : fields.title,
+      body: written,
+      title: fields.title === "" ? crewGoalTitleOf(written) : fields.title,
     });
     return withBrief(base, markdown.title, markdown.text);
   };
@@ -185,6 +189,24 @@ export function CrewSetup(props: CrewSetupProps) {
     );
     if (await saveAll(next)) setAsked(true);
   };
+
+  // A crew the Mate set up in its conversation fills the setup in once it is read, as its proposal
+  // does: the goal and the rows, over a draft here — its card's press asked for it.
+  const filledIn = useRef<string | null>(null);
+  const { proposed } = props;
+  useEffect(() => {
+    if (proposed === undefined || filledIn.current === proposed.key) return;
+    if (props.applied || members === null || busy) return;
+    filledIn.current = proposed.key;
+    proposal.cancel();
+    setStartFailure(null);
+    draft.setGoal(proposed.goal);
+    const next = withGoal(
+      crewFromAsk({ seats: proposed.seats, crew: "crew", ...hostsOf, ...mateTint }),
+      proposed.goal,
+    );
+    void saveAll(next).then((saved) => setAsked(saved));
+  });
 
   const saveGoal = async () => {
     if (definition === null || draft.goal === null) return;

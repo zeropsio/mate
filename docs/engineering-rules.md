@@ -37,7 +37,7 @@ that repository, or from GitHub.
   a source.
 - **One owner per fact.** Before storing anything, find who already owns that fact. A second table,
   column, file or cache for a fact that has an owner is a defect, in whichever system it sits.
-  Readers go through the owner.
+  Readers go through the owner. A projection (below) is not a second owner: it holds keys, codes and times only.
 - **One derivation per verdict.** A domain answer (an owner, a role, an access decision, the state
   of a change) is computed in one place; consumers read that answer and never recompute it.
 - **One pattern per kind of problem.** Each kind of problem is solved with the one established
@@ -49,6 +49,7 @@ that repository, or from GitHub.
   - an asynchronous flow: events with typed receipts; a waiter waits on the receipt, never sleeps
     or polls;
   - a fact another part needs: read from its one owner; no copy kept in sync;
+  - a list across many owners that no owner's read answers at its scale: one projection, a read-only index of the owners' keys, codes and times, built only from the owners' reads and replaced whole per scope at the owners' recorded version; readers take its text from the owners, and no decision reads it;
   - a message between systems: a typed contract in its owning spec, tested on recordings;
   - a screen: a view of domain answers; no decision inside a component.
     A problem that fits none gets its pattern named here, in the same change, before its code.

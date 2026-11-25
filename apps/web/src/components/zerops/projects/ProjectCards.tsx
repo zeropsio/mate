@@ -37,7 +37,6 @@ import { watchIntersections } from "~/lib/restingIntersections";
 import { fadeFillOver } from "~/lib/loadFills";
 import { makeRowFill } from "./cardRowFill";
 import { StopReadAgain } from "../StopReadAgain";
-import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
@@ -771,9 +770,7 @@ function ProjectCard<T>({
   const nowMs = useNowMs();
   const { group, flow } = entry;
   const detail = useDetailWhileSeen(group.groupId, ahead);
-  const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
-    (line) => line !== undefined,
-  );
+  const quiet = entry.line ?? props.heldWords?.(group.groupId);
   const ready = cardReady(flow);
   const releaseDoor = props.renderReleaseVerb?.(entry);
   // The page's door decides whether a release is offered here at all: it stands where the one

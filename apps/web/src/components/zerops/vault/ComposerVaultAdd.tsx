@@ -2,10 +2,11 @@
  * The message box's key: a value for the vault, given where the person would otherwise paste it
  * into a message. It opens the Vault's add card over the box, the Mate's own vault first, every app
  * and each app one choice away. The value goes from the card to the vault write as the person and
- * nowhere else; the Mate hears its name with the next message (`recordVaultWrite`), never the
- * value. Only in a Mate's conversation: elsewhere there is no vault to give to.
+ * nowhere else; the message gets the key's `$NAME` at the caret, drawn as the key, and the Mate
+ * hears where it is with it (`recordVaultWrite`), never the value. Only in a Mate's conversation:
+ * elsewhere there is no vault to give to.
  */
-import type { VaultScope, VaultWrite } from "@t3tools/client-runtime/data";
+import type { VaultScope, VaultView, VaultWrite } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { KeyRoundIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -23,10 +24,29 @@ import { VaultAddCard } from "./VaultEditors";
 import { useProjectVault, useVaultWriter } from "./VaultPanelContainer";
 import { refusalWords, vaultName } from "./vault.logic";
 
+/** The keys of a Mate's vault, each with the vault it is in: what the composer draws as keys. */
+export function useComposerVaultKeys(environmentId: EnvironmentId): ReadonlyMap<string, string> {
+  const mate = useKnownMate(environmentId);
+  const project = useZeropsEnvironmentProject(environmentId);
+  const view = useProjectVault(mate === undefined ? null : (project?.projectId ?? null));
+  return useMemo(() => vaultKeys(view, mate?.name ?? null), [mate?.name, view]);
+}
+
+function vaultKeys(view: VaultView, mateName: string | null): ReadonlyMap<string, string> {
+  return new Map(
+    view.scopes.flatMap((scope) =>
+      scope.values.map((value) => [value.key, vaultName(scope, mateName)] as const),
+    ),
+  );
+}
+
 export function ComposerVaultAddButton({
   environmentId,
+  onAdded,
 }: {
   readonly environmentId: EnvironmentId;
+  /** The key is in the vault: its `$NAME` goes into the message; false where it could not. */
+  readonly onAdded: (key: string) => boolean;
 }) {
   const mate = useKnownMate(environmentId);
   const project = useZeropsEnvironmentProject(environmentId);
@@ -57,7 +77,15 @@ export function ComposerVaultAddButton({
         <TooltipPopup side="top">Add a key or secret to the vault, not the message</TooltipPopup>
       </Tooltip>
       <PopoverPopup align="end" padding="none" side="top" sideOffset={8} width="lg">
-        <ComposerVaultAdd mateName={mate.name} onDone={() => setOpen(false)} project={project} />
+        <ComposerVaultAdd
+          mateName={mate.name}
+          onAdded={(key) => {
+            setOpen(false);
+            return onAdded(key);
+          }}
+          onCancel={() => setOpen(false)}
+          project={project}
+        />
       </PopoverPopup>
     </Popover>
   );
@@ -67,11 +95,13 @@ export function ComposerVaultAddButton({
 function ComposerVaultAdd({
   project,
   mateName,
-  onDone,
+  onAdded,
+  onCancel,
 }: {
   readonly project: { readonly orgId: string; readonly projectId: string };
   readonly mateName: string;
-  readonly onDone: () => void;
+  readonly onAdded: (key: string) => boolean;
+  readonly onCancel: () => void;
 }) {
   const view = useProjectVault(project.projectId);
   const { write } = useVaultWriter(project, view);
@@ -100,12 +130,14 @@ function ComposerVaultAdd({
       return;
     }
     recordVaultWrite(project.projectId, written);
-    toastManager.add({
-      type: "success",
-      title: `${change.key} is in ${vaultName(scope, mateName)}`,
-      description: `${mateName} hears its name with your next message, never its value.`,
-    });
-    onDone();
+    // The key in the message says it all; only where the message took none is it said here.
+    if (!onAdded(change.key)) {
+      toastManager.add({
+        type: "success",
+        title: `${change.key} is in ${vaultName(scope, mateName)}`,
+        description: `${mateName} hears its name with your next message, never its value.`,
+      });
+    }
   };
 
   if (scopes.length === 0) {
@@ -125,10 +157,11 @@ function ComposerVaultAdd({
   return (
     <VaultAddCard
       busy={busy}
+      forMessage
       framed={false}
       mateName={mateName}
       onAdd={(scope, change) => void add(scope, change)}
-      onCancel={onDone}
+      onCancel={onCancel}
       refusal={refusal}
       scopes={scopes}
     />
