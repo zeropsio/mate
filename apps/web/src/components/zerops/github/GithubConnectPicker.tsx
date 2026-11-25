@@ -26,12 +26,15 @@ import { useRouter } from "@tanstack/react-router";
 import { CheckIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { DialogFooter, DialogPanel } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
 import { Spinner } from "~/components/ui/spinner";
+import { StepNumber } from "~/components/ui/step-number";
 import { Toggle } from "~/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn, randomUUID } from "~/lib/utils";
@@ -51,6 +54,7 @@ import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { OutLink } from "../../settings/automationParts";
 import { appOwner } from "../../settings/automationSettings.logic";
 import { KeyField } from "../../settings/ConnectFlow";
+import { PersonAvatar } from "../primitives";
 import { hostWords, mirrorAuthorityLine, mirrorGateLine, remoteSyncedAt } from "../gitMirror.logic";
 import {
   connectProgress,
@@ -761,12 +765,11 @@ function addedWords(
 
 function AccountFace({ account }: { readonly account: string }) {
   return (
-    <img
-      alt=""
-      className="size-5 shrink-0 rounded-full bg-muted"
-      height={20}
-      src={`https://github.com/${encodeURIComponent(account)}.png?size=40`}
-      width={20}
+    <PersonAvatar
+      className="shrink-0"
+      name={account}
+      picture={`https://github.com/${encodeURIComponent(account)}.png?size=40`}
+      size={20}
     />
   );
 }
@@ -944,10 +947,10 @@ function pickStep(
       <>
         {returnedNote}
         {freshHere === 0 || account === null ? null : (
-          <p className="rounded-control bg-status-ok-surface px-3 py-2 text-body text-status-ok-text">
+          <Alert surface="tint" variant="success">
             {account.account} is added ·{" "}
             {freshHere === 1 ? "1 new repository" : `${String(freshHere)} new repositories`}
-          </p>
+          </Alert>
         )}
         <div aria-label="GitHub account" className="flex flex-wrap gap-1.5" role="group">
           {accounts.map((each) => (
@@ -1056,11 +1059,11 @@ function pickStep(
 /** What GitHub said on the way back from its page, where the account is not usable yet. */
 function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting" | null }) {
   return returned === null ? null : (
-    <p className="rounded-control bg-status-busy-surface px-3 py-2 text-body text-status-busy-text">
+    <Alert surface="tint" variant="info">
       {returned === "requested"
         ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
         : "What you added on GitHub waits for an Owner or Admin's OK in Settings › Automation."}
-    </p>
+    </Alert>
   );
 }
 
@@ -1122,91 +1125,89 @@ function RepositoryList({
   readonly onPick: (account: PickerAccount, fullName: string) => void;
 }) {
   return (
-    <div
-      aria-label="Repository"
-      className="grid max-h-64 overflow-y-auto rounded-card border"
-      role="radiogroup"
-    >
-      {created === null ? null : (
-        <NewRepositoryRow
-          account={account.account}
-          checked={picked === NEW_REPOSITORY}
-          created={created}
-          focusable={picked === NEW_REPOSITORY || picked === null}
-          onPick={() => onPick(account, NEW_REPOSITORY)}
-        />
-      )}
-      {rows.map((row) => {
-        const name = row.repository.fullName;
-        const checked = picked === name;
-        const disabled = row.taken !== null;
-        const first = created === null && rows.find((each) => each.taken === null) === row;
-        const words = [
-          row.repository.private ? "Private" : "Public",
-          row.current ? "connected now" : null,
-          row.suggested && !row.current ? "name matches" : null,
-        ]
-          .filter((part) => part !== null)
-          .join(" · ");
-        return (
-          <div
-            className={cn(
-              "border-t first:border-t-0",
-              row.fresh &&
-                "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
-            )}
-            key={name}
-          >
-            <Row
-              aria-checked={checked}
-              aria-disabled={disabled}
-              badges={
-                row.fresh ? (
-                  <Badge tone="info">New</Badge>
-                ) : row.suggested ? (
-                  <Badge tone="info">Suggested</Badge>
-                ) : null
-              }
-              lead={
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "flex size-4 items-center justify-center rounded-full border",
-                    checked ? "border-primary" : "border-input",
-                  )}
-                >
-                  {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-                </span>
-              }
-              line={row.taken ?? words}
-              pressable
-              render={
-                <button
-                  onClick={() => {
-                    if (!disabled) onPick(account, name);
-                  }}
-                  onKeyDown={radioKeys}
-                  role="radio"
-                  tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
-                  type="button"
-                />
-              }
-              size="sm"
-              title={
-                <span
-                  className={cn(
-                    "font-mono font-normal",
-                    disabled ? "text-muted-foreground/70" : "text-foreground",
-                  )}
-                >
-                  {name}
-                </span>
-              }
-            />
-          </div>
-        );
-      })}
-    </div>
+    <Card className="overflow-hidden">
+      <div aria-label="Repository" className="grid max-h-64 overflow-y-auto" role="radiogroup">
+        {created === null ? null : (
+          <NewRepositoryRow
+            account={account.account}
+            checked={picked === NEW_REPOSITORY}
+            created={created}
+            focusable={picked === NEW_REPOSITORY || picked === null}
+            onPick={() => onPick(account, NEW_REPOSITORY)}
+          />
+        )}
+        {rows.map((row) => {
+          const name = row.repository.fullName;
+          const checked = picked === name;
+          const disabled = row.taken !== null;
+          const first = created === null && rows.find((each) => each.taken === null) === row;
+          const words = [
+            row.repository.private ? "Private" : "Public",
+            row.current ? "connected now" : null,
+            row.suggested && !row.current ? "name matches" : null,
+          ]
+            .filter((part) => part !== null)
+            .join(" · ");
+          return (
+            <div
+              className={cn(
+                "border-t first:border-t-0",
+                row.fresh &&
+                  "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
+              )}
+              key={name}
+            >
+              <Row
+                aria-checked={checked}
+                aria-disabled={disabled}
+                badges={
+                  row.fresh ? (
+                    <Badge tone="info">New</Badge>
+                  ) : row.suggested ? (
+                    <Badge tone="info">Suggested</Badge>
+                  ) : null
+                }
+                lead={
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "flex size-4 items-center justify-center rounded-full border",
+                      checked ? "border-primary" : "border-input",
+                    )}
+                  >
+                    {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
+                  </span>
+                }
+                line={row.taken ?? words}
+                pressable
+                render={
+                  <button
+                    onClick={() => {
+                      if (!disabled) onPick(account, name);
+                    }}
+                    onKeyDown={radioKeys}
+                    role="radio"
+                    tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
+                    type="button"
+                  />
+                }
+                size="sm"
+                title={
+                  <span
+                    className={cn(
+                      "font-mono font-normal",
+                      disabled ? "text-muted-foreground/70" : "text-foreground",
+                    )}
+                  >
+                    {name}
+                  </span>
+                }
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
@@ -1492,13 +1493,8 @@ function viewerAccount(apps: GitMirrorApps, viewerId: string | null): string | n
 
 function ExplainStep({ n, children }: { readonly n: number; readonly children: React.ReactNode }) {
   return (
-    <li className="grid grid-cols-[1.375rem_minmax(0,1fr)] gap-2.5">
-      <span
-        aria-hidden="true"
-        className="flex size-5.5 items-center justify-center rounded-full bg-muted text-caption font-medium text-muted-foreground"
-      >
-        {n}
-      </span>
+    <li className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2.5">
+      <StepNumber n={n} />
       <span>{children}</span>
     </li>
   );
@@ -1624,9 +1620,11 @@ function progressStep(
   return {
     body: (
       <>
-        <p className="rounded-card bg-muted px-3.5 py-2.5 text-body">
-          {repo} → <span className="font-mono">{shownAs}</span>
-        </p>
+        <Card variant="inset">
+          <p className="px-3.5 py-2.5 text-body">
+            {repo} → <span className="font-mono">{shownAs}</span>
+          </p>
+        </Card>
         <ol aria-live="polite" className="grid gap-2.5">
           {steps.map(([name, words], index) => (
             <li
@@ -1642,7 +1640,7 @@ function progressStep(
                 ) : index === at ? (
                   <Spinner size="sm" />
                 ) : (
-                  <span className="size-3 rounded-full border border-border" />
+                  <Badge aria-label="To come" dot hollow />
                 )}
               </span>
               {words}
