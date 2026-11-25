@@ -68,12 +68,9 @@ export const ModelListRow = memo(function ModelListRow(props: {
                 )}
           </div>
           {props.showNewBadge ? (
-            <span
-              className="shrink-0 rounded-mark border border-update/35 bg-update/15 px-0.5 py-px text-3xs font-bold uppercase leading-none tracking-wide text-update-foreground"
-              aria-label="New model"
-            >
+            <Badge aria-label="New model" tone="info">
               New
-            </span>
+            </Badge>
           ) : null}
           {props.unavailable ? (
             <Badge tone="neutral" size="sm">

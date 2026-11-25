@@ -310,7 +310,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {availability === null ? (
             icon
           ) : (
-            <span className="relative inline-flex shrink-0">
+            <span className="relative inline-flex shrink-0 [--mark-ground:var(--contrast-input)]">
               {icon}
               <AvailabilityDot availability={availability} corner />
             </span>

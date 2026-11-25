@@ -24,6 +24,7 @@ import { THREAD_STATUS_TONE_CLASSES } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { InlineButton } from "./ui/button";
+import { Dot } from "./ui/dot";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface PrStatusIndicator {
@@ -411,37 +412,8 @@ export function ThreadWorktreeIndicator({
   );
 }
 
-function ThreadStatusLabel({
-  status,
-  compact = false,
-}: {
-  status: ThreadStatusPill;
-  compact?: boolean;
-}) {
+function ThreadStatusLabel({ status }: { status: ThreadStatusPill }) {
   const tone = THREAD_STATUS_TONE_CLASSES[status.toneId];
-  if (compact) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              role="img"
-              aria-label={status.label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.textClass}`}
-            />
-          }
-        >
-          <span
-            className={`size-[9px] rounded-full ${tone.dotClass} ${
-              status.pulse ? "animate-status-pulse" : ""
-            }`}
-          />
-        </TooltipTrigger>
-        <TooltipPopup side="top">{status.label}</TooltipPopup>
-      </Tooltip>
-    );
-  }
-
   return (
     <Tooltip>
       <TooltipTrigger
@@ -453,11 +425,7 @@ function ThreadStatusLabel({
           />
         }
       >
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${tone.dotClass} ${
-            status.pulse ? "animate-status-pulse" : ""
-          }`}
-        />
+        <Dot pulse={status.pulse} size="sm" tone={tone.dot} />
         <span className="hidden md:inline">{status.label}</span>
       </TooltipTrigger>
       <TooltipPopup side="top">{status.label}</TooltipPopup>

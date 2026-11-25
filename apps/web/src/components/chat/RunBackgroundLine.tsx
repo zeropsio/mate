@@ -2,6 +2,7 @@ import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "~/lib/utils";
 import { Collapsible, CollapsibleTrigger } from "../ui/collapsible";
+import { Dot } from "../ui/dot";
 import { OutputBlock } from "./RunDisclosure";
 import {
   backgroundItemWord,
@@ -34,12 +35,7 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
           words on the edge the answer's list items start on. */}
       <span aria-hidden="true" className="flex w-5 shrink-0">
         <span className="flex size-3.5 items-center justify-center">
-          <span
-            className={cn(
-              "size-1.5 rounded-full",
-              failed ? "bg-status-failed" : "bg-muted-foreground/35",
-            )}
-          />
+          <Dot size="sm" tone={failed ? "danger" : "neutral"} />
         </span>
       </span>
       <span

@@ -32,6 +32,7 @@ import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Badge } from "../ui/badge";
+import { Dot } from "../ui/dot";
 import { Row } from "../ui/row";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -688,10 +689,7 @@ function LiveTake({
           src={frameImageSrc(frame)}
         />
       )}
-      <span
-        aria-hidden="true"
-        className="absolute end-1.5 bottom-1.5 size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none"
-      />
+      <Dot className="absolute end-1.5 bottom-1.5" pulse size="sm" tone="info" />
     </PictureFrame>
   );
 }

@@ -9,6 +9,7 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { Row } from "../ui/row";
 
 import { NOT_NOW } from "../ask/ask.logic";
@@ -449,9 +450,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                         isSelected ? (
                           <CheckIcon className="size-3.5 text-primary" />
                         ) : shortcutKey !== null ? (
-                          <kbd className="flex size-5 items-center justify-center font-medium">
-                            {shortcutKey}
-                          </kbd>
+                          <Kbd>{shortcutKey}</Kbd>
                         ) : undefined
                       }
                     />

@@ -9,6 +9,7 @@ import { CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Badge } from "../ui/badge";
+import { Dot } from "../ui/dot";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import type { ProviderAvailability } from "./providerAvailability.logic";
@@ -30,12 +31,9 @@ export function AvailabilityDot({
   const tone = availability.tone === "error" ? "danger" : "warning";
   if (!corner)
     return <Badge aria-label={availability.title} className="me-2 align-middle" dot tone={tone} />;
-  // On an icon's top-right corner, ringed by the control's ground: a mark on a thing, not a label.
-  return (
-    <span className="absolute -top-1 -right-1 flex rounded-full ring-2 ring-(--contrast-input)">
-      <Badge aria-label={availability.title} dot tone={tone} />
-    </span>
-  );
+  // On an icon's top-right corner, cut out of the control's ground (its parent's `--mark-ground`):
+  // a mark on a thing, not a label.
+  return <Dot aria-label={availability.title} corner="top-end" tone={tone} />;
 }
 
 /**
