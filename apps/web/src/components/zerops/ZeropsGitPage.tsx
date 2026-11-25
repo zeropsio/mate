@@ -4,6 +4,7 @@ import {
   gitOverviewGroups,
   codeStandingLine,
 } from "@t3tools/client-runtime/zerops";
+import { formatStorageBytes } from "@t3tools/client-runtime/zerops/gitBrowse/home";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useMemo, useState } from "react";
 import { Button, InlineButton } from "../ui/button";
@@ -133,6 +134,7 @@ function ProjectGroup({
             )}
             <Text variant="note">
               {group.repositoryCount} {group.repositoryCount === 1 ? "repository" : "repositories"}
+              {group.size.complete ? ` · ${formatStorageBytes(group.size.bytes)}` : ""}
             </Text>
           </div>
           {line !== undefined && (line.notice || standing.kind === "unread") ? (
@@ -195,6 +197,9 @@ function ProjectGroup({
                       repository.facts === undefined
                         ? undefined
                         : `updated ${formatRelativeTimeLabel(repository.facts.updatedAt)}`,
+                      repository.facts?.usedBytes === undefined
+                        ? undefined
+                        : formatStorageBytes(repository.facts.usedBytes),
                       summary,
                       repository.coverage === "unread" ? "Changes not read yet." : undefined,
                     ]

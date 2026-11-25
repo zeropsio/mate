@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { gitChangesSummary, gitOverview, gitOverviewGroups } from "./gitOverview.ts";
+import { codeSize, gitChangesSummary, gitOverview, gitOverviewGroups } from "./gitOverview.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { CodeStanding } from "./codeStanding.ts";
 
@@ -30,6 +30,35 @@ const standingOf = (id: string): CodeStanding =>
   id === "a"
     ? { kind: "in-use", mate: true, leaving: false }
     : { kind: "kept", holds: id === "b" ? "code" : "setup" };
+
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.usedBytes !== undefined → true
+it("ZV+1: A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is", () => {
+  expect(codeSize([{ usedBytes: 1024 }, { usedBytes: 2048 }])).toEqual({
+    bytes: 3072,
+    complete: true,
+  });
+  expect(codeSize([{ usedBytes: 1024 }, {}])).toEqual({ bytes: 1024, complete: false });
+  expect(codeSize([])).toEqual({ bytes: 0, complete: true });
+  const apps = gitOverview({
+    mateName: () => undefined,
+    apps: [
+      {
+        appId: "a",
+        name: "A",
+        changes: [],
+        repositories: [
+          { ...repo("group"), usedBytes: 512 },
+          { ...repo("one"), usedBytes: 1024 },
+          { ...repo("two"), usedBytes: 2048 },
+        ],
+      },
+    ],
+  });
+  expect(gitOverviewGroups(apps, standingOf, false).used[0]?.size).toEqual({
+    bytes: 3584,
+    complete: true,
+  });
+});
 
 // witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.name !== "group" → repository.name !== ""
 it("ZV183: The Git overview lists each project once with its code repositories as rows and its setup repository as the group's link, puts kept, asked and placeless deleting projects in their own section, and showing only open changes hides a repository without one but never one whose changes are not read, while the counts stay those of the whole list; breaks: a project's setup repository is counted as code, or a repository with unread changes disappears under the filter", () => {

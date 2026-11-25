@@ -16,7 +16,10 @@ import { byNewest, changeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { CodeStanding } from "./codeStanding.ts";
 
-export type GitRepositoryFacts = Pick<RepoListEntry, "remote" | "follows" | "updatedAt">;
+export type GitRepositoryFacts = Pick<
+  RepoListEntry,
+  "remote" | "follows" | "updatedAt" | "usedBytes"
+>;
 
 /** An open change on a repository's row: the flow's own, and its number with its Mate's name. */
 export interface GitOverviewChange {
@@ -71,11 +74,12 @@ export function gitOverview(input: {
         app.repositories.map((repository) => [repository.name, []]),
       );
       const facts = new Map(
-        app.repositories.map(({ name, remote, follows, updatedAt }) => [
+        app.repositories.map(({ name, remote, follows, updatedAt, usedBytes }) => [
           name,
           {
             ...(remote === undefined ? {} : { remote }),
             ...(follows === undefined ? {} : { follows }),
+            ...(usedBytes === undefined ? {} : { usedBytes }),
             updatedAt,
           },
         ]),
@@ -109,6 +113,14 @@ export function gitOverview(input: {
     });
 }
 
+/** Sum known figures, and say whether HQ supplied every repository's figure. */
+export function codeSize(repositories: ReadonlyArray<{ readonly usedBytes?: number | undefined }>) {
+  return {
+    bytes: repositories.reduce((sum, repository) => sum + (repository.usedBytes ?? 0), 0),
+    complete: repositories.every((repository) => repository.usedBytes !== undefined),
+  };
+}
+
 /** Each project's setup is its header link, never a code-repository row. */
 export function gitOverviewGroups(
   apps: ReadonlyArray<GitOverviewApp>,
@@ -121,7 +133,8 @@ export function gitOverviewGroups(
       const standing = standingOf(app.appId);
       const setup = app.repositories.find((repository) => repository.name === "group");
       const repositories = app.repositories.filter((repository) => repository.name !== "group");
-      return { ...app, standing, setup, repositories, repositoryCount: repositories.length };
+      const size = codeSize(app.repositories.map((repository) => repository.facts ?? {}));
+      return { ...app, standing, setup, repositories, repositoryCount: repositories.length, size };
     });
   const shown = groups.flatMap((group) => {
     const repositories = openOnly

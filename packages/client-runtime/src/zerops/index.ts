@@ -422,6 +422,7 @@ export {
 export {
   gitOverview,
   gitOverviewGroups,
+  codeSize,
   gitChangesSummary,
   type GitRepositoryFacts,
   type GitOverviewApp,
