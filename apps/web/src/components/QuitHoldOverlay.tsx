@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { isMacPlatform } from "../lib/utils";
+import { Overlay } from "./ui/overlay";
 
 // Matches the hold duration in apps/desktop/src/window/QuitHold.ts: the hint
 // from a quick tap lingers for as long as a full hold would have taken.
@@ -32,16 +33,12 @@ export function QuitHoldOverlay() {
     };
   }, []);
 
-  if (!visible) return null;
+  // Only the desktop app holds the quit key; elsewhere there is nothing to say.
+  if (!window.desktopBridge?.onQuitShortcut) return null;
   const shortcut = isMacPlatform(navigator.platform) ? "⌘Q" : "Ctrl+Q";
   return (
-    <div
-      role="status"
-      className="pointer-events-none fixed inset-x-0 top-[22%] z-100 flex justify-center"
-    >
-      <div className="rounded-full bg-foreground/95 px-8 py-4 text-title font-bold text-background shadow-xl">
-        Hold {shortcut} to Quit
-      </div>
-    </div>
+    <Overlay kind="hint" shown={visible}>
+      Hold {shortcut} to quit
+    </Overlay>
   );
 }
