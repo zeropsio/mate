@@ -23,6 +23,12 @@ const ROWS = [
   },
 ];
 
+const MODELS = [
+  { name: "claude-opus", cost: "$41.20", tokens: "8,214,903" },
+  { name: "gpt-5", cost: "$9.75", tokens: "1,120,488" },
+  { name: "gemini-pro", cost: "$0.42", tokens: "61,002" },
+];
+
 const PEOPLE = [
   { name: "Ada Lovelace", levels: ["Full", "Full", "Read"] },
   { name: "Karel Novák", levels: ["Read", "Full", "Full"] },
@@ -65,6 +71,32 @@ export default defineKitSection({
                       <TableCell>
                         <Badge tone={row.tone}>{row.state}</Badge>
                       </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+          <Specimen
+            align="start"
+            label='<TableHead align="end"> · <TableCell align="end">'
+            span="row"
+          >
+            <div className="w-full max-w-[40rem]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Model</TableHead>
+                    <TableHead align="end">Cost</TableHead>
+                    <TableHead align="end">Tokens</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {MODELS.map((model) => (
+                    <TableRow key={model.name}>
+                      <TableCell>{model.name}</TableCell>
+                      <TableCell align="end">{model.cost}</TableCell>
+                      <TableCell align="end">{model.tokens}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -98,6 +98,14 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 const STICKY_COLUMN = "sticky start-0 z-1 bg-table-ground";
 
 /**
+ * Where a column's words stand: `start`, or `end` for a column of figures (a cost, a share, a
+ * count, a duration), set on its head and on each of its cells so the figures and their name line
+ * up on the column's end edge, each digit as wide as the next.
+ */
+type TableAlign = "start" | "end";
+const ALIGN_END = "text-end tabular-nums";
+
+/**
  * A column's name, or a row's (`scope="row"`). `sticky` holds it at the scrolling box's start, so
  * the column it heads stays in view as the others scroll sideways under it: put it on the first
  * cell of every row, the header's included.
@@ -105,8 +113,12 @@ const STICKY_COLUMN = "sticky start-0 z-1 bg-table-ground";
 function TableHead({
   className,
   sticky = false,
+  align = "start",
   ...props
-}: React.ComponentProps<"th"> & { readonly sticky?: boolean }) {
+}: Omit<React.ComponentProps<"th">, "align"> & {
+  readonly sticky?: boolean;
+  readonly align?: TableAlign;
+}) {
   const size = React.use(TableSizeContext);
   return (
     <th
@@ -117,6 +129,7 @@ function TableHead({
           ? "h-8 px-2 pb-1.5 text-left align-bottom font-medium whitespace-nowrap text-caption text-muted-foreground in-[tbody]:h-11 in-[tbody]:pb-0 in-[tbody]:align-middle in-[tbody]:font-normal in-[tbody]:text-body in-[tbody]:text-foreground"
           : "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         sticky && STICKY_COLUMN,
+        align === "end" && ALIGN_END,
         className,
       )}
       {...props}
@@ -128,8 +141,12 @@ function TableHead({
 function TableCell({
   className,
   sticky = false,
+  align = "start",
   ...props
-}: React.ComponentProps<"td"> & { readonly sticky?: boolean }) {
+}: Omit<React.ComponentProps<"td">, "align"> & {
+  readonly sticky?: boolean;
+  readonly align?: TableAlign;
+}) {
   const size = React.use(TableSizeContext);
   return (
     <td
@@ -140,6 +157,7 @@ function TableCell({
           ? "h-11 px-2 align-middle whitespace-nowrap"
           : "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         sticky && STICKY_COLUMN,
+        align === "end" && ALIGN_END,
         className,
       )}
       {...props}
