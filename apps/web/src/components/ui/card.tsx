@@ -10,7 +10,9 @@ import { cn } from "~/lib/utils";
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
  * inside another, set apart by a deeper tint instead of a second border — depth shows as tint;
  * `sheet` is a card that stands alone as its own surface, side by side with its kind (the
- * overview's project cards): the default card at the sheet's radius.
+ * overview's project cards): the default card at the sheet's radius; `slot` is the place a thing
+ * will stand before it is there (a service the setup declares and Zerops lacks, a section with
+ * nothing yet): a dashed hairline and no ground of its own.
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
  * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
  * card one press. `tone="failed"` wears its hairline in the failed ink: a thing that broke, on its
@@ -31,6 +33,7 @@ const cardVariants = cva("", {
       inset: "relative flex flex-col rounded-control bg-muted/60 text-card-foreground",
       sheet:
         "relative flex flex-col rounded-sheet border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-sheet)-1px)] before:shadow-edge",
+      slot: "relative flex flex-col rounded-card border border-dashed border-border",
     },
     size: {
       none: "",

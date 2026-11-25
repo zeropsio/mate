@@ -1,6 +1,7 @@
 import { MoreHorizontalIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
+import { EmptyState } from "~/components/ui/empty";
 import {
   Card,
   CardAction,
@@ -73,6 +74,13 @@ function CardSpecimens() {
                 <span className="text-caption text-muted-foreground">
                   The build stopped at step 3.
                 </span>
+              </Card>
+            </div>
+          </Specimen>
+          <Specimen label='variant="slot" size="md"' note="A place not filled yet">
+            <div className="w-full max-w-80">
+              <Card size="md" variant="slot">
+                <EmptyState size="line">Nothing runs here yet.</EmptyState>
               </Card>
             </div>
           </Specimen>
