@@ -73,6 +73,7 @@ import {
   type McpSignInResult,
 } from "./useMcpServers";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 export const MCP_WORDS = {
   builtIn: "Built in",
@@ -313,32 +314,34 @@ export function McpPanelBody(props: {
                 {group.count}
               </span>
             </Text>
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-card border border-border bg-card">
-              {group.id === "waiting"
-                ? proposals.map((proposal) => (
-                    <ProposalRowView
-                      key={`proposal:${proposal.id}`}
-                      mate={mate}
-                      onOpenChange={(next) => toggleOpen(`proposal:${proposal.id}`, next)}
-                      open={open.has(`proposal:${proposal.id}`)}
-                      proposal={proposal}
-                    />
-                  ))
-                : null}
-              {(groups.find((found) => found.id === group.id)?.rows ?? []).map((row) => (
-                <ToolRow
-                  act={act}
-                  agents={state.list?.agents ?? []}
-                  key={row.name}
-                  observe={row.managed ? props.observe : undefined}
-                  onOpenChange={(next) => toggleOpen(row.name, next)}
-                  onRefresh={props.onRetry}
-                  open={open.has(row.name)}
-                  row={row}
-                  signIn={props.signIn}
-                />
-              ))}
-            </ul>
+            <Card className="overflow-hidden">
+              <ul className="flex flex-col divide-y divide-border">
+                {group.id === "waiting"
+                  ? proposals.map((proposal) => (
+                      <ProposalRowView
+                        key={`proposal:${proposal.id}`}
+                        mate={mate}
+                        onOpenChange={(next) => toggleOpen(`proposal:${proposal.id}`, next)}
+                        open={open.has(`proposal:${proposal.id}`)}
+                        proposal={proposal}
+                      />
+                    ))
+                  : null}
+                {(groups.find((found) => found.id === group.id)?.rows ?? []).map((row) => (
+                  <ToolRow
+                    act={act}
+                    agents={state.list?.agents ?? []}
+                    key={row.name}
+                    observe={row.managed ? props.observe : undefined}
+                    onOpenChange={(next) => toggleOpen(row.name, next)}
+                    onRefresh={props.onRetry}
+                    open={open.has(row.name)}
+                    row={row}
+                    signIn={props.signIn}
+                  />
+                ))}
+              </ul>
+            </Card>
           </section>
         ))}
       </div>

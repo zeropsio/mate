@@ -60,6 +60,7 @@ import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
 import { filterBaseRefChoices } from "../lib/baseRefChoices";
 import { createGitDiffFileContentsLoader } from "../lib/diffFileContents";
+import { Card } from "~/components/ui/card";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -593,10 +594,12 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
   const notices = (
     <>
       {isTruncated && files.length > 0 ? (
-        <p className="rounded-control bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
-          This diff was truncated because it exceeded the preview limit. The changes shown are
-          incomplete.
-        </p>
+        <Card variant="inset">
+          <p className="px-3 py-1.5 text-2xs text-muted-foreground">
+            This diff was truncated because it exceeded the preview limit. The changes shown are
+            incomplete.
+          </p>
+        </Card>
       ) : null}
       {previewError && files.length > 0 ? (
         <div className="flex items-center gap-2">

@@ -674,7 +674,7 @@ export function UsagePage({
                     </div>
                     {settling || sections.periods.kind !== "read" ? (
                       <div className="ml-16 flex flex-col gap-1" aria-hidden>
-                        <div className="h-56 rounded-control bg-muted/35" />
+                        <Skeleton className="h-56" />
                         <span className="text-3xs">&nbsp;</span>
                       </div>
                     ) : metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
@@ -780,7 +780,7 @@ export function UsagePage({
                     </Text>
                   ) : null}
                   {settling ? (
-                    <div className="h-44 rounded-control bg-muted/35" />
+                    <Skeleton className="h-44" />
                   ) : breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}

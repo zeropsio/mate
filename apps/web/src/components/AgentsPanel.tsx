@@ -51,6 +51,7 @@ import { Row } from "~/components/ui/row";
 import { Loading } from "~/components/ui/loading";
 import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -461,7 +462,7 @@ function ExpandedWorkflowSection({
   const scriptPath = group.workflow.runHandles?.scriptPath;
   const canShowScript = scriptPath !== undefined && environmentId !== null && threadId !== null;
   return (
-    <section className="rounded-card border border-border/50 bg-card/30 p-1.5">
+    <Card render={<section />} size="rows">
       <div className="flex items-center gap-2 px-1.5 pt-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
         <StatusDot status={group.workflow.status} />
         <span className="min-w-0 truncate">
@@ -508,7 +509,7 @@ function ExpandedWorkflowSection({
           ) : null}
         </ul>
       ) : null}
-    </section>
+    </Card>
   );
 }
 

@@ -47,6 +47,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MatePanelColumn } from "./zerops/MatePanelPlaces";
 import { SectionLabel } from "./zerops/system";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** One file of "What changed", folded unless opened. */
 export interface CodeFile {
@@ -309,16 +310,15 @@ export function CodeChangesEmpty({
   readonly alert?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-col items-start gap-0.5 rounded-card border border-dashed border-border px-4 py-3.5 text-body"
-      role={alert ? "alert" : undefined}
-    >
-      <p className="text-foreground">{title}</p>
-      {line === undefined || line === null ? null : (
-        <p className={alert ? "text-error/80" : "text-muted-foreground"}>{line}</p>
-      )}
-      {action}
-    </div>
+    <Card role={alert ? "alert" : undefined} variant="slot">
+      <div className="flex flex-col items-start gap-0.5 px-4 py-3.5 text-body">
+        <p className="text-foreground">{title}</p>
+        {line === undefined || line === null ? null : (
+          <p className={alert ? "text-error/80" : "text-muted-foreground"}>{line}</p>
+        )}
+        {action}
+      </div>
+    </Card>
   );
 }
 

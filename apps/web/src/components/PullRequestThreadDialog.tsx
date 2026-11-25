@@ -26,6 +26,7 @@ import {
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -228,20 +229,22 @@ export function PullRequestThreadDialog({
           </label>
 
           {resolvedPullRequest ? (
-            <div className="rounded-card border border-border/70 bg-muted/24 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
-                  <Text render={<p />} truncate variant="note">
-                    #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
-                    {resolvedPullRequest.baseBranch}
-                  </Text>
+            <Card variant="inset">
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
+                    <Text render={<p />} truncate variant="note">
+                      #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
+                      {resolvedPullRequest.baseBranch}
+                    </Text>
+                  </div>
+                  <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
+                    {resolvedPullRequest.state}
+                  </span>
                 </div>
-                <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
-                  {resolvedPullRequest.state}
-                </span>
               </div>
-            </div>
+            </Card>
           ) : null}
 
           {isResolving ? (

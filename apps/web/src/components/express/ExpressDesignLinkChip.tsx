@@ -13,6 +13,7 @@ import { ExpressMark } from "./ExpressMark";
 import { expressDesignId } from "./expressOpen";
 import { ExpressHistoryContext } from "./useExpressHistory";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** A card's picture: 36 px at twice the pixels. */
 const CARD_PICTURE = { width: 72, height: 72 } as const;
@@ -59,7 +60,7 @@ function ExpressDesignCard({
   // The design's own id, its last characters: two unnamed designs never read the same.
   const shortId = documentId.slice(-7);
   return (
-    <span className="my-1 flex w-fit max-w-full rounded-card border border-border bg-card shadow-xs/5">
+    <Card className="my-1 w-fit max-w-full flex-row" render={<span />}>
       <Row
         className="group/express"
         data-express-design-chip
@@ -114,6 +115,6 @@ function ExpressDesignCard({
         }
         title={words ?? "Adobe Express design"}
       />
-    </span>
+    </Card>
   );
 }
