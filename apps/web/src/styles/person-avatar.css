@@ -29,3 +29,18 @@
 [data-slot="card"][data-zerops-card-tone="failed"] {
   border-color: color-mix(in oklab, var(--zerops-status-failed) 35%, transparent);
 }
+
+/* A person's hue's lightness and chroma, for their disc and their letter: lighter on a light ground,
+   deeper on a dark one. */
+:root {
+  --person-l: 0.74;
+  --person-c: 0.07;
+  --person-ink-l: 0.2;
+  --person-ink-c: 0.06;
+}
+
+:root.dark {
+  --person-l: 0.49;
+  --person-ink-l: 1;
+  --person-ink-c: 0;
+}
