@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-import type { KitSection } from "../kitSection";
-
 /**
  * The design-system guards whose exception ledgers measure how far the app still is from the kit:
  * every entry is a place that breaks the rule on purpose, until it is fixed.
@@ -51,40 +49,22 @@ export const KIT_GUARD_COUNTS: ReadonlyMap<string, KitGuardCount> = new Map(
 
 /** What the sections' sources draw, counted from their text. */
 export interface KitSourceCounts {
-  /** Specimens across every section: each `Specimen`, census specimen and matrix. */
+  /** Specimens across every section: each `Specimen` and matrix. */
   readonly specimens: number;
-  /** Home-made looks the census still lists. */
-  readonly looks: number;
-  /** Looks per census section, by the section's id. */
-  readonly looksBySection: ReadonlyMap<string, number>;
 }
 
 const sources = import.meta.glob<string>("../sections/*.tsx", { query: "?raw", import: "default" });
-// The registry's own modules, already loaded: which section each source file is.
-const sectionOfFile = import.meta.glob<KitSection>("../sections/*.tsx", {
-  eager: true,
-  import: "default",
-});
 
 let loaded: Promise<KitSourceCounts> | undefined;
 
-/** Counts the sections' specimens and looks; loaded once, on the first page that asks. */
+/** Counts the sections' specimens; loaded once, on the first page that asks. */
 function loadSourceCounts(): Promise<KitSourceCounts> {
-  loaded ??= Promise.all(
-    Object.entries(sources).map(async ([path, load]) => [path, await load()] as const),
-  ).then((texts) => {
-    let specimens = 0;
-    let looks = 0;
-    const looksBySection = new Map<string, number>();
-    for (const [path, text] of texts) {
-      specimens += (text.match(/<(?:Specimen|CensusSpecimen|SpecimenMatrix)\b/gu) ?? []).length;
-      const sectionLooks = (text.match(/<CensusLook\b/gu) ?? []).length;
-      looks += sectionLooks;
-      const section = sectionOfFile[path];
-      if (section !== undefined) looksBySection.set(section.id, sectionLooks);
-    }
-    return { specimens, looks, looksBySection };
-  });
+  loaded ??= Promise.all(Object.values(sources).map((load) => load())).then((texts) => ({
+    specimens: texts.reduce(
+      (total, text) => total + (text.match(/<(?:Specimen|SpecimenMatrix)\b/gu) ?? []).length,
+      0,
+    ),
+  }));
   return loaded;
 }
 

@@ -11,7 +11,6 @@ import {
 
 import { Button } from "~/components/ui/button";
 import { EmptyState } from "~/components/ui/empty";
-import { PageHeader } from "~/components/ui/page-header";
 import { Sidebar, SidebarInset, SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider } from "~/components/ui/toast";
 import { useTheme } from "~/hooks/useTheme";
@@ -20,7 +19,6 @@ import { FlowPage } from "./flows/FlowPage";
 import { kitSearchQuery, useKitAppearance, type KitSearch, type KitView } from "./kitAppearance";
 import { decodeKitArgs, encodeKitArgs, type KitArgs, type KitPlayground } from "./kitPlayground";
 import type { KitSection } from "./kitSection";
-import { CensusBody, CensusSummary } from "./pages/CensusPage";
 import {
   ComponentPage,
   componentTabs,
@@ -80,11 +78,7 @@ const plainClick = (event: MouseEvent) =>
   !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) && event.button === 0;
 
 const toolsOf = (ref: KitPageRef): KitToolSet =>
-  ref.kind === "component" || ref.kind === "census"
-    ? CANVAS_TOOLS
-    : ref.kind === "flow"
-      ? FLOW_TOOLS
-      : DOCUMENT_TOOLS;
+  ref.kind === "component" ? CANVAS_TOOLS : ref.kind === "flow" ? FLOW_TOOLS : DOCUMENT_TOOLS;
 
 /** The width of an element as it resizes, for a flow that fills its room. */
 function useWidth(): [(element: HTMLElement | null) => () => void, number] {
@@ -101,9 +95,8 @@ function useWidth(): [(element: HTMLElement | null) => () => void, number] {
 }
 
 /**
- * The kit: every component the app is built from, the foundations beneath them, the looks still
- * home-made and, where the build carries the design harness, its flows. One page at a time, its
- * whole view in the address. Static fixtures only; it reads no account, project or Mate.
+ * The kit: every component the app is built from, the foundations beneath them and, where the
+ * build carries the design harness, its flows. One page at a time, its whole view in the address. Static fixtures only; it reads no account, project or Mate.
  */
 export function KitPage({
   search,
@@ -232,7 +225,7 @@ function KitShell({
       ? pageRef.flow.states?.find((candidate) => candidate.id === search.state)
       : undefined;
   const aloneHref =
-    pageRef.kind === "component" || pageRef.kind === "census"
+    pageRef.kind === "component"
       ? addressOf({
           ...paneSearch(oneAppearance),
           ...(search.args === undefined ? {} : { args: search.args }),
@@ -338,9 +331,7 @@ function Trail({
           ? ["Components", pageRef.section.title]
           : pageRef.kind === "flow"
             ? ["Flows", pageRef.flow.title, ...(stateLabel === undefined ? [] : [stateLabel])]
-            : pageRef.kind === "census"
-              ? ["Census"]
-              : ["Not found"];
+            : ["Not found"];
   return (
     <>
       {parts.map((part, index) => (
@@ -443,15 +434,6 @@ function KitPageView({
           zoom={(search.zoom ?? 100) / 100}
         />
       );
-    case "census":
-      return (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="shrink-0 border-b px-8 py-6">
-            <PageHeader line={<CensusSummary sections={sections} />} title="Census" />
-          </div>
-          {stage("Census")(<CensusBody at={pageRef.at} sections={sections} />)}
-        </div>
-      );
     case "missing":
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -508,8 +490,6 @@ function KitPane({
           <VariantsCanvas section={pageRef.section} />
         );
       }
-      case "census":
-        return <CensusBody at={pageRef.at} sections={KIT_SECTIONS} />;
       default:
         return null;
     }

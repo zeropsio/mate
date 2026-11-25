@@ -29,7 +29,7 @@ export const isKitPaneMessage = (data: unknown): data is KitPaneMessage =>
   typeof data === "object" && data !== null && (data as { type?: unknown }).type === "kit-args";
 
 /**
- * The canvas a component, its variants or the census stand on: its ground, its outline, and its
+ * The canvas a component or its variants stand on: its ground, its outline, and its
  * width and zoom, inside a scrolling stage. Both appearances are two frames of the page itself,
  * each painting one, since an appearance belongs to a whole document.
  */
