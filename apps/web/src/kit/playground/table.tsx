@@ -26,7 +26,7 @@ const SERVICES = [
 const LONG_NAME = "a-service-with-a-name-long-enough-to-wrap-or-truncate";
 
 const ROWS = ["2", "3", "5"] as const;
-const SIZES = ["sm", "md"] as const;
+const SIZES = ["sm", "md", "report"] as const;
 const SELECTED = ["none", "1", "2"] as const;
 
 export default definePlayground({
@@ -49,7 +49,11 @@ export default definePlayground({
       kind: "boolean",
       note: "the first column stays as the rest scroll sideways under it",
     },
-    size: { kind: "enum", options: SIZES, note: "sm a dense table of facts, md people or places" },
+    size: {
+      kind: "enum",
+      options: SIZES,
+      note: "sm a dense table of facts, md people or places, report a card's report of facts",
+    },
   },
   initial: {
     rows: "3",
