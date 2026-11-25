@@ -1160,19 +1160,42 @@ function PersonaComposer({
         onUndo={() => go(firstReply ? "persona-new" : "persona-standup")}
       />
     ) : null;
-  return (
-    <div className="shrink-0 px-6 pb-5" data-harness-composer>
-      <div
-        className="mx-auto max-w-3xl overflow-hidden rounded-sheet border border-border bg-card"
-        data-chat-composer-main-surface="true"
-      >
-        <div data-chat-composer-surface="true">
-          {top}
-          <div className="px-4 pt-3 pb-12 text-placeholder text-body">
-            Ask {state.mate.name} to do something…
-          </div>
+  const composer = (
+    <div
+      className="w-full overflow-hidden rounded-sheet border border-border bg-card"
+      data-chat-composer-main-surface="true"
+    >
+      <div data-chat-composer-surface="true">
+        {top}
+        <div className="px-4 pt-3 pb-12 text-placeholder text-body">
+          Ask {state.mate.name} to do something…
         </div>
       </div>
+    </div>
+  );
+  if (firstReply) {
+    // A new project's Mate before its first message: the conversation is a draft, so the app draws
+    // its hero — the composer in the column's middle, the Mate's face and question just above it
+    // (`ChatView`'s draft hero, `DraftHeroHeadline`).
+    return (
+      <div className="absolute inset-0 flex items-center px-6" data-harness-composer="hero">
+        <div className="relative mx-auto w-full max-w-3xl">
+          <div className="absolute inset-x-0 bottom-full pb-4">
+            <div className="flex flex-col items-center gap-5">
+              <MateFace shape={state.mate.shape} size={64} state="idle" tint={state.mate.tint} />
+              <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display">
+                What should {state.mate.name} do on {state.mate.project}?
+              </h1>
+            </div>
+          </div>
+          {composer}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 px-6 pb-5" data-harness-composer>
+      <div className="mx-auto max-w-3xl">{composer}</div>
     </div>
   );
 }
@@ -1268,6 +1291,8 @@ function Pane({
           </div>
         ) : state.conversation === true ? (
           <Conversation />
+        ) : state.persona !== undefined ? (
+          <PersonaComposer chosen={chosen} go={go} onChoose={onChoose} state={state} />
         ) : (
           stage
         )}
@@ -1278,7 +1303,7 @@ function Pane({
             <Textarea aria-label="Message Wren" placeholder="Ask Wren to do something…" />
           </div>
         </div>
-      ) : state.persona !== undefined ? (
+      ) : state.persona !== undefined && state.conversation === true ? (
         <PersonaComposer chosen={chosen} go={go} onChoose={onChoose} state={state} />
       ) : null}
       {state.dialog === undefined ? null : (
