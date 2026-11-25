@@ -609,14 +609,17 @@ export function SitesPanel({
       )}
       <div className="zerops-sites-scroll" ref={scroll}>
         {sections.length === 0 ? (
-          <div className="flex flex-col gap-1" data-zerops-surface="sidebar-project-sites-empty">
+          <div
+            className="flex flex-col gap-1 px-4 pt-1 pb-2"
+            data-zerops-surface="sidebar-project-sites-empty"
+          >
             <EmptyState mark={<GlobeIcon aria-hidden="true" />} size="row">
               No public addresses yet
             </EmptyState>
             {first === undefined ? null : <OpenInZerops projectId={first.candidate.project.id} />}
           </div>
         ) : filtering && kept.size === 0 ? (
-          <div data-zerops-surface="sidebar-project-sites-nomatch">
+          <div className="px-4" data-zerops-surface="sidebar-project-sites-nomatch">
             <EmptyState mark={<SearchIcon aria-hidden="true" />} size="row">
               {`No address matches “${query.trim()}”`}
             </EmptyState>
