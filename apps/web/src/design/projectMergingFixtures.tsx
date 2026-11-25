@@ -29,6 +29,8 @@ import {
 } from "~/components/zerops/projectMerging/projectMerging.logic";
 import { SectionLabel } from "~/components/zerops/system";
 import type { MergingPress } from "~/zerops/useAppMergers";
+import { Card } from "~/components/ui/card";
+import { PAGE_GROUP, PAGE_SIDE } from "~/components/zerops/project/pageLayout";
 
 const nothing = () => {};
 
@@ -165,9 +167,11 @@ export const isMergingState = (name: string): name is MergingStateName =>
 /** The dialog's body, framed for the harness: its title, then what the dialog holds. */
 function Section({ children }: { readonly children: ReactNode }) {
   return (
-    <section aria-label={MERGING_TITLE} className="pp-group">
+    <section aria-label={MERGING_TITLE} className={PAGE_GROUP}>
       <SectionLabel>{MERGING_TITLE}</SectionLabel>
-      <div className="pp-card pp-detail">{children}</div>
+      <Card>
+        <div className="p-3">{children}</div>
+      </Card>
     </section>
   );
 }
@@ -228,7 +232,7 @@ function MergingStatePanel({ name }: { readonly name: MergingStateName }) {
         <Section>
           <MergingBody state={state} />
         </Section>
-        <div className="pp-setup grid">
+        <div className={PAGE_SIDE}>
           <MergingRow state={state} />
         </div>
       </div>

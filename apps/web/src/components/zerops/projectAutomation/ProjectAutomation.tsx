@@ -79,6 +79,8 @@ import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
 import { BeadMark, CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
+import { goClass } from "../system/ChangeRow";
+import { cn } from "~/lib/utils";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -738,7 +740,11 @@ export function ProjectAutomationView({
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
   return (
-    <section aria-label="Automation" className="pa" data-zerops-surface="project-automation">
+    <section
+      aria-label="Automation"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)] [--ln-ground:transparent] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,transparent)] @container/automation"
+      data-zerops-surface="project-automation"
+    >
       <AutomationBody
         admin={admin}
         board={board}
@@ -770,9 +776,14 @@ function AutomationBody({
   const [all, setAll] = useState(false);
   return (
     <>
-      <div className="pa-head" data-zerops-surface="project-automation-pool">
+      {/* The masthead: the pool in one line, the month's money at its end; too narrow, the money
+          takes a line of its own. Flush in a dialog, it starts on the title's edge. */}
+      <div
+        className="flex min-h-13 min-w-0 items-center gap-2.5 px-4.5 py-3 @max-[520px]/automation:flex-wrap @max-[520px]/automation:gap-y-1 [[data-flush]_&]:px-6"
+        data-zerops-surface="project-automation-pool"
+      >
         {pool.length === 0 ? null : (
-          <span className="pa-faces">
+          <span className="flex flex-none gap-1">
             {pool.map((mate) =>
               workingOf === undefined ? (
                 <PoolFace key={mate.projectId} mate={mate} onOpen={onOpenMate} size={24} />
@@ -788,26 +799,29 @@ function AutomationBody({
             )}
           </span>
         )}
-        <span className="pa-head-words text-body">{poolSummary(pool, held)}</span>
+        <span className="min-w-0 truncate text-body @max-[520px]/automation:flex-1 @max-[520px]/automation:whitespace-normal">
+          {poolSummary(pool, held)}
+        </span>
         {admin?.onAddMate === undefined ? null : (
-          <span className="pa-head-add">
+          // Its words stand 6 px after the pool's: the press's own inset is the rest of the gap.
+          <span className="-ms-1.25 flex flex-none">
             <Button aria-label="Add a Mate" onClick={admin.onAddMate} size="sm" variant="link">
               <span>
-                + Add<span className="pa-wide">&nbsp;a Mate</span>
+                + Add<span className={WIDE}>&nbsp;a Mate</span>
               </span>
             </Button>
           </span>
         )}
         {/* The organization's money, in a project's section: it says whose it is. */}
         {board?.spend == null ? null : (
-          <span className="pa-spend">
-            <span className="pa-wide">All automated Mates · </span>
+          <span className="ms-auto flex-none text-caption leading-4.5 whitespace-nowrap text-muted-foreground tabular-nums @max-[520px]/automation:ms-0 @max-[520px]/automation:basis-full">
+            <span className={WIDE}>All automated Mates · </span>
             {board.spend}
           </span>
         )}
       </div>
       <GrowsInPlace>
-        <div className="pa-body">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] border-t border-border/60 px-2 pt-1.5 pb-2 [[data-flush]_&]:px-3.5">
           {board === undefined ? null : (
             <TaskBoardView
               all={all}
@@ -837,7 +851,11 @@ function LedgerGroup({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="pa-group" data-zerops-board={name}>
+    // The page's label 15 px over its first row's words, 32 px under the last group's.
+    <div
+      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-zerops-section-label]]:px-2.5"
+      data-zerops-board={name}
+    >
       <SectionLabel action={action} count={count} level={3}>
         {name}
       </SectionLabel>
@@ -848,10 +866,10 @@ function LedgerGroup({
 
 function Placeholders({ count }: { readonly count: number }) {
   return (
-    <ul aria-hidden="true" className="pa-rows">
+    <ul aria-hidden="true" className={ROWS}>
       {Array.from({ length: count }, (_, at) => (
-        <li className="ov-change-row pa-row" key={at}>
-          <Row columns data-ov-change="" data-plain="">
+        <li className={ROW} key={at}>
+          <Row className={PRESS} columns>
             <Skeleton className="col-span-full h-3.5" surface="card" />
           </Row>
         </li>
@@ -875,14 +893,15 @@ function RowPress({
 }) {
   if (route === null)
     return (
-      <Row columns data-ov-change="" data-plain="">
+      <Row className={PRESS} columns>
         {children}
       </Row>
     );
   return (
     <Row
+      className={PRESS}
       columns
-      data-ov-change=""
+      data-press=""
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
         event.preventDefault();
@@ -927,8 +946,11 @@ function TaskStop({
   if (board.stop === undefined) return null;
   if (asking)
     return (
-      <span className="pa-ask">
-        <span className="pa-ask-words">{question}</span>
+      // Stop asks in the row, over its facts, which keep their columns under it.
+      <span className="absolute inset-y-0 start-4 end-2.5 z-2 col-start-3 -col-end-1 flex min-w-0 items-center justify-end gap-1.5 motion-safe:animate-zerops-appear @max-[520px]/automation:start-0 @max-[520px]/automation:col-start-2 @max-[520px]/automation:bg-card">
+        <span className="me-1 min-w-0 truncate text-caption leading-4.5 text-muted-foreground">
+          {question}
+        </span>
         <Button onClick={board.stop.onKeep} ref={keep} size="sm" variant="ghost">
           Keep
         </Button>
@@ -945,7 +967,14 @@ function TaskStop({
       </span>
     );
   return (
-    <span className="pa-stop">
+    // Stop stands only on the row pointed at or focused, in the chevron's place; always where
+    // nothing hovers.
+    <span
+      className={cn(
+        SEAT,
+        "pointer-events-none flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/pa:pointer-events-auto group-hover/pa:opacity-100 group-focus-within/pa:pointer-events-auto group-focus-within/pa:opacity-100 motion-reduce:transition-none [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+      )}
+    >
       <Button
         onClick={() => {
           pressed.current = true;
@@ -972,12 +1001,14 @@ function RowText({
   readonly failed?: boolean;
 }) {
   return (
-    <span className="pa-text">
-      <CutText className="ov-change-title" text={title} />
+    <span className={TEXT}>
+      <CutText className={TITLE} text={title} />
       {why == null ? null : (
         <span
-          className="pa-why"
-          data-tone={failed ? "failed" : undefined}
+          className={cn(
+            "truncate text-caption leading-4",
+            failed ? "text-status-failed-text" : "text-muted-foreground",
+          )}
           role={failed ? "alert" : undefined}
         >
           {why}
@@ -1042,8 +1073,9 @@ function TaskBoardView({
   if (read.state === "none") return null;
   if (read.state === "failed")
     return (
-      <div className="pa-line">
-        <span className="pa-line-words" role="alert">
+      // The board's read failed: HQ's words, and the way to read again.
+      <div className={LINE}>
+        <span className="min-w-0 flex-1 text-body leading-5 text-status-failed-text" role="alert">
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
@@ -1055,7 +1087,7 @@ function TaskBoardView({
     const { atWork, queued, recent, recentMore } = read.predicted;
     if (atWork + queued + recent === 0) return null;
     return (
-      <div className="pa-ledger" data-zerops-surface="project-automation-board">
+      <div className={LEDGER} data-zerops-surface="project-automation-board">
         {atWork === 0 ? null : (
           <LedgerGroup name="At work">
             <Placeholders count={atWork} />
@@ -1069,7 +1101,7 @@ function TaskBoardView({
         {recent === 0 ? null : (
           <LedgerGroup name="Finished">
             <Placeholders count={recent} />
-            {recentMore === true ? <div aria-hidden="true" className="pa-more" /> : null}
+            {recentMore === true ? <div aria-hidden="true" className={MORE} /> : null}
           </LedgerGroup>
         )}
       </div>
@@ -1078,7 +1110,7 @@ function TaskBoardView({
   const { atWork, queued, recent } = read.board;
   if (atWork.length + queued.length + recent.length === 0)
     return waitsFor === undefined ? null : (
-      <p className="pa-words">
+      <p className="m-0 px-2.5 pt-2 pb-1.5 text-body leading-5 text-muted-foreground">
         No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
         soon as there is somewhere to take it from.
       </p>
@@ -1086,10 +1118,10 @@ function TaskBoardView({
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
   const finished = all ? recent : recent.slice(0, RECENT_SHOWN);
   return (
-    <div className="pa-ledger" data-zerops-surface="project-automation-board" ref={ledger}>
+    <div className={LEDGER} data-zerops-surface="project-automation-board" ref={ledger}>
       {atWork.length === 0 ? null : (
         <LedgerGroup count={atWork.length} name="At work">
-          <ul className="pa-rows">
+          <ul className={ROWS}>
             {atWork.map((row) => {
               const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
               const name = mate?.name ?? row.mate?.name ?? null;
@@ -1101,15 +1133,9 @@ function TaskBoardView({
               // A task that asks holds its seat for Answer; its conversation keeps its Stop.
               const stoppable = board.stop !== undefined && !stopping && !asks;
               return (
-                <li
-                  className="ov-change-row pa-row"
-                  data-asking={press.kind === "asking" ? "" : undefined}
-                  data-stop={stoppable ? "" : undefined}
-                  data-zerops-task={row.id}
-                  key={row.id}
-                >
+                <li className={ROW} data-zerops-task={row.id} key={row.id}>
                   <RowPress onOpen={board.onOpen} route={row.route}>
-                    <span className="pa-lead">
+                    <span className={LEAD}>
                       {mate === undefined ? null : (
                         <MateFace
                           shape={mate.shape}
@@ -1124,13 +1150,13 @@ function TaskBoardView({
                       title={row.title}
                       why={press.kind === "refused" ? press.words : null}
                     />
-                    <span className="pa-facts">
+                    <span className={facts(press.kind === "asking")}>
                       {words === null ? null : (
-                        <span className="pa-state" data-tone={asks ? "attention" : undefined}>
+                        <span className={cn(STATE, asks && "text-status-attention-text")}>
                           {words}
                         </span>
                       )}
-                      <span className="pa-who">
+                      <span className={WHO}>
                         {name}
                         {name === null || row.worked === "—" ? null : " · "}
                         {row.worked === "—" ? null : (
@@ -1140,15 +1166,15 @@ function TaskBoardView({
                           </>
                         )}
                       </span>
-                      <span className="pa-cost">{row.cost}</span>
+                      <span className={COST}>{row.cost}</span>
                     </span>
-                    <span className="pa-act">
+                    <span className={act(press.kind === "asking")}>
                       {row.route === null || stopping ? null : asks ? (
                         <Button render={<span />} size="xs" variant="secondary">
                           Answer
                         </Button>
                       ) : (
-                        <ChevronRightIcon aria-hidden="true" className="ov-go" />
+                        <ChevronRightIcon aria-hidden="true" className={go(stoppable)} />
                       )}
                     </span>
                   </RowPress>
@@ -1167,50 +1193,46 @@ function TaskBoardView({
       )}
       {queued.length === 0 ? null : (
         <LedgerGroup count={queued.length} name="Queued">
-          <ul className="pa-rows">
+          <ul className={ROWS}>
             {queued.map((row) => {
               const press = board.stop?.pressOf(row.id) ?? RESTS;
               const stopping = press.kind === "working";
               const stoppable = board.stop !== undefined && !stopping;
               return (
-                <li
-                  className="ov-change-row pa-row"
-                  data-asking={press.kind === "asking" ? "" : undefined}
-                  data-stop={stoppable ? "" : undefined}
-                  data-zerops-task={row.id}
-                  key={row.id}
-                >
-                  <Row columns data-ov-change="" data-plain="">
+                <li className={ROW} data-zerops-task={row.id} key={row.id}>
+                  <Row className={PRESS} columns>
                     {/* Its place stands where a face will. */}
-                    <span className="pa-lead pa-place">{row.position}</span>
+                    <span className={cn(LEAD, "text-caption leading-5 tabular-nums")}>
+                      {row.position}
+                    </span>
                     <RowText
                       failed
                       title={row.title}
                       why={press.kind === "refused" ? press.words : null}
                     />
-                    <span className="pa-facts">
+                    <span className={facts(press.kind === "asking")}>
                       {stopping ? (
-                        <span className="pa-state">{atWorkWords("stopping")}</span>
+                        <span className={STATE}>{atWorkWords("stopping")}</span>
                       ) : row.url === null ? (
-                        <span className="pa-state">{row.source}</span>
+                        <span className={STATE}>{row.source}</span>
                       ) : (
-                        <span className="pa-state">
+                        <span className={STATE}>
                           <InlineButton
                             className="max-w-full"
                             render={<a href={row.url} rel="noreferrer" target="_blank" />}
                             tone="muted"
                           >
                             <RealName>{row.source}</RealName>
-                            <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                            <ArrowUpRightIcon aria-hidden="true" className={OUT} />
                           </InlineButton>
                         </span>
                       )}
-                      <span className="pa-who">
+                      <span className={WHO}>
                         <span className="sr-only">Waited </span>
                         {row.waited}
                       </span>
                     </span>
-                    <span className="pa-act" />
+                    <span className={act(press.kind === "asking")} />
                   </Row>
                   {stoppable ? (
                     <TaskStop
@@ -1227,57 +1249,67 @@ function TaskBoardView({
       )}
       {recent.length === 0 ? null : (
         <LedgerGroup count={recent.length} name="Finished">
-          <ul className="pa-rows">
+          <ul className={ROWS}>
             {finished.map((row) => {
               const mate = row.mateId === null ? undefined : faces.get(row.mateId);
               const review = row.outcome === "review" ? row.change : null;
               return (
-                <li className="ov-change-row pa-row" data-zerops-task={row.id} key={row.id}>
+                <li className={ROW} data-zerops-task={row.id} key={row.id}>
                   <RowPress onOpen={board.onOpen} route={row.route}>
-                    <span className="pa-lead">
-                      <BeadMark className="ov-change-bead" mark={undefined} tint={mate?.tint} />
+                    <span className={LEAD}>
+                      <BeadMark
+                        className="pointer-events-none cursor-default"
+                        mark={undefined}
+                        tint={mate?.tint}
+                      />
                     </span>
                     <RowText failed={row.outcome === "failed"} title={row.title} why={row.detail} />
-                    <span className="pa-facts">
+                    <span className={facts(false)}>
                       <span
-                        className="pa-state"
-                        data-tone={
+                        className={cn(
+                          STATE,
                           row.outcome === "failed"
-                            ? "failed"
+                            ? "text-status-failed-text"
                             : row.outcome === "review"
-                              ? "attention"
-                              : undefined
-                        }
+                              ? "text-status-attention-text"
+                              : undefined,
+                        )}
                       >
                         {TASK_STATUS_WORDS[row.outcome]}
                       </span>
-                      <span className="pa-who">
+                      <span className={WHO}>
                         {row.when === "—" ? null : <span className="sr-only">Ended </span>}
                         {whoWords(row.mate, row.when)}
                       </span>
-                      <span className="pa-cost">{row.cost}</span>
+                      <span className={COST}>{row.cost}</span>
                     </span>
-                    <span className="pa-act">
+                    <span className={act(false)}>
                       {row.route === null || review !== null ? null : (
-                        <ChevronRightIcon aria-hidden="true" className="ov-go" />
+                        <ChevronRightIcon aria-hidden="true" className={go(false)} />
                       )}
                     </span>
                   </RowPress>
                   {/* Its pull request on GitHub, where it has one. */}
                   {row.change?.external === true ? (
-                    <span className="pa-pr">
+                    // Its pull request on GitHub: beside the row's press, in its own column.
+                    <span
+                      className={cn(
+                        FACT,
+                        "z-1 col-start-4 row-start-1 inline-flex items-center gap-0.75 @max-[760px]/automation:hidden",
+                      )}
+                    >
                       <InlineButton
                         render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
                         tone="muted"
                       >
                         {row.change.label}
-                        <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                        <ArrowUpRightIcon aria-hidden="true" className={OUT} />
                       </InlineButton>
                     </span>
                   ) : null}
                   {/* The Changes card's Review: it opens the change, the row its conversation. */}
                   {review === null ? null : (
-                    <span className="pa-verb">
+                    <span className={VERB}>
                       {review.external ? (
                         <Button
                           render={<a href={review.href} rel="noreferrer" target="_blank" />}
@@ -1313,7 +1345,8 @@ function TaskBoardView({
             })}
           </ul>
           {recent.length > RECENT_SHOWN ? (
-            <div className="pa-more">
+            // Finished past its first few: opened in place, on the titles' edge.
+            <div className={MORE}>
               <SectionAction
                 onClick={() => {
                   onAll(!all);
@@ -1363,7 +1396,11 @@ function SourcesView({
   if (none && !sources.reading && !sources.withheld && admin === undefined) return null;
   const count = rows.filter((row) => row.kind !== "failed").length;
   return (
-    <div className="pa-ledger pa-sources" data-zerops-surface="project-automation-sources">
+    // The sources: their own facts, on the same left edge.
+    <div
+      className={cn(LEDGER, "mt-3 grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]")}
+      data-zerops-surface="project-automation-sources"
+    >
       <LedgerGroup
         action={
           admin === undefined || none ? undefined : (
@@ -1388,17 +1425,18 @@ function SourcesView({
         name="Takes tasks from"
       >
         {!none ? (
-          <ul className="pa-rows">
+          <ul className={ROWS}>
             {rows.map((row) => (
               <SourceRowView admin={admin} key={row.key} row={row} />
             ))}
           </ul>
         ) : sources.reading ? (
-          <div className="pa-wait">
+          <div className={LINE}>
             <WaitLine text="Reading…" />
           </div>
         ) : admin === undefined ? null : (
-          <div className="pa-kinds">
+          // No source yet: the kinds stand in the group that will hold them.
+          <div className="flex flex-wrap gap-2 px-2.5 pt-1 pb-2">
             {SOURCE_KINDS.map((entry) => (
               <Button
                 key={entry.kind}
@@ -1413,7 +1451,11 @@ function SourcesView({
             ))}
           </div>
         )}
-        {sources.withheld ? <p className="pa-note">Owners and admins see every source.</p> : null}
+        {sources.withheld ? (
+          <p className="m-0 px-2.5 pt-1.5 pb-0.5 text-caption leading-4.5 text-muted-foreground">
+            Owners and admins see every source.
+          </p>
+        ) : null}
       </LedgerGroup>
     </div>
   );
@@ -1430,13 +1472,12 @@ function SourceRowView({
   const disconnected = (row.kind === "slack" || row.kind === "discord") && row.disconnected;
   const cells = (
     <>
-      <span className="pa-lead">
+      <span className={LEAD}>
         <SourceMark kind={failed ? row.source : row.kind} />
       </span>
-      <span className="pa-text">
+      <span className={TEXT}>
         <span
-          className="ov-change-title"
-          data-tone={failed ? "failed" : undefined}
+          className={cn(TITLE, failed && "text-status-failed-text")}
           role={failed ? "alert" : undefined}
         >
           {row.title}
@@ -1448,37 +1489,36 @@ function SourceRowView({
           ) : null}
         </span>
       </span>
-      <span className="pa-facts">
+      <span className={facts(false)}>
         {disconnected ? (
-          <span className="pa-state" data-tone="attention">
-            Not connected
-          </span>
+          <span className={cn(STATE, "text-status-attention-text")}>Not connected</span>
         ) : null}
         {row.detail === null && row.meta === null ? null : (
-          <span className="pa-who">
+          <span className={cn(WHO, "col-start-4")}>
             {row.kind === "github" ? <RealName>{row.detail}</RealName> : row.detail}
             {row.detail === null || row.meta === null ? null : " · "}
             {row.meta}
           </span>
         )}
       </span>
-      <span className="pa-act">
+      <span className={cn(act(false), "col-start-5")}>
         {admin === undefined || failed || disconnected ? null : (
-          <ChevronRightIcon aria-hidden="true" className="ov-go" />
+          <ChevronRightIcon aria-hidden="true" className={go(false)} />
         )}
       </span>
     </>
   );
   return (
-    <li className="ov-change-row pa-row" data-zerops-source={row.kind}>
+    <li className={ROW} data-zerops-source={row.kind}>
       {admin === undefined ? (
-        <Row columns data-ov-change="" data-plain="">
+        <Row className={PRESS} columns>
           {cells}
         </Row>
       ) : (
         <Row
+          className={PRESS}
           columns
-          data-ov-change=""
+          data-press=""
           onClick={() => {
             admin.onEdit(row);
           }}
@@ -1489,7 +1529,7 @@ function SourceRowView({
         </Row>
       )}
       {admin === undefined ? null : failed ? (
-        <span className="pa-verb">
+        <span className={cn(VERB, "col-start-5")}>
           <Button
             onClick={() => {
               admin.onReadAgain(row.source);
@@ -1501,7 +1541,7 @@ function SourceRowView({
           </Button>
         </span>
       ) : disconnected ? (
-        <span className="pa-verb">
+        <span className={cn(VERB, "col-start-5")}>
           <Button onClick={admin.onOpenSettings} size="xs" variant="secondary">
             Connect
           </Button>
@@ -1510,3 +1550,84 @@ function SourceRowView({
     </li>
   );
 }
+
+/** Words only a wide ledger has room for. */
+const WIDE = "@max-[760px]/automation:hidden";
+
+/**
+ * One grid for the tasks, its facts in columns that run down every group: a mark, the title, the
+ * state, the pull request, whose and when, the cost, the seat of the row's one press. Too narrow
+ * for columns (a phone), a row's facts are one line under its title, its seat beside both.
+ */
+const LEDGER =
+  "relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] @max-[520px]/automation:grid-cols-[auto_minmax(0,1fr)_auto]";
+const ROWS = "m-0 grid min-w-0 list-none grid-cols-subgrid p-0";
+
+/**
+ * A row: the Changes ledger's own, 40 px, a hairline over each but the first. It holds its ground
+ * while any of it is pointed at: its Stop and its Review stand over it.
+ */
+const ROW =
+  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-foreground/5";
+const PRESS = "row-start-1 min-h-10 items-center";
+
+/** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */
+const LEAD = "col-start-1 row-start-1 me-3 grid size-5 place-items-center text-muted-foreground";
+
+/** The title and, under it, its one line: why it failed, who stopped it. */
+const TEXT = "col-start-2 row-start-1 grid min-w-0";
+const TITLE = "truncate text-body leading-5 max-sm:line-clamp-2 max-sm:whitespace-normal";
+
+/** A row's facts, each in the ledger's column: muted figures on one line. */
+const FACT =
+  "ms-4 text-caption leading-4.5 whitespace-nowrap text-muted-foreground tabular-nums @max-[520px]/automation:ms-0 @max-[520px]/automation:min-w-0";
+
+/** A state said in words, only where there is one: Asks you, Failed, Up for review. */
+const STATE = cn(
+  FACT,
+  "col-start-3 row-start-1 max-w-82.5 truncate @max-[760px]/automation:max-w-42.5",
+);
+const WHO = cn(FACT, "col-start-5 row-start-1 text-end");
+const COST = cn(FACT, "col-start-6 row-start-1 min-w-9.5 text-end");
+const OUT = "size-2.75 flex-none";
+
+/**
+ * The facts stand in the ledger's columns (the wrapper is theirs only where the ledger is too
+ * narrow); Stop asks over them, and they keep their columns under it.
+ */
+function facts(asking: boolean): string {
+  return cn(
+    "contents *:transition-opacity *:duration-150 *:ease-out-strong motion-reduce:*:transition-none",
+    "@max-[520px]/automation:col-start-2 @max-[520px]/automation:row-start-2 @max-[520px]/automation:flex @max-[520px]/automation:min-w-0 @max-[520px]/automation:overflow-hidden @max-[520px]/automation:[&>*+*]:before:mx-1.5 @max-[520px]/automation:[&>*+*]:before:content-['·']",
+    asking && "*:pointer-events-none *:opacity-0",
+  );
+}
+
+/** The seat of a row's one press, held in every row: a chevron ends where Answer and Review do. */
+function act(asking: boolean): string {
+  return cn(
+    "col-start-7 row-start-1 ms-3 flex min-h-7 min-w-14.5 items-center justify-end transition-opacity duration-150 ease-out-strong motion-reduce:transition-none @max-[520px]/automation:col-start-3 @max-[520px]/automation:row-[1/span_2]",
+    asking && "pointer-events-none opacity-0",
+  );
+}
+
+/** A press of its own in the row's seat, beside the press that opens it: Review, Connect, Stop. */
+const SEAT =
+  "z-1 col-start-7 row-start-1 ms-3 me-2.5 justify-self-end @max-[520px]/automation:col-start-3 @max-[520px]/automation:row-[1/span_2]";
+const VERB = SEAT;
+
+/**
+ * Where a row leads, quiet at rest; on a row with a Stop it gives way to the Stop while the row is
+ * pointed at or focused, and always where nothing hovers.
+ */
+function go(stoppable: boolean): string {
+  return stoppable
+    ? "size-4 flex-none text-muted-foreground opacity-55 transition-opacity duration-150 ease-out-strong group-focus-within/pa:opacity-0 group-hover/pa:opacity-0 motion-reduce:transition-none [@media(hover:none)]:opacity-0"
+    : goClass(true);
+}
+
+/** Finished past its first few, and its stand-in while read. */
+const MORE = "flex min-h-7.5 items-center ps-8 pe-2.5 pt-0.5";
+
+/** A line in the card: the read that failed, the sources being read. */
+const LINE = "flex min-h-10 items-center gap-2 px-2.5 py-1.5";

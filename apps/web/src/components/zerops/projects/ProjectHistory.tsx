@@ -19,7 +19,8 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 
 import { GitBrowserLink, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
-import { ChangeList, ChangeRow } from "../system/ChangeRow";
+import { CHANGE_ICON, ChangeList, ChangeRow } from "../system/ChangeRow";
+import { cn } from "~/lib/utils";
 import {
   groupRepository,
   historyReleases,
@@ -113,7 +114,7 @@ export function ProjectHistoryView({
   };
   return (
     <>
-      <ul className="pp-hist" data-zerops-surface="project-history">
+      <ul className="m-0 grid list-none gap-0.5 p-0" data-zerops-surface="project-history">
         {shown.rows.map((release) => (
           <ReleaseRow
             byName={release.by === undefined ? undefined : personName?.(release.by)}
@@ -131,7 +132,7 @@ export function ProjectHistoryView({
         ))}
       </ul>
       {shown.all === undefined ? null : (
-        <div className="pp-hist-more">
+        <div className="flex pt-0.5">
           <Button
             onClick={() => {
               setAll((current) => !current);
@@ -146,6 +147,9 @@ export function ProjectHistoryView({
     </>
   );
 }
+
+/** A line of an opened release: why it failed, what went live outside Mate. */
+const HIST_LINE = "border-t border-border/60 py-2.25 text-line leading-5";
 
 /** Tones of a release's state: Live green, a failure red, a stall amber, Rolled back quiet. */
 const STATE_TONE = {
@@ -182,11 +186,23 @@ function ReleaseRow({
   const gist = releaseGist(release);
   const head = (
     <>
-      <span aria-hidden="true" className="pp-hist-chevron">
-        {opens ? <ChevronRightIcon data-open={open ? "true" : undefined} /> : null}
+      <span
+        aria-hidden="true"
+        className="flex size-4.5 items-center justify-center text-muted-foreground"
+      >
+        {opens ? (
+          <ChevronRightIcon
+            className={cn(
+              "size-3.5 transition-[rotate] duration-150 ease-out-strong motion-reduce:transition-none",
+              open && "rotate-90",
+            )}
+          />
+        ) : null}
       </span>
-      <span className="pp-hist-name">
-        <span className="pp-hist-tag">{release.tag}</span>
+      <span className="flex items-center gap-2">
+        <span className="font-mono text-body leading-5 font-medium text-foreground">
+          {release.tag}
+        </span>
         {release.state === undefined ? null : (
           <Badge data-state={release.state} tone={STATE_TONE[release.state]}>
             {RELEASE_STATE_WORDS[release.state]}
@@ -194,12 +210,14 @@ function ReleaseRow({
         )}
       </span>
       {open ? (
-        <span className="pp-hist-facts">{releaseFacts(release, byName)}</span>
+        <span className="min-w-0 truncate text-line leading-5 text-muted-foreground">
+          {releaseFacts(release, byName)}
+        </span>
       ) : (
-        <span className="pp-hist-gist">
+        <span className="min-w-0 truncate text-body leading-5 text-foreground/85">
           {release.failure ?? gist.text}
           {release.failure === undefined && gist.more > 0 ? (
-            <span className="pp-hist-quiet"> · +{gist.more}</span>
+            <span className="text-muted-foreground"> · +{gist.more}</span>
           ) : null}
         </span>
       )}
@@ -207,12 +225,19 @@ function ReleaseRow({
     </>
   );
   return (
+    // A release opens, on a lifted ground, to the changes it put live; shut, it lights under the
+    // pointer.
     <Collapsible
-      className="pp-hist-release"
-      data-open={open ? "true" : undefined}
       onOpenChange={onToggle}
       open={open}
-      render={<li />}
+      render={
+        <li
+          className={cn(
+            "grid min-w-0 rounded-control transition-colors duration-150 ease-out-strong",
+            open ? "bg-foreground/4 pb-1.5" : "has-[>[data-hist-head]:hover]:bg-foreground/5",
+          )}
+        />
+      }
     >
       {opens ? (
         <CollapsibleTrigger
@@ -227,12 +252,13 @@ function ReleaseRow({
         </div>
       )}
       {open ? (
-        <div className="pp-hist-body">
+        // Its changes, set in under its version, a hairline over each.
+        <div className="grid min-w-0 ps-11 pe-3.5">
           {release.failure === undefined ? null : (
-            <p className="pp-hist-failure">{release.failure}</p>
+            <p className={cn(HIST_LINE, "text-status-failed-text")}>{release.failure}</p>
           )}
           {recorded.length === 0 ? null : (
-            <ChangeList label={`What ${release.tag} put live`}>
+            <ChangeList label={`What ${release.tag} put live`} look="release">
               {recorded.map((change) => (
                 <HistoryChangeRow
                   change={change}
@@ -245,7 +271,7 @@ function ReleaseRow({
             </ChangeList>
           )}
           {outside === 0 ? null : (
-            <p className="pp-hist-outside">
+            <p className={cn(HIST_LINE, "text-muted-foreground")}>
               {repo === undefined ? (
                 outsideLine(outside)
               ) : (
@@ -280,7 +306,7 @@ function HistoryChangeRow({
   if (pull === undefined)
     return (
       <ChangeRow
-        face={<GitMergeIcon aria-hidden="true" className="ov-change-icon" />}
+        face={<GitMergeIcon aria-hidden="true" className={CHANGE_ICON} />}
         onOpen={open}
         title={change.title}
       />
@@ -300,5 +326,9 @@ function HistoryChangeRow({
 /** When a release was made, as the place page's releases say it: "8d ago". */
 function ReleaseAge({ at }: { readonly at: string }) {
   const nowMs = useNowMs();
-  return <span className="pp-hist-time">{formatRelativeTimeLabel(at, nowMs)}</span>;
+  return (
+    <span className="text-line leading-5 whitespace-nowrap text-muted-foreground tabular-nums">
+      {formatRelativeTimeLabel(at, nowMs)}
+    </span>
+  );
 }

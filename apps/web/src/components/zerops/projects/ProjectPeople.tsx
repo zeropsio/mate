@@ -686,7 +686,11 @@ export function ProjectPeopleRowView({
         ) : (
           <>
             {people.length === 0 ? null : (
-              <span aria-hidden="true" className="pp-faces">
+              // Who has access, as faces: each over the last, ringed in the card's ground.
+              <span
+                aria-hidden="true"
+                className="flex flex-none ps-1.5 *:-ms-1.5 *:ring-2 *:ring-card"
+              >
                 {people.slice(0, FACES_SHOWN).map((person) => (
                   <PersonAvatar
                     key={person.key}
@@ -695,7 +699,11 @@ export function ProjectPeopleRowView({
                     size={24}
                   />
                 ))}
-                {more > 0 ? <span className="pp-faces-more">+{more}</span> : null}
+                {more > 0 ? (
+                  <span className="relative inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-foreground/12 px-1 text-3xs font-semibold text-foreground tabular-nums">
+                    +{more}
+                  </span>
+                ) : null}
               </span>
             )}
             <span className="text-body text-foreground">{summary}</span>

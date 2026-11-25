@@ -84,6 +84,7 @@ import {
   useWithheldStops,
   ZeropsRuntimeStops,
 } from "./ZeropsGroupDetail";
+import { PAGE, PAGE_COLS, PAGE_MAIN, PAGE_SIDE } from "./project/pageLayout";
 
 /**
  * A project's own page: its header, then what changes day to day — what waits on the person, its
@@ -425,10 +426,10 @@ function UnreadGroupDetail({
   // The page in its own boxes: its header, its main column's place, and its side column, where the
   // environments already read stand.
   return (
-    <div className="pp" data-zerops-surface="project-page">
+    <div className={PAGE} data-zerops-surface="project-page">
       <PageHeader title={groupName} trail={trail} />
-      <div className="pp-cols">
-        <div className="pp-main">
+      <div className={PAGE_COLS}>
+        <div className={PAGE_MAIN}>
           {undrawn ? (
             <UndrawnGroupDetail groupId={groupId} />
           ) : (
@@ -436,7 +437,7 @@ function UnreadGroupDetail({
               groupId={groupId}
               standIn={
                 <Loading label="This project">
-                  <div className="pp-main">
+                  <div className={PAGE_MAIN}>
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-16 w-full" />
                   </div>
@@ -445,7 +446,7 @@ function UnreadGroupDetail({
             />
           )}
         </div>
-        <div className="pp-side">
+        <div className={PAGE_SIDE}>
           <ZeropsRuntimeStops
             stops={runtimeStops}
             deployments={deployments}

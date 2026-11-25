@@ -3,7 +3,6 @@
    draw the menu without that document (the design harnesses). */
 @import "./sidebarGeometry.css";
 @import "./components/zerops/primitives/MateFaceMoments.css";
-@import "./components/zerops/project/projectPage.css";
 @import "tailwindcss";
 
 /* The app's own styles, in cascade order: the foundation (variants, tokens, utilities), the
