@@ -472,14 +472,17 @@ function KitPane({
         return null;
     }
   })();
+  // The app's root never scrolls; the pane is the window's one scroller, as the stage is the shell's.
   return (
-    <KitCanvas
-      ground={search.bg ?? "page"}
-      outline={search.outline === 1}
-      viewport={search.viewport}
-      zoom={search.zoom ?? 100}
-    >
-      {content}
-    </KitCanvas>
+    <div className="h-svh overflow-auto">
+      <KitCanvas
+        ground={search.bg ?? "page"}
+        outline={search.outline === 1}
+        viewport={search.viewport}
+        zoom={search.zoom ?? 100}
+      >
+        {content}
+      </KitCanvas>
+    </div>
   );
 }
