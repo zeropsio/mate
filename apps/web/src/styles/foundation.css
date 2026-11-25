@@ -390,6 +390,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-conversation-handoff: conversation-handoff 1ms linear;
   --animate-stage-exit: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
   --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
+  /* A run's result arriving while the person watched: row by row, up 6 px into place, once. */
+  --animate-result-rise: run-result-rise var(--duration-base) var(--ease-out-strong) backwards;
   /* The full-screen composer's backdrop fading in over the conversation. */
   --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
   /* The menu's (`motion-menu.css`): the fix's words rising in as their card opens; the section a

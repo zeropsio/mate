@@ -22,3 +22,10 @@
     --conversation-handoff: 1;
   }
 }
+
+@keyframes run-result-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
