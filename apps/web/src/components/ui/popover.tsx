@@ -60,6 +60,8 @@ function PopoverPopup({
   alignOffset = 0,
   keepMounted = false,
   anchor,
+  collisionAvoidance,
+  collisionPadding,
   ...props
 }: PopoverPrimitive.Popup.Props &
   PopoverPopupVariant & {
@@ -69,6 +71,12 @@ function PopoverPopup({
     alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
     keepMounted?: PopoverPrimitive.Portal.Props["keepMounted"];
     anchor?: PopoverPrimitive.Positioner.Props["anchor"];
+    /**
+     * How it keeps to the viewport. A popover that must never cover what sits beside its trigger
+     * (the menu's doors, over the conversation) flips above or below and never out to the side.
+     */
+    collisionAvoidance?: PopoverPrimitive.Positioner.Props["collisionAvoidance"];
+    collisionPadding?: PopoverPrimitive.Positioner.Props["collisionPadding"];
   }) {
   const tooltip = variant === "tooltip";
   // The popup sizes itself in CSS, capped by the room Base UI measures
@@ -84,6 +92,8 @@ function PopoverPopup({
         align={align}
         alignOffset={alignOffset}
         anchor={anchor}
+        collisionAvoidance={collisionAvoidance}
+        collisionPadding={collisionPadding}
         className="z-[130] max-w-(--available-width)"
         data-slot="popover-positioner"
         side={side}
