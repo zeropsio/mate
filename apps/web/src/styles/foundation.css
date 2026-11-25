@@ -386,6 +386,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      eye finds it. */
   --animate-envpop-rise: envpop-rise var(--duration-base) var(--ease-out-strong) backwards;
   --animate-sites-flash: sites-flash 1200ms ease-out;
+  /* A face card just added grows in once, top first (`motion-overview.css`). */
+  --animate-card-arrive: card-arrive var(--duration-base) var(--ease-out-strong);
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);

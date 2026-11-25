@@ -175,7 +175,7 @@ export function TeamMemberView({
   const selfWords = selfLowerWords(viewerRole);
 
   return (
-    <div className="tm-page" data-zerops-surface="team-member">
+    <div className="grid w-full max-w-140 gap-11 px-3" data-zerops-surface="team-member">
       <PageHeader
         lead={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
         line={
@@ -200,7 +200,7 @@ export function TeamMemberView({
         <Failure cause={NO_ACCOUNT_LINE} data-part="unnamed" size="line" />
       ) : null}
 
-      <section aria-label="Role" className="tm-section">
+      <section aria-label="Role" className="grid gap-3.5">
         <TeamRoleEditor
           editable={roleEditable}
           editorRole={viewerRole}
@@ -209,7 +209,7 @@ export function TeamMemberView({
           value={membership}
         />
         {roleEditable ? (
-          <div className="tm-actions">
+          <div className="flex items-center justify-end gap-2">
             {role.trouble === null ? null : (
               <Failure className="me-auto" cause={role.trouble} role="alert" size="line" />
             )}
@@ -228,7 +228,7 @@ export function TeamMemberView({
 
       <Separator />
 
-      <section aria-label="Project access" className="tm-section">
+      <section aria-label="Project access" className="grid gap-3.5">
         {grants === null && held === null ? (
           grantsUnread === undefined ? (
             <Loading count={2} label="Their projects" shape="rows" />
@@ -261,7 +261,7 @@ export function TeamMemberView({
           <EmptyState size="row">Every project as their role gives it.</EmptyState>
         ) : null}
         {accessEditable ? (
-          <div className="tm-actions">
+          <div className="flex items-center justify-end gap-2">
             {access.trouble === null ? null : (
               <Failure className="me-auto" cause={access.trouble} role="alert" size="line" />
             )}
@@ -285,7 +285,7 @@ export function TeamMemberView({
             </>
           ) : null}
           <Separator />
-          <section aria-label="Danger zone" className="tm-section">
+          <section aria-label="Danger zone" className="grid gap-3.5">
             <SectionHeader
               action={
                 <Button

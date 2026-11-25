@@ -38,6 +38,7 @@ import {
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 import { Failure } from "../ui/failure";
+import { cn } from "~/lib/utils";
 
 /** The name an invitation was typed with, as Zerops takes it: first word, then the rest. */
 const typedNames = (person: TeamPerson) => {
@@ -178,7 +179,7 @@ export function TeamList({
         view.kind === "people" ? (
           <>
             {teamSearchShown(view.people.length, query) ? (
-              <div className="tm-team-search">
+              <div className="w-60 max-sm:w-auto max-sm:min-w-0 max-sm:flex-1">
                 <InputGroup>
                   <InputGroupAddon>
                     <SearchIcon aria-hidden="true" />
@@ -210,10 +211,11 @@ export function TeamList({
           </>
         ) : null
       }
+      headerActionWraps
       id="team"
       title="Team"
     >
-      <div className="tm-team px-3 sm:px-4">
+      <div className="grid gap-5 px-3 sm:px-4">
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
@@ -233,11 +235,15 @@ export function TeamList({
                 ))}
               </ul>
             )}
-            <FaceCards label="People">
+            <FaceCards label="People" phone="rows">
               {shown.map((card) => (
                 <li
-                  className="grid"
-                  data-arrived={arriving.includes(card.person.key) || undefined}
+                  className={cn(
+                    "grid",
+                    // An invitation just sent grows in once, top first; the only row that animates.
+                    arriving.includes(card.person.key) &&
+                      "motion-safe:animate-card-arrive motion-safe:overflow-clip motion-safe:[overflow-clip-margin:4px] motion-safe:*:min-h-0",
+                  )}
                   key={card.person.key}
                   onAnimationEnd={
                     arriving.includes(card.person.key)
@@ -355,9 +361,10 @@ function Address({ address }: { readonly address: string }) {
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="tm-address">
-            <span className="tm-address-local">{address.slice(0, at)}</span>
-            <span className="tm-address-domain">{address.slice(at)}</span>
+          <span className="inline-flex max-w-full min-w-0 align-top">
+            <span className="min-w-0 flex-[0_1000_auto] truncate">{address.slice(0, at)}</span>
+            {/* A domain too long for the card gives way last. */}
+            <span className="min-w-0 flex-[0_1_auto] truncate">{address.slice(at)}</span>
           </span>
         }
       />

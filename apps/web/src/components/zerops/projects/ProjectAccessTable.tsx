@@ -56,7 +56,14 @@ import {
   type CellLevel,
   type columnPeople,
 } from "./accessTable.logic";
-import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectAccessChips";
+import {
+  ADD_TROUBLE,
+  AccessBadge,
+  AddAccess,
+  CARD_SECTION,
+  type AccessPick,
+} from "./ProjectAccessChips";
+import { cn } from "~/lib/utils";
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
@@ -152,14 +159,15 @@ export function ProjectAccessTable({
   const lower = selfLowerWords("ADMIN");
 
   return (
-    <section aria-label={label} className="ov-sec" data-zerops-surface="access-table">
+    <section aria-label={label} className={CARD_SECTION} data-zerops-surface="access-table">
       <SectionLabel level={3}>{label}</SectionLabel>
       {view.kind === "reading" ? (
         <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
         <Failure cause={view.line} size="line" />
       ) : phone ? (
-        <ul aria-label={label} className="ov-acc-stack">
+        // A phone's table: each person a row that opens to their places.
+        <ul aria-label={label} className="-mx-1.5 mt-0.5 grid text-body leading-4.5">
           {rows.map((row) => (
             <StackedRow
               columns={columns}
@@ -183,7 +191,7 @@ export function ProjectAccessTable({
         />
       )}
       {view.kind === "table" && rows.length > 0 ? (
-        <p className="ov-acc-legend">
+        <p className="text-caption leading-4 text-muted-foreground">
           Plain: what the organization gives. Highlighted: set for this place.
         </p>
       ) : null}
@@ -260,7 +268,13 @@ function AccessGrid({
       ?.scrollIntoView({ block: "center", inline: "center" });
   }, [focus]);
   return (
-    <div className="ov-acc-scroll" ref={scroller}>
+    // It scrolls sideways inside its card, reaching out so its words stand on the section's edge;
+    // it holds its own screen-reader words, which would otherwise widen the page. The column a
+    // place's page linked to is lit.
+    <div
+      className="relative -mx-2 mt-0.5 max-w-full [&_[data-focus]]:bg-primary/7 [&_thead_th[data-focus]]:text-foreground"
+      ref={scroller}
+    >
       <Table aria-label={label} size="md">
         <TableHeader>
           <TableRow>
@@ -283,9 +297,9 @@ function AccessGrid({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow data-pending={row.pending || undefined} key={row.key}>
+            <TableRow key={row.key}>
               <TableHead className="w-px min-w-55" scope="row" sticky>
-                <span className="ov-acc-person">
+                <span className="flex min-w-0 items-center justify-between gap-2">
                   <Who linked={personPage?.(row.key) === true} row={row} />
                   <RowMenu busy={saving?.has(row.key) === true} handlers={handlers} row={row} />
                 </span>
@@ -324,16 +338,21 @@ function AccessGrid({
 }
 
 /** A column's head: the place's word, or a Mate's name with its owner's face. */
+const COLUMN_HEAD = "inline-flex max-w-45 items-center gap-1.5 overflow-hidden text-ellipsis";
+
+/** A person's face and words, a press to their Team page where they have one. */
+const FACE = "grid min-w-0 cursor-default grid-cols-[24px_minmax(0,1fr)] items-center gap-x-2.5";
+
 function ColumnHead({ column }: { readonly column: AccessColumn }) {
   if (column.kind !== "mate" || column.owner === null)
     return (
-      <span className="ov-acc-head">
+      <span className={COLUMN_HEAD}>
         <span data-part="label">{column.label}</span>
       </span>
     );
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="ov-acc-head" />}>
+      <TooltipTrigger render={<span className={COLUMN_HEAD} />}>
         <PersonAvatar name={column.owner.name} picture={column.owner.avatarUrl} size={16} />
         <span data-part="label">{column.label}</span>
       </TooltipTrigger>
@@ -349,9 +368,18 @@ function Who({ row, linked }: { readonly row: AccessRow; readonly linked: boolea
   const inner = (
     <>
       <PersonAvatar name={row.name} picture={row.avatarUrl} size={24} />
-      <span className="ov-acc-name">
-        <span data-part="name">{row.you ? `${row.short} (you)` : row.short}</span>
-        {row.pending ? <span className="ov-acc-note">Invited</span> : null}
+      <span className="grid min-w-0">
+        <span
+          className="overflow-hidden font-medium text-ellipsis text-foreground underline-offset-2 group-hover/face:underline"
+          data-part="name"
+        >
+          {row.you ? `${row.short} (you)` : row.short}
+        </span>
+        {row.pending ? (
+          <span className="overflow-hidden text-caption leading-4 text-ellipsis text-muted-foreground">
+            Invited
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -361,24 +389,24 @@ function Who({ row, linked }: { readonly row: AccessRow; readonly linked: boolea
         render={
           linked ? (
             <Link
-              className="ov-acc-face"
+              className={cn(FACE, "group/face cursor-pointer", row.pending && "opacity-55")}
               params={{ clientUserId: row.key }}
               to="/settings/team/$clientUserId"
             />
           ) : (
-            <span className="ov-acc-face" />
+            <span className={cn(FACE, row.pending && "opacity-55")} />
           )
         }
       >
         {inner}
       </TooltipTrigger>
       <TooltipPopup side="bottom">
-        <span className="ov-chip-card">
-          <span className="ov-chip-card-name">{row.name}</span>
+        <span className="grid min-w-45 gap-0.5 px-0.5 py-1 text-left">
+          <span className="text-body leading-4.5 font-semibold">{row.name}</span>
           {row.email === null || row.email === row.name ? null : (
-            <span className="ov-chip-card-line">{row.email}</span>
+            <span className="text-caption leading-4 text-muted-foreground">{row.email}</span>
           )}
-          <span className="ov-chip-card-line">
+          <span className="text-caption leading-4 text-muted-foreground">
             {[row.role, ...(row.pending ? ["invited, not joined yet"] : [])].join(" · ")}
           </span>
         </span>
@@ -447,14 +475,14 @@ function Level({ cell, busy }: { readonly cell: AccessCell; readonly busy: boole
     );
   if (cell.level === "none" || cell.level === "unknown")
     return (
-      <span className="ov-acc-level" data-muted="">
+      <span className="text-caption leading-5 font-normal text-muted-foreground">
         <span aria-hidden="true">–</span>
         <span className="sr-only">{CELL_WORDS[cell.level]}</span>
       </span>
     );
   if (cell.byDefault)
     return (
-      <span className="ov-acc-level" data-muted="">
+      <span className="text-caption leading-5 font-normal text-muted-foreground">
         {CELL_WORDS[cell.level]}
         <span className="sr-only">, organization default</span>
       </span>
@@ -497,7 +525,11 @@ function Cell({
   if (cell.choices.length === 0 || onChoose === undefined)
     return (
       <Tooltip>
-        <TooltipTrigger render={<span className="ov-acc-cell" />}>
+        <TooltipTrigger
+          render={
+            <span className="-ms-1.5 inline-flex min-h-7 cursor-default items-center gap-0.5 rounded-control ps-1.5 pe-1" />
+          }
+        >
           <Level busy={busy} cell={cell} />
         </TooltipTrigger>
         <TooltipPopup side="top">{tip}</TooltipPopup>
@@ -564,34 +596,45 @@ function StackedRow({
   const [open, setOpen] = useState(false);
   return (
     <Collapsible
-      className="ov-acc-stack-row"
-      data-open={open || undefined}
-      data-pending={row.pending || undefined}
+      className="border-t border-border/60 first:border-t-0"
       onOpenChange={setOpen}
       open={open}
       render={<li />}
     >
-      <span className="ov-acc-person">
-        <CollapsibleTrigger
-          className="grid min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_14px] items-center gap-x-2.5 py-1.5 text-start"
-          data-acc-open=""
-        >
-          <PersonAvatar name={row.name} picture={row.avatarUrl} size={24} />
-          <span className="ov-acc-name">
-            <span data-part="name">{row.you ? `${row.short} (you)` : row.short}</span>
-            <span className="ov-acc-note">
+      <span className="flex min-h-13 min-w-0 items-center justify-between gap-2 px-1.5">
+        <CollapsibleTrigger className="grid min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_14px] items-center gap-x-2.5 py-1.5 text-start">
+          <PersonAvatar
+            className={row.pending ? "opacity-55" : undefined}
+            name={row.name}
+            picture={row.avatarUrl}
+            size={24}
+          />
+          <span className={cn("grid min-w-0", row.pending && "opacity-55")}>
+            <span
+              className="overflow-hidden font-medium text-ellipsis text-foreground"
+              data-part="name"
+            >
+              {row.you ? `${row.short} (you)` : row.short}
+            </span>
+            <span className="overflow-hidden text-caption leading-4 text-ellipsis text-muted-foreground">
               {[...(row.pending ? ["Invited"] : []), rowSummary(row, columns)].join(" · ")}
             </span>
           </span>
-          <ChevronDownIcon aria-hidden="true" className="ov-acc-caret" />
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={cn(
+              "size-3.5 text-muted-foreground transition-transform duration-150 ease-out-strong motion-reduce:transition-none",
+              open && "rotate-180",
+            )}
+          />
         </CollapsibleTrigger>
         <RowMenu busy={saving?.has(row.key) === true} handlers={handlers} row={row} />
       </span>
       {open ? (
-        <dl className="ov-acc-places">
+        <dl className="grid gap-0.5 ps-10 pe-1.5 pb-2.5">
           {linked ? (
             <Link
-              className="ov-acc-note"
+              className="overflow-hidden text-caption leading-4 text-ellipsis text-muted-foreground"
               params={{ clientUserId: row.key }}
               to="/settings/team/$clientUserId"
             >
@@ -601,8 +644,11 @@ function StackedRow({
           {row.cells.map((cell, index) => {
             const column = columns[index]!;
             return (
-              <div key={cell.projectId}>
-                <dt>{column.label}</dt>
+              <div
+                className="flex min-h-8 items-center justify-between gap-3 text-body"
+                key={cell.projectId}
+              >
+                <dt className="truncate text-muted-foreground">{column.label}</dt>
                 <dd>
                   <Cell
                     busy={
@@ -665,21 +711,37 @@ export function PlaceAccessSummary({
   readonly change: ReactNode;
 }) {
   return (
-    <section aria-label="Who has access" className="ov-access" data-zerops-surface="place-access">
+    <section
+      aria-label="Who has access"
+      className="grid gap-1.5 pb-3"
+      data-zerops-surface="place-access"
+    >
       {summary === null ? (
         unread
       ) : summary.people.length === 0 ? (
         <EmptyState size="line">Nobody has access yet.</EmptyState>
       ) : (
-        <ul aria-label="Who has access" className="ov-reach">
+        <ul aria-label="Who has access" className="flex flex-wrap gap-x-4 gap-y-2">
           {summary.people.map((person) => (
             <Tooltip key={person.key}>
-              <TooltipTrigger render={<li data-pending={person.pending || undefined} />}>
-                <PersonAvatar name={person.name} picture={person.avatarUrl} size={20} />
-                <span data-part="name">{person.short}</span>
+              <TooltipTrigger
+                render={<li className="inline-flex items-center gap-1.5 text-body leading-4.5" />}
+              >
+                <PersonAvatar
+                  className={person.pending ? "opacity-55" : undefined}
+                  name={person.name}
+                  picture={person.avatarUrl}
+                  size={20}
+                />
+                <span className={person.pending ? "opacity-55" : undefined} data-part="name">
+                  {person.short}
+                </span>
                 <span
-                  className="ov-acc-level"
-                  data-muted={person.byDefault || undefined}
+                  className={
+                    person.byDefault
+                      ? "text-caption leading-4.5 font-normal text-muted-foreground"
+                      : "text-caption leading-4.5 font-medium text-foreground"
+                  }
                   data-part="level"
                 >
                   {CELL_WORDS[person.level]}

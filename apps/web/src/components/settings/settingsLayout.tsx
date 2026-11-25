@@ -106,6 +106,7 @@ export function SettingsSection({
   icon,
   count,
   headerAction,
+  headerActionWraps,
   children,
   className,
   ...sectionProps
@@ -115,6 +116,8 @@ export function SettingsSection({
   /** How many it holds, beside its title. */
   count?: ReactNode;
   headerAction?: ReactNode;
+  /** On a phone the header's action takes a line of its own (`SectionHeader actionWraps`). */
+  headerActionWraps?: boolean;
   children: ReactNode;
 }) {
   const targetRef = useSettingsSearchTarget<HTMLElement>(sectionProps.id);
@@ -129,6 +132,7 @@ export function SettingsSection({
       <div className="px-3">
         <SectionHeader
           action={headerAction}
+          actionWraps={headerActionWraps}
           count={count}
           title={
             <>

@@ -50,7 +50,7 @@ export function TeamRoleEditor({
   const shown = open || advanced.custom !== null;
   const current = advanced.roles.find(({ roleCode }) => roleCode === value.roleCode);
   return (
-    <div className="tm-role" data-zerops-surface="team-role">
+    <div className="grid gap-2.5" data-zerops-surface="team-role">
       <SectionHeader id={`${id}-preset`} title="Role" />
       <RadioGroup
         aria-labelledby={`${id}-preset`}
@@ -93,16 +93,19 @@ export function TeamRoleEditor({
           className={cn("size-4 transition-transform duration-200", shown && "rotate-180")}
         />
         <span>Fine-tune permissions</span>
-        {advanced.custom === null ? null : (
-          <span className="tm-advanced-custom">· {advanced.custom}</span>
-        )}
+        {advanced.custom === null ? null : <span className="font-normal">· {advanced.custom}</span>}
       </Button>
       {shown ? (
-        <div className="tm-advanced" id={`${id}-advanced`}>
-          <div className="tm-advanced-row">
+        <div
+          // The cards' width, Settings rows inside, a hairline between them; a quiet press's
+          // hover is the lift's own accent, a step under it.
+          className="grid rounded-card bg-muted px-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,var(--muted))]"
+          id={`${id}-advanced`}
+        >
+          <div className="block py-1.5">
             <Row
               control={
-                <span className="tm-advanced-control">
+                <span className="ms-3 flex w-44">
                   <Select
                     onValueChange={(next) => {
                       const roleCode = next as OrgRoleCode | null;
@@ -137,8 +140,10 @@ export function TeamRoleEditor({
           </div>
           {advanced.flags.map((flag) => (
             <label
-              className="tm-advanced-row"
-              data-disabled={flag.disabled || undefined}
+              className={cn(
+                "block border-t border-border py-1.5",
+                !flag.disabled && "cursor-pointer",
+              )}
               key={flag.flag}
             >
               <Row
@@ -148,7 +153,7 @@ export function TeamRoleEditor({
                   )
                 }
                 control={
-                  <span className="tm-advanced-control" data-switch="">
+                  <span className="ms-3 flex">
                     <Switch
                       checked={flag.checked}
                       disabled={flag.disabled}

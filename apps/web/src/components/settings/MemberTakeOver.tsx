@@ -124,7 +124,7 @@ export function MemberTakeOverView({
   if (list.state === "withheld") return null;
   const working = action.kind === "working";
   return (
-    <section aria-label="Before removing" className="tm-section">
+    <section aria-label="Before removing" className="grid gap-3.5">
       <SectionHeader
         line={`Zerops refuses to remove ${memberName} while a token they made exists. Replace each one here: HQ makes its successor with your sign-in and deletes theirs.`}
         title="Before removing"
@@ -134,7 +134,7 @@ export function MemberTakeOverView({
           {list.list.items.length === 0 ? (
             <EmptyState size="row">Nothing of theirs is in use by HQ.</EmptyState>
           ) : (
-            <ul className="tm-section">
+            <ul className="grid gap-3.5">
               {list.list.items.map((item) => (
                 <TakeOverRow
                   busy={working}

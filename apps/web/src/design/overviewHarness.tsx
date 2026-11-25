@@ -67,6 +67,7 @@ import {
   projectWaits,
 } from "~/components/zerops/projects/projectCard.logic";
 import { OverviewFilters } from "~/components/zerops/projects/OverviewFilters";
+import { OWNER_ON_CARD, OWNER_ON_ROW } from "~/components/zerops/projects/OverviewCardMate";
 import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import {
   ZeropsProjectsFlow,
@@ -1530,7 +1531,7 @@ function HarnessPage() {
                     <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
                     {mineOf(entry) ? null : (
                       <MateOwnerMark
-                        className={card ? "mc-owner" : "ov-mate-owner"}
+                        className={card ? OWNER_ON_CARD : OWNER_ON_ROW}
                         seat={{
                           kind: "person",
                           mark: ownerMark({
@@ -1595,8 +1596,11 @@ function HarnessPage() {
                       key={entry.id}
                       line={
                         waits && !own ? (
-                          <span className="mc-change" data-zerops-surface="card-mate-change">
-                            <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                          <span data-zerops-surface="card-mate-change">
+                            <GitPullRequestIcon
+                              aria-hidden="true"
+                              className="relative top-0.5 me-1 inline-block size-3.5"
+                            />
                             {reading.text}
                           </span>
                         ) : undefined

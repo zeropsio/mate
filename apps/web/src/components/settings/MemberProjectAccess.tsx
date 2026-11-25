@@ -15,7 +15,18 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { EmptyState } from "../ui/empty";
 import { Radio, RadioGroup } from "../ui/radio-group";
-import { AccessBadge } from "../zerops/projects/ProjectAccessChips";
+import {
+  ACCESS_CHIP_NAME,
+  ACCESS_CHIP_TEXT,
+  ACCESS_CHIP_WHO,
+  ACCESS_CHIPS_WIDE,
+  AccessBadge,
+  accessChip,
+  PICK_FOOT,
+  PICK_LIST,
+  PICK_SEARCH,
+} from "../zerops/projects/ProjectAccessChips";
+import { cn } from "~/lib/utils";
 import type { GivenLevel } from "../zerops/projects/projectPeople.logic";
 import type { OrgRoleCode } from "@t3tools/client-runtime/zerops/teamRoles";
 import {
@@ -60,7 +71,7 @@ export function MemberProjectAccess({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="tm-access">
+    <div className="grid gap-3.5">
       <SectionHeader
         action={
           editable && candidates.length > 0 ? (
@@ -92,20 +103,25 @@ export function MemberProjectAccess({
         title="Project access"
       />
       {chips.length === 0 ? null : (
-        <ul aria-label="Their projects" className="ov-chips" data-wide="">
+        <ul aria-label="Their projects" className={ACCESS_CHIPS_WIDE}>
           {chips.map((chip) => (
             <li
-              className="ov-chip"
-              data-changed={chip.changed || undefined}
-              data-menu={(editable && chip.actions.length > 0) || undefined}
+              className={cn(
+                accessChip(editable && chip.actions.length > 0),
+                chip.changed && "inset-ring-2 inset-ring-primary",
+              )}
               key={chip.projectId}
             >
-              <span className="ov-chip-who">
-                <span aria-hidden="true" className="tm-project-face">
+              <span className={ACCESS_CHIP_WHO}>
+                {/* A project's face: a folder on a muted 32 px disc. */}
+                <span
+                  aria-hidden="true"
+                  className="inline-flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"
+                >
                   <FolderIcon className="size-4" />
                 </span>
-                <span className="ov-chip-text">
-                  <span className="ov-chip-name" data-part="name">
+                <span className={ACCESS_CHIP_TEXT}>
+                  <span className={ACCESS_CHIP_NAME} data-part="name">
                     {chip.label}
                   </span>
                   <AccessBadge level={chip.level} />
@@ -162,8 +178,8 @@ function ProjectPicker({
   }, [candidates, query]);
   const count = Object.values(picks).filter((level) => level !== undefined).length;
   return (
-    <div className="ov-pick">
-      <div className="ov-pick-search">
+    <div className="grid">
+      <div className={PICK_SEARCH}>
         <Input
           aria-label="Search projects"
           autoFocus
@@ -181,16 +197,20 @@ function ProjectPicker({
           </EmptyState>
         </div>
       ) : (
-        <ul aria-label="Projects" className="ov-pick-list">
+        <ul aria-label="Projects" className={PICK_LIST}>
           {shown.map((project) => {
             const level = picks[project.projectId];
             return (
+              // A project: its name, then its levels on the same line (a list row would put them
+              // under the name in a popover this narrow); a finger's level is the row's height.
               <li
-                className="tm-pick-row"
-                data-ticked={level !== undefined || undefined}
+                className={cn(
+                  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-control px-2 py-1.5 max-sm:min-h-11 max-sm:py-0",
+                  level !== undefined && "bg-foreground/4",
+                )}
                 key={project.projectId}
               >
-                <span className="tm-pick-name">{project.label}</span>
+                <span className="truncate text-body leading-4.5 font-medium">{project.label}</span>
                 <RadioGroup
                   aria-label={`Access to ${project.label}`}
                   className="flex-row"
@@ -203,7 +223,10 @@ function ProjectPicker({
                   value={level ?? UNSET}
                 >
                   {[...levels, UNSET].map((option) => (
-                    <label className="tm-pick-level" key={option}>
+                    <label
+                      className="ms-2.5 inline-flex cursor-pointer items-center gap-1.5 text-caption max-sm:min-h-11"
+                      key={option}
+                    >
                       <Radio value={option} />
                       <span>{option === UNSET ? "Unset" : PICK_WORDS[option as GivenLevel]}</span>
                     </label>
@@ -214,7 +237,7 @@ function ProjectPicker({
           })}
         </ul>
       )}
-      <div className="ov-pick-foot">
+      <div className={PICK_FOOT}>
         <Button disabled={count === 0} onClick={() => onAdd(picks)} size="sm">
           {count > 1 ? `Add ${count} projects` : "Add projects"}
         </Button>
