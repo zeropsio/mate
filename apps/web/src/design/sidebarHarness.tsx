@@ -1389,13 +1389,13 @@ function SidebarFrame({
           : ({ width, "--workspace-controls-left": `${CONTROLS}px` } as CSSProperties)
       }
     >
-      {/* The app's top row: Overview, then what waits on you counted before the squares;
+      {/* The app's top row: Overview and what waits on you counted beside it, then the squares;
           `?inset=90` beside macOS's traffic lights. */}
       <SidebarChromeHeader
         isElectron={false}
-        brand={<SidebarOverviewLink current={overviewOpen} />}
-        actions={
+        brand={
           <>
+            <SidebarOverviewLink current={overviewOpen} />
             {(WAIT_ALL ?? waiting.items).length === 0 ? null : (
               <SidebarWaitingCount
                 seat="head"
@@ -1411,6 +1411,10 @@ function SidebarFrame({
                 }}
               />
             )}
+          </>
+        }
+        actions={
+          <>
             <SidebarScopeButton onScope={() => menuActions.push("scope")} scope="everyone" />
             <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
             <SidebarCreateButton

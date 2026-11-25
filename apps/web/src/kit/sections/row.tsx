@@ -196,12 +196,12 @@ function RowSpecimens() {
               ))}
             </ul>
           </Specimen>
-          <Specimen label='columns ground="tint" pressable="band"'>
+          <Specimen label='columns ground="menu" pressable="band"'>
             <div className="grid w-80 grid-cols-[minmax(0,1fr)_auto] bg-sidebar p-2">
               <Row
                 className="h-15 items-center"
                 columns
-                ground="tint"
+                ground="menu"
                 pressable="band"
                 render={<button type="button" />}
               >

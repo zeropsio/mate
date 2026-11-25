@@ -1809,7 +1809,24 @@ export default function Sidebar() {
   return (
     <SidebarStage rail={zeropsRail} railHolds={zeropsRailTiles.tiles.length}>
       <SidebarChromeHeader
-        brand={zeropsSignedIn ? <SidebarOverviewLink current={zeropsOverviewOpen} /> : undefined}
+        brand={
+          zeropsSignedIn ? (
+            <>
+              <SidebarOverviewLink current={zeropsOverviewOpen} />
+              {/* What waits on the person, counted beside Overview: its own door to the list. */}
+              {!rosterOnly ||
+              zeropsFirstRun ||
+              zeropsListHeld ||
+              zeropsWaiting.items.length === 0 ? null : (
+                <SidebarWaitingCount
+                  seat="head"
+                  items={zeropsWaiting.items}
+                  verbs={zeropsWaitingVerbs}
+                />
+              )}
+            </>
+          ) : undefined
+        }
         isElectron={isElectron}
         status={
           zeropsHqOutage === null ? undefined : (
@@ -1831,14 +1848,6 @@ export default function Sidebar() {
               zeropsCreate
             ) : (
               <>
-                {/* What waits on the person, counted before the squares: its own door to the list. */}
-                {zeropsListHeld || zeropsWaiting.items.length === 0 ? null : (
-                  <SidebarWaitingCount
-                    seat="head"
-                    items={zeropsWaiting.items}
-                    verbs={zeropsWaitingVerbs}
-                  />
-                )}
                 <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
                 {zeropsJump}
                 {zeropsCreate}

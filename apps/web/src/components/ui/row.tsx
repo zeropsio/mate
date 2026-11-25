@@ -259,13 +259,14 @@ const rowColumnsVariants = cva(
         false: "",
       },
       /**
-       * `tint`: on the menu's own ground at rest, the mark's teal under the pointer and the menu's
-       * lit ground while open (`aria-current="page"`) or pressed — the organization's own Mate at the
-       * menu's top. Its ground is `--row-ground`, for a mark ringed in it.
+       * `menu`: a Mate row's grounds outside the menu's list — its own ground at rest, a row's hover
+       * under the pointer and the lit ground while open (`aria-current="page"`) or pressed; the
+       * organization's own Mate at the list's top. Its ground is `--row-ground`, for a mark ringed
+       * in it.
        */
       ground: {
         none: "rounded-control px-(--row-pad-x) py-(--row-pad-y)",
-        tint: "relative isolate rounded-card transition-colors duration-150 ease-out-strong [--row-ground:var(--sidebar)] [:hover,[aria-current=page],[data-pressed]]:bg-(--row-ground) hover:[--row-ground:color-mix(in_oklab,var(--zerops-mate-mark-side)_13%,var(--sidebar))] aria-[current=page]:[--row-ground:var(--sidebar-row-active)] data-pressed:[--row-ground:var(--sidebar-row-active)] motion-reduce:transition-none",
+        menu: "relative isolate rounded-card transition-colors duration-150 ease-out-strong [--row-ground:var(--sidebar)] [:hover,[aria-current=page],[data-pressed]]:bg-(--row-ground) hover:[--row-ground:var(--sidebar-row-hover)] aria-[current=page]:[--row-ground:var(--sidebar-row-active)] data-pressed:[--row-ground:var(--sidebar-row-active)] motion-reduce:transition-none",
       },
     },
   },

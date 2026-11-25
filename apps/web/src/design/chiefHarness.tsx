@@ -137,10 +137,14 @@ function Harness() {
       >
         <SidebarChromeHeader
           isElectron={false}
-          brand={<SidebarOverviewLink current={false} />}
+          brand={
+            <>
+              <SidebarOverviewLink current={false} />
+              {WAITING ? <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} /> : null}
+            </>
+          }
           actions={
             <>
-              {WAITING ? <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} /> : null}
               <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
               <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />

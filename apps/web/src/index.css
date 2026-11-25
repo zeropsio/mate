@@ -5471,25 +5471,25 @@ code {
     background-color: transparent !important;
   }
 
-  /* What waits on the person, counted before the headline's squares: the error's red, so it reads
-     from across the screen. */
+  /* What waits on the person, counted beside Overview: the error's red, so it reads from across
+     the screen. */
   .menu-top-count {
     display: grid;
     flex: none;
-    margin-inline-end: 4px;
+    margin-inline-start: 8px;
   }
 
   .menu-top-count > button {
     display: grid;
     place-items: center;
-    min-width: 32px;
-    height: 22px;
-    padding: 0 9px;
+    min-width: 28px;
+    height: 20px;
+    padding: 0 8px;
     border-radius: 9999px;
     /* The theme's red darkened until white figures read at WCAG AA (at least 4.5:1). */
     background: color-mix(in oklab, var(--destructive) 80%, black);
     color: var(--color-white);
-    font-size: 13px;
+    font-size: 12px;
     line-height: 16px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;

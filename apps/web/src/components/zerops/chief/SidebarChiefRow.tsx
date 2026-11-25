@@ -89,7 +89,7 @@ export function SidebarChiefRow({
           }, 600);
           onOpen();
         }}
-        ground="tint"
+        ground="menu"
         pressable="band"
         render={<button type="button" />}
       >
