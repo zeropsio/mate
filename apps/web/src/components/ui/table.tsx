@@ -61,7 +61,11 @@ function TableHeader({
     <thead
       data-slot="table-header"
       data-sticky={sticky || undefined}
-      className={cn("[&_tr]:border-b", sticky && "sticky top-0 z-10 bg-table-ground", className)}
+      className={cn(
+        "[&_tr]:border-b [&_tr]:border-rule",
+        sticky && "sticky top-0 z-10 bg-table-ground",
+        className,
+      )}
       {...props}
     />
   );
@@ -78,7 +82,9 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
 }
 
 /**
- * A row. In an `sm` or a `report` table it lights under the pointer; an `md` table's rows hold their own presses
+ * A row, ruled from the next in the one rule ink (`border-rule`). In an `sm` or a `report` table
+ * it lights under the pointer and while its disclosure is open (`bg-item-hover`), and stands on
+ * the picked ground when selected (`bg-item-picked`); an `md` table's rows hold their own presses
  * (a person's menu, a level's), so the row itself stays still.
  */
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
@@ -88,8 +94,8 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
       data-slot="table-row"
       className={cn(
         size === "md"
-          ? "border-b"
-          : "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+          ? "border-b border-rule"
+          : "border-b border-rule transition-colors hover:bg-item-hover has-aria-expanded:bg-item-hover data-[state=selected]:bg-item-picked",
         className,
       )}
       {...props}
