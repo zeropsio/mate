@@ -48,7 +48,7 @@ export function SetupRow({
       className={PAGE_GROUP}
       data-zerops-surface={surface}
     >
-      <SectionHeader action={action} size="panel" title={label} />
+      <SectionHeader action={action} title={label} />
       {empty ? (
         // A setup nobody made yet: a dashed slot saying what it is for, beside its one verb.
         <Card variant="slot">

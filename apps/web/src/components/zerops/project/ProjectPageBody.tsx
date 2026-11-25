@@ -288,7 +288,7 @@ export function ProjectPageBody<T>({
               className={PAGE_GROUP}
               data-zerops-project-automation=""
             >
-              <SectionHeader size="panel" title="Automation" />
+              <SectionHeader title="Automation" />
               <Card>{setup.automation}</Card>
             </section>
           ) : null}
@@ -418,7 +418,7 @@ function ProjectWaits<T>({
   // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
   return (
     <section aria-labelledby="pp-waits" className={PAGE_GROUP} data-zerops-surface="project-waits">
-      <SectionHeader count={waits.length} id="pp-waits" size="panel" title="Waiting on you" />
+      <SectionHeader count={waits.length} id="pp-waits" title="Waiting on you" />
       <Card>
         {/* A card of rows: their hover runs to its edge less a hair. */}
         <div className="grid gap-0.5 p-2">
@@ -750,7 +750,7 @@ function ProjectPlaces<T>({
           className={PAGE_GROUP}
           data-zerops-surface="project-places"
         >
-          <SectionHeader id="pp-places" size="panel" title="Places" />
+          <SectionHeader id="pp-places" title="Places" />
           {!facts.declared ? (
             lines.length === 0 ? (
               <PlaceCard aria-busy="true" data-zerops-places-held="">
@@ -826,7 +826,6 @@ function GoingLive({
           ) : undefined
         }
         id="pp-golive"
-        size="panel"
         title={productionOutside === undefined ? "Going live" : "Production"}
       />
       <Card className="overflow-hidden" data-zerops-place="production">
@@ -996,7 +995,6 @@ function ProjectMates<T>({
       <SectionHeader
         count={mates.length > 1 ? mates.length : undefined}
         id="pp-mates"
-        size="panel"
         title="Mates"
       />
       <MateCards>
@@ -1279,7 +1277,6 @@ function ProjectChanges<T>({
         action={action}
         count={historyShown || only === undefined ? undefined : countOf(only)}
         id="pp-changes"
-        size="panel"
         title={historyShown ? "History" : (only?.label ?? "Changes")}
       />
       {/* The line that pictures the changes is the card's masthead, the ledger of them stands

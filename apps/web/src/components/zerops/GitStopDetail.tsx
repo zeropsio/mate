@@ -219,8 +219,8 @@ export function GitStopDetail({
         </section>
         <section className="flex min-w-0 flex-col gap-1.5">
           <SectionHeader
-            count={history === 0 ? undefined : history}
             size="panel"
+            count={history === 0 ? undefined : history}
             title={environment.tier === "stage" ? "Pushes" : "Releases"}
           />
           {environment.tier === "stage" ? (

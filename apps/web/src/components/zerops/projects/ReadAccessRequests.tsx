@@ -239,10 +239,10 @@ function ReadAccessSection({
     return (
       <section
         aria-labelledby="pp-read-access"
-        className="grid min-w-0 gap-1"
+        className="grid min-w-0 gap-2"
         data-zerops-surface="read-access"
       >
-        <SectionHeader id="pp-read-access" size="panel" title="Read access" />
+        <SectionHeader id="pp-read-access" title="Read access" />
         {body}
       </section>
     );

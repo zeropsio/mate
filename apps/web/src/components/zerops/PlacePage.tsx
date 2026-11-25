@@ -1468,19 +1468,13 @@ export function ZeropsStopPane({
         </div>
       )}
 
-      {/* What happens on the left, what is set up on the right: the aside drops under the main
-          column where the page is too narrow for both. */}
+      {/* What happens first, then what is set up, on the page's rhythm. */}
       <div className="@container/place min-w-0" data-zerops-surface="place-sections">
-        <div className="grid min-w-0 grid-cols-1 items-start gap-x-10 gap-y-9 @4xl/place:grid-cols-[minmax(0,1fr)_24.5rem]">
-          <div className="flex min-w-0 flex-col gap-9">
+        <div className="flex min-w-0 flex-col gap-12">
+          <div className="flex min-w-0 flex-col gap-12">
             {!nextShown ? null : production ? (
               <PlaceSection
-                label={
-                  <SectionHeader
-                    size="panel"
-                    title={releasingNow ? "Releasing now" : "Next release"}
-                  />
-                }
+                label={<SectionHeader title={releasingNow ? "Releasing now" : "Next release"} />}
               >
                 <PlaceNextRelease
                   creates={releasingNow ? undefined : createsFirstLine(notInZerops)}
@@ -1502,9 +1496,7 @@ export function ZeropsStopPane({
                 )}
               </PlaceSection>
             ) : (
-              <PlaceSection
-                label={<SectionHeader size="panel" title={<>Next on {head.title}</>} />}
-              >
+              <PlaceSection label={<SectionHeader title={<>Next on {head.title}</>} />}>
                 <PlaceNextCard
                   state="stage"
                   title={stageNextTitle(nextChanges, head.title, standingOf)}
@@ -1518,14 +1510,14 @@ export function ZeropsStopPane({
               // Its releases are not answered yet: a place that runs something has some, so the
               // slot holds their rows' shape; one that runs nothing says so once they are.
               runs === undefined ? null : (
-                <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
+                <PlaceSection label={<SectionHeader title="Releases" />}>
                   <Card className="min-w-0" size="rows">
                     <ReleaseRowsWaiting />
                   </Card>
                 </PlaceSection>
               )
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
-              <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
+              <PlaceSection label={<SectionHeader title="Releases" />}>
                 <Card
                   data-zerops-surface="place-releases-unrecorded"
                   render={<p />}
@@ -1538,7 +1530,7 @@ export function ZeropsStopPane({
                 </Card>
               </PlaceSection>
             ) : nextShown ? null : (
-              <PlaceSection label={<SectionHeader size="panel" title="Releases" />}>
+              <PlaceSection label={<SectionHeader title="Releases" />}>
                 <Card
                   data-zerops-surface="place-releases-empty"
                   render={<p />}
@@ -1554,9 +1546,7 @@ export function ZeropsStopPane({
             )}
 
             {!production || releases.length === 0 ? null : (
-              <PlaceSection
-                label={<SectionHeader count={releases.length} size="panel" title="Releases" />}
-              >
+              <PlaceSection label={<SectionHeader count={releases.length} title="Releases" />}>
                 <Card className="@container/releases min-w-0" size="rows">
                   <ReleaseList>
                     <ZeropsReleaseRows
@@ -1608,7 +1598,6 @@ export function ZeropsStopPane({
                           : DEPLOYS_ASIDE
                         : undefined
                     }
-                    size="panel"
                     title="Deploys"
                   />
                 }
@@ -1645,7 +1634,7 @@ export function ZeropsStopPane({
             )}
           </div>
 
-          <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
+          <aside className="flex min-w-0 flex-col gap-12" aria-label={`${head.title} setup`}>
             {/* Live state leads, only while something runs; then what is set up once, the most
                 used first: where it answers, what it is given, who reaches it, what it runs on. */}
             <div className="min-w-0">
@@ -1661,7 +1650,6 @@ export function ZeropsStopPane({
                           </Button>
                         )
                       }
-                      size="panel"
                       title="Addresses"
                     />
                   }
@@ -1695,7 +1683,6 @@ export function ZeropsStopPane({
                         Open
                       </Button>
                     }
-                    size="panel"
                     title="Vault"
                   />
                 }
@@ -1725,7 +1712,6 @@ export function ZeropsStopPane({
                           : `Manage on ${possessive(groupName, "page")}`}
                       </Button>
                     }
-                    size="panel"
                     title="Who has access"
                   />
                 }
@@ -1741,7 +1727,6 @@ export function ZeropsStopPane({
               label={
                 <SectionHeader
                   count={servicesWaiting ? undefined : table.length + missingSlots.length}
-                  size="panel"
                   title="Services"
                 />
               }

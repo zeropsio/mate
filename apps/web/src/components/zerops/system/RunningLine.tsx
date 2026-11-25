@@ -132,9 +132,9 @@ export function RunningNow({ lines }: { readonly lines: ReadonlyArray<Line> }) {
   return (
     <GrowsInPlace>
       {lines.length === 0 ? null : (
-        // As far from the group under it as the column's groups stand from each other.
-        <section className="mb-8 min-w-0" data-zerops-surface="running-now">
-          <SectionHeader size="panel" title="Running now" />
+        // As far from the group under it as the column's groups stand from each other (`Page`).
+        <section className="mb-12 grid min-w-0 gap-2" data-zerops-surface="running-now">
+          <SectionHeader title="Running now" />
           <Card>
             <ul className="m-0 flex list-none flex-col gap-1.5 px-3 py-2.5">
               {lines.map((line) => (

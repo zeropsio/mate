@@ -64,7 +64,7 @@ import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
 import { Text } from "~/components/ui/text";
-import { SectionHeader } from "~/components/ui/section";
+import { Section } from "~/components/ui/section";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -565,21 +565,6 @@ export function DetailShell({
       />
       {children}
     </ZeropsHostedFrame>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <section className="flex min-w-0 flex-col gap-1.5">
-      <SectionHeader size="panel" title={title} />
-      {children}
-    </section>
   );
 }
 
