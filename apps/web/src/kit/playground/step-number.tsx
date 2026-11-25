@@ -1,0 +1,36 @@
+import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
+
+import { definePlayground, jsxElement } from "../kitPlayground";
+import { variantsOf } from "../specimenLabel";
+
+const STATES = variantsOf<StepNumberState>({ todo: true, done: true, failed: true });
+
+export default definePlayground({
+  section: "step-number",
+  name: "StepNumber",
+  imports: 'import { StepNumber } from "~/components/ui/step-number";',
+  controls: {
+    n: { kind: "enum", options: ["1", "2", "3", "12"] as const },
+    state: { kind: "enum", options: STATES, note: "done is a check, failed a mark" },
+    words: { kind: "text", note: "the step's words beside it" },
+  },
+  initial: { n: "1", state: "todo", words: "In Terminal, connect it to this project's VPN." },
+  render: ({ n, state, words }) => (
+    <span className="grid max-w-80 grid-cols-[24px_minmax(0,1fr)] items-start gap-3 text-body">
+      <StepNumber n={Number(n)} state={state} />
+      <span className="pt-0.5">{words}</span>
+    </span>
+  ),
+  jsx: ({ n, state }) =>
+    jsxElement("StepNumber", { n: Number(n), state }, undefined, { state: "todo" }),
+  usage: {
+    do: [
+      "Number the steps the person takes, in order, each before its words.",
+      "Mark a step done or failed in its place, so the list keeps its shape.",
+    ],
+    dont: [
+      "Number work the system does on its own: that is ProcessSteps.",
+      "Use it as a count or a label: that is Badge.",
+    ],
+  },
+});
