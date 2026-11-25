@@ -14,7 +14,7 @@ import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
-import { Toggle } from "../ui/toggle";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedSearchLine } from "./HighlightedSearchLine";
 import { Text } from "~/components/ui/text";
@@ -58,24 +58,13 @@ function groupMatches(matches: ReadonlyArray<ProjectContentMatch>): MatchGroup[]
 }
 
 function SearchOptionButton(props: {
-  readonly active: boolean;
   readonly label: string;
-  readonly onClick: () => void;
+  readonly value: string;
   readonly children: ReactNode;
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            aria-label={props.label}
-            pressed={props.active}
-            size="segmented"
-            variant="segmented"
-            onClick={props.onClick}
-          />
-        }
-      >
+      <TooltipTrigger render={<Toggle aria-label={props.label} value={props.value} />}>
         <Text variant="code">{props.children}</Text>
       </TooltipTrigger>
       <TooltipPopup side="top">{props.label}</TooltipPopup>
@@ -168,29 +157,32 @@ function OpenContentSearchDialog(props: {
       escapeLabel="Back"
       footerActionLabel="Open file"
       inputAccessory={
-        <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-control border bg-muted/30 p-0.5">
-          <SearchOptionButton
-            active={caseSensitive}
-            label="Match case"
-            onClick={() => setCaseSensitive((current) => !current)}
-          >
+        // How the words match, on the segmented track: each a toggle of its own.
+        <ToggleGroup
+          aria-label="Match"
+          className="absolute inset-e-2.5 top-1/2 shrink-0 -translate-y-1/2"
+          multiple
+          onValueChange={(value) => {
+            setCaseSensitive(value.includes("case"));
+            setWholeWord(value.includes("word"));
+            setUseRegex(value.includes("regex"));
+          }}
+          value={[
+            ...(caseSensitive ? ["case"] : []),
+            ...(wholeWord ? ["word"] : []),
+            ...(useRegex ? ["regex"] : []),
+          ]}
+        >
+          <SearchOptionButton label="Match case" value="case">
             Aa
           </SearchOptionButton>
-          <SearchOptionButton
-            active={wholeWord}
-            label="Match whole word"
-            onClick={() => setWholeWord((current) => !current)}
-          >
+          <SearchOptionButton label="Match whole word" value="word">
             <span className="underline decoration-2 underline-offset-2">ab</span>
           </SearchOptionButton>
-          <SearchOptionButton
-            active={useRegex}
-            label="Use regular expression"
-            onClick={() => setUseRegex((current) => !current)}
-          >
+          <SearchOptionButton label="Use regular expression" value="regex">
             .*
           </SearchOptionButton>
-        </div>
+        </ToggleGroup>
       }
       inputProps={{
         className: "pe-30",

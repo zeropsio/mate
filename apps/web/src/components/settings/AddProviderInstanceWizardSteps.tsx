@@ -1,6 +1,6 @@
 import { cn } from "../../lib/utils";
 import { StepNumber } from "../ui/step-number";
-import { Toggle } from "../ui/toggle";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
   resolveWizardNavigation,
@@ -21,14 +21,19 @@ export function AddProviderInstanceWizardSteps({
   onNavigation,
 }: AddProviderInstanceWizardStepsProps) {
   return (
-    <ol className="grid grid-cols-3 gap-0.5 rounded-control bg-input/40 p-0.5" role="list">
+    // The steps on the segmented track: the current one pressed, each a way to its step.
+    <ToggleGroup
+      className="grid w-full grid-cols-3"
+      render={<ol />}
+      role="list"
+      value={[String(currentStep)]}
+    >
       {ADD_PROVIDER_WIZARD_STEPS.map((step, index) => (
         <li key={step} className="min-w-0">
           <Toggle
-            variant="segmented"
             size="default"
             className="w-full min-w-0 justify-start max-sm:justify-center"
-            pressed={index === currentStep}
+            value={String(index)}
             aria-current={index === currentStep ? "step" : undefined}
             aria-label={`${step}, step ${index + 1}${index < currentStep && summaries[index] ? `, ${summaries[index]}` : ""}`}
             onClick={() =>
@@ -54,6 +59,6 @@ export function AddProviderInstanceWizardSteps({
           </Toggle>
         </li>
       ))}
-    </ol>
+    </ToggleGroup>
   );
 }
