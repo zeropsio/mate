@@ -12,7 +12,8 @@ import {
 } from "~/components/ui/empty";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { ChosenEmpty } from "../states/Chosen";
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
 type EmptySize = NonNullable<ComponentProps<typeof Empty>["size"]>;
@@ -54,9 +55,19 @@ function EmptySpecimens() {
 export default defineKitSection({
   id: "empty",
   title: "Empty",
-  purpose: "What a place holds when it holds nothing, and the way to fill it.",
-  group: "Kit",
+  purpose:
+    "A place that holds nothing yet: EmptyState says what will be here and at most one way to fill it, as a row, a section or a page; Empty's parts build a bespoke one.",
+  group: "Chosen",
   kind: "Feedback",
   source: "apps/web/src/components/ui/empty.tsx",
-  render: () => <EmptySpecimens />,
+  render: () => (
+    <div className="flex flex-col gap-8">
+      <SpecimenBlock title="EmptyState: a row, a section, a page">
+        <ChosenEmpty />
+      </SpecimenBlock>
+      <SpecimenBlock title="Empty's parts">
+        <EmptySpecimens />
+      </SpecimenBlock>
+    </div>
+  ),
 });

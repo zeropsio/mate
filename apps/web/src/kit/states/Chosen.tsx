@@ -1,6 +1,6 @@
 /**
- * The chosen state patterns, each in every state it has, at the top of its census: what the app
- * draws from now on, above what is left of the home-made looks it replaces.
+ * The chosen state patterns, each in every state it has: what the app draws when a place is on its
+ * way, holds nothing, failed or waits on a long operation.
  */
 import { BoxIcon, InboxIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -13,8 +13,8 @@ import { Progress, type ProgressView } from "~/components/ui/progress";
 import { StatusPage } from "~/components/ui/status-page";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
-import { StateFrame } from "./Census";
+import { Specimen, SpecimenGrid } from "../Specimen";
+import { StateFrame } from "./StateFrame";
 
 const MIN = 60_000;
 const STEPS = [
@@ -24,13 +24,9 @@ const STEPS = [
   "Giving it an address",
 ];
 
-/** A block headed "Chosen": the pattern the app draws, before the census of what it replaced. */
+/** A state pattern's specimens. */
 function Chosen({ children }: { readonly children: ReactNode }) {
-  return (
-    <SpecimenBlock title="Chosen">
-      <SpecimenGrid>{children}</SpecimenGrid>
-    </SpecimenBlock>
-  );
+  return <SpecimenGrid>{children}</SpecimenGrid>;
 }
 
 const SHAPES: ReadonlyArray<{ readonly shape: LoadingShape; readonly count: number }> = [
