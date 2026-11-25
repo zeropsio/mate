@@ -32,16 +32,18 @@ export default definePlayground({
       note: "a quiet sentence, where a list's rows would be, a panel, a page",
     },
     mark: { kind: "boolean", note: "the place's own icon or the subject's face" },
+    title: { kind: "text", note: "a section's or a page's name over its line; empty for none" },
     action: { kind: "boolean", note: "the one way to fill it; none when there is nothing to do" },
     children: { kind: "text", note: "what will be here, true for this viewer" },
   },
   initial: {
     size: "section",
     mark: true,
+    title: "",
     action: true,
     children: "No services yet. Add one and its Mate deploys it here.",
   },
-  render: ({ size, mark, action, children }) => (
+  render: ({ size, mark, title, action, children }) => (
     // The room each size stands in: a list, a panel, a page at a size the stage holds whole.
     <div
       className={
@@ -66,17 +68,19 @@ export default definePlayground({
         }
         mark={mark && size !== "line" ? MARK[size].mark : undefined}
         size={size}
+        title={title === "" ? undefined : title}
       >
         {children}
       </EmptyState>
     </div>
   ),
-  jsx: ({ size, mark, action, children }) =>
+  jsx: ({ size, mark, title, action, children }) =>
     jsxElement(
       "EmptyState",
       {
         size,
         mark: mark && size !== "line" ? jsxCode(MARK[size].code) : undefined,
+        title: title === "" ? undefined : title,
         action: !action
           ? undefined
           : size === "line"
@@ -91,6 +95,7 @@ export default definePlayground({
       "Show it only once the source answered that there is nothing; before that it is Loading.",
       "Say what will be here in one line, true for the person reading it.",
       "Offer at most one action, and none when the viewer can do nothing about it.",
+      "Give a section or a page a title when the place needs naming before its line: a panel that is all this state.",
     ],
     dont: [
       "Show it after a refusal or an error: that is a Failure.",

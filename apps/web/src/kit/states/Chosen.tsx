@@ -135,6 +135,18 @@ export function ChosenEmpty() {
           </EmptyState>
         </div>
       </Specimen>
+      <Specimen label="<EmptyState title={…} mark={…} action={…}> · a panel that is all this state">
+        <div className="flex w-[440px] rounded-card border">
+          <EmptyState
+            action={<Button size="sm">Set up a crew</Button>}
+            mark={<BoxIcon className="size-8 text-muted-foreground" />}
+            title="Give Fen a crew"
+          >
+            For a job too big for one conversation. A lead plans it, and crewmates build its parts
+            side by side.
+          </EmptyState>
+        </div>
+      </Specimen>
       <Specimen label='<EmptyState size="page">'>
         <StateFrame size="page">
           <EmptyState mark={<BoxIcon className="size-10 text-muted-foreground" />} size="page">
