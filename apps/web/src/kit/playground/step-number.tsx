@@ -3,7 +3,13 @@ import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
 import { definePlayground, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
-const STATES = variantsOf<StepNumberState>({ todo: true, done: true, failed: true });
+const STATES = variantsOf<StepNumberState>({
+  todo: true,
+  busy: true,
+  done: true,
+  attention: true,
+  failed: true,
+});
 
 export default definePlayground({
   section: "step-number",
@@ -11,7 +17,11 @@ export default definePlayground({
   imports: 'import { StepNumber } from "~/components/ui/step-number";',
   controls: {
     n: { kind: "enum", options: ["1", "2", "3", "12"] as const },
-    state: { kind: "enum", options: STATES, note: "done is a check, failed a mark" },
+    state: {
+      kind: "enum",
+      options: STATES,
+      note: "busy spins, done is a check, attention and failed a mark",
+    },
     words: { kind: "text", note: "the step's words beside it" },
   },
   initial: { n: "1", state: "todo", words: "In Terminal, connect it to this project's VPN." },
