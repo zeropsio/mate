@@ -32,7 +32,7 @@ import { cn } from "~/lib/utils";
  * - `code` — a literal someone may copy: an id, a path, a command, a hash. Monospace, in the step
  *   and ink of the words around it.
  *
- * `className` places it (margin, width, flex, alignment); `truncate` cuts it to one line with an
+ * `className` places it (margin, padding, gap, width, flex, alignment); `truncate` cuts it to one line with an
  * ellipsis (it needs a block or a flex item: a `p`, a `div`, or `block` in `className`). The wrap
  * is set on its style alone (`text-wrap-style`): `text-pretty` would set the whole `text-wrap` and
  * undo a `truncate` or a `whitespace-nowrap`.
