@@ -359,6 +359,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      settles from a touch smaller (`motion-arrival.css`). */
   --animate-face-out: face-out var(--duration-quick) var(--ease-out-strong);
   --animate-face-in: face-in var(--duration-base) var(--ease-out-strong);
+  /* A place of a Mate's arrival handing over (`ArrivalSwap`, `motion-arrival.css`): what leaves
+     fades where it stood (the quick step), what comes arrives over it (the base step, 40–60 ms
+     late); words travel 6 px up, a slot only fades, and reduced motion keeps the fades. */
+  --animate-arrival-words-in: arrival-words-in var(--duration-base) var(--ease-out-strong) 40ms
+    backwards;
+  --animate-arrival-words-out: arrival-words-out var(--duration-quick) var(--ease-out-strong) both;
+  --animate-arrival-words-fade-in: zerops-appear var(--duration-base) var(--ease-out-strong) 40ms
+    backwards;
+  --animate-arrival-slot-in: zerops-appear var(--duration-base) var(--ease-out-strong) 60ms
+    backwards;
+  --animate-arrival-fade-out: arrival-fade-out var(--duration-quick) var(--ease-out-strong) both;
   /* A vault row found flashes its ring; a value saved shows its check, which leaves by itself
      (`motion-panels.css`). */
   /* The Crew tab's moves, only for a change the tab watched: a need unfolding, a view sliding in
@@ -379,6 +390,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-conversation-handoff: conversation-handoff 1ms linear;
   --animate-stage-exit: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
   --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
+  /* A run's result arriving while the person watched: row by row, up 6 px into place, once. */
+  --animate-result-rise: run-result-rise var(--duration-base) var(--ease-out-strong) backwards;
   /* The full-screen composer's backdrop fading in over the conversation. */
   --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
   /* The menu's (`motion-menu.css`): the fix's words rising in as their card opens; the section a

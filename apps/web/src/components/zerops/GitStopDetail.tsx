@@ -561,14 +561,14 @@ function ZeropsProductionRemoval({
   return (
     <>
       {removal.kind === "failed" ? (
-        <div className="w-full min-w-0 [&_.arrival-failure-details]:text-left!">
+        <div className="w-full min-w-0">
           <Failure
             cause={`Production was not removed · ${operationFailureWords(removal.failure)}`}
             className="mt-1.5"
             data-zerops-surface="production-removal-failed"
             size="line"
           />
-          {details === null ? null : <ZeropsAnswerDetails text={details} />}
+          {details === null ? null : <ZeropsAnswerDetails align="start" text={details} />}
         </div>
       ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>

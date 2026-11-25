@@ -36,7 +36,7 @@ export function ComposerStandInDock({
             <div
               data-room-held={held ? "" : undefined}
               data-slot="composer-shell"
-              className="chat-composer-glass-shell relative mx-auto w-full max-w-3xl"
+              className="chat-composer-glass-shell relative mx-auto w-full max-w-3xl transition-opacity duration-200 ease-out-strong data-room-held:invisible"
             >
               <div className="chat-composer-glass-host relative z-10 w-full">
                 <div className="relative z-10">{children}</div>

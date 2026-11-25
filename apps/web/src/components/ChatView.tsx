@@ -7513,7 +7513,17 @@ function ConversationView(props: ChatViewProps) {
                 className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
                 <ConversationOpeningArrival onArrive={scheduleComposerFocus} />
-                <div className="pointer-events-auto relative z-10" data-footer-parts="">
+                {/* While the stand-up holds the composer, unseen and inert, the frame lets presses
+                    through to the stage under it; what stands above the composer still takes them. */}
+                <div
+                  className={cn(
+                    "relative z-10",
+                    zeropsArrivalHoldsComposer
+                      ? "pointer-events-none *:pointer-events-auto"
+                      : "pointer-events-auto",
+                  )}
+                  data-footer-parts=""
+                >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div
@@ -7568,7 +7578,6 @@ function ConversationView(props: ChatViewProps) {
                     aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
                     data-footer-composer=""
-                    data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
                     inert={zeropsArrivalHoldsComposer}
                     style={
                       forceExpandedMobileComposer
@@ -7580,7 +7589,11 @@ function ConversationView(props: ChatViewProps) {
                       data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
                       className={cn(
-                        "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
+                        // Unseen while the stand-up holds it, back in 200 ms once it has gone,
+                        // nothing around it moving; unseen and shown in the frame the answer
+                        // comes while who writes here is not known (`ComposerRoomHeld`).
+                        "chat-composer-glass-shell relative mx-auto w-full max-w-3xl transition-opacity duration-200 ease-out-strong data-room-held:invisible",
+                        zeropsArrivalHoldsComposer && "opacity-0",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
                         showComposerContextStrip &&
                           zeropsFooter !== "read-only" &&

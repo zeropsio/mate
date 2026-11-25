@@ -54,6 +54,7 @@ import { useRunResultFacts } from "./runResultFacts";
 import { publishStripFiles } from "./resultStripFiles";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 const NOTHING_RISING: ReadonlySet<string> = new Set();
@@ -73,7 +74,9 @@ function RowMark({ row }: { readonly row: ResultRow }) {
   return (
     <span
       aria-hidden="true"
-      className="run-result-mark"
+      // The mark in the card's 28 px column: a broken row's glyph is red, a thing's stays muted;
+      // its dot is a Badge in its tone.
+      className="flex h-full items-center justify-center text-muted-foreground in-data-tall:h-5 data-[tone=failed]:text-status-failed"
       data-result-mark={row.mark}
       data-tone={row.tone}
     >
@@ -94,9 +97,14 @@ function RowSub({ row }: { readonly row: ResultRow }) {
   const timeline = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
   const { sub } = row;
   if (sub === null) return null;
-  if (sub.kind === "text") return <span className="run-result-sub">{sub.text}</span>;
+  if (sub.kind === "text")
+    return (
+      <span className="mt-px block text-body leading-4.5 tabular-nums wrap-anywhere text-muted-foreground">
+        {sub.text}
+      </span>
+    );
   return (
-    <span className="run-result-sub">
+    <span className="mt-px block text-body leading-4.5 tabular-nums wrap-anywhere text-muted-foreground">
       Since {formatDayAwareTimestamp(sub.at, timeline?.timestampFormat ?? "locale")}
     </span>
   );
@@ -112,7 +120,7 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
   const restart = action?.kind === "restart" ? action.services : null;
   if (action === null && url === null) return <span />;
   return (
-    <span className="run-result-end">
+    <span className="flex items-center gap-1.5">
       {fix === null ? null : <FixAction mate={mate} problem={fix} />}
       {restart === null ? null : <RestartAction services={restart} />}
       {tryIt === undefined ? null : (
@@ -160,12 +168,27 @@ const NO_FILES: ResultFiles = new Map();
  * keeps that room and says why. The last tile of a run with more says
  * how many more over its picture.
  */
+/**
+ * A tile: one height for every tile, each as wide as its picture's own shape makes it, set from its
+ * first frame (`tileRatio`). While its file is read it holds its room unpainted, no fill and no
+ * edge, so nothing under the strip moves when the picture comes or never does; its fill comes with
+ * its picture. Its edge is the card's hairline drawn over the picture, so a white page on the tray
+ * keeps its edge; red when the page's check stayed failed.
+ */
+const TILE_CLASS =
+  "relative block max-w-full flex-none overflow-hidden rounded-card bg-foreground/5 transition-colors duration-150 ease-out-strong after:pointer-events-none after:absolute after:inset-0 after:rounded-card after:inset-ring after:inset-ring-foreground/8 after:transition-shadow after:duration-150 after:ease-out-strong group-hover/tile:after:inset-ring-foreground/20 data-failed:after:inset-ring-status-failed data-[result-picture=loading]:bg-transparent data-[result-picture=loading]:after:inset-ring-0 has-data-image-pending:bg-transparent has-data-image-pending:after:inset-ring-0 [&>[data-image-frame]]:block [&>[data-image-frame]]:size-full";
+const TILE_CLASS_NAME = `${TILE_CLASS} h-24`;
+/** Under a service's row, what its checks took: the open card's thumbnails' 80 px. */
+const TILE_COMPACT_CLASS_NAME = `${TILE_CLASS} h-20`;
+
 function PictureTile({
   picture,
   state,
   more,
   onOpen,
+  compact,
 }: {
+  readonly compact: boolean;
   readonly picture: ResultPicture;
   readonly state: AssetUrlState;
   /** The pictures past the strip's last tile. */
@@ -203,11 +226,12 @@ function PictureTile({
         // The count stands alone over a picture that cannot be shown: its words never sit
         // under it (Rhea's imported run printed "+9" over "Image unavailable").
         more > 0 ? null : (
-          <ImageUnavailable reason={reason} />
+          <ImageUnavailable className="size-full" reason={reason} />
         )
       ) : state._tag === "Success" ? (
         <AssetImage
           alt=""
+          className="block size-full object-cover object-top"
           width={size?.width}
           height={size?.height}
           src={state.url}
@@ -215,7 +239,12 @@ function PictureTile({
           onUnavailable={(why) => setUnread({ url: state.url, ...(why ? { reason: why } : {}) })}
         />
       ) : null}
-      {more > 0 ? <span className="run-result-more">+{more}</span> : null}
+      {/* The last tile of a run with more: how many more, over its picture sunk into the tray. */}
+      {more > 0 ? (
+        <span className="absolute inset-0 flex items-center justify-center bg-run-tray/72 text-body font-medium tabular-nums text-foreground in-data-[result-picture=unavailable]:inset-auto in-data-[result-picture=unavailable]:right-1 in-data-[result-picture=unavailable]:bottom-1 in-data-[result-picture=unavailable]:rounded-mark in-data-[result-picture=unavailable]:px-1">
+          +{more}
+        </span>
+      ) : null}
     </>
   );
   const pressless = onOpen === null || (unavailable && more === 0);
@@ -226,7 +255,7 @@ function PictureTile({
           pressless ? (
             <span
               aria-label={said}
-              className="run-result-tile"
+              className={compact ? TILE_COMPACT_CLASS_NAME : TILE_CLASS_NAME}
               data-failed={failed}
               data-result-picture={status}
               role="img"
@@ -236,7 +265,7 @@ function PictureTile({
             // The tile is the press's content: its corners, edge and fill are the picture's.
             <Button
               aria-label={`${said}. Open ${more > 0 ? "the pictures" : "the picture"}`}
-              className="block max-w-full shrink-0 cursor-zoom-in"
+              className="group/tile block max-w-full shrink-0 cursor-zoom-in"
               {...intent}
               onClick={onOpen}
               variant="bare"
@@ -248,7 +277,7 @@ function PictureTile({
           content
         ) : (
           <span
-            className="run-result-tile"
+            className={compact ? TILE_COMPACT_CLASS_NAME : TILE_CLASS_NAME}
             data-failed={failed}
             data-result-picture={status}
             style={shape}
@@ -280,7 +309,9 @@ function PictureStrip({
   pictures,
   files,
   onOpenImage,
+  compact = false,
 }: {
+  readonly compact?: boolean;
   readonly pictures: ReadonlyArray<ResultPicture>;
   readonly files: ResultFiles;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
@@ -302,12 +333,13 @@ function PictureStrip({
           onOpenImage({ images: viewable.map(({ src, name }) => ({ src, name })), index: start });
   };
   return (
-    <div className="run-result-strip" data-result-strip>
+    <div className="col-start-2 flex flex-wrap gap-2" data-result-strip>
       {shown.map((picture, index) => {
         const last = index === shown.length - 1 && more > 0;
         return (
           <PictureTile
             key={picture.key}
+            compact={compact}
             more={last ? more : 0}
             onOpen={opener(index, last ? pictures.length - index : 1)}
             picture={picture}
@@ -340,7 +372,8 @@ function riseOf(
   if (!rising.has(key)) return {};
   return {
     "data-rising": true,
-    style: { "--row-index": index } as CSSProperties,
+    // Row by row, 40 ms apart.
+    style: { animationDelay: `${index * 40}ms` },
     onAnimationEnd: (event) => {
       if (event.target === event.currentTarget) risen(key);
     },
@@ -449,32 +482,44 @@ function Report({
   }, []);
   if (rows.length === 0 && pictures.length === 0) return null;
   return (
-    <section aria-label="What this run left" className="run-result" data-turn-report>
+    // What a finished run left, as rows in the card's grid: the mark in the card's 28 px column,
+    // the words one column in, the actions on its right edge; 14/20 the row, 13/18 under it.
+    <section aria-label="What this run left" className="flex flex-col" data-turn-report>
       {rows.map((row, index) => {
         const own = placed.byRow.get(row.key) ?? [];
         return (
           <div
             key={row.key}
-            className="run-result-row"
+            // A row with a line under it hangs from its first line. Arriving while the person
+            // watched, the rows rise in once, 40 ms apart; reduced motion fades them.
+            className="grid min-h-8.5 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-2 pe-3.5 text-body data-rising:animate-result-rise data-tall:items-start data-tall:py-1.75 motion-reduce:data-rising:animate-run-fade"
             data-result-row={row.group}
             data-tall={row.sub !== null || own.length > 0 || undefined}
             {...riseOf(row.key, index, rising, risen)}
           >
             <RowMark row={row} />
             <div className="min-w-0">
-              <div className="run-result-main">
+              {/* Nothing is cut off: a long name or reason wraps. */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 *:min-w-0 *:wrap-anywhere">
                 <span
-                  className="run-result-title"
+                  className="font-medium text-foreground data-broken:text-status-failed-text"
                   data-broken={row.group === "broken" || undefined}
                 >
                   {row.title}
                 </span>
-                {row.words === null ? null : <span className="run-result-words">{row.words}</span>}
-                {row.version === null ? null : (
-                  <span className="run-result-version">{row.version}</span>
+                {row.words === null ? null : (
+                  <span className="text-muted-foreground">{row.words}</span>
                 )}
+                {/* The hash keeps to the row's 20 px. */}
+                {row.version === null ? null : (
+                  <span className="font-mono text-line leading-none text-muted-foreground">
+                    {row.version}
+                  </span>
+                )}
+                {/* What a service's checks found stays on its line: it keeps the line while 12
+                    characters of room are left, and gives way at its end past its room. */}
                 {row.checked === undefined ? null : (
-                  <span className="run-result-words run-result-checked">
+                  <span className="min-w-[min(12ch,100%)] flex-[1_1_12ch] truncate text-muted-foreground">
                     {row.words === null && row.version === null ? "" : "· "}
                     {row.checked}
                   </span>
@@ -482,8 +527,9 @@ function Report({
               </div>
               <RowSub row={row} />
               {own.length === 0 ? null : (
-                <div className="run-result-row-pictures">
+                <div className="mt-2">
                   <PictureStrip
+                    compact
                     onOpenImage={onOpenImage}
                     pictures={own}
                     files={files ?? NO_FILES}
@@ -496,7 +542,15 @@ function Report({
         );
       })}
       {pictures.length === 0 ? null : (
-        <div className="run-result-pictures" {...riseOf(PICTURES, rows.length, rising, risen)}>
+        // The run's pictures, one strip under its rows on the card's words edge: 20 px under the
+        // rows; alone, 14 px under the hairline, where a first row's words stand.
+        <div
+          className={cn(
+            "grid grid-cols-[28px_minmax(0,1fr)] gap-x-2 pe-3.5 pb-1.5",
+            rows.length === 0 ? "pt-1.75" : "pt-3.25",
+          )}
+          {...riseOf(PICTURES, rows.length, rising, risen)}
+        >
           <PictureStrip files={files ?? NO_FILES} onOpenImage={onOpenImage} pictures={pictures} />
         </div>
       )}

@@ -4,6 +4,7 @@ import { AssetDownloadLink } from "./AssetDownloadLink";
 import { useEffect, useState, type RefObject, type ComponentPropsWithoutRef } from "react";
 
 import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { useNearViewport } from "../hooks/useNearViewport";
 import type { ImagePresentation } from "./imagePresentation";
 
@@ -14,12 +15,21 @@ export function ImageUnavailable({
   ...props
 }: ComponentPropsWithoutRef<"span"> & { readonly reason?: string | undefined }) {
   return (
-    <span {...props} className={`asset-image-unavailable ${className ?? ""}`}>
+    <span
+      {...props}
+      className={cn(
+        "flex min-h-10 flex-col items-center justify-center gap-0.75 bg-muted p-1.5 text-center text-2xs text-muted-foreground",
+        className,
+      )}
+    >
       <span>{reason ?? "Image unavailable"}</span>
       {children}
     </span>
   );
 }
+
+/** A picture's room, on the card's corners. */
+const FRAME_CLASS_NAME = "relative inline-block max-w-full rounded-card align-top";
 
 function reservedImageStyle(props: ComponentPropsWithoutRef<"img">) {
   const width = Number(props.width);
@@ -94,8 +104,11 @@ function DecodedImage({
     // that arrives after the picture is shown is told at once.
   }, [readySrc, underlay]);
   return (
+    // Fetching and decoding hold the picture's room and paint nothing in it: the picture fades in
+    // once decoded.
     <span
-      className="asset-image-frame"
+      className={FRAME_CLASS_NAME}
+      data-image-frame=""
       data-image-pending={!ready || undefined}
       style={reserved ? reservedImageStyle(props) : undefined}
     >
@@ -106,12 +119,18 @@ function DecodedImage({
           aria-hidden
           decoding="async"
           draggable={false}
-          className="asset-image-underlay"
+          // Laid over the picture it stands in for, it never takes the pointer: a press reaches
+          // the picture (and a zoomed viewer's pan) even after it has faded out.
+          className="pointer-events-none absolute inset-0 size-full object-contain"
           style={{ opacity: ready && props.src !== underlay ? 0 : 1 }}
         />
       ) : null}
       <img
         {...props}
+        className={cn(
+          "transition-opacity duration-200 ease-out-strong motion-reduce:transition-none",
+          props.className,
+        )}
         ref={imageRef}
         style={{ ...props.style, ...(reserved ? { width: "100%" } : {}), opacity: ready ? 1 : 0 }}
       />
@@ -131,7 +150,7 @@ function DirectAssetImage({
   const [attempt, setAttempt] = useState(0);
   if (src !== undefined && failedSrc === src && !retrying) {
     return (
-      <span className="asset-image-frame" style={reservedImageStyle(props)}>
+      <span className={FRAME_CLASS_NAME} data-image-frame="" style={reservedImageStyle(props)}>
         <ImageUnavailable
           role="img"
           aria-label={props.alt ? `Image unavailable · ${props.alt}` : "Image unavailable"}
@@ -282,7 +301,8 @@ function ManagedAssetImage({
   if (unavailable)
     return (
       <span
-        className={`asset-image-frame ${props.className ?? ""}`}
+        className={cn(FRAME_CLASS_NAME, props.className)}
+        data-image-frame=""
         style={reservedImageStyle(props)}
       >
         <ImageUnavailable

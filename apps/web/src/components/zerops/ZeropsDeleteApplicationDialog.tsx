@@ -126,7 +126,7 @@ export function ZeropsDeleteApplicationForm({
       <DialogPanel>
         <div className="space-y-3">
           <DeleteApplicationLists words={words} />
-          <div className="space-y-1.5 [&_.arrival-failure-details]:text-left!">
+          <div className="space-y-1.5">
             {confirmedBefore ? null : (
               <>
                 <Label htmlFor={`${id}-name`}>{words.label}</Label>
@@ -154,7 +154,7 @@ export function ZeropsDeleteApplicationForm({
             >
               {reason}
             </p>
-            {details === null ? null : <ZeropsAnswerDetails text={details} />}
+            {details === null ? null : <ZeropsAnswerDetails align="start" text={details} />}
           </div>
         </div>
       </DialogPanel>

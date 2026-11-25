@@ -59,6 +59,7 @@ import { Loading } from "../ui/loading";
 import { Spinner } from "../ui/spinner";
 import { StepNumber } from "../ui/step-number";
 import { Button, InlineButton } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
 import {
@@ -231,17 +232,17 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   function renderOption(option: ZeropsAgentId | typeof OPENCODE) {
     if (option === OPENCODE)
       return opened === OPENCODE ? (
-        <div className="arrival-open" data-agent-id={OPENCODE} key={OPENCODE}>
-          <div className="arrival-open-head">
+        <div className={OPEN_CLASS} data-agent-id={OPENCODE} key={OPENCODE}>
+          <div className={OPEN_HEAD_CLASS}>
             <OpenCodeLogoTile />
-            <span className="arrival-open-title">{OPENCODE_CARD.connect}</span>
+            <span className={OPEN_TITLE_CLASS}>{OPENCODE_CARD.connect}</span>
             <FoldPress onFold={fold} />
           </div>
-          <div className="arrival-open-body">{props.openCode}</div>
+          <div className={OPEN_BODY_CLASS}>{props.openCode}</div>
         </div>
       ) : (
         <div
-          className="arrival-card"
+          className={CARD_CLASS}
           data-agent-id={OPENCODE}
           data-dim={dimmed ? "" : undefined}
           key={OPENCODE}
@@ -303,38 +304,80 @@ export function AgentSignInView(props: AgentSignInViewProps) {
 
   return (
     <div
-      className="arrival-sign-in"
+      // A card of its own in the stage's slot: its words start on their line, never the stage's
+      // centred text (the owner, 2026-10-13: "once again misaligned").
+      className="@container relative mx-auto flex w-full max-w-88 flex-col items-center text-start data-arrives:animate-zerops-appear"
       inert={props.available === false}
       aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
       data-open={opened ?? undefined}
       data-zerops-surface="agent-sign-in"
     >
-      <div className="arrival-cards">
+      <div className="flex w-full flex-col gap-2">
         {options.slice(0, FIRST_OPTIONS).map(slot)}
         {hidden <= 0 ? null : (
-          // The rest unfold under the first two and fold back into them.
-          <div className="arrival-cards-rest" data-open={all ? "" : undefined} inert={!all}>
-            <div className="arrival-cards-rest-inner">{options.slice(FIRST_OPTIONS).map(slot)}</div>
+          // The rest unfold under the first two in 260 ms and fold back into them, each card's
+          // ring still drawn past the clip.
+          <div
+            className="-mt-2 grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,margin-top,opacity] duration-260 ease-out-strong data-open:mt-0 data-open:grid-rows-[1fr] data-open:opacity-100 motion-reduce:transition-none"
+            data-open={all ? "" : undefined}
+            inert={!all}
+          >
+            <div className="flex min-h-0 flex-col gap-2 overflow-clip [overflow-clip-margin:2px]">
+              {options.slice(FIRST_OPTIONS).map(slot)}
+            </div>
           </div>
         )}
       </div>
       {fixed || hidden <= 0 || (all && !more) ? null : (
         <Button
           aria-expanded={more}
-          className="mt-4"
+          className="mt-4 mb-10"
           data-sign-in-more
           onClick={() => setMore(!more)}
           shape="round"
           variant="ghost-muted"
         >
           {more ? "Show fewer options" : `Show ${String(hidden)} more options`}
-          <ChevronDownIcon aria-hidden="true" />
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={cn(
+              "transition-transform duration-200 ease-out-strong",
+              more ? "rotate-180" : undefined,
+            )}
+          />
         </Button>
       )}
     </div>
   );
 }
+
+/**
+ * The sign-in's cards, to the owner's design (2026-11-23): on the raised ground, ringed. A card
+ * lifts under the pointer and gives under a press; while another stands open it steps back, and
+ * comes forward under the pointer or the keyboard.
+ */
+const CARD_GROUND_CLASS = "rounded-card bg-surface-raised ring-1 ring-border";
+const CARD_CLASS = `${CARD_GROUND_CLASS} transition-[box-shadow,opacity,scale] duration-150 ease-out-strong hover:shadow-(--zerops-shadow-card) hover:ring-foreground/16 active:scale-[0.985] data-dim:opacity-50 data-dim:focus-within:opacity-100 data-dim:hover:opacity-100 motion-reduce:transition-none`;
+
+/** An open card: its logo and title over a rule, its steps, its foot. */
+const OPEN_CLASS = `${CARD_GROUND_CLASS} overflow-hidden`;
+const OPEN_HEAD_CLASS = "flex items-center gap-3 border-b border-border py-2.5 ps-2.5 pe-3";
+const OPEN_TITLE_CLASS = "min-w-0 flex-1 text-emphasis leading-5 font-semibold text-foreground";
+const OPEN_BODY_CLASS = "flex flex-col gap-3.5 px-4 pt-4 pb-4.5";
+
+/** An agent's logo, in a 40 px seat at the card's start. */
+const LOGO_CLASS = "flex size-10 flex-none items-center justify-center rounded-control";
+
+/**
+ * A step: its number, its words, and under the words what it asks for (a press, a field). The
+ * press stands under the words (`STEP_PRESS_CLASS`); "Open again" takes the account line's size.
+ */
+const STEP_CLASS = "grid grid-cols-[24px_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 text-body";
+const STEP_PRESS_CLASS = "col-start-2 justify-self-start";
+const STEP_WORDS_CLASS = "text-body text-foreground";
+const STEP_FIELD_CLASS = "col-[2/-1]";
+const STEP_HINT_CLASS = "col-[2/-1] flex items-center gap-1.5 text-caption text-muted-foreground";
 
 /** The open card's close button: it folds the card back into the list. */
 function FoldPress({ onFold }: { readonly onFold: () => void }) {
@@ -353,7 +396,7 @@ function FoldPress({ onFold }: { readonly onFold: () => void }) {
 
 function AgentLogoTile({ agentId }: { agentId: ZeropsAgentId }) {
   return (
-    <span aria-hidden="true" className="arrival-logo" data-agent-logo={agentId}>
+    <span aria-hidden="true" className={LOGO_CLASS} data-agent-logo={agentId}>
       <ZeropsAgentLogo agentId={agentId} className="size-6.5" />
     </span>
   );
@@ -361,7 +404,7 @@ function AgentLogoTile({ agentId }: { agentId: ZeropsAgentId }) {
 
 function OpenCodeLogoTile() {
   return (
-    <span aria-hidden="true" className="arrival-logo" data-agent-logo="opencode">
+    <span aria-hidden="true" className={LOGO_CLASS} data-agent-logo="opencode">
       <OpenCodeIcon className="size-6.5" />
     </span>
   );
@@ -381,7 +424,7 @@ function AgentCard({
 }) {
   const card = AGENT_SIGN_IN_CARDS[agentId];
   return (
-    <div className="arrival-card" data-agent-id={agentId} data-dim={dim ? "" : undefined}>
+    <div className={CARD_CLASS} data-agent-id={agentId} data-dim={dim ? "" : undefined}>
       <Row
         aria-disabled={disabled || undefined}
         lead={<AgentLogoTile agentId={agentId} />}
@@ -513,7 +556,7 @@ function OpenCard({
     (watching || (steps.kind === "steps" && steps.second.kind === "terminal"));
   return (
     <div
-      className="arrival-open"
+      className={OPEN_CLASS}
       data-agent-id={agentId}
       data-sign-in={
         steps.kind === "steps"
@@ -524,12 +567,12 @@ function OpenCard({
       }
       ref={box}
     >
-      <div className="arrival-open-head">
+      <div className={OPEN_HEAD_CLASS}>
         <AgentLogoTile agentId={agentId} />
-        <span className="arrival-open-title">{title ?? words.connect}</span>
+        <span className={OPEN_TITLE_CLASS}>{title ?? words.connect}</span>
         {onFold === null ? null : <FoldPress onFold={onFold} />}
       </div>
-      <div aria-live="polite" className="arrival-open-body" ref={body}>
+      <div aria-live="polite" className={OPEN_BODY_CLASS} ref={body}>
         {replace === null ? (
           <OpenCardSteps
             disabled={!available}
@@ -542,10 +585,10 @@ function OpenCard({
             words={words}
           />
         ) : (
-          <div className="arrival-open-step" data-sign-in-step="replace">
+          <div className={STEP_CLASS} data-sign-in-step="replace">
             <span />
-            <span className="arrival-open-step-words">{replace}</span>
-            <div className="flex gap-2">
+            <span className={STEP_WORDS_CLASS}>{replace}</span>
+            <div className={cn(STEP_PRESS_CLASS, "flex gap-2")}>
               <Button
                 data-sign-in-replace-cancel
                 autoFocus
@@ -562,16 +605,25 @@ function OpenCard({
           </div>
         )}
       </div>
-      <div className="arrival-terminal-fold" data-open={showTerminal ? "" : undefined}>
-        <div className="arrival-terminal-inner">
+      {/* What the login prints, behind *Show what's happening*: unfolding under the steps in
+          260 ms, 128 px tall, in the theme's own colours (the terminal reads them here). */}
+      <div
+        className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-260 ease-out-strong data-open:grid-rows-[1fr] motion-reduce:transition-none"
+        data-open={showTerminal ? "" : undefined}
+      >
+        <div className="min-h-0 overflow-hidden">
           {attempt === undefined ? null : (
-            <div className="arrival-terminal" data-arrival-terminal>
+            <div
+              className="mx-3.5 mb-3.5 h-32 overflow-hidden rounded-control bg-muted text-foreground inset-ring inset-ring-border [--terminal-background:var(--muted)] [--terminal-cursor:var(--foreground)] [--terminal-foreground:var(--foreground)] [--terminal-selection-background:color-mix(in_oklab,var(--foreground)_20%,transparent)]"
+              data-arrival-terminal
+            >
               {showTerminal ? terminal(agentId, attempt) : null}
             </div>
           )}
         </div>
       </div>
-      <div className="arrival-open-foot">
+      {/* The open card's foot over a rule: whose account it runs on, and *Show what's happening*. */}
+      <div className="flex items-center justify-between gap-3 border-t border-border px-3.5 py-2.5 text-body leading-4.5 text-muted-foreground">
         <span>{signInFoot(mateName)}</span>
         {attempt === undefined ||
         (steps.kind === "steps" && steps.second.kind === "terminal") ? null : (
@@ -656,7 +708,8 @@ function OptionSlot({ open, children }: { readonly open: boolean; readonly child
     });
   }, [state]);
   return (
-    <div className="arrival-option" data-state={state} ref={slot}>
+    // Its card's ring is still drawn past the clip while it glides.
+    <div className="flex flex-col [overflow-clip-margin:2px]" data-state={state} ref={slot}>
       {children}
     </div>
   );
@@ -683,21 +736,26 @@ function OpenCardSteps({
 }) {
   if (steps.kind === "signed-in") {
     return (
-      <div className="arrival-open-step" data-sign-in-outcome="signed-in">
+      <div className={STEP_CLASS} data-sign-in-outcome="signed-in">
         <StepNumber n={1} state="done" />
-        <span className="arrival-open-step-words">{words.signedIn}</span>
-        <span />
+        <span className={STEP_WORDS_CLASS}>{words.signedIn}</span>
       </div>
     );
   }
   if (steps.kind === "failed") {
     return (
-      <div className="arrival-open-step" data-sign-in-outcome="failed">
+      <div className={STEP_CLASS} data-sign-in-outcome="failed">
         <StepNumber n={1} state="failed" />
-        <span className="arrival-open-step-words" role="alert">
+        <span className={STEP_WORDS_CLASS} role="alert">
           {steps.why}
         </span>
-        <Button disabled={disabled} onClick={onRetry} size="sm" variant="secondary">
+        <Button
+          className={STEP_PRESS_CLASS}
+          disabled={disabled}
+          onClick={onRetry}
+          size="sm"
+          variant="secondary"
+        >
           <RotateCcwIcon aria-hidden="true" />
           {words.tryAgain}
         </Button>
@@ -708,13 +766,14 @@ function OpenCardSteps({
   const pageDone = page.state === "opened";
   return (
     <>
-      <div className="arrival-open-step" data-sign-in-step="page">
+      <div className={STEP_CLASS} data-sign-in-step="page">
         <StepNumber n={1} state={pageDone ? "done" : "todo"} />
-        <span className="arrival-open-step-words" data-quiet={pageDone ? "" : undefined}>
+        <span className={pageDone ? "text-body text-muted-foreground" : STEP_WORDS_CLASS}>
           {pageDone ? words.opened : words.open}
         </span>
         {pageDone ? (
           <InlineButton
+            className={STEP_PRESS_CLASS}
             render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
             tone="muted"
           >
@@ -726,6 +785,7 @@ function OpenCardSteps({
           <Button
             aria-busy
             aria-label={words.preparing}
+            className={STEP_PRESS_CLASS}
             data-sign-in-open={agentId}
             disabled
             size="sm"
@@ -736,6 +796,7 @@ function OpenCardSteps({
           </Button>
         ) : (
           <Button
+            className={STEP_PRESS_CLASS}
             disabled={disabled}
             data-sign-in-open={agentId}
             onClick={onOpenPage}
@@ -790,12 +851,11 @@ function PasteCodeStep({
     if (!disabled && focus && checking === null) field.current?.focus();
   }, [checking, disabled, focus]);
   return (
-    <div className="arrival-open-step" data-sign-in-step="code">
+    <div className={STEP_CLASS} data-sign-in-step="code">
       <StepNumber n={2} />
-      <span className="arrival-open-step-words">{terminal ? words.terminal : words.paste}</span>
-      <span />
+      <span className={STEP_WORDS_CLASS}>{terminal ? words.terminal : words.paste}</span>
       {terminal ? null : (
-        <span className="arrival-open-step-field">
+        <span className={STEP_FIELD_CLASS}>
           {checking === null ? (
             <Input
               disabled={disabled}
@@ -821,8 +881,15 @@ function PasteCodeStep({
               value={value}
             />
           ) : (
-            <span className="arrival-field" data-sign-in-checking>
-              <span className="arrival-field-value">{abbreviatedCode(checking)}</span>
+            // Claude's code while it is checked: the field's own box, the code's ends in mono, and
+            // the check.
+            <span
+              className="flex h-9 items-center gap-2 rounded-control bg-card px-3 text-body whitespace-nowrap text-muted-foreground inset-ring inset-ring-input"
+              data-sign-in-checking
+            >
+              <span className="font-mono text-line text-foreground">
+                {abbreviatedCode(checking)}
+              </span>
               <span className="flex-1" />
               <Spinner aria-hidden="true" size="sm" tone="muted" />
               <span>{words.checking}</span>
@@ -831,14 +898,14 @@ function PasteCodeStep({
         </span>
       )}
       {terminal ? null : sendFailed ? (
-        <span className="arrival-open-step-hint" data-failed="">
+        <span className={cn(STEP_HINT_CLASS, "text-status-failed-text")}>
           The code didn't reach the sign-in. Paste it again.
         </span>
       ) : (
         // What happens then, as the third step.
-        <span className="arrival-open-step-then">
+        <span className="col-[1/-1] mt-1 grid grid-cols-[24px_minmax(0,1fr)] items-center gap-x-3">
           <StepNumber n={3} />
-          <span className="arrival-open-step-words">{words.pasteHint}</span>
+          <span className={STEP_WORDS_CLASS}>{words.pasteHint}</span>
         </span>
       )}
     </div>
@@ -859,12 +926,15 @@ function TypeCodeStep({
     return () => window.clearTimeout(timer);
   }, [copied]);
   return (
-    <div className="arrival-open-step" data-sign-in-step="code">
+    <div className={STEP_CLASS} data-sign-in-step="code">
       <StepNumber n={2} />
-      <span className="arrival-open-step-words">{words.type}</span>
-      <span />
-      <span className="arrival-open-step-field flex items-center gap-2">
-        <span className="arrival-code" data-sign-in-device-code>
+      <span className={STEP_WORDS_CLASS}>{words.type}</span>
+      <span className={cn(STEP_FIELD_CLASS, "flex items-center gap-2")}>
+        {/* Codex's code, to type on OpenAI's page. */}
+        <span
+          className="inline-flex h-9 items-center rounded-control bg-muted px-3 font-mono text-title leading-none font-medium tracking-wider text-foreground select-all inset-ring inset-ring-border"
+          data-sign-in-device-code
+        >
           {code ?? <Spinner aria-hidden="true" size="sm" tone="muted" />}
         </span>
         {code === undefined ? null : (
@@ -883,7 +953,7 @@ function TypeCodeStep({
           </Button>
         )}
       </span>
-      <span className="arrival-open-step-hint">
+      <span className={STEP_HINT_CLASS}>
         <Spinner aria-hidden="true" size="sm" tone="muted" />
         {words.typeHint}
       </span>
@@ -903,11 +973,10 @@ function ApproveStep({
   readonly words: ReturnType<typeof agentSignInWords>;
 }) {
   return (
-    <div className="arrival-open-step" data-sign-in-step="approve">
+    <div className={STEP_CLASS} data-sign-in-step="approve">
       <StepNumber n={2} />
-      <span className="arrival-open-step-words">{words.approve}</span>
-      <span />
-      <span className="arrival-open-step-hint">
+      <span className={STEP_WORDS_CLASS}>{words.approve}</span>
+      <span className={STEP_HINT_CLASS}>
         {waiting ? <Spinner aria-hidden="true" size="sm" tone="muted" /> : null}
         {words.approveHint}
       </span>

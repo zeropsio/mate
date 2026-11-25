@@ -553,6 +553,7 @@ function ArrivalComposition({
   const sentenceId = useId();
   // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
   const pacing = kind === "standing-up" && slot.id !== "stand-up-failed";
+  const signingIn = kind.startsWith("sign-in");
   const [headlineWords, setHeadlineWords] = useState<HTMLSpanElement | null>(null);
   const [faceElement, setFaceElement] = useState<HTMLDivElement | null>(null);
   const pace = useHeadlineReach(headlineWords, faceElement, pacing);
@@ -594,9 +595,8 @@ function ArrivalComposition({
   );
   return (
     <div
-      className="flex h-full min-h-0 w-full min-w-0 flex-col items-center overflow-y-auto px-5 py-6 sm:px-6"
-      data-arrival={kind}
-      data-mate-stage-area=""
+      // A scrollbar coming as the options unfold takes no width from the stage: nothing moves.
+      className="group/stage scrollbar-gutter-both flex h-full min-h-0 w-full min-w-0 flex-col items-center overflow-y-auto px-5 py-6 sm:px-6"
       data-zerops-surface="mate-empty-state"
       style={bottomInset === 0 ? undefined : { height: `calc(100% - ${bottomInset}px)` }}
     >
@@ -617,7 +617,16 @@ function ArrivalComposition({
             <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
           )
         ) : (
-          <div className="arrival-face" ref={setFaceElement}>
+          // Asking for a sign-in, the face stands at 120 px (the owner's design, 2026-11-23).
+          <div
+            className={
+              signingIn
+                ? "*:size-30! *:transition-[width,height] *:duration-260 *:ease-out-strong motion-reduce:*:transition-none"
+                : "*:transition-[width,height] *:duration-260 *:ease-out-strong motion-reduce:*:transition-none"
+            }
+            data-arrival-face=""
+            ref={setFaceElement}
+          >
             {typeof faceSlot === "function"
               ? face === null
                 ? null
@@ -628,16 +637,27 @@ function ArrivalComposition({
           </div>
         )}
         <ArrivalSwap
-          className="mt-6 w-full max-w-2xl"
-          data-arrival-headline=""
+          // Asking for a sign-in, the headline stands 20 px under the face; the Chief's face is
+          // the product's mark, drawn edge to edge in its box, so it stands further off.
+          className={
+            signingIn
+              ? "mt-5 w-full max-w-2xl group-has-[[data-arrival-face]_[data-mate-mark]]/stage:mt-8"
+              : "mt-6 w-full max-w-2xl"
+          }
           id={clauses.join(" ")}
           kind="words"
         >
           <h1
             aria-describedby={spokenSentence.length === 0 ? undefined : sentenceId}
             aria-live="polite"
-            className={cn(MATE_EMPTY_HEADLINE_CLASS, "arrival-headline text-balance outline-none")}
-            data-pressed={pressed}
+            className={cn(
+              MATE_EMPTY_HEADLINE_CLASS,
+              "text-balance outline-none",
+              // A press's words on a narrow screen wrap to two lines where a stop's take one: the
+              // headline holds two lines' room from the press, set on its last lines, next to its
+              // sentence, so a stop and Try again move nothing.
+              pressed === "" && "max-sm:flex max-sm:min-h-16 max-sm:flex-col max-sm:justify-end",
+            )}
             ref={headline}
             tabIndex={-1}
           >
@@ -655,21 +675,28 @@ function ArrivalComposition({
         {spokenSentence.length === 0 ? null : (
           <ArrivalSwap
             className="mt-2 w-full max-w-2xl"
-            data-arrival-sentence=""
             domId={sentenceId}
             id={spokenSentence}
             kind="words"
             live="polite"
           >
-            <p className="arrival-sentence" data-pressed={pressed}>
+            {/* The one sentence under the headline: 15 px, muted, one line where it fits. */}
+            <p
+              className={cn(
+                "text-center text-emphasis leading-5.5 text-balance text-muted-foreground",
+                pressed === "" && "max-sm:min-h-11",
+              )}
+            >
               {spokenSentence}
             </p>
           </ArrivalSwap>
         )}
         {notice}
         <ArrivalSwap
-          className={cn("w-full max-w-126 text-center", slot.node !== null && "mt-7")}
-          data-arrival-slot={slot.id}
+          className={cn(
+            "w-full max-w-126 text-center",
+            signingIn ? "mt-9" : slot.node !== null && "mt-7",
+          )}
           id={slot.id}
           kind="slot"
         >

@@ -8,7 +8,7 @@ import {
   recoveryNotice,
   type MateDeletion,
 } from "@t3tools/client-runtime/data";
-import { MateStateDetails } from "./MateStateDetails";
+import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import {
   ConversationOpeningStage,
@@ -1693,23 +1693,30 @@ export function ComingBelow({
       {steps}
       {setupFailureDetails === undefined && copy.details === undefined ? null : (
         <MateStateDetails>
-          <pre>{copy.details}</pre>
+          <pre className={DETAILS_TEXT_CLASS}>{copy.details}</pre>
           {setupFailureDetails?.status === "loading" ? (
             <Loading count={3} label="The setup log" shape="lines" />
           ) : null}
           {setupFailureDetails?.status === "error" ? (
-            <p>The setup log couldn't be read. Open the process in Zerops.</p>
+            <p className={DETAILS_TEXT_CLASS}>
+              The setup log couldn't be read. Open the process in Zerops.
+            </p>
           ) : null}
         </MateStateDetails>
       )}
-      <div className="arrival-acts-block">
+      {/* Under the steps: what they leave to read whole (a stop's reason, a registration not
+          finished) over the one way on. */}
+      <div className="flex flex-col items-center gap-3">
         {read === null ? null : (
-          <p className="arrival-acts-note" data-press-note="">
+          <p
+            className="text-center text-body leading-4.75 text-pretty text-muted-foreground"
+            data-press-note=""
+          >
             {read.text}
           </p>
         )}
         {acts === null && setupFailureDetails?.projectUrl === undefined ? null : (
-          <div className="arrival-acts">
+          <div className={ARRIVAL_ACTS_CLASS}>
             {acts}
             {setupFailureDetails?.projectUrl === undefined ? null : (
               <Button
