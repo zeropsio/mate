@@ -1289,8 +1289,9 @@ const STATUS: Record<string, string> = {
   A: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-addition-foreground inset-ring-1 inset-ring-diff-addition-foreground/40",
   D: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-deletion-foreground inset-ring-1 inset-ring-diff-deletion-foreground/40",
 };
-/** A file's diff, open under its row: numbered lines on a faint ground, mono. */
-const DIFF = "bg-foreground/2 py-1.5 font-mono text-caption leading-4.75 [tab-size:4]";
+/** A file's diff, open under its row: numbered lines on the code ground, at the person's code size. */
+const DIFF =
+  "bg-code py-1.5 font-mono text-(length:--font-size-code,var(--text-line)) leading-5 text-code-foreground [tab-size:4]";
 /**
  * A long line wraps inside its own column and hangs under its code: the number and the sign keep
  * theirs, so the gutter stays one straight edge.
