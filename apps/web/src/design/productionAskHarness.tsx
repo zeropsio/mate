@@ -308,7 +308,7 @@ const LINES: ReadonlyArray<ReleaseEndedEvent> = [
 function Conversation() {
   return (
     <div
-      className="grid min-w-0 gap-2 rounded-xl border border-border px-4 py-3"
+      className="grid min-w-0 gap-2 rounded-card border border-border px-4 py-3"
       data-harness-state="conversation:release-ended"
     >
       {LINES.map((event, index) => (

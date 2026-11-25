@@ -13,7 +13,7 @@ export function UsageReadStatus({
 }) {
   if (read.kind === "read" && !read.stale) return null;
   return (
-    <p role="status" className="text-sm text-muted-foreground">
+    <p role="status" className="text-body text-muted-foreground">
       {read.kind === "reading"
         ? (read.line ?? `Reading ${label}…`)
         : read.kind === "unavailable"

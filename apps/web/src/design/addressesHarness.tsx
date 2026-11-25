@@ -24,7 +24,6 @@ import {
 import { AddressesSheetBody } from "~/components/zerops/addresses/AddressesSheet";
 import { ADDRESSES_FIXTURE } from "~/components/zerops/addresses/addressesFixture";
 import { Dialog, DialogPopup } from "~/components/ui/dialog";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -191,7 +190,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

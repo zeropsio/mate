@@ -18,7 +18,6 @@ import { ServiceBrowserPanels } from "~/components/ServiceBrowserPanel";
 import { BrowserSites } from "~/components/zerops/ZeropsBrowserSurface";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import type { RightPanelSurface } from "~/rightPanelStore";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { mateAddresses } from "@t3tools/client-runtime/zerops/mateAddresses";
 import "../index.css";
 
@@ -127,7 +126,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

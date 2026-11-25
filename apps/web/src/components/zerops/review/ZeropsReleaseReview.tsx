@@ -1212,7 +1212,7 @@ export interface ReleaseReviewViewProps {
   /**
    * The renewal of production's deploy key, for a release HQ stopped because it will not use the
    * one it keeps: where the sheet's own run of it stands, and its press — absent for a person
-   * without admin access to production's project, who cannot renew it.
+   * HQ does not offer the renewal.
    */
   readonly keyRenewal?:
     | { readonly run: KeyRenewal; readonly onRenew: (() => void) | undefined }

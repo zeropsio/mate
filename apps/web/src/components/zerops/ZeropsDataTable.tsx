@@ -45,8 +45,8 @@ import type { ZeropsDataConsoleColumn } from "@t3tools/contracts";
 import { Columns3Icon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 import { useRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
-import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
@@ -235,17 +235,16 @@ export function ZeropsDataTable({
 
       {columnsOpen && onToggleColumn !== undefined ? (
         <div
-          className="flex shrink-0 flex-wrap gap-2 rounded-[var(--zerops-card-radius)] border border-border p-2"
+          className="flex shrink-0 flex-wrap gap-2 rounded-card border border-border p-2"
           data-zerops-data-table-column-picker
         >
           {model.columns.map((column) => (
-            <label className="flex items-center gap-1 text-xs" key={column.name}>
-              <input
+            <label className="flex items-center gap-1 text-caption" key={column.name}>
+              <Checkbox
                 checked={column.pk || !hiddenColumns.has(column.name)}
                 data-zerops-data-table-column-toggle={column.name}
                 disabled={column.pk}
-                onChange={() => onToggleColumn(column.name)}
-                type="checkbox"
+                onCheckedChange={() => onToggleColumn(column.name)}
               />
               {column.name}
             </label>
@@ -265,8 +264,8 @@ export function ZeropsDataTable({
             {notice}
           </div>
         ) : (
-          <table className="w-full caption-bottom text-xs" data-slot="table">
-            <TableHeader className="sticky top-0 z-10 bg-card">
+          <table className="w-full caption-bottom text-caption" data-slot="table">
+            <TableHeader sticky>
               <TableRow>
                 {shown.map((column) =>
                   column.sortable ? (
@@ -314,7 +313,7 @@ export function ZeropsDataTable({
               {model.rows.map((row, rowIndex) => (
                 <TableRow
                   aria-selected={focusedRowIndex === rowIndex}
-                  className={cn(focusedRowIndex === rowIndex && "bg-accent")}
+                  data-state={focusedRowIndex === rowIndex ? "selected" : undefined}
                   data-zerops-data-table-row={String(rowIndex)}
                   key={rowKey(model, row, rowIndex)}
                   onClick={() => onOpenRow?.(rowIndex)}
@@ -343,7 +342,7 @@ export function ZeropsDataTable({
 
       {notice !== undefined ? null : (
         <div
-          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-xs"
+          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-caption"
           data-zerops-data-table-status
         >
           <span className="text-muted-foreground" data-zerops-data-table-loaded>

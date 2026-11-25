@@ -221,7 +221,7 @@ export function UsageProviderChart({
           {ticks.map((tick) => (
             <span
               key={tick}
-              className="absolute right-0 -translate-y-1/2 text-3xs text-muted-foreground tabular-nums max-sm:text-xs"
+              className="absolute right-0 -translate-y-1/2 text-3xs text-muted-foreground tabular-nums max-sm:text-caption"
               style={{ top: `${(toY(tick) / VIEW_HEIGHT) * 100}%` }}
             >
               {tick === 0 ? "0" : metric === "cost" ? formatUsdTick(tick) : formatTokens(tick)}
@@ -324,7 +324,7 @@ export function UsageProviderChart({
           {hoveredPeriod === undefined ? null : (
             <div
               ref={tooltipRef}
-              className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-xl border border-border/50 px-2.5 py-2 text-xs shadow-lg"
+              className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-card border border-border/50 px-2.5 py-2 text-caption shadow-lg"
               style={{
                 left: "var(--usage-tooltip-left, 0px)",
                 top: "var(--usage-tooltip-top, 0px)",
@@ -364,7 +364,7 @@ export function UsageProviderChart({
         </div>
       </div>
 
-      <div className="flex justify-between pl-16 text-3xs text-muted-foreground uppercase max-sm:text-xs">
+      <div className="flex justify-between pl-16 text-3xs text-muted-foreground uppercase max-sm:text-caption">
         <span>{periods[0] === undefined ? "" : formatPeriod(periods[0])}</span>
         <span>
           {periods[Math.floor(periods.length / 2)] === undefined

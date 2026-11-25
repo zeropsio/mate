@@ -42,7 +42,7 @@ import type {
   ZeropsServiceRoute,
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
@@ -142,7 +142,7 @@ function DevServers({ servers }: { servers: ZeropsServiceRow["devServers"] }) {
   if (servers === undefined || servers.length < 2) return null;
   return (
     <ul
-      className="mt-1 flex min-w-0 flex-col gap-0.5 text-xs leading-snug text-muted-foreground"
+      className="mt-1 flex min-w-0 flex-col gap-0.5 text-caption leading-snug text-muted-foreground"
       data-zerops-service-devservers
     >
       {servers.map((server) => (
@@ -213,12 +213,12 @@ function ServiceHeader({
         <ServiceStatus label={statusLabel} needsWord={false} service={service} tone={tone} />
         {/* A service named by its hostname, a real thing's own name, wears the mono face
             (`.real-name`), as the card over it does; a title that is the app's words does not. */}
-        <span className="min-w-0 truncate text-sm leading-snug font-medium tracking-tight">
+        <span className="min-w-0 truncate text-body leading-snug font-medium tracking-tight">
           {title === service.hostname ? <span className="real-name">{title}</span> : title}
         </span>
         {portLabel === undefined && aside === undefined ? null : (
           <span
-            className="flex shrink-0 items-baseline gap-x-2 text-xs leading-snug text-muted-foreground"
+            className="flex shrink-0 items-baseline gap-x-2 text-caption leading-snug text-muted-foreground"
             data-zerops-service-ports
           >
             {/* One size for the port and what it is: they are one fact's two halves. */}
@@ -227,7 +227,7 @@ function ServiceHeader({
           </span>
         )}
         {statusNeedsWord ? (
-          <span className="shrink-0 text-xs" data-zerops-service-state-word>
+          <span className="shrink-0 text-caption" data-zerops-service-state-word>
             <ServiceStatusWord label={statusLabel} tone={tone} />
           </span>
         ) : null}
@@ -438,7 +438,7 @@ function RouteLink({ href, label }: { href: string; label: string }) {
   return (
     <li className="flex min-w-0 max-w-full">
       <ServiceBrowserLink
-        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-sm text-xs text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+        className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-mark text-caption text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
         href={href}
         rel="noreferrer"
         target="_blank"
@@ -475,7 +475,7 @@ function ServiceRoutes({
       ))}
       {production.map((link) =>
         link.url === undefined ? (
-          <li className="text-xs text-muted-foreground" key={link.label}>
+          <li className="text-caption text-muted-foreground" key={link.label}>
             Production · {link.label}
           </li>
         ) : (
@@ -493,7 +493,7 @@ function PoolWorkspaces({ workspaces }: { workspaces: ReadonlyArray<PoolWorkspac
     <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-pool-workspaces>
       {workspaces.map((workspace) =>
         workspace.url === undefined ? (
-          <li className="text-xs text-muted-foreground" key={workspace.key}>
+          <li className="text-caption text-muted-foreground" key={workspace.key}>
             {`${workspace.label} · ${workspace.why ?? ""}`}
           </li>
         ) : (
@@ -515,7 +515,7 @@ function MetricRange({ metric }: { metric: ZeropsServiceMetric }) {
   const mode = metric.cpuMode === undefined ? "" : ` · ${metric.cpuMode}`;
   return (
     <span
-      className="shrink-0 text-xs text-muted-foreground tabular-nums"
+      className="shrink-0 text-caption text-muted-foreground tabular-nums"
       data-zerops-service-metric-range
     >
       {`${metric.range}${unit}${mode}`}
@@ -531,7 +531,7 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
     >
       <MicroLabel>{metric.label}</MicroLabel>
       <div className="min-w-0">
-        <div className="flex min-w-0 items-baseline justify-between gap-3 text-xs text-foreground tabular-nums">
+        <div className="flex min-w-0 items-baseline justify-between gap-3 text-caption text-foreground tabular-nums">
           {metric.value === undefined ? (
             <span />
           ) : (
@@ -571,23 +571,22 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
  */
 export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
   return (
-    <div className="flex w-72 max-w-full flex-col text-sm" data-zerops-service-detail>
-      <a
-        className="group flex min-w-0 max-w-full items-baseline gap-1 text-foreground"
+    <div className="flex w-72 max-w-full flex-col text-body" data-zerops-service-detail>
+      <InlineButton
+        className="group max-w-full min-w-0 items-baseline"
         data-zerops-service-dashboard
-        href={row.dashboardUrl}
-        rel="noreferrer"
-        target="_blank"
+        render={<a href={row.dashboardUrl} rel="noreferrer" target="_blank" />}
+        tone="plain"
       >
         <ServiceName className="flex-1" row={row} />
         <ArrowUpRightIcon
           aria-hidden="true"
           className="size-3.5 shrink-0 self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
         />
-      </a>
+      </InlineButton>
       {row.meta.length === 0 ? null : (
         <p
-          className="mt-0.5 min-w-0 max-w-full break-words text-xs text-muted-foreground"
+          className="mt-0.5 min-w-0 max-w-full break-words text-caption text-muted-foreground"
           data-zerops-service-meta
         >
           {row.meta.map(factText).join(" · ")}
@@ -682,7 +681,7 @@ function stageRow(row: ZeropsServiceRow, stage: ZeropsTopologyService): ZeropsSe
 }
 
 const TRIGGER_CLASS =
-  "flex min-w-0 flex-1 cursor-default items-center gap-2.5 text-left outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-ring";
+  "flex min-w-0 flex-1 cursor-default items-center gap-2.5 text-left outline-none focus-visible:rounded-control focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The control plane's card: the mint panel, the Mate's home. Its head — the Mate's face wearing the
@@ -733,7 +732,7 @@ function ControlPlaneRow({
                 )}
                 <span className="flex min-w-0 flex-col gap-px">
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    <span className="min-w-0 truncate text-body font-semibold text-foreground">
                       {row.title}
                     </span>
                     {row.statusNeedsWord ? (
@@ -766,7 +765,10 @@ function ControlPlaneRow({
             </div>
           ) : null}
           {row.restNote === undefined ? null : (
-            <p className="mt-1 text-xs leading-snug text-muted-foreground" data-zerops-service-rest>
+            <p
+              className="mt-1 text-caption leading-snug text-muted-foreground"
+              data-zerops-service-rest
+            >
               {row.restNote}
             </p>
           )}
@@ -830,7 +832,7 @@ function ServiceExtras({ row, usageRead }: { row: ZeropsServiceRow; usageRead: b
   return (
     <div className="min-w-0" data-zerops-service-extras>
       {row.restNote === undefined ? null : (
-        <p className="text-xs leading-snug text-muted-foreground" data-zerops-service-rest>
+        <p className="text-caption leading-snug text-muted-foreground" data-zerops-service-rest>
           {row.restNote}
         </p>
       )}
@@ -975,7 +977,7 @@ export function ZeropsServiceMap({
         </SectionLabel>
         {view.isEmpty || services.length === 0 ? (
           <p
-            className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+            className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
             data-zerops-map-empty
           >
             No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something
@@ -1004,7 +1006,7 @@ export function ZeropsServiceMap({
         )}
       </section>
       {view.warnings.map((warning) => (
-        <p className="text-muted-foreground text-xs" key={warning}>
+        <p className="text-muted-foreground text-caption" key={warning}>
           {warning}
         </p>
       ))}

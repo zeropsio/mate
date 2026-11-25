@@ -35,12 +35,12 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
     >
       <span
         aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
+        className="flex size-8 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
       >
         <OpenCodeIcon className="size-4" />
       </span>
       <div className="grid min-w-0 flex-1 gap-1">
-        <span className="text-sm leading-5 font-medium text-foreground">OpenCode</span>
+        <span className="text-body leading-5 font-medium text-foreground">OpenCode</span>
         <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
       </div>
     </div>
@@ -78,7 +78,7 @@ export function OpenCodeAgentLine({
       <span className="flex min-w-0 items-center gap-2.5">
         <span
           aria-hidden="true"
-          className="flex size-5.5 shrink-0 items-center justify-center rounded-md bg-accent"
+          className="flex size-5.5 shrink-0 items-center justify-center rounded-control bg-accent"
         >
           <OpenCodeIcon className="size-3.5" />
         </span>

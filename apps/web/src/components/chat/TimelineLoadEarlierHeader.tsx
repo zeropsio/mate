@@ -1,5 +1,7 @@
-// Header row shown when older turns exist beyond the loaded window. Plain
-// button, no spinner animation; the label change is the loading indicator.
+import { Button } from "../ui/button";
+
+// Header row shown when older turns exist beyond the loaded window. A quiet
+// press, no spinner animation; the label change is the loading indicator.
 export function TimelineLoadEarlierHeader({
   loading,
   onLoadEarlier,
@@ -12,14 +14,15 @@ export function TimelineLoadEarlierHeader({
   return (
     <div className={fade ? "pt-10 sm:pt-12" : "pt-3 sm:pt-4"}>
       <div className="mx-auto w-full max-w-3xl pb-2">
-        <button
-          type="button"
+        <Button
+          variant="ghost-muted"
+          size="sm"
+          className="w-full"
           onClick={onLoadEarlier}
           disabled={loading}
-          className="w-full py-1.5 text-xs text-muted-foreground/60 hover:text-foreground disabled:cursor-default"
         >
           {loading ? "Loading earlier turns…" : "Load earlier turns"}
-        </button>
+        </Button>
       </div>
     </div>
   );

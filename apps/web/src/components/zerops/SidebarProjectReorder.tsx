@@ -230,7 +230,7 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
       {drag === null || drag.before === undefined ? null : (
         <span
           aria-hidden="true"
-          className="pointer-events-none fixed z-50 rounded-lg border border-border bg-popover px-3 py-1 text-base font-semibold tracking-tight whitespace-nowrap text-popover-foreground shadow-lg"
+          className="pointer-events-none fixed z-50 rounded-control border border-border bg-popover px-3 py-1 text-base font-semibold tracking-tight whitespace-nowrap text-popover-foreground shadow-lg"
           data-zerops-surface="sidebar-project-drag-name"
           style={{ left: drag.x + 12, top: drag.y - 16 }}
         >

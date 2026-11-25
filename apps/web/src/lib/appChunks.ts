@@ -1,10 +1,10 @@
 /**
  * The lazy surfaces of what this page opened (the conversation's panels, a review), loaded once
- * the page has settled, so opening one answers on the click's own commit. Routes and the
- * conversation itself are never warmed: every page load would then fetch and evaluate the whole
- * app. An open tab keeps the chunks of its build through the app-shell worker's asset cache, and a
- * chunk a later deploy removed recovers by the guarded reload (`staleChunk.ts`). Content renderers
- * (syntax grammars, diagrams, image decoders) stay on demand; they recover in place.
+ * the page has settled, so opening one answers on the click's own commit. The conversation and its
+ * routes are warmed separately at boot. An open tab keeps the chunks of its build through the
+ * app-shell worker's asset cache, and a chunk a later deploy removed recovers by the guarded reload
+ * (`staleChunk.ts`). Content renderers (syntax grammars, diagrams, image decoders) stay on demand;
+ * they recover in place.
  *
  * One at a time, each in an idle slice, after the page's first seconds: warming never competes
  * with what the person waits on. A surface that registers while warming (the conversation's

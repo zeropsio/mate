@@ -68,7 +68,7 @@ export function ContextWindowMeter(props: {
             {/* Before the pie: as its number grows it reaches into the room on its left, so the
                 pie and Send never move. */}
             {label === null ? null : (
-              <span aria-hidden="true" className="text-muted-foreground text-xs tabular-nums">
+              <span aria-hidden="true" className="text-muted-foreground text-caption tabular-nums">
                 {label}
               </span>
             )}
@@ -111,9 +111,9 @@ export function ContextWindowMeter(props: {
       >
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-muted-foreground text-xs">Context Window</div>
+            <div className="font-medium text-muted-foreground text-caption">Context Window</div>
             {usage.meterWindow !== null && usedPercentage ? (
-              <div className="text-secondary-label text-xs tabular-nums">
+              <div className="text-secondary-label text-caption tabular-nums">
                 <span>{usedPercentage}</span>
                 <span className="mx-1">·</span>
                 <span>
@@ -122,7 +122,7 @@ export function ContextWindowMeter(props: {
                 </span>
               </div>
             ) : (
-              <div className="text-secondary-label text-xs tabular-nums">
+              <div className="text-secondary-label text-caption tabular-nums">
                 {formatContextWindowTokens(usage.usedTokens)}
               </div>
             )}
@@ -143,7 +143,7 @@ export function ContextWindowMeter(props: {
             </div>
           ) : null}
           {showTotalProcessed ? (
-            <div className="flex items-center justify-between gap-3 text-xs leading-4">
+            <div className="flex items-center justify-between gap-3 text-caption leading-4">
               <span className="text-secondary-label">Total processed</span>
               <span className="font-medium tabular-nums text-secondary-label">
                 {formatContextWindowTokens(totalProcessedTokens)}
@@ -151,7 +151,7 @@ export function ContextWindowMeter(props: {
             </div>
           ) : null}
           {usage.autoCompactWindow != null ? (
-            <div className="text-pretty text-secondary-label text-xs">
+            <div className="text-pretty text-secondary-label text-caption">
               <div>
                 Auto-compact after {formatContextWindowTokens(usage.meterWindow)}
                 {usage.autoCompactWindow !== usage.meterWindow
@@ -164,7 +164,7 @@ export function ContextWindowMeter(props: {
               ) : null}
             </div>
           ) : usage.compactsAutomatically ? (
-            <div className="mt-1 text-pretty text-secondary-label text-xs font-medium">
+            <div className="mt-1 text-pretty text-secondary-label text-caption font-medium">
               {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
             </div>
           ) : null}
@@ -181,7 +181,7 @@ export function ContextWindowMeter(props: {
                 Compact context
               </Button>
               {compactDisabled && compactDisabledReason ? (
-                <div className="text-pretty text-secondary-label text-xs">
+                <div className="text-pretty text-secondary-label text-caption">
                   {compactDisabledReason}
                 </div>
               ) : null}

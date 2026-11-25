@@ -24,7 +24,7 @@ function ZeropsAgentPickerLogo({ agentId }: { readonly agentId: ZeropsAgentId })
   return (
     <span
       aria-hidden="true"
-      className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
+      className="flex size-9 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
       data-zerops-agent-logo={agentId}
     >
       <ZeropsAgentLogo agentId={agentId} className="size-4.5" />
@@ -68,8 +68,8 @@ export function ZeropsAgentPickerPanel({
       data-zerops-agent-availability={availability.kind}
     >
       <ZeropsAgentPickerLogo agentId={agentId} />
-      <p className="text-sm font-medium leading-snug text-foreground">{view.agentName}</p>
-      <p className="text-xs leading-snug text-muted-foreground">{view.statusLine}</p>
+      <p className="text-body font-medium leading-snug text-foreground">{view.agentName}</p>
+      <p className="text-caption leading-snug text-muted-foreground">{view.statusLine}</p>
       {view.primaryAction === null ? null : (
         <Button
           disabled={view.primaryAction.disabled}
@@ -88,7 +88,7 @@ export function ZeropsAgentPickerPanel({
         </Button>
       ) : null}
       {view.continueNotice ? (
-        <p className="text-xs leading-snug text-muted-foreground/80">{view.continueNotice}</p>
+        <p className="text-caption leading-snug text-muted-foreground/80">{view.continueNotice}</p>
       ) : null}
     </div>
   );

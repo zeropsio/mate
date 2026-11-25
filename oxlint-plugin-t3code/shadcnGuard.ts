@@ -24,6 +24,8 @@ export interface ShadcnGuardRuleConfig {
   readonly options: Readonly<Record<string, unknown>>;
   readonly inScope: (normalizedFilename: string) => boolean;
   readonly description: string;
+  /** A finding the fork knows is correct where upstream's grammar cannot see why; dropped. */
+  readonly accepts?: (data: Readonly<Record<string, unknown>>) => boolean;
 }
 
 const SHADCN_SETTINGS = { shadcn: { ui: "~/components/ui" } };
@@ -64,6 +66,7 @@ export const createShadcnGuardRule = (config: ShadcnGuardRuleConfig) => {
         const node = descriptor.node;
         if (node === undefined) return;
         const data = descriptor.data ?? {};
+        if (config.accepts?.(data) === true) return;
         const summary =
           descriptor.message ??
           (descriptor.messageId === undefined

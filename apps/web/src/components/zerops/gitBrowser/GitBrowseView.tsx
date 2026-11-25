@@ -109,7 +109,7 @@ export function GitBrowseView(
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate, rev]);
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Opening…</p>}>
+    <Suspense fallback={<p className="text-body text-muted-foreground">Opening…</p>}>
       <View {...props} hasView={hasView} />
     </Suspense>
   );

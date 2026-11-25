@@ -141,7 +141,7 @@ export function OrganizationKeyView({
           value={value}
         />
         {/* The Mates' agents can reach the key: one made for Mate alone, with a limit. */}
-        <p className="text-xs text-muted-foreground" id={`${keyId}-hint`}>
+        <p className="text-caption text-muted-foreground" id={`${keyId}-hint`}>
           Use a key made only for Mate, with a spending limit. HQ keeps it sealed and never shows it
           again.
         </p>
@@ -150,7 +150,7 @@ export function OrganizationKeyView({
             Save key
           </Button>
           {set ? (
-            <span className="ms-auto text-xs">
+            <span className="ms-auto text-caption">
               <InlineButton
                 onClick={() => {
                   close();

@@ -31,7 +31,7 @@ export function UsageShareBar({
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-medium text-foreground">{label}</h3>
+        <h3 className="text-body font-medium text-foreground">{label}</h3>
         {aside}
       </div>
       <div
@@ -44,7 +44,7 @@ export function UsageShareBar({
             <TooltipTrigger
               render={
                 <div
-                  className="h-full min-w-1 rounded-xs first:rounded-l-full last:rounded-r-full"
+                  className="h-full min-w-1 rounded-mark first:rounded-l-full last:rounded-r-full"
                   style={{ flex: `${segment.value} 1 0`, backgroundColor: segment.color }}
                 />
               }
@@ -55,12 +55,12 @@ export function UsageShareBar({
           </Tooltip>
         ))}
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-caption">
         {visible.map((segment) => (
           <span key={segment.label} className="flex items-center gap-1.5">
             <span
               aria-hidden
-              className="size-2 rounded-xs"
+              className="size-2 rounded-mark"
               style={{ backgroundColor: segment.color }}
             />
             <span className="text-muted-foreground">{segment.label}</span>

@@ -134,7 +134,7 @@ export function ZeropsGitPanel({
         </div>
       )}
       {repositories.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
+        <p className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
           {model.emptyLine ?? NO_REPOSITORY_LINE}
         </p>
       ) : (
@@ -184,7 +184,7 @@ export function ZeropsGitPanel({
                   </div>
                 )}
               </div>
-              <div className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card">
+              <div className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card">
                 {repository.work.length === 0 ? (
                   // No change to show while the remote does not answer: the slot says what it holds.
                   <p
@@ -281,16 +281,17 @@ function Destination({ to }: { readonly to: RepoState["destination"] }) {
   if (to === null) return null;
   const Mark = to.href.startsWith("https://github.com/") ? GitHubIcon : GitBranchIcon;
   return (
-    <a
-      className="inline-flex min-w-0 items-center gap-1 rounded-sm text-caption text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-      data-zerops-surface="git-destination"
-      href={to.href}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <Mark aria-hidden="true" className="size-3 shrink-0" />
-      <span className="truncate">{to.label}</span>
-    </a>
+    <span className="flex min-w-0 text-caption">
+      <InlineButton
+        className="min-w-0 shrink"
+        data-zerops-surface="git-destination"
+        render={<a href={to.href} rel="noreferrer" target="_blank" />}
+        tone="muted"
+      >
+        <Mark aria-hidden="true" className="size-3 shrink-0" />
+        <span className="truncate">{to.label}</span>
+      </InlineButton>
+    </span>
   );
 }
 

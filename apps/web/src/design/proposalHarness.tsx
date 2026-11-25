@@ -49,7 +49,6 @@ import {
   type RevealAuthority,
   type RevealPhase,
 } from "~/components/zerops/proposal/reveal.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { ProductionAsks } from "./productionAskHarness";
 import "../index.css";
 
@@ -223,9 +222,9 @@ function McpCard(card: (typeof MCP_CARDS)[number]) {
     />
   );
   return MCP_DENSITY === "compact" ? (
-    <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
+    <div className="w-full overflow-hidden rounded-sheet border border-border bg-card">
       {drawn}
-      <div className="px-4 pt-3 pb-8 text-placeholder text-sm">Ask anything...</div>
+      <div className="px-4 pt-3 pb-8 text-placeholder text-body">Ask anything...</div>
     </div>
   ) : (
     drawn
@@ -710,7 +709,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

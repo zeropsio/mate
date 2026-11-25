@@ -112,7 +112,7 @@ function WorkspaceImagePreview(props: {
 
   if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-caption leading-relaxed text-destructive">
         Unable to load workspace image.
       </div>
     );
@@ -543,7 +543,7 @@ function initialExplorerOpen(): boolean {
 export function FileReadFailure({ message }: { readonly message: string }) {
   return (
     <div role="alert" className="flex min-h-0 flex-1 flex-col overflow-auto">
-      <p className="my-auto break-words px-6 py-6 text-center text-xs leading-relaxed text-destructive">
+      <p className="my-auto break-words px-6 py-6 text-center text-caption leading-relaxed text-destructive">
         {message}
       </p>
     </div>
@@ -709,7 +709,7 @@ function WorkspaceFilePreviewPanel({
             className="min-w-0 flex-1"
             data-file-breadcrumbs
           >
-            <div className="flex h-full w-max min-w-full items-center text-xs">
+            <div className="flex h-full w-max min-w-full items-center text-caption">
               {breadcrumbs.map((crumb, index) => (
                 <div
                   key={crumb.path || "project"}

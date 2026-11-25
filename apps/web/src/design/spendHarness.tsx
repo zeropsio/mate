@@ -13,7 +13,6 @@ import { createRoot } from "react-dom/client";
 import { SetupCard } from "~/components/zerops/project/SetupCard";
 import { ProjectSpendRowView } from "~/components/zerops/projects/ProjectSpend";
 import { joinSpend, type SpendState } from "~/components/zerops/projects/projectSpend.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -105,7 +104,6 @@ function Harness() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

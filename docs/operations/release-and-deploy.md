@@ -45,9 +45,16 @@ How mate reaches users. Each step names the file that owns its detail.
   lease on the head it saw, prints `LANDED <sha> on whole/<name>`, numbers nothing and gates by
   the branch rule. The close reaches `main` as one ordinary landing of the branch's head, naming
   every id the whole adds: a moved `main` is met there once, rebased and gated once.
-  The push to `main` deploys the hosted web client.
-- **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
-  Keep `main` releasable; one hard line: never break signing in with a Zerops account.
+  A landing on `main` does not itself release the hosted web client.
+- **Hosted web client.** A `web-v*` tag deploys https://mate.zerops.io through `zerops.yml`'s `prod`
+  setup. Release with `node scripts/release-web.ts` (add `--minor` for a minor version,
+  `--from-sha <sha>` for a green `main` commit, or `--dry-run` to print the plan), or run **Release
+  hosted web** on `main` in GitHub Actions. The script uses `gh`; set `MATE_GH` to a release-token
+  wrapper if needed. It requires the same green CI verdict as the server release, skips a commit
+  already included in a web tag, and prints `nothing to release` when no web build input changed.
+  Once the script is on `main`, set the production web service's Zerops pipeline trigger to **New
+  Tag** with regex `^web-v` and setup `prod`. Until that switch, `main` still deploys it. Keep
+  `main` releasable; never break signing in with a Zerops account.
 - **Staging web.** `zerops.yml`'s `staging` setup builds a test target's web (alfa, the standing
   test environments `env-N`) against that target's HQ, named by the web service's variable
   `MATE_HQ_URL` (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It

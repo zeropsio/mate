@@ -34,6 +34,8 @@ import {
   MenuShortcut,
   MenuTrigger,
 } from "../ui/menu";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -77,8 +79,6 @@ export interface MenuPoint {
   readonly x: number;
   readonly y: number;
 }
-
-const ROW_ACTION_CLASS = "menu-row-action";
 
 /** The crew's door (`mateCrewItem`): its conversation on the Crew tab, set up or not. */
 interface MateCrewEntry {
@@ -272,11 +272,11 @@ export function MateMenu({
     <Menu onOpenChange={onOpenChange} open={open}>
       <MenuTrigger
         render={
-          <button
+          <Button
             aria-label={`More for ${name}`}
-            className={ROW_ACTION_CLASS}
             data-zerops-surface="sidebar-mate-more"
-            type="button"
+            size="icon-sm"
+            variant="sidebar"
           />
         }
       >
@@ -362,11 +362,11 @@ export function ProjectMenu({
     <Menu onOpenChange={onOpenChange} open={open}>
       <MenuTrigger
         render={
-          <button
+          <Button
             aria-label={`More for ${name}`}
-            className={ROW_ACTION_CLASS}
             data-zerops-surface="sidebar-project-more"
-            type="button"
+            size="icon-sm"
+            variant="sidebar"
           />
         }
       >
@@ -429,14 +429,15 @@ export function MateRenameField({
   };
   return (
     <span
-      className="absolute start-17.25 end-15.5 top-2.5 flex h-5"
+      className="absolute start-15 end-15.5 top-1.5 flex"
       data-zerops-surface="sidebar-mate-rename"
     >
-      <input
+      <Input
         aria-invalid={tried && error !== undefined}
         aria-label="Mate's name"
-        className="-ms-1 h-5 min-w-0 flex-1 rounded-sm bg-popover px-1 text-sm leading-5 font-medium text-sidebar-foreground ring-1 ring-ring outline-none aria-invalid:ring-destructive"
+        className="min-w-0 flex-1"
         id="sidebar-mate-rename"
+        nativeInput
         onBlur={() => {
           finish(true);
         }}
@@ -454,12 +455,13 @@ export function MateRenameField({
           }
         }}
         ref={input}
+        size="compact"
         spellCheck={false}
         value={value}
       />
       {tried && error !== undefined ? (
         <span
-          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-md border border-border bg-popover px-2 py-1 text-xs text-destructive-foreground shadow-md"
+          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-control border border-border bg-popover px-2 py-1 text-caption text-destructive-foreground shadow-md"
           data-zerops-surface="sidebar-mate-rename-error"
           role="alert"
         >

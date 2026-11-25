@@ -323,11 +323,13 @@ function NewMateDialog({
     );
   return (
     <ZeropsEnvironmentCreationDialog
-      access={(onChange) => (
+      access={(onChange, mate = "") => (
         <ProjectAccessDraft
+          addLabel="Add people to this Mate"
           groupId={group.groupId}
           kind="mate"
-          label="Who can work with this Mate"
+          label={`Who can work with ${mate.length === 0 ? "this Mate" : mate}`}
+          look="page"
           onChange={onChange}
         />
       )}

@@ -516,7 +516,7 @@ export function PersonaPanelBody(props: {
                 />
                 {group.note?.kind === "stale" ? (
                   <p
-                    className="text-xs leading-4.5 text-muted-foreground"
+                    className="text-caption leading-4.5 text-muted-foreground"
                     data-persona-group-note="stale"
                   >
                     {group.note.text}
@@ -533,7 +533,7 @@ export function PersonaPanelBody(props: {
 
 function FailureLine(props: { readonly message: string; readonly onRetry: () => void }) {
   return (
-    <p className="text-xs leading-4.5 text-destructive-foreground" role="alert">
+    <p className="text-caption leading-4.5 text-destructive-foreground" role="alert">
       {props.message}{" "}
       <InlineButton onClick={props.onRetry} tone="muted">
         {PERSONA_PAGE_WORDS.tryAgain}
@@ -555,7 +555,7 @@ function PersonaMark(props: { readonly icon: LucideIcon; readonly quiet?: boolea
 
 /** A line under the persona's text, past a hairline, where the words start. */
 const STRIP_CLASS =
-  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border py-2 ps-11 pe-3 text-xs leading-4.5";
+  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border py-2 ps-11 pe-3 text-caption leading-4.5";
 
 function CurrentPersona(props: {
   readonly mate: MateName;
@@ -714,7 +714,7 @@ function PersonaCard(props: {
           </div>
         )}
       </Card>
-      <p className="text-xs leading-4.5 text-muted-foreground">
+      <p className="text-caption leading-4.5 text-muted-foreground">
         {PERSONA_PAGE_WORDS.appliesNext(mate)}
       </p>
     </div>
@@ -737,7 +737,7 @@ function FoldedText(props: { readonly text: string }) {
     return () => observer.disconnect();
   }, [whole]);
   return (
-    <div className="flex flex-col items-start gap-0.5 text-xs">
+    <div className="flex flex-col items-start gap-0.5 text-caption">
       <p
         className={cn(
           "whitespace-pre-wrap break-words text-line leading-5 text-muted-foreground",
@@ -803,7 +803,7 @@ function TemplateList(props: {
           <span className="flex size-5 shrink-0 items-center justify-center">
             <PersonaMark icon={Building2Icon} quiet />
           </span>
-          <p className="min-w-0 text-xs leading-5 text-destructive-foreground" role="alert">
+          <p className="min-w-0 text-caption leading-5 text-destructive-foreground" role="alert">
             {note.text}{" "}
             <InlineButton onClick={props.onReadAgain} tone="muted">
               {PERSONA_PAGE_WORDS.readAgain}
@@ -892,8 +892,8 @@ function EditorHead(props: {
         <PersonaMark icon={head.icon} />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-medium text-sm leading-5">{head.title}</span>
-        <span className="text-xs leading-4.5 text-muted-foreground">{head.line}</span>
+        <span className="truncate font-medium text-body leading-5">{head.title}</span>
+        <span className="text-caption leading-4.5 text-muted-foreground">{head.line}</span>
       </span>
     </div>
   );
@@ -927,7 +927,7 @@ function PersonaEditor(props: {
       }}
     >
       <label className="flex flex-col gap-1">
-        <span className="font-medium text-xs">{PERSONA_PAGE_WORDS.name}</span>
+        <span className="font-medium text-caption">{PERSONA_PAGE_WORDS.name}</span>
         <Input
           autoComplete="off"
           autoFocus={props.initial.name === ""}
@@ -941,13 +941,13 @@ function PersonaEditor(props: {
           value={draft.name}
         />
         {errors.name === undefined ? null : (
-          <span className="text-xs text-destructive-foreground" role="alert">
+          <span className="text-caption text-destructive-foreground" role="alert">
             {errors.name}
           </span>
         )}
       </label>
       <label className="flex flex-col gap-1">
-        <span className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="flex items-baseline justify-between gap-2 text-caption">
           <span className="font-medium">{PERSONA_PAGE_WORDS.instructions}</span>
           <span
             className={cn(
@@ -971,13 +971,13 @@ function PersonaEditor(props: {
           value={draft.instructions}
         />
         {errors.instructions === undefined ? null : (
-          <span className="text-xs text-destructive-foreground" role="alert">
+          <span className="text-caption text-destructive-foreground" role="alert">
             {errors.instructions}
           </span>
         )}
       </label>
       {personaLeavesTemplate(props.base, draft) ? (
-        <p className="text-xs leading-4.5 text-muted-foreground" data-persona-leaves>
+        <p className="text-caption leading-4.5 text-muted-foreground" data-persona-leaves>
           {PERSONA_PAGE_WORDS.leaves(props.mate)}
         </p>
       ) : null}

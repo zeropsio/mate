@@ -619,7 +619,7 @@ function ArrivalComposition({
             <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
           )
         ) : (
-          <div ref={setFaceElement}>
+          <div className="arrival-face" ref={setFaceElement}>
             {typeof faceSlot === "function"
               ? face === null
                 ? null
@@ -749,7 +749,7 @@ function AgentAuthUnknown({ unknown }: { readonly unknown: KnownMessage }) {
   return (
     <p
       className={cn(
-        "text-center text-sm text-muted-foreground",
+        "text-center text-body text-muted-foreground",
         // A placeholder waits a beat before it says anything, so a quick
         // answer never flickers "Checking…".
         unknown.afterMs > 0 && "animate-zerops-appear",

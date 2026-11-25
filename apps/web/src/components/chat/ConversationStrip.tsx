@@ -40,6 +40,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
@@ -118,49 +119,51 @@ function MateChatsMenu({
   const open = chats.chats.find((chat) => chat.open)?.threadId ?? "";
   const { close } = chats;
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <button
-            aria-label={`${mateName}'s chats`}
-            className="me-1.5 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:text-foreground"
-            data-chat-header-ghost
-            data-conversation-chats
-            type="button"
-          />
-        }
-      >
-        <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-      </MenuTrigger>
-      <MenuPopup align="start" className="w-72">
-        <MenuRadioGroup
-          onValueChange={(value: string) => {
-            const chat = chats.chats.find((each) => each.threadId === value);
-            if (chat !== undefined && !chat.open) onOpen(chat.threadId);
-          }}
-          value={open}
+    <span className="me-1.5 flex shrink-0">
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              aria-label={`${mateName}'s chats`}
+              data-chat-header-ghost
+              data-conversation-chats
+              size="icon-xs"
+              variant="ghost-muted"
+            />
+          }
         >
-          {chats.chats.map((chat) => (
-            <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
-              <span className="flex min-w-0 items-baseline gap-2">
-                <span className="min-w-0 truncate">{chat.title}</span>
-                {chat.main ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">main</span>
-                ) : null}
-              </span>
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
-        {close === null ? null : (
-          <>
-            <MenuSeparator />
-            <MenuItem disabled={close.busy} onClick={() => onClose(close)}>
-              Close this chat
-            </MenuItem>
-          </>
-        )}
-      </MenuPopup>
-    </Menu>
+          <ChevronDownIcon aria-hidden="true" className="size-3.5" />
+        </MenuTrigger>
+        <MenuPopup align="start" className="w-72">
+          <MenuRadioGroup
+            onValueChange={(value: string) => {
+              const chat = chats.chats.find((each) => each.threadId === value);
+              if (chat !== undefined && !chat.open) onOpen(chat.threadId);
+            }}
+            value={open}
+          >
+            {chats.chats.map((chat) => (
+              <MenuRadioItem key={chat.threadId} value={chat.threadId} variant="check">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="min-w-0 truncate">{chat.title}</span>
+                  {chat.main ? (
+                    <span className="shrink-0 text-caption text-muted-foreground">main</span>
+                  ) : null}
+                </span>
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+          {close === null ? null : (
+            <>
+              <MenuSeparator />
+              <MenuItem disabled={close.busy} onClick={() => onClose(close)}>
+                Close this chat
+              </MenuItem>
+            </>
+          )}
+        </MenuPopup>
+      </Menu>
+    </span>
   );
 }
 
@@ -333,13 +336,13 @@ function PillPress({
       <MenuTrigger
         disabled={menu === null}
         render={
-          <button
+          <Button
             aria-current="page"
             aria-label={crewmateAccessibleName(crewmate)}
-            className="conversation-crewmate absolute inset-0 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+            className="absolute inset-0"
             data-conversation-crewmate={crewmate.handle}
             data-current="true"
-            type="button"
+            variant="bare"
           />
         }
       />
@@ -363,18 +366,16 @@ function FacePress({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={crewmateAccessibleName(crewmate)}
-            className={cn(
-              "conversation-crewface absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              threadId === null ? "cursor-default" : "cursor-pointer",
-            )}
+            className="absolute inset-0 size-auto min-h-0"
             data-conversation-crewmate={crewmate.handle}
             onClick={() => {
               if (threadId !== null) onOpen(threadId);
             }}
+            size="icon-md"
             tabIndex={folded ? -1 : undefined}
-            type="button"
+            variant="sidebar"
           />
         }
       />
@@ -405,7 +406,7 @@ function SeatName({ name, leaving }: { readonly name: string; readonly leaving: 
     >
       <span className="min-w-0 overflow-hidden" data-conversation-name="">
         <span
-          className="block truncate text-sm leading-5 font-medium text-foreground"
+          className="block truncate text-body leading-5 font-medium text-foreground"
           data-conversation-name-text=""
         >
           {name}
@@ -455,7 +456,7 @@ function CrewSeat({
   return (
     <span
       className={cn(
-        "relative flex h-7 items-center rounded-lg",
+        "relative flex h-7 items-center rounded-control",
         open ? "ps-1 pe-2" : "px-1",
         open && squeezed ? "min-w-15.5" : "shrink-0",
         folded && "invisible absolute start-0 top-0",
@@ -494,20 +495,18 @@ function MoreCrew({
     <Menu>
       <MenuTrigger
         render={
-          <button
-            className={cn(
-              "flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg px-2 text-line font-medium text-muted-foreground tabular-nums outline-none transition-colors hover:bg-sidebar-row-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-foreground",
-              !shown && "invisible absolute start-0 top-0",
-            )}
+          <Button
+            className={cn("h-7", !shown && "invisible absolute start-0 top-0")}
             data-chat-header-ghost
             data-conversation-more
+            size="xs"
             tabIndex={shown ? undefined : -1}
-            type="button"
+            variant="sidebar"
           />
         }
       >
         {/* Unseen while nothing folds, it holds a count's room. */}
-        {folded.length === 0 ? 9 : folded.length} more
+        <span className="tabular-nums">{folded.length === 0 ? 9 : folded.length} more</span>
         <ChevronDownIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>
       <MenuPopup align="end">

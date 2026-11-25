@@ -36,7 +36,7 @@ export const TASK_STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
 };
 
 /** What a status's dot means: its Mate at work, a person needed, a change to look at, a failure, or quiet. */
-type TaskTone = "working" | "needs" | "review" | "finished" | "failed" | "quiet";
+export type TaskTone = "working" | "needs" | "review" | "finished" | "failed" | "quiet";
 
 const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
   queued: "quiet",
@@ -52,18 +52,8 @@ const TASK_STATUS_TONE: Readonly<Record<TaskStatus, TaskTone>> = {
   stopped: "quiet",
 };
 
-/** The dot's colour, by its tone. */
-const TASK_TONE_DOT: Readonly<Record<TaskTone, string>> = {
-  working: "bg-success",
-  needs: "bg-warning",
-  review: "bg-info",
-  finished: "bg-muted-foreground",
-  failed: "bg-destructive",
-  quiet: "bg-muted-foreground/50",
-};
-
-export const taskStatusDot = (status: TaskStatus): string =>
-  TASK_TONE_DOT[TASK_STATUS_TONE[status]];
+/** What a status's dot means, which its surface draws in its own tone. */
+export const taskStatusTone = (status: TaskStatus): TaskTone => TASK_STATUS_TONE[status];
 
 /** A task not over yet: HQ can stop it, and it is on the board's At work or Queued. */
 export const isLiveStatus = (status: TaskStatus): boolean =>

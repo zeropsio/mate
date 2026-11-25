@@ -30,6 +30,7 @@ import { useState, type ReactNode } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Button } from "../../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
 import { MiddleTruncate } from "../../ui/middle-truncate";
 import { Spinner } from "../../ui/spinner";
@@ -151,24 +152,23 @@ export function VaultRow(props: VaultRowProps) {
   const { value, open, activity } = props;
   const stale = value.readers.some((reader) => reader.state === "restart");
   return (
-    <div
-      className="vault-row"
+    <Collapsible
+      render={<div className="vault-row" />}
       data-flash={props.flash ? "" : undefined}
       data-open={open ? "" : undefined}
       data-vault-row={value.key}
+      onOpenChange={props.onToggle}
+      open={open}
     >
-      <button
-        aria-expanded={open}
+      <CollapsibleTrigger
         // On a phone a value's name stands over its key: side by side, both were cut mid-word.
         className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2"
-        onClick={props.onToggle}
-        type="button"
       >
         <span className="flex min-w-0 shrink items-center gap-2 max-sm:flex-col max-sm:items-start max-sm:gap-0.5">
           <span className="truncate text-line text-foreground max-sm:max-w-full">
             {props.label}
           </span>
-          <code className="min-w-0 truncate font-mono text-2xs text-muted-foreground max-sm:max-w-full max-sm:text-xs">
+          <code className="min-w-0 truncate font-mono text-2xs text-muted-foreground max-sm:max-w-full max-sm:text-caption">
             {value.key}
           </code>
         </span>
@@ -208,10 +208,10 @@ export function VaultRow(props: VaultRowProps) {
           aria-hidden="true"
           className="vault-chevron size-4 shrink-0 text-muted-foreground"
         />
-      </button>
+      </CollapsibleTrigger>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
-          className="px-3.5 pb-2.5 -mt-1 text-xs leading-4 text-muted-foreground"
+          className="px-3.5 pb-2.5 -mt-1 text-caption leading-4 text-muted-foreground"
           data-vault-impact
         >
           {activity.line}
@@ -220,7 +220,7 @@ export function VaultRow(props: VaultRowProps) {
       <div className="vault-row-body" inert={!open}>
         <div>{open ? <RowBody {...props} /> : null}</div>
       </div>
-    </div>
+    </Collapsible>
   );
 }
 
@@ -403,7 +403,7 @@ function RowBody(props: VaultRowProps) {
         </Button>
       </div>
 
-      <div className="grid gap-1 text-xs leading-4.5 text-muted-foreground" data-vault-readers>
+      <div className="grid gap-1 text-caption leading-4.5 text-muted-foreground" data-vault-readers>
         {value.sensitive ? (
           <p className="flex items-center gap-1.5">
             <LockIcon aria-hidden="true" className="size-3 shrink-0" />
@@ -467,7 +467,7 @@ function RowBody(props: VaultRowProps) {
       {locking ? (
         <div
           aria-label={`Hide ${props.label}`}
-          className="grid gap-2.5 rounded-md bg-muted/60 px-3 py-2.5 text-line leading-4.75"
+          className="grid gap-2.5 rounded-control bg-muted/60 px-3 py-2.5 text-line leading-4.75"
           role="alertdialog"
         >
           <p>
@@ -501,7 +501,7 @@ function RowBody(props: VaultRowProps) {
       {guard ? (
         <div
           aria-label={`Remove ${value.key}`}
-          className="grid gap-2.5 rounded-md bg-warning-surface px-3 py-2.5 text-line leading-4.75"
+          className="grid gap-2.5 rounded-control bg-warning-surface px-3 py-2.5 text-line leading-4.75"
           role="alertdialog"
         >
           <p>
@@ -603,12 +603,12 @@ function VaultManagedRow({
         <CopyReference text={reference} />
       </span>
       {refusal === null ? null : (
-        <p className="w-full pb-1.5 text-xs text-destructive-foreground" role="alert">
+        <p className="w-full pb-1.5 text-caption text-destructive-foreground" role="alert">
           {refusal}
         </p>
       )}
       {stepUp ? (
-        <div className="w-full pb-1.5 text-xs text-muted-foreground">
+        <div className="w-full pb-1.5 text-caption text-muted-foreground">
           <VaultStepUp onConfirmed={() => void show()} />
         </div>
       ) : null}

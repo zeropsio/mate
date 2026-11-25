@@ -14,7 +14,7 @@ function Sample({ defaultOpen }: { readonly defaultOpen: boolean }) {
         Build log
       </CollapsibleTrigger>
       <CollapsiblePanel>
-        <div className="flex flex-col gap-1 px-3 py-2 font-mono text-xs">
+        <div className="flex flex-col gap-1 px-3 py-2 font-mono text-caption">
           <span>Installing dependencies</span>
           <span>Building the storefront</span>
           <span>Done in 41s</span>

@@ -27,7 +27,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
     <span
       key={props.pulseKey}
       className={cn(
-        "text-xs font-medium leading-none tabular-nums",
+        "text-caption font-medium leading-none tabular-nums",
         props.pulsing
           ? "text-primary transition-[opacity,translate] duration-180 ease-out starting:translate-y-0.5 starting:opacity-0 motion-reduce:transition-none"
           : "text-muted-foreground",
@@ -45,43 +45,46 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
         data-prompt-stash-badge="true"
         aria-label={`Stashed prompts: ${props.count}. Open stash.`}
         aria-expanded={props.menuOpen}
-        className={cn(
-          "shrink-0",
-          (props.menuOpen || props.pulsing) &&
-            "[--control-icon-color:currentColor] text-foreground",
-        )}
+        className="shrink-0"
         onPointerDown={(event) => event.preventDefault()}
         onClick={props.onToggleMenu}
       >
-        <BookmarkIcon className="size-3 shrink-0" aria-hidden="true" />
+        {/* Open or just saved, the bookmark takes the foreground ink beside the count. */}
+        <BookmarkIcon
+          className={
+            props.menuOpen || props.pulsing ? "size-3 shrink-0 text-foreground" : "size-3 shrink-0"
+          }
+          aria-hidden="true"
+        />
         {count}
       </Button>
     );
   }
 
   return (
-    <button
-      type="button"
-      data-prompt-stash-badge="true"
-      aria-label={`Stashed prompts: ${props.count}. Open stash.`}
-      aria-expanded={props.menuOpen}
+    <div
       className={cn(
-        "chat-composer-shoulder-tab absolute -top-7 right-4 z-0 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-t-xl border border-b-0 px-3 pb-1 text-xs leading-none",
-        "transition-[color,border-color] duration-200",
+        "chat-composer-shoulder-tab absolute -top-7 right-4 z-0 flex h-8 items-center rounded-t-control border border-b-0 px-1 pb-1",
         props.menuOpen && "pointer-events-none",
-        props.menuOpen || props.pulsing
-          ? "text-foreground"
-          : "text-muted-foreground hover:text-foreground",
       )}
-      onPointerDown={(event) => {
-        // Keep composer focus so Escape/typing flows stay intact.
-        event.preventDefault();
-      }}
-      onClick={props.onToggleMenu}
     >
-      <BookmarkIcon className="size-3 shrink-0" aria-hidden="true" />
-      Stash
-      {count}
-    </button>
+      <Button
+        variant="ghost-muted"
+        size="xs"
+        data-prompt-stash-badge="true"
+        aria-label={`Stashed prompts: ${props.count}. Open stash.`}
+        aria-expanded={props.menuOpen}
+        data-pressed={props.menuOpen || undefined}
+        onPointerDown={(event) => {
+          // Keep composer focus so Escape/typing flows stay intact.
+          event.preventDefault();
+        }}
+        onClick={props.onToggleMenu}
+      >
+        <BookmarkIcon aria-hidden="true" />
+        Stash
+        {count}
+      </Button>
+    </div>
   );
 });

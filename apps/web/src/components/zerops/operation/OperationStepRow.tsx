@@ -35,17 +35,17 @@ const STEP_GLYPH: Record<
   ProcessStepState,
   { readonly Icon: typeof CheckIcon; readonly className: string }
 > = {
-  queued: { Icon: ClockIcon, className: "text-[var(--zerops-status-off)]" },
-  running: { Icon: PlayIcon, className: "text-[var(--zerops-status-busy)]" },
-  done: { Icon: CheckIcon, className: "text-[var(--zerops-status-ok-text)]" },
-  failed: { Icon: XIcon, className: "text-[var(--zerops-status-failed-text)]" },
+  queued: { Icon: ClockIcon, className: "text-status-off" },
+  running: { Icon: PlayIcon, className: "text-status-busy" },
+  done: { Icon: CheckIcon, className: "text-status-ok-text" },
+  failed: { Icon: XIcon, className: "text-status-failed-text" },
 };
 
 const SEGMENT_BOX: Record<ProcessStepState, string> = {
   queued: "bg-muted/60 text-muted-foreground",
-  running: "bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)]",
+  running: "bg-status-busy-surface text-status-busy-text",
   done: "bg-muted/60 text-foreground",
-  failed: "bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)]",
+  failed: "bg-status-failed-surface text-status-failed-text",
 };
 
 /** Up to this many segments share one row, however narrow; more wrap at a readable width. */
@@ -96,14 +96,14 @@ export function PipelineSegments({
           <li
             aria-current={step.state === "running" ? "step" : undefined}
             className={cn(
-              "grid min-w-0 content-start gap-px rounded-md px-2 py-1",
+              "grid min-w-0 content-start gap-px rounded-control px-2 py-1",
               SEGMENT_BOX[step.state],
             )}
             data-zerops-process-state={step.state}
             data-zerops-segment="step"
             key={step.id}
           >
-            <span className="min-w-0 break-words font-medium text-xs leading-4">
+            <span className="min-w-0 break-words font-medium text-caption leading-4">
               <StepGlyph
                 className="me-1 inline size-3 align-[-1px]"
                 state={SEGMENT_GLYPH[step.state]}
@@ -111,7 +111,7 @@ export function PipelineSegments({
               {step.label}
             </span>
             {footnote !== undefined ? (
-              <span className="text-muted-foreground text-xs tabular-nums">{footnote}</span>
+              <span className="text-muted-foreground text-caption tabular-nums">{footnote}</span>
             ) : (
               <span className="sr-only">{step.stateLabel}</span>
             )}
@@ -135,7 +135,7 @@ export function CheckChips({
         const { Icon, className } = STEP_GLYPH[step.state];
         return (
           <li
-            className="inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-foreground text-xs"
+            className="inline-flex min-w-0 items-center gap-1 rounded-control bg-muted/60 px-1.5 py-0.5 text-foreground text-caption"
             data-zerops-process-state={step.state}
             key={step.id}
           >

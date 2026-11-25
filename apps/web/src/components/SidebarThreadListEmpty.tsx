@@ -1,5 +1,7 @@
 import { PlusIcon } from "lucide-react";
 
+import { Button } from "./ui/button";
+
 export function SidebarThreadListEmpty({
   projectGroups,
   roleOffered,
@@ -12,19 +14,15 @@ export function SidebarThreadListEmpty({
   scopedProjectGroup: { readonly displayName: string } | null;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
+    <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-caption text-muted-foreground/60">
       {projectGroups.length === 0 ? (
         <>
           <span>No projects yet</span>
           {roleOffered.newProject ? (
-            <button
-              type="button"
-              onClick={openNewZeropsProject}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            >
-              <PlusIcon className="-mx-0.5 size-3" />
+            <Button variant="sidebar" size="xs" onClick={openNewZeropsProject}>
+              <PlusIcon />
               New project
-            </button>
+            </Button>
           ) : null}
         </>
       ) : scopedProjectGroup ? (
@@ -42,7 +40,7 @@ export function SidebarThreadSearchEmpty({
   threadSearch: { readonly isPending: boolean; readonly incomplete: boolean };
 }) {
   return (
-    <p role="status" className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
+    <p role="status" className="px-2 py-6 text-center text-caption text-sidebar-muted-foreground">
       {threadSearch.isPending
         ? "Searching thread messages…"
         : threadSearch.incomplete

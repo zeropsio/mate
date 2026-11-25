@@ -640,7 +640,7 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
           shows while the table is under the pointer or holds the focus (always
           on a touch screen). On a line of its own under every table it cost
           the answer a row of air for one icon. */}
-      <div className="absolute end-0 top-1 flex items-center rounded-md bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+      <div className="absolute end-0 top-1 flex items-center rounded-control bg-background/90 opacity-0 transition-opacity duration-150 select-none group-hover/table:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
         <Menu>
           <Tooltip>
             <TooltipTrigger
@@ -691,7 +691,7 @@ function MarkdownDetails({
         data-markdown-details-open={isOpen ? "true" : "false"}
       >
         <CollapsibleTrigger
-          className="flex w-full items-center gap-2 py-2 text-left text-sm font-medium text-foreground data-panel-open:[&_svg]:rotate-90"
+          className="flex w-full items-center gap-2 py-2 text-left text-body font-medium text-foreground data-panel-open:[&_svg]:rotate-90"
           data-markdown-details-summary=""
         >
           <ChevronRightIcon
@@ -744,7 +744,10 @@ function MarkdownCodeBlockTitleContent({
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="inline-flex shrink-0 rounded-sm" aria-label={`Language: ${language}`} />
+          <span
+            className="inline-flex shrink-0 rounded-mark"
+            aria-label={`Language: ${language}`}
+          />
         }
       >
         <PierreEntryIcon pathValue={fileName} kind="file" theme={theme} className="size-3.5" />
@@ -833,7 +836,7 @@ function MarkdownCodeBlock({
 
   return (
     <div
-      className="chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-lg border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32"
+      className="chat-markdown-codeblock my-2.5 overflow-hidden rounded-card border border-border bg-code leading-snug text-code-foreground"
       data-language={language}
       data-wrap={wrapped ? "true" : "false"}
     >
@@ -1256,7 +1259,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
           loading="eager"
           decoding="async"
           draggable={false}
-          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
+          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-mark")}
           onError={() => {
             failedFaviconHosts.add(host);
             setFailedHost(host);
@@ -1347,12 +1350,12 @@ function useImageRoom(
           },
     className: cn(
       // Its room stands at its size while its bytes come, nothing painted in it.
-      placeholder && "aspect-video w-full rounded-lg",
+      placeholder && "aspect-video w-full rounded-control",
     ),
     // The room's own width stays its opener's while the picture stands in it: the picture's width
     // is a share of it, and a button that shrinks to its content gives a share nothing to be of
     // (a picture came 390 px wide where 432 fitted, its row 26 px shorter).
-    openerClassName: placeholder || current.roomed ? "w-full max-w-[30rem]" : undefined,
+    openerRoomed: placeholder || current.roomed,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
       const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
       const natural = width > 0 && height > 0 ? { width, height } : undefined;
@@ -1386,7 +1389,7 @@ function useImageRoom(
 // rule, keeping workspace images on the same block layout as their placeholder.
 const CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME = cn(
   CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME,
-  "my-1 block! rounded-lg border border-border/40",
+  "my-1 block! rounded-control border border-border/40",
 );
 
 function ChatMarkdownImageFallback(props: {
@@ -1394,7 +1397,7 @@ function ChatMarkdownImageFallback(props: {
   readonly reason?: string | undefined;
 }) {
   return (
-    <span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+    <span className="my-1 inline-flex items-center gap-1.5 rounded-control border border-border/40 bg-muted/40 px-2 py-1 text-caption text-muted-foreground">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
       {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
       {props.reason ? ` · ${props.reason}` : null}
@@ -1466,34 +1469,34 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
 function OpenableMarkdownImage({
   alt,
   block = false,
-  className,
+  roomed,
   children,
 }: {
   readonly alt: string;
   readonly block?: boolean;
-  /** The room its picture holds before it loads, when the picture cannot give it. */
-  readonly className?: string | undefined;
+  /** It holds its picture's room (30rem at most) before it loads, when the picture cannot give it. */
+  readonly roomed: boolean;
   readonly children: ReactNode;
 }) {
   const intent = useImageIntent();
   const open = use(MarkdownImageOpenerContext);
   if (open === null) return children;
   return (
-    <button
+    <Button
       aria-label={alt.length > 0 ? `Open ${alt}` : "Open the picture"}
       className={cn(
-        "max-w-full cursor-zoom-in rounded-lg align-top focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+        "max-w-full cursor-zoom-in align-top",
         block ? "block" : "inline-block",
-        className,
+        roomed && "w-full max-w-[30rem]",
       )}
       data-markdown-image-opener
       data-markdown-image-block={block || undefined}
       {...intent}
       onClick={(event) => openMarkdownImage(event.currentTarget, open)}
-      type="button"
+      variant="bare"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -1528,7 +1531,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
       <span
         {...(reading ? { role: "status", "aria-label": "Loading image" } : {})}
         className={cn(
-          "my-1 block max-w-full rounded-lg",
+          "my-1 block max-w-full rounded-control",
           room.width === undefined && "aspect-video w-full max-w-[30rem]",
         )}
         style={
@@ -1544,7 +1547,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
     );
   }
   return (
-    <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
+    <OpenableMarkdownImage alt={props.alt} block roomed={room.openerRoomed}>
       <AssetImage
         src={assetUrl.url}
         alt={props.alt}
@@ -1583,7 +1586,7 @@ function DirectMarkdownImage({
     width > 0 && height > 0 ? { width, height } : undefined,
   );
   return (
-    <OpenableMarkdownImage alt={alt} block={mateAsset} className={room.openerClassName}>
+    <OpenableMarkdownImage alt={alt} block={mateAsset} roomed={room.openerRoomed}>
       <AssetImage
         {...props}
         src={uri}
@@ -2845,7 +2848,7 @@ function ChatMarkdown({
         // The log's body is these utilities. An answer's is the stylesheet's
         // `[data-variant="answer"]` rule, which no utility can override.
         variant === "log" &&
-          "text-sm leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
+          "text-body leading-relaxed text-foreground/[calc(80%+var(--appearance-contrast-boost)/5)]",
         className,
       )}
       data-variant={variant}

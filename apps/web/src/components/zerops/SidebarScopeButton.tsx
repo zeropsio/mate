@@ -7,6 +7,7 @@ import { UserIcon, UsersIcon } from "lucide-react";
 
 import type { MateScope } from "~/zerops/mateScope";
 
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function SidebarScopeButton({
@@ -25,19 +26,19 @@ export function SidebarScopeButton({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={words}
             aria-pressed={mine}
-            className="menu-round-button"
             data-zerops-surface="sidebar-scope"
             onClick={() => {
               onScope(mine ? "everyone" : "mine");
             }}
-            type="button"
+            size="icon-md"
+            variant="sidebar"
           />
         }
       >
-        <Icon aria-hidden="true" className="size-4" />
+        <Icon aria-hidden="true" className="size-5" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{words}</TooltipPopup>
     </Tooltip>

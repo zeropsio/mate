@@ -74,7 +74,7 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
         />
       )}
       <div
-        className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-2.5"
+        className="flex flex-col gap-1 rounded-card border border-border/70 bg-card px-4 py-2.5"
         data-crew-task-card
       >
         <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>

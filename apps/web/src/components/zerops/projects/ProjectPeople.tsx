@@ -75,6 +75,7 @@ import {
   type AccessChoice,
   type AccessPick,
 } from "./ProjectAccessChips";
+import { NewProjectAccess } from "./NewProjectAccess";
 import { ReadAccessRequests, useHiddenEnvironments } from "./ReadAccessRequests";
 import {
   accessChanges,
@@ -97,6 +98,7 @@ import {
   type CellChoice,
 } from "./accessTable.logic";
 import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccessTable";
+import { InlineButton } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
@@ -410,7 +412,7 @@ function AccessChangeLines({
     <ul aria-label="Access changes" className="flex flex-col gap-1.5 px-1.5 pt-2">
       {lines.map(({ change, person }) => (
         <li
-          className="flex flex-wrap items-baseline gap-x-2 text-sm"
+          className="flex flex-wrap items-baseline gap-x-2 text-body"
           data-person={person.key}
           key={change.id}
         >
@@ -691,7 +693,7 @@ export function ProjectPeopleRowView({
                 {more > 0 ? <span className="pp-faces-more">+{more}</span> : null}
               </span>
             )}
-            <span className="text-sm text-foreground">{summary}</span>
+            <span className="text-body text-foreground">{summary}</span>
           </>
         )}
       </div>
@@ -740,15 +742,20 @@ export function PlaceAccess({
   return (
     <PlaceAccessSummary
       change={
-        <Link
-          className="ov-acc-link"
-          hash={`access-${projectId}`}
-          onClick={onLeave}
-          params={{ groupId }}
-          to="/group/$groupId/flow"
-        >
-          {placeLinkWords(groupName, view.kind === "table" && view.editable)}
-        </Link>
+        <span className="justify-self-start text-body">
+          <InlineButton
+            render={
+              <Link
+                hash={`access-${projectId}`}
+                onClick={onLeave}
+                params={{ groupId }}
+                to="/group/$groupId/flow"
+              />
+            }
+          >
+            {placeLinkWords(groupName, view.kind === "table" && view.editable)}
+          </InlineButton>
+        </span>
       }
       line={line}
       summary={summary}
@@ -892,6 +899,8 @@ export function ProjectAccessDraft({
   kind,
   onChange,
   label,
+  look = "fold",
+  addLabel,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
@@ -899,6 +908,11 @@ export function ProjectAccessDraft({
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
   /** What the creation form names the section: "Project access", "Who can work with this Mate". */
   readonly label: string;
+  /** `fold`: one line opening the chips (a creation dialog); `page`: the New project page's
+   * section, its people listed and *Add people* in place (`NewProjectAccess`). */
+  readonly look?: "fold" | "page";
+  /** The page look's *Add people* words (`NewProjectAccess`). */
+  readonly addLabel?: string;
 }) {
   const { base, input } = useDraftInput(groupId, kind);
   const organization = useZeropsSessionOptional()?.activeOrganization?.name ?? null;
@@ -942,6 +956,17 @@ export function ProjectAccessDraft({
   // Said in one line, the chips opened only to change it (`AccessDraftFold`); drawn open only
   // while the people are still read or unreadable.
   const summary = draftSummary({ view, organization, prefill, list });
+  if (look === "page")
+    return (
+      <NewProjectAccess
+        {...(addLabel === undefined ? {} : { addLabel })}
+        label={label}
+        onAdd={add}
+        onChoose={choose}
+        summary={summary}
+        view={view}
+      />
+    );
   if (summary !== null)
     return (
       <AccessDraftFold label={label} summary={summary}>
@@ -956,7 +981,7 @@ export function ProjectAccessDraft({
     );
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm">{label}</span>
+      <span className="text-body">{label}</span>
       <ProjectAccessChips heading={false} label={label} onAdd={add} onChoose={choose} view={view} />
     </div>
   );

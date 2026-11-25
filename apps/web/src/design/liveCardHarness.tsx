@@ -97,7 +97,6 @@ import {
 import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import type { TimelineEntry, WorkLogEntry } from "~/session-logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
@@ -2347,12 +2346,12 @@ function Pane() {
           data-harness-composer=""
         >
           <div
-            className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
+            className="mx-auto max-w-3xl rounded-sheet border border-border bg-card shadow-sm"
             style={{ height: composerHeight - 20 }}
           />
         </div>
         <p
-          className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-xs tabular-nums"
+          className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-caption tabular-nums"
           data-live-harness-clock
         >
           {SCRIPT} · {seconds.toFixed(1)} s
@@ -2370,11 +2369,11 @@ function Harness() {
         className="flex shrink-0 flex-col gap-1 border-border border-r p-4 max-md:hidden"
         style={{ width: 435 }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">The live card · {SCRIPT}</p>
+        <p className="pb-2 text-muted-foreground text-caption">The live card · {SCRIPT}</p>
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-sm"
+          className="relative bg-background font-medium text-body"
           data-chat-header
         >
           Nova
@@ -2415,7 +2414,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
 
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 rememberLeftMidRead(`${ENVIRONMENT}:live-0`);
 

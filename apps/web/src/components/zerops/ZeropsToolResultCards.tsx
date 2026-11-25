@@ -23,7 +23,7 @@ function Placeholder({ className }: { readonly className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("block h-3 rounded-sm bg-muted", className)}
+      className={cn("block h-3 rounded-mark bg-muted", className)}
       data-zerops-read-placeholder
     />
   );
@@ -59,7 +59,7 @@ function LogsBody({ readResult }: { readonly readResult: ReadResultOf<"logs"> })
       ) : null}
       <ol
         aria-label={`Log of ${readResult.service}`}
-        className="max-h-40 space-y-0.5 overflow-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed"
+        className="max-h-40 space-y-0.5 overflow-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed"
         data-zerops-read-lines
       >
         {readResult.pending
@@ -139,14 +139,14 @@ function DiscoverBody({ readResult }: { readonly readResult: ReadResultOf<"disco
     >
       {readResult.pending
         ? placeholderKeys(2).map((key) => (
-            <li className="space-y-1.5 rounded-md bg-muted/60 px-2 py-1.5" key={key}>
+            <li className="space-y-1.5 rounded-control bg-muted/60 px-2 py-1.5" key={key}>
               <Placeholder className="w-1/2" />
               <Placeholder className="w-1/3" />
             </li>
           ))
         : readResult.rows.map((row) => (
             <li
-              className="min-w-0 space-y-0.5 rounded-md bg-muted/60 px-2 py-1.5"
+              className="min-w-0 space-y-0.5 rounded-control bg-muted/60 px-2 py-1.5"
               data-zerops-read-cell
               key={row.hostname}
             >
@@ -191,7 +191,7 @@ export function ZeropsReadResultBody({
   readonly steps: ReadonlyArray<ZeropsOperationStep>;
 }) {
   return (
-    <div className="space-y-2 text-xs leading-relaxed" data-zerops-read-body={readResult.kind}>
+    <div className="space-y-2 text-caption leading-relaxed" data-zerops-read-body={readResult.kind}>
       {readResult.kind === "logs" ? (
         <LogsBody readResult={readResult} />
       ) : readResult.kind === "events" ? (

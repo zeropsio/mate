@@ -1,5 +1,5 @@
 /**
- * What happens after the press, as the New Mate and New project dialogs end (board D1, the
+ * What happens after the press, as the New Mate dialog and an account's first run end (board D1, the
  * owner, 2026-09-30): one quiet block — its heading, the steps numbered with their times on the
  * right edge, and one line on whether the person can leave meanwhile (`whatHappensNext.logic.ts`).
  *
@@ -30,10 +30,10 @@ export function WhatHappensNext({
   return (
     <section
       aria-labelledby={id}
-      className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 py-2.5"
+      className="flex flex-col gap-1 rounded-card bg-muted/60 px-3.5 py-2.5"
       data-zerops-surface="what-happens-next"
     >
-      <h3 className="text-xs leading-4 font-medium text-muted-foreground" id={id}>
+      <h3 className="text-caption leading-4 font-medium text-muted-foreground" id={id}>
         What happens next
       </h3>
       <div className="grid">

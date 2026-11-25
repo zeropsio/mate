@@ -1,4 +1,4 @@
-import { MoreHorizontalIcon } from "lucide-react";
+import { MoreHorizontalIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -32,7 +32,7 @@ function SampleCard({ variant }: { readonly variant?: "default" | "flat" }) {
         </CardAction>
       </CardHeader>
       <CardPanel>
-        <p className="m-0 text-sm">Deployed eight minutes ago from main.</p>
+        <p className="m-0 text-body">Deployed eight minutes ago from main.</p>
       </CardPanel>
       <CardFooter>
         <Button size="sm" variant="secondary">
@@ -56,12 +56,46 @@ function CardSpecimens() {
           <SampleCard variant="flat" />
         </div>
       </Specimen>
+      <Specimen label="<Card pressable>: the whole card one press (hover, focus, data-highlighted)">
+        <div className="grid w-96 grid-cols-2 gap-2">
+          <Card pressable>
+            <span className="flex flex-col items-start gap-1 p-3">
+              <span className="flex items-center gap-2 font-medium text-body">
+                <PanelRightIcon className="size-4" />
+                Files
+              </span>
+              <span className="text-caption text-muted-foreground">Browse the Mate's code.</span>
+            </span>
+          </Card>
+          <Card data-highlighted="" pressable>
+            <span className="flex flex-col items-start gap-1 p-3">
+              <span className="flex items-center gap-2 font-medium text-body">
+                <PanelRightIcon className="size-4" />
+                Terminal
+              </span>
+              <span className="text-caption text-muted-foreground">A shell in the container.</span>
+            </span>
+          </Card>
+        </div>
+      </Specimen>
       <Specimen label="<Card> title only">
         <div className="w-80">
           <Card>
             <CardHeader>
               <CardTitle>A card with a title and nothing else</CardTitle>
             </CardHeader>
+          </Card>
+        </div>
+      </Specimen>
+      <Specimen label='<Card variant="flat" size="md"> holding <Card variant="inset" size="sm">'>
+        <div className="w-[28rem]">
+          <Card size="md" variant="flat">
+            <p className="m-0 text-body">A card on the page.</p>
+            <Card size="sm" variant="inset">
+              <p className="m-0 text-muted-foreground text-body">
+                A card inside it: a deeper tint, no second border.
+              </p>
+            </Card>
           </Card>
         </div>
       </Specimen>

@@ -34,6 +34,8 @@ import { cn } from "~/lib/utils";
 
 import { isPathSuggestionCurrent } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
+import { Button } from "../../ui/button";
+import { Textarea } from "../../ui/textarea";
 import { MateFace } from "../primitives";
 import { CrewPress, CrewTip } from "./CrewParts";
 import {
@@ -156,9 +158,9 @@ export function CrewTellComposer({
   return (
     <div className="relative mx-4 mt-4 @max-md:mt-3.5" data-crew-composer>
       <div className="crew-composer">
-        <textarea
+        <Textarea
           aria-label={placeholder}
-          className="crew-composer-input"
+          className="flex-1"
           onChange={(event) => {
             setText(event.target.value);
             setCaret(event.target.selectionStart);
@@ -168,6 +170,7 @@ export function CrewTellComposer({
           placeholder={placeholder}
           ref={input}
           rows={1}
+          size="line"
           value={text}
         />
         {lead === null ? (
@@ -176,17 +179,26 @@ export function CrewTellComposer({
               {CREW_TO_WORD}
               <span className="flex items-center gap-0.5">
                 {crewmates.map((mate) => (
-                  <button
+                  <Button
                     aria-label={mate.displayName}
                     aria-pressed={picked.includes(mate.handle)}
-                    className="crew-pick"
                     disabled={pickable?.(mate.handle) === false}
                     key={mate.handle}
                     onClick={() => setPicked(tellPicks(picked, mate.handle, crewmates))}
-                    type="button"
+                    shape="round"
+                    size="icon-2xs"
+                    variant="ghost"
                   >
-                    <MateFace size={16} state="idle" tint={mate.tint} />
-                  </button>
+                    {/* A face left out of the message sits back. */}
+                    <span
+                      className={cn(
+                        "flex transition-opacity duration-150",
+                        picked.includes(mate.handle) ? undefined : "opacity-45",
+                      )}
+                    >
+                      <MateFace size={16} state="idle" tint={mate.tint} />
+                    </span>
+                  </Button>
                 ))}
               </span>
             </span>
@@ -199,16 +211,16 @@ export function CrewTellComposer({
             </span>
           </CrewTip>
         )}
-        <button
+        <Button
           aria-label={crewSendToWord(lead?.name ?? null)}
-          className="crew-send"
-          data-ready={ready ? "" : undefined}
           disabled={!ready}
           onClick={send}
-          type="button"
+          shape="round"
+          size="icon-md"
+          variant={ready ? "primary" : "secondary"}
         >
           <ArrowUpIcon aria-hidden="true" className="size-4" strokeWidth={2.2} />
-        </button>
+        </Button>
       </div>
       {menu === null || items.length === 0 ? null : (
         <div className="absolute inset-x-0 top-full z-10 mt-1">

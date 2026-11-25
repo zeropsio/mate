@@ -17,6 +17,7 @@ import { PierreEntryIcon } from "~/components/chat/PierreEntryIcon";
 import { HighlightedSearchLine } from "~/components/search/HighlightedSearchLine";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { Row } from "~/components/ui/row";
 import { Toggle } from "~/components/ui/toggle";
 import { Toggle as GroupToggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { useTheme } from "~/hooks/useTheme";
@@ -24,7 +25,7 @@ import { useGitBrowse } from "~/zerops/useGitBrowse";
 import { useHeldFor } from "~/zerops/useHeldFor";
 import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
-import { GitFileFinder, GitPageLink } from "./GitFileFinder";
+import { GitFileFinder, gitPageAnchor } from "./GitFileFinder";
 
 /** Lines mounted at first and added on each "Show more": each is highlighted. */
 const RESULTS_PAGE = 100;
@@ -90,14 +91,14 @@ function ContentResults({
   const unreadable = view.state === "refused" && view.reason === "invalid" && regex;
   return answer !== null ? (
     <>
-      <p className="text-xs text-muted-foreground" role="status">
+      <p className="text-caption text-muted-foreground" role="status">
         {answer.matches.length === 0
           ? "No line at this commit matches."
           : `${answer.matches.length.toLocaleString("en-US")} matching ${answer.matches.length === 1 ? "line" : "lines"} in ${fileCount.toLocaleString("en-US")} ${fileCount === 1 ? "file" : "files"}`}
       </p>
       {answer.deadlineHit ? (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-status-attention" role="alert">
+          <p className="text-body text-status-attention" role="alert">
             The search stopped after 10 seconds. Narrow it to a folder.
           </p>
           <Button variant="ghost" size="sm" onClick={again}>
@@ -105,7 +106,7 @@ function ContentResults({
           </Button>
         </div>
       ) : answer.truncated ? (
-        <p className="text-sm text-status-attention" role="alert">
+        <p className="text-body text-status-attention" role="alert">
           The search stops at {GREP_MATCH_LIMIT} matches. Narrow the search.
         </p>
       ) : null}
@@ -114,45 +115,52 @@ function ContentResults({
           const { name, folder: inFolder } = splitPath(file.path);
           return (
             <section key={file.path} aria-label={file.path} className="flex min-w-0 flex-col">
-              <GitPageLink
-                to={fileAt(sha, file.path)}
-                hrefOf={hrefOf}
-                navigate={navigate}
-                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <PierreEntryIcon
-                  pathValue={file.path}
-                  kind="file"
-                  theme={resolvedTheme}
-                  className="size-3.5 shrink-0"
-                />
-                <span className="shrink-0 font-medium text-foreground">{name}</span>
-                <span className="min-w-0 truncate text-muted-foreground">{inFolder}</span>
-              </GitPageLink>
+              <Row
+                lead={
+                  <PierreEntryIcon
+                    pathValue={file.path}
+                    kind="file"
+                    theme={resolvedTheme}
+                    className="size-3.5 shrink-0"
+                  />
+                }
+                pressable
+                render={<a {...gitPageAnchor(fileAt(sha, file.path), hrefOf, navigate)} />}
+                size="xs"
+                title={
+                  <>
+                    {name} <span className="font-normal text-muted-foreground">{inFolder}</span>
+                  </>
+                }
+              />
               {file.matches.map((match: GitGrepMatch) => (
-                <GitPageLink
+                <Row
                   key={`${match.path}:${match.line}`}
-                  to={fileAt(sha, match.path, match.line)}
-                  hrefOf={hrefOf}
-                  navigate={navigate}
-                  className="flex h-7 min-w-0 items-center gap-3 rounded-md px-2 font-mono text-xs hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
-                    {match.line}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate whitespace-pre">
-                    <HighlightedSearchLine
-                      match={{
-                        path: match.path,
-                        lineNumber: match.line,
-                        lineContent: match.text,
-                        matchRanges: match.ranges,
-                      }}
-                      path={match.path}
-                      theme={resolvedTheme}
-                    />
-                  </span>
-                </GitPageLink>
+                  pressable
+                  render={
+                    <a {...gitPageAnchor(fileAt(sha, match.path, match.line), hrefOf, navigate)} />
+                  }
+                  size="xs"
+                  title={
+                    <span className="flex min-w-0 gap-3 font-mono font-normal">
+                      <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
+                        {match.line}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate whitespace-pre">
+                        <HighlightedSearchLine
+                          match={{
+                            path: match.path,
+                            lineNumber: match.line,
+                            lineContent: match.text,
+                            matchRanges: match.ranges,
+                          }}
+                          path={match.path}
+                          theme={resolvedTheme}
+                        />
+                      </span>
+                    </span>
+                  }
+                />
               ))}
             </section>
           );
@@ -168,7 +176,7 @@ function ContentResults({
     </>
   ) : view.state === "unread" ? (
     slow ? (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Searching…
       </p>
     ) : null
@@ -285,16 +293,16 @@ function ContentSearch({
         </Button>
       </form>
       {tooShort || (!asked && q !== "" && !outside) ? (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="text-body text-muted-foreground" role="status">
           Type at least {GREP_QUERY_MIN} characters to search.
         </p>
       ) : null}
       {outside ? (
-        <p className="text-sm text-status-failed" role="alert">
+        <p className="text-body text-status-failed" role="alert">
           This folder is outside the repository. Name it from the top, like src/app.
         </p>
       ) : !asked ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           Search every text file at this commit. Binary files are not searched.
         </p>
       ) : (
@@ -364,7 +372,7 @@ export function GitSearchView(props: GitRepoPageProps) {
         )
       ) : home.state === "unread" ? (
         slow ? (
-          <p className="text-sm text-muted-foreground" role="status">
+          <p className="text-body text-muted-foreground" role="status">
             Reading the repository…
           </p>
         ) : null

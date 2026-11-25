@@ -1,14 +1,10 @@
 /**
  * *New project*, asked from anywhere — the left menu's header button, its pinned row and its
- * empty state, ⌘K — and answered over whatever the person is
- * looking at: the New project dialog opens in place (`ZeropsNewProjectHost`), of the family New
- * Mate belongs to (board D1, 2026-09-30), and nothing navigates to answer it. Create lands the
- * person on the first Mate's own view (`newProjectBirth.ts`).
+ * empty state, ⌘K. The host (`ZeropsNewProjectHost`) answers by taking the person to the New
+ * project page, `/zerops/new`, in the main column beside the menu. Create lands the person on the
+ * first Mate's own view (`newProjectBirth.ts`).
  *
- * `/zerops/new`, the page this dialog replaced, asks here too and hands the route to the projects
- * page, so a link to it still opens the dialog.
- *
- * The store holds the one ask in the air; a reload forgets it.
+ * The store holds the one ask in the air until the host answers it; a reload forgets it.
  */
 import { create } from "zustand";
 
@@ -29,7 +25,7 @@ export const useNewProjectAsk = create<NewProjectAskState>((set) => ({
   },
 }));
 
-/** Asks for a new project: the New project dialog opens over the view on screen. */
+/** Asks for a new project: the person is taken to the New project page. */
 export function askNewProject(): void {
   useNewProjectAsk.getState().ask();
 }

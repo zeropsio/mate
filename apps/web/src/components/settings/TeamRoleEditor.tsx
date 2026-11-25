@@ -17,6 +17,9 @@ import {
 import { BanIcon, ChevronDownIcon, LockIcon } from "lucide-react";
 import { useId, useState } from "react";
 
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { advancedChoices, roleCards } from "./teamMember.logic";
@@ -49,41 +52,51 @@ export function TeamRoleEditor({
       <h2 className="tm-block-title" id={`${id}-preset`}>
         Role
       </h2>
-      <div aria-labelledby={`${id}-preset`} className="tm-role-cards" role="radiogroup">
+      <RadioGroup
+        aria-labelledby={`${id}-preset`}
+        layout="columns"
+        onValueChange={(picked) => {
+          const card = cards.find((candidate) => candidate.card === picked);
+          if (card !== undefined) onChange(card.membership);
+        }}
+        value={cards.find((card) => card.selected)?.card ?? null}
+      >
         {cards.map((card) => (
-          <button
-            aria-checked={card.selected}
-            className="tm-role-card"
-            data-selected={card.selected || undefined}
+          <RadioCard
+            className="min-h-24 max-sm:min-h-0"
             disabled={card.disabled}
             key={card.card}
-            onClick={() => onChange(card.membership)}
-            role="radio"
-            type="button"
+            title={
+              <>
+                {card.disabled && editable ? (
+                  <BanIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+                ) : null}
+                {card.label}
+              </>
+            }
+            value={card.card}
           >
-            <span className="tm-role-card-name">
-              {card.disabled && editable ? (
-                <BanIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-              ) : null}
-              {card.label}
-            </span>
-            <span className="tm-role-card-text">{card.description}</span>
-          </button>
+            {card.description}
+          </RadioCard>
         ))}
-      </div>
-      <button
+      </RadioGroup>
+      <Button
         aria-controls={`${id}-advanced`}
         aria-expanded={shown}
-        className="tm-advanced-toggle"
+        className="-ms-2 justify-self-start"
         onClick={() => setOpen(!shown)}
-        type="button"
+        size="sm"
+        variant="ghost-muted"
       >
-        <ChevronDownIcon aria-hidden="true" className="size-4" data-open={shown || undefined} />
+        <ChevronDownIcon
+          aria-hidden="true"
+          className={cn("size-4 transition-transform duration-200", shown && "rotate-180")}
+        />
         <span>Fine-tune permissions</span>
         {advanced.custom === null ? null : (
           <span className="tm-advanced-custom">· {advanced.custom}</span>
         )}
-      </button>
+      </Button>
       {shown ? (
         <div className="tm-advanced" id={`${id}-advanced`}>
           <div className="tm-advanced-row">

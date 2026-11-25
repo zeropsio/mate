@@ -183,7 +183,7 @@ export function SourceControlWritingSettingsSection() {
         control={
           <div className="flex flex-wrap items-center justify-end gap-2">
             {usesDedicatedModel && !canEnableDedicatedModel ? (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-body text-muted-foreground">
                 No text generation providers available.
               </span>
             ) : null}

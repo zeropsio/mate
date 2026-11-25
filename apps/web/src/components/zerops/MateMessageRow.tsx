@@ -12,6 +12,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import {
   type MateMessageItem,
+  mateMessageNoticeHeading,
   mateMessageSenderName,
   type ScopedThreadRef,
   type ServerProviderSkill,
@@ -53,7 +54,10 @@ function useMateLook(projectId: string) {
  * What follows the sender's name: for a message its project, and HQ's mark that the person approved
  * sending it (the sender stays the Mate that wrote it); that it answered for an answer.
  */
-function headingRest(item: MateMessageItem, name: string): string | null {
+function headingRest(
+  item: Exclude<MateMessageItem, { kind: "notice" }>,
+  name: string,
+): string | null {
   if (item.kind === "answer") return "answered";
   const project = item.from.projectName.trim();
   const parts = [
@@ -76,21 +80,22 @@ export function MateMessageRow({
   readonly threadRef: ScopedThreadRef | undefined;
   readonly skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
 }) {
-  const look = useMateLook(item.from.projectId);
-  const name = mateMessageSenderName(item.from);
-  const rest = headingRest(item, name);
+  const notice = item.kind === "notice";
+  const look = useMateLook(notice ? "" : item.from.projectId);
+  const name = notice ? mateMessageNoticeHeading(item.about) : mateMessageSenderName(item.from);
+  const rest = notice ? null : headingRest(item, name);
   const [expanded, setExpanded] = useState(false);
   // Its words fold as a person's and the Mate's own do: one rule for every message.
   const folds = foldsLikeAMessage(text);
   const folded = folds && !expanded;
   return (
     <article
-      className="mate-letter flex min-w-0 flex-col gap-2 rounded-2xl px-4 pt-3 pb-2"
+      className="mate-letter flex min-w-0 flex-col gap-2 rounded-card px-4 pt-3 pb-2"
       data-mate-tint={look.tint}
       data-zerops-surface="mate-message"
     >
       <header className="flex min-w-0 items-center gap-2 text-line">
-        <MateFace size={24} state="idle" {...look} />
+        {notice ? null : <MateFace size={24} state="idle" {...look} />}
         <span className="mate-letter-from min-w-0 truncate">{name}</span>
         {rest === null ? null : (
           <span className="min-w-0 truncate text-muted-foreground">

@@ -63,7 +63,7 @@ export function ThreadCommandSubtitle(props: {
   return (
     <span
       className={cn(
-        "inline-flex min-w-0 max-w-full items-center gap-1 text-xs text-muted-foreground/70",
+        "inline-flex min-w-0 max-w-full items-center gap-1 text-caption text-muted-foreground/70",
         props.className,
       )}
     >

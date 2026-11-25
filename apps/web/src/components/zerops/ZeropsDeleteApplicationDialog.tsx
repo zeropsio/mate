@@ -146,7 +146,7 @@ export function ZeropsDeleteApplicationForm({
             )}
             <p
               className={cn(
-                "min-h-4 text-xs",
+                "min-h-4 text-caption",
                 failed ? "text-status-failed-text" : "text-muted-foreground",
               )}
               id={`${id}-reason`}

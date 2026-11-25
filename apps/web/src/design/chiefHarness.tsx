@@ -38,7 +38,6 @@ import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { MateComingHeader } from "~/components/zerops/ZeropsMateComingPage";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -142,7 +141,7 @@ function Harness() {
           actions={
             <>
               {WAITING ? (
-                <SidebarWaitingCount className="menu-top-count" items={ITEMS} verbs={VERBS} />
+                <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} />
               ) : null}
               <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
@@ -178,7 +177,7 @@ function Harness() {
           </header>
           <div className="relative min-h-0 flex-1">
             {view === null ? (
-              <p className="p-6 text-sm text-muted-foreground">
+              <p className="p-6 text-body text-muted-foreground">
                 Set up: the page is the Chief's own view while it comes up.
               </p>
             ) : (
@@ -196,7 +195,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const router = createRouter({
   routeTree: createRootRoute({

@@ -15,6 +15,8 @@ import { classifyBlob, canDownloadBlob } from "@t3tools/client-runtime/zerops/da
 import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
+import { Button } from "../ui/button";
+
 interface ZeropsDataBlobProps {
   readonly blob: ZeropsDataConsoleBlob;
   /** The browsed node's name, used as an image's alt text. */
@@ -23,7 +25,7 @@ interface ZeropsDataBlobProps {
 
 function TruncatedBanner({ size }: { readonly size: number }) {
   return (
-    <p className="text-muted-foreground text-xs" data-zerops-data-blob-truncated>
+    <p className="text-muted-foreground text-caption" data-zerops-data-blob-truncated>
       Preview truncated — the full value is {size.toLocaleString()} bytes.
     </p>
   );
@@ -31,7 +33,7 @@ function TruncatedBanner({ size }: { readonly size: number }) {
 
 function MetaLine({ text }: { readonly text: string }) {
   return (
-    <p className="text-muted-foreground text-xs" data-zerops-data-blob-meta>
+    <p className="text-muted-foreground text-caption" data-zerops-data-blob-meta>
       {text}
     </p>
   );
@@ -39,7 +41,7 @@ function MetaLine({ text }: { readonly text: string }) {
 
 function MoreBytes({ count }: { readonly count: number }) {
   return (
-    <p className="text-muted-foreground text-xs" data-zerops-data-blob-more>
+    <p className="text-muted-foreground text-caption" data-zerops-data-blob-more>
       … {count.toLocaleString()} more bytes
     </p>
   );
@@ -47,7 +49,7 @@ function MoreBytes({ count }: { readonly count: number }) {
 
 function Note({ text }: { readonly text: string }) {
   return (
-    <p className="text-muted-foreground text-xs" data-zerops-data-blob-note>
+    <p className="text-muted-foreground text-caption" data-zerops-data-blob-note>
       {text}
     </p>
   );
@@ -75,7 +77,7 @@ function Body({
     case "hex":
       return (
         <>
-          <pre className="overflow-x-auto font-mono text-xs" data-zerops-data-blob-hex>
+          <pre className="overflow-x-auto font-mono text-caption" data-zerops-data-blob-hex>
             {preview.dump}
           </pre>
           {preview.moreBytes === undefined ? null : <MoreBytes count={preview.moreBytes} />}
@@ -85,7 +87,7 @@ function Body({
       return (
         <>
           <Note text="Embedding collapsed" />
-          <pre className="overflow-x-auto text-xs" data-zerops-data-blob-text>
+          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
             {preview.text}
           </pre>
         </>
@@ -94,7 +96,7 @@ function Body({
       return (
         <>
           <Note text="Stream summary, not message content" />
-          <pre className="overflow-x-auto text-xs" data-zerops-data-blob-text>
+          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
             {preview.text}
           </pre>
         </>
@@ -102,7 +104,7 @@ function Body({
     case "text":
       return (
         <>
-          <pre className="overflow-x-auto text-xs" data-zerops-data-blob-text>
+          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
             {preview.text}
           </pre>
           {preview.moreBytes === undefined ? null : <MoreBytes count={preview.moreBytes} />}
@@ -110,7 +112,7 @@ function Body({
       );
     case "json":
       return (
-        <pre className="overflow-x-auto text-xs" data-zerops-data-blob-text>
+        <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
           {preview.text}
         </pre>
       );
@@ -123,16 +125,22 @@ export function ZeropsDataBlob({ blob, name }: ZeropsDataBlobProps) {
   return (
     <div className="space-y-2 p-3" data-zerops-data-blob data-zerops-data-blob-kind={preview.kind}>
       {canDownloadBlob(blob) ? (
-        <a
+        <Button
+          className="-ms-2"
           data-zerops-data-download
-          className="text-xs text-primary"
-          download={name ?? "preview"}
-          href={`data:application/octet-stream;base64,${blob.data}`}
+          render={
+            <a
+              download={name ?? "preview"}
+              href={`data:application/octet-stream;base64,${blob.data}`}
+            />
+          }
+          size="xs"
+          variant="link"
         >
           Download preview
-        </a>
+        </Button>
       ) : (
-        <p className="text-xs text-muted-foreground">Preview limited · download unavailable</p>
+        <p className="text-caption text-muted-foreground">Preview limited · download unavailable</p>
       )}
 
       {preview.truncated ? <TruncatedBanner size={preview.size} /> : null}

@@ -3,6 +3,7 @@
  * Persona page. The line fades it in when it arrives late (`ConversationStrip`).
  */
 import { Drama as PersonaIcon } from "lucide-react";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function MatePersonaPress(props: {
@@ -14,12 +15,13 @@ export function MatePersonaPress(props: {
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={`${props.mateName}'s persona: ${props.persona}`}
-            className="flex h-6 min-w-0 max-w-36 shrink cursor-pointer items-center gap-1 rounded-sm px-1.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            className="min-w-0 max-w-36 shrink"
             data-conversation-persona=""
             onClick={props.onOpen}
-            type="button"
+            size="xs"
+            variant="ghost-muted"
           />
         }
       >

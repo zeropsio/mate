@@ -10,10 +10,7 @@ function MicroLabel({ className, ...props }: MicroLabelProps) {
   return (
     <span
       {...props}
-      className={cn(
-        "text-[length:var(--zerops-micro-label-font-size)] [font-weight:var(--zerops-micro-label-font-weight)] tracking-[var(--zerops-micro-label-tracking)] opacity-[var(--zerops-micro-label-opacity)] uppercase",
-        className,
-      )}
+      className={cn("text-3xs font-semibold tracking-wider opacity-45 uppercase", className)}
       data-zerops-primitive="micro-label"
     />
   );

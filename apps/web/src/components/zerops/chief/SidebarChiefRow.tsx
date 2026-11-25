@@ -14,6 +14,8 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
+import { Row } from "../../ui/row";
+import { Button } from "../../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
@@ -69,9 +71,10 @@ export function SidebarChiefRow({
   const shown = line ?? null;
   return (
     <div className="menu-list-chief" data-zerops-surface="sidebar-chief">
-      <button
+      <Row
         aria-current={current ? "page" : undefined}
-        className="menu-chief-row"
+        className="h-(--sidebar-chief-row-height) w-full items-center"
+        columns
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
@@ -86,7 +89,9 @@ export function SidebarChiefRow({
           }, 600);
           onOpen();
         }}
-        type="button"
+        ground="tint"
+        pressable="band"
+        render={<button type="button" />}
       >
         <span aria-hidden="true" className="menu-chief-lit" />
         <span className="menu-chief-body">
@@ -118,7 +123,7 @@ export function SidebarChiefRow({
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
-      </button>
+      </Row>
     </div>
   );
 }
@@ -143,27 +148,28 @@ export function SidebarChiefTile({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-current={current ? "page" : undefined}
               aria-label={name}
-              className="menu-rail-head"
               data-current={current ? "" : undefined}
               data-zerops-surface="sidebar-chief-row"
               onClick={onOpen}
-              type="button"
+              variant="bare"
             />
           }
         >
-          <span className="relative flex">
-            <MateMark
-              awake
-              playful
-              className="h-8.25 w-7"
-              {...(face === undefined ? {} : { state: face })}
-            />
-            {unseen ? (
-              <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
-            ) : null}
+          <span className="menu-rail-head">
+            <span className="relative flex">
+              <MateMark
+                awake
+                playful
+                className="h-8.25 w-7"
+                {...(face === undefined ? {} : { state: face })}
+              />
+              {unseen ? (
+                <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
+              ) : null}
+            </span>
           </span>
         </TooltipTrigger>
         <TooltipPopup side="right">
@@ -176,7 +182,7 @@ export function SidebarChiefTile({
         </TooltipPopup>
       </Tooltip>
       {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount className="menu-rail-count" items={items} verbs={waiting.verbs} />
+        <SidebarWaitingCount seat="rail" items={items} verbs={waiting.verbs} />
       )}
     </div>
   );

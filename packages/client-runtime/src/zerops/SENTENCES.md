@@ -1,4 +1,4 @@
-next: ZV176
+next: ZV180
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -92,6 +92,7 @@ next: ZV176
 - ZV116 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
 - ZV117 — An agent's sign-in state that was not read never reads as needing sign-in
 - ZV118 — zcp is found by its service type, never by its name, and every zcp container is offered
+- ZV177 — A project Zerops is stopping, holds stopped or is starting again keeps each Mate container the row it was while running, its own key and its container, and one with no Mate container stays the project's one row; breaks: a stopped Mate becomes a project row with no computer, so its page offers Go to projects instead of Start
 - ZV119 — A cookie-gate redirect means a container that predates Mate, never a server error; a 200 whose body does not parse is not trusted; a wrong base path is refused
 - ZV120 — An SVG blob is shown as inert text, never as an image, and a truncated image is never rendered
 - ZV121 — The data console quotes identifiers per dialect and escapes quotes, backslashes and LIKE wildcards
@@ -127,8 +128,10 @@ next: ZV176
 - ZV156 — An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses
 - ZV157 — A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu
 - ZV158 — Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete
-- ZV159 — Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart
+- ZV159 — Start, Stop, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart
 - ZV160 — Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up
+- ZV176 — Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start
+- ZV178 — A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running
 - ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete
 - ZV162 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
@@ -144,3 +147,4 @@ next: ZV176
 - ZV173 — A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project
 - ZV174 — An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project
 - ZV175 — Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer
+- ZV179 — HQ's sentences that an environment has no deploy token, that it no longer answers and that it reaches more than its project are told apart as missing, dead and widened wherever they stand in a reason, and any other reason as none; breaks: a release stopped on production's key shows a failed deploy with no renewal.

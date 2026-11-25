@@ -36,6 +36,9 @@ import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./Conve
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 
+/** A picture sent with a message: its frame over the bubble. */
+const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
+
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
  * actions inside it. The dashed outline and the clock carry the state; the
@@ -59,7 +62,7 @@ export function QueuedMessageTimelineRow({
   });
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
-      <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
+      <div className="max-w-[80%] rounded-card border border-dashed border-border p-3 text-message-foreground/80">
         {text.length > 0 ? (
           <UserMessageBody
             text={text}
@@ -69,7 +72,7 @@ export function QueuedMessageTimelineRow({
           />
         ) : null}
         {attachmentCount > 0 || contextCount > 0 ? (
-          <div className={cn("text-secondary-label text-xs", text.length > 0 && "mt-1.5")}>
+          <div className={cn("text-secondary-label text-caption", text.length > 0 && "mt-1.5")}>
             {[
               attachmentCount > 0
                 ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
@@ -82,7 +85,7 @@ export function QueuedMessageTimelineRow({
               .join(", ")}
           </div>
         ) : null}
-        <div className="mt-2 flex items-center gap-4 text-secondary-label text-xs">
+        <div className="mt-2 flex items-center gap-4 text-secondary-label text-caption">
           {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
           {state.line === null ? (
             <Tooltip>
@@ -254,7 +257,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
         {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
         <div
-          className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
+          className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground"
           data-message-aside={row.aside ? "true" : undefined}
         >
           <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>
@@ -263,30 +266,38 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
               {imagesAbove.map((image: ChatImageAttachment) => {
                 const state = pictureStates.get(image.id);
                 return (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                  >
+                  // The frame is the press's content, not around it: a frame that clips its
+                  // picture would clip the press's focus ring too.
+                  <div key={image.id} className="grid">
                     {state?._tag === "Failure" ? (
-                      <ImageUnavailable reason={state.reason} />
+                      <div className={MESSAGE_IMAGE_FRAME}>
+                        <ImageUnavailable reason={state.reason} />
+                      </div>
                     ) : image.previewUrl ? (
-                      <button
-                        type="button"
-                        className="h-full w-full cursor-zoom-in"
+                      <Button
+                        className="block size-full cursor-zoom-in"
                         aria-label={`Preview ${image.name}`}
                         onClick={() => expandImage(image)}
+                        variant="bare"
                       >
-                        <AssetImage
-                          loading="lazy"
-                          decoding="async"
-                          src={image.previewUrl}
-                          alt={image.name}
-                          className="block max-h-[220px] w-full object-contain"
-                          style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
-                        />
-                      </button>
+                        <span className={cn("block h-full", MESSAGE_IMAGE_FRAME)}>
+                          <AssetImage
+                            loading="lazy"
+                            decoding="async"
+                            src={image.previewUrl}
+                            alt={image.name}
+                            className="block max-h-[220px] w-full object-contain"
+                            style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
+                          />
+                        </span>
+                      </Button>
                     ) : (
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                      <div
+                        className={cn(
+                          "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs",
+                          MESSAGE_IMAGE_FRAME,
+                        )}
+                      >
                         {image.name}
                       </div>
                     )}
@@ -331,10 +342,12 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
             />
           </span>
         ) : null}
-        <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+        <div className="flex shrink-0 items-center pb-1 text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
           <div className="flex shrink-0 items-center gap-2">
             <Tooltip>
-              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+              <TooltipTrigger
+                render={<p className="text-muted-foreground text-caption tabular-nums" />}
+              >
                 {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
               </TooltipTrigger>
               <TooltipPopup>
@@ -469,12 +482,14 @@ function MateProse({
       </div>
       {showMeta ? (
         <div
-          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
+          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
           data-mate-prose-actions
         >
           {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
           <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+            <TooltipTrigger
+              render={<p className="text-muted-foreground text-caption tabular-nums" />}
+            >
               {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
             </TooltipTrigger>
             <TooltipPopup>

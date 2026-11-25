@@ -38,6 +38,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
@@ -70,15 +71,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     // its centre and its bottom edge; on the web its 40 px mark stands centred in it on the Mates'
     // faces' column. Beside a desktop's traffic lights the bar is the title bar's height, centred
     // on them.
-    <SidebarHeader
-      className={cn(
-        "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
-        isElectron && "drag-region",
-      )}
-      // The phone's 12 px gutter held the sheet's close button once; `[data-menu-head]` takes it
-      // back, so the mark, Overview and the squares stand on their own inset at every width.
-      data-menu-head=""
-    >
+    <SidebarHeader variant="bar" dragRegion={isElectron} className="@container/sidebar-header">
       {/* The phone's sheet has no toggle of its own up here: the bar is Overview's and the
           squares', whole. A tap beside the sheet, a swipe, or the foot's toggle closes it. */}
       {brand ?? <SidebarBrand />}
@@ -101,23 +94,25 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
  */
 export function SidebarOverviewLink({ current }: { readonly current: boolean }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Link
-            aria-current={current ? "page" : undefined}
-            aria-label="Overview"
-            className="menu-round-button menu-overview"
-            data-current={current ? "" : undefined}
-            data-zerops-surface="sidebar-overview"
-            to="/zerops"
-          />
-        }
-      >
-        <LayoutGridIcon aria-hidden="true" className="size-4" />
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">Overview</TooltipPopup>
-    </Tooltip>
+    <span className="menu-overview">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-current={current ? "page" : undefined}
+              aria-label="Overview"
+              data-zerops-surface="sidebar-overview"
+              render={<Link to="/zerops" activeOptions={{ exact: true }} />}
+              size="icon-md"
+              variant="sidebar"
+            />
+          }
+        >
+          <LayoutGridIcon aria-hidden="true" className="size-5" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">Overview</TooltipPopup>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -167,16 +162,16 @@ export function SidebarCreateButton({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-disabled="true"
               aria-label={`New Mate: ${why}`}
-              className="menu-round-button opacity-50"
               data-zerops-surface="sidebar-create"
-              type="button"
+              size="icon-md"
+              variant="sidebar"
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-4" />
+          <PlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{why}</TooltipPopup>
       </Tooltip>
@@ -189,17 +184,17 @@ export function SidebarCreateButton({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <Button
               aria-label={label}
-              className="menu-round-button"
               data-zerops-create="project"
               data-zerops-surface="sidebar-create"
               onClick={onNewProject}
-              type="button"
+              size="icon-md"
+              variant="sidebar"
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-4" />
+          <PlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
@@ -211,17 +206,17 @@ export function SidebarCreateButton({
           render={
             <MenuTrigger
               render={
-                <button
+                <Button
                   aria-label={label}
-                  className="menu-round-button"
                   data-zerops-surface="sidebar-create"
-                  type="button"
+                  size="icon-md"
+                  variant="sidebar"
                 />
               }
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-4" />
+          <PlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
@@ -298,7 +293,7 @@ function SidebarBrand() {
     // where the traffic lights push the whole titlebar's content right.
     <Link
       aria-label={APP_BASE_NAME}
-      className="ml-[max(var(--workspace-controls-left),22px)] flex h-9 w-7.5 min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+      className="ml-[max(var(--workspace-controls-left),22px)] flex h-9 w-7.5 min-w-0 shrink-0 items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2"
       to="/zerops"
     >
       {/* The live mark alone, 30 x 36 centred in the row (the owner, 2026-10-12: "logo is too
@@ -324,7 +319,7 @@ export function SidebarCornerMark() {
     >
       <Link
         aria-label={APP_BASE_NAME}
-        className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
+        className="pointer-events-auto grid size-[var(--workspace-titlebar-control-size)] place-items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2 [-webkit-app-region:no-drag]"
         to="/"
       >
         {/* Live, as the open panel's lockup is: the same mark in the same

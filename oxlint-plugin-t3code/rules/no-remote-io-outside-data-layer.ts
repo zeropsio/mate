@@ -7,7 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
-import { compactSyntax, syntaxNodes } from "./boundaries.ts";
+import { syntaxNodes } from "./boundaries.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
@@ -388,40 +388,6 @@ export default defineRule({
       });
     };
 
-    const isThemeArtifactFetch = (node: ESTree.CallExpression): boolean => {
-      if (path !== "apps/web/src/openVsxThemes.ts") return false;
-      let fn: ESTree.Node | null = node.parent;
-      while (fn !== null && fn.type !== "FunctionDeclaration") fn = fn.parent;
-      if (fn?.type !== "FunctionDeclaration") return false;
-      const argument = node.arguments[0];
-      if (argument === undefined) return false;
-      if (fn.id?.name === "fetchPackage") {
-        return (
-          compactSyntax(context, argument) === "url" &&
-          compactSyntax(context, fn).includes("readCappedResponse(response,MAX_VSIX_BYTES,")
-        );
-      }
-      if (!["searchOpenVsxThemes", "importOpenVsxThemeExtension"].includes(fn.id?.name ?? ""))
-        return false;
-      if (
-        argument.type === "MemberExpression" &&
-        argument.object.type === "Identifier" &&
-        argument.object.name === "extension" &&
-        !argument.computed &&
-        ["manifestUrl", "vsixUrl", "sha256Url"].includes(calleeName(argument) ?? "")
-      )
-        return true;
-      const binding = resolveVariable(context, argument)?.defs[0]?.node;
-      if (binding?.type !== "VariableDeclarator" || binding.init === null) return false;
-      const init = compactSyntax(context, binding.init);
-      return (
-        init === "newURL(OPEN_VSX_SEARCH_URL)" ||
-        init.startsWith(
-          "`https://open-vsx.org/api/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}",
-        )
-      );
-    };
-
     const errorOnlyImport = (
       source: string,
       values: ReadonlyArray<ESTree.ImportDeclaration["specifiers"][number]>,
@@ -473,7 +439,7 @@ export default defineRule({
       CallExpression(node) {
         const head = headOf(context.sourceCode.getText(node.callee));
         if (globalName(node.callee) === "fetch") {
-          if (!isThemeArtifactFetch(node)) report(node, head);
+          report(node, head);
           return;
         }
         if (isBeacon(node.callee)) return report(node, head);

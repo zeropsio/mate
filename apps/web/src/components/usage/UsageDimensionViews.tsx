@@ -19,6 +19,7 @@ import type {
   UsagePersonRow,
   UsageScope,
 } from "./usageDimensions";
+import { Button, InlineButton } from "../ui/button";
 
 /**
  * Person series, in legend order: the Mate identity tints, so a person reads
@@ -122,18 +123,18 @@ function Disclosure({
   readonly onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost-muted"
+      size="icon-2xs"
       aria-expanded={open}
       aria-label={label}
-      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
       onClick={onToggle}
     >
       <ChevronRightIcon
         aria-hidden
         className={cn("size-3.5 transition-transform", open && "rotate-90")}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -163,7 +164,7 @@ export function UsagePeopleSplit({
         {people.map((person, index) => (
           <li
             key={person.owner?.id ?? person.ownerState}
-            className="flex items-center justify-between gap-3 text-sm"
+            className="flex items-center justify-between gap-3 text-body"
           >
             <span className="flex min-w-0 items-center gap-2 text-foreground">
               <span
@@ -176,7 +177,7 @@ export function UsagePeopleSplit({
             </span>
             <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
               <span className="font-medium text-foreground">{amount(metric, person)}</span>
-              <span className="text-xs text-muted-foreground">{share(metric, person)}</span>
+              <span className="text-caption text-muted-foreground">{share(metric, person)}</span>
             </span>
           </li>
         ))}
@@ -205,14 +206,9 @@ export function DrillButton({
 }) {
   if (onDrill === null) return <span className="flex min-w-0 items-center gap-2">{children}</span>;
   return (
-    <button
-      type="button"
-      aria-label={label}
-      className="flex min-w-0 items-center gap-2 rounded-sm text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={onDrill}
-    >
-      {children}
-    </button>
+    <InlineButton tone="plain" aria-label={label} className="min-w-0" onClick={onDrill}>
+      <span className="flex min-w-0 items-center gap-2">{children}</span>
+    </InlineButton>
   );
 }
 
@@ -350,14 +346,14 @@ export function UsageDimensionTable({
     period !== null && mates.some((mate) => taskSource(mate) !== null);
 
   return (
-    <table className="w-full table-fixed text-sm">
+    <table className="w-full table-fixed text-body">
       <colgroup>
         <col className="w-3/5" />
         <col className="w-1/5" />
         <col className="w-1/5" />
       </colgroup>
       <thead>
-        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+        <tr className="border-b border-border text-left text-caption text-muted-foreground">
           <th className="py-2 font-normal">{DIMENSION_HEADING[dimension]}</th>
           <th className="py-2 text-right font-normal">
             {metric === "cost" ? "Priced cost" : "Tokens"}

@@ -34,7 +34,7 @@ import {
   restingWhenFree,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
-import { mateDeleting } from "@t3tools/client-runtime/zerops/mateState";
+import { mateDeleting, type MateStopStanding } from "@t3tools/client-runtime/zerops/mateState";
 import {
   mateDeletionOfProject,
   mateGoing,
@@ -1015,6 +1015,8 @@ export type MateRowSecond =
   | { readonly kind: "restarting"; readonly text: string }
   /** HQ's restart of it failed: why, until the next restart. */
   | { readonly kind: "restart-failed"; readonly text: string }
+  /** Zerops stops its computer, holds it stopped or starts it again (`mateStopLine`). */
+  | { readonly kind: "stop"; readonly text: string }
   | { readonly kind: "outside" }
   /** Its project holds no Mate container (`mateHasNoContainer`): said on its card in the same words. */
   | { readonly kind: "no-container" }
@@ -1441,6 +1443,18 @@ export function mateRestartLine(
   }
 }
 
+/** What a Mate's row, card and projects-screen line say of its computer's stop and start. */
+export const MATE_STOP_WORDS: Readonly<Record<MateStopStanding, string>> = {
+  stopping: "Stopping…",
+  stopped: "Stopped",
+  starting: "Starting…",
+};
+
+/** What a Mate's row and card say of its computer's stop and start, where it says anything. */
+export function mateStopLine(stop: MateStopStanding | undefined): MateRowSecond | undefined {
+  return stop === undefined ? undefined : { kind: "stop", text: MATE_STOP_WORDS[stop] };
+}
+
 export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
@@ -1452,6 +1466,8 @@ export function mateRowSecond(input: {
   readonly restart?: HqOperationStanding | undefined;
   /** Its container is restarting (`mateRestartSaid`), whoever restarted it. */
   readonly restarting?: boolean | undefined;
+  /** Where its computer stands in a stop and a start (`mateStopStanding`); absent: it runs. */
+  readonly stop?: MateStopStanding | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1501,6 +1517,9 @@ export function mateRowSecond(input: {
     moveLine?.kind === "restart-failed";
   if (moveLine !== undefined && !moveEnded) return moveLine;
   if (input.restarting === true) return { kind: "restarting", text: "Restarting…" };
+  // Stopped, nothing it last said stands for it now: its computer's state is its line.
+  const stopLine = mateStopLine(input.stop);
+  if (stopLine !== undefined) return stopLine;
   // HQ keeps an ended move or restart on its project until the next start there: it is said only
   // at rest, where the Mate has nothing more urgent of its own.
   const restLine = moveEnded && view.state === "idle" ? moveLine : undefined;
@@ -1588,6 +1607,7 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   "continue-move": null,
   "end-move": null,
   start: null,
+  stop: null,
   restart: null,
   assign: "Hand over…",
   access: null,

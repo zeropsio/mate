@@ -1,56 +1,54 @@
 /**
- * The New project dialog: New Mate with the project's name on top (board D1, the owner,
- * 2026-09-30), hosted over whatever the person is looking at (`ZeropsNewProjectHost`).
+ * New project, as a page in the main column beside the menu (`/zerops/new`, `ZeropsNewProjectRoute`),
+ * in two steps (the owner, 2026-11-23: "make the UI minimal"):
  *
- * It asks the project's name — and where it lives, only where the account has more than one
- * place — then who its first Mate is: a name beside the face it makes, the colour and the shape
- * behind *Change look*, with the picker and the rules New Mate uses. Who can open the project is
- * one line, the people opened only to change it. The dialog stands in the window's middle, sized
- * to what it asks; only its body scrolls where the window is too short. Until its person picks, the face follows the name
- * as it is typed or rolled (the tint the account would give it, and that tint's shape); a pick
- * sticks. A name that will not do is said beside the button once it is pressed; while the
- * account's Mates' names are still being read, the button waits and says so.
+ * 1. The project: what the person wants to build, its name, and *Start a project*. Folded under
+ *    *Advanced options*, who can open it and the region it runs in, as tiles with this browser's
+ *    latency to each, only where the account has more than one.
+ * 2. Its first Mate: its face large, its name under it, *Shuffle* for another name, and *Change
+ *    style*, which opens the face's colours and shapes as a ring around it (`MateFaceRing`).
+ *    *Add <name> to your project* creates both; *Back to project options* returns to the first step,
+ *    which keeps what was typed and chosen.
  *
- * It ends, as New Mate does, with what happens next (`newProjectNext`): HQ where the
- * organization has none, then the project and its Mate, then the person signs it in and tells it what
- * to build. Create hands over at once; the person lands on the first Mate's own view.
+ * Every choice has its default, so a name and two presses start a project. A name that will not do,
+ * or what Create waits on, is said under the button; the credit forecast under that. Create hands
+ * over at once; the person lands on the first Mate's own view.
  */
 import type { LocationChoice } from "@t3tools/client-runtime/data";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { GaugeIcon } from "lucide-react";
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  InfoIcon,
+  MapPinIcon,
+  PencilIcon,
+  ShuffleIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
 
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
-} from "../ui/dialog";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { RadioCard, RadioGroup } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
-import { MateFacePicker } from "./MateFacePicker";
+import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
+import { MateNameText } from "./MateNameText";
+import { useMateShuffle } from "./useMateShuffle";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
-import { WhatHappensNext } from "./WhatHappensNext";
-import { newProjectNext } from "./whatHappensNext.logic";
 import {
   faceName,
   newMateFace,
   newMateWords,
   offeredBotName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { newProjectButton } from "./ZeropsNewProjectForm.logic";
+import { newProjectButton, regionPlace } from "./ZeropsNewProjectForm.logic";
 
 /** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
 export interface NewProjectChoice {
@@ -91,12 +89,6 @@ export interface NewProjectFormInput {
   readonly forecast?: ReactNode;
 }
 
-interface ZeropsNewProjectFormProps extends NewProjectFormInput {
-  readonly onCancel: () => void;
-  /** The project's name field, where its dialog puts the focus as it opens. */
-  readonly nameField?: RefObject<HTMLInputElement | null>;
-}
-
 /** What a Create pressed with no project name says, at the name. */
 const NAME_YOUR_PROJECT = "Name your project.";
 
@@ -119,6 +111,8 @@ export interface NewProjectForm {
   readonly nameMate: (typed: string) => void;
   /** The die at the name's end; absent until every name is read. */
   readonly another: (() => void) | undefined;
+  /** Offers a name as the proposal (*Shuffle*'s roll), never as one the person typed. */
+  readonly propose: (offer: string) => void;
   readonly face: ZeropsMateFace;
   readonly pickTint: (tint: MateTintId) => void;
   readonly pickShape: (shape: MateShapeId) => void;
@@ -202,10 +196,13 @@ export function useNewProjectForm(
     const called = value.replace(/\s+/g, " ").trim();
     if (called.length > 0) setHeldName(called);
   };
+  const propose = (offer: string) => {
+    setProposal(offer);
+    setTyped(null);
+  };
   const another = taken.complete
     ? () => {
-        setProposal(input.proposeAnotherName(botName.replace(/\s+/g, " ").trim()));
-        setTyped(null);
+        propose(input.proposeAnotherName(botName.replace(/\s+/g, " ").trim()));
       }
     : undefined;
   const press = () => {
@@ -235,6 +232,7 @@ export function useNewProjectForm(
     calledName,
     nameMate,
     another,
+    propose,
     face,
     pickTint: (tint) => {
       if (!creating) setPicked((current) => ({ ...current, tint }));
@@ -372,77 +370,64 @@ export function FirstMateField({
 }
 
 /**
- * Where it lives: a quiet choice, only where the account has more than one place (board D1) — in
- * the dialog's footer, or as tiles among the fields (`tiles`, the first run's card), each with this
- * browser's latency to it.
+ * Where it lives, as tiles, each with this browser's latency to it — only where the account has
+ * more than one place.
  */
-export function NewProjectLocation({
-  form,
-  className,
-  tiles = false,
-}: {
-  readonly form: NewProjectForm;
-  readonly className?: string;
-  readonly tiles?: boolean;
-}) {
+export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) {
   const { locations, locationId, onLocation, creating, retry, closed } = form.input;
   if (closed !== undefined || locations.length <= 1) return null;
   const held = creating || retry !== undefined;
-  if (tiles)
-    return (
-      <div className="flex flex-col gap-1.5">
-        <Label id={REGION_LABEL} render={<h3 />}>
-          Region
-        </Label>
-        <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
-          {locations.map((location) => (
-            <button
-              aria-checked={location.id === locationId}
-              className="region-tile"
-              disabled={held}
-              key={location.id}
-              onClick={() => {
-                onLocation(location.id);
-              }}
-              role="radio"
-              type="button"
-            >
-              <span className="region-tile-name">{location.name}</span>
-              {/* Holds its line while unmeasured, so a sample coming in moves nothing. */}
-              <span className="region-tile-latency">
-                {location.latencyMs === undefined ? null : (
-                  <>
-                    <GaugeIcon aria-hidden />
-                    {location.latencyMs} ms
-                  </>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
   return (
-    <Select
-      disabled={held}
-      onValueChange={(value) => {
-        if (value !== null) onLocation(value);
-      }}
-      value={locationId}
-    >
-      <SelectTrigger aria-label="Region" className={cn("w-auto", className)}>
-        <SelectValue placeholder="Region">
-          {locations.find((location) => location.id === locationId)?.name ?? "Region"}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectPopup>
-        {locations.map((location) => (
-          <SelectItem key={location.id} value={location.id}>
-            {location.name}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
+    <div className="region" data-zerops-surface="region">
+      <Label id={REGION_LABEL} render={<h3 />}>
+        Where the services should run
+      </Label>
+      <RadioGroup
+        aria-labelledby={REGION_LABEL}
+        disabled={held}
+        layout="row"
+        onValueChange={(picked) => {
+          const location = locations.find((candidate) => candidate.id === picked);
+          if (location !== undefined) onLocation(location.id);
+        }}
+        value={locationId}
+      >
+        {locations.map((location) => {
+          const place = regionPlace(location.name);
+          // Holds its line while unmeasured, so a sample coming in moves nothing.
+          const latency = location.latencyMs === undefined ? null : `${location.latencyMs} ms`;
+          return (
+            <RadioCard
+              align="center"
+              aria-label={location.name}
+              key={location.id}
+              title={<span className="truncate">{place.name}</span>}
+              value={location.id}
+            >
+              {place.city === undefined ? null : (
+                <span className="flex max-w-full items-center gap-1">
+                  <MapPinIcon aria-hidden className="size-3.5 shrink-0" />
+                  <span className="truncate">{place.city}</span>
+                </span>
+              )}
+              <span className="mt-2 block min-h-4.5 max-w-full truncate tabular-nums">
+                {latency === null ? null : `Latency: ${latency}`}
+              </span>
+            </RadioCard>
+          );
+        })}
+      </RadioGroup>
+      <ul className="region-notes">
+        <li>
+          <InfoIcon aria-hidden />
+          Pick the region closest to your users. That gives them the lowest latency.
+        </li>
+        <li>
+          <InfoIcon aria-hidden />
+          GDPR requirements often point to EU hosting.
+        </li>
+      </ul>
+    </div>
   );
 }
 
@@ -479,115 +464,227 @@ export function NewProjectLine({
 export function CreateProjectButton({
   form,
   size = "md",
+  label,
+  className,
+  buttonRef,
+  rolling = false,
 }: {
   readonly form: NewProjectForm;
   readonly size?: "md" | "lg";
+  /** Its words where they never change as the names are typed; by default what it makes. */
+  readonly label?: string;
+  readonly className?: string;
+  readonly buttonRef?: RefObject<HTMLButtonElement | null>;
+  /** A shuffle still rolling: nothing is made of a face and a name about to change. */
+  readonly rolling?: boolean;
 }) {
   const { creating, retry } = form.input;
   return (
     <Button
       aria-busy={creating || undefined}
+      className={className}
       data-zerops-new-project="create"
-      disabled={form.held}
+      ref={buttonRef}
+      disabled={form.held || rolling}
       size={size}
       type="submit"
     >
       {creating ? <Spinner size="md" /> : null}
       {retry === undefined
-        ? newProjectButton({ projectName: form.name, botName: form.botName })
+        ? (label ?? newProjectButton({ projectName: form.name, botName: form.botName }))
         : "Try again"}
     </Button>
   );
 }
 
-export function ZeropsNewProjectForm({
-  onCancel,
-  nameField: givenNameField,
-  ...input
-}: ZeropsNewProjectFormProps) {
-  const ownNameField = useRef<HTMLInputElement>(null);
-  const nameField = givenNameField ?? ownNameField;
-  const form = useNewProjectForm(input, nameField);
-  const { closed, creating, access, forecast } = input;
+/** The page's one field: the project's name, its placeholder the label it needs. */
+function NewProjectNameInput({
+  form,
+  inputRef,
+}: {
+  readonly form: NewProjectForm;
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+}) {
   return (
-    <NewProjectFormFrame className="flex min-h-0 flex-col" form={form}>
-      <DialogHeader>
-        <DialogTitle>New project</DialogTitle>
-        {closed === undefined ? null : <DialogDescription>{closed}</DialogDescription>}
-      </DialogHeader>
-      {closed === undefined ? (
-        <DialogPanel>
-          <NewProjectFields className="flex flex-col gap-5" form={form}>
-            <ProjectNameField form={form} inputRef={nameField} />
-            <FirstMateField form={form} label="Its first Mate" look="folded" />
-            <WhatHappensNext
-              versions={[
-                {
-                  key: "next",
-                  next: newProjectNext({ projectName: form.name, botName: form.botName }),
-                  shown: true,
-                },
-              ]}
-            />
-            {access === undefined ? null : access(form.setUserRoles)}
-            {forecast}
-          </NewProjectFields>
-        </DialogPanel>
-      ) : null}
-      <DialogFooter>
-        {/* At the footer's start; on a phone the footer stacks from its foot: the place leads
-            it, over the line. */}
-        <NewProjectLocation className="max-sm:order-2" form={form} />
-        <NewProjectLine className="me-auto self-center max-sm:order-1 max-sm:me-0" form={form} />
-        {closed === undefined ? (
-          <>
-            <Button disabled={creating} onClick={onCancel} type="button" variant="ghost">
-              Cancel
-            </Button>
-            <CreateProjectButton form={form} />
-          </>
-        ) : (
-          <Button onClick={onCancel} type="button" variant="ghost">
-            Close
-          </Button>
-        )}
-      </DialogFooter>
-    </NewProjectFormFrame>
+    <Input
+      aria-describedby={form.unnamed ? LINE : undefined}
+      aria-invalid={form.unnamed || undefined}
+      aria-label="Project name"
+      autoComplete="off"
+      id={PROJECT_FIELD}
+      onChange={(event) => {
+        form.setName(event.target.value);
+      }}
+      placeholder="Project name…"
+      readOnly={form.input.creating}
+      ref={inputRef}
+      size="hero"
+      spellCheck={false}
+      value={form.name}
+    />
   );
 }
 
-/** The form in its dialog, New Mate's size: what the host opens, and what the harness draws. */
-export function ZeropsNewProjectDialog({
-  onOpenChange,
-  open = true,
-  ...form
-}: ZeropsNewProjectFormProps & {
-  readonly onOpenChange: (open: boolean) => void;
-  /** Held shut until what it says is read, so it opens whole (`ZeropsNewProjectHost`). */
-  readonly open?: boolean;
-}) {
-  // Create closes it onto the first Mate's page, which takes the focus: never back to what opened
-  // it, where a second Enter would open it again over that page.
-  const created = useRef(false);
-  // It opens on the project's name, ready to type.
+/** The page: the project's step, then its first Mate's. */
+export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const nameField = useRef<HTMLInputElement>(null);
+  const addMate = useRef<HTMLButtonElement>(null);
+  const form = useNewProjectForm(input, nameField);
+  const [step, setStep] = useState<"project" | "mate">("project");
+  const [styling, setStyling] = useState(false);
+  const { closed, access, forecast, proposeAnotherName, creating } = input;
+  const shuffle = useMateShuffle({
+    name: form.botName,
+    pickTint: form.pickTint,
+    pickShape: form.pickShape,
+    setName: form.propose,
+    // Until every name is read no proposal is offered, so the roll keeps the name.
+    proposeAnotherName: form.another === undefined ? undefined : proposeAnotherName,
+  });
+  // Each step opens on what it asks, where a keyboard is at hand: the name, then the Mate's press.
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    (step === "project" ? nameField : addMate).current?.focus();
+  }, [step]);
+  if (closed !== undefined)
+    return (
+      <NewProjectPageFrame>
+        <h1 className="new-project-heading">What do you want to build?</h1>
+        <p className="new-project-closed">{closed}</p>
+      </NewProjectPageFrame>
+    );
+  if (step === "mate")
+    return (
+      <NewProjectPageFrame centered>
+        <NewProjectFormFrame className="new-project-form new-project-mate" form={form}>
+          <MateFaceRing
+            face={form.face}
+            onPickShape={form.pickShape}
+            onPickTint={form.pickTint}
+            open={styling}
+          />
+          <h1 className="new-project-heading">
+            <MateNameText
+              describedBy={LINE}
+              onValueChange={form.nameMate}
+              readOnly={creating}
+              value={form.botName}
+            />
+          </h1>
+          <div className="new-project-mate-acts">
+            {/* Pills, so they read as tools on the Mate rather than the page's next step. */}
+            <Button
+              aria-busy={shuffle.rolling || undefined}
+              disabled={creating}
+              onClick={shuffle.roll}
+              shape="round"
+              size="sm"
+              variant="secondary"
+            >
+              <ShuffleIcon aria-hidden />
+              Shuffle
+            </Button>
+            <Button
+              aria-expanded={styling}
+              disabled={creating}
+              shape="round"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setStyling(!styling);
+              }}
+            >
+              {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+              {styling ? "Confirm style" : "Change style"}
+            </Button>
+          </div>
+          <CreateProjectButton
+            buttonRef={addMate}
+            rolling={shuffle.rolling}
+            className="w-full"
+            form={form}
+            // By the name as typed; with none yet, the Mate it will be.
+            label={`Add ${form.botName.replace(/\s+/g, " ").trim() || "mate"} to your project`}
+            size="lg"
+          />
+          <NewProjectLine className="text-center" form={form} />
+          {forecast}
+          <Button
+            className="w-full"
+            data-zerops-new-project="back"
+            disabled={creating}
+            onClick={() => {
+              setStyling(false);
+              setStep("project");
+            }}
+            size="lg"
+            type="button"
+            variant="ghost-muted"
+          >
+            Back to project options
+          </Button>
+        </NewProjectFormFrame>
+      </NewProjectPageFrame>
+    );
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogPopup
-        className="max-w-lg"
-        finalFocus={() => !created.current}
-        initialFocus={nameField}
-        placement="center"
+    <NewProjectPageFrame>
+      <h1 className="new-project-heading">What do you want to build?</h1>
+      <form
+        className="new-project-form"
+        data-zerops-surface="new-project-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // A nameless press asks for the name, at the name; a named one goes on to the Mate.
+          if (form.name.trim().length === 0) form.press();
+          else setStep("mate");
+        }}
       >
-        <ZeropsNewProjectForm
-          {...form}
-          nameField={nameField}
-          onCreate={(choice) => {
-            created.current = true;
-            form.onCreate(choice);
-          }}
-        />
-      </DialogPopup>
-    </Dialog>
+        <div className="new-project-primary">
+          <NewProjectNameInput form={form} inputRef={nameField} />
+          <Button className="w-full" data-zerops-new-project="start" size="lg" type="submit">
+            Start a project
+          </Button>
+          <p aria-live="polite" className="new-project-unnamed" id={LINE}>
+            {form.unnamed ? NAME_YOUR_PROJECT : null}
+          </p>
+        </div>
+        <div className="new-project-advanced">
+          <Collapsible className="flex flex-col">
+            <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1.5 self-center rounded-full px-4 py-2 font-medium text-body text-muted-foreground leading-4.5 outline-ring outline-offset-2 hover:text-foreground focus-visible:outline-2 ">
+              Project access & region setup
+              <ChevronDownIcon
+                aria-hidden
+                className="size-4 transition-transform duration-200 ease-out-strong in-data-panel-open:rotate-180"
+              />
+            </CollapsibleTrigger>
+            <CollapsiblePanel>
+              <div className="new-project-advanced-fields">
+                <NewProjectLocation form={form} />
+                {access === undefined ? null : access(form.setUserRoles)}
+              </div>
+            </CollapsiblePanel>
+          </Collapsible>
+        </div>
+      </form>
+    </NewProjectPageFrame>
+  );
+}
+
+function NewProjectPageFrame({
+  centered = false,
+  children,
+}: {
+  /** Centred in the column, both ways: the Mate's step, which does not grow. */
+  readonly centered?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <section
+      className="new-project-page"
+      data-centered={centered ? "" : undefined}
+      data-zerops-surface="new-project"
+    >
+      <div className="new-project-stage">{children}</div>
+    </section>
   );
 }

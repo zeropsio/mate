@@ -71,7 +71,7 @@ function DiffWorkerReady({ children, fallback }: { children?: ReactNode; fallbac
     : (fallback ?? (
         <div
           role="status"
-          className="flex min-h-0 flex-1 items-center justify-center p-4 text-xs text-muted-foreground"
+          className="flex min-h-0 flex-1 items-center justify-center p-4 text-caption text-muted-foreground"
         >
           Loading code...
         </div>

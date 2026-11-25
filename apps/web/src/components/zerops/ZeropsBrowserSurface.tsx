@@ -7,6 +7,7 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { useMateAddresses } from "~/zerops/useMateAddresses";
+import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import type { MateAddress } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { browserSiteGroups } from "./browserSites.logic";
@@ -43,19 +44,21 @@ export function BrowserSites({
           <ul className="col-span-full grid grid-cols-subgrid">
             {group.rows.map(({ address, name }) => (
               <li
-                className="col-span-full grid grid-cols-subgrid items-center rounded-md hover:bg-accent"
+                className="col-span-full grid grid-cols-subgrid items-center rounded-control hover:bg-accent"
                 data-mate-address={address.service}
                 key={address.url}
               >
-                <button
-                  className="col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline py-1.5 ps-2 text-left pointer-coarse:py-3"
+                <Button
+                  className="col-span-2 grid grid-cols-subgrid items-baseline"
                   onAuxClick={(event) => openMateAddress(threadRef, address, event)}
                   onClick={(event) => openMateAddress(threadRef, address, event)}
-                  type="button"
+                  variant="ghost"
                 >
-                  <span className="text-foreground text-sm">{name}</span>
-                  <span className="truncate text-muted-foreground text-xs">{address.host}</span>
-                </button>
+                  <span className="text-start text-body text-foreground">{name}</span>
+                  <span className="truncate text-start text-caption text-muted-foreground">
+                    {address.host}
+                  </span>
+                </Button>
                 <MateAddressExternalLink address={address} className="me-1" />
               </li>
             ))}

@@ -4,16 +4,23 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-const alertVariants = cva("relative rounded-xl border px-3.5 py-3 text-card-foreground text-sm", {
+/**
+ * A notice. `surface`: `default` is its own card, `glass` floats it over content (alert-glass tints
+ * from data-variant), `bare` draws no card at all (no edge, fill, padding or type size of its own)
+ * for a notice set inside a surface its parent draws, such as the composer's notice drawer; the
+ * variant still tints its icon.
+ */
+const alertVariants = cva("relative text-card-foreground", {
+  compoundVariants: [{ surface: "bare", className: "bg-transparent" }],
   defaultVariants: {
     surface: "default",
     variant: "default",
   },
   variants: {
-    // "glass" floats the alert over content; alert-glass tints from data-variant.
     surface: {
-      default: "",
-      glass: "alert-glass",
+      default: "rounded-card border px-3.5 py-3 text-body",
+      glass: "alert-glass rounded-card border px-3.5 py-3 text-body",
+      bare: "",
     },
     variant: {
       default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",

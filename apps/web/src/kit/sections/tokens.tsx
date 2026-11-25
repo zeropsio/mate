@@ -47,7 +47,7 @@ function MotionSpecimen({ step }: { readonly step: keyof typeof MOTION.duration 
       </Button>
       <span className="relative h-6 w-32 rounded-control bg-muted">
         <span
-          className={`absolute top-1 left-1 size-4 rounded-sm bg-primary transition-transform ease-out-strong ${DURATION_CLASS[step]} ${moved ? "translate-x-26" : "translate-x-0"}`}
+          className={`absolute top-1 left-1 size-4 rounded-mark bg-primary transition-transform ease-out-strong ${DURATION_CLASS[step]} ${moved ? "translate-x-26" : "translate-x-0"}`}
         />
       </span>
     </div>
@@ -75,7 +75,7 @@ function TokenSpecimens() {
         <div className="flex items-end gap-4">
           {SPACING_STEPS.map((step) => (
             <div className="flex flex-col items-center gap-1" key={step}>
-              <span className={`h-8 rounded-sm bg-primary/40 ${SPACING_WIDTH[step]}`} />
+              <span className={`h-8 rounded-mark bg-primary/40 ${SPACING_WIDTH[step]}`} />
               <code className="font-mono text-caption text-muted-foreground">
                 {step * SPACING_UNIT}
               </code>
@@ -83,15 +83,18 @@ function TokenSpecimens() {
           ))}
         </div>
       </SpecimenBlock>
-      <SpecimenBlock title="Radii: control inside card inside sheet, running parallel">
+      <SpecimenBlock title="Radii: mark inside control inside card inside sheet, running parallel">
         <SpecimenGrid>
           <Specimen
-            label={`rounded-sheet ${RADII.sheet} › rounded-card ${RADII.card} › rounded-control ${RADII.control}`}
+            label={`rounded-sheet ${RADII.sheet} › rounded-card ${RADII.card} › rounded-control ${RADII.control} › rounded-mark ${RADII.mark}`}
           >
             <div className="rounded-sheet border bg-muted p-1">
               <div className="rounded-card border bg-card p-1">
-                <div className="flex h-8 w-40 items-center justify-center rounded-control bg-primary text-body text-primary-foreground">
+                <div className="flex h-8 w-40 items-center justify-between rounded-control bg-primary ps-3 pe-1 text-body text-primary-foreground">
                   Control
+                  <span className="flex h-6 items-center rounded-mark bg-primary-foreground/20 px-1.5 text-caption">
+                    Mark
+                  </span>
                 </div>
               </div>
             </div>
@@ -122,7 +125,7 @@ export default defineKitSection({
   id: "tokens",
   title: "Tokens",
   purpose:
-    "The one scale every piece is built from: five type steps, a 4 px spacing grid, three nested radii and three durations with one strong ease-out (packages/shared/src/brand.ts).",
+    "The one scale every piece is built from: five type steps, a 4 px spacing grid, four nested radii and three durations with one strong ease-out (packages/shared/src/brand.ts).",
   group: "Chosen",
   kind: "Foundations",
   source: "packages/shared/src/brand.ts",

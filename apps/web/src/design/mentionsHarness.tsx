@@ -22,7 +22,6 @@ import {
 } from "~/components/chat/ComposerCommandMenu";
 import { UserTimelineRow } from "~/components/chat/TimelineMessageRows";
 import { TimelineRowCtx, type TimelineRowSharedState } from "~/components/chat/timelineContext";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   mateMentionMatcher,
   mateMentionNotes,
@@ -131,7 +130,7 @@ function Composer() {
           }}
         />
       ) : null}
-      <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+      <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
         <ComposerPromptEditor
           editorRef={editorRef}
           value={value}
@@ -179,7 +178,7 @@ function Sent() {
         }}
       />
       <pre
-        className="whitespace-pre-wrap font-mono text-muted-foreground text-xs"
+        className="whitespace-pre-wrap font-mono text-muted-foreground text-caption"
         data-agent-context
       >
         {mateMentionNotes(SENT, MATES).join("\n")}
@@ -200,7 +199,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

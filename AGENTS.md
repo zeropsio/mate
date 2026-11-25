@@ -68,7 +68,7 @@ The loop:
 - Live looks use the `test-t3-app` test browser. Computer use on the person's own desktop needs
   their consent.
 
-`main` deploys the hosted web client (mate.zerops.io) through `zerops.yml`'s `prod` setup.
+`web-v*` tags deploy the hosted web client (mate.zerops.io) through `zerops.yml`'s `prod` setup.
 Release, staging, HQ and container delivery: `docs/operations/release-and-deploy.md`;
 contributors follow `CONTRIBUTING.md`.
 

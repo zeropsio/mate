@@ -19,7 +19,6 @@ import { warmAppChunksAfterSettling } from "./lib/appChunks";
 import { appBasePath } from "./basePath";
 import { keepChatLinkCode } from "./zerops/chatLinkCode";
 import { preloadChatView } from "./components/ChatViewBoundary";
-import { addressOpensConversation } from "./routes/-environmentRoute";
 import { appShellWorkerMode, startAppShellWorker } from "./appShell/appShellClient";
 import { isHostedStaticApp } from "./hostedPairing";
 
@@ -36,17 +35,21 @@ const history = isElectron ? createHashHistory() : createBrowserHistory();
 
 const router = getRouter(history);
 
-// A reload on a conversation's address fetches the conversation's code beside its data.
-if (
-  addressOpensConversation(
-    isElectron
-      ? window.location.hash.replace(/^#/u, "").split("?")[0] || "/"
-      : window.location.pathname,
-    isElectron ? "" : appBasePath(),
-  )
-) {
-  preloadChatView();
-}
+// Once the first frame has painted, load conversation code on every address. The route chunks
+// carry no Mate data; their guards and loaders still run only when a person navigates there.
+window.requestAnimationFrame(() => {
+  window.requestAnimationFrame(() => {
+    const preload = () => {
+      preloadChatView();
+      for (const id of ["/_chat", "/_chat/draft/$draftId"] as const) {
+        void router.loadRouteChunk(router.routesById[id])?.catch(() => undefined);
+      }
+    };
+    if (typeof window.requestIdleCallback === "function")
+      window.requestIdleCallback(preload, { timeout: 2_000 });
+    else window.setTimeout(preload, 0);
+  });
+});
 
 if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);

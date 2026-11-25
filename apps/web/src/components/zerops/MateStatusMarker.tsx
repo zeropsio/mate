@@ -38,36 +38,37 @@ export function MateStatusMarker({
   const { label, cause } = mateStatusWords(status, mateName, timestampFormat, ask);
   const marks = {
     className: cn(
-      "inline-flex min-w-0 items-center gap-1.5 text-xs font-medium",
+      "inline-flex min-w-0 items-center gap-1.5 text-caption font-medium",
       status.severity === "danger" ? "text-error" : "text-status-attention-text",
       onOpen !== undefined &&
-        "cursor-pointer rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+        "cursor-pointer rounded-mark underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
     ),
     "data-agent-admission-summary": status.admission?.key,
     "data-mate-status": status.kind,
     "aria-label": cause,
   };
+  const words = (
+    <>
+      <Icon aria-hidden="true" className="size-3 shrink-0" />
+      {/* On a phone's header its words would draw over the Mate's name (390 px): the icon stays,
+            and its name and tooltip say the rest. */}
+      <span className="truncate @max-md/header-actions:hidden">
+        {label}
+        {status.until === undefined
+          ? null
+          : ` · until ${formatUpcomingTimestamp(status.until, timestampFormat)}`}
+      </span>
+    </>
+  );
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          onOpen === undefined ? (
-            <span {...marks} role="status" />
-          ) : (
-            <button {...marks} onClick={onOpen} type="button" />
-          )
-        }
-      >
-        <Icon aria-hidden="true" className="size-3 shrink-0" />
-        {/* On a phone's header its words would draw over the Mate's name (390 px): the icon stays,
-            and its name and tooltip say the rest. */}
-        <span className="truncate @max-md/header-actions:hidden">
-          {label}
-          {status.until === undefined
-            ? null
-            : ` · until ${formatUpcomingTimestamp(status.until, timestampFormat)}`}
-        </span>
-      </TooltipTrigger>
+      {onOpen === undefined ? (
+        <TooltipTrigger render={<span {...marks} role="status" />}>{words}</TooltipTrigger>
+      ) : (
+        <TooltipTrigger render={<button {...marks} onClick={onOpen} type="button" />}>
+          {words}
+        </TooltipTrigger>
+      )}
       <TooltipPopup>{cause}</TooltipPopup>
     </Tooltip>
   );

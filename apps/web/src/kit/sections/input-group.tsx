@@ -21,7 +21,7 @@ function InputGroupSpecimens() {
                 <InputGroup>
                   <InputGroupAddon align={align}>
                     {align.startsWith("block") ? (
-                      <span className="text-xs">Domain</span>
+                      <span className="text-caption">Domain</span>
                     ) : (
                       <AtSignIcon />
                     )}

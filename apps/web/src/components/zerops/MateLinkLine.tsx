@@ -216,7 +216,7 @@ export function MateOpeningLine({
       data-zerops-surface="mate-opening"
     >
       {phrase.text === null ? null : (
-        <p className="text-sm text-muted-foreground" role="status">
+        <p className="text-body text-muted-foreground" role="status">
           {phrase.text}
         </p>
       )}

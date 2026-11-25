@@ -3,7 +3,7 @@ import { useMateImage, useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { ExpressMark } from "../express/ExpressMark";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -85,8 +85,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             <Button
               type="button"
               size="icon-md"
-              variant="ghost"
-              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
+              variant="scrim"
+              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 sm:left-6"
               aria-label="Previous image"
               {...previousIntent}
               onClick={() => navigateImage(-1)}
@@ -111,7 +111,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 decoding="async"
                 src={item.src}
                 alt={item.name}
-                className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-lg border border-border/70 bg-background object-contain shadow-2xl"
+                className="max-h-[var(--media-height)] max-w-[var(--media-width)] select-none rounded-card border border-border/70 bg-background object-contain shadow-2xl"
                 draggable={false}
               />
             ) : (
@@ -124,16 +124,18 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                 onError={() => setFailedImageSrc(item.src)}
               />
             )}
-            <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-xs text-muted-foreground/80">
+            <p className="mt-2 max-w-[var(--media-width)] truncate text-center text-caption text-muted-foreground/80">
               {item.name}
               {reference !== null && original.read.kind === "ready" && original.url ? (
-                <a
-                  className="ml-3 underline"
-                  href={original.url}
-                  download={original.read.occurrence?.name ?? item.name}
+                <InlineButton
+                  className="ml-3"
+                  render={
+                    <a download={original.read.occurrence?.name ?? item.name} href={original.url} />
+                  }
+                  tone="muted"
                 >
                   Download original
-                </a>
+                </InlineButton>
               ) : null}
               {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
             </p>
@@ -151,7 +153,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
                   size="sm"
                   variant="secondary"
                 >
-                  <ExpressMark className="size-4 rounded-sm" />
+                  <ExpressMark className="size-4 rounded-mark" />
                   Edit in Adobe Express
                 </Button>
               </div>
@@ -161,8 +163,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             <Button
               type="button"
               size="icon-md"
-              variant="ghost"
-              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
+              variant="scrim"
+              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 sm:right-6"
               aria-label="Next image"
               {...nextIntent}
               onClick={() => navigateImage(1)}

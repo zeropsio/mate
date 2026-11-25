@@ -26,6 +26,7 @@ import {
   type MessagePictureSegment,
   type PictureSize,
 } from "./messagePictures.logic";
+import { Button } from "~/components/ui/button";
 
 /**
  * Each stored picture's size, read from its header by the server, so a picture
@@ -111,9 +112,9 @@ function MessagePicture(props: {
       {props.state?._tag === "Failure" ? (
         <ImageUnavailable className="message-picture-img" reason={props.state.reason} style={box} />
       ) : segment.image.previewUrl ? (
-        <button
-          type="button"
-          className="message-picture-open"
+        <Button
+          className="block max-w-full cursor-zoom-in"
+          variant="bare"
           style={{ width: "100%" }}
           aria-label={`Open picture ${segment.n}`}
           {...intent}
@@ -131,7 +132,7 @@ function MessagePicture(props: {
             underlay={localPreviewUrl}
             onReady={localPreviewUrl ? () => releaseLocalPreview(localPreviewUrl) : undefined}
           />
-        </button>
+        </Button>
       ) : (
         // Its room, held until its address arrives: nothing moves when it does.
         <span

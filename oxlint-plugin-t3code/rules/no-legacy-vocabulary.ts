@@ -62,7 +62,6 @@ const COPY_MODULES = [
   "apps/web/src/components/BranchToolbar.logic.ts",
   "apps/web/src/connection/platform.ts",
   "apps/web/src/connection/clientMetadata.ts",
-  "apps/web/src/components/settings/ThemePreviewCircles.tsx",
   "apps/mobile/src/features/agent-awareness/remoteRegistration.ts",
   "apps/mobile/src/features/connection/pairing.ts",
   "apps/mobile/src/features/threads/projectThreadCreationValidation.ts",

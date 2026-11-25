@@ -84,7 +84,13 @@ import { useAskMate } from "~/zerops/useAskMate";
 import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
-import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
+import {
+  type ZeropsChangeOffers,
+  useChangeOffers,
+  useKeepDeployKeyOffer,
+} from "~/zerops/useChangeOffers";
+import { useDeployKeyRenewal, type DeployKeyRenewal } from "~/zerops/useEnvironmentOperation";
+import { keyRenewPress } from "~/zerops/renewDeployKey.logic";
 import {
   mergedMain,
   useZeropsChangeDetail,
@@ -113,6 +119,9 @@ import {
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
+  mergeStageInputs,
+  mergeStages,
+  type MergeStage,
   NOT_RECORDED_ASIDE,
   otherOpenChanges,
   reviewBranch,
@@ -149,7 +158,7 @@ import {
   type ReviewQueueLine,
 } from "./ZeropsReviewSurface";
 
-const NO_STAGES: ReadonlyArray<string> = [];
+const NO_STAGES: ReadonlyArray<MergeStage> = [];
 /** No wait to wake for. */
 const NO_DEADLINES: ReadonlyArray<number> = [];
 
@@ -597,6 +606,15 @@ function ChangeReviewData({
   // The sheet slides in once it can say all of it: its description, files and commits, how it
   // merges, whether HQ offers Merge — or after a moment, each part still read standing in its shape.
   useReviewHold(readout.kind === "reading" || reviewOffers === undefined);
+  const mayKeepKey = useKeepDeployKeyOffer();
+  const stages = mergeStageInputs(flow === undefined ? [] : mainStagesOf(flow), mayKeepKey);
+  const heldStage = mergeStages({ state: "ready", recipe: false, stages, mayRenew: false }).held
+    ?.stage;
+  const renewKey = useDeployKeyRenewal(
+    heldStage?.environment === undefined || heldStage.projectId === undefined
+      ? undefined
+      : { appId: target.groupId, projectId: heldStage.projectId, name: heldStage.environment },
+  );
   const project = useGroupName(target.groupId);
   // A recipe change is no pair's code: it offers every preview.
   const previews = useMatePreviews(
@@ -665,7 +683,8 @@ function ChangeReviewData({
       previews={previews}
       project={project}
       appId={target.groupId}
-      stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
+      stages={stages}
+      keyRenewal={renewKey}
       productionOutside={flow?.outside !== undefined}
       nothingLive={
         flow !== undefined &&
@@ -902,8 +921,10 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
   readonly appId?: string | undefined;
-  /** The stages that deploy what merges into `main`, by name (`mainStagesOf`). */
-  readonly stages?: ReadonlyArray<string>;
+  /** The stages that deploy what merges into `main`, with their key gaps (`mainStagesOf`). */
+  readonly stages?: ReadonlyArray<MergeStage>;
+  /** The first held stage's renewal, if a key holds one. */
+  readonly keyRenewal?: Pick<DeployKeyRenewal, "run" | "onRenew"> | undefined;
   /**
    * Somebody said the project's production is deployed outside Mate
    * (`ZeropsProjectFlow.outside`); read only while it has no production here.
@@ -1240,6 +1261,20 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       : undefined;
   const wait =
     question === undefined && notOffered === undefined ? model.consequenceWaits : undefined;
+  const mergeNoteShown =
+    question === undefined &&
+    notOffered === undefined &&
+    !standingNote &&
+    primary !== undefined &&
+    primary.enabled &&
+    (primary.label === "Merge" || primary.label === MERGE_AS_IT_IS);
+  const stageDecision = mergeStages({
+    state: model.verdict.state,
+    recipe: pull.kind === "recipe",
+    stages: props.stages ?? NO_STAGES,
+    mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
+  });
+
   // A Mate's several changes in one repository read apart by their branches.
   const branch = reviewBranch(pull);
   const others = props.others ?? NO_OTHERS;
@@ -1282,6 +1317,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     state: model.verdict.state,
                     consequence: model.consequence,
                     stages: props.stages ?? NO_STAGES,
+                    mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
+                    renewal: props.keyRenewal?.run,
                     live: props.live,
                     warning: receipt?.warning,
                     recipe: pull.kind === "recipe",
@@ -1291,11 +1328,21 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 )
       }
       noteAction={
-        model.reviewRelease !== true ||
-        question !== undefined ||
-        props.onReviewRelease === undefined
-          ? undefined
-          : { label: REVIEW_RELEASE_LABEL, onPress: props.onReviewRelease }
+        mergeNoteShown &&
+        stageDecision.held?.offer === "renew" &&
+        props.keyRenewal?.onRenew !== undefined
+          ? {
+              label:
+                props.keyRenewal.run.kind === "working"
+                  ? "Renewing"
+                  : keyRenewPress(props.keyRenewal.run),
+              onPress: props.keyRenewal.onRenew,
+            }
+          : model.reviewRelease !== true ||
+              question !== undefined ||
+              props.onReviewRelease === undefined
+            ? undefined
+            : { label: REVIEW_RELEASE_LABEL, onPress: props.onReviewRelease }
       }
       noteKey={standing?.key}
       asked={over || asked ? undefined : standing?.asked}
@@ -1311,6 +1358,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   state: model.verdict.state,
                   consequence: model.consequenceRoom,
                   stages: props.stages ?? NO_STAGES,
+                  mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
+                  renewal: props.keyRenewal?.run,
                   live: props.live,
                   warning: receipt?.warning,
                   recipe: pull.kind === "recipe",

@@ -61,7 +61,7 @@ export function EmptyProjectFilePicker() {
       testId="project-file-picker"
       value=""
     >
-      <div className="py-10 text-center text-sm text-muted-foreground">
+      <div className="py-10 text-center text-body text-muted-foreground">
         Open a project to search its files.
       </div>
     </CommandPaletteContent>

@@ -72,7 +72,6 @@ import {
   ZeropsProjectsFlow,
   type ProjectsFlowGroup,
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { ChangeStandingContext } from "~/zerops/useChangeStandingOf";
 import "../index.css";
 import { showHarnessPlaces } from "./placeSitesFixtures";
@@ -1386,7 +1385,7 @@ function HarnessPage() {
           ) : null}
           {PAGE === null ? (
             <div className="flex items-center justify-between">
-              <h1 className="text-xl font-medium text-foreground">Overview</h1>
+              <h1 className="text-title font-medium text-foreground">Overview</h1>
               <Button variant="secondary">New project</Button>
             </div>
           ) : null}
@@ -1698,7 +1697,6 @@ function HarnessPage() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own with the app's three pages, so a card's name, a place's line and a crumb go
 // where they go in the app, by the app's own transition (`pagesViewTransition`).

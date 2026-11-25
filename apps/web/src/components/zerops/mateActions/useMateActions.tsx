@@ -11,7 +11,7 @@ import {
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
- * Eight verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*,
+ * Nine verbs — *Start*, *Stop*, *Restart*, *Rename Mate*, *Change face…*,
  * *Hand over this Mate*, *Change project or role*, *Leave the project*,
  * *Delete {name}…* — and the server's version under them. Most lived inside
  * the projects screen's own row menu, wired to that page's state, so a
@@ -40,6 +40,8 @@ import {
  * application's (`renamedProjectName`), by the account's one writer of a project's record, where the platform takes it from this person.
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
  * lets them: its dialog open until HQ answers, a refusal said there.
+ * *Stop* stops the Mate's whole project, its computer and every service beside it, once the person
+ * confirms what it ends; *Start* brings the project back whole.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
@@ -73,7 +75,7 @@ import {
 import { moveAttemptFor, type MoveAttempt } from "./moveAttempt";
 import { MateDeployConfirmation } from "./MateDeployConfirmation";
 import { useMateStates } from "./useMateStates";
-import { RestartMateConfirmation } from "./RestartMateConfirmation";
+import { RestartMateConfirmation, StopMateConfirmation } from "./MateVerbConfirmation";
 import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
@@ -138,10 +140,14 @@ import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "~/zerops/zeropsWrite";
+import { startMate, stopMate, submitZeropsWrite, writeTrouble } from "~/zerops/zeropsWrite";
 import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
+import {
+  projectServicesAtom,
+  sharedBirthsAtom,
+  type SharedBirth,
+} from "@t3tools/client-runtime/data";
 import { useBirthActions } from "~/zerops/useBirthActions";
 import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
 import { ZeropsOperationEndDialog } from "../ZeropsOperationEnd";
@@ -150,6 +156,7 @@ import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
   | { readonly kind: "restart"; readonly candidate: ZeropsCandidatePresentation }
+  | { readonly kind: "stop"; readonly candidate: ZeropsCandidatePresentation }
   /** The End HQ offers on its waiting operation `id` of `operationKind`. */
   | {
       readonly kind: "end-operation";
@@ -482,27 +489,47 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [activeOrganization],
   );
 
+  /** The Mate's project's services as read: what its Stop and Start write (`mateServicesToWrite`). */
+  const servicesOf = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      atomRegistry.get(projectServicesAtom(candidate.project.id)).services,
+    [atomRegistry],
+  );
+
   const start = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
-      const projectId = candidate.project.id;
-      const serviceId = candidate.service?.id;
-      // A STOPPED project starts every service in it; a STOPPED service while
-      // the project is ACTIVE starts only that service.
-      const started: ZeropsWrite | null =
-        candidate.project.status === "STOPPED"
-          ? { kind: "start-project", projectId }
-          : serviceId === undefined
-            ? null
-            : { kind: "start-service", projectId, serviceId };
-      if (started === null) return;
+      const orgId = activeOrganization.id;
       void write(
         candidate.key,
-        () => submitZeropsWrite(operations, activeOrganization.id, started),
+        () => startMate(operations, orgId, candidate, servicesOf(candidate)),
         refresh,
       );
     },
-    [activeOrganization, operations, refresh, write],
+    [activeOrganization, operations, refresh, write, servicesOf],
+  );
+
+  /**
+   * Stops every running service of the Mate's project — its computer and every service beside
+   * it — until Start. The dialog stays open until Zerops stopped its computer: a refusal is said there.
+   */
+  const stop = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      if (activeOrganization === null) return;
+      const orgId = activeOrganization.id;
+      const replyToDialog = captureDialogReply();
+      setPress({ pending: true, error: null });
+      void write(
+        candidate.key,
+        () => stopMate(operations, orgId, candidate, servicesOf(candidate)),
+        () => {
+          replyToDialog(null);
+          refresh();
+        },
+        (reason) => setPress({ pending: false, error: reason }),
+      );
+    },
+    [activeOrganization, operations, refresh, write, captureDialogReply, servicesOf],
   );
 
   const restartMate = useRestartMate();
@@ -1133,6 +1160,17 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           },
         });
       }
+      if (verbs.stop) {
+        quick.push({
+          id: "stop",
+          label: "Stop",
+          disabled: busy || restartRuns,
+          onSelect: () => {
+            setPress(UNPRESSED);
+            setDialog({ kind: "stop", candidate });
+          },
+        });
+      }
       quick.push(...extraQuick);
       const entries: ZeropsMenuEntry[] = [
         ...quick,
@@ -1325,6 +1363,19 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           onCancel={close}
           onConfirm={() => {
             restart(dialog.candidate);
+          }}
+        />
+      ) : null}
+      {dialog?.kind === "stop" ? (
+        <StopMateConfirmation
+          projectId={dialog.candidate.project.id}
+          name={projectNameInApp(dialog.candidate.project)}
+          environmentId={dialog.candidate.environmentId ?? linkTarget(dialog.candidate)}
+          pending={press.pending}
+          error={press.error}
+          onCancel={close}
+          onConfirm={() => {
+            stop(dialog.candidate);
           }}
         />
       ) : null}

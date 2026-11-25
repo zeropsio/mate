@@ -16,7 +16,7 @@ function StayingProduction({ projectId }: { readonly projectId: string }) {
 /** What goes and what stays, as two short lists; what goes reads as unread until HQ said it. */
 export function DeleteApplicationLists({ words }: { readonly words: DeleteApplicationWords }) {
   return (
-    <div className="space-y-3 text-sm" data-zerops-surface="delete-application-lists">
+    <div className="space-y-3 text-body" data-zerops-surface="delete-application-lists">
       <div>
         <p className="font-medium">Goes</p>
         {words.goes === undefined ? (

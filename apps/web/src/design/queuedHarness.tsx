@@ -15,7 +15,6 @@ import { createRoot } from "react-dom/client";
 import { QueuedMessageTimelineRow } from "~/components/chat/TimelineMessageRows";
 import { TimelineRowCtx, type TimelineRowSharedState } from "~/components/chat/timelineContext";
 import type { QueuedComposerMessage } from "~/queuedMessageStore";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const SHARED: TimelineRowSharedState = {
@@ -95,7 +94,7 @@ function State({
 }) {
   return (
     <section className="flex flex-col gap-2" data-harness-state={label}>
-      <h2 className="text-muted-foreground text-xs">{label}</h2>
+      <h2 className="text-muted-foreground text-caption">{label}</h2>
       <TimelineRowCtx value={{ ...SHARED, queueBlockedByAnswer: blocked }}>
         <div className="flex flex-col gap-3">{children}</div>
       </TimelineRowCtx>
@@ -132,7 +131,6 @@ function Harness() {
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

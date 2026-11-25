@@ -55,6 +55,8 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { formatRelativeTimeLabel, formatWorkingTime } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Button, InlineButton } from "../../ui/button";
+import { Input } from "../../ui/input";
 import { Menu, MenuTrigger } from "../../ui/menu";
 import { MateFace } from "../primitives";
 import { crewmateMenuModel, type CrewmateMenuItemId } from "./CrewmateMenu.logic";
@@ -282,13 +284,20 @@ function RowTime({ slot }: { readonly slot: CrewRowSlot }) {
       return null;
     case "clock":
       return (
-        <span className="crew-row-time" data-working="">
+        <span
+          className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden"
+          data-working=""
+        >
           {formatWorkingTime(nowMs - Date.parse(slot.since))}
         </span>
       );
     case "age": {
       const when = compactSidebarTimeLabel(formatRelativeTimeLabel(slot.at));
-      return when === "" ? null : <span className="crew-row-time">{when}</span>;
+      return when === "" ? null : (
+        <span className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden">
+          {when}
+        </span>
+      );
     }
   }
 }
@@ -328,7 +337,7 @@ function CrewRow(
   const open = model.threadId;
   return (
     <div
-      className="crew-row"
+      className="crew-row group/crewrow"
       data-crew-row={model.handle}
       data-needs={model.needsYou || model.plan ? "" : undefined}
     >
@@ -336,17 +345,22 @@ function CrewRow(
       <div className="flex min-w-0 flex-col">
         <div className="flex h-5 items-center gap-2">
           {open === null ? (
-            <span className="crew-row-open">{model.name}</span>
+            <span className="min-w-0 truncate font-medium text-body text-foreground">
+              {model.name}
+            </span>
           ) : (
             <CrewTip tip={crewOpenConversationWord(model.name)}>
-              <button
+              {/* The row opens its crewmate's conversation: the name's press spans the whole
+                  row, and the row's own presses stand over it. */}
+              <InlineButton
                 aria-label={crewOpenConversationWord(model.name)}
-                className="crew-row-open"
+                className="min-w-0 after:absolute after:inset-0"
+                data-crew-row-open=""
                 onClick={() => props.onOpenThread(open)}
-                type="button"
+                tone="plain"
               >
-                {model.name}
-              </button>
+                <span className="min-w-0 truncate text-body">{model.name}</span>
+              </InlineButton>
             </CrewTip>
           )}
           <span className="grow" />
@@ -358,10 +372,13 @@ function CrewRow(
             <Menu>
               <MenuTrigger
                 render={
-                  <button
+                  // In the time's place on hover, and for the keyboard once it reaches the row.
+                  <Button
                     aria-label={crewMenuOfWord(model.name)}
-                    className="crew-menu-btn crew-row-menu crew-row-above"
-                    type="button"
+                    className="relative z-1 -my-1 -me-1.5 hidden group-[:hover]/crewrow:flex group-has-[[data-crew-row-open]:focus-visible]/crewrow:flex focus-visible:flex data-popup-open:flex"
+                    data-crew-row-menu=""
+                    size="icon-sm"
+                    variant="sidebar"
                   />
                 }
               >
@@ -555,25 +572,28 @@ function AnswerBox(
         send();
       }}
     >
-      <input
+      <Input
         aria-label={CREW_ROW_VERBS.answer}
+        className="min-w-0 flex-1"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Escape") props.onDone();
         }}
         ref={input}
+        unstyled
         value={text}
       />
       <CrewTip tip={crewRowVerbLine("send", props.mateName)}>
-        <button
+        <Button
           aria-label={CREW_ROW_VERBS.send}
-          className="crew-send"
-          data-ready={ready ? "" : undefined}
           disabled={!ready}
+          shape="round"
+          size="icon-sm"
           type="submit"
+          variant={ready ? "primary" : "secondary"}
         >
           <ArrowUpIcon aria-hidden="true" className="size-3.5" strokeWidth={2.4} />
-        </button>
+        </Button>
       </CrewTip>
     </form>
   );

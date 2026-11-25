@@ -145,6 +145,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type ReactNode,
@@ -156,6 +157,8 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
+import { Spinner } from "../ui/spinner";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -248,6 +251,7 @@ import {
   type ProjectReviewItem,
 } from "./SidebarProjectReview";
 import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
+import { InlineButton } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
@@ -1253,14 +1257,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-sidebar-muted-foreground">No Mate yet</span>
-        <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          onClick={onBrowseProjects}
-          type="button"
-        >
+        <span className="text-caption text-sidebar-muted-foreground">No Mate yet</span>
+        <Button onClick={onBrowseProjects} size="xs" variant="secondary">
           Set up Mate
-        </button>
+        </Button>
       </div>
     );
   }
@@ -2543,18 +2543,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           {onShowPlatformProjects === undefined ? null : (
             <>
               <span aria-hidden="true">·</span>
-              <button
+              <InlineButton
                 aria-expanded={showPlatformProjects}
-                className="menu-show-everyone"
+                tone="muted"
                 data-zerops-surface="sidebar-platform-projects-toggle"
                 onClick={() => {
                   setPlatformMotion(showPlatformProjects ? "closing" : "opening");
                   onShowPlatformProjects(!showPlatformProjects);
                 }}
-                type="button"
               >
                 {showPlatformProjects ? "Hide" : "Show"}
-              </button>
+              </InlineButton>
             </>
           )}
         </span>
@@ -2600,7 +2599,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       ref={treeRef}
     >
       {structureView.updateRequired ? (
-        <div className="px-4 pb-3 text-xs text-sidebar-muted-foreground" role="status">
+        <div className="px-4 pb-3 text-caption text-sidebar-muted-foreground" role="status">
           HQ needs an update to show all navigation facts.
         </div>
       ) : null}
@@ -2620,14 +2619,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             >
               <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
               <span aria-hidden="true">·</span>
-              <button
-                className="menu-show-everyone"
+              <InlineButton
                 data-zerops-surface="sidebar-show-everyone"
                 onClick={onShowEveryone}
-                type="button"
+                tone="muted"
               >
                 Show everyone
-              </button>
+              </InlineButton>
             </span>
           )}
           {platformSection}
@@ -2673,7 +2671,7 @@ export function SidebarAccountLine({
 }) {
   return (
     <div
-      className="flex h-10 shrink-0 items-center gap-1 ps-4 pe-2 py-1 text-xs text-sidebar-muted-foreground"
+      className="flex h-10 shrink-0 items-center gap-1 ps-4 pe-2 py-1 text-caption text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
@@ -2683,15 +2681,9 @@ export function SidebarAccountLine({
         {title == null ? null : <span className="truncate opacity-75">{title}</span>}
       </span>
       {actions.map(({ label, run, busy = false }) => (
-        <button
-          className="shrink-0 cursor-pointer rounded-md px-1.5 py-0.5 font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-sidebar-muted-foreground disabled:hover:bg-transparent"
-          disabled={busy}
-          key={label}
-          onClick={run}
-          type="button"
-        >
+        <Button disabled={busy} key={label} onClick={run} size="xs" variant="sidebar">
           {label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -2757,7 +2749,7 @@ export function SidebarHqStatus({
 }) {
   // Catching up or slow, HQ is working: its spinner turns.
   const working = kind === "syncing" || kind === "slow";
-  const spinner = <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />;
+  const spinner = <Spinner aria-hidden="true" size="xs" tone="muted" />;
   if (compact && kind !== "syncing") {
     return (
       <Tooltip>
@@ -2765,16 +2757,16 @@ export function SidebarHqStatus({
           render={
             onAgain === undefined ? (
               <span
-                className="menu-round-button"
+                className="grid size-8 flex-none place-items-center text-muted-foreground"
                 data-zerops-surface="sidebar-hq-outage"
                 role="status"
               />
             ) : (
-              <button
-                className="menu-round-button"
+              <Button
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={onAgain}
-                type="button"
+                size="icon-md"
+                variant="sidebar"
               />
             )
           }
@@ -2790,38 +2782,49 @@ export function SidebarHqStatus({
   }
   // Words give way to the header's other members and wrap; the spinner keeps its size.
   const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
+  const words = (
+    <>
+      {working ? spinner : null}
+      {kind === "syncing" ? null : (
+        <span
+          aria-hidden="true"
+          className="line-clamp-2 text-left text-caption leading-tight text-sidebar-muted-foreground"
+        >
+          {line}
+        </span>
+      )}
+      <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
+    </>
+  );
   return (
     <span className="flex min-w-0 flex-col items-start gap-1">
       <Tooltip>
-        <TooltipTrigger
-          render={
-            onAgain === undefined ? (
+        {onAgain === undefined ? (
+          <TooltipTrigger
+            render={
               <span
                 className={cn("inline-flex items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
                 role="status"
               />
-            ) : (
-              <button
-                className={cn("inline-flex cursor-pointer items-center gap-1.5", fit)}
+            }
+          >
+            {words}
+          </TooltipTrigger>
+        ) : (
+          <TooltipTrigger
+            render={
+              <Button
+                className={kind === "syncing" ? "flex shrink-0" : "flex min-w-0"}
                 data-zerops-surface="sidebar-hq-outage"
                 onClick={onAgain}
-                type="button"
+                variant="bare"
               />
-            )
-          }
-        >
-          {working ? spinner : null}
-          {kind === "syncing" ? null : (
-            <span
-              aria-hidden="true"
-              className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
-            >
-              {line}
-            </span>
-          )}
-          <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
-        </TooltipTrigger>
+            }
+          >
+            <span className={cn("inline-flex items-center gap-1.5", fit)}>{words}</span>
+          </TooltipTrigger>
+        )}
         <TooltipPopup side="bottom">
           {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
@@ -3165,50 +3168,48 @@ function ProjectGroupRow<T extends RosterCandidate>({
         ref={rowBox}
       >
         {(() => {
-          const button = (
-            <button
-              aria-current={current ? "true" : undefined}
-              aria-expanded={open}
-              data-zerops-row=""
-              data-zerops-surface="sidebar-project"
-              onClick={() => {
-                if (drag.swallowClick()) return;
-                if (longPress.current.fired) {
-                  longPress.current.fired = false;
-                  return;
-                }
-                onPress();
-              }}
-              onKeyDown={(event) => {
-                const step = projectRowKey({
-                  key: event.key,
-                  modified: event.metaKey || event.ctrlKey || event.altKey,
-                  kind: "group",
-                  open,
-                });
-                if (step === "next" || step === "previous") {
-                  event.preventDefault();
-                  keys.move(event.currentTarget, step === "next" ? 1 : -1);
-                  return;
-                }
-                if (step === "open" || step === "fold") {
-                  event.preventDefault();
-                  onToggle();
-                  return;
-                }
-                if (step === "into") {
-                  event.preventDefault();
-                  onInto();
-                  return;
-                }
-                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-                  event.preventDefault();
-                  openMenu();
-                }
-              }}
-              type="button"
-            />
-          );
+          const button = {
+            "aria-current": current ? ("true" as const) : undefined,
+            "aria-expanded": open,
+            "data-zerops-row": "",
+            "data-zerops-surface": "sidebar-project",
+            onClick: () => {
+              if (drag.swallowClick()) return;
+              if (longPress.current.fired) {
+                longPress.current.fired = false;
+                return;
+              }
+              onPress();
+            },
+            onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+              const step = projectRowKey({
+                key: event.key,
+                modified: event.metaKey || event.ctrlKey || event.altKey,
+                kind: "group",
+                open,
+              });
+              if (step === "next" || step === "previous") {
+                event.preventDefault();
+                keys.move(event.currentTarget, step === "next" ? 1 : -1);
+                return;
+              }
+              if (step === "open" || step === "fold") {
+                event.preventDefault();
+                onToggle();
+                return;
+              }
+              if (step === "into") {
+                event.preventDefault();
+                onInto();
+                return;
+              }
+              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.preventDefault();
+                openMenu();
+              }
+            },
+            type: "button" as const,
+          };
           const cluster = <ProjectCluster faces={faces} more={more} />;
           return lead === undefined ? (
             <Row
@@ -3216,7 +3217,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               lead={cluster}
               meta={<span className="min-w-16" />}
               pressable="band"
-              render={button}
+              render={<button {...button} />}
               size="lg"
               badges={<ProjectNameMarks />}
               title={<span data-zerops-surface="sidebar-project-name">{name}</span>}
@@ -3229,7 +3230,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               mark={cluster}
               mates={mates}
               name={name}
-              render={button}
+              render={<button {...button} />}
               timestampFormat={timestampFormat}
             />
           ) : (
@@ -3240,7 +3241,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
               mark={cluster}
               mates={mates}
               name={name}
-              render={button}
+              render={<button {...button} />}
               timestampFormat={timestampFormat}
             />
           );
@@ -3400,15 +3401,13 @@ function typedIntoField(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-/** The row's stop, armed: its confirm in red words, as tall as the ■ it replaces. */
-const ROW_STOP_ARMED_CLASS =
-  "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const ROW_ACTION_CLASS = "menu-row-action";
-
 import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
-import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
+import {
+  mateArrivalOf,
+  mateState,
+  mateStopStanding,
+} from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
@@ -3700,6 +3699,7 @@ function useMateRowState<T extends RosterCandidate>({
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
     restarting: restartSaid,
+    stop: mateStopStanding(candidate),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4127,7 +4127,7 @@ function MateRowView<T extends RosterCandidate>({
         strong={view.strongName}
         title={
           <span
-            className={cn("menu-name flex min-w-0", renaming && "invisible")}
+            className={cn("flex min-w-0", renaming && "invisible")}
             data-zerops-surface="sidebar-mate-name"
           >
             {project === undefined || sameName(project, name) ? (
@@ -4236,15 +4236,15 @@ function MateRowView<T extends RosterCandidate>({
         </span>
       )}
       {outsideHq || retainedReply === undefined ? null : (
-        <span className="absolute end-2 bottom-2.5">
-          <a
-            className="shrink-0 text-xs text-muted-foreground underline"
-            href={zeropsProjectUrl(candidate.project.id)}
-            target="_blank"
-            rel="noreferrer"
+        <span className="absolute end-2 bottom-2.5 text-caption">
+          <InlineButton
+            render={
+              <a href={zeropsProjectUrl(candidate.project.id)} rel="noreferrer" target="_blank" />
+            }
+            tone="muted"
           >
             Open in Zerops
-          </a>
+          </InlineButton>
         </span>
       )}
       {!menuShown && globe === undefined ? null : (
@@ -4266,15 +4266,16 @@ function MateRowView<T extends RosterCandidate>({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
+                  // Armed, its confirm in red words where the ■ stood.
+                  <Button
                     aria-label={armed ? `Confirm stop ${name}` : `Stop ${name}`}
-                    className={armed ? ROW_STOP_ARMED_CLASS : ROW_ACTION_CLASS}
                     data-armed={armed ? "" : undefined}
                     data-zerops-surface="sidebar-mate-stop"
                     onClick={() => {
                       stepStop({ kind: "press", at: Date.now() });
                     }}
-                    type="button"
+                    size={armed ? "xs" : "icon-sm"}
+                    variant={armed ? "destructive-ghost" : "sidebar"}
                   />
                 }
               >
@@ -4405,6 +4406,7 @@ function MateSecondLine({
     case "moving":
     case "moved":
     case "restarting":
+    case "stop":
       return (
         <span
           className="menu-line2 truncate text-muted-foreground"
@@ -4578,7 +4580,7 @@ function MateSlot({
   }
 }
 
-const TIME_CLASS = "menu-time shrink-0 text-muted-foreground tabular-nums";
+const TIME_CLASS = "shrink-0 text-caption text-muted-foreground tabular-nums";
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
@@ -4816,7 +4818,7 @@ function ComingMateRow({
       render={<button type="button" />}
       size="lg"
       title={
-        <span className="menu-name flex min-w-0">
+        <span className="flex min-w-0">
           {project === undefined || sameName(project, name) ? (
             <span className="min-w-0 truncate">{name}</span>
           ) : (

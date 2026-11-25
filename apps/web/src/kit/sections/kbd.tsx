@@ -23,7 +23,7 @@ function KbdSpecimens() {
         </KbdGroup>
       </Specimen>
       <Specimen label="inside a sentence">
-        <span className="text-sm">
+        <span className="text-body">
           Press <Kbd>⌘</Kbd> <Kbd>Enter</Kbd> to send.
         </span>
       </Specimen>

@@ -7,15 +7,29 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     <div data-slot="table-container" className="relative w-full overflow-x-auto">
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-xs", className)}
+        className={cn("w-full caption-bottom text-caption", className)}
         {...props}
       />
     </div>
   );
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
-  return <thead data-slot="table-header" className={cn("[&_tr]:border-b", className)} {...props} />;
+/**
+ * The column names. `sticky` keeps them at the top of the scrolling box the table sits in, on a
+ * card's ground so the rows pass under them.
+ */
+function TableHeader({
+  className,
+  sticky = false,
+  ...props
+}: React.ComponentProps<"thead"> & { readonly sticky?: boolean }) {
+  return (
+    <thead
+      data-slot="table-header"
+      className={cn("[&_tr]:border-b", sticky && "sticky top-0 z-10 bg-card", className)}
+      {...props}
+    />
+  );
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {

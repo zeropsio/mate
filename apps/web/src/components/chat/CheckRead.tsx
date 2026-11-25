@@ -20,7 +20,7 @@ const SCALE = { stage: 0.62, thumbnail: 0.14 } as const;
 
 const HEADING_CLASS: Record<number, string> = {
   1: "text-2xl font-semibold",
-  2: "text-xl font-semibold",
+  2: "text-title font-semibold",
 };
 
 function Block({ block }: { readonly block: PageBlock }) {
@@ -34,41 +34,41 @@ function Block({ block }: { readonly block: PageBlock }) {
         </p>
       );
     case "text":
-      return <p className="line-clamp-3 text-foreground/80 text-sm">{block.text}</p>;
+      return <p className="line-clamp-3 text-foreground/80 text-body">{block.text}</p>;
     case "link":
       return (
-        <p className="truncate text-info-foreground text-sm underline underline-offset-2">
+        <p className="truncate text-info-foreground text-body underline underline-offset-2">
           {block.text}
         </p>
       );
     case "button":
       return (
-        <p className="w-fit max-w-full truncate rounded-md border border-border px-3 py-1 text-foreground text-sm">
+        <p className="w-fit max-w-full truncate rounded-control border border-border px-3 py-1 text-foreground text-body">
           {block.text}
         </p>
       );
     case "field":
       return (
-        <p className="h-8 w-56 max-w-full truncate rounded-md border border-border px-2 text-muted-foreground text-sm leading-8">
+        <p className="h-8 w-56 max-w-full truncate rounded-control border border-border px-2 text-muted-foreground text-body leading-8">
           {block.text}
         </p>
       );
     case "image":
       return (
-        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-md bg-foreground/8 px-2 text-center text-muted-foreground text-xs">
+        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption">
           {block.text}
         </p>
       );
     case "item":
       return (
-        <p className="flex gap-2 text-foreground/80 text-sm">
+        <p className="flex gap-2 text-foreground/80 text-body">
           <span aria-hidden="true">•</span>
           <span className="line-clamp-2 min-w-0">{block.text}</span>
         </p>
       );
     case "code":
       return (
-        <p className="w-fit max-w-full truncate rounded bg-foreground/8 px-1.5 font-mono text-foreground/80 text-xs">
+        <p className="w-fit max-w-full truncate rounded-mark bg-foreground/8 px-1.5 font-mono text-foreground/80 text-caption">
           {block.text}
         </p>
       );
@@ -126,7 +126,7 @@ function Answers({ answers }: { readonly answers: ZeropsBrowserRead["answers"] }
           <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
             {answer.asked}
           </code>
-          <span className="shrink-0 font-medium text-foreground text-sm">{answer.answer}</span>
+          <span className="shrink-0 font-medium text-foreground text-body">{answer.answer}</span>
         </span>
       ))}
     </span>
@@ -151,7 +151,7 @@ export function CheckRead({
     return size === "stage" ? (
       <Answers answers={read.answers} />
     ) : (
-      <span className="truncate px-1 text-muted-foreground text-xs" data-check-answers>
+      <span className="truncate px-1 text-muted-foreground text-caption" data-check-answers>
         {read.answers[0]!.answer}
       </span>
     );
@@ -164,7 +164,7 @@ export function CheckRead({
     >
       <span
         className={cn(
-          "font-medium text-sm",
+          "font-medium text-body",
           failure !== null ? "text-status-failed-text" : "text-foreground",
         )}
       >

@@ -173,7 +173,7 @@ function PortRow({
   const phone = useMediaQuery("max-sm");
   const where = (
     <span className="inline-flex min-w-0 items-center gap-1.5 font-normal text-muted-foreground">
-      <span className="truncate font-mono text-xs">
+      <span className="truncate font-mono text-caption">
         {port.address ?? `port ${port.publicPort}`}
       </span>
       {port.address === undefined ? null : <CopyButton value={port.address} />}
@@ -191,7 +191,7 @@ function PortRow({
         data={`port:${port.publicPort}`}
         end={
           port.face === "live" ? (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-xs">
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-caption">
               <ShieldIcon aria-hidden="true" className="size-3.5" />
               {firewallWords(port.firewallPolicy, port.ranges)}
             </span>
@@ -391,7 +391,7 @@ function PortForm({
           Add an address
         </Button>
       </div>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-caption">
         {ipType === "IP_V6"
           ? "IPv6 addresses only. A bare address means that address alone (/128)."
           : "IPv4 addresses only. A bare address means that address alone (/32)."}
@@ -415,7 +415,7 @@ function PortForm({
       size="md"
       variant={port === undefined ? "flat" : "inset"}
     >
-      <div className="font-medium text-sm">
+      <div className="font-medium text-body">
         {port === undefined ? "Open a port" : `Who can connect to port ${port.publicPort}`}
       </div>
       {port === undefined ? (
@@ -455,11 +455,11 @@ function PortForm({
               onValueChange={(value) => setIpType(value === "IP_V4" ? "IP_V4" : "IP_V6")}
               value={ipType}
             >
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm h-8">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-body h-8">
                 <Radio value="IP_V6" />
                 IPv6 · free
               </label>
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm h-8">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-body h-8">
                 <Radio disabled={!ownV4} value="IP_V4" />
                 IPv4 · needs your own
               </label>
@@ -477,7 +477,7 @@ function PortForm({
         </div>
       ) : null}
       {port === undefined ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-caption">
           {ipType === "IP_V6" ? "An IPv6 port is reachable only from networks with IPv6. " : ""}
           {ownV4 ? "" : `IPv4 needs ${ctx.placeName}'s own IPv4. `}
           80 and 443 are kept for web addresses.
@@ -492,24 +492,26 @@ function PortForm({
           }
           value={who}
         >
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body">
             <Radio value="only" />
             <span>
               <b className="font-medium">Only these addresses</b>{" "}
-              <span className="text-muted-foreground text-xs">Recommended for a database.</span>
+              <span className="text-muted-foreground text-caption">
+                Recommended for a database.
+              </span>
             </span>
           </label>
           {who === "only" ? rangesList : null}
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body">
             <Radio value="except" />
             <b className="font-medium">Everyone except these addresses</b>
           </label>
           {who === "except" ? rangesList : null}
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body">
             <Radio value="everyone" />
             <span>
               <b className="font-medium">Everyone</b>{" "}
-              <span className="text-muted-foreground text-xs">
+              <span className="text-muted-foreground text-caption">
                 Anyone on the internet can try to connect.
               </span>
             </span>
@@ -517,7 +519,7 @@ function PortForm({
         </RadioGroup>
       </div>
       {problems.length === 0 ? null : (
-        <ul className="grid gap-0.5 text-destructive-foreground text-xs" role="alert">
+        <ul className="grid gap-0.5 text-destructive-foreground text-caption" role="alert">
           {problems.map((problem) => (
             <li key={problem}>{problem}</li>
           ))}

@@ -81,7 +81,7 @@ export function ProjectMergingRow({
         {people === undefined ? (
           <Skeleton className="h-5 w-48" />
         ) : (
-          <span className="text-sm text-foreground">{mergingLine(people)}</span>
+          <span className="text-body text-foreground">{mergingLine(people)}</span>
         )}
         {everyone === undefined ? null : (
           <span className="text-line text-muted-foreground" data-zerops-merging-everyone="">
@@ -190,7 +190,7 @@ export function ProjectMergingView({
   const picked = new Set(draft.people);
   return (
     <div className="flex flex-col gap-4" data-zerops-surface="project-merging">
-      <p className="text-sm text-muted-foreground">{MERGING_IS}</p>
+      <p className="text-body text-muted-foreground">{MERGING_IS}</p>
       <RadioGroup
         aria-label={MERGING_TITLE}
         disabled={locked}
@@ -215,7 +215,7 @@ export function ProjectMergingView({
           <Skeleton className="h-5 w-52" />
         </div>
       ) : choices.kind === "unreadable" ? (
-        <p className="ps-6 text-sm text-muted-foreground">{choices.line}</p>
+        <p className="ps-6 text-body text-muted-foreground">{choices.line}</p>
       ) : (
         <ul
           aria-label="People who merge and release"
@@ -233,7 +233,7 @@ export function ProjectMergingView({
                 />
                 {person.name}
               </Label>
-              <span className="min-w-0 truncate text-sm text-muted-foreground">
+              <span className="min-w-0 truncate text-body text-muted-foreground">
                 {person.always ? `${person.role} · always` : person.role}
               </span>
             </li>
@@ -249,11 +249,11 @@ export function ProjectMergingView({
             {saving ? "Saving…" : "Save"}
           </Button>
           {press.kind === "refused" ? (
-            <span className="min-w-0 text-sm text-destructive-foreground" role="alert">
+            <span className="min-w-0 text-body text-destructive-foreground" role="alert">
               {press.words}
             </span>
           ) : tooMany === undefined ? null : (
-            <span className="min-w-0 text-sm text-muted-foreground">{tooMany}</span>
+            <span className="min-w-0 text-body text-muted-foreground">{tooMany}</span>
           )}
         </div>
       ) : null}
@@ -307,7 +307,7 @@ function MergingRead({
 }) {
   return (
     <div className="flex flex-col gap-3" data-zerops-surface="project-merging">
-      <p className="text-sm text-foreground">
+      <p className="text-body text-foreground">
         {current === null
           ? "Everyone working on this project can merge and release."
           : choices.kind === "unreadable"
@@ -320,7 +320,7 @@ function MergingRead({
           <Skeleton className="h-5 w-48" />
         </div>
       ) : choices.kind === "unreadable" ? (
-        <p className="text-sm text-muted-foreground">{choices.line}</p>
+        <p className="text-body text-muted-foreground">{choices.line}</p>
       ) : (
         <ul
           aria-label="People who merge and release"
@@ -328,13 +328,15 @@ function MergingRead({
         >
           {mergingNow(choices.people, current).map((person) => (
             <li className="flex min-h-7 min-w-0 items-center gap-2" key={person.userId}>
-              <span className="text-sm font-medium text-foreground">{person.name}</span>
-              <span className="min-w-0 truncate text-sm text-muted-foreground">{person.role}</span>
+              <span className="text-body font-medium text-foreground">{person.name}</span>
+              <span className="min-w-0 truncate text-body text-muted-foreground">
+                {person.role}
+              </span>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-sm text-muted-foreground">{MERGERS_WRITERS}</p>
+      <p className="text-body text-muted-foreground">{MERGERS_WRITERS}</p>
     </div>
   );
 }

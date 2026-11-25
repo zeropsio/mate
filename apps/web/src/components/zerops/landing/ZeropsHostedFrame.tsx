@@ -73,7 +73,7 @@ export function ZeropsHostedFrame({
   const [phoneBar, setPhoneBar] = useState<HTMLElement | null>(null);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         {/* The bar's own padding goes; its content sits in the page's column,
             so the lockup lines up with the title and the account with the
@@ -95,7 +95,7 @@ export function ZeropsHostedFrame({
               {standalone ? (
                 <Link
                   aria-label={APP_BASE_NAME}
-                  className="flex h-7 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2"
+                  className="flex h-7 shrink-0 items-center rounded-control text-foreground outline-hidden ring-ring focus-visible:ring-2"
                   to="/"
                 >
                   <MateLockup decorative className="h-6 w-auto" />

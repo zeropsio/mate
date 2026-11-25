@@ -16,7 +16,7 @@
  */
 
 /** A piece of the spine. */
-export const RAIL_LINE = "w-px flex-1 bg-[var(--zerops-rail)]";
+export const RAIL_LINE = "w-px flex-1 bg-rail";
 
 /** The same space, unpainted: what an end of the line gives up. */
 export const RAIL_BLANK = "w-px flex-1";

@@ -498,7 +498,7 @@ export function UsagePage({
           <WorkspacePageContainer className="max-sm:px-4" width="wide">
             {showingLimits ? null : (
               <div className="flex flex-col gap-2 lg:hidden">
-                <p className="text-xs text-muted-foreground md:hidden">{windowLabel}</p>
+                <p className="text-caption text-muted-foreground md:hidden">{windowLabel}</p>
                 <div className="flex min-w-0 flex-wrap gap-2">
                   <UsageScopeFilters
                     scope={scope}
@@ -511,14 +511,14 @@ export function UsagePage({
                 </div>
               </div>
             )}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {showingLimits
                 ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
                 : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
             </p>
             {showingLimits ? (
               baseline === "unavailable" ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   Subscription limits could not be read.{" "}
                   <InlineButton onClick={identityRead.refresh}>Try again</InlineButton>
                 </p>
@@ -536,12 +536,12 @@ export function UsagePage({
               read.kind === "unavailable" ? (
                 <UsageReadStatus read={read} label="Usage" onRetry={refresh} />
               ) : (
-                <p className="text-sm text-muted-foreground">{state.message}</p>
+                <p className="text-body text-muted-foreground">{state.message}</p>
               )
             ) : (
               <>
                 {report?.coverageMore || report?.groupsMore ? (
-                  <p role="status" className="text-xs text-muted-foreground">
+                  <p role="status" className="text-caption text-muted-foreground">
                     This report contains more sources or groups than can be shown.
                   </p>
                 ) : null}
@@ -564,7 +564,7 @@ export function UsagePage({
                               : formatUsd(merged.costUsd)
                             : formatTokens(merged.totalTokens)}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-caption text-muted-foreground">
                           {sessionsLabel}
                           {metric === "cost" && (
                             <>
@@ -579,7 +579,7 @@ export function UsagePage({
                       </div>
 
                       {dimensions.mates.length === 1 ? (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-body text-muted-foreground">
                           {[
                             dimensions.mates[0]!.mateName,
                             dimensions.mates[0]!.projectName,
@@ -614,7 +614,7 @@ export function UsagePage({
                         return (
                           <div key={provider} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-4">
-                              <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                              <span className="flex min-w-0 items-center gap-2 text-body text-foreground">
                                 <span
                                   aria-hidden
                                   className="size-2 shrink-0 rounded-full"
@@ -627,12 +627,12 @@ export function UsagePage({
                                   <span className="truncate">
                                     {PROVIDER_PRESENTATION[provider].label}
                                   </span>
-                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums max-sm:text-xs">
+                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums max-sm:text-caption">
                                     {sessionLabel}
                                   </span>
                                 </span>
                               </span>
-                              <span className="shrink-0 text-sm font-medium text-foreground tabular-nums">
+                              <span className="shrink-0 text-body font-medium text-foreground tabular-nums">
                                 {metric === "cost"
                                   ? totals?.costKnown === false
                                     ? unpriced
@@ -640,7 +640,7 @@ export function UsagePage({
                                   : formatTokens(totals?.totalTokens ?? 0)}
                               </span>
                             </div>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-caption text-muted-foreground">
                               {metric === "cost"
                                 ? `${totals.costKnown === false ? unpriced : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
                                 : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? unpriced : formatUsageCost(totals)}`}
@@ -651,7 +651,7 @@ export function UsagePage({
                     </div>
                   )}
                   <div className="flex min-w-0 flex-col gap-3">
-                    <h2 className="text-sm font-medium text-foreground">
+                    <h2 className="text-body font-medium text-foreground">
                       {isPast24Hours ? "Hourly" : "Daily"}{" "}
                       {metric === "tokens" ? "processed tokens" : "priced cost"}
                     </h2>
@@ -668,11 +668,11 @@ export function UsagePage({
                     </div>
                     {settling || sections.periods.kind !== "read" ? (
                       <div className="ml-16 flex flex-col gap-1" aria-hidden>
-                        <div className="h-56 rounded-sm bg-muted/35" />
+                        <div className="h-56 rounded-control bg-muted/35" />
                         <span className="text-3xs">&nbsp;</span>
                       </div>
                     ) : metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-body text-muted-foreground">
                         Recorded tokens have no usable prices.
                       </p>
                     ) : (
@@ -691,14 +691,14 @@ export function UsagePage({
                 </section>
 
                 <section className="flex flex-col gap-2">
-                  <h2 className="text-sm font-medium text-foreground">Agent-reported costs</h2>
-                  <p className="text-xs text-muted-foreground">
+                  <h2 className="text-body font-medium text-foreground">Agent-reported costs</h2>
+                  <p className="text-caption text-muted-foreground">
                     Reported by the coding agent, separately from the API-equivalent token-price
                     estimate.
                   </p>
-                  <div className="min-h-5 text-sm tabular-nums">
+                  <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
-                      <div className="h-5 w-36 rounded-sm bg-muted" />
+                      <div className="h-5 w-36 rounded-mark bg-muted" />
                     ) : costsHidden ? (
                       <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
@@ -717,7 +717,7 @@ export function UsagePage({
 
                 <section className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+                    <h2 className="text-body font-medium text-foreground">Breakdown</h2>
                     <div className="hidden sm:block">
                       <ToggleGroup
                         aria-label="Usage breakdown"
@@ -765,12 +765,12 @@ export function UsagePage({
                     <UsageReadStatus read={sections.models} label="model usage" onRetry={refresh} />
                   ) : null}
                   {!settling && breakdown === "model" ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-caption text-muted-foreground">
                       A turn can use several models. Each model row shows its own consumption.
                     </p>
                   ) : null}
                   {settling ? (
-                    <div className="h-44 rounded-sm bg-muted/35" />
+                    <div className="h-44 rounded-control bg-muted/35" />
                   ) : breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}
@@ -785,7 +785,7 @@ export function UsagePage({
                       onScopeChange={onScopeChange}
                     />
                   ) : breakdown === "model" ? (
-                    <table className="w-full table-fixed text-sm">
+                    <table className="w-full table-fixed text-body">
                       <colgroup>
                         <col className="w-2/5" />
                         <col className="w-1/5" />
@@ -793,7 +793,7 @@ export function UsagePage({
                         <col className="w-1/5" />
                       </colgroup>
                       <thead>
-                        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
                           <th className="py-2 font-normal">Model</th>
                           <th className="py-2 text-right font-normal">Priced cost</th>
                           <th className="py-2 text-right font-normal">Share</th>
@@ -818,15 +818,20 @@ export function UsagePage({
                                 className="border-b border-border/50 transition-colors hover:bg-muted/50"
                               >
                                 <td className="py-2 text-foreground">
-                                  <button
-                                    type="button"
-                                    className="flex max-w-full cursor-pointer items-center gap-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+                                  <InlineButton
+                                    tone="plain"
+                                    className="max-w-full"
                                     aria-label={`Open ${model.model}`}
                                     onClick={() => setOpenModel(model)}
                                   >
-                                    <ProviderMark provider={model.provider} className="size-3.5" />
-                                    <span className="truncate">{model.model}</span>
-                                  </button>
+                                    <span className="flex min-w-0 items-center gap-2">
+                                      <ProviderMark
+                                        provider={model.provider}
+                                        className="size-3.5"
+                                      />
+                                      <span className="truncate">{model.model}</span>
+                                    </span>
+                                  </InlineButton>
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
@@ -848,7 +853,7 @@ export function UsagePage({
                       </tbody>
                     </table>
                   ) : (
-                    <table className="w-full table-fixed text-sm">
+                    <table className="w-full table-fixed text-body">
                       <colgroup>
                         <col className="w-2/5" />
                         {activeProviders.map((provider) => (
@@ -858,7 +863,7 @@ export function UsagePage({
                         <col style={{ width: timeValueColumnWidth }} />
                       </colgroup>
                       <thead>
-                        <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
                           <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
                           {activeProviders.map((provider) => (
                             <th key={provider} className="py-2 text-right font-normal">
@@ -979,7 +984,7 @@ function UsageTotals({
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-foreground">Totals</h2>
+      <h2 className="text-body font-medium text-foreground">Totals</h2>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
         {USAGE_TOTALS.map(([label, key]) => (
           <Metric
@@ -987,7 +992,7 @@ function UsageTotals({
             label={label}
             value={
               totals === null ? (
-                <span aria-hidden className="block h-6 w-16 rounded-sm bg-muted" />
+                <span aria-hidden className="block h-6 w-16 rounded-mark bg-muted" />
               ) : unknown && key !== "totalTokens" ? (
                 "Unknown"
               ) : (
@@ -1012,10 +1017,10 @@ function Metric({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-caption text-muted-foreground">{label}</span>
       <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
       {detail === undefined ? null : (
-        <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>
+        <span className="truncate text-caption text-muted-foreground tabular-nums">{detail}</span>
       )}
     </div>
   );
@@ -1071,14 +1076,14 @@ function UsageScopeChips({
             <PersonAvatar name={chip.owner.name} picture={chip.owner.avatarUrl} size={16} />
           )}
           <span className="truncate">{chip.label}</span>
-          <button
-            type="button"
+          <Button
+            variant="ghost-muted"
+            size="icon-2xs"
             aria-label={`Clear ${chip.dimension} filter`}
-            className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
           >
             <XIcon className="size-3" aria-hidden />
-          </button>
+          </Button>
         </span>
       </WorkspaceBreadcrumbItem>
     </span>
@@ -1200,13 +1205,13 @@ export function UsageSummarySkeleton() {
   return (
     <div className="flex min-h-44 flex-col gap-5" aria-hidden>
       <div className="flex flex-col gap-1">
-        <div className="h-10 w-36 rounded-sm bg-muted" />
-        <div className="h-4 w-32 rounded-sm bg-muted" />
+        <div className="h-10 w-36 rounded-mark bg-muted" />
+        <div className="h-4 w-32 rounded-mark bg-muted" />
       </div>
-      <div className="h-5 w-40 rounded-sm bg-muted" />
+      <div className="h-5 w-40 rounded-mark bg-muted" />
       <div className="flex flex-col gap-1">
-        <div className="h-5 w-36 rounded-sm bg-muted" />
-        <div className="h-4 w-32 rounded-sm bg-muted" />
+        <div className="h-5 w-36 rounded-mark bg-muted" />
+        <div className="h-4 w-32 rounded-mark bg-muted" />
       </div>
     </div>
   );

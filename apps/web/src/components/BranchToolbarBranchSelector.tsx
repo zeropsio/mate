@@ -53,6 +53,7 @@ import {
   resolveThreadPr,
 } from "./ThreadStatusIndicators";
 import { ComposerControl } from "./chat/ComposerControl";
+import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { getVirtualizedScrollFadeClassName } from "./ui/scroll-area";
 import {
@@ -672,7 +673,7 @@ export function BranchToolbarBranchSelector({
               <span className="truncate font-medium">
                 Checkout {sourceControlPresentation.terminology.singular}
               </span>
-              <span className="truncate text-muted-foreground text-xs">{prReference}</span>
+              <span className="truncate text-muted-foreground text-caption">{prReference}</span>
             </span>
           </div>
         </ComboboxItem>
@@ -751,19 +752,23 @@ export function BranchToolbarBranchSelector({
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
+                <Button
                   aria-label={branchPrTooltip}
                   onClick={(event) => openPrLink(event, branchPrStatus.url)}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium tabular-nums transition-colors hover:bg-muted/60",
-                    branchPrStatus.colorClass,
-                  )}
+                  size="2xs"
+                  variant="ghost"
                 />
               }
             >
-              <ChangeRequestStatusIcon className="size-3" />
-              <span>#{branchPr.number}</span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 tabular-nums",
+                  branchPrStatus.colorClass,
+                )}
+              >
+                <ChangeRequestStatusIcon className="size-3 text-current" />
+                <span>#{branchPr.number}</span>
+              </span>
             </TooltipTrigger>
             <TooltipPopup side="top">{branchPrTooltip}</TooltipPopup>
           </Tooltip>
@@ -787,7 +792,7 @@ export function BranchToolbarBranchSelector({
             >
               <span
                 data-composer-label-motion
-                className="flex w-full max-w-[240px] origin-left transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.32,0.72,0,1)] group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
+                className="flex w-full max-w-[240px] origin-left transition-[opacity,transform] duration-180 ease-drawer group-data-[compact]/composer-context:[transform:translateX(-0.25rem)_scaleX(0.95)] group-data-[compact]/composer-context:opacity-0 motion-reduce:transform-none motion-reduce:transition-opacity"
               >
                 <MiddleTruncate value={triggerLabel} />
               </span>
@@ -864,7 +869,7 @@ export function BranchToolbarBranchSelector({
                 render={
                   <label
                     htmlFor={startFromOriginSwitchId}
-                    className="flex cursor-pointer items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-xs"
+                    className="flex cursor-pointer items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-caption"
                   >
                     <span className="flex min-w-0 items-center gap-1.5 font-medium text-muted-foreground">
                       <RefreshCwIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />

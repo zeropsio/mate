@@ -44,7 +44,9 @@ import {
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
+import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import {
@@ -60,7 +62,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { Tab, TabStrip, useTabStripCompact } from "./ui/tab-strip";
+import { Tab, TabPress, TabStrip, useTabStripCompact } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -236,7 +238,7 @@ type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
  * menu glyph's size itself, and a card's own class replaces it.
  */
 function ExpressLauncherMark({ className }: { readonly className?: string }) {
-  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-sm")} />;
+  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-mark")} />;
 }
 
 /** A launcher card's mark: a lucide glyph, or a product's own mark (Adobe Express's). */
@@ -394,14 +396,11 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
     return (
       <span className="flex w-full min-w-0 items-center gap-2">
         <Icon className="size-4 shrink-0" />
-        <span className="truncate font-medium text-sm">{action.label}</span>
+        <span className="truncate font-medium text-body">{action.label}</span>
         {action.badgeCount > 0 ? (
-          <span
-            aria-hidden
-            className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-3xs font-semibold tabular-nums text-primary-foreground"
-          >
+          <Badge aria-hidden tone="info">
             {action.badgeCount}
-          </span>
+          </Badge>
         ) : null}
         {action.shortcut === null ? null : (
           // A key's letter says nothing to a finger.
@@ -411,13 +410,13 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
     );
   };
 
-  const cardShellClass =
-    "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
-  const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
+  // What a card says: its head over its words, on the card's padding.
+  const cardBodyClass = "flex w-full min-w-0 flex-col items-start gap-1 p-3 @[22rem]:p-3.5";
   // Two lines held under every name, whether its words need one or two: every card is one height,
   // and none grows when a neighbour's words wrap. A phone's one column is wide enough for every
   // card's words on one line, so the second is not held there: nine rows fit a screen.
-  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed max-sm:min-h-0";
+  const cardTextClass =
+    "min-h-[2lh] text-muted-foreground text-caption leading-relaxed max-sm:min-h-0";
 
   return (
     <div
@@ -427,27 +426,31 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
       aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
-        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
-        // The panel topbar sits above this container; matching bottom padding
-        // keeps the cards centered against the full panel, not the leftover.
-        "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
+        "flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
+        // The panel topbar sits above this container; a matching room under the
+        // cards keeps them centered against the full panel, not the leftover.
+        "after:h-[calc(var(--workspace-topbar-height)+--spacing(6))] after:shrink-0",
       )}
     >
       {/* m-auto, not justify-center: a launcher taller than the panel scrolls
           from its title instead of losing the top under the tab bar. */}
       <div className="m-auto w-full max-w-lg">
         <div className="mb-4 text-center">
-          <h3 className="font-medium text-foreground text-sm">Open a page</h3>
-          <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
+          <h3 className="font-medium text-foreground text-body">Open a page</h3>
+          <p className="mt-1 text-muted-foreground text-caption">
+            Choose what to show beside the chat.
+          </p>
         </div>
         {/* Rows of one height, the tallest card's: words that need a third line in a narrow panel
             raise every card with them. */}
         <div className="grid auto-rows-fr grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
             action.available ? (
-              <button
+              <Card
                 key={action.label}
-                type="button"
+                pressable
+                variant="flat"
+                className="min-w-0"
                 onClick={action.onClick}
                 // Move, not enter: a list the arrow keys scroll slides cards under a
                 // resting pointer, and an enter would take the highlight back.
@@ -458,19 +461,21 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
                   )
                 }
                 data-surface-launcher-highlighted={isHighlighted(action) ? "" : undefined}
-                className={cn(
-                  "cursor-pointer transition hover:border-border hover:bg-accent/60",
-                  cardShellClass,
-                  isHighlighted(action) && highlightedCardClass,
-                )}
+                data-highlighted={isHighlighted(action) ? "" : undefined}
               >
-                {cardHead(action)}
-                <span className={cardTextClass}>{action.description}</span>
-              </button>
+                <span className={cardBodyClass}>
+                  {cardHead(action)}
+                  <span className={cardTextClass}>{action.description}</span>
+                </span>
+              </Card>
             ) : (
-              <div key={action.label} className={cn("opacity-40", cardShellClass)}>
-                {cardHead(action)}
-                <span className={cardTextClass}>{action.unavailableHint}</span>
+              <div key={action.label} className="grid opacity-40">
+                <Card className="min-w-0" variant="flat">
+                  <span className={cardBodyClass}>
+                    {cardHead(action)}
+                    <span className={cardTextClass}>{action.unavailableHint}</span>
+                  </span>
+                </Card>
               </div>
             ),
           )}
@@ -558,7 +563,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "persona":
       return <PersonaIcon className="size-3 shrink-0" />;
     case "express":
-      return <ExpressMark className="size-3.5 shrink-0 rounded-xs" />;
+      return <ExpressMark className="size-3.5 shrink-0 rounded-mark" />;
     case "vault":
       return <KeyRound className="size-3 shrink-0" />;
     case "overview":
@@ -594,26 +599,22 @@ function SurfaceTabFace(props: {
   if (touch && !compact) {
     return (
       <>
-        <button
-          className="flex min-w-0 cursor-pointer items-center gap-1"
-          onClick={props.onActivate}
-          type="button"
-        >
+        <TabPress onClick={props.onActivate}>
           <span className="relative flex size-4 shrink-0 items-center justify-center">
             {props.icon}
             {pendingDot}
           </span>
           <span className="truncate">{props.title}</span>
-        </button>
+        </TabPress>
         {props.active ? (
-          <button
+          <Button
             aria-label={`Close ${props.title}`}
-            className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm"
             onClick={props.onClose}
-            type="button"
+            size="icon-2xs"
+            variant="ghost"
           >
-            <X className="size-3" />
-          </button>
+            <X />
+          </Button>
         ) : null}
       </>
     );
@@ -623,11 +624,10 @@ function SurfaceTabFace(props: {
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <TabPress
               aria-label={props.title}
-              className="relative flex size-4 cursor-pointer items-center justify-center"
+              className="relative size-4 justify-center"
               onClick={props.onActivate}
-              type="button"
             />
           }
         >
@@ -645,15 +645,7 @@ function SurfaceTabFace(props: {
         {pendingDot}
       </PanelTabCloseButton>
       <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              className="cursor-pointer flex min-w-0 items-center"
-              onClick={props.onActivate}
-            />
-          }
-        >
+        <TooltipTrigger render={<TabPress onClick={props.onActivate} />}>
           <span className="truncate">{props.title}</span>
         </TooltipTrigger>
         <TooltipPopup>{props.title}</TooltipPopup>
@@ -796,7 +788,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           // the titlebar's height: a compact row re-centers the layout
           // controls a few pixels higher and the cluster jumps on open.
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
-          ownsDesktopTitleBar && "wco:pr-[calc(var(--workspace-native-controls-inset)+6rem)]",
+          // Where Windows draws its own controls over the bar, the bar stops short of them.
+          ownsDesktopTitleBar &&
+            "wco:me-[calc(var(--workspace-native-controls-inset)+6rem)] wco:pr-0",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
         data-right-panel-tabbar

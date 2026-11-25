@@ -29,7 +29,6 @@ import {
   type GithubConnectPickerViewProps,
 } from "~/components/zerops/github/GithubConnectPicker";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type {
   GitMirrorAppEntry,
   GitMirrorApps,
@@ -241,8 +240,8 @@ const ACTIONS = {
 
 function Rows() {
   return (
-    <section className="grid w-180 gap-1 rounded-2xl border bg-card p-3" data-harness="rows">
-      <h2 className="px-2 text-sm font-medium text-muted-foreground">Repositories</h2>
+    <section className="grid w-180 gap-1 rounded-card border bg-card p-3" data-harness="rows">
+      <h2 className="px-2 text-body font-medium text-muted-foreground">Repositories</h2>
       <RepoRowsView
         actions={ACTIONS}
         admin
@@ -435,7 +434,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

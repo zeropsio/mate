@@ -26,6 +26,9 @@ import {
 import type { ZeropsDataConsoleNode, ZeropsDataConsolePath } from "@t3tools/contracts";
 import type { ReactElement } from "react";
 
+import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { Button } from "~/components/ui/button";
+import { Row } from "~/components/ui/row";
 import { cn } from "~/lib/utils";
 
 interface ZeropsDataTreeProps {
@@ -115,7 +118,7 @@ function renderNodeList({
     if (failedKeys.has(key)) return <></>;
     return (
       <p
-        className="text-muted-foreground text-xs"
+        className="text-muted-foreground text-caption"
         data-zerops-data-tree-loading={key}
         style={{ paddingLeft: depth * 12 }}
       >
@@ -129,7 +132,7 @@ function renderNodeList({
   return (
     <ul className="space-y-0.5" data-zerops-data-tree-list={key}>
       {visibleNodes.length === 0 ? (
-        <li className="text-muted-foreground text-xs" style={{ paddingLeft: depth * 12 }}>
+        <li className="text-muted-foreground text-caption" style={{ paddingLeft: depth * 12 }}>
           {emptyLabel}
         </li>
       ) : null}
@@ -156,15 +159,16 @@ function renderNodeList({
       ))}
       {entry.nextCursor !== undefined ? (
         <li style={{ paddingLeft: depth * 12 }}>
-          <button
-            className="text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2 disabled:opacity-50"
+          <Button
+            className="-ms-2"
             data-zerops-data-tree-load-more={key}
             disabled={loadingKeys.has(key)}
             onClick={() => onLoadMore(path, entry.nextCursor as string)}
-            type="button"
+            size="xs"
+            variant="link"
           >
             Load more
-          </button>
+          </Button>
         </li>
       ) : null}
     </ul>
@@ -209,31 +213,32 @@ function renderContainerNode({
 
   return (
     <div>
-      <span className="inline-flex items-center gap-1">
-        <button
+      <span className="flex items-center gap-1">
+        <Button
           aria-expanded={expanded}
-          className="text-xs"
+          aria-label={expanded ? `Fold ${node.name}` : `Unfold ${node.name}`}
           data-zerops-data-tree-toggle={key}
           onClick={() => onToggleNode(node)}
-          type="button"
+          size="icon-2xs"
+          variant="ghost-muted"
         >
-          {expanded ? "▾" : "▸"}
-        </button>
+          {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+        </Button>
         {onSelectContainer === undefined ? (
-          <span className="text-xs">{node.name}</span>
+          <span className="text-caption">{node.name}</span>
         ) : (
-          <button
-            aria-selected={selected}
-            className={cn(
-              "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1 text-left text-xs hover:bg-accent",
-              selected && "bg-accent font-semibold text-foreground",
-            )}
-            data-zerops-data-tree-container={key}
-            onClick={() => onSelectContainer(node)}
-            type="button"
-          >
-            {node.name}
-          </button>
+          <span className={cn("min-w-0 flex-1 rounded-control", selected && "bg-accent")}>
+            <Row
+              aria-selected={selected}
+              data-zerops-data-tree-container={key}
+              onClick={() => onSelectContainer(node)}
+              pressable
+              render={<button type="button" />}
+              size="xs"
+              strong={selected}
+              title={node.name}
+            />
+          </span>
         )}
       </span>
       {expanded
@@ -270,28 +275,28 @@ function renderLeafNode({
   const selected = key === selectedNodeKey;
 
   return (
-    <button
-      aria-selected={selected}
-      className={cn(
-        "flex w-full items-start justify-between gap-3 rounded px-1 py-1 text-left text-xs hover:bg-accent",
-        selected && "bg-accent font-semibold text-foreground",
-      )}
-      data-zerops-data-tree-node={key}
-      data-zerops-data-tree-node-kind={node.kind}
-      onClick={() => onSelectNode(node)}
-      type="button"
-    >
-      <span>{node.name}</span>
-      <span className="font-normal text-muted-foreground">
-        {node.meta?.entryType
-          ? `${node.meta.entryType} · ${describeKeyExpiry(node.meta)}`
-          : node.kind === "tabular"
-            ? node.meta?.count === undefined
-              ? "Rows unknown"
-              : `${node.meta.count.toLocaleString()} rows (last count)`
-            : `${node.meta?.size === undefined ? "Size unknown" : `${node.meta.size} B`}${node.meta?.modified ? ` · ${node.meta.modified}` : ""}`}
-      </span>
-    </button>
+    <div className={cn("rounded-control", selected && "bg-accent")}>
+      <Row
+        aria-selected={selected}
+        data-zerops-data-tree-node={key}
+        data-zerops-data-tree-node-kind={node.kind}
+        meta={
+          node.meta?.entryType
+            ? `${node.meta.entryType} · ${describeKeyExpiry(node.meta)}`
+            : node.kind === "tabular"
+              ? node.meta?.count === undefined
+                ? "Rows unknown"
+                : `${node.meta.count.toLocaleString()} rows (last count)`
+              : `${node.meta?.size === undefined ? "Size unknown" : `${node.meta.size} B`}${node.meta?.modified ? ` · ${node.meta.modified}` : ""}`
+        }
+        onClick={() => onSelectNode(node)}
+        pressable
+        render={<button type="button" />}
+        size="xs"
+        strong={selected}
+        title={node.name}
+      />
+    </div>
   );
 }
 

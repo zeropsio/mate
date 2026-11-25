@@ -38,7 +38,6 @@ import { ZeropsChangeFaceDialog } from "~/components/zerops/ZeropsChangeFaceDial
 import { mateFaceOf } from "~/components/zerops/ZeropsChangeFaceDialog.logic";
 import { deleteMateVerb } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { AppRouter } from "~/router";
@@ -287,7 +286,7 @@ function Harness() {
         </aside>
       </SidebarProvider>
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-        <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
+        <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
       </main>
       {dialog === null ? null : (
         <ZeropsChangeFaceDialog
@@ -318,7 +317,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 openAccountLifetime("design-face-harness");
 
 const router = createRouter({

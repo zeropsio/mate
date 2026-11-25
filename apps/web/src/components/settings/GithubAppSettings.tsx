@@ -322,7 +322,7 @@ export function GithubAppView({
                   : "Add a GitHub account"}
               </Button>
               {apps.length === 0 ? null : (
-                <span className="text-xs">
+                <span className="text-caption">
                   <InlineButton
                     disabled={working}
                     onClick={() => {
@@ -338,7 +338,7 @@ export function GithubAppView({
             </div>
           )}
           {apps.length > 0 && !manage ? (
-            <p className="text-xs text-muted-foreground">{GITHUB_WHO_CAN}</p>
+            <p className="text-caption text-muted-foreground">{GITHUB_WHO_CAN}</p>
           ) : null}
         </>
       ) : null}
@@ -354,7 +354,7 @@ function AccountFace({
   readonly account: string | null;
   readonly type: "Organization" | "User" | null;
 }) {
-  const shape = type === "User" ? "rounded-full" : "rounded-md";
+  const shape = type === "User" ? "rounded-full" : "rounded-control";
   return account === null ? (
     <span aria-hidden className={`size-5 shrink-0 bg-muted ${shape}`} />
   ) : (
@@ -418,7 +418,7 @@ function BotGroup({
   return (
     <li className="grid gap-1.5" data-zerops-surface="settings-github-app">
       <div className="flex min-h-7 items-center gap-2">
-        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        <p className="min-w-0 flex-1 text-caption text-muted-foreground">
           <span className="font-medium text-foreground">{app.name}</span> · {app.botLogin}
           {app.personal ? (
             <>
@@ -431,7 +431,7 @@ function BotGroup({
           {setUp === null ? null : ` · ${setUp}`}
         </p>
         {underWay === null ? null : (
-          <span className="shrink-0 text-xs text-muted-foreground" role="status">
+          <span className="shrink-0 text-caption text-muted-foreground" role="status">
             {underWay}
           </span>
         )}
@@ -460,18 +460,18 @@ function BotGroup({
             </Menu>
           </span>
         ) : (
-          <span className="shrink-0 text-xs">
+          <span className="shrink-0 text-caption">
             <OutLink href={app.appUrl}>The bot on GitHub</OutLink>
           </span>
         )}
       </div>
       {unsealed ? (
-        <p className="text-xs text-foreground" data-zerops-surface="settings-github-unsealed">
+        <p className="text-caption text-foreground" data-zerops-surface="settings-github-unsealed">
           {NEEDS_REMAKE}
         </p>
       ) : null}
       {rows === 0 ? (
-        <p className="border-y border-border py-2 text-xs text-muted-foreground">
+        <p className="border-y border-border py-2 text-caption text-muted-foreground">
           No GitHub account added yet.
         </p>
       ) : (
@@ -483,11 +483,11 @@ function BotGroup({
             const by = installation.addedBy === null ? undefined : nameOf(installation.addedBy);
             return (
               <li
-                className="flex items-center gap-2.5 py-2 text-xs max-sm:flex-wrap"
+                className="flex items-center gap-2.5 py-2 text-caption max-sm:flex-wrap"
                 key={installation.id}
               >
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-sm text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
                   {installation.account ?? `Installation ${String(installation.id)}`}
                 </span>
                 <span className="min-w-0 flex-1 text-muted-foreground max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
@@ -512,13 +512,13 @@ function BotGroup({
           })}
           {app.waiting.map((installation) => (
             <li
-              className="grid gap-0.5 py-2 text-xs"
+              className="grid gap-0.5 py-2 text-caption"
               data-zerops-surface="settings-github-waiting"
               key={installation.id}
             >
               <span className="flex items-center gap-2.5 max-sm:flex-wrap">
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-sm text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
                   {installation.account}
                 </span>
                 <span className="min-w-0 flex-1 text-status-attention-text max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
@@ -559,7 +559,7 @@ function BotGroup({
         </ul>
       )}
       {app.privateTo === null ? null : (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           This bot can only be added to {app.privateTo.owner}. To add other GitHub accounts,{" "}
           {app.privateTo.settings ? (
             <>
@@ -575,23 +575,23 @@ function BotGroup({
       )}
       {removing ? (
         <div
-          className="grid gap-2 rounded-md bg-muted/40 p-3"
+          className="grid gap-2 rounded-control bg-muted/40 p-3"
           data-zerops-surface="settings-github-remove"
           role="group"
         >
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-body font-medium text-foreground">
             Remove {app.name} from {organization ?? "this organization"}?
           </p>
           {app.uses.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               No repository in Mate is connected through it.
             </p>
           ) : (
             <>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 These stop until they're connected through another bot or a token:
               </p>
-              <ul className="grid gap-1 text-xs">
+              <ul className="grid gap-1 text-caption">
                 {app.uses.map((use) => (
                   <li
                     className="text-foreground"
@@ -606,7 +606,7 @@ function BotGroup({
               </ul>
             </>
           )}
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             The bot stays on GitHub: delete it in its settings there.
           </p>
           <div className="flex gap-2">

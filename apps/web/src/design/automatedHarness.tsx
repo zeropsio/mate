@@ -43,7 +43,6 @@ import {
 } from "~/components/zerops/MateTaskCard";
 import { MateFace } from "~/components/zerops/primitives";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
 
@@ -210,7 +209,7 @@ const HOOK = {
 function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
     <section className="grid gap-2">
-      <h2 className="text-xs font-medium text-muted-foreground uppercase">{title}</h2>
+      <h2 className="text-caption font-medium text-muted-foreground uppercase">{title}</h2>
       {children}
     </section>
   );
@@ -537,7 +536,6 @@ function Settle({ landed }: { readonly landed: boolean }) {
 const settle = params.get("settle");
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

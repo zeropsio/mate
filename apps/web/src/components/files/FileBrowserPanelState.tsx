@@ -38,7 +38,7 @@ export function FileBrowserPanelState(
   if (state.kind === "loading") {
     // Where the tree's first row paints, never centred: the tree takes its place, not the middle.
     return (
-      <div role="status" className="min-h-0 flex-1 px-3 py-1.5 text-xs text-muted-foreground">
+      <div role="status" className="min-h-0 flex-1 px-3 py-1.5 text-caption text-muted-foreground">
         Loading files…
       </div>
     );
@@ -47,7 +47,7 @@ export function FileBrowserPanelState(
   return (
     <div role="alert" className="flex min-h-0 flex-1 items-center justify-center p-4">
       <div className="flex max-w-sm flex-col items-start gap-3">
-        <p className="text-xs leading-relaxed text-foreground">{state.message}</p>
+        <p className="text-caption leading-relaxed text-foreground">{state.message}</p>
         <Button
           type="button"
           variant="secondary"

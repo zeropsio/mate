@@ -8,10 +8,8 @@
  * name; `&resolves=none` has a `reading` repo find no recipe; and the project
  * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
  * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
- * has a `reading` repo shut the door, to watch nothing move). The dialog ends with what happens
- * next (board D1): up, signed in, development set up with the project's code for `recipe` and
- * `reading`; up, signed in, told what to build for `none` — `&resolves=none` turns one into the
- * other in place, to watch nothing move. The die at the name's end rolls another name. A press on
+ * has a `reading` repo shut the door, to watch nothing move). *Shuffle* rolls another face and
+ * name; *Mate access & persona setup* opens the persona and who can work with it. A press on
  * Add gives way to the new Mate's page at once, the steps this tab runs advancing under its copy
  * (`pressPage.tsx`, `&fail=` stops one). Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
@@ -37,9 +35,9 @@ import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import { proposedEnvironmentName } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
 import { newMateDoor } from "@t3tools/client-runtime/zerops/newMateDoor";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
+import { HarnessAccess } from "./accessFixtures";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
 const params = new URLSearchParams(location.search);
@@ -162,7 +160,7 @@ function Harness() {
   if (landed !== null) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <p className="text-sm text-muted-foreground" data-harness-landed>
+        <p className="text-body text-muted-foreground" data-harness-landed>
           Arrived at {landed}
         </p>
       </div>
@@ -209,6 +207,13 @@ function Harness() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
+        access={(onChange, mate = "") => (
+          <HarnessAccess
+            addLabel="Add people to this Mate"
+            label={`Who can work with ${mate.length === 0 ? "this Mate" : mate}`}
+            onChange={onChange}
+          />
+        )}
         closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
         defaultName={
           role === "dev"
@@ -253,7 +258,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

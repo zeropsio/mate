@@ -115,16 +115,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "color-scheme",
     title: "Color scheme",
     to: "/settings/appearance",
-    // The scheme tiles sit at the top of the Appearance section.
-    targetId: "appearance",
-  },
-  {
-    id: "theme",
-    title: "Themes",
-    to: "/settings/appearance",
-    // Theme cards live directly under the scheme tiles; the section is the
-    // stable scroll destination for both.
-    targetId: "appearance",
   },
   {
     // Prefixed because the slider control already owns the `appearance-contrast` id.

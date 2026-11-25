@@ -1,5 +1,5 @@
 import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
-import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { projectServicesAtom, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
@@ -18,24 +18,24 @@ import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 
-import { RestartMateWarning } from "./mateActions/RestartMateConfirmation";
+import { RestartMateWarning } from "./mateActions/MateVerbConfirmation";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
  * candidate to connect to or wait on, and a way to New project (also where an
  * exhausted pool falls back to, since that phase has nothing ready-made to
- * pick). Creating a project happens in its dialog over this page
+ * pick). Creating a project happens on its own page
  * (`ZeropsNewProjectHost`), not here.
  */
 
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { PlayIcon, PlusIcon } from "lucide-react";
@@ -109,7 +109,7 @@ import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
-import { submitZeropsWrite } from "~/zerops/zeropsWrite";
+import { startMate } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
 import {
   activityMomentOf,
@@ -531,7 +531,7 @@ export function creationCovers(
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
-  return <p className="text-sm text-muted-foreground">{message}</p>;
+  return <p className="text-body text-muted-foreground">{message}</p>;
 }
 
 /**
@@ -561,7 +561,7 @@ export function ZeropsProjectsHeader({
         data-zerops-project-scope="true"
       >
         <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-xl font-medium text-foreground">Overview</h1>
+          <h1 className="text-title font-medium text-foreground">Overview</h1>
           {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -588,7 +588,7 @@ function ProjectsFreshness({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 text-xs text-muted-foreground",
+        "flex items-center gap-2 text-caption text-muted-foreground",
         // It waits a beat before it says anything, so a quick answer never flickers it.
         notice.message.afterMs > 0 && "animate-zerops-appear",
       )}
@@ -814,6 +814,7 @@ export function ZeropsProjectsContent({
   });
   const { activeOrganization, client, organizationStatus, status, user } = useZeropsSession();
   const operations = useAccountOperations();
+  const registry = useContext(RegistryContext);
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
@@ -1141,10 +1142,7 @@ export function ZeropsProjectsContent({
   const renderWaitLine = (candidate: ZeropsCandidatePresentation): React.ReactNode => {
     if (!waitedOn(candidate)) return undefined;
     const failed = (text: string) => (
-      <span
-        className="min-w-0 truncate text-[var(--zerops-status-failed-text)]"
-        data-zerops-surface="mate-subject"
-      >
+      <span className="min-w-0 truncate text-status-failed-text" data-zerops-surface="mate-subject">
         {text}
       </span>
     );
@@ -1257,7 +1255,7 @@ export function ZeropsProjectsContent({
         <span
           className={cn(
             "min-w-0 truncate",
-            presentation.detailIsError && "text-[var(--zerops-status-failed-text)]",
+            presentation.detailIsError && "text-status-failed-text",
           )}
           data-zerops-surface="mate-subject"
         >
@@ -1362,27 +1360,12 @@ export function ZeropsProjectsContent({
         if (activeOrganization === null) return;
         setConnectError(null);
         setStartingCandidateKey(candidate.key);
-        const projectId = candidate.project.id;
-        // A STOPPED project starts every service in it; a STOPPED zcp
-        // service while the project is ACTIVE starts only that service.
-        const serviceId = candidate.service?.id;
-        const write =
-          candidate.project.status === "STOPPED"
-            ? submitZeropsWrite(operations, activeOrganization.id, {
-                kind: "start-project",
-                projectId,
-              })
-            : serviceId
-              ? submitZeropsWrite(operations, activeOrganization.id, {
-                  kind: "start-service",
-                  projectId,
-                  serviceId,
-                })
-              : null;
-        if (write === null) {
-          setStartingCandidateKey(null);
-          return;
-        }
+        const write = startMate(
+          operations,
+          activeOrganization.id,
+          candidate,
+          registry.get(projectServicesAtom(candidate.project.id)).services,
+        );
         void readContainerAfter(candidate, write)
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -2406,14 +2389,14 @@ export function ZeropsProjectsContent({
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (
-        <p className="py-16 text-center text-sm text-muted-foreground" role="status">
+        <p className="py-16 text-center text-body text-muted-foreground" role="status">
           {troubleView.empty}
         </p>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
       {withheldProjectNotices(inventory).map((notice) => (
-        <p className="text-xs text-muted-foreground" key={notice} role="status">
+        <p className="text-caption text-muted-foreground" key={notice} role="status">
           {notice}
         </p>
       ))}
@@ -2836,9 +2819,7 @@ export function ZeropsProjectsContent({
           />
         ),
       )}
-      {trouble === null ? null : (
-        <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
-      )}
+      {trouble === null ? null : <p className="text-body text-status-failed-text">{trouble}</p>}
     </div>
   );
   return (

@@ -37,7 +37,10 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
+import { Input } from "~/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Radio, RadioGroup } from "~/components/ui/radio-group";
+import { Toggle } from "~/components/ui/toggle";
 import { useServerConfigs } from "~/state/entities";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
 
@@ -142,8 +145,6 @@ export function CrewRunDialog({
 }
 
 /** An amount's box as wide as what is typed, so its unit follows it: "8 hours", "90 %". */
-const fitted = (text: string) => ({ width: `calc(${Math.max(1, text.length)}ch + 1px)` });
-
 /**
  * An amount, typed, beside its unit — and *No limit* after it. While *No limit* is the pick the
  * field holds no figure, so it never reads as the limit; the figure comes back on a focus.
@@ -158,31 +159,36 @@ export function LimitField(props: {
 }) {
   return (
     <div className="flex h-9 items-center gap-2">
-      <span className="grow text-sm">{props.label}</span>
-      <label className="crew-limit" data-off={props.kind === "unlimited" ? "" : undefined}>
-        {props.prefix === undefined ? null : (
-          <span className="text-muted-foreground">{props.prefix}</span>
-        )}
-        <input
-          aria-label={props.label}
-          inputMode="decimal"
-          onChange={(event) => props.onChange("amount", event.target.value)}
-          onFocus={() => props.onChange("amount", props.text)}
-          style={fitted(props.kind === "unlimited" ? "" : props.text)}
-          value={props.kind === "unlimited" ? "" : props.text}
-        />
-        {props.suffix === undefined ? null : (
-          <span className="text-muted-foreground">{props.suffix}</span>
-        )}
-      </label>
-      <button
-        aria-pressed={props.kind === "unlimited"}
-        className="crew-nolimit"
-        onClick={() => props.onChange("unlimited", props.text)}
-        type="button"
+      <span className="grow text-body">{props.label}</span>
+      {/* While No limit is the pick, the amount sits back. */}
+      <div className={props.kind === "unlimited" ? "w-24 opacity-50" : "w-24"}>
+        <InputGroup>
+          {props.prefix === undefined ? null : (
+            <InputGroupAddon>
+              <span className="text-muted-foreground">{props.prefix}</span>
+            </InputGroupAddon>
+          )}
+          <InputGroupInput
+            aria-label={props.label}
+            inputMode="decimal"
+            onChange={(event) => props.onChange("amount", event.target.value)}
+            onFocus={() => props.onChange("amount", props.text)}
+            value={props.kind === "unlimited" ? "" : props.text}
+          />
+          {props.suffix === undefined ? null : (
+            <InputGroupAddon align="inline-end">
+              <span className="text-muted-foreground">{props.suffix}</span>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+      </div>
+      <Toggle
+        onPressedChange={() => props.onChange("unlimited", props.text)}
+        pressed={props.kind === "unlimited"}
+        variant="ghost"
       >
         {CREW_RUN_WORDS.noLimit}
-      </button>
+      </Toggle>
     </div>
   );
 }
@@ -266,11 +272,11 @@ export function CrewStartBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              <span className="text-sm">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
+              <span className="text-body">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
             </Choice>
           </div>
           <Hairline />
-          <span className="font-medium text-sm">{CREW_RUN_WORDS.whenDone}</span>
+          <span className="font-medium text-body">{CREW_RUN_WORDS.whenDone}</span>
           <div className="mt-2.5">
             <RadioGroup
               aria-label={CREW_RUN_WORDS.whenDone}
@@ -283,7 +289,7 @@ export function CrewStartBody(props: {
                 <Choice key={option.mode}>
                   <Radio className="mt-0.5" value={option.mode} />
                   <span className="flex flex-col">
-                    <span className="text-sm">{option.label}</span>
+                    <span className="text-body">{option.label}</span>
                     <span className="text-line leading-4.5 text-muted-foreground">
                       {option.line}
                     </span>
@@ -301,7 +307,7 @@ export function CrewStartBody(props: {
                   className="mt-0.5"
                   onCheckedChange={(checked) => setDraft({ ...draft, leadMayStart: checked })}
                 />
-                <span className="text-sm">{CREW_RUN_WORDS.leadMayStart}</span>
+                <span className="text-body">{CREW_RUN_WORDS.leadMayStart}</span>
               </Choice>
             ) : null}
             <Choice>
@@ -310,7 +316,7 @@ export function CrewStartBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, devGrant: checked })}
               />
-              <span className="text-sm">{crewDevGrantWord(props.mateName)}</span>
+              <span className="text-body">{crewDevGrantWord(props.mateName)}</span>
             </Choice>
           </div>
         </div>
@@ -397,19 +403,19 @@ export function CrewResumeBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              <span className="flex flex-wrap items-center gap-1.5 text-sm">
+              <span className="flex flex-wrap items-center gap-1.5 text-body">
                 {CREW_RUN_WORDS.usageFurther}
-                <label className="crew-limit" data-narrow="">
-                  <input
+                <span className="w-14">
+                  <Input
                     aria-label={CREW_RUN_WORDS.usageFurther}
                     inputMode="numeric"
                     onChange={(event) =>
                       setDraft({ ...draft, usagePercent: Number(event.target.value) || 0 })
                     }
-                    style={fitted(String(draft.usagePercent))}
+                    size="sm"
                     value={String(draft.usagePercent)}
                   />
-                </label>
+                </span>
                 {crewUsageOfWord(props.plan)}
               </span>
             </Choice>

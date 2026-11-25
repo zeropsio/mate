@@ -102,7 +102,7 @@ export function ProjectLine({
     <div
       aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className={band ? "ln ln-band" : "ln rounded-xl border border-border/70 bg-card"}
+      className={band ? "ln ln-band" : "ln rounded-card border border-border/70 bg-card"}
       data-stations={String((view ?? UNREAD).stations.length)}
       data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"

@@ -59,7 +59,7 @@ export function GithubTokenFields({
           type="password"
           value={token}
         />
-        <p className="text-xs text-muted-foreground" id={`${tokenId}-guide`}>
+        <p className="text-caption text-muted-foreground" id={`${tokenId}-guide`}>
           {guide.kind === "guide" ? (
             <>
               <OutLink href={guide.tokenUrl}>Create a token on {guide.hostLabel}</OutLink> ·{" "}

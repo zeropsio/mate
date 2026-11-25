@@ -34,6 +34,7 @@ import { shellEnvironment } from "../../state/shell";
 import { useEnvironment } from "../../state/environments";
 import { useLastRouteEnvironmentId } from "../../zerops/accountEnvironments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -105,13 +106,9 @@ function StatBlock({
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
-                  className="cursor-pointer inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 hover:text-foreground"
-                  aria-label={`${label} details`}
-                >
+                <InlineButton aria-label={`${label} details`} tone="muted">
                   <InfoIcon className="size-3" />
-                </button>
+                </InlineButton>
               }
             />
             <TooltipPopup side="top">{tooltip}</TooltipPopup>
@@ -221,7 +218,11 @@ function DiagnosticsTable({
       className="w-full max-w-full"
     >
       <table
-        className={cn("w-full text-left text-xs", minTableWidth, columnWidths && "table-fixed")}
+        className={cn(
+          "w-full text-left text-caption",
+          minTableWidth,
+          columnWidths && "table-fixed",
+        )}
       >
         {columnWidths ? (
           <colgroup>
@@ -319,7 +320,7 @@ function ProcessNameCell({
 
   return (
     <div
-      className="grid min-w-0 grid-cols-[1.25rem_0.375rem_minmax(0,1fr)] items-center gap-2"
+      className="grid min-w-0 grid-cols-[1.25rem_0.5rem_minmax(0,1fr)] items-center gap-2"
       style={{ paddingLeft: `${Math.min(process.depth, 6) * 10}px` }}
     >
       {hasChildren ? (
@@ -334,7 +335,7 @@ function ProcessNameCell({
       ) : (
         <span className="size-5 shrink-0" aria-hidden="true" />
       )}
-      <span className="size-1.5 shrink-0 rounded-full bg-success/80" />
+      <Badge aria-label="Running" dot tone="success" />
       <Tooltip>
         <TooltipTrigger
           render={<span className="min-w-0 truncate font-medium text-foreground">{name}</span>}
@@ -399,7 +400,7 @@ function ProcessDiagnosticsTable({
         hideScrollbars
         className="max-h-[min(64vh,44rem)] w-full max-w-full"
       >
-        <table className="w-full min-w-[1040px] table-fixed text-left text-xs">
+        <table className="w-full min-w-[1040px] table-fixed text-left text-caption">
           <colgroup>
             <col className="w-[24%]" />
             <col className="w-[8%]" />
@@ -423,7 +424,7 @@ function ProcessDiagnosticsTable({
           <tbody className="divide-y divide-border/50">
             {visibleProcesses.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-4 text-xs text-muted-foreground sm:px-5">
+                <td colSpan={7} className="px-4 py-4 text-caption text-muted-foreground sm:px-5">
                   {emptyLabel ?? "No live descendant processes found."}
                 </td>
               </tr>
@@ -540,7 +541,7 @@ function ProcessResourceHistoryChart({
 
   return (
     <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-      <div className="flex h-28 items-end gap-1 overflow-hidden rounded-sm bg-muted/10 p-2">
+      <div className="flex h-28 items-end gap-1 overflow-hidden rounded-control bg-muted/10 p-2">
         {buckets.map((bucket) => {
           const peakHeight = Math.max(2, (bucket.maxCpuPercent / maxCpuPercent) * 100);
           const averageHeight = Math.max(2, (bucket.avgCpuPercent / maxCpuPercent) * 100);
@@ -554,11 +555,11 @@ function ProcessResourceHistoryChart({
                       aria-label={`Average CPU ${bucket.avgCpuPercent.toFixed(1)}%, peak CPU ${bucket.maxCpuPercent.toFixed(1)}%`}
                     >
                       <div
-                        className="absolute inset-x-0 bottom-0 rounded-t-sm bg-foreground/15 transition-colors"
+                        className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/15 transition-colors"
                         style={{ height: `${peakHeight}%` }}
                       />
                       <div
-                        className="absolute inset-x-0 bottom-0 rounded-t-sm bg-foreground/60 transition-colors"
+                        className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/60 transition-colors"
                         style={{ height: `${averageHeight}%` }}
                       />
                     </div>
@@ -624,7 +625,7 @@ function ProcessResourceHistoryTable({
         hideScrollbars
         className="max-h-[min(64vh,44rem)] w-full max-w-full"
       >
-        <table className="w-full min-w-[980px] table-fixed text-left text-xs">
+        <table className="w-full min-w-[980px] table-fixed text-left text-caption">
           <colgroup>
             <col className="w-[24%]" />
             <col className="w-[10%]" />
@@ -650,7 +651,7 @@ function ProcessResourceHistoryTable({
           <tbody className="divide-y divide-border/50">
             {processes.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-4 text-xs text-muted-foreground sm:px-5">
+                <td colSpan={8} className="px-4 py-4 text-caption text-muted-foreground sm:px-5">
                   {emptyLabel}
                 </td>
               </tr>
@@ -1125,7 +1126,7 @@ export function DiagnosticsSettingsPanel() {
           />
         </StatsGrid>
         {openLogsDirectoryError || traceDiagnosticsError || error ? (
-          <div className="space-y-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground sm:px-5">
+          <div className="space-y-2 border-t border-border/60 px-4 py-3 text-caption text-muted-foreground sm:px-5">
             {openLogsDirectoryError ? (
               <div className="flex items-start gap-2 text-destructive">
                 <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
@@ -1162,7 +1163,7 @@ export function DiagnosticsSettingsPanel() {
           <DiagnosticsTable headers={["Span", "Cause", "Duration", "Ended"]}>
             {data.latestFailures.map((failure) => (
               <tr key={`${failure.traceId}:${failure.spanId}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
                   {failure.name}
                 </td>
                 <td className="max-w-[360px] px-4 py-3 align-top text-muted-foreground">
@@ -1190,7 +1191,7 @@ export function DiagnosticsSettingsPanel() {
           >
             {data.commonFailures.map((failure) => (
               <tr key={`${failure.name}:${failure.cause}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
                   {failure.name}
                 </td>
                 <td className="px-4 py-3 align-top font-mono tabular-nums">
@@ -1223,7 +1224,7 @@ export function DiagnosticsSettingsPanel() {
           >
             {data.slowestSpans.map((span) => (
               <tr key={`${span.traceId}:${span.spanId}`}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
                   {span.name}
                 </td>
                 <td className="px-4 py-3 align-top font-mono tabular-nums">
@@ -1252,7 +1253,7 @@ export function DiagnosticsSettingsPanel() {
             hideScrollbars
             className="w-full max-w-full"
           >
-            <table className="w-full min-w-[920px] table-fixed text-left text-xs">
+            <table className="w-full min-w-[920px] table-fixed text-left text-caption">
               <colgroup>
                 <col className="w-[11%]" />
                 <col className="w-[9%]" />
@@ -1279,7 +1280,7 @@ export function DiagnosticsSettingsPanel() {
                       {formatRelativeNoWrap(event.seenAt)}
                     </td>
                     <td className="px-4 py-3 align-top">
-                      <span className="inline-flex rounded bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
+                      <span className="inline-flex rounded-mark bg-muted px-1.5 py-0.5 font-mono text-2xs font-medium uppercase text-foreground/80">
                         {event.level}
                       </span>
                     </td>
@@ -1319,7 +1320,7 @@ export function DiagnosticsSettingsPanel() {
           >
             {data.topSpansByCount.map((span) => (
               <tr key={span.name}>
-                <td className="px-4 py-3 align-top text-xs font-medium text-foreground first:sm:pl-5">
+                <td className="px-4 py-3 align-top text-caption font-medium text-foreground first:sm:pl-5">
                   {span.name}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 align-top font-mono tabular-nums">

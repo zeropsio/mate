@@ -97,7 +97,6 @@ import {
   vaultFixtureImpact,
 } from "~/components/zerops/vault/vaultFixture";
 import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
@@ -1433,12 +1432,12 @@ function State({
   return (
     <section className="flex flex-col gap-2" data-detail-harness-state={label} id={id}>
       <div className="px-2">
-        <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <span className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
         </span>
-        <p className="text-xs text-muted-foreground/78">{note}</p>
+        <p className="text-caption text-muted-foreground/78">{note}</p>
       </div>
-      <div className="overflow-hidden rounded-lg border border-border bg-background">
+      <div className="overflow-hidden rounded-card border border-border bg-background">
         {children}
       </div>
     </section>
@@ -1803,7 +1802,7 @@ function HarnessStates() {
         <State
           key={words}
           label={`A production whose deploy key no longer works, ${words}`}
-          note="The verdict offers the renewal the release sheet offers, to one with admin access to the project: its button, busy while it runs, its failure under it, and Key renewed until HQ reports the key works."
+          note="The verdict offers the renewal the release sheet offers, to one HQ permits to keep the key: its button, busy while it runs, its failure under it, and Key renewed until HQ reports the key works."
         >
           <StopState
             fixture={{
@@ -2306,7 +2305,6 @@ function HarnessStates() {
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 /** A failed deploy's log reads the account's projects: stand-ins that hold none. */
 function Standins({ children }: { readonly children: ReactNode }) {

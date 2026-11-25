@@ -18,6 +18,7 @@ import { fnv1a32, resolveDiffThemeName } from "~/lib/diffPresentation";
 import { getRenderablePatch } from "~/lib/diffRendering";
 import { DIFF_HEADER_HEIGHT, StyledDiffCodeView } from "../../diffs/StyledDiffCodeView";
 import { Button } from "../../ui/button";
+import { Row } from "../../ui/row";
 import { troubleWords } from "./GitAtCommit";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 
@@ -93,7 +94,7 @@ export function GitChangedFiles({
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <section aria-label="Changed files" className="flex min-w-0 flex-col gap-1">
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         {filesTruncated
           ? `Showing ${count(files.length, "file", "files")} of ${totalFiles} changed`
           : `${count(totalFiles, "file", "files")} changed`}
@@ -107,24 +108,27 @@ export function GitChangedFiles({
       <ul className="flex min-w-0 flex-col">
         {files.map((file) => (
           <li key={file.path}>
-            <button
-              className="flex w-full min-w-0 items-center gap-2 rounded-sm px-1 py-0.5 text-left text-xs hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => onJump(file.path)}
-              type="button"
-            >
-              <span className="w-3 shrink-0 font-mono text-muted-foreground">
-                {STATUS_LETTER[file.status]}
-              </span>
-              <span className="min-w-0 flex-1 truncate font-mono text-foreground">{file.path}</span>
-              {file.binary ? (
-                <span className="text-muted-foreground">Binary file</span>
-              ) : (
-                <span className="shrink-0 font-mono">
-                  <span className="text-diff-addition-foreground">+{file.additions}</span>{" "}
-                  <span className="text-diff-deletion-foreground">−{file.deletions}</span>
+            <Row
+              lead={
+                <span className="font-mono text-caption text-muted-foreground">
+                  {STATUS_LETTER[file.status]}
                 </span>
-              )}
-            </button>
+              }
+              meta={
+                file.binary ? (
+                  "Binary file"
+                ) : (
+                  <span className="font-mono">
+                    <span className="text-diff-addition-foreground">+{file.additions}</span>{" "}
+                    <span className="text-diff-deletion-foreground">−{file.deletions}</span>
+                  </span>
+                )
+              }
+              pressable
+              render={<button onClick={() => onJump(file.path)} type="button" />}
+              size="xs"
+              title={<span className="font-mono font-normal">{file.path}</span>}
+            />
           </li>
         ))}
       </ul>
@@ -256,7 +260,7 @@ export function GitDiffFiles({
         if (file === undefined) return null;
         const note = fileNote(file, later.get(file.path));
         return (
-          <span className="flex items-center gap-2 font-mono text-xs">
+          <span className="flex items-center gap-2 font-mono text-caption">
             {note.kind === "words" ? (
               <span
                 className="font-sans text-muted-foreground"

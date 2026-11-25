@@ -280,7 +280,7 @@ function ReleaseRow({
   return (
     <li
       className={cn(
-        "group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-lg border",
+        "group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border",
         // What is live is found without reading a pill: the one row with a surface at rest.
         live ? "border-status-ok/25 bg-status-ok-surface/50" : "border-transparent",
         open && !live && "bg-accent/40",
@@ -298,12 +298,13 @@ function ReleaseRow({
       >
         {expandable ? (
           // The whole row opens it in place (`after`); its way back stands over the row's end.
-          <button
+          <Button
             aria-expanded={open}
             aria-label={releaseCarriedToggleLabel(release.tag, open)}
-            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground group-hover/release:text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            className="after:absolute after:inset-0"
             onClick={toggle}
-            type="button"
+            size="icon-2xs"
+            variant="ghost-muted"
           >
             <ChevronRightIcon
               aria-hidden="true"
@@ -312,7 +313,7 @@ function ReleaseRow({
                 open && "rotate-90",
               )}
             />
-          </button>
+          </Button>
         ) : (
           <span aria-hidden="true" className="size-5 shrink-0" />
         )}
@@ -334,7 +335,7 @@ function ReleaseRow({
                 // A phone reads it whole, on two lines where one cuts it.
                 "max-w-full min-w-0 truncate max-sm:line-clamp-2 max-sm:whitespace-normal",
                 // A step under the title's size, so the mono face reads no larger than a title.
-                description.names === "primary" ? "font-mono text-body" : "text-sm",
+                description.names === "primary" ? "font-mono text-body" : "text-body",
                 // The same changes again are no news: said, and quiet.
                 titled?.kind === "again" ? "text-muted-foreground" : "text-foreground",
               )}
@@ -372,7 +373,7 @@ function ReleaseRow({
           // ends before it; reached by Tab like any button.
           <span
             className={cn(
-              "absolute inset-y-0 end-0 flex items-center rounded-e-lg bg-card transition-opacity duration-150 motion-reduce:transition-none",
+              "absolute inset-y-0 end-0 flex items-center rounded-e-control bg-card transition-opacity duration-150 motion-reduce:transition-none",
               !rollingBack &&
                 // A touch screen points at nothing and an iPhone's tap focuses no row: there it
                 // always stands.
@@ -380,7 +381,7 @@ function ReleaseRow({
             )}
             data-zerops-surface="release-roll-back"
           >
-            <span className="flex h-full items-center rounded-e-lg bg-accent/40 ps-3 pe-3.5">
+            <span className="flex h-full items-center rounded-e-control bg-accent/40 ps-3 pe-3.5">
               <Button
                 disabled={rollingBack}
                 onClick={(event) => {
@@ -409,7 +410,7 @@ const RELEASE_LIST_CLASS =
 
 /** A release row on the list's columns; its way back stands over its end (`relative`). */
 const RELEASE_ROW_CLASS =
-  "relative col-span-full grid min-w-0 grid-cols-subgrid items-center rounded-lg px-3.5 py-2";
+  "relative col-span-full grid min-w-0 grid-cols-subgrid items-center rounded-control px-3.5 py-2";
 
 /** A release on its way to production, as its row says it; the header's pill names the version. */
 const RELEASING_WORD = "Releasing";

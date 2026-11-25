@@ -1,13 +1,16 @@
 import { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
+import { RADII } from "@t3tools/shared/brand";
 import { type CxOptions, cx } from "class-variance-authority";
 import * as Hex from "effect/encoding/Hex";
 import { extendTailwindMerge } from "tailwind-merge";
 import { DraftId } from "../composerDraftStore";
 
-// The theme's own font sizes and radii (index.css). Unregistered, tailwind-merge reads
-// text-caption as a colour and drops it next to text-muted-foreground.
+// The theme's own font sizes, radii and ground clip (index.css). Unregistered, tailwind-merge reads
+// text-caption as a colour and drops it next to text-muted-foreground, and reads bg-clip-ground as
+// a background colour and drops the bg-card or bg-field before it.
 const twMerge = extendTailwindMerge({
   extend: {
+    classGroups: { "bg-clip": [{ "bg-clip": ["ground"] }] },
     theme: {
       text: [
         "caption",
@@ -22,7 +25,7 @@ const twMerge = extendTailwindMerge({
         "line",
         "prose",
       ],
-      radius: ["control", "card", "sheet"],
+      radius: Object.keys(RADII),
     },
   },
 });

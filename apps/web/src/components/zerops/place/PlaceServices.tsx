@@ -22,9 +22,10 @@ import { ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { MenuGroup, MenuGroupLabel, MenuItem, MenuSeparator } from "../../ui/menu";
 import { MiddleTruncate } from "../../ui/middle-truncate";
+import { Row } from "../../ui/row";
 import { Skeleton } from "../../ui/skeleton";
 import { StopPublicAccessStatus } from "../StopPublicAccess";
 import { DeployLogDetails, useDeployLogUnavailable } from "../ZeropsDeployLog";
@@ -104,7 +105,7 @@ export function PlaceServicesWaiting() {
     >
       {[0, 1].map((card) => (
         <li
-          className="flex min-w-0 flex-col gap-3.5 rounded-xl border border-border/70 bg-card px-4 pt-3.5 pb-4"
+          className="flex min-w-0 flex-col gap-3.5 rounded-card border border-border/70 bg-card px-4 pt-3.5 pb-4"
           key={card}
         >
           <div className="flex min-w-0 flex-col gap-1">
@@ -158,12 +159,12 @@ export function PlaceMissingService({
 }) {
   return (
     <li
-      className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-dashed border-border py-3 ps-4 pe-3"
+      className="flex min-w-0 items-center justify-between gap-3 rounded-card border border-dashed border-border py-3 ps-4 pe-3"
       data-zerops-missing-service={hostname}
       data-zerops-surface="stop-not-in-zerops"
     >
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm font-semibold text-foreground/85">{hostname}</span>
+        <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
         {answer === undefined ? (
           <span className="truncate text-caption text-muted-foreground">
             {absentWords(byRelease)}
@@ -321,15 +322,13 @@ function PlaceServiceLine({
             </Button>
           )}
           {code.drift.zerops === undefined ? null : (
-            <a
-              className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline"
-              href={code.drift.zerops}
-              rel="noreferrer"
-              target="_blank"
+            <InlineButton
+              render={<a href={code.drift.zerops} rel="noreferrer" target="_blank" />}
+              tone="plain"
             >
               Open in Zerops
               <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-            </a>
+            </InlineButton>
           )}
         </span>
       )}
@@ -407,7 +406,7 @@ export function PlaceAddressCard({
     shownOffers.length === 0;
   return (
     <div
-      className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card p-1.5"
+      className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5"
       data-zerops-surface="place-addresses"
     >
       <div className="empty:hidden px-3 py-1">
@@ -421,25 +420,26 @@ export function PlaceAddressCard({
       {ordered.map((route) => {
         const subdomain = isPlatformSubdomain(route.host);
         return (
-          <a
-            // Too narrow for both, what it reaches wraps under the address, which is cut last.
-            className="group flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 rounded-lg px-3 py-2.5 outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
+          <Row
             data-zerops-place-address=""
-            href={route.url}
             key={route.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {/* Every address in one weight: the place's own line already names its first. */}
-            <span className="flex max-w-full min-w-0 items-center gap-1 text-body text-muted-foreground group-hover:text-foreground">
-              <MiddleTruncate value={route.host} />
-              <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
-            </span>
-            <span className="shrink-0 text-caption text-muted-foreground/80">
-              <span className="real-name">{route.service}</span>
-              {subdomain ? " · Zerops subdomain" : null}
-            </span>
-          </a>
+            meta={
+              <>
+                <span className="real-name">{route.service}</span>
+                {subdomain ? " · Zerops subdomain" : null}
+              </>
+            }
+            pressable
+            render={<a href={route.url} rel="noreferrer" target="_blank" />}
+            size="sm"
+            title={
+              // Every address in one weight: the place's own line already names its first.
+              <span className="flex min-w-0 items-center gap-1 font-normal">
+                <MiddleTruncate value={route.host} />
+                <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
+              </span>
+            }
+          />
         );
       })}
       {shownOffers.map((offer) => {

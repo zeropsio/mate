@@ -149,7 +149,7 @@ export function PersonaTemplatesView({
         ) : null
       }
     >
-      <p className="px-3 text-xs text-muted-foreground">
+      <p className="px-3 text-caption text-muted-foreground">
         Starting points for each Mate&rsquo;s persona. A Mate keeps its own copy, so changing a
         template here changes no Mate.
         {read.mayWrite ? null : " Owners and Admins edit these."}
@@ -189,7 +189,7 @@ export function PersonaTemplatesView({
             </div>
           )}
           {read.templates.length === 0 && editor === null ? (
-            <p className="px-3 text-sm text-muted-foreground">No templates yet.</p>
+            <p className="px-3 text-body text-muted-foreground">No templates yet.</p>
           ) : null}
           {read.templates.map((template) =>
             editorProps !== null && editorInRow && editor?.templateId === template.id ? (
@@ -212,7 +212,7 @@ export function PersonaTemplatesView({
               >
                 {open === template.id ? (
                   <div className="flex flex-col gap-2 px-3 pb-2">
-                    <p className="whitespace-pre-wrap text-sm text-muted-foreground">
+                    <p className="whitespace-pre-wrap text-body text-muted-foreground">
                       {template.instructions}
                     </p>
                     {!mayWrite ? null : confirming === template.id ? (
@@ -267,7 +267,7 @@ function TemplateDeletion({
   const pending = write.stage === "pending";
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm">
+      <p className="text-body">
         Delete {template.name}? Mates that started from it keep their own copy.
       </p>
       <WriteProblem write={write} />
@@ -403,7 +403,7 @@ function TemplateEditor({
           disabled={pending}
           onChange={(event) => onChange({ ...draft, instructions: event.currentTarget.value })}
         />
-        <span className="text-xs text-muted-foreground" data-persona-instructions-count="">
+        <span className="text-caption text-muted-foreground" data-persona-instructions-count="">
           {count(draft.instructions.trim().length)} / {count(MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH)}
         </span>
         {over ? <FieldError match>{problem}</FieldError> : null}

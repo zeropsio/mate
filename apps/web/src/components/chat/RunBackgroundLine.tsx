@@ -1,6 +1,7 @@
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "~/lib/utils";
+import { Collapsible, CollapsibleTrigger } from "../ui/collapsible";
 import { OutputBlock } from "./RunDisclosure";
 import {
   backgroundItemWord,
@@ -64,18 +65,21 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
   return (
     <div className="grid min-w-0 gap-2" data-background-line>
       {opens ? (
-        <button
-          aria-expanded={open}
-          aria-label={`${said}. ${open ? "Hide" : "Show"} ${lone ? "what it reported" : "each one"}`}
-          className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
-          onClick={() => {
-            hold(!open);
-            setOpen((value) => !value);
+        <Collapsible
+          className="contents"
+          open={open}
+          onOpenChange={(next) => {
+            hold(next);
+            setOpen(next);
           }}
-          type="button"
         >
-          {head}
-        </button>
+          <CollapsibleTrigger
+            aria-label={`${said}. ${open ? "Hide" : "Show"} ${lone ? "what it reported" : "each one"}`}
+            className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] items-center rounded-control px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
+          >
+            {head}
+          </CollapsibleTrigger>
+        </Collapsible>
       ) : (
         <div className="flex min-h-7 items-center">{head}</div>
       )}

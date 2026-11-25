@@ -5,7 +5,13 @@ import { expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
 import type { ContainerLevel } from "./environments/containerMachine.ts";
-import { mateArrivalOf, mateState, type MateFacts, type MateViewerFacts } from "./mateState.ts";
+import {
+  mateArrivalOf,
+  mateServicesToWrite,
+  mateState,
+  type MateFacts,
+  type MateViewerFacts,
+} from "./mateState.ts";
 
 const ALLOWED: HqOfferState = { kind: "allowed" };
 const REFUSED: HqOfferState = { kind: "refused", reason: "not yours" };
@@ -174,7 +180,7 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | : mayWork && viewer.visibility === "open"); → : mayWork);
-it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
+it("ZV159: Start, Stop, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
     ADMIN: true,
@@ -198,12 +204,14 @@ it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may oper
       const viewer = { ...OWNER, role, visibility };
       const operates = roleOperates && seen;
       expect(mateState(facts({ viewer })).verbs.restart).toBe(operates);
+      expect(mateState(facts({ viewer })).verbs.stop).toBe(operates);
       expect(mateState(facts({ viewer, candidate: stopped })).verbs.start).toBe(operates);
       expect(mateState(facts({ viewer, arrival: "redeploy" })).verbs.redeploy).toBe(operates);
     }
   }
   expect(mateState(facts({ viewer: null })).verbs).toMatchObject({
     start: false,
+    stop: false,
     restart: false,
     redeploy: false,
     delete: false,
@@ -341,6 +349,47 @@ it("ZV160: Restart is offered on an active project and container unless the plat
     const candidate = { ...(over.service === undefined ? containerless : RUNNING), ...over };
     expect(mateState(facts({ candidate })).verbs.start).toBe(start);
   }
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | !isStopped(candidate) && → true &&
+it("ZV176: Stop is offered on a running project that holds its Mate container, never where that container is stopped, where the platform is starting or stopping either, or where the project holds no container; breaks: a Mate whose container is stopped offers Stop beside Start", () => {
+  const { service: _service, ...containerless } = RUNNING;
+  for (const [project, service, stop] of [
+    ["ACTIVE", "ACTIVE", true],
+    ["ACTIVE", "FAILED", true],
+    ["ACTIVE", "STOPPED", false],
+    ["ACTIVE", "STOPPING", false],
+    ["ACTIVE", "STARTING", false],
+    ["STOPPED", "STOPPED", false],
+    ["STOPPING", "ACTIVE", false],
+    ["STARTING", "STOPPED", false],
+    ["ACTIVE", undefined, false],
+  ] as const) {
+    const candidate: ZeropsCandidate = {
+      ...containerless,
+      project: { ...RUNNING.project, status: project },
+      ...(service === undefined ? {} : { service: { id: "s-zcp", name: "zcp", status: service } }),
+    };
+    expect(mateState(facts({ candidate })).verbs.stop).toBe(stop);
+  }
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | ...touched.filter((service) => !isZcpService(service)), → ...touched,
+it("ZV178: A Mate's Stop writes each running service of its project and its Start each stopped one, never a platform service, its Mate container last; breaks: a Stop refused partway has stopped the Mate's own computer and left its app running", () => {
+  const services = [
+    { id: "zcp", name: "zcp", status: "ACTIVE", base: "zcp@1" },
+    { id: "appdev", name: "appdev", status: "ACTIVE", base: "nodejs@24" },
+    { id: "core", name: "core", status: "ACTIVE", isSystem: true },
+    { id: "db", name: "db", status: "STOPPED", base: "postgresql@17" },
+    { id: "appstage", name: "appstage", status: "ACTIVE", base: "nodejs@24" },
+  ];
+  expect(mateServicesToWrite("stop", services)).toEqual(["appdev", "appstage", "zcp"]);
+  expect(
+    mateServicesToWrite(
+      "start",
+      services.map((service) => ({ ...service, status: "STOPPED" })),
+    ),
+  ).toEqual(["appdev", "db", "appstage", "zcp"]);
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove }); → if (false) return state("setup", { ...NO_VERBS, delete: remove });

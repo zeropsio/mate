@@ -134,6 +134,24 @@ export function resolvePrimaryConversation<T extends ZeropsConversationCandidate
   return { primary, hidden, reason };
 }
 
+/** The most primary chat whose lease binds the branch and may belong to the repository. */
+export function conversationOfBranch<
+  T extends ZeropsConversationCandidate & {
+    readonly lease?:
+      | { readonly branch: string | null; readonly repo?: string | undefined }
+      | null
+      | undefined;
+  },
+>(
+  threads: ReadonlyArray<T>,
+  branch: string,
+  mayBeOf: (repo: string | undefined) => boolean,
+): T | undefined {
+  const { primary, hidden } = resolvePrimaryConversation(threads);
+  const chats = primary === undefined ? hidden : [primary, ...hidden];
+  return chats.find(({ lease }) => lease != null && lease.branch === branch && mayBeOf(lease.repo));
+}
+
 /** An automated Mate's tasks' conversation: its one, else its newest task's own (an older server's). */
 function tasksConversation<T extends ZeropsConversationCandidate>(
   live: ReadonlyArray<T>,

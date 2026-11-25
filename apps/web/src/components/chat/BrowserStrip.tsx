@@ -31,6 +31,8 @@ import { AssetImage } from "~/assets/AssetImage";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
+import { Badge } from "../ui/badge";
+import { Row } from "../ui/row";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -48,6 +50,7 @@ import { CheckRead } from "./CheckRead";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
 import { followScrollTo } from "~/lib/followScroll";
+import { Button } from "~/components/ui/button";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
   desktop: "Desktop",
@@ -60,16 +63,23 @@ const DEVICE_WORD: Record<BrowserDevice, string> = {
  * the device. A narrow column gives the frame the width left under the
  * caption; a wide one keeps it beside the takes.
  */
-const FRAME_CLASS: Record<BrowserDevice, string> = {
-  desktop: "w-full rounded-lg @xl/strip:w-96",
-  tablet: "w-36 rounded-2xl p-1.5 @xl/strip:w-50",
-  phone: "w-24 rounded-3xl p-1 @xl/strip:w-32",
+const FRAME_WIDTH: Record<BrowserDevice, string> = {
+  desktop: "w-full @xl/strip:w-96",
+  tablet: "w-36 @xl/strip:w-50",
+  phone: "w-24 @xl/strip:w-32",
+};
+
+/** The frame's corner and bezel; its screen's corner runs parallel inside the bezel. */
+const FRAME_SHAPE: Record<BrowserDevice, string> = {
+  desktop: "rounded-card",
+  tablet: "rounded-sheet p-1.5",
+  phone: "rounded-sheet p-1",
 };
 
 const SCREEN_CLASS: Record<BrowserDevice, string> = {
-  desktop: "rounded-b-lg",
-  tablet: "rounded-lg",
-  phone: "rounded-2xl",
+  desktop: "rounded-b-card",
+  tablet: "rounded-control",
+  phone: "rounded-card",
 };
 
 /**
@@ -87,9 +97,9 @@ const TAKE_FRAME: Record<BrowserTakeState, string> = {
 
 /** A take's thumbnail in the list of takes, in its device's shape. */
 const TAKE_CLASS: Record<BrowserDevice, string> = {
-  desktop: "w-13 rounded-sm",
-  tablet: "w-6 rounded-sm",
-  phone: "w-4 rounded-sm",
+  desktop: "w-13 rounded-mark",
+  tablet: "w-6 rounded-mark",
+  phone: "w-4 rounded-mark",
 };
 
 function checkDuration(check: ZeropsOperation): string | null {
@@ -277,9 +287,9 @@ export function BrowserStrip({
     .filter(Boolean)
     .join(" · ");
 
-  const frameClass = cn(
-    "relative flex min-h-0 flex-1 shrink-0 flex-col self-center overflow-hidden border border-border bg-card @xl/strip:h-66 @xl/strip:flex-none",
-    FRAME_CLASS[device],
+  const frameLook = cn(
+    "relative flex min-h-0 flex-1 flex-col overflow-hidden border border-border bg-card",
+    FRAME_SHAPE[device],
     stageState === "failed" && "border-status-failed",
     stageState === "retried" && "border-status-attention",
   );
@@ -290,7 +300,7 @@ export function BrowserStrip({
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
           <span className="size-1.5 rounded-full bg-muted-foreground/30" />
-          <span className="ms-2 min-w-0 flex-1 truncate rounded-sm bg-foreground/8 px-2 text-start text-muted-foreground text-xs leading-4">
+          <span className="ms-2 min-w-0 flex-1 truncate rounded-mark bg-foreground/8 px-2 text-start text-muted-foreground text-caption leading-4">
             {caption}
           </span>
         </span>
@@ -326,9 +336,10 @@ export function BrowserStrip({
       {running && onStage === latest ? (
         // Live is busy, never failure: the blue its take pulses in the
         // list. A hairline, not a shadow, keeps it off the page under it.
-        <span className="absolute end-2 bottom-2 inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-xs leading-5">
-          <span className="size-1.5 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-          Live
+        <span className="absolute end-2 bottom-2 inline-flex rounded-full border border-border/60 bg-background/90 px-2 font-medium text-foreground text-caption leading-5">
+          <Badge dot tone="info">
+            Live
+          </Badge>
         </span>
       ) : null}
     </>
@@ -342,51 +353,56 @@ export function BrowserStrip({
         // A light share of the ink, both palettes show it: `muted` all but
         // vanishes on the dark card, and a surface this large sits a step
         // under the Mate's bubble.
-        !bare && "rounded-2xl bg-foreground/5 p-3",
+        !bare && "rounded-card bg-foreground/5 p-3",
       )}
       data-browser-strip
       data-browser-strip-device={device}
     >
       <div className="flex size-full min-w-0 flex-col-reverse gap-2 @xl/strip:flex-row @xl/strip:gap-4">
         {staged ? (
-          readOnStage ? (
-            // What it read has nothing to open: a frame, not a button.
-            <div
-              aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
-              className={frameClass}
-              data-browser-strip-stage="read"
-              role="img"
-            >
-              {frameBody}
-            </div>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    aria-label={
-                      stageSrc
-                        ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
-                        : "Open the Browser panel"
-                    }
-                    className={cn(
-                      frameClass,
-                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                    )}
-                    data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
-                    {...intent}
-                    onClick={onStageClick}
-                    type="button"
-                  />
-                }
+          // The frame's room on the stage, in its device's width; the frame fills it.
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 shrink-0 flex-col self-center @xl/strip:h-66 @xl/strip:flex-none",
+              FRAME_WIDTH[device],
+            )}
+          >
+            {readOnStage ? (
+              // What it read has nothing to open: a frame, not a button.
+              <div
+                aria-label={`${caption} as the check read it on ${DEVICE_WORD[device].toLowerCase()}`}
+                className={frameLook}
+                data-browser-strip-stage="read"
+                role="img"
               >
                 {frameBody}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
-              </TooltipPopup>
-            </Tooltip>
-          )
+              </div>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={
+                        stageSrc
+                          ? `${running && onStage === latest ? "Live view of" : "View of"} ${caption} on ${DEVICE_WORD[device].toLowerCase()}`
+                          : "Open the Browser panel"
+                      }
+                      className="flex min-h-0 flex-1 flex-col"
+                      data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                      {...intent}
+                      onClick={onStageClick}
+                      variant="bare"
+                    />
+                  }
+                >
+                  <span className={frameLook}>{frameBody}</span>
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  {running && onStage === latest ? "Open the Browser panel" : "Open the screenshot"}
+                </TooltipPopup>
+              </Tooltip>
+            )}
+          </div>
         ) : null}
         <div className="flex min-w-0 flex-none flex-col gap-0.5 @xl/strip:flex-1 @xl/strip:py-1">
           <p
@@ -442,27 +458,21 @@ export function BrowserStrip({
                         : ""
               }`;
               return (
-                <button
+                <Row
                   key={check.key}
                   aria-label={label}
                   aria-pressed={check === onStage}
-                  className={cn(
-                    "flex h-10 w-full min-w-0 shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-1.5 text-start text-line transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-                    check === onStage ? "bg-accent/70 text-foreground" : "text-muted-foreground",
-                  )}
                   data-browser-strip-frame={live ? "live" : state === "passed" ? "done" : state}
-                  onClick={() => (live ? openPanel() : setPickedKey(check.key))}
-                  type="button"
-                >
-                  {/* Every take's words start on one edge: its thumbnail, in its
-                      device's shape, sits in a slot as wide as a desktop's. */}
-                  <span className="flex w-13 shrink-0 justify-center" data-browser-strip-take-slot>
+                  lead={
+                    // Every take's words start on one edge: its thumbnail, in its device's shape,
+                    // sits in a slot as wide as a desktop's.
                     <span
                       className={cn(
                         "relative flex h-8 shrink-0 items-center justify-center overflow-hidden border bg-card",
                         TAKE_CLASS[takeDevice],
                         TAKE_FRAME[state],
                       )}
+                      data-browser-strip-take-slot
                     >
                       {check.screenshot ? (
                         <TakeThumbnail
@@ -480,26 +490,38 @@ export function BrowserStrip({
                         <CodeXmlIcon aria-hidden="true" className="size-3 text-muted-foreground" />
                       ) : null}
                     </span>
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{takeWords}</span>
-                  {live ? (
-                    <span className="size-1.5 shrink-0 animate-status-pulse rounded-full bg-status-busy motion-reduce:animate-none" />
-                  ) : state === "failed" ? (
-                    <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
-                  ) : state === "retried" ? (
-                    <RotateCcwIcon
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-status-attention"
-                    />
-                  ) : state === "unfinished" ? (
-                    <MinusIcon
-                      aria-hidden="true"
-                      className="size-3.5 shrink-0 text-muted-foreground"
-                    />
-                  ) : (
-                    <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
-                  )}
-                </button>
+                  }
+                  meta={
+                    live ? (
+                      <Badge aria-label="Live" dot tone="info" />
+                    ) : state === "failed" ? (
+                      <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed" />
+                    ) : state === "retried" ? (
+                      <RotateCcwIcon
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-status-attention"
+                      />
+                    ) : state === "unfinished" ? (
+                      <MinusIcon
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                      />
+                    ) : (
+                      <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-ok" />
+                    )
+                  }
+                  onClick={() => (live ? openPanel() : setPickedKey(check.key))}
+                  picked={check === onStage}
+                  pressable
+                  render={<button type="button" />}
+                  size="xs"
+                  thumbnail
+                  title={
+                    <span className={check === onStage ? undefined : "text-muted-foreground"}>
+                      {takeWords}
+                    </span>
+                  }
+                />
               );
             })}
           </div>
@@ -577,27 +599,31 @@ export function BrowserTakes({
         const device = browserCheckDevice(take);
         const index = shots.findIndex((shot) => shot.key === take.key);
         return (
-          <button
+          <Button
             key={take.key}
             aria-label={`${browserCheckCaption(take)}${take.deviceName ? ` on ${take.deviceName}` : ""}${state === "failed" ? ", failed" : state === "retried" ? ", retried" : state === "unfinished" ? ", not finished" : ""}. Open the screenshot`}
-            className={cn(
-              "h-20 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-              TAKE_PICTURE_CLASS[device],
-              state === "failed"
-                ? "border-status-failed ring-1 ring-status-failed"
-                : state === "retried"
-                  ? "border-status-attention"
-                  : "border-border",
-            )}
+            className="h-20 shrink-0 cursor-zoom-in"
             {...intent}
             data-report-take={device}
             onClick={() =>
               onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
             }
-            type="button"
+            variant="bare"
           >
-            <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
-          </button>
+            <span
+              className={cn(
+                "block h-full overflow-hidden rounded-control border bg-card",
+                TAKE_PICTURE_CLASS[device],
+                state === "failed"
+                  ? "border-status-failed ring-1 ring-status-failed"
+                  : state === "retried"
+                    ? "border-status-attention"
+                    : "border-border",
+              )}
+            >
+              <TakeThumbnail aspect={TAKE_ASPECT[device]} src={src} />
+            </span>
+          </Button>
         );
       })}
     </div>
@@ -639,7 +665,7 @@ function LiveTake({
     <span
       aria-label={`Checking ${browserCheckCaption(take)}`}
       className={cn(
-        "relative block h-20 shrink-0 overflow-hidden rounded-lg border border-border bg-background",
+        "relative block h-20 shrink-0 overflow-hidden rounded-control border border-border bg-background",
         TAKE_PICTURE_CLASS[device],
       )}
       data-report-take={device}
@@ -708,7 +734,7 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
     <span
       aria-label={`${browserCheckCaption(take)} failed${reason === null ? "" : `: ${reason}`}`}
       className={cn(
-        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-lg border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
+        "flex h-20 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-control border border-status-failed bg-card px-2 text-center ring-1 ring-status-failed",
         TAKE_PICTURE_CLASS[device],
       )}
       data-report-take={device}
@@ -717,7 +743,7 @@ function FailedTake({ take }: { readonly take: ZeropsOperation }) {
     >
       <XIcon aria-hidden="true" className="size-3.5 shrink-0 text-status-failed-text" />
       {device === "desktop" && reason !== null ? (
-        <span className="line-clamp-3 break-words text-status-failed-text text-xs leading-4">
+        <span className="line-clamp-3 break-words text-status-failed-text text-caption leading-4">
           {reason}
         </span>
       ) : null}

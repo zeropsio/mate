@@ -271,7 +271,7 @@ function StationName({
   if (!held && station.projectId !== undefined)
     return (
       <Link
-        className="ln-name rounded-sm"
+        className="ln-name rounded-mark"
         params={{ groupId, projectId: station.projectId }}
         preload="intent"
         to="/group/$groupId/$projectId"
@@ -281,15 +281,17 @@ function StationName({
     );
   if (!held && station.kind === "mates" && onOpenMates !== undefined)
     return (
-      <button
-        className="ln-name rounded-sm"
-        onClick={(event) => {
-          onOpenMates(event.currentTarget);
-        }}
-        type="button"
-      >
-        {station.name}
-      </button>
+      <span className="ln-name">
+        <InlineButton
+          className="max-w-full"
+          onClick={(event) => {
+            onOpenMates(event.currentTarget);
+          }}
+          tone="plain"
+        >
+          <span className="truncate font-semibold">{station.name}</span>
+        </InlineButton>
+      </span>
     );
   return (
     <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>
@@ -324,7 +326,7 @@ function SideRow({ side, groupId }: { readonly side: LineSide; readonly groupId:
         words
       ) : (
         <Link
-          className="min-w-0 rounded-sm"
+          className="min-w-0 rounded-mark"
           params={{ groupId, projectId: side.projectId }}
           preload="intent"
           to="/group/$groupId/$projectId"

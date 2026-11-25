@@ -26,7 +26,7 @@ export function ZeropsDeviceLoginWait({
     >
       {closed ? (
         <>
-          <p className="text-sm text-muted-foreground">The Zerops window isn't open.</p>
+          <p className="text-body text-muted-foreground">The Zerops window isn't open.</p>
           <Button
             className="w-full"
             render={<a href={progress.consentUrl} rel="noopener" target="_blank" />}
@@ -37,16 +37,16 @@ export function ZeropsDeviceLoginWait({
       ) : (
         <>
           <Spinner size="lg" className="mx-auto" />
-          <p className="text-sm text-muted-foreground">Finish in the Zerops window.</p>
+          <p className="text-body text-muted-foreground">Finish in the Zerops window.</p>
         </>
       )}
-      <p className="text-xs text-muted-foreground" aria-live="polite">
+      <p className="text-caption text-muted-foreground" aria-live="polite">
         If Zerops shows a code, it's{" "}
         <span className="block pt-1 font-mono text-2xl font-medium tracking-widest text-foreground">
           {progress.userCode}
         </span>
       </p>
-      <p className="space-x-3 text-xs text-muted-foreground">
+      <p className="space-x-3 text-caption text-muted-foreground">
         {closed ? null : (
           <InlineButton tone="muted" onClick={onReopen}>
             Reopen the Zerops window

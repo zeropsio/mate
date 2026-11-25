@@ -21,6 +21,7 @@ import {
   WrenchIcon,
   XIcon,
   ZapIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrlStates } from "../../assets/assetUrls";
@@ -64,7 +65,7 @@ function TimelineRowTimestamp({
         render={
           <span
             className={cn(
-              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-md text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
+              "pointer-events-none absolute me-1 shrink-0 whitespace-nowrap rounded-control text-muted-foreground text-caption tabular-nums opacity-0 group-hover/timeline-row:pointer-events-auto group-hover/timeline-row:static group-hover/timeline-row:opacity-100 group-focus-within/timeline-row:pointer-events-auto group-focus-within/timeline-row:static group-focus-within/timeline-row:opacity-100",
               className,
             )}
           />
@@ -138,37 +139,27 @@ type WorkEntryIconName =
   | "x"
   | "zap";
 
+const WORK_ENTRY_ICONS: Record<WorkEntryIconName, LucideIcon> = {
+  bot: BotIcon,
+  brain: BrainIcon,
+  check: CheckIcon,
+  "circle-alert": CircleAlertIcon,
+  eye: EyeIcon,
+  globe: GlobeIcon,
+  hammer: HammerIcon,
+  "message-circle": MessageCircleIcon,
+  search: SearchIcon,
+  "square-pen": SquarePenIcon,
+  terminal: TerminalIcon,
+  wrench: WrenchIcon,
+  x: XIcon,
+  zap: ZapIcon,
+};
+
+// A work line's glyph is drawn a touch lighter than lucide's 2, so it sits under the line's words.
 function WorkEntryIconSvg({ name, className }: { name: WorkEntryIconName; className: string }) {
-  switch (name) {
-    case "bot":
-      return <BotIcon className={className} aria-hidden />;
-    case "brain":
-      return <BrainIcon className={className} aria-hidden />;
-    case "check":
-      return <CheckIcon className={className} aria-hidden />;
-    case "circle-alert":
-      return <CircleAlertIcon className={className} aria-hidden />;
-    case "eye":
-      return <EyeIcon className={className} aria-hidden />;
-    case "globe":
-      return <GlobeIcon className={className} aria-hidden />;
-    case "hammer":
-      return <HammerIcon className={className} aria-hidden />;
-    case "message-circle":
-      return <MessageCircleIcon className={className} aria-hidden />;
-    case "search":
-      return <SearchIcon className={className} aria-hidden />;
-    case "square-pen":
-      return <SquarePenIcon className={className} aria-hidden />;
-    case "terminal":
-      return <TerminalIcon className={className} aria-hidden />;
-    case "wrench":
-      return <WrenchIcon className={className} aria-hidden />;
-    case "x":
-      return <XIcon className={className} aria-hidden />;
-    case "zap":
-      return <ZapIcon className={className} aria-hidden />;
-  }
+  const Icon = WORK_ENTRY_ICONS[name];
+  return <Icon className={className} strokeWidth={1.8} aria-hidden />;
 }
 
 function workToneIcon(tone: TimelineWorkEntry["tone"]): {
@@ -400,7 +391,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   return (
     <div
       className={cn(
-        "group/timeline-row relative flex flex-col rounded-md transition-colors",
+        "group/timeline-row relative flex flex-col rounded-control transition-colors",
         isExpandedToolGroupEntry ? "py-0" : "py-px",
         expanded && "mb-1",
         canExpand &&
@@ -417,10 +408,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           aria-label={showFailedIndicator ? "Tool call failed" : undefined}
           aria-hidden={!showEntryIcon}
         >
-          <WorkEntryIconSvg
-            name={entryIconName}
-            className="block size-3.5 shrink-0 stroke-[1.8] opacity-70"
-          />
+          <WorkEntryIconSvg name={entryIconName} className="block size-3.5 shrink-0 opacity-70" />
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -501,9 +489,9 @@ function QuestionAnswerHistory({
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-sm text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <p className="text-body text-muted-foreground">{answer.questionTextById[questionId]}</p>
           ) : null}
-          <p className="whitespace-pre-wrap text-sm">
+          <p className="whitespace-pre-wrap text-body">
             {[answer.answers[questionId]]
               .flat()
               .filter((value): value is string => typeof value === "string")
@@ -518,7 +506,7 @@ function QuestionAnswerHistory({
                   key={attachment.id}
                   source={url ?? ""}
                   download={attachment.type === "file" ? attachment.name : undefined}
-                  className="text-sm underline"
+                  className="text-body underline"
                   target={attachment.type === "image" ? "_blank" : undefined}
                   rel="noopener noreferrer"
                 >
@@ -530,7 +518,7 @@ function QuestionAnswerHistory({
                       decoding="async"
                       src={url}
                       alt={attachment.name}
-                      className="h-20 w-32 rounded object-contain"
+                      className="h-20 w-32 rounded-control object-contain"
                     />
                   ) : (
                     attachment.name

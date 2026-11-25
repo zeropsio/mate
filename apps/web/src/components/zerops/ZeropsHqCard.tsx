@@ -22,6 +22,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { hqCardView, hqNavigationTrouble, type HqCardView } from "./ZeropsHqCard.logic";
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 
 /**
  * How many of the Mates the viewer observes in `organizationId` are online, as HQ last said: a
@@ -93,13 +94,14 @@ export function ZeropsHqCardView({
       data-hq-state={view.state?.kind ?? "unknown"}
       data-zerops-surface="hq-card"
     >
-      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-caption">
         {view.opens ? (
-          <button
+          <Button
             aria-expanded={open}
-            className="-ms-1 inline-flex items-center gap-1 rounded-md px-1 font-medium"
+            className="-ms-2"
             onClick={() => onOpenChange(!open)}
-            type="button"
+            size="xs"
+            variant="ghost"
           >
             <ChevronRightIcon
               aria-hidden="true"
@@ -109,7 +111,7 @@ export function ZeropsHqCardView({
               )}
             />
             HQ
-          </button>
+          </Button>
         ) : (
           <span className="font-medium">HQ</span>
         )}
@@ -127,7 +129,10 @@ export function ZeropsHqCardView({
         )}
       </div>
       {view.troubles.length === 0 ? null : (
-        <ul className="flex flex-col gap-0.5 pb-1 text-xs text-status-attention-text" role="status">
+        <ul
+          className="flex flex-col gap-0.5 pb-1 text-caption text-status-attention-text"
+          role="status"
+        >
           {view.troubles.map((trouble) => (
             <li data-hq-trouble key={trouble}>
               {trouble}
@@ -136,7 +141,7 @@ export function ZeropsHqCardView({
         </ul>
       )}
       {open && view.opens ? (
-        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-xs">
+        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-caption">
           {view.core === null ? null : (
             <DetailRow label="Version">
               <span>{view.core}</span>

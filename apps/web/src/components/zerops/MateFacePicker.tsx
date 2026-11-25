@@ -2,11 +2,12 @@
  * A Mate's face, being picked: the face its colour and its shape make, big, beside a row of the
  * eight colours and a row of the eight shapes, under whatever else the form asks first (a new
  * Mate's name) — or, folded, a small face, the name and *Change look* — or, apart, the rows alone,
- * the face standing elsewhere as its page's hero (`MateFacePreview`). The one picker wherever a
- * face is picked: *New Mate*, the New project dialog's first Mate, an account's first run, and
- * *Change face…* in a Mate's menus.
+ * the face standing elsewhere as its page's hero (`MateFacePreview`) — or, as a ring, the colours
+ * and the shapes opened out around the face (`MateFaceRing`, New project's Mate step). The one
+ * picker wherever a face is picked: *New Mate*, New project's first Mate, an account's first run,
+ * and *Change face…* in a Mate's menus.
  *
- * The face beside what makes it; on a phone, over it. Each row is a radio group of real buttons,
+ * The face beside what makes it; on a phone, over it. Each row is a radio group of swatches,
  * one Tab stop per row (the picked one), the arrow keys walking the row and picking as they go.
  * The picked one wears a ring of its tint a gap out, so nothing changes size.
  */
@@ -21,6 +22,7 @@ import {
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
+import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { MateFace } from "./primitives";
 
 /** The colours and the shapes by the words a screen reader says for them. */
@@ -51,6 +53,101 @@ function tintStyle(tint: MateTintId): CSSProperties {
   return { "--mate-face-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties;
 }
 
+/** A colour's option: a dot, and its ring a gap out. */
+function tintMark() {
+  return (
+    <>
+      <circle className="mate-face-ring" cx="18" cy="18" data-slot="radio-swatch-ring" r="15.5" />
+      <circle className="mate-face-mark" cx="18" cy="18" r="12" />
+    </>
+  );
+}
+
+/** A shape's option: the shape, and its own outline a gap out, parallel to every shape. */
+function shapeMark(shape: MateShapeId) {
+  return (
+    <>
+      <path
+        className="mate-face-ring"
+        d={MATE_SHAPES[shape].d}
+        data-slot="radio-swatch-ring"
+        transform="translate(1 1) scale(0.34)"
+      />
+      <path
+        className="mate-face-mark"
+        d={MATE_SHAPES[shape].d}
+        transform="translate(5 5) scale(0.26)"
+      />
+    </>
+  );
+}
+
+/**
+ * Where an option of a ring stands, as an angle clockwise from the top: the colours down the
+ * left, the shapes down the right, each arc 140° with the top and the bottom left open.
+ */
+function ringAngle(side: "left" | "right", index: number, count: number): number {
+  const step = 140 / (count - 1);
+  return side === "left" ? 340 - index * step : 20 + index * step;
+}
+
+/**
+ * The face as its page's hero, with its colours and shapes as a ring around it (the owner,
+ * 2026-11-23): shut, the face alone, large; open, the face a touch smaller and the options
+ * coming out from its middle to their places, the colours down the left and the shapes down the
+ * right; shutting, they go back into the middle and fade. Shut, the options are inert.
+ */
+export function MateFaceRing({
+  face,
+  open,
+  onPickTint,
+  onPickShape,
+}: {
+  readonly face: ZeropsMateFace;
+  readonly open: boolean;
+  readonly onPickTint: (tint: MateTintId) => void;
+  readonly onPickShape: (shape: MateShapeId) => void;
+}) {
+  return (
+    <div className="mate-face-ring-stage" data-open={open ? "" : undefined}>
+      <span className="mate-face-ring-face">
+        <MateFacePreview className="mate-face-ring-hero" face={face} tracks />
+      </span>
+      <div className="mate-face-ring-options" inert={!open}>
+        <PickerRow
+          className="contents"
+          label="Color"
+          onPick={onPickTint}
+          optionStyle={tintStyle}
+          options={MATE_TINT_IDS}
+          place={(index) => ringPlace(ringAngle("left", index, MATE_TINT_IDS.length), index)}
+          value={face.tint}
+          words={TINT_WORDS}
+        >
+          {tintMark}
+        </PickerRow>
+        <PickerRow
+          className="contents"
+          label="Shape"
+          onPick={onPickShape}
+          optionStyle={() => tintStyle(face.tint)}
+          options={MATE_SHAPE_IDS}
+          place={(index) => ringPlace(ringAngle("right", index, MATE_SHAPE_IDS.length), index)}
+          value={face.shape}
+          words={SHAPE_WORDS}
+        >
+          {shapeMark}
+        </PickerRow>
+      </div>
+    </div>
+  );
+}
+
+/** An option's place on the ring, and its turn as the ring opens. */
+function ringPlace(angle: number, index: number): CSSProperties {
+  return { "--ring-angle": `${angle}deg`, "--ring-turn": index } as CSSProperties;
+}
+
 export function MateFacePicker({
   face,
   onPickTint,
@@ -65,8 +162,7 @@ export function MateFacePicker({
   readonly onPickShape: (shape: MateShapeId) => void;
   /**
    * One row — the face small, the name, *Change look* — with the colours and the shapes in a
-   * panel over what follows, so opening them moves nothing: the New project dialog, where the
-   * first Mate is one of several things asked.
+   * panel over what follows, so opening them moves nothing.
    */
   readonly folded?: boolean;
   /** The rows alone, under what the form asks first: the face is drawn elsewhere, larger. */
@@ -84,12 +180,7 @@ export function MateFacePicker({
         value={face.tint}
         words={TINT_WORDS}
       >
-        {() => (
-          <>
-            <circle className="mate-face-ring" cx="18" cy="18" r="15.5" />
-            <circle className="mate-face-mark" cx="18" cy="18" r="12" />
-          </>
-        )}
+        {tintMark}
       </PickerRow>
       <PickerRow
         label="Shape"
@@ -99,21 +190,7 @@ export function MateFacePicker({
         value={face.shape}
         words={SHAPE_WORDS}
       >
-        {(shape) => (
-          <>
-            {/* Its own outline a gap out: the ring runs parallel to every shape. */}
-            <path
-              className="mate-face-ring"
-              d={MATE_SHAPES[shape].d}
-              transform="translate(1 1) scale(0.34)"
-            />
-            <path
-              className="mate-face-mark"
-              d={MATE_SHAPES[shape].d}
-              transform="translate(5 5) scale(0.26)"
-            />
-          </>
-        )}
+        {shapeMark}
       </PickerRow>
     </>
   );
@@ -205,11 +282,9 @@ function LookBehindButton({
 }
 
 /**
- * One row of a face's pickers: a radio group of real buttons. One stop for Tab — the one picked —
- * and the arrow keys walk the row, picking as they go, as a radio group does. Kept by hand rather
- * than a kit's roving focus, whose stop stays where it started when the pick changes from outside
- * the row: in *New Mate* the shape follows the colour until one is picked, and the colour follows
- * the name.
+ * One row of a face's pickers: a radio group of swatches, one Tab stop for the one picked, the
+ * arrow keys walking the row and picking as they go. On a ring each swatch fills a seat placed
+ * around the face (`place`).
  */
 function PickerRow<T extends string>({
   label,
@@ -218,9 +293,14 @@ function PickerRow<T extends string>({
   words,
   optionStyle,
   onPick,
+  place,
+  className = "flex justify-between",
   children,
 }: {
   readonly label: string;
+  /** Where each option stands, where they are not a row (`MateFaceRing`). */
+  readonly place?: (index: number) => CSSProperties;
+  readonly className?: string;
   readonly options: ReadonlyArray<T>;
   readonly value: T;
   readonly words: Readonly<Record<T, string>>;
@@ -230,55 +310,39 @@ function PickerRow<T extends string>({
   /** An option's mark and its ring, in a 36 px box. */
   readonly children: (option: T) => ReactNode;
 }) {
-  const buttons = useRef(new Map<T, HTMLButtonElement>());
-  const step = (from: T, by: number) => {
-    const next = options[(options.indexOf(from) + by + options.length) % options.length];
-    if (next === undefined) return;
-    onPick(next);
-    buttons.current.get(next)?.focus();
-  };
   return (
-    <div aria-label={label} className="flex justify-between" role="radiogroup">
-      {options.map((option) => (
-        <button
-          aria-checked={option === value}
-          aria-label={words[option]}
-          className="mate-face-option focus-visible:ring-2 focus-visible:ring-ring"
-          data-checked={option === value ? "" : undefined}
-          key={option}
-          onClick={() => {
-            onPick(option);
-          }}
-          onKeyDown={(event) => {
-            const by = ARROW_STEPS[event.key];
-            if (by === undefined) return;
-            event.preventDefault();
-            step(option, by);
-          }}
-          ref={(node) => {
-            if (node === null) buttons.current.delete(option);
-            else buttons.current.set(option, node);
-          }}
-          role="radio"
-          style={optionStyle(option)}
-          tabIndex={option === value ? 0 : -1}
-          type="button"
-        >
-          <svg aria-hidden="true" className="size-9" viewBox="0 0 36 36">
-            {children(option)}
-          </svg>
-        </button>
-      ))}
-    </div>
+    <RadioSwatchGroup
+      aria-label={label}
+      className={className}
+      onValueChange={onPick}
+      options={options}
+      value={value}
+    >
+      {options.map((option, index) => {
+        const swatch = (
+          <RadioSwatch
+            aria-label={words[option]}
+            key={option}
+            size={place === undefined ? "default" : "fill"}
+            style={optionStyle(option)}
+            value={option}
+          >
+            <svg aria-hidden="true" viewBox="0 0 36 36">
+              {children(option)}
+            </svg>
+          </RadioSwatch>
+        );
+        return place === undefined ? (
+          swatch
+        ) : (
+          <span className="mate-face-ring-seat" key={option} style={place(index)}>
+            {swatch}
+          </span>
+        );
+      })}
+    </RadioSwatchGroup>
   );
 }
-
-const ARROW_STEPS: Readonly<Record<string, number>> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
-};
 
 /**
  * The face being picked, as its hero. A change crossfades: the face before fades out under the

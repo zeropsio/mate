@@ -113,7 +113,7 @@ export function ChiefStage({
                   Set up Chief
                 </Button>
                 {view.blocked === undefined ? null : (
-                  <p className="text-sm text-muted-foreground">{view.blocked}</p>
+                  <p className="text-body text-muted-foreground">{view.blocked}</p>
                 )}
               </div>
             </ArrivalSwap>

@@ -13,7 +13,7 @@ function DiffFailure() {
   if (!failure) return null;
   return (
     <div className="space-y-2">
-      <div role="alert" className="text-xs text-muted-foreground">
+      <div role="alert" className="text-caption text-muted-foreground">
         Could not load diff.
       </div>
       {failure.rawPatch}
@@ -36,7 +36,11 @@ export function ReviewCommentDiff({
   const [renderer, setRenderer] = useState(() => ({ component: lazy(loadRenderer), attempt: 0 }));
   const Renderer = renderer.component;
   const rawPatch = useMemo(
-    () => <pre className="overflow-x-auto rounded-md bg-muted/40 p-2 text-xs">{comment.diff}</pre>,
+    () => (
+      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">
+        {comment.diff}
+      </pre>
+    ),
     [comment.diff],
   );
   const failure = useMemo(

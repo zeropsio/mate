@@ -76,7 +76,7 @@ export function SheetSection({
   return (
     <Section action={action} data-addresses-part={part} level={3} title={title}>
       {caption === undefined ? null : (
-        <p className="-mt-1.5 max-w-xl text-muted-foreground text-xs">{caption}</p>
+        <p className="-mt-1.5 max-w-xl text-muted-foreground text-caption">{caption}</p>
       )}
       {lead}
       {groups.length === 0 ? null : apart ? (
@@ -153,7 +153,9 @@ export function SheetRow({
 /** A row's facts beside its name or at its end, quieter than the name: "→ app · port 3000". */
 export function RowMeta({ children }: { readonly children: ReactNode }) {
   return (
-    <span className="min-w-0 truncate font-normal text-muted-foreground text-xs">{children}</span>
+    <span className="min-w-0 truncate font-normal text-muted-foreground text-caption">
+      {children}
+    </span>
   );
 }
 
@@ -200,8 +202,8 @@ export function Stage({
           <span
             className={
               ahead
-                ? "min-w-0 flex-1 basis-56 text-muted-foreground text-sm leading-5"
-                : "min-w-0 flex-1 basis-56 font-medium text-foreground text-sm leading-5"
+                ? "min-w-0 flex-1 basis-56 text-muted-foreground text-body leading-5"
+                : "min-w-0 flex-1 basis-56 font-medium text-foreground text-body leading-5"
             }
           >
             {/* The bead says the stage's state to the eye only. */}
@@ -286,12 +288,12 @@ export function Tile({
   return (
     <Card data-addresses-tile={data} size="sm" variant="flat">
       <div className="flex min-h-7 min-w-0 items-center justify-between gap-2">
-        <span className="font-medium text-muted-foreground text-xs">{label}</span>
+        <span className="font-medium text-muted-foreground text-caption">{label}</span>
         {action}
       </div>
       <div className="grid min-w-0 gap-0.5">
-        <div className="min-w-0 break-all text-foreground text-sm">{value}</div>
-        <div className="text-muted-foreground text-xs">{caption}</div>
+        <div className="min-w-0 break-all text-foreground text-body">{value}</div>
+        <div className="text-muted-foreground text-caption">{caption}</div>
       </div>
     </Card>
   );
@@ -341,7 +343,7 @@ export function Trouble({ text }: { readonly text: string | undefined }) {
   if (text === undefined) return null;
   return (
     <p
-      className="py-1.5 text-destructive-foreground text-xs"
+      className="py-1.5 text-destructive-foreground text-caption"
       data-addresses-trouble=""
       role="alert"
     >

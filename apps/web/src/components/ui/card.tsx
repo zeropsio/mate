@@ -10,25 +10,35 @@ import { cn } from "~/lib/utils";
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
  * inside another, set apart by a deeper tint instead of a second border — depth shows as tint.
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
- * list or a conversation, `md` for a card that stands alone on a page.
+ * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
+ * card one press.
  */
 const cardVariants = cva("", {
   defaultVariants: {
     variant: "default",
     size: "none",
+    pressable: false,
   },
   variants: {
     variant: {
       default:
-        "relative flex flex-col rounded-2xl border bg-card not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
-      flat: "relative flex flex-col rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
-      inset:
-        "relative flex flex-col rounded-[calc(var(--zerops-card-radius)-4px)] bg-muted/60 text-card-foreground",
+        "relative flex flex-col rounded-card border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge",
+      flat: "relative flex flex-col rounded-card border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
+      inset: "relative flex flex-col rounded-control bg-muted/60 text-card-foreground",
     },
     size: {
       none: "",
       sm: "gap-2 px-3.5 py-3",
       md: "gap-3 p-4",
+    },
+    /**
+     * A card whose whole body is one press (a launcher's page, a thing it opens): a `<button>`, or
+     * a link through `render`. Lit under the pointer, by keyboard focus, and while `data-highlighted`
+     * (a list's arrow keys stepping through cards that keep focus on the list).
+     */
+    pressable: {
+      true: "cursor-pointer text-start outline-none transition-colors duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:bg-accent/60",
+      false: "",
     },
   },
 });
@@ -36,16 +46,18 @@ const cardVariants = cva("", {
 interface CardProps extends useRender.ComponentProps<"div"> {
   variant?: VariantProps<typeof cardVariants>["variant"];
   size?: VariantProps<typeof cardVariants>["size"];
+  pressable?: boolean;
 }
 
-function Card({ className, render, variant, size, ...props }: CardProps) {
+function Card({ className, render, variant, size, pressable = false, ...props }: CardProps) {
   const defaultProps = {
-    className: cn(cardVariants({ className, variant, size })),
+    className: cn(cardVariants({ className, variant, size, pressable })),
     "data-slot": "card",
+    ...(pressable && render === undefined ? { type: "button" as const } : {}),
   };
 
   return useRender({
-    defaultTagName: "div",
+    defaultTagName: pressable ? "button" : "div",
     props: mergeProps<"div">(defaultProps, props),
     render,
   });
@@ -54,7 +66,7 @@ function Card({ className, render, variant, size, ...props }: CardProps) {
 function CardFrame({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
     className: cn(
-      "[--clip-top:-1rem] [--clip-bottom:-1rem] *:data-[slot=card]:first:[--clip-top:1px] *:data-[slot=card]:last:[--clip-bottom:1px] flex flex-col relative rounded-2xl border bg-card before:bg-muted/72 not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] *:data-[slot=card]:-m-px *:not-last:data-[slot=card]:rounded-b-xl *:not-last:data-[slot=card]:before:rounded-b-[calc(var(--radius-xl)-1px)] *:not-first:data-[slot=card]:rounded-t-xl *:not-first:data-[slot=card]:before:rounded-t-[calc(var(--radius-xl)-1px)] *:data-[slot=card]:[clip-path:inset(var(--clip-top)_1px_var(--clip-bottom)_1px_round_calc(var(--radius-2xl)-1px))] *:data-[slot=card]:shadow-none *:data-[slot=card]:before:hidden *:data-[slot=card]:bg-clip-padding",
+      "[--clip-top:-1rem] [--clip-bottom:-1rem] *:data-[slot=card]:first:[--clip-top:1px] *:data-[slot=card]:last:[--clip-bottom:1px] flex flex-col relative rounded-card border bg-card before:bg-muted/72 bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge *:data-[slot=card]:-m-px *:not-last:data-[slot=card]:rounded-b-control *:not-last:data-[slot=card]:before:rounded-b-[calc(var(--radius-control)-1px)] *:not-first:data-[slot=card]:rounded-t-control *:not-first:data-[slot=card]:before:rounded-t-[calc(var(--radius-control)-1px)] *:data-[slot=card]:[clip-path:inset(var(--clip-top)_1px_var(--clip-bottom)_1px_round_calc(var(--radius-card)-1px))] *:data-[slot=card]:shadow-none *:data-[slot=card]:before:hidden *:data-[slot=card]:bg-clip-padding",
       className,
     ),
     "data-slot": "card-frame",
@@ -82,7 +94,7 @@ function CardFrameHeader({ className, render, ...props }: useRender.ComponentPro
 
 function CardFrameTitle({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("font-semibold text-sm", className),
+    className: cn("font-semibold text-body", className),
     "data-slot": "card-frame-title",
   };
 
@@ -95,7 +107,7 @@ function CardFrameTitle({ className, render, ...props }: useRender.ComponentProp
 
 function CardFrameDescription({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("text-muted-foreground text-sm", className),
+    className: cn("text-muted-foreground text-body", className),
     "data-slot": "card-frame-description",
   };
 
@@ -150,7 +162,7 @@ function CardTitle({ className, render, ...props }: useRender.ComponentProps<"di
 
 function CardDescription({ className, render, ...props }: useRender.ComponentProps<"div">) {
   const defaultProps = {
-    className: cn("text-muted-foreground text-sm", className),
+    className: cn("text-muted-foreground text-body", className),
     "data-slot": "card-description",
   };
 

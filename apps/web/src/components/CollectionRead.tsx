@@ -14,14 +14,14 @@ export function CollectionRead<A>({
   return (
     <>
       {presentation.message ? (
-        <p role="status" className="px-4 py-3 text-xs text-muted-foreground">
+        <p role="status" className="px-4 py-3 text-caption text-muted-foreground">
           {presentation.message}
           {presentation.retained && showItems ? " Showing last-known data." : null}
         </p>
       ) : null}
       {showItems || presentation.state === "ready" ? (
         !showItems && emptyLabel ? (
-          <p className="px-4 py-3 text-xs text-muted-foreground">{emptyLabel}</p>
+          <p className="px-4 py-3 text-caption text-muted-foreground">{emptyLabel}</p>
         ) : (
           children(presentation.items)
         )

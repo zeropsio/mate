@@ -94,7 +94,9 @@ export function ZeropsGitCommitView({
           <ArrowLeftIcon />
         </Button>
         <span className="shrink-0 font-mono text-2xs text-muted-foreground">{short}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-foreground">{commit.subject}</span>
+        <span className="min-w-0 flex-1 truncate text-caption text-foreground">
+          {commit.subject}
+        </span>
       </header>
       {state.kind === "loading" ? (
         loading
@@ -110,7 +112,7 @@ export function ZeropsGitCommitView({
           />
         </Suspense>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-caption text-muted-foreground">
           {state.kind === "empty" ? (
             <p>This commit changed no files.</p>
           ) : state.kind === "absent" ? (

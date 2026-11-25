@@ -143,12 +143,16 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
 
 - One scale, from `packages/shared/src/brand.ts` and projected into the web theme: five type steps
   (`text-caption`, `text-body`, `text-emphasis`, `text-title`, `text-display`), spacing on a 4 px
-  grid, three nested radii (`rounded-control` inside `rounded-card` inside `rounded-sheet`), three
+  grid, four nested radii (`rounded-mark` for a key, a checkbox or a swatch, inside `rounded-control`
+  inside `rounded-card` inside `rounded-sheet`; `rounded-full` only for a pill or a circle), three
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
-  quiet tools, `destructive` only for what deletes, stops or acts on Production, `link` inside
-  text. Buttons are rectangles; a word that acts inside a sentence is `InlineButton`.
+  quiet tools, `sidebar` for the menu's own presses on its ground, `destructive` only for what deletes, stops or acts on Production, `link` inside
+  text. Buttons are rectangles, except `shape="round"`: the round icon press (the composer's send)
+  and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
+  is `InlineButton`; a name that opens what it names is its `plain` tone. A list's row is `Row`,
+  `xs` for a tree or a dense list.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
@@ -225,6 +229,11 @@ numbered steps of these. Every ask is the same card, in two densities.
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); its ledger is reconciled the same
     way; hand-written CSS sizes, corners and transition lengths between the scale's steps are held
     to a budget that only shrinks (`scripts/check-css-tokens.ts`)
+
+- **R12** — Presses, links and fields are the kit's
+  - _Enforced by:_ `t3code/no-raw-controls` (a `<button>`, `<a>`, `<input>`, `<textarea>` or `<select>`
+    in the web client outside `components/ui`, the kit and the design harness, also one handed to a
+    `render` prop that carries its own `className`); its ledger only shrinks
 
 ## 6. Exceptions
 

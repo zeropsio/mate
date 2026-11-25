@@ -52,7 +52,7 @@ const mateSenderOf = (state: ConversationState, run: RunRecord): string | undefi
     seen.add(at.id);
     const message = at.personBody?.mateMessage;
     if (message !== undefined)
-      return message.kind === "answer" ? undefined : mateMessageSenderName(message.from);
+      return message.kind === "ask" ? mateMessageSenderName(message.from) : undefined;
     at = at.joins === null ? undefined : state.runs[at.joins];
   }
   return "another Mate";

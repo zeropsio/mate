@@ -58,7 +58,6 @@ import type { MateStatusAsk } from "~/zerops/mateStatus.logic";
 import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
 import { crewmateMenuModel } from "~/components/zerops/crew/CrewmateMenu.logic";
 import { crewTryOf, crewTryPress, crewTryStops } from "@t3tools/client-runtime/zerops/crew/crewTry";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -715,9 +714,9 @@ function Frame({
   };
   return (
     <section className="flex flex-col gap-2" data-head-state={state.id}>
-      <p className="text-xs text-muted-foreground">{state.title}</p>
+      <p className="text-caption text-muted-foreground">{state.title}</p>
       <div
-        className="flex flex-col overflow-hidden rounded-md border border-border bg-background"
+        className="flex flex-col overflow-hidden rounded-control border border-border bg-background"
         data-head-frame={state.id}
         style={{ width: state.width ?? WIDTH }}
       >
@@ -788,7 +787,7 @@ function Conversation(): ReactNode {
   return (
     <div className="flex justify-center px-5 pt-4 pb-8 sm:px-6">
       <div className="flex w-full max-w-3xl justify-end">
-        <p className="rounded-2xl bg-secondary px-4 py-2.5 text-sm">
+        <p className="rounded-card bg-secondary px-4 py-2.5 text-body">
           Go on with the rules engine, the scoring first.
         </p>
       </div>
@@ -840,7 +839,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

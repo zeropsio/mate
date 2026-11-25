@@ -19,7 +19,7 @@ import type { RepoPathTarget } from "./RepoMarkdown";
 function Stale({ onAgain }: { readonly onAgain: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <p className="text-sm text-status-failed" role="alert">
+      <p className="text-body text-status-failed" role="alert">
         HQ could not read this repository again. Showing the last read source.
       </p>
       <Button variant="ghost" size="sm" onClick={onAgain}>

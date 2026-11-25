@@ -66,9 +66,9 @@ export function GitMirrorDialog({
           <DialogPanel>
             <div className="grid min-h-72 content-start gap-1">
               {code === undefined || (repo !== undefined && mirror.apps === null) ? (
-                <p className="text-sm text-muted-foreground">Reading repositories…</p>
+                <p className="text-body text-muted-foreground">Reading repositories…</p>
               ) : code.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No code repository yet.</p>
+                <p className="text-body text-muted-foreground">No code repository yet.</p>
               ) : (
                 code.map((entry) => {
                   const state = repoState(entry, {

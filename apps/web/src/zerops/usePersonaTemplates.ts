@@ -16,7 +16,7 @@ import { useState } from "react";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
 import { useAccountDataOptional, useAccountOrgId, useProjection } from "./ZeropsAccountData";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { usePlatformCapabilities } from "./usePlatformCapabilities";
 
 export interface OrgPersonaTemplatesView {
@@ -37,7 +37,7 @@ const UNREAD = Atom.make<OrgPersonaTemplates>({ state: "loading" });
 export function useOrgPersonaTemplates(): OrgPersonaTemplatesView {
   const account = useAccountDataOptional();
   const orgId = useAccountOrgId();
-  const { activeOrganization } = useZeropsSession();
+  const activeOrganization = useZeropsSessionOptional()?.activeOrganization ?? null;
   const { manageOrganization } = usePlatformCapabilities(null);
   const read = useProjection(orgPersonaTemplates, orgId, UNREAD);
   return {

@@ -21,7 +21,7 @@ export function WaitLine({
       </span>
     );
   return (
-    <p className="flex items-center gap-2 text-sm text-muted-foreground" data-zerops-wait-line="">
+    <p className="flex items-center gap-2 text-body text-muted-foreground" data-zerops-wait-line="">
       <Spinner size="sm" aria-hidden="true" role="presentation" />
       <span>{text}</span>
     </p>

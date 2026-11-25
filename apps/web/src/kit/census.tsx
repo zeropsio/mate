@@ -36,7 +36,7 @@ export function CensusSpecimen({
 }) {
   return (
     <Specimen label={label} source={censusLine(entry)}>
-      <RenderErrorBoundary fallback={<span className="text-sm">{label} failed to render</span>}>
+      <RenderErrorBoundary fallback={<span className="text-body">{label} failed to render</span>}>
         {children}
       </RenderErrorBoundary>
     </Specimen>
@@ -86,7 +86,7 @@ export function CensusCount({
   readonly kit: string;
 }) {
   return (
-    <p className="m-0 text-sm">
+    <p className="m-0 text-body">
       {looks} looks
       {components === undefined ? null : ` from ${components} components`} in {files} files; {kit}.
     </p>
@@ -121,7 +121,7 @@ export function CensusLook({
   return (
     <div className="flex min-w-0 flex-col gap-3" data-kit-census-look={name}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <h3 className="m-0 font-medium text-sm">
+        <h3 className="m-0 font-medium text-body">
           {name}
           <span className="font-normal text-muted-foreground">
             {" "}
@@ -130,7 +130,7 @@ export function CensusLook({
           </span>
         </h3>
         {source === undefined ? null : (
-          <code className="font-mono text-muted-foreground/70 text-xs">{source}</code>
+          <code className="font-mono text-muted-foreground/70 text-caption">{source}</code>
         )}
       </div>
       {source === undefined ? (
@@ -154,7 +154,7 @@ export function CensusComponent({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs">
+      <p className="m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 text-caption">
         <code className="font-mono font-medium">{name}</code>
         <code className="font-mono text-muted-foreground/70">{source}</code>
       </p>

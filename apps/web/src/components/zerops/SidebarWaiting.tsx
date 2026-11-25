@@ -7,7 +7,6 @@
  *
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { fadeFillIn } from "~/lib/loadFills";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
@@ -27,8 +26,9 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
-import { gatedPortal } from "../ui/portal-gate";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
@@ -42,8 +42,6 @@ import {
   type WaitingMate,
 } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
-
-const WaitingPortal = gatedPortal(PopoverPrimitive.Portal);
 
 /** What the list asks of the menu: a Mate's conversation, and the fix request's composer. */
 export interface WaitingVerbs {
@@ -114,7 +112,7 @@ export function SidebarWaitingPopover({
   // Nothing waits any more: the list has nothing to hold.
   const shown = open && items.length > 0;
   return (
-    <PopoverPrimitive.Root
+    <Popover
       onOpenChange={(next, details) => {
         // What was pressed: the trigger the list stands beside.
         const pressed = details.event?.target;
@@ -126,86 +124,84 @@ export function SidebarWaitingPopover({
       open={shown}
     >
       {tooltip === undefined ? (
-        <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
+        <PopoverTrigger render={trigger}>{children}</PopoverTrigger>
       ) : (
         <Tooltip>
-          <TooltipTrigger render={<PopoverPrimitive.Trigger render={trigger} />}>
-            {children}
-          </TooltipTrigger>
+          <TooltipTrigger render={<PopoverTrigger render={trigger} />}>{children}</TooltipTrigger>
           <TooltipPopup side="right">{tooltip}</TooltipPopup>
         </Tooltip>
       )}
-      <WaitingPortal>
-        <PopoverPrimitive.Positioner
-          align={placement.side === "bottom" ? "center" : "start"}
-          alignOffset={placement.alignOffset}
-          className="z-130"
-          {...(placement.side === "bottom" ? { collisionPadding: 8 } : {})}
-          side={placement.side}
-          sideOffset={placement.sideOffset}
-        >
-          <PopoverPrimitive.Popup
-            aria-label="Waiting on you"
-            className="menu-wait-list"
-            data-zerops-surface="sidebar-waiting-list"
-          >
-            <WaitingList
-              items={items}
-              onClose={() => {
-                setOpen(false);
-              }}
-              verbs={verbs}
-            />
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </WaitingPortal>
-    </PopoverPrimitive.Root>
+      <PopoverPopup
+        align={placement.side === "bottom" ? "center" : "start"}
+        alignOffset={placement.alignOffset}
+        aria-label="Waiting on you"
+        data-zerops-surface="sidebar-waiting-list"
+        padding="compact"
+        side={placement.side}
+        sideOffset={placement.sideOffset}
+        width="lg"
+      >
+        <div className="text-body">
+          <WaitingList
+            items={items}
+            onClose={() => {
+              setOpen(false);
+            }}
+            verbs={verbs}
+          />
+        </div>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
 /**
- * A bare count of what waits on the person — the menu's top, the Chief's row, the rail — that opens
+ * A bare count of what waits on the person — the menu's headline, the rail — that opens
  * the list; hovered, it says what it counts ("Waiting on you", the first things by name), so the
  * number never stands without its noun.
  */
 export function SidebarWaitingCount({
   items,
   verbs,
-  className,
+  seat,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
   readonly verbs: WaitingVerbs;
-  readonly className: string;
+  /** Where it stands: before the headline's squares (a 22 px red pill), or on a rail tile's corner (20 px). */
+  readonly seat: "head" | "rail";
 }) {
   const words = waitingCountWords(items);
   return (
-    <SidebarWaitingPopover
-      items={items}
-      tooltip={
-        <span className="menu-rail-tip">
-          <span className="menu-rail-tip-name">
-            Waiting on you
-            <span className="menu-rail-tip-key">⌥↓</span>
+    <span className={seat === "rail" ? "menu-rail-count" : "menu-top-count"}>
+      <SidebarWaitingPopover
+        items={items}
+        tooltip={
+          <span className="menu-rail-tip">
+            <span className="menu-rail-tip-name">
+              Waiting on you
+              <span className="menu-rail-tip-key">⌥↓</span>
+            </span>
+            <span className="menu-rail-tip-line">{words.line}</span>
           </span>
-          <span className="menu-rail-tip-line">{words.line}</span>
-        </span>
-      }
-      trigger={
-        <button
-          aria-label={words.label}
-          className={className}
-          data-waiting-trigger=""
-          data-zerops-surface="sidebar-waiting"
-          // It stands with the menu's fill, or arrives later into its own seat: either way it
-          // fades in where it stands (`fadeFillIn`).
-          ref={fadeFillIn}
-          type="button"
-        />
-      }
-      verbs={verbs}
-    >
-      <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-    </SidebarWaitingPopover>
+        }
+        trigger={
+          <Button
+            aria-label={words.label}
+            data-waiting-trigger=""
+            data-zerops-surface="sidebar-waiting"
+            // It stands with the menu's fill, or arrives later into its own seat: either way it
+            // fades in where it stands (`fadeFillIn`).
+            ref={fadeFillIn}
+            shape="round"
+            // The headline's pill draws its own red (`menu-top-count`); the rail's is the kit's.
+            {...(seat === "rail" ? { size: "2xs", variant: "warning" } : { variant: "bare" })}
+          />
+        }
+        verbs={verbs}
+      >
+        <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+      </SidebarWaitingPopover>
+    </span>
   );
 }
 
@@ -646,17 +642,20 @@ export function Replying({
   return (
     <>
       {replying ? (
-        <label className="menu-wait-reply">
-          <input
+        <InputGroup className="basis-full">
+          <InputGroupInput
             aria-label={label}
             disabled={sending}
+            nativeInput
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             ref={field}
             type="text"
           />
-          <Kbd>↵</Kbd>
-        </label>
+          <InputGroupAddon align="inline-end">
+            <Kbd>↵</Kbd>
+          </InputGroupAddon>
+        </InputGroup>
       ) : (
         children
       )}

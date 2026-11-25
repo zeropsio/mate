@@ -383,12 +383,7 @@ span.ln-bead {
   padding-right: 18px;
 }
 
-button.ln-name {
-  cursor: pointer;
-}
-
-a.ln-name:hover,
-button.ln-name:hover {
+a.ln-name:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }

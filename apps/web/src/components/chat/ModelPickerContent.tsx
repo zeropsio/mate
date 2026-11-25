@@ -829,7 +829,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 <div className="border-b border-border/70 pb-2.5 transition-colors focus-within:border-ring">
                   <ComboboxInput
                     ref={searchInputRef}
-                    className="[&_input]:h-6.5 [&_input]:font-sans [&_input]:leading-6.5"
                     placeholder="Search models..."
                     showTrigger={false}
                     startAddon={
@@ -913,7 +912,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 className="relative min-h-0 overflow-hidden pr-px"
                 style={{ height: modelListHeight }}
               >
-                <ComboboxListVirtualized className="not-empty:p-0">
+                <ComboboxListVirtualized flush>
                   <LegendList<string>
                     ref={modelListRef}
                     data={filteredItemKeys}
@@ -927,11 +926,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                             index={index}
                             value={modelKey}
                             aria-expanded={legacySection.isExpanded}
-                            className="group w-full cursor-pointer rounded-md px-2 py-2"
+                            className="group w-full cursor-pointer"
                           >
                             <div className="min-w-0 flex-1 text-left">
-                              <div className="text-xs font-medium leading-snug">Legacy models</div>
-                              <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70">
+                              <div className="text-caption font-medium leading-snug">
+                                Legacy models
+                              </div>
+                              <div className="mt-1 text-caption font-normal leading-snug text-muted-foreground/70">
                                 {legacySection.legacyModels.length} models
                               </div>
                             </div>
@@ -991,8 +992,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   />
                 </ComboboxListVirtualized>
               </div>
-              <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-                No models found
+              <ComboboxEmpty>
+                <span className="block py-4 text-caption">No models found</span>
               </ComboboxEmpty>
             </div>
           </Combobox>

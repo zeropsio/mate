@@ -16,6 +16,7 @@ import {
 } from "../../zerops/environments/reachability.ts";
 import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
+import { startsAgain } from "../../zerops/mateState.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 
@@ -335,11 +336,13 @@ function comingWords(input: MateComingInput): MateComing | undefined {
   ) {
     return { kind: "coming", line: COMING_UP_LINE };
   }
+  // A container starting again after a stop is starting, not coming up.
   if (
     press === undefined &&
     !answered &&
     candidate?.group === "provisioning" &&
-    !RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "")
+    !RESTARTING_SERVICE_STATUSES.has(candidate.service?.status ?? "") &&
+    !startsAgain(candidate.service)
   ) {
     return { kind: "coming", line: COMING_UP_LINE };
   }
@@ -632,7 +635,7 @@ export interface RecoveryNotice {
 
 /** Only owner evidence distinguishes access, deletion, deliberate stop and startup failure. */
 export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNotice | null {
-  const { standing, status, lifecycle } = read;
+  const { standing, lifecycle } = read;
   const name = mateName.trim() || "The Mate";
   const recovering =
     !mateProjectUnavailable(standing) && lifecycle?.state === "running"
@@ -684,13 +687,17 @@ export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNo
       "error",
       lifecycle.details,
     );
-  if (status === "STOPPED")
+  // A stop and a start are the person's own: said as they stand, never as a fault.
+  if (read.stop === "stopping") return say(`${name} is stopping.`, "", [], "default");
+  if (read.stop === "stopped")
     return say(
-      `${name}'s container is stopped.`,
-      `Start ${name} to reconnect.`,
+      `${name} is stopped.`,
+      "Start it to pick up where it left off.",
       ["start"],
       "default",
     );
+  if (read.stop === "starting")
+    return { ...say(`${name} is starting.`, "", [], "default"), recovering: "start" };
   if (read.diskFull === true)
     return say(
       `Zerops last reported ${name}'s disk is full.`,

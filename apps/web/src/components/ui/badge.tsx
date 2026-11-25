@@ -58,6 +58,15 @@ const DOT_TONE = {
   danger: "bg-status-failed",
 } as const;
 
+/** The hollow dot: the tone's ring only, for a place that holds nothing yet or rests on purpose. */
+const HOLLOW_TONE = {
+  neutral: "ring-status-off",
+  info: "ring-status-busy",
+  success: "ring-status-ok",
+  warning: "ring-status-attention",
+  danger: "ring-status-failed",
+} as const;
+
 type BadgeTone = keyof typeof DOT_TONE;
 
 type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
@@ -71,6 +80,8 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
         readonly dot: true;
         /** The dot breathes while the work it marks runs (`info`'s default). */
         readonly pulse?: boolean;
+        /** Only the dot's ring: nothing there yet (a place with no deploy), or at rest on purpose. */
+        readonly hollow?: boolean;
         /**
          * The words wrap instead of truncating, the dot on their first line: a status said as a
          * sentence (a failure in its source's words) is never cut.
@@ -81,6 +92,7 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
     | {
         readonly dot: true;
         readonly pulse?: boolean;
+        readonly hollow?: boolean;
         readonly children?: undefined;
         readonly "aria-label": string;
       }
@@ -96,8 +108,10 @@ function Badge({
   ...props
 }: BadgeProps) {
   const wraps = "wrap" in props && props.wrap === true;
+  const hollow = "hollow" in props && props.hollow === true;
   const form = dot === true ? "dot" : "pill";
-  const breathes = dot === true && (pulse ?? tone === "info");
+  const breathes = dot === true && !hollow && (pulse ?? tone === "info");
+  const dotFill = hollow ? cn("ring-[1.5px] ring-inset", HOLLOW_TONE[tone]) : DOT_TONE[tone];
   const labelled = dot === true && props.children === undefined;
   const defaultProps = {
     className: cn(
@@ -114,7 +128,7 @@ function Badge({
         <>
           {wraps ? (
             <span aria-hidden="true" className="flex h-lh shrink-0 items-center">
-              <span className={cn("inline-flex size-2 rounded-full", DOT_TONE[tone])} />
+              <span className={cn("inline-flex size-2 rounded-full", dotFill)} />
             </span>
           ) : (
             <span
@@ -122,7 +136,7 @@ function Badge({
               data-pulse={breathes ? "" : undefined}
               className={cn(
                 "inline-flex size-2 shrink-0 rounded-full",
-                DOT_TONE[tone],
+                dotFill,
                 breathes && "animate-status-pulse motion-reduce:animate-none",
               )}
             />
@@ -136,7 +150,11 @@ function Badge({
       ),
   };
   const { children: _children, ...given } = props;
-  const { wrap: _wrap, ...rest } = given as typeof given & { readonly wrap?: boolean };
+  const {
+    wrap: _wrap,
+    hollow: _hollow,
+    ...rest
+  } = given as typeof given & { readonly wrap?: boolean; readonly hollow?: boolean };
 
   return useRender({
     defaultTagName: "span",

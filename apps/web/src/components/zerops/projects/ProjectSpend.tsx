@@ -108,7 +108,7 @@ const ROW_BARS: BarsGeometry = {
   height: 28,
   bar: "w-[calc(100%-5px)]",
   slot: null,
-  radius: "rounded-t-sm",
+  radius: "rounded-t-mark",
 };
 /** The same bars at a page's height: billing's 30 days, read at a glance. */
 export const PAGE_BARS: BarsGeometry = { ...ROW_BARS, height: 88 };

@@ -80,7 +80,6 @@ import {
   type RightPanelKind,
 } from "~/rightPanelKinds";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(window.location.search);
@@ -992,9 +991,9 @@ function Frame({
 }) {
   return (
     <figure className="flex flex-col gap-2" data-harness-frame={label}>
-      <figcaption className="text-xs text-muted-foreground">{label}</figcaption>
+      <figcaption className="text-caption text-muted-foreground">{label}</figcaption>
       <div
-        className="flex h-[760px] flex-col overflow-hidden rounded-lg border border-border bg-background"
+        className="flex h-[760px] flex-col overflow-hidden rounded-card border border-border bg-background"
         style={{ width }}
       >
         {children}
@@ -1040,7 +1039,7 @@ function HarnessPage() {
       <div className="flex flex-col gap-10">
         {widths.map((width) => (
           <section className="flex flex-col gap-3" key={width}>
-            <h1 className="text-sm font-medium">{`${String(width)} px`}</h1>
+            <h1 className="text-body font-medium">{`${String(width)} px`}</h1>
             <div className="flex flex-wrap items-start gap-6">
               {SCENARIOS.filter((scenario) => only === null || scenario.id === only).map(
                 (scenario) => (
@@ -1116,7 +1115,6 @@ function HarnessPage() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own, so a place's name and the project's page link as they do in the app.
 const router = createRouter({

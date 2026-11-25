@@ -11,6 +11,8 @@ import { useProjectContentSearch } from "~/state/queries";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { Badge } from "../ui/badge";
+import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -92,7 +94,7 @@ export function EmptyContentSearchDialog() {
       testId="project-content-search"
       value=""
     >
-      <p className="m-auto px-6 text-center text-muted-foreground text-sm">
+      <p className="m-auto px-6 text-center text-muted-foreground text-body">
         Open a project to search its files.
       </p>
     </CommandPaletteContent>
@@ -167,7 +169,7 @@ function OpenContentSearchDialog(props: {
       escapeLabel="Back"
       footerActionLabel="Open file"
       inputAccessory={
-        <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-md border bg-muted/30 p-0.5">
+        <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-control border bg-muted/30 p-0.5">
           <SearchOptionButton
             active={caseSensitive}
             label="Match case"
@@ -224,7 +226,7 @@ function OpenContentSearchDialog(props: {
       value={query}
     >
       {showSearchStatus ? (
-        <div className="flex h-9 shrink-0 items-center border-b px-3 text-xs text-muted-foreground">
+        <div className="flex h-9 shrink-0 items-center border-b px-3 text-caption text-muted-foreground">
           {search.isPending ? (
             <span className="flex items-center gap-2">
               <LoaderCircle className="size-3.5 animate-spin" /> Searching…
@@ -240,7 +242,7 @@ function OpenContentSearchDialog(props: {
       ) : null}
 
       {matches.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-muted-foreground">
           {search.hasQuery && !search.isPending && !search.error
             ? "No results found."
             : "Type to search across your project."}
@@ -252,7 +254,7 @@ function OpenContentSearchDialog(props: {
               const path = splitPath(group.path);
               return (
                 <section className="pb-2" key={group.path}>
-                  <div className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-popover/95 px-3 text-xs backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex h-8 items-center gap-2 bg-popover/95 px-3 text-caption backdrop-blur-sm">
                     <PierreEntryIcon
                       pathValue={group.path}
                       kind="file"
@@ -265,34 +267,39 @@ function OpenContentSearchDialog(props: {
                         {path.directory}
                       </span>
                     ) : null}
-                    <span className="ml-auto rounded-full bg-muted px-1.5 py-0.5 tabular-nums text-3xs text-muted-foreground">
-                      {group.matches.length}
-                    </span>
+                    <Badge className="ml-auto">{group.matches.length}</Badge>
                   </div>
                   {group.matches.map((match) => (
-                    <button
-                      type="button"
+                    <div
                       key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
-                      data-content-search-result={match.resultIndex}
                       className={cn(
-                        "flex h-7 w-full min-w-0 items-center gap-3 px-3 text-left font-mono text-xs hover:bg-accent/60 disabled:pointer-events-none",
+                        "rounded-control",
                         match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
                       )}
-                      disabled={!canOpenMatches}
-                      onMouseEnter={() => setSelectedIndex(match.resultIndex)}
-                      onClick={() => openMatch(match)}
                     >
-                      <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
-                        {match.lineNumber}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate whitespace-pre">
-                        <HighlightedSearchLine
-                          match={match}
-                          path={group.path}
-                          theme={resolvedTheme}
-                        />
-                      </span>
-                    </button>
+                      <Row
+                        size="xs"
+                        pressable="band"
+                        data-content-search-result={match.resultIndex}
+                        onMouseEnter={() => setSelectedIndex(match.resultIndex)}
+                        onClick={() => openMatch(match)}
+                        render={<button type="button" disabled={!canOpenMatches} />}
+                        title={
+                          <span className="flex min-w-0 gap-3 font-mono">
+                            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
+                              {match.lineNumber}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
+                              <HighlightedSearchLine
+                                match={match}
+                                path={group.path}
+                                theme={resolvedTheme}
+                              />
+                            </span>
+                          </span>
+                        }
+                      />
+                    </div>
                   ))}
                 </section>
               );

@@ -9,6 +9,7 @@ import { useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useAccountOrgId } from "~/zerops/accountData";
@@ -204,13 +205,24 @@ function ReleaseRow({
     </>
   );
   return (
-    <li className="pp-hist-release" data-open={open ? "true" : undefined}>
+    <Collapsible
+      className="pp-hist-release"
+      data-open={open ? "true" : undefined}
+      onOpenChange={onToggle}
+      open={open}
+      render={<li />}
+    >
       {opens ? (
-        <button aria-expanded={open} className="pp-hist-head" onClick={onToggle} type="button">
+        <CollapsibleTrigger
+          className="grid w-full min-w-0 grid-cols-[18px_auto_minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-3 text-start outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          data-hist-head=""
+        >
           {head}
-        </button>
+        </CollapsibleTrigger>
       ) : (
-        <div className="pp-hist-head">{head}</div>
+        <div className="grid w-full min-w-0 grid-cols-[18px_auto_minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-3">
+          {head}
+        </div>
       )}
       {open ? (
         <div className="pp-hist-body">
@@ -243,7 +255,7 @@ function ReleaseRow({
           )}
         </div>
       ) : null}
-    </li>
+    </Collapsible>
   );
 }
 

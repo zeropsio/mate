@@ -27,12 +27,13 @@ import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
 
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../../ui/dialog";
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import {
+  changeStateFor,
   ENVIRONMENT_NOT_ADDED,
   PRODUCTION_OUTSIDE_MATE,
   READY_TO_MERGE,
@@ -70,10 +71,10 @@ import {
   ProjectLine,
   projectLine,
   projectLineFull,
-  READY_FOR_REVIEW,
   SectionAction,
   SectionLabel,
   usePageTrail,
+  waitingWords,
   type LineCopy,
   type LineGroup,
   type NextReleaseView,
@@ -249,6 +250,13 @@ export function ProjectPageBody<T>({
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
+          <ProjectChanges
+            entry={entry}
+            facts={facts}
+            lines={lines}
+            props={props}
+            waiting={waitingChangeKeys(entry, waits, standingHere)}
+          />
           <ProjectMates
             addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
@@ -256,13 +264,6 @@ export function ProjectPageBody<T>({
             onAddMate={onAddMate}
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
-          />
-          <ProjectChanges
-            entry={entry}
-            facts={facts}
-            lines={lines}
-            props={props}
-            waiting={waitingChangeKeys(entry, waits, standingHere)}
           />
           {setup.automationStanding ? (
             <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
@@ -425,19 +426,17 @@ function ProjectWaits<T>({
                 />
               );
             const changes = waitingChanges(entry.flow, wait.mate.projectId, standingOf);
-            // Whose press it waits for: the person's review, or — where they cannot merge — their
-            // ask, said "Ready" with *Ask to merge*; never a review that is not theirs to give.
-            const stands = (pull: Pick<FlowPullRequest, "mergeAsk">) => {
-              const read = standingOf(pull);
-              return read.standing.kind === "to-merge"
-                ? {
-                    line: changeRowLine(wait.mate.name, read.comment ?? READY_FOR_REVIEW),
-                    standing: undefined,
-                  }
-                : {
-                    line: changeRowLine(wait.mate.name, read.comment ?? read.word),
-                    standing: read.standing.kind,
-                  };
+            const stands = (pull?: FlowPullRequest) => {
+              const read = standingOf(pull ?? {});
+              const word =
+                pull === undefined ? (read.comment ?? read.word) : changeStateFor(pull, read)?.word;
+              return {
+                line: changeRowLine(
+                  wait.mate.name,
+                  waitingWords(word, pull?.kind === "recipe" && read.standing.kind === "to-merge"),
+                ),
+                standing: read.standing.kind === "to-merge" ? undefined : read.standing.kind,
+              };
             };
             const all = unfolded.has(wait.key);
             const shown = all ? changes : changes.slice(0, WAITS_SHOWN);
@@ -447,7 +446,7 @@ function ProjectWaits<T>({
                 <ChangeRow
                   face={face}
                   key={wait.key}
-                  {...stands({})}
+                  {...stands()}
                   onOpen={onVerb}
                   open
                   title={projectWaitWords(wait).text}
@@ -902,15 +901,13 @@ function Brought({
       {more > 0 ? (
         <>
           {" · "}
-          <button
-            className="pp-brought-more"
+          <InlineButton
             onClick={() => {
               setAll(true);
             }}
-            type="button"
           >
             + {more}
-          </button>
+          </InlineButton>
         </>
       ) : null}
     </p>

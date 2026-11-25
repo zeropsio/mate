@@ -4,7 +4,10 @@ import { zeropsMateAt } from "../../zerops/mateIdentities";
 import { useOpenMate } from "../../zerops/useOpenMate";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useAtomValue } from "@effect/atom-react";
-import { connectionStatusText } from "@t3tools/client-runtime/connection";
+import {
+  connectionStatusText,
+  type EnvironmentConnectionPhase,
+} from "@t3tools/client-runtime/connection";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
 import {
   isAtomCommandInterrupted,
@@ -55,15 +58,11 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { getRelativeTimeState } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
 import {
-  ConnectionStatusDot,
-  connectionPhaseDotClassName,
-  connectionPhasePingClassName,
-} from "../ConnectionStatusDot";
-import {
   isProviderSettingsUpdateCandidate,
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import {
@@ -111,6 +110,16 @@ import {
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 
+/** An environment's connection as its tab's dot: work under way while it connects. */
+const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
+  connected: "success",
+  connecting: "info",
+  reconnecting: "info",
+  error: "danger",
+  available: "neutral",
+  offline: "neutral",
+};
+
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
   key: ProviderInstanceId,
@@ -148,11 +157,11 @@ function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }
   }
 
   if (lastCheckedRelative.status === "invalid") {
-    return <span className="text-[11px] text-muted-foreground/50">Checked unavailable</span>;
+    return <span className="text-2xs text-muted-foreground/50">Checked unavailable</span>;
   }
 
   return (
-    <span className="text-[11px] text-muted-foreground/60">
+    <span className="text-2xs text-muted-foreground/60">
       {lastCheckedRelative.suffix ? (
         <>
           Checked <span className="font-mono tabular-nums">{lastCheckedRelative.value}</span>{" "}
@@ -302,13 +311,12 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                   >
                     <Icon className="size-3.5 shrink-0" aria-hidden />
                     <span className="max-w-40 truncate">{environment.label}</span>
-                    <ConnectionStatusDot
-                      dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                      pingClassName={connectionPhasePingClassName(environment.connection.phase)}
+                    <span className="sr-only">{detail}</span>
+                    <Badge
+                      aria-label={statusText}
+                      dot
+                      tone={CONNECTION_TONE[environment.connection.phase]}
                     />
-                    <span className="sr-only">
-                      {detail}, {statusText}
-                    </span>
                   </TooltipTrigger>
                   <TooltipPopup side="top">
                     {detail} · {statusText}
@@ -318,7 +326,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
             })}
           </TabStrip>
         </div>
-        <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
+        <p className="px-3 pt-2 text-caption text-muted-foreground sm:px-4">
           Only Mates the app is connected to.
         </p>
       </>
@@ -916,7 +924,7 @@ export function EnvironmentProviderSettings({
         headerAction={
           <div className="flex min-w-0 items-center gap-2">
             {readOnly ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
+              <span className="min-w-0 truncate text-caption text-muted-foreground">
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
               </span>
             ) : (
@@ -973,9 +981,9 @@ export function EnvironmentProviderSettings({
           />
         ) : null}
         <div className="space-y-1">
-          <div className="overflow-hidden rounded-lg border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-card border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
             <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
-              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-[11px] font-medium text-muted-foreground">
+              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-2xs font-medium text-muted-foreground">
                 <span>Provider</span>
                 <span>On</span>
               </div>
@@ -1018,7 +1026,7 @@ export function EnvironmentProviderSettings({
               {selectedRow ? (
                 renderProviderInstance(selectedRow, "editor")
               ) : (
-                <div className="p-6 text-sm text-muted-foreground">
+                <div className="p-6 text-body text-muted-foreground">
                   {editorEmpty === "missing"
                     ? "This provider instance is no longer available on this device."
                     : editorEmpty === "none"
@@ -1040,14 +1048,14 @@ export function EnvironmentProviderSettings({
           <div
             inert={readOnly}
             aria-disabled={readOnly || undefined}
-            className={readOnly ? "opacity-50 select-none" : undefined}
+            className={
+              readOnly
+                ? "mt-2 border-t border-border/70 opacity-50 select-none"
+                : "mt-2 border-t border-border/70"
+            }
           >
-            <Collapsible
-              open={advancedVisible}
-              onOpenChange={setAdvancedOpen}
-              className="mt-2 border-t border-border/70"
-            >
-              <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-xs text-muted-foreground hover:text-foreground sm:px-4">
+            <Collapsible open={advancedVisible} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-caption text-muted-foreground hover:text-foreground sm:px-4">
                 <ChevronDownIcon
                   className={cn("size-3 transition-transform", advancedVisible && "rotate-180")}
                 />
@@ -1111,7 +1119,7 @@ export function EnvironmentProviderSettings({
                           <NumberFieldIncrement aria-label="Increase provider health check interval" />
                         </NumberFieldGroup>
                       </NumberField>
-                      <span className="text-xs text-muted-foreground">seconds</span>
+                      <span className="text-caption text-muted-foreground">seconds</span>
                     </div>
                   }
                 />

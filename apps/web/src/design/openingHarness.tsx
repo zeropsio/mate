@@ -30,7 +30,6 @@ const HQ_SAID_READ_ONLY = {
 };
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   ConversationOpeningProvider,
   ConversationOpeningStage,
@@ -38,6 +37,7 @@ import {
 } from "~/components/chat/ConversationOpeningStage";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { Textarea } from "~/components/ui/textarea";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import "../index.css";
 
@@ -94,7 +94,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
   }
   return (
     <ComposerStandInDock>
-      <textarea aria-label="Message" className="block w-full" defaultValue={DRAFT} />
+      <Textarea aria-label="Message" defaultValue={DRAFT} />
     </ComposerStandInDock>
   );
 }
@@ -154,7 +154,7 @@ function Harness() {
                   unknown={null}
                 />
               ) : (
-                <p className="m-auto text-sm text-muted-foreground">Fen's conversation</p>
+                <p className="m-auto text-body text-muted-foreground">Fen's conversation</p>
               )}
             </ConversationOpeningWaits>
             <ConversationOpeningStage
@@ -246,7 +246,6 @@ requestAnimationFrame(sample);
 (window as unknown as { __opening: { frames: FooterFrame[] } }).__opening = { frames };
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

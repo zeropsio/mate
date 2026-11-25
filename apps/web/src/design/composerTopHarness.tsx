@@ -47,7 +47,6 @@ import {
   type ZeropsNextStepStripModel,
 } from "~/components/zerops/ZeropsNextStepBanner";
 import { TooltipProvider } from "~/components/ui/tooltip";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import "../index.css";
 
@@ -423,14 +422,14 @@ function Composer({
 }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2" data-composer-top-harness={state}>
-      <span className="text-xs font-medium text-muted-foreground">{name}</span>
+      <span className="text-caption font-medium text-muted-foreground">{name}</span>
       <div
-        className="w-full max-w-3xl overflow-hidden rounded-3xl border border-border bg-card"
+        className="w-full max-w-3xl overflow-hidden rounded-sheet border border-border bg-card"
         data-chat-composer-main-surface="true"
       >
         <div data-chat-composer-surface="true">
           {top}
-          <div className="px-4 pt-3 pb-12 text-placeholder text-sm">Ask anything...</div>
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">Ask anything...</div>
         </div>
       </div>
     </section>
@@ -481,7 +480,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

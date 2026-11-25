@@ -97,7 +97,9 @@ export function ZeropsSettings() {
             )
           }
         />
-        {error ? <p className="px-3 text-sm text-destructive-foreground sm:px-4">{error}</p> : null}
+        {error ? (
+          <p className="px-3 text-body text-destructive-foreground sm:px-4">{error}</p>
+        ) : null}
         {organizations.length > 0 ? (
           <SettingsRow
             {...searchableSetting("zerops-organizations")}
@@ -130,7 +132,7 @@ export function ZeropsSettings() {
                     <SelectItem key={organization.membershipId} value={organization.membershipId}>
                       <span className="flex min-w-0 items-baseline justify-between gap-4">
                         <span className="truncate">{organization.name}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
+                        <span className="shrink-0 text-caption text-muted-foreground">
                           {zeropsOrganizationRoleLabel(organization)}
                         </span>
                       </span>
@@ -209,7 +211,7 @@ export function ZeropsSettings() {
           <div className="px-3 sm:px-4">
             <ZeropsHqCard />
           </div>
-          <p className="px-3 text-xs text-muted-foreground sm:px-4">
+          <p className="px-3 text-caption text-muted-foreground sm:px-4">
             Automated Mates:{" "}
             <InlineButton render={<Link to="/settings/automation" />}>
               Settings › Automation

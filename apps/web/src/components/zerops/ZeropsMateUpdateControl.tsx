@@ -189,10 +189,7 @@ export function ZeropsMateUpdateControl({
         <MateUpdateLine line={line} verb={verb} />
         {mateUpdate.notice && !automaticBusy ? <span>{mateUpdate.notice}</span> : null}
         {state.phase === "failed" && effectiveUpdate?.automatic?.phase !== "postponed" ? (
-          <span
-            className="text-[var(--zerops-status-failed-text,var(--foreground))]"
-            data-zerops-surface="mate-update-error"
-          >
+          <span className="text-status-failed-text" data-zerops-surface="mate-update-error">
             {state.message}
           </span>
         ) : null}

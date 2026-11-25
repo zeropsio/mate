@@ -18,7 +18,7 @@ export function CrewSeamLine({
 }) {
   return (
     <div
-      className="flex items-center gap-3 text-xs text-muted-foreground"
+      className="flex items-center gap-3 text-caption text-muted-foreground"
       data-crew-seam
       {...(link === undefined ? { "aria-label": text, role: "separator" } : {})}
     >

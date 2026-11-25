@@ -2,10 +2,10 @@ import { MessageCircle, X } from "lucide-react";
 
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
-  COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
 } from "../composerInlineChip";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { cn } from "~/lib/utils";
@@ -31,25 +31,25 @@ export function ComposerPendingReviewComments({
           <span key={comment.id} className={cn(COMPOSER_INLINE_CHIP_CLASS_NAME, "pr-1")}>
             <MessageCircle className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
             <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost-muted"
+              size="icon-2xs"
               aria-label={`Remove comment on ${label}`}
-              className={COMPOSER_INLINE_CHIP_DISMISS_BUTTON_CLASS_NAME}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 onRemove(comment.id);
               }}
             >
-              <X className="size-3" aria-hidden />
-            </button>
+              <X aria-hidden />
+            </Button>
           </span>
         );
         if (comment.text.length === 0) return chip;
         return (
           <Tooltip key={comment.id}>
             <TooltipTrigger render={chip} />
-            <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap leading-tight">
+            <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap">
               {comment.text}
             </TooltipPopup>
           </Tooltip>

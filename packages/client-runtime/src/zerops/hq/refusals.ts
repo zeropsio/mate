@@ -629,7 +629,7 @@ export function hqMergeOfferWords(
 export type DeployKeyTrouble = "missing" | "dead" | "widened";
 
 /** How each of HQ's sentences about an environment's deploy key ends. */
-const DEPLOY_KEY_RENEWED_BY = "a person with admin access to its project renews it in Zerops Mate";
+const DEPLOY_KEY_RENEWED_BY = "renew it in Zerops Mate";
 /** What stands between the environment's name and that ending, per kind. */
 const DEPLOY_KEY_SAID: ReadonlyArray<readonly [DeployKeyTrouble, string]> = [
   ["missing", " has no deploy token; "],
@@ -641,7 +641,7 @@ const DEPLOY_KEY_SAID: ReadonlyArray<readonly [DeployKeyTrouble, string]> = [
  * Whether HQ's words for a job that ended deploying nothing are about the environment's deploy key
  * (`mate-hq internal/deploys/tokens.go`): it keeps none, the one it keeps no longer answers, or it
  * reaches more than the environment's project. Nothing was asked of Zerops then, and asking again
- * changes nothing until a person with admin access to the project renews the key. Told by the
+ * changes nothing until an eligible person renews the key. Told by the
  * sentences' fixed parts, wherever in the reason they stand; `undefined` for any other reason.
  */
 export function deployKeyTrouble(reason: string | null | undefined): DeployKeyTrouble | undefined {

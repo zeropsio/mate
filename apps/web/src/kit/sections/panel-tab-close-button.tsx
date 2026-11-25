@@ -7,7 +7,7 @@ import { Specimen, SpecimenGrid } from "../Specimen";
 
 function Tab({ tooltip }: { readonly tooltip?: string }) {
   return (
-    <div className="group/tab flex h-8 items-center gap-2 rounded-md border px-2 text-sm">
+    <div className="group/tab flex h-8 items-center gap-2 rounded-control border px-2 text-body">
       <PanelTabCloseButton
         label="Close index.ts"
         onClick={() => {}}

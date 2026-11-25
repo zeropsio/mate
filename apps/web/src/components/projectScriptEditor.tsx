@@ -262,22 +262,20 @@ export function ProjectScriptEditorDialog({
                         {SCRIPT_ICONS.map((entry) => {
                           const isSelected = entry.id === icon;
                           return (
-                            <button
+                            <Button
                               key={entry.id}
-                              type="button"
-                              className={`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${
-                                isSelected
-                                  ? "border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30"
-                                  : "border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]"
-                              }`}
+                              variant="secondary"
+                              className="flex-col"
+                              aria-pressed={isSelected}
+                              data-pressed={isSelected || undefined}
                               onClick={() => {
                                 setIcon(entry.id);
                                 setIconPickerOpen(false);
                               }}
                             >
                               <ScriptIcon icon={entry.id} className="size-4" />
-                              <span>{entry.label}</span>
-                            </button>
+                              <span className="text-caption">{entry.label}</span>
+                            </Button>
                           );
                         })}
                       </div>
@@ -314,7 +312,7 @@ export function ProjectScriptEditorDialog({
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </div>
-              <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]">
+              <label className="flex items-center justify-between gap-3 rounded-control border border-well-edge bg-well px-3 py-2 text-body">
                 <span>Run automatically on worktree creation</span>
                 <Switch
                   checked={runOnWorktreeCreate}

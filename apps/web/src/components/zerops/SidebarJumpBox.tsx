@@ -200,7 +200,7 @@ function useJumpPages(): JumpPages {
           hashScrollIntoView: false,
         });
       },
-      // Its dialog, over whatever is on screen (`ZeropsNewProjectHost`).
+      // Its page, beside the menu (`ZeropsNewProjectHost`).
       newProject: askNewProject,
     }),
     [openMateOf, router],

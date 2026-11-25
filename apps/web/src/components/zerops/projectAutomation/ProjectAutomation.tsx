@@ -60,7 +60,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
 import { GitHubIcon } from "../../Icons";
-import { Button } from "../../ui/button";
+import { Button, InlineButton } from "../../ui/button";
 import { WaitLine } from "../WaitLine";
 import {
   Dialog,
@@ -71,6 +71,7 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
+import { Row } from "../../ui/row";
 import { Skeleton } from "../../ui/skeleton";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appReaching } from "../../settings/automationSettings.logic";
@@ -521,7 +522,7 @@ function AdminAutomation({
             if (missing !== null)
               return (
                 <div className="grid gap-3">
-                  <p className="text-sm text-foreground">{missing}</p>
+                  <p className="text-body text-foreground">{missing}</p>
                   <div>
                     <Button onClick={openSettings} size="sm" variant="secondary">
                       Open Settings › Automation
@@ -645,14 +646,15 @@ function PoolFaceView({
   readonly size?: 20 | 24 | undefined;
 }) {
   return (
-    <button
+    <Button
       aria-label={`${mate.name}: ${poolMateLine(mate.automation, working)}`}
-      className="flex size-6 items-center justify-center rounded-full hover:bg-accent/60"
       data-zerops-surface="project-automation-mate"
       onClick={() => {
         onOpen(mate.projectId);
       }}
-      type="button"
+      shape="round"
+      size="icon-xs"
+      variant="ghost"
     >
       <MateFace
         shape={mate.shape}
@@ -660,7 +662,7 @@ function PoolFaceView({
         state={poolMateFace(mate, working)}
         tint={mate.tint}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -785,7 +787,7 @@ function AutomationBody({
             )}
           </span>
         )}
-        <span className="pa-head-words text-sm">{poolSummary(pool, held)}</span>
+        <span className="pa-head-words text-body">{poolSummary(pool, held)}</span>
         {admin?.onAddMate === undefined ? null : (
           <span className="pa-head-add">
             <Button aria-label="Add a Mate" onClick={admin.onAddMate} size="sm" variant="link">
@@ -848,9 +850,9 @@ function Placeholders({ count }: { readonly count: number }) {
     <ul aria-hidden="true" className="pa-rows">
       {Array.from({ length: count }, (_, at) => (
         <li className="ov-change-row pa-row" key={at}>
-          <div className="ov-change" data-plain="">
+          <Row columns data-ov-change="" data-plain="">
             <Skeleton className="col-span-full h-3.5" surface="card" />
-          </div>
+          </Row>
         </li>
       ))}
     </ul>
@@ -872,22 +874,24 @@ function RowPress({
 }) {
   if (route === null)
     return (
-      <div className="ov-change" data-plain="">
+      <Row columns data-ov-change="" data-plain="">
         {children}
-      </div>
+      </Row>
     );
   return (
-    <a
-      className="ov-change"
-      href={route}
+    <Row
+      columns
+      data-ov-change=""
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
         event.preventDefault();
         onOpen(route);
       }}
+      pressable
+      render={<a href={route} />}
     >
       {children}
-    </a>
+    </Row>
   );
 }
 
@@ -1175,7 +1179,7 @@ function TaskBoardView({
                   data-zerops-task={row.id}
                   key={row.id}
                 >
-                  <div className="ov-change" data-plain="">
+                  <Row columns data-ov-change="" data-plain="">
                     {/* Its place stands where a face will. */}
                     <span className="pa-lead pa-place">{row.position}</span>
                     <RowText
@@ -1189,15 +1193,16 @@ function TaskBoardView({
                       ) : row.url === null ? (
                         <span className="pa-state">{row.source}</span>
                       ) : (
-                        <a
-                          className="pa-state pa-from"
-                          href={row.url}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <span className="real-name">{row.source}</span>
-                          <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
-                        </a>
+                        <span className="pa-state">
+                          <InlineButton
+                            className="max-w-full"
+                            render={<a href={row.url} rel="noreferrer" target="_blank" />}
+                            tone="muted"
+                          >
+                            <span className="real-name">{row.source}</span>
+                            <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                          </InlineButton>
+                        </span>
                       )}
                       <span className="pa-who">
                         <span className="sr-only">Waited </span>
@@ -1205,7 +1210,7 @@ function TaskBoardView({
                       </span>
                     </span>
                     <span className="pa-act" />
-                  </div>
+                  </Row>
                   {stoppable ? (
                     <TaskStop
                       board={board}
@@ -1263,10 +1268,15 @@ function TaskBoardView({
                   </RowPress>
                   {/* Its pull request on GitHub, where it has one. */}
                   {row.change?.external === true ? (
-                    <a className="pa-pr" href={row.change.href} rel="noreferrer" target="_blank">
-                      {row.change.label}
-                      <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
-                    </a>
+                    <span className="pa-pr">
+                      <InlineButton
+                        render={<a href={row.change.href} rel="noreferrer" target="_blank" />}
+                        tone="muted"
+                      >
+                        {row.change.label}
+                        <ArrowUpRightIcon aria-hidden="true" className="pa-out" />
+                      </InlineButton>
+                    </span>
                   ) : null}
                   {/* The Changes card's Review: it opens the change, the row its conversation. */}
                   {review === null ? null : (
@@ -1465,19 +1475,21 @@ function SourceRowView({
   return (
     <li className="ov-change-row pa-row" data-zerops-source={row.kind}>
       {admin === undefined ? (
-        <div className="ov-change" data-plain="">
+        <Row columns data-ov-change="" data-plain="">
           {cells}
-        </div>
+        </Row>
       ) : (
-        <button
-          className="ov-change"
+        <Row
+          columns
+          data-ov-change=""
           onClick={() => {
             admin.onEdit(row);
           }}
-          type="button"
+          pressable
+          render={<button type="button" />}
         >
           {cells}
-        </button>
+        </Row>
       )}
       {admin === undefined ? null : failed ? (
         <span className="pa-verb">

@@ -116,12 +116,12 @@ export function IntegrationRow({
           {mark}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">{name}</p>
-          <p className="truncate text-xs text-muted-foreground max-sm:line-clamp-2 max-sm:whitespace-normal">
+          <p className="text-body font-medium text-foreground">{name}</p>
+          <p className="truncate text-caption text-muted-foreground max-sm:line-clamp-2 max-sm:whitespace-normal">
             {line}
           </p>
         </div>
-        <span className="flex w-32 shrink-0 justify-end text-xs max-sm:order-last max-sm:w-full max-sm:justify-start max-sm:ps-8 max-sm:empty:hidden">
+        <span className="flex w-32 shrink-0 justify-end text-caption max-sm:order-last max-sm:w-full max-sm:justify-start max-sm:ps-8 max-sm:empty:hidden">
           <IntegrationStatus state={state} />
         </span>
         <span className="flex w-24 shrink-0 justify-end max-sm:w-auto">{action}</span>
@@ -170,8 +170,8 @@ export function IntegrationSetting({
           {mark}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">{name}</p>
-          <p className="text-xs text-muted-foreground">{line}</p>
+          <p className="text-body font-medium text-foreground">{name}</p>
+          <p className="text-caption text-muted-foreground">{line}</p>
         </div>
         <div className="flex shrink-0 justify-end max-sm:has-[input]:w-full max-sm:has-[input]:justify-start max-sm:has-[input]:ps-8">
           {control}

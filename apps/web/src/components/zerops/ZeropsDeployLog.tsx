@@ -43,7 +43,7 @@ export function ZeropsDeployLog({
         </Button>
       </span>
       {!open && unavailable ? (
-        <p className="rv-where-more text-xs text-muted-foreground">
+        <p className="rv-where-more text-caption text-muted-foreground">
           Deploy history unavailable in Zerops’ recent processes.
         </p>
       ) : null}
@@ -98,7 +98,7 @@ export function DeployLogDetails({
   return (
     <div className="pt-2" data-zerops-deploy-inspection>
       {words === undefined ? null : (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {words}
           {again === undefined ? null : (
             <>
@@ -114,7 +114,7 @@ export function DeployLogDetails({
         read?.live ? (
           <PipelineCalculating aria-label={`${service} deploy steps`} />
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Zerops keeps no pipeline steps for this deploy.
           </p>
         )

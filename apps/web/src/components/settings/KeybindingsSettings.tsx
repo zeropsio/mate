@@ -253,7 +253,7 @@ function UnknownWhenVariableWarning({
           <span
             tabIndex={focusable ? 0 : undefined}
             aria-label={label}
-            className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25"
+            className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-mark text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-warning/25"
           >
             <TriangleAlertIcon className="size-3.5" />
           </span>
@@ -281,7 +281,7 @@ function KeybindingConflictWarning({ labels }: { labels: ReadonlyArray<string> }
           <span
             tabIndex={0}
             aria-label={description}
-            className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-[3px] focus-visible:ring-warning/25"
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-mark text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-warning/25"
           >
             <TriangleAlertIcon className="size-3.5" />
           </span>
@@ -349,7 +349,7 @@ function WhenExpressionNodeEditor({
       : [condition.identifier];
 
     return (
-      <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/60 px-2 py-2">
+      <div className="flex items-center gap-2 rounded-control border border-border/70 bg-background/60 px-2 py-2">
         <Toggle
           pressed={condition.negated}
           onPressedChange={(pressed) => onChange(setConditionNegated(node, pressed))}
@@ -386,7 +386,7 @@ function WhenExpressionNodeEditor({
     return (
       <div
         className={cn(
-          "space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2",
+          "space-y-2 rounded-card border border-border/70 bg-muted/20 p-2",
           depth > 0 && "border-border/50 bg-background/50",
         )}
       >
@@ -493,7 +493,7 @@ function WhenExpressionNodeEditor({
   return (
     <div
       className={cn(
-        "space-y-2 rounded-lg border border-border/60 bg-muted/10 p-2",
+        "space-y-2 rounded-card border border-border/60 bg-muted/10 p-2",
         depth > 0 && "border-border/70 bg-background/55",
       )}
     >
@@ -612,7 +612,7 @@ function WhenExpressionBuilder({
     <div className="w-[min(34rem,calc(100vw-2rem))] space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">When</div>
+          <div className="text-body font-medium text-foreground">When</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
@@ -660,7 +660,7 @@ function WhenExpressionBuilder({
             onRemove={() => updateExpressionValue(undefined)}
           />
         ) : (
-          <div className="rounded-md border border-dashed border-border/80 bg-muted/15 p-3">
+          <div className="rounded-control border border-dashed border-border/80 bg-muted/15 p-3">
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" onClick={addRootCondition}>
                 <PlusIcon className="size-3.5" />
@@ -674,7 +674,7 @@ function WhenExpressionBuilder({
           </div>
         )}
         {parseError ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border border-destructive/30 bg-background/75 p-4 text-center text-xs text-destructive backdrop-blur-xs">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-card border border-destructive/30 bg-background/75 p-4 text-center text-caption text-destructive backdrop-blur-xs">
             Fix the expression above to continue editing visually.
           </div>
         ) : null}
@@ -769,16 +769,13 @@ function KeybindingTableRow({
   };
 
   return (
-    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-sm even:bg-muted/15 hover:bg-accent/40">
+    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-accent/40">
       <div className="min-w-0 pr-4">
         <div className="flex min-w-0 items-center gap-1.5">
           <Tooltip>
             <TooltipTrigger
               render={
-                <div
-                  aria-label={row.command}
-                  className="truncate text-[13px] font-medium text-foreground"
-                />
+                <div aria-label={row.command} className="truncate font-medium text-foreground" />
               }
             >
               {commandLabel(row.command)}
@@ -789,17 +786,18 @@ function KeybindingTableRow({
       </div>
       <div className="flex min-w-0 items-center gap-2 pr-4">
         {showPill ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="group"
             onClick={() => setDraft({ isRecording: true })}
             aria-label={`Edit shortcut for ${commandLabel(row.command)}`}
-            className="group inline-flex h-7 items-center gap-1.5 rounded-md border border-transparent px-1.5 outline-none transition-colors hover:border-border/70 hover:bg-background focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24"
           >
             <KeybindingPill value={row.key} />
-            <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground/0 transition-opacity group-hover:text-muted-foreground/70 group-focus-visible:text-muted-foreground/70">
+            <span className="text-3xs uppercase tracking-wider text-muted-foreground/70 opacity-0 transition-opacity duration-150 ease-out-strong group-hover:opacity-100 group-focus-visible:opacity-100">
               Edit
             </span>
-          </button>
+          </Button>
         ) : (
           <Input
             font="mono"
@@ -808,7 +806,8 @@ function KeybindingTableRow({
             aria-label={`Keybinding for ${commandLabel(row.command)}`}
             value={isRecording ? "" : keyDraft}
             placeholder={isRecording ? "Press shortcut" : "Unassigned"}
-            className="h-7 w-44 rounded-md text-[12px] sm:h-7"
+            className="w-44"
+            size="compact"
             onFocus={() => setDraft({ isRecording: true })}
             onBlur={() => setDraft({ isRecording: false })}
             onChange={(event) => setDraft({ keyDraft: event.currentTarget.value })}
@@ -828,13 +827,17 @@ function KeybindingTableRow({
       <div className="pr-4">
         <Popover>
           <PopoverTrigger
-            className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
-              !whenDraftExpression && "text-muted-foreground",
-            )}
             aria-label={`Edit when clause for ${commandLabel(row.command)}`}
+            render={<Button className="w-full justify-between" size="sm" variant="secondary" />}
           >
-            <span className="truncate">{whenDraftExpression || "Always"}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate font-mono text-caption",
+                !whenDraftExpression && "text-muted-foreground",
+              )}
+            >
+              {whenDraftExpression || "Always"}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>
@@ -939,7 +942,7 @@ function NewKeybindingTableRow({
   };
 
   return (
-    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-sm even:bg-muted/15 hover:bg-accent/40">
+    <div className="grid grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] items-center px-4 py-1.5 text-body even:bg-muted/15 hover:bg-accent/40">
       <div className="min-w-0 pr-4">
         <Select
           value={commandDraft}
@@ -986,13 +989,17 @@ function NewKeybindingTableRow({
       <div className="pr-4">
         <Popover>
           <PopoverTrigger
-            className={cn(
-              "inline-flex h-7 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left font-mono text-[12px] text-foreground shadow-xs/5 outline-none transition-colors hover:bg-accent focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/24",
-              !whenDraftExpression && "text-muted-foreground",
-            )}
             aria-label={`Edit when clause for ${commandLabelText}`}
+            render={<Button className="w-full justify-between" size="sm" variant="secondary" />}
           >
-            <span className="truncate">{whenDraftExpression || "Always"}</span>
+            <span
+              className={cn(
+                "min-w-0 truncate font-mono text-caption",
+                !whenDraftExpression && "text-muted-foreground",
+              )}
+            >
+              {whenDraftExpression || "Always"}
+            </span>
             <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
           </PopoverTrigger>
           <PopoverContent align="start" sideOffset={6}>
@@ -1227,7 +1234,7 @@ export function KeybindingsSettingsPanel() {
         }
       >
         {!isElectron ? (
-          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground sm:px-4">
+          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-caption leading-relaxed text-muted-foreground sm:px-4">
             <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
             <p>
               Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
@@ -1243,7 +1250,7 @@ export function KeybindingsSettingsPanel() {
           hideScrollbars
           className="w-full max-w-full"
         >
-          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+          <div className="grid min-w-[680px] grid-cols-[minmax(190px,1.1fr)_minmax(220px,0.85fr)_minmax(210px,1fr)_60px] border-b border-border/70 bg-muted/25 px-4 py-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
             <div>Command</div>
             <div>Keybinding</div>
             <div>When</div>
@@ -1273,7 +1280,7 @@ export function KeybindingsSettingsPanel() {
               />
             ))}
             {rows.length === 0 && !isAddingBinding ? (
-              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              <div className="px-4 py-12 text-center text-body text-muted-foreground">
                 No keybindings match your search.
               </div>
             ) : null}

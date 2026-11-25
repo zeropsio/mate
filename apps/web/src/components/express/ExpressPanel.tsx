@@ -14,7 +14,10 @@ import {
   pictureAnswerWords,
   pictureAskSource,
 } from "../ask/pictureAsk.logic";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Failure } from "../ui/failure";
+import { Row } from "../ui/row";
 import type { ExpressHistoryEntry } from "./expressHistory.logic";
 import { ExpressMark } from "./ExpressMark";
 import { type ExpressOpenRequest, useExpressOpen } from "./expressOpen";
@@ -278,10 +281,10 @@ export function ExpressPanel({
       {editing ? null : (
         <div className="@container flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pt-5 pb-4">
           <header className="flex items-center gap-3">
-            <ExpressMark className="size-10 shrink-0 rounded-lg shadow-xs/10" />
+            <ExpressMark className="size-10 shrink-0 rounded-control shadow-xs/10" />
             <div className="flex min-w-0 flex-col">
               <h2 className="text-base font-semibold leading-6">Adobe Express</h2>
-              <p className="text-muted-foreground text-sm leading-5">
+              <p className="text-muted-foreground text-body leading-5">
                 {`Design here; what you save goes into your message to ${mate ?? "this Mate"}.`}
               </p>
             </div>
@@ -325,7 +328,9 @@ export function ExpressPanel({
 
           {history.length === 0 ? null : (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-xs font-medium">In this conversation</h3>
+              <h3 className="text-muted-foreground text-caption font-medium">
+                In this conversation
+              </h3>
               <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">
                 {history
                   .slice(0, HISTORY_SHOWN)
@@ -386,8 +391,8 @@ export function ExpressPanel({
             />
           )}
 
-          <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-xs">
-            <ExpressMark className="size-4 rounded-sm" />
+          <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-caption">
+            <ExpressMark className="size-4 rounded-mark" />
             <span>Powered by Adobe Express · saving asks for your Adobe account</span>
           </footer>
         </div>
@@ -403,19 +408,22 @@ function ExpressTile(props: {
   readonly onClick: () => void;
 }) {
   return (
-    <button
-      className="group/tile flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-xs/5 outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring @lg:flex-col"
-      onClick={props.onClick}
-      type="button"
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground [&_svg]:size-4.5">
-        {props.icon}
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-medium leading-5">{props.title}</span>
-        <span className="text-muted-foreground text-xs leading-4">{props.line}</span>
-      </span>
-    </button>
+    <Card>
+      <Row
+        className="@lg:flex-col"
+        lead={
+          <span className="flex size-8 items-center justify-center rounded-control bg-muted text-foreground [&_svg]:size-4">
+            {props.icon}
+          </span>
+        }
+        line={props.line}
+        lineWraps
+        onClick={props.onClick}
+        pressable
+        render={<button type="button" />}
+        title={props.title}
+      />
+    </Card>
   );
 }
 
@@ -436,20 +444,25 @@ function SavedDesign({
       : { environmentId, resource: entry.picture, rendition: TILE_PICTURE },
   );
   return (
-    <figure className="group/saved relative aspect-square overflow-hidden rounded-lg border border-border bg-muted">
+    <figure className="group/saved relative aspect-square overflow-hidden rounded-control border border-border bg-muted">
       {url === undefined ? null : (
         <img alt={entry.name} className="size-full object-contain" src={url} />
       )}
-      <button
-        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1.5 rounded-md bg-background/90 px-2 py-1 text-xs font-medium opacity-0 shadow-xs backdrop-blur-sm transition-opacity group-hover/saved:opacity-100 focus-visible:opacity-100 data-reopening:opacity-100"
+      <span
+        className="absolute inset-x-2 bottom-2 flex opacity-0 transition-opacity group-hover/saved:opacity-100 focus-within:opacity-100 data-reopening:opacity-100"
         data-reopening={reopening || undefined}
-        disabled={reopening}
-        onClick={onEdit}
-        type="button"
       >
-        <PencilIcon aria-hidden="true" className="size-3" />
-        {reopening ? "Opening…" : "Edit again"}
-      </button>
+        <Button
+          className="w-full"
+          disabled={reopening}
+          onClick={onEdit}
+          size="xs"
+          variant="secondary"
+        >
+          <PencilIcon aria-hidden="true" />
+          {reopening ? "Opening…" : "Edit again"}
+        </Button>
+      </span>
     </figure>
   );
 }
@@ -463,21 +476,19 @@ function LinkedDesign({
   readonly onOpen: () => void;
 }) {
   return (
-    <button
-      className="flex aspect-square flex-col items-center justify-center gap-2 rounded-lg border border-border bg-muted p-3 text-center outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={onOpen}
-      type="button"
-    >
-      <ExpressMark className="size-8 rounded-lg" />
-      <span className="line-clamp-2 text-xs font-medium leading-4">
-        {entry.words ?? "Adobe Express design"}
-      </span>
-      {entry.words === undefined ? (
-        <span className="font-mono text-muted-foreground text-xs leading-4">
-          {entry.documentId.slice(-7)}
+    <Button className="block aspect-square" onClick={onOpen} variant="bare">
+      <span className="flex size-full flex-col items-center justify-center gap-2 rounded-control border border-border bg-muted p-3 text-center transition-colors hover:bg-accent/60">
+        <ExpressMark className="size-8 rounded-control" />
+        <span className="line-clamp-2 text-caption font-medium leading-4">
+          {entry.words ?? "Adobe Express design"}
         </span>
-      ) : null}
-    </button>
+        {entry.words === undefined ? (
+          <span className="font-mono text-muted-foreground text-caption leading-4">
+            {entry.documentId.slice(-7)}
+          </span>
+        ) : null}
+      </span>
+    </Button>
   );
 }
 

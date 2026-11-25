@@ -91,17 +91,17 @@ export function AppIntakeView({
     read.action.kind === "failed" || read.action.kind === "unresolved" ? read.action.words : null;
   return (
     <li className="grid gap-2" data-zerops-intake-app={appId}>
-      <p className="text-sm font-medium text-foreground">{name}</p>
+      <p className="text-body font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
         <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             <WaitLine inline text="Reading…" />
           </p>
         </IntakeRoom>
       ) : read.intake !== null ? (
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
                 .filter((part) => part !== undefined)
                 .join(" · ")}
@@ -114,7 +114,7 @@ export function AppIntakeView({
       ) : !reposRead && reposFailure !== undefined ? (
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground" role="alert">
+            <p className="text-caption text-muted-foreground" role="alert">
               {couldntRead("its repositories", reposFailure)}
             </p>
             {onReadAgain === undefined ? null : (
@@ -126,11 +126,11 @@ export function AppIntakeView({
         </IntakeRoom>
       ) : !reposRead ? (
         <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">Reading its repositories…</p>
+          <p className="text-caption text-muted-foreground">Reading its repositories…</p>
         </IntakeRoom>
       ) : chosen === null ? (
         <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Mirror its code to GitHub to take tasks from its issues.
           </p>
         </IntakeRoom>
@@ -187,7 +187,7 @@ export function AppIntakeView({
       )}
       {read.answer === null ? null : <IntakeAnswer answer={read.answer} githubApp={githubApp} />}
       {problem === null ? null : (
-        <p className="text-xs text-destructive-foreground" role="alert">
+        <p className="text-caption text-destructive-foreground" role="alert">
           {problem}
         </p>
       )}
@@ -205,12 +205,12 @@ function IntakeAnswer({
 }) {
   return (
     <div className="grid gap-1.5" data-zerops-surface="settings-intake-answer">
-      <p className="text-xs text-foreground">{intakeAnswerLine(answer, githubApp)}</p>
+      <p className="text-caption text-foreground">{intakeAnswerLine(answer, githubApp)}</p>
       {answer.hook.kind === "paste" ? (
         <>
           <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />
           <CopyLine copy="Copy secret" label="Secret" value={answer.hook.secret} />
-          <p className="text-xs text-muted-foreground">{answer.hook.why}</p>
+          <p className="text-caption text-muted-foreground">{answer.hook.why}</p>
         </>
       ) : null}
     </div>
@@ -256,7 +256,7 @@ export function AppChannelView({
       {held !== null ? (
         <IntakeRoom>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{channelLine(held)}</p>
+            <p className="text-caption text-muted-foreground">{channelLine(held)}</p>
             <Button
               disabled={busy}
               onClick={() => {
@@ -272,7 +272,7 @@ export function AppChannelView({
       ) : form.kind === "type" ? (
         <div className="grid gap-2">
           {form.invite === null ? null : (
-            <p className="text-xs text-foreground">
+            <p className="text-caption text-foreground">
               {form.invite}{" "}
               <InlineButton onClick={() => choices?.again()}>Check again</InlineButton>
             </p>
@@ -297,7 +297,7 @@ export function AppChannelView({
             </Button>
           </form>
           {typing ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               Or{" "}
               <InlineButton onClick={() => setTyping(false)}>
                 choose from the bot's channels
@@ -349,7 +349,7 @@ export function AppChannelView({
               {pressWords(read.action, ["channel"], "Take tasks")}
             </Button>
           </form>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-muted-foreground">
             Not listed? Invite the bot to it, or{" "}
             <InlineButton onClick={() => setTyping(true)}>type its ID</InlineButton>.
           </p>
@@ -424,7 +424,7 @@ export function AppWebhooksView({
 function WebhookMade({ view }: { readonly view: HqWebhookView }) {
   return (
     <div className="grid gap-1.5" data-zerops-surface="settings-webhook-made">
-      <p className="text-xs text-foreground">
+      <p className="text-caption text-foreground">
         {`${view.name} is made. Its secret is shown once: keep it where the caller signs with it.`}
       </p>
       <CopyLine copy="Copy URL" label="URL" value={view.url} />
@@ -447,8 +447,8 @@ function WebhookLine({
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: hook.name });
   return (
     <li className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 truncate text-xs text-foreground">{hook.name}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+      <span className="w-24 shrink-0 truncate text-caption text-foreground">{hook.name}</span>
+      <code className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground">
         {hook.url}
       </code>
       <Button
@@ -705,8 +705,8 @@ function ScheduleLine({
   return (
     <li className="flex min-w-0 items-center gap-2">
       <div className="grid min-w-0 flex-1">
-        <p className="truncate text-xs text-foreground">{schedule.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        <p className="truncate text-caption text-foreground">{schedule.name}</p>
+        <p className="truncate text-caption text-muted-foreground">
           {`${scheduleLine(schedule.rule)} · ${scheduleNextLine(schedule.nextAt, moment)}`}
         </p>
       </div>

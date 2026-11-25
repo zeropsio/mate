@@ -51,8 +51,11 @@ import {
 } from "~/components/chat/helpers.logic";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { orchestrationEnvironment } from "~/state/orchestration";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
+import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
+import { Row } from "~/components/ui/row";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -60,26 +63,22 @@ import { Button } from "~/components/ui/button";
  * stalled/waiting/queued subagent is still the fleet doing its job, not a
  * user problem). Only settled states differentiate.
  */
-const STATUS_VISUALS: Record<RuntimeSubagent["status"], { dotClass: string; label: string }> = {
-  pending: { dotClass: "bg-info", label: "Working" },
-  running: { dotClass: "bg-info", label: "Working" },
-  waiting: { dotClass: "bg-info", label: "Working" },
-  // Idle reads as settled (muted, not sky): a resting Codex child looks done
+const STATUS_VISUALS: Record<RuntimeSubagent["status"], { tone: BadgeTone; label: string }> = {
+  pending: { tone: "info", label: "Working" },
+  running: { tone: "info", label: "Working" },
+  waiting: { tone: "info", label: "Working" },
+  // Idle reads as settled (neutral, not sky): a resting Codex child looks done
   // unless resumed — live-test: sky idle dots read as stuck in-progress.
-  idle: { dotClass: "bg-muted-foreground/50", label: "Idle · resumable" },
-  completed: { dotClass: "bg-success", label: "Completed" },
-  failed: { dotClass: "bg-destructive", label: "Failed" },
-  cancelled: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
-  interrupted: { dotClass: "bg-muted-foreground/60", label: "Stopped" },
+  idle: { tone: "neutral", label: "Idle · resumable" },
+  completed: { tone: "success", label: "Completed" },
+  failed: { tone: "danger", label: "Failed" },
+  cancelled: { tone: "neutral", label: "Stopped" },
+  interrupted: { tone: "neutral", label: "Stopped" },
 };
 
 export function StatusDot({ status }: { status: RuntimeSubagent["status"] }) {
-  return (
-    <span
-      aria-hidden
-      className={cn("size-1.5 shrink-0 rounded-full", STATUS_VISUALS[status].dotClass)}
-    />
-  );
+  const { tone, label } = STATUS_VISUALS[status];
+  return <Badge aria-label={label} dot tone={tone} />;
 }
 
 function formatElapsedSeconds(totalSeconds: number): string {
@@ -115,18 +114,12 @@ export function HelperMark({ status }: { status: RuntimeSubagent["status"] }) {
   if (status === "cancelled" || status === "interrupted") {
     return <Minus aria-hidden className="size-3.5 text-muted-foreground" strokeWidth={2.5} />;
   }
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "size-2 rounded-full",
-        status === "waiting"
-          ? "bg-status-attention"
-          : status === "idle"
-            ? "bg-muted-foreground/50"
-            : "bg-status-busy",
-      )}
-    />
+  return status === "waiting" ? (
+    <Badge aria-label="Waiting" dot tone="warning" />
+  ) : status === "idle" ? (
+    <Badge aria-label="Idle" dot tone="neutral" />
+  ) : (
+    <Badge aria-label="Working" dot tone="info" />
   );
 }
 
@@ -188,34 +181,52 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
       data-open={open ? "" : undefined}
       style={{ "--helper-depth": depth } as CSSProperties}
     >
-      <button
-        aria-expanded={threadRef === null ? undefined : open}
-        className="helper-row-head"
-        disabled={threadRef === null}
-        onClick={() => onToggle(agent.id)}
-        type="button"
-      >
-        <span className="helper-row-mark">
-          <HelperMark status={agent.status} />
-        </span>
-        <span className="helper-row-name">{agent.title}</span>
-        <span className="helper-row-clock">
-          <HelperClock helper={agent} />
-        </span>
-        {line !== null ? (
-          <span
-            className={cn(
-              "helper-row-line",
-              agent.status === "failed" && "text-status-failed-text",
-              agent.status === "waiting" && "text-status-attention-text",
-            )}
-          >
-            {line}
-          </span>
-        ) : null}
-        {cost !== null ? <span className="helper-row-cost">{cost}</span> : null}
-        <span className="sr-only">{STATE_WORDS[agent.status]}</span>
-      </button>
+      <div className={cn("rounded-control", open && "bg-foreground/4")}>
+        <Row
+          size="sm"
+          pressable
+          render={
+            <button
+              aria-expanded={threadRef === null ? undefined : open}
+              aria-disabled={threadRef === null || undefined}
+              disabled={threadRef === null}
+              onClick={() => onToggle(agent.id)}
+              type="button"
+            />
+          }
+          lead={<HelperMark status={agent.status} />}
+          title={
+            <>
+              {agent.title}
+              <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+            </>
+          }
+          meta={open ? undefined : <HelperClock helper={agent} />}
+          lineWraps
+          line={
+            (open || line === null) && cost === null ? undefined : (
+              <>
+                {open || line === null ? null : (
+                  <span
+                    className={cn(
+                      "line-clamp-2",
+                      agent.status === "failed" && "text-status-failed-text",
+                      agent.status === "waiting" && "text-status-attention-text",
+                    )}
+                  >
+                    {line}
+                  </span>
+                )}
+                {cost === null ? null : (
+                  <span className="block text-2xs text-muted-foreground/75 tabular-nums">
+                    {cost}
+                  </span>
+                )}
+              </>
+            )
+          }
+        />
+      </div>
       {open && threadRef !== null ? (
         <div className="helper-row-card">
           <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
@@ -258,7 +269,7 @@ function PhaseRail({ group }: { group: AgentPanelWorkflowGroup }) {
           ) : null}
           <div
             className={cn(
-              "flex items-center gap-1 rounded-sm border px-1.5 py-0.5",
+              "flex items-center gap-1 rounded-mark border px-1.5 py-0.5",
               phase.state === "running"
                 ? "border-info/40"
                 : phase.state === "done"
@@ -312,7 +323,7 @@ function WorkflowScriptView({
     orchestrationEnvironment.workflowScript({ environmentId, input: { threadId, scriptPath } }),
   );
   return (
-    <div className="mx-1.5 mb-1 rounded-md border border-border/60 bg-background/60">
+    <div className="mx-1.5 mb-1 rounded-control border border-border/60 bg-background/60">
       <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1">
         <Braces aria-hidden className="size-3 text-muted-foreground" />
         <span className="truncate font-mono text-3xs text-muted-foreground">
@@ -335,9 +346,9 @@ function WorkflowScriptView({
             {result.value.truncated ? "\n… (truncated)" : ""}
           </pre>
         ) : result._tag === "Failure" ? (
-          <p className="text-xs text-destructive-foreground">Could not load the script.</p>
+          <p className="text-caption text-destructive-foreground">Could not load the script.</p>
         ) : (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <p className="text-caption text-muted-foreground">Loading…</p>
         )}
       </div>
     </div>
@@ -371,17 +382,17 @@ function PhaseSection({
   }, [phase.state]);
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => {
-          // Folding it folds the helper opened in it too.
-          if (open && holds && openId !== null) onToggle(openId);
-          setOpen(!open);
-        }}
-        aria-expanded={open}
+    <Collapsible
+      open={open}
+      onOpenChange={(next) => {
+        // Folding it folds the helper opened in it too.
+        if (!next && holds && openId !== null) onToggle(openId);
+        setOpen(next);
+      }}
+    >
+      <CollapsibleTrigger
         className={cn(
-          "mt-2 flex w-full items-center gap-1.5 rounded-sm px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
+          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
           phase.state === "done"
             ? "text-success-foreground"
             : phase.state === "running"
@@ -410,7 +421,7 @@ function PhaseSection({
             ))}
           </span>
         ) : null}
-      </button>
+      </CollapsibleTrigger>
       {open ? (
         <ul className="helper-map">
           {phase.members.map((member) => (
@@ -418,7 +429,7 @@ function PhaseSection({
           ))}
         </ul>
       ) : null}
-    </div>
+    </Collapsible>
   );
 }
 
@@ -446,24 +457,22 @@ function ExpandedWorkflowSection({
   const scriptPath = group.workflow.runHandles?.scriptPath;
   const canShowScript = scriptPath !== undefined && environmentId !== null && threadId !== null;
   return (
-    <section className="rounded-lg border border-border/50 bg-card/30 p-1.5">
+    <section className="rounded-card border border-border/50 bg-card/30 p-1.5">
       <div className="flex items-center gap-2 px-1.5 pt-0.5 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
         <StatusDot status={group.workflow.status} />
         <span className="min-w-0 truncate">
           {group.workflow.workflowName ?? group.workflow.title}
         </span>
         {canShowScript ? (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={() => setScriptOpen((value) => !value)}
-            className={cn(
-              "rounded-sm border border-border/60 px-1 font-mono normal-case hover:text-foreground",
-              scriptOpen && "text-foreground",
-            )}
             aria-expanded={scriptOpen}
+            data-pressed={scriptOpen || undefined}
           >
-            {"{}"} script
-          </button>
+            <span className="font-mono normal-case">{"{}"} script</span>
+          </Button>
         ) : null}
         <span className="ml-auto font-mono normal-case text-muted-foreground/80">
           {settled}/{members.length} settled
@@ -524,24 +533,24 @@ function CollapsedWorkflowSection({
       : null;
   return (
     <section>
-      <button
-        type="button"
-        onClick={onExpand}
-        className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-accent/40"
-        aria-expanded={false}
-      >
-        <StatusDot status={failed > 0 ? "failed" : group.workflow.status} />
-        <span className="truncate text-sm">
-          {group.workflow.workflowName ?? group.workflow.title}
-        </span>
-        <span className="ml-auto flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
-          {failed > 0 ? <span className="text-destructive-foreground">{failed} failed</span> : null}
-          <span>{members.length} agents</span>
-          <span className="tabular-nums">· {formatSubagentTokenCount(totalTokens)} tok</span>
-          {elapsed ? <span className="tabular-nums">· {elapsed}</span> : null}
-          <ChevronRight aria-hidden className="size-3" />
-        </span>
-      </button>
+      <Row
+        size="xs"
+        pressable
+        render={<button type="button" onClick={onExpand} aria-expanded={false} />}
+        lead={<StatusDot status={failed > 0 ? "failed" : group.workflow.status} />}
+        title={group.workflow.workflowName ?? group.workflow.title}
+        meta={
+          <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
+            {failed > 0 ? (
+              <span className="text-destructive-foreground">{failed} failed</span>
+            ) : null}
+            <span>{members.length} agents</span>
+            <span className="tabular-nums">· {formatSubagentTokenCount(totalTokens)} tok</span>
+            {elapsed ? <span className="tabular-nums">· {elapsed}</span> : null}
+            <ChevronRight aria-hidden className="size-3" />
+          </span>
+        }
+      />
     </section>
   );
 }
@@ -669,15 +678,16 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
   return (
     <>
       {earlier.length > 0 ? (
-        <button
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          className="justify-self-start"
           aria-expanded={showEarlier}
-          className="helper-map-earlier"
           onClick={() => {
             // Folding them folds the helper opened among them too.
             if (showEarlier && heldEarlier && openId !== null) onToggle(openId);
             setShowEarlier(!showEarlier);
           }}
-          type="button"
         >
           {showEarlier ? (
             <ChevronDown aria-hidden className="size-3.5" />
@@ -685,7 +695,7 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
             <ChevronRight aria-hidden className="size-3.5" />
           )}
           {`${earlier.length} earlier, done`}
-        </button>
+        </Button>
       ) : null}
       <ul className="helper-map">
         {rows.map((row) =>
@@ -754,8 +764,8 @@ export function AgentsPanel({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <Bot aria-hidden className="size-6 text-muted-foreground/60" />
-        <p className="text-sm font-medium">No helpers yet</p>
-        <p className="max-w-56 text-xs text-muted-foreground">
+        <p className="text-body font-medium">No helpers yet</p>
+        <p className="max-w-56 text-caption text-muted-foreground">
           When {mate?.name ?? "this Mate"} starts helpers, each shows here with what it does now,
           and opens onto its own work.
         </p>

@@ -13,6 +13,7 @@ import { ConversationId, EngineEvent, ENGINE_EVENT_VERSION, itemId, runId } from
 import { EngineAnswer, EngineConversationFrame } from "./engineWire.ts";
 import { VcsCreateRefInput, VcsCreateWorktreeInput, VcsSwitchRefInput } from "./git.ts";
 import { ReviewDiffFileContentsInput, ReviewDiffPreviewInput } from "./review.ts";
+import { MateMessage } from "./mateMessage.ts";
 
 /** A decode's value, or the case fails on an assertion (never a thrown parse error) when it failed. */
 const decoded = <A>(exit: Exit.Exit<A, unknown>): A => {
@@ -22,6 +23,35 @@ const decoded = <A>(exit: Exit.Exit<A, unknown>): A => {
 
 const conversation = ConversationId.make("mate");
 const run = runId(conversation, 3);
+
+// witness: packages/contracts/src/mateMessage.ts | about: MateMessageAbout, → about: Schema.optionalKey(MateMessageAbout),
+it("CT7: A message of kind notice decodes with the change it is about and no sender; an ask or an answer without its sender, and a notice without its change, are refused", () => {
+  const decode = Schema.decodeUnknownExit(MateMessage);
+  const message = {
+    id: "message-1",
+    chainId: "chain-1",
+    hop: 1,
+    kind: "notice",
+    about: {
+      appId: "app-a",
+      repo: "repo",
+      number: 7,
+      branch: "b",
+      head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    },
+    words:
+      "GitHub's checks failed on change #7 (repository repo, branch b): pull request #9 https://github.example/pull/9, commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.\n- build: failure, check run 1, https://github.example/runs/1",
+    sentAt: "2026-11-24T00:00:00.000Z",
+  };
+  expect(decoded(decode(message))).toEqual(message);
+  const { about: _about, ...withoutAbout } = message;
+  expect(Exit.isFailure(decode(withoutAbout))).toBe(true);
+  for (const kind of ["ask", "answer"]) {
+    expect(Exit.isFailure(decode({ ...withoutAbout, kind })), kind).toBe(true);
+    const from = { projectId: "project", projectName: "", mateName: "" };
+    expect(Exit.isSuccess(decode({ ...withoutAbout, kind, from })), kind).toBe(true);
+  }
+});
 
 // witness: packages/contracts/src/baseSchemas.ts | (value: string) => !known.has(value) → (value: string) => true
 it("CT1: A list or union member from a newer build is dropped or read as unknown, while a known member with a broken payload still fails", () => {

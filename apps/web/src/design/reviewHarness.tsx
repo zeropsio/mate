@@ -22,6 +22,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Row as KitRow } from "~/components/ui/row";
+import { Button } from "~/components/ui/button";
 import { MateFace } from "~/components/zerops/primitives";
 import {
   changeReviewItem,
@@ -30,7 +31,6 @@ import {
   ProjectReviewTags,
   type ProjectReviewItem,
 } from "~/components/zerops/SidebarProjectReview";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { ReviewContext, reviewTargetKey, type OpenReview } from "~/zerops/review";
 import "../index.css";
 
@@ -315,7 +315,7 @@ function Harness() {
       <div className="flex min-h-screen gap-8 bg-background p-8 text-foreground">
         <div
           style={{ width: 435 }}
-          className="flex flex-col gap-0.5 rounded-2xl bg-sidebar p-2 text-sidebar-foreground"
+          className="flex flex-col gap-0.5 rounded-card bg-sidebar p-2 text-sidebar-foreground"
           data-harness="menu"
         >
           {projects.map((project) => (
@@ -328,7 +328,9 @@ function Harness() {
           >
             {LIMITED_PROJECTS.map((project) => (
               <div className="flex h-9 items-center gap-1" key={project.id}>
-                <span className="w-16 text-xs text-sidebar-muted-foreground">{project.name}</span>
+                <span className="w-16 text-caption text-sidebar-muted-foreground">
+                  {project.name}
+                </span>
                 <HeaderReviewDoor
                   held={false}
                   review={{
@@ -342,37 +344,25 @@ function Harness() {
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-2 text-sm">
+        <div className="flex flex-col gap-2 text-body">
           <p>Opened: {opened}</p>
           <div className="flex flex-wrap gap-2">
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setOrbit((n) => n + 1)}
-              type="button"
-            >
+            <Button size="xs" variant="secondary" onClick={() => setOrbit((n) => n + 1)}>
               + change
-            </button>
-            <button
-              className="rounded border px-2 py-1"
+            </Button>
+            <Button
+              size="xs"
+              variant="secondary"
               onClick={() => setOrbit((n) => Math.max(0, n - 1))}
-              type="button"
             >
               − change
-            </button>
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setCrew((on) => !on)}
-              type="button"
-            >
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => setCrew((on) => !on)}>
               crew task
-            </button>
-            <button
-              className="rounded border px-2 py-1"
-              onClick={() => setRelease((on) => !on)}
-              type="button"
-            >
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => setRelease((on) => !on)}>
               release
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -381,7 +371,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

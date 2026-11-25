@@ -17,6 +17,7 @@ import { putLiveProgress, type PutLiveStanding } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { FailureDetails } from "../ui/failure";
 import { useGroupName } from "./review/reviewReads";
@@ -95,7 +96,7 @@ export function PutLiveRow(props: PutLiveRowProps) {
   return (
     <div className="ov-run" data-zerops-production-run="failed" role="status">
       <p className="ov-run-line" data-tone="failed">
-        <i aria-hidden="true" className="ov-dot" data-dot="failed" />
+        <Badge aria-label="Failed" dot tone="warning" />
         <span className="truncate">{progress.title}</span>
       </p>
       <div className="ov-run-cause">

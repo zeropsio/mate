@@ -104,7 +104,7 @@ export function PublicChoice({
           Take issues from a public repository
         </Label>
         <p
-          className="text-xs text-muted-foreground"
+          className="text-caption text-muted-foreground"
           {...(id === undefined ? {} : { id: `${id}-why` })}
         >
           Anyone can write a public repository's issues, and their words reach the agent.
@@ -127,8 +127,10 @@ export function CopyLine({
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{value}</code>
+      <span className="w-24 shrink-0 text-caption text-muted-foreground">{label}</span>
+      <code className="min-w-0 flex-1 truncate font-mono text-caption text-foreground">
+        {value}
+      </code>
       <Button
         onClick={() => {
           copyToClipboard(value, undefined);
@@ -186,7 +188,7 @@ export function NotKnown({
         {quiet ? (
           <span />
         ) : (
-          <p className="text-xs text-muted-foreground" role="alert">
+          <p className="text-caption text-muted-foreground" role="alert">
             {couldntRead(what, setting.words)}
           </p>
         )}
@@ -195,9 +197,9 @@ export function NotKnown({
         </Button>
       </div>
     ) : quiet ? null : state === "withheld" ? (
-      <p className="text-xs text-muted-foreground">{WITHHELD}</p>
+      <p className="text-caption text-muted-foreground">{WITHHELD}</p>
     ) : (
-      <p className="text-xs text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         <WaitLine inline text="Reading…" />
       </p>
     );
@@ -216,7 +218,7 @@ export function Problem({
 }) {
   const problem = taskSourceProblem(read.action);
   return problem === null ? null : (
-    <p className="text-xs text-destructive-foreground" role="alert">
+    <p className="text-caption text-destructive-foreground" role="alert">
       {problem}
     </p>
   );

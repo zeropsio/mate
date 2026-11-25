@@ -136,7 +136,7 @@ function Progress({
         </span>
         <span
           aria-live="polite"
-          className="min-w-0 flex-1 text-foreground text-sm"
+          className="min-w-0 flex-1 text-foreground text-body"
           data-slot="progress-words"
           role={state === "failed" ? "alert" : "status"}
         >
@@ -145,7 +145,7 @@ function Progress({
         {time === "" ? null : (
           <span
             className={cn(
-              "shrink-0 text-xs tabular-nums",
+              "shrink-0 text-caption tabular-nums",
               clock.overrun ? "text-foreground" : "text-muted-foreground",
             )}
             data-slot="progress-time"

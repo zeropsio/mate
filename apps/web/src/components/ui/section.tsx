@@ -43,7 +43,7 @@ function SectionHeader({
           {typeof title === "string" ? <span className="min-w-0 truncate">{title}</span> : title}
         </Heading>
         {count === undefined || count === null ? null : (
-          <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{count}</span>
+          <span className="shrink-0 text-muted-foreground text-caption tabular-nums">{count}</span>
         )}
         {action === undefined || action === null ? null : (
           <span className="ms-auto flex shrink-0 items-center gap-1">{action}</span>

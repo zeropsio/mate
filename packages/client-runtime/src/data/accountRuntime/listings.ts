@@ -47,6 +47,7 @@ import {
   type CandidateRow,
 } from "../../zerops/projections/candidates.ts";
 import { systemExchangeClock } from "../../zerops/environments/exchange.ts";
+import { projectStopsOrStarts } from "../../zerops/candidates.ts";
 
 /** One organization's Mate candidates. */
 export interface OrganizationListing {
@@ -302,7 +303,7 @@ export interface RoutePreview {
  * The route's project as the store holds it from its reads ahead of the organization's listing
  * (`holdRoutePreview`), or as the listing holds it, whichever came: its rows, by
  * `projectCandidates`' rules, once its own row is known in the organization shown and — for an
- * active project — its services are; null before. A project another organization owns is none.
+ * active project, or one stopping, stopped or starting — its services are; null before. A project another organization owns is none.
  */
 export const routePreviewAtom = Atom.family((projectId: string) =>
   Atom.make((get): RoutePreview | null => {
@@ -312,7 +313,11 @@ export const routePreviewAtom = Atom.family((projectId: string) =>
     const project = get(account.data.project(listedProject, { orgId, projectId }));
     if (project === null || project.clientId !== orgId) return null;
     const services = get(projectServicesAtom(projectId));
-    if (project.status === "ACTIVE" && services.services === undefined) return null;
+    if (
+      (project.status === "ACTIVE" || projectStopsOrStarts(project.status)) &&
+      services.services === undefined
+    )
+      return null;
     const nowMs = systemExchangeClock.now().wall;
     return {
       organizationId: orgId,

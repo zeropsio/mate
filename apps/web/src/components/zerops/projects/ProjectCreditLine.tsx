@@ -40,7 +40,7 @@ export function ProjectCreditLine({
   return (
     <p
       className={cn(
-        "text-sm",
+        "text-body",
         credit.tone === "out" ? "text-status-failed-text" : "text-status-attention-text",
         className,
       )}

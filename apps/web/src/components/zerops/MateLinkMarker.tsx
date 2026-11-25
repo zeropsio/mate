@@ -1,3 +1,4 @@
+import { InlineButton } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -18,7 +19,7 @@ export function MateLinkMarker({
   readonly onTryNow?: (() => void) | undefined;
 }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-caption font-medium text-muted-foreground">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -37,14 +38,9 @@ export function MateLinkMarker({
         <TooltipPopup>{cause === undefined ? words : `${words} ${cause}`}</TooltipPopup>
       </Tooltip>
       {onTryNow === undefined ? null : (
-        <button
-          className="shrink-0 cursor-pointer rounded-sm text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          data-mate-link-try=""
-          onClick={onTryNow}
-          type="button"
-        >
+        <InlineButton data-mate-link-try="" onClick={onTryNow}>
           Try now
-        </button>
+        </InlineButton>
       )}
     </span>
   );

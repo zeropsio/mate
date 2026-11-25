@@ -4,9 +4,10 @@ import { FALLBACK_PROVIDER_ACCENT, PROVIDER_ACCENT_SWATCHES } from "@t3tools/sha
 import { PipetteIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
-import { ColorSelector } from "../color-selector";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
 
@@ -129,7 +130,7 @@ function ProviderCustomColorPanel(props: {
         }}
       >
         <span
-          className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]"
+          className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-handle"
           style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
         />
       </div>
@@ -147,11 +148,13 @@ function ProviderCustomColorPanel(props: {
           }}
         >
           <span
-            className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]"
+            className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-handle"
             style={{ left: `${(hsv.h / 360) * 100}%`, backgroundColor: currentColor }}
           />
         </div>
-        <input
+        <Input
+          size="compact"
+          font="mono"
           value={currentColor}
           onChange={(event) => {
             const nextColor = event.currentTarget.value;
@@ -159,7 +162,6 @@ function ProviderCustomColorPanel(props: {
             setHsv(hexToHsv(nextColor));
             props.onCommit(nextColor);
           }}
-          className="h-8 rounded-md border border-input bg-background px-2 font-mono text-base text-foreground outline-none transition-colors focus:border-ring sm:text-xs"
           aria-label="Custom hex accent color"
           spellCheck={false}
         />
@@ -180,24 +182,21 @@ function ProviderCustomColorPicker(props: {
     <Popover>
       <PopoverTrigger
         render={
-          <button
-            type="button"
-            className={cn(
-              "flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90",
-              "hover:scale-105",
-            )}
-            style={{
-              backgroundColor: normalized,
-              ...(props.selected
-                ? {
-                    boxShadow: `inset 0 0 0 2px var(--card), 0 0 0 2px ${normalized}`,
-                  }
-                : {}),
-            }}
-            aria-label={`Choose custom accent color for ${props.displayName}`}
-          >
-            <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
-          </button>
+          <Button aria-label={`Choose custom accent color for ${props.displayName}`} variant="bare">
+            <span
+              className="flex size-6 items-center justify-center rounded-full transition-transform duration-200 hover:scale-105 active:scale-90"
+              style={{
+                backgroundColor: normalized,
+                ...(props.selected
+                  ? {
+                      boxShadow: `inset 0 0 0 2px var(--card), 0 0 0 2px ${normalized}`,
+                    }
+                  : {}),
+              }}
+            >
+              <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
+            </span>
+          </Button>
         }
       />
       <PopoverPopup side="bottom" align="start" sideOffset={6} padding="none">
@@ -282,7 +281,7 @@ export function ProviderAccentColorPicker(props: {
 
   return (
     <div className="grid gap-2">
-      <span className="text-xs font-medium text-foreground">Accent color</span>
+      <span className="text-caption font-medium text-foreground">Accent color</span>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ProviderCustomColorPicker
           displayName={displayName}
@@ -290,31 +289,54 @@ export function ProviderAccentColorPicker(props: {
           selected={customSelected}
           onCommit={commitAccentColor}
         />
-        <ColorSelector
-          key={selectedValue}
-          colors={[...PROVIDER_ACCENT_SWATCHES]}
-          defaultValue={selectedValue}
-          size="lg"
-          onColorSelect={commitAccentColor}
-          className="flex-wrap gap-1.5"
-        />
-        <Button
-          type="button"
-          size="icon-md"
-          variant="ghost"
-          className={cn(
-            "size-7 shrink-0 text-muted-foreground transition-opacity",
-            normalized ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-          onClick={() => commitAccentColor("")}
-          aria-label={`Clear accent color for ${displayName}`}
-          aria-hidden={!normalized}
-          tabIndex={normalized ? 0 : -1}
+        {/* Each swatch's disc is as wide as the custom one beside it; its press is the kit's. */}
+        <RadioSwatchGroup<string>
+          aria-label={`Accent color for ${displayName}`}
+          className="flex flex-wrap"
+          onValueChange={commitAccentColor}
+          options={PROVIDER_ACCENT_SWATCHES}
+          value={selectedValue}
         >
-          <XIcon className="size-3.5" aria-hidden />
-        </Button>
+          {PROVIDER_ACCENT_SWATCHES.map((swatch) => (
+            <RadioSwatch aria-label={swatch} key={swatch} style={{ color: swatch }} value={swatch}>
+              <svg aria-hidden="true" viewBox="0 0 36 36">
+                <circle
+                  cx="18"
+                  cy="18"
+                  data-slot="radio-swatch-ring"
+                  fill="none"
+                  r="15.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <circle cx="18" cy="18" fill="currentColor" r="12" />
+              </svg>
+            </RadioSwatch>
+          ))}
+        </RadioSwatchGroup>
+        {/* Holds its room while there is no colour to clear, so the swatches never move. */}
+        <span
+          className={cn(
+            "flex shrink-0 transition-opacity duration-150 ease-out-strong",
+            !normalized && "pointer-events-none opacity-0",
+          )}
+        >
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost-muted"
+            onClick={() => commitAccentColor("")}
+            aria-label={`Clear accent color for ${displayName}`}
+            aria-hidden={!normalized}
+            tabIndex={normalized ? 0 : -1}
+          >
+            <XIcon className="size-3.5" aria-hidden />
+          </Button>
+        </span>
       </div>
-      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+      {description ? (
+        <span className="text-caption text-muted-foreground">{description}</span>
+      ) : null}
     </div>
   );
 }

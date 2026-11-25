@@ -8,7 +8,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useEffect, useMemo, useState } from "react";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
@@ -30,7 +30,7 @@ const FIRST_READ_PATIENCE_MS = 1_500;
 
 function Reading() {
   return (
-    <p className="text-sm text-muted-foreground" role="status" data-zerops-surface="git-reading">
+    <p className="text-body text-muted-foreground" role="status" data-zerops-surface="git-reading">
       Reading repositories and changes…
     </p>
   );
@@ -46,7 +46,7 @@ function ReadTrouble({
   if (failure === null) return null;
   return (
     <div className="flex flex-col gap-2" data-zerops-surface="git-read-trouble">
-      <p className="text-sm text-status-failed" role="alert">
+      <p className="text-body text-status-failed" role="alert">
         {failure}
       </p>
       {onAgain === undefined ? null : (
@@ -105,7 +105,7 @@ export function ZeropsGitOverview({
   if (!visible) return null;
   if (state.kind === "refused")
     return (
-      <p className="text-sm text-status-failed" role="alert" data-zerops-surface="git-refused">
+      <p className="text-body text-status-failed" role="alert" data-zerops-surface="git-refused">
         {state.reason}
       </p>
     );
@@ -143,21 +143,21 @@ export function ZeropsGitOverview({
             </Button>
           ))}
         </div>
-        <span className="text-xs text-muted-foreground">Project, then repository A–Z</span>
+        <span className="text-caption text-muted-foreground">Project, then repository A–Z</span>
       </div>
       <ReadTrouble failure={state.failure} onAgain={onAgain} />
       {state.reading ? <Reading /> : null}
       {state.failure !== null && presentation.rows.some((row) => row.coverage !== "unread") ? (
-        <p className="text-xs text-muted-foreground">Showing the last read changes.</p>
+        <p className="text-caption text-muted-foreground">Showing the last read changes.</p>
       ) : null}
       {state.refusals?.map(({ appId, name, reason }) => (
-        <p key={appId} className="text-sm text-muted-foreground" role="status">
+        <p key={appId} className="text-body text-muted-foreground" role="status">
           {name}: {reason}
         </p>
       ))}
       {presentation.changed ? (
         <div className="flex items-center gap-3" role="status">
-          <span className="text-sm text-muted-foreground">The repository list has changed.</span>
+          <span className="text-body text-muted-foreground">The repository list has changed.</span>
           <Button variant="secondary" size="sm" onClick={() => setHeld(undefined)}>
             Update list
           </Button>
@@ -188,15 +188,13 @@ export function ZeropsGitOverview({
                     data-zerops-git-app={repository.appId}
                     data-zerops-git-repository={repository.name}
                   >
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-body">
                       <span className="text-muted-foreground">{repository.project}</span>
                       <span className="text-muted-foreground">/</span>
                       {repositoryHref === undefined ? (
                         <span className="font-medium">{repository.name}</span>
                       ) : (
-                        <a
-                          className="min-w-0 truncate rounded-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                          href={repositoryHref(repository.appId, repository.name)}
+                        <InlineButton
                           onClick={(event) => {
                             if (
                               onOpenRepository === undefined ||
@@ -210,20 +208,24 @@ export function ZeropsGitOverview({
                             event.preventDefault();
                             onOpenRepository(repository.appId, repository.name);
                           }}
+                          render={<a href={repositoryHref(repository.appId, repository.name)} />}
+                          tone="plain"
                         >
                           {repository.name}
-                        </a>
+                        </InlineButton>
                       )}
                       {repository.name === "group" ? (
-                        <span className="text-xs text-muted-foreground">Setup</span>
+                        <span className="text-caption text-muted-foreground">Setup</span>
                       ) : null}
                     </div>
                     {repository.coverage === "unread" ? (
-                      <p className="mt-2 text-xs text-muted-foreground">Changes not read yet.</p>
+                      <p className="mt-2 text-caption text-muted-foreground">
+                        Changes not read yet.
+                      </p>
                     ) : null}
                     {changeRows.length > 1 ? (
                       <details>
-                        <summary className="mt-2 cursor-pointer text-xs text-muted-foreground">
+                        <summary className="mt-2 cursor-pointer text-caption text-muted-foreground">
                           {repository.changes.some(({ pull }) => pull.merged)
                             ? `${changeRows.length} changes`
                             : gitRepositoryLine(changeRows.length)}
@@ -233,14 +235,14 @@ export function ZeropsGitOverview({
                     ) : changeRows.length === 1 ? (
                       changeRows
                     ) : repository.coverage === "complete" ? (
-                      <p className="mt-2 text-xs text-muted-foreground">No open changes.</p>
+                      <p className="mt-2 text-caption text-muted-foreground">No open changes.</p>
                     ) : null}
                   </div>
                 );
               })}
             </div>
           </Card>
-          <p className="mt-3 text-xs text-muted-foreground">
+          <p className="mt-3 text-caption text-muted-foreground">
             {view === "all" ? (
               <>
                 {presentation.rows.length}{" "}
@@ -261,18 +263,20 @@ export function ZeropsGitOverview({
         </section>
       ) : incomplete ? null : state.apps.every((app) => app.repositories.length === 0) ? (
         <div className="flex flex-col gap-2" data-zerops-surface="git-empty">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-muted-foreground">
             No repositories yet. Repositories appear here after a project is set up.
           </p>
-          <a
-            className="text-sm text-primary underline-offset-2 hover:underline"
-            href={`${appBasePath()}/zerops`}
+          <Button
+            className="-ms-2.5 self-start"
+            render={<a href={`${appBasePath()}/zerops`} />}
+            size="sm"
+            variant="link"
           >
             Open Projects
-          </a>
+          </Button>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No open changes.</p>
+        <p className="text-body text-muted-foreground">No open changes.</p>
       )}
     </>
   );
@@ -359,8 +363,8 @@ export function ZeropsGitPage() {
       {detailOpen ? null : (
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
-            <h1 className="text-xl font-medium text-foreground">Git</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-title font-medium text-foreground">Git</h1>
+            <p className="text-body text-muted-foreground">
               Repositories and open changes across your projects.
             </p>
           </div>

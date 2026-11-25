@@ -36,7 +36,7 @@ function GitCompareSummary({
       <header className="flex min-w-0 flex-col gap-1">
         <h2 className="text-base font-medium break-words text-foreground">{summary.headline}</h2>
         {summary.cut === null ? null : (
-          <p className="text-xs text-muted-foreground">{summary.cut}</p>
+          <p className="text-caption text-muted-foreground">{summary.cut}</p>
         )}
       </header>
       {summary.nothing ? null : (
@@ -107,7 +107,7 @@ function CompareState({
   if (view.state === "known") return null;
   if (view.state === "unread")
     return (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Reading the compare…
       </p>
     );

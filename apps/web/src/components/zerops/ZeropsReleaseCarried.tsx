@@ -16,6 +16,7 @@ import {
   type Moved,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
+import { InlineButton } from "~/components/ui/button";
 
 import type { ComparedCommits } from "~/zerops/useReleaseComparisons";
 
@@ -146,21 +147,23 @@ function Change({
         {onOpenChange === undefined || change === null ? (
           <span className="min-w-0 flex-1 text-body wrap-break-word text-foreground">{title}</span>
         ) : (
-          <span className="flex min-w-0 flex-1">
-            <button
-              className="flex max-w-full min-w-0 cursor-pointer items-start gap-1 rounded-sm text-start text-body text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+          <span className="flex min-w-0 flex-1 text-body">
+            <InlineButton
+              className="max-w-full min-w-0 items-start"
               onClick={(event) => {
                 onOpenChange(change, event.currentTarget);
               }}
-              type="button"
+              tone="plain"
             >
-              <span className="min-w-0 wrap-break-word">{title}</span>
+              <span className="min-w-0 text-start font-normal whitespace-normal wrap-break-word">
+                {title}
+              </span>
               {/* What opens says so at rest, at its end, as on everything that goes somewhere;
                   on the title's first line where a narrow column wraps it. */}
               <span aria-hidden="true" className="flex h-5 shrink-0 items-center">
                 <ChevronRightIcon className="size-3.5 text-muted-foreground/60" />
               </span>
-            </button>
+            </InlineButton>
           </span>
         )}
         <span className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums">

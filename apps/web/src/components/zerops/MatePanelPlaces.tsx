@@ -94,7 +94,7 @@ export function MateProjectCard({
   return (
     <section
       aria-label={`${project.name}, ${mateName === undefined ? "this Mate" : possessive(mateName, "project")}`}
-      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card"
+      className="flex min-w-0 flex-col overflow-hidden rounded-card border border-border/70 bg-card"
       data-zerops-surface="panel-project"
     >
       <div className="flex min-w-0 items-center justify-between gap-3 px-4 pt-3.5 pb-1.5">

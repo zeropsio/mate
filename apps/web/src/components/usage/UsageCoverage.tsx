@@ -14,7 +14,7 @@ export function UsageCoverage({
 }) {
   const view = usageCoverageView(report, labels, now);
   return (
-    <section aria-label="Recording coverage" className="text-xs text-muted-foreground">
+    <section aria-label="Recording coverage" className="text-caption text-muted-foreground">
       {view.summary ? <p>{view.summary}</p> : null}
       {view.details.length > 0 ? <p>Totals include only recorded activity.</p> : null}
       {view.details.length > 0 ? (

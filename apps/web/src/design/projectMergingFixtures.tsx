@@ -221,7 +221,7 @@ function MergingStatePanel({ name }: { readonly name: MergingStateName }) {
   const state: MergingState = MERGING_STATES[name];
   return (
     <section className="grid content-start gap-3" data-merging-state={name}>
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      <h2 className="text-caption font-medium tracking-wide text-muted-foreground uppercase">
         {state.title}
       </h2>
       <div className="grid grid-cols-[minmax(0,700px)_minmax(0,360px)] items-start gap-10">

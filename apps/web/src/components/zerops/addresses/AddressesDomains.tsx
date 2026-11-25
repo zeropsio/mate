@@ -475,10 +475,10 @@ function DomainJourney({
           title={`Zerops couldn't get ${failed.domainName} its https certificate`}
         >
           {failed.sslError === undefined ? null : (
-            <p className="text-muted-foreground text-xs">{failed.sslError}</p>
+            <p className="text-muted-foreground text-caption">{failed.sslError}</p>
           )}
           {cloudflare ? (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted-foreground text-caption">
               On Cloudflare, set each record's Proxy status to DNS only, or SSL/TLS to Full
               (strict).
             </p>
@@ -489,7 +489,7 @@ function DomainJourney({
         </Stage>
       ) : waiting.length === 0 ? (
         <Stage state="busy" title="Zerops is getting its free https certificate">
-          <p className="text-muted-foreground text-xs">This usually takes a few minutes.</p>
+          <p className="text-muted-foreground text-caption">This usually takes a few minutes.</p>
         </Stage>
       ) : (
         <Stage state="next" title="Zerops adds free https" />
@@ -570,7 +570,7 @@ function RecordsStage({
           : `Add these ${count} records to ${root}'s DNS`
       }
     >
-      <p className="text-muted-foreground text-xs" data-addresses-provider={provider.kind}>
+      <p className="text-muted-foreground text-caption" data-addresses-provider={provider.kind}>
         {provider.kind === "known" ? (
           <>
             Its DNS is at {provider.name}. Sign in there and open {root}'s DNS records.
@@ -590,13 +590,13 @@ function RecordsStage({
         )}
       </p>
       {elsewhere.map((domain) => (
-        <p className="text-status-attention-text text-xs" key={domain.domainName}>
+        <p className="text-status-attention-text text-caption" key={domain.domainName}>
           {domain.domainName} points at {domain.resolvedIps.join(", ")} now, which isn't{" "}
           {ctx.placeName}. Replace the records it has with these.
         </p>
       ))}
       {records.length === 0 ? (
-        <p className="text-muted-foreground text-xs">
+        <p className="text-muted-foreground text-caption">
           {ctx.placeName}'s IP addresses aren't read yet.
         </p>
       ) : (
@@ -612,7 +612,7 @@ function RecordsStage({
       )}
       {/* Our own add has no routing to look up yet: the line stands as it will, its press held. */}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
-        <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-xs">
+        <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-caption">
           <p className="text-foreground" data-addresses-checked="">
             {busy
               ? "Looking them up…"
@@ -750,8 +750,8 @@ function AddDomainForm({
     >
       {first ? (
         <div className="grid gap-1.5">
-          <div className="font-semibold text-foreground text-sm">Put it on your domain</div>
-          <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-muted-foreground text-xs">
+          <div className="font-semibold text-foreground text-body">Put it on your domain</div>
+          <ol className="m-0 flex list-none flex-wrap items-center gap-x-2 gap-y-1 p-0 text-muted-foreground text-caption">
             {WAY.map((words, index) => (
               <li className="inline-flex items-center gap-1.5" key={words}>
                 {index === 0 ? null : (
@@ -817,11 +817,11 @@ function AddDomainForm({
         ) : null}
       </div>
       {problem !== null ? (
-        <p className="text-destructive-foreground text-xs" role="alert">
+        <p className="text-destructive-foreground text-caption" role="alert">
           {problem}
         </p>
       ) : offered === null || existing.includes(offered) ? null : (
-        <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-body">
           <Checkbox checked={twin} onCheckedChange={(on) => setTwin(on === true)} />
           Also {offered}
         </label>
@@ -838,7 +838,7 @@ function AddDomainForm({
           </Button>
         )}
         {first ? null : (
-          <span className="ms-1 text-muted-foreground text-xs">
+          <span className="ms-1 text-muted-foreground text-caption">
             Next you get the records to add where you bought it.
           </span>
         )}

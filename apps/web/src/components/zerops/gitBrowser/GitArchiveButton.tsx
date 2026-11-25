@@ -91,7 +91,7 @@ export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) 
   const { view, reading, slow, again, ask } = archive;
   return (
     <section aria-label="Download" className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-foreground">Download</h2>
+      <h2 className="text-body font-medium text-foreground">Download</h2>
       <div className="flex flex-wrap items-center gap-2">
         {FORMATS.map(({ format, label }) => (
           <Button
@@ -107,7 +107,7 @@ export function GitArchiveButton({ archive }: { readonly archive: GitArchive }) 
       </div>
       {view === null ? null : reading ? (
         slow ? (
-          <p className="text-xs text-muted-foreground" role="status">
+          <p className="text-caption text-muted-foreground" role="status">
             Reading the archive…
           </p>
         ) : null

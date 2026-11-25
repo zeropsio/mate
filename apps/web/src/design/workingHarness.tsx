@@ -49,7 +49,6 @@ import { ResultStates } from "./resultFixtures";
 import { foldSteps, stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { StandupReadings } from "~/zerops/activity/useStandupReading";
@@ -963,7 +962,7 @@ function StandupStates() {
           const operation = standupOp(`op:standup-${index}`, state.subject);
           return (
             <div className="grid gap-1" data-standup-state={state.label} key={operation.key}>
-              <p className="text-muted-foreground text-xs">{state.label}</p>
+              <p className="text-muted-foreground text-caption">{state.label}</p>
               <Card>
                 <RunChat
                   row={record({
@@ -1006,7 +1005,7 @@ function RelayedStandup() {
   };
   return (
     <div className="grid gap-1" data-standup-state="Relayed by its Mate">
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground text-caption">
         Relayed by its Mate, from Zerops Control Plane's status file
       </p>
       <Card>
@@ -1041,8 +1040,8 @@ function State({
   return (
     <section className="grid gap-2" data-harness-state={label}>
       <div>
-        <h2 className="font-medium text-foreground text-sm">{label}</h2>
-        <p className="text-muted-foreground text-xs">{caption}</p>
+        <h2 className="font-medium text-foreground text-body">{label}</h2>
+        <p className="text-muted-foreground text-caption">{caption}</p>
       </div>
       {children}
     </section>
@@ -1559,13 +1558,11 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-// The app sets the theme on the document element (`themePalette.ts`), so the
+// The app sets the appearance on the document element (`useTheme.ts`), so the
 // harness does the same rather than nesting a `.dark` wrapper the tokens never
-// reach — in the Zerops palette a fresh install wears, whose card and muted
-// fill sit closer than the fallback tokens'.
+// reach.
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

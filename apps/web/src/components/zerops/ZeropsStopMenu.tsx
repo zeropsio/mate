@@ -7,6 +7,8 @@ import type { StopView } from "@t3tools/client-runtime/zerops/flow";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { MoreHorizontalIcon } from "lucide-react";
 
+import { Button } from "../ui/button";
+
 import {
   Menu,
   MenuGroup,
@@ -27,8 +29,7 @@ import { ZeropsRouteMenuItems } from "./ZeropsPublicRoutes";
  * keyboard's way to them. The changes a stop does not run yet are its
  * distance's to list, opened on the left menu's row itself.
  *
- * One menu wherever a stop is drawn: the left menu's row and the stop's own
- * page open the same one, each trigger in its own surface's hand.
+ * The stop's own page opens it from a quiet icon press.
  */
 export function ZeropsStopMenu({
   name,
@@ -37,7 +38,6 @@ export function ZeropsStopMenu({
   projectId,
   groupId,
   onOpenStop,
-  triggerClassName,
   rollBack,
 }: {
   readonly name: string;
@@ -48,8 +48,6 @@ export function ZeropsStopMenu({
   /** The application whose places the addresses sheet's switch offers; absent outside one. */
   readonly groupId?: string | undefined;
   readonly onOpenStop: (() => void) | undefined;
-  /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
-  readonly triggerClassName: string;
   /**
    * A production's way back: the release it rolls back to, whose review opens from the item. Only
    * the production's own page offers it, never the project's road.
@@ -78,8 +76,8 @@ export function ZeropsStopMenu({
     <Menu>
       <MenuTrigger
         aria-label={`More for ${name}`}
-        className={triggerClassName}
         data-zerops-surface="stop-menu"
+        render={<Button size="icon-md" variant="ghost-muted" />}
       >
         <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>

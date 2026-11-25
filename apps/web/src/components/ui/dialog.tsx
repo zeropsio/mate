@@ -2,6 +2,8 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
+import * as React from "react";
+
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import {
@@ -79,9 +81,19 @@ function DialogViewport({ className, ...props }: DialogPrimitive.Viewport.Props)
   );
 }
 
+/**
+ * `default` heads a dialog with a 20 px title; `sm` is a narrow form's: a 15 px title on its close
+ * press's 32 px line, the header 16 px from its top and bottom and 24 px from its start, the close
+ * press 24 px from the end round a 20 px icon.
+ */
+type DialogSize = "default" | "sm";
+
+const DialogSizeContext = React.createContext<DialogSize>("default");
+
 function DialogPopup({
   className,
   children,
+  size = "default",
   showCloseButton = true,
   bottomStickOnMobile = true,
   keepMounted = false,
@@ -89,6 +101,7 @@ function DialogPopup({
   placement = "top",
   ...props
 }: DialogPrimitive.Popup.Props & {
+  size?: DialogSize;
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
   keepMounted?: boolean;
@@ -123,14 +136,14 @@ function DialogPopup({
           {...props}
           ref={held}
         >
-          {children}
+          <DialogSizeContext value={size}>{children}</DialogSizeContext>
           {showCloseButton && (
             <DialogPrimitive.Close
               aria-label="Close"
-              className={DIALOG_CLOSE_CLASS}
+              className={size === "sm" ? "absolute end-6 top-4" : DIALOG_CLOSE_CLASS}
               render={<Button size="icon-md" variant="ghost" />}
             >
-              <XIcon />
+              <XIcon className={size === "sm" ? "size-5" : undefined} />
             </DialogPrimitive.Close>
           )}
         </DialogPrimitive.Popup>
@@ -164,10 +177,14 @@ function DialogMediaPopup({ children, ...props }: DialogPrimitive.Popup.Props) {
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  const size = React.use(DialogSizeContext);
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 p-6 in-[[data-slot=dialog-popup]:has([data-slot=dialog-panel])]:pb-3 max-sm:pb-4",
+        "flex flex-col gap-2",
+        size === "sm"
+          ? "py-4 ps-6 pe-16"
+          : "p-6 in-[[data-slot=dialog-popup]:has([data-slot=dialog-panel])]:pb-3 max-sm:pb-4",
         className,
       )}
       data-slot="dialog-header"
@@ -186,7 +203,7 @@ function DialogFooter({
   return (
     <div
       className={cn(
-        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
+        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-sheet)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "py-4",
         DIALOG_MOBILE_FOOTER_CLASS,
@@ -199,9 +216,16 @@ function DialogFooter({
 }
 
 function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
+  const size = React.use(DialogSizeContext);
   return (
     <DialogPrimitive.Title
-      className={cn("wrap-anywhere font-semibold text-xl leading-none", className)}
+      className={cn(
+        "wrap-anywhere",
+        size === "sm"
+          ? "font-medium text-emphasis leading-8"
+          : "font-semibold text-title leading-none",
+        className,
+      )}
       data-slot="dialog-title"
       {...props}
     />
@@ -211,7 +235,7 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props) {
   return (
     <DialogPrimitive.Description
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-body", className)}
       data-slot="dialog-description"
       {...props}
     />

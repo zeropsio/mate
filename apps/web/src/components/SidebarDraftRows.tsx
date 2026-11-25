@@ -20,6 +20,7 @@ import {
 import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { stripInlinePicturePlaceholders } from "../lib/composerPictures";
 import { cn } from "~/lib/utils";
+import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 // One unsent draft session the user has invested content in. Two lines,
@@ -95,18 +96,19 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               {` · ${props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}`}
             </span>
           </span>
-          <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
+          {/* The discard press shows while the row is under the pointer or the press has focus. */}
+          <span className="pointer-events-none ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100">
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <button
-                    type="button"
+                  <Button
                     aria-label="Discard draft"
                     onClick={handleDiscard}
-                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                    size="icon-2xs"
+                    variant="ghost-muted"
                   >
                     <XIcon className="size-3" />
-                  </button>
+                  </Button>
                 }
               />
               <TooltipPopup side="top">Discard draft</TooltipPopup>

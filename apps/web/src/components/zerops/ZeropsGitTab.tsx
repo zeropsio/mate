@@ -166,7 +166,7 @@ function RepositoryPullAction({
         }}
       />
       {pull.error === null ? null : (
-        <p role="alert" className="text-sm text-status-failed">
+        <p role="alert" className="text-body text-status-failed">
           {typeof pull.error === "string"
             ? pull.error
             : pull.error instanceof Error

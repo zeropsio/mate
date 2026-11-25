@@ -200,7 +200,7 @@ export function PullRequestThreadDialog({
         </DialogHeader>
         <DialogPanel>
           <label className="grid gap-1.5">
-            <span className="text-xs font-medium text-foreground capitalize">
+            <span className="text-caption font-medium text-foreground capitalize">
               {terminology.singular}
             </span>
             <Input
@@ -227,16 +227,16 @@ export function PullRequestThreadDialog({
           </label>
 
           {resolvedPullRequest ? (
-            <div className="rounded-xl border border-border/70 bg-muted/24 p-3">
+            <div className="rounded-card border border-border/70 bg-muted/24 p-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-sm">{resolvedPullRequest.title}</p>
-                  <p className="truncate text-muted-foreground text-xs">
+                  <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
+                  <p className="truncate text-muted-foreground text-caption">
                     #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
                     {resolvedPullRequest.baseBranch}
                   </p>
                 </div>
-                <span className={cn("shrink-0 text-xs capitalize", statusTone)}>
+                <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
                   {resolvedPullRequest.state}
                 </span>
               </div>
@@ -244,13 +244,13 @@ export function PullRequestThreadDialog({
           ) : null}
 
           {isResolving ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+            <div className="flex items-center gap-2 text-muted-foreground text-caption">
               <Spinner size="sm" />
               Resolving {terminology.singular}...
             </div>
           ) : null}
 
-          {errorMessage ? <p className="text-destructive text-xs">{errorMessage}</p> : null}
+          {errorMessage ? <p className="text-destructive text-caption">{errorMessage}</p> : null}
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="secondary" size="sm" onClick={() => onOpenChange(false)}>

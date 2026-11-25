@@ -19,7 +19,6 @@ import { SidebarCrewMinis, useCrewRows } from "~/components/zerops/crew/SidebarC
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
 import { Row as KitRow } from "~/components/ui/row";
 import { MateFace } from "~/components/zerops/primitives";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -184,7 +183,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

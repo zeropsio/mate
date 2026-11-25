@@ -106,7 +106,7 @@ function CommandSpecimens() {
         </CommandDialog>
       </Specimen>
       <Specimen label="<Command> inline, without <CommandInput> (it takes focus on mount)">
-        <div className="w-96 rounded-2xl border">
+        <div className="w-96 rounded-sheet border">
           <Command items={GROUPS}>
             <CommandPanel>
               <Results />

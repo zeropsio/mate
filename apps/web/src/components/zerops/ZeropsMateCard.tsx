@@ -18,69 +18,36 @@
  *
  * Structural: every word on the line and every verb is the caller's (R5).
  */
-import type {
-  MateMarkState,
-  MateShapeId,
-  MateTintId,
-  ServiceStatusToneId,
-} from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
+import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
 
 /** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
 function PreviewLink({ url }: { readonly url: string }) {
   return (
-    <a
-      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
-      data-zerops-surface="mate-preview"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <ExternalLinkIcon aria-hidden="true" className="size-3" />
-      Preview
-    </a>
+    <span className="relative z-[1] text-caption">
+      <InlineButton
+        data-zerops-surface="mate-preview"
+        render={<a href={url} rel="noreferrer" target="_blank" />}
+      >
+        <ExternalLinkIcon aria-hidden="true" className="size-3" />
+        Preview
+      </InlineButton>
+    </span>
   );
 }
 
-/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
-/** A verb that is about something with a state wears that state. */
-const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-[var(--zerops-status-ok)]/40 bg-[var(--zerops-status-ok-surface)] text-[var(--zerops-status-ok-text)] hover:bg-[var(--zerops-status-ok-surface)]/70",
-  busy: "border-[var(--zerops-status-busy)]/40 bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)] hover:bg-[var(--zerops-status-busy-surface)]/70",
-  attention:
-    "border-[var(--zerops-status-attention)]/40 bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)] hover:bg-[var(--zerops-status-attention-surface)]/70",
-  failed:
-    "border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)] hover:bg-[var(--zerops-status-failed-surface)]/70",
-  off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
-};
-
-/**
- * A count, in the colour of what it counts.
- *
- * The verb's count used to take a separate `urgent` flag, which one call site
- * set and never unset — so *Release* counted what it would ship in the same
- * amber a change that cannot land wears. A verb says one thing, so its count
- * says it too.
- */
-const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "bg-[var(--zerops-status-ok)]/20 text-[var(--zerops-status-ok-text)]",
-  busy: "bg-[var(--zerops-status-busy)]/20 text-[var(--zerops-status-busy-text)]",
-  attention: "bg-[var(--zerops-status-attention)]/20 text-[var(--zerops-status-attention-text)]",
-  failed: "bg-[var(--zerops-status-failed)]/20 text-[var(--zerops-status-failed-text)]",
-  off: "bg-muted text-muted-foreground",
-};
-
+/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". */
 export function ZeropsMateVerb({
   label,
   onClick,
   disabled = false,
   description,
-  count,
-  tone,
   action,
   ...rest
 }: {
@@ -95,20 +62,6 @@ export function ZeropsMateVerb({
   readonly onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   readonly disabled?: boolean;
   /**
-   * How much the verb would carry, worn on the verb itself.
-   *
-   * *Release* used to say `Release` on one line while a separate amber chip
-   * said `1 waiting` on the next, with a globe and a menu between the fact and
-   * its cure — two elements for one thing (the owner, 2026-09-19).
-   */
-  readonly count?: number | undefined;
-  /**
-   * What the verb is about, where that has a state: a change that cannot land
-   * and a release that is merely waiting are not the same news, and a row of
-   * identical grey pills says they are.
-   */
-  readonly tone?: ServiceStatusToneId | undefined;
-  /**
    * What the verb would actually do, in words — for a verb whose name says
    * the mechanism rather than the outcome. It becomes the button's accessible
    * name, so the answer is not hover-only: a keyboard reaches it too.
@@ -116,48 +69,30 @@ export function ZeropsMateVerb({
   readonly description?: string | undefined;
 }) {
   return (
-    <button
+    <Button
       {...rest}
       aria-label={description === undefined ? undefined : `${label}: ${description}`}
-      // A verb, drawn as one. It was blue underlined text, which in this app
-      // meant "this leaves for Gitea" until nothing did any more — so every
-      // verb read as a link out, and the one that mattered (Release) was
-      // quieter than the amber chip counting what it would ship.
-      className={cn(
-        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-xs leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
-        tone === undefined
-          ? "border-input bg-popover text-foreground hover:bg-accent/50"
-          : VERB_TONE_CLASS[tone],
-      )}
+      // Above the card's stretched name, which covers the card to open it.
+      className="z-[1]"
       data-zerops-primary-action={action ?? label}
       disabled={disabled}
       onClick={onClick}
-      type="button"
+      size="xs"
+      variant="secondary"
     >
       {label}
-      {count === undefined || count === 0 ? null : (
-        <span
-          className={cn(
-            "ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
-            tone === undefined ? "bg-muted text-muted-foreground" : COUNT_TONE_CLASS[tone],
-          )}
-          data-zerops-surface="verb-count"
-        >
-          {count}
-        </span>
-      )}
-    </button>
+    </Button>
   );
 }
 
 /**
- * The card's surface: the one white card on the page. The height fits a
- * name, a line and a snippet whether or not the socket has answered yet: a
- * card that grows when the conversation lands would push every card below it
- * down the page.
+ * The card's inside: the surface is the kit's flat Card around it. The height
+ * fits a name, a line and a snippet whether or not the socket has answered
+ * yet: a card that grows when the conversation lands would push every card
+ * below it down the page.
  */
 const CARD_SURFACE_CLASS =
-  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
+  "relative flex min-h-18 w-full min-w-0 items-center gap-3 rounded-card py-2.5 ps-3 pe-2";
 
 /**
  * The row: the Mate as one entry of a list inside another surface (a project
@@ -165,14 +100,12 @@ const CARD_SURFACE_CLASS =
  * reserved height.
  */
 const ROW_SURFACE_CLASS =
-  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
+  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-control px-1.5 py-1";
 
 const LAYOUT = {
   card: {
     surface: CARD_SURFACE_CLASS,
-    opens:
-      "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
-    hit: "after:rounded-[var(--zerops-card-radius)]",
+    opens: "hover:bg-accent/40",
     lineOne: "",
     name: "",
     time: "",
@@ -180,7 +113,6 @@ const LAYOUT = {
   row: {
     surface: ROW_SURFACE_CLASS,
     opens: "hover:bg-accent/60",
-    hit: "after:rounded-md",
     // A row sits in a narrow step: the name never gives way, and its time and
     // Preview follow it — wrapping under it rather than cutting it to an
     // initial — with or without a Preview, at every width.
@@ -260,12 +192,12 @@ export function ZeropsMateCard({
   busy = false,
   className,
 }: ZeropsMateCardProps) {
-  return (
+  const body = (
     <div
       aria-busy={busy || undefined}
       className={cn(
         LAYOUT[layout].surface,
-        "group/card transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
+        "group/card transition-colors duration-150 motion-reduce:transition-none",
         onSelect && LAYOUT[layout].opens,
         className,
       )}
@@ -275,22 +207,21 @@ export function ZeropsMateCard({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
           {onSelect ? (
-            <button
-              className={cn(
-                "min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
-                LAYOUT[layout].hit,
-                LAYOUT[layout].name,
-              )}
-              data-zerops-surface="mate-open"
-              onClick={onSelect}
-              type="button"
-            >
-              {name}
-            </button>
+            <span className={cn("flex min-w-0 flex-1 text-body leading-5", LAYOUT[layout].name)}>
+              {/* The name opens the Mate, and its press covers the card. */}
+              <InlineButton
+                className="max-w-full min-w-0 after:absolute after:inset-0"
+                data-zerops-surface="mate-open"
+                onClick={onSelect}
+                tone="plain"
+              >
+                <span className="truncate">{name}</span>
+              </InlineButton>
+            </span>
           ) : (
             <span
               className={cn(
-                "min-w-0 flex-1 truncate text-sm leading-5 font-medium text-foreground",
+                "min-w-0 flex-1 truncate text-body leading-5 font-medium text-foreground",
                 LAYOUT[layout].name,
               )}
             >
@@ -300,7 +231,7 @@ export function ZeropsMateCard({
           {time === undefined || time.length === 0 ? null : (
             <span
               className={cn(
-                "shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums",
+                "shrink-0 text-2xs leading-5 text-muted-foreground tabular-nums",
                 LAYOUT[layout].time,
               )}
               data-zerops-surface="mate-time"
@@ -314,7 +245,7 @@ export function ZeropsMateCard({
         </div>
         {line === undefined || line === null ? null : (
           <div
-            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-line"
           >
             {line}
@@ -322,7 +253,7 @@ export function ZeropsMateCard({
         )}
         {layout === "row" || snippet === undefined || snippet.length === 0 ? null : (
           <div
-            className="min-w-0 truncate text-xs leading-4 text-muted-foreground"
+            className="min-w-0 truncate text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-snippet"
           >
             {snippet}
@@ -330,7 +261,7 @@ export function ZeropsMateCard({
         )}
         {updateLine === undefined || updateLine === null ? null : (
           <div
-            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
             data-zerops-surface="mate-update-line"
           >
             {updateLine}
@@ -344,6 +275,13 @@ export function ZeropsMateCard({
       )}
       {layout === "card" ? <CardMenu menu={menu} /> : null}
     </div>
+  );
+  return layout === "card" ? (
+    <Card className="w-full min-w-0" variant="flat">
+      {body}
+    </Card>
+  ) : (
+    body
   );
 }
 

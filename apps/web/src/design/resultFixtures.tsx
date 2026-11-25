@@ -700,8 +700,8 @@ export function ResultStates() {
       {STATES.map((state, index) => (
         <section key={state.label} className="grid gap-2" data-harness-state={state.label}>
           <div>
-            <h2 className="font-medium text-foreground text-sm">{state.label}</h2>
-            <p className="text-muted-foreground text-xs">{state.note}</p>
+            <h2 className="font-medium text-foreground text-body">{state.label}</h2>
+            <p className="text-muted-foreground text-caption">{state.note}</p>
           </div>
           <div>
             <div className="run-tray run-tray-top">

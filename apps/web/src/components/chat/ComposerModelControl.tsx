@@ -23,6 +23,7 @@ import {
 import { memo, type KeyboardEvent, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, ComposerSelectControl } from "./ComposerControl";
@@ -86,9 +87,9 @@ function ChoiceGroup(props: {
 }) {
   return (
     <div className="flex flex-col" role="radiogroup" aria-label={props.label}>
-      <p className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-xs">{props.label}</p>
+      <p className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-caption">{props.label}</p>
       {props.note === undefined ? null : (
-        <p className="px-2 pb-1 text-muted-foreground text-xs">{props.note}</p>
+        <p className="px-2 pb-1 text-muted-foreground text-caption">{props.note}</p>
       )}
       {props.children}
     </div>
@@ -106,32 +107,38 @@ function Choice(props: {
   readonly children: ReactNode;
 }) {
   return (
-    <button
-      aria-checked={props.checked}
-      className="flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 pointer-coarse:min-h-10 text-start text-foreground text-line outline-none hover:bg-foreground/6 focus-visible:bg-foreground/6 disabled:cursor-default disabled:opacity-64 aria-checked:font-medium"
-      disabled={props.disabled}
-      onClick={props.onSelect}
-      onKeyDown={moveWithinGroup}
-      role="radio"
-      tabIndex={props.checked || props.first ? 0 : -1}
-      type="button"
-    >
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate">{props.children}</span>
-        {props.description === undefined ? null : (
-          <span className="text-pretty font-normal text-muted-foreground text-xs">
-            {props.description}
-          </span>
-        )}
-      </span>
-      {props.isDefault ? (
-        <span className="shrink-0 font-normal text-muted-foreground text-xs">Default</span>
-      ) : null}
-      <CheckIcon
-        aria-hidden="true"
-        className={cn("size-3.5 shrink-0", props.checked ? "opacity-100" : "opacity-0")}
-      />
-    </button>
+    <Row
+      size="xs"
+      pressable
+      strong={props.checked}
+      aria-disabled={props.disabled || undefined}
+      render={
+        <button
+          aria-checked={props.checked}
+          disabled={props.disabled}
+          onClick={props.onSelect}
+          onKeyDown={moveWithinGroup}
+          role="radio"
+          tabIndex={props.checked || props.first ? 0 : -1}
+          type="button"
+        />
+      }
+      title={props.children}
+      line={props.description}
+      lineWraps
+      meta={
+        <>
+          {props.isDefault ? "Default" : null}
+          <CheckIcon
+            aria-hidden="true"
+            className={cn(
+              "ms-2 size-3.5 text-foreground",
+              props.checked ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </>
+      }
+    />
   );
 }
 
@@ -156,7 +163,7 @@ function TraitsChoices({ traits }: { readonly traits: ComposerTraitsInput }) {
       if (!value) return null;
       return (
         <div className="flex flex-col px-2 py-1" key={descriptor.id}>
-          <span className="font-medium text-muted-foreground text-xs">{descriptor.label}</span>
+          <span className="font-medium text-muted-foreground text-caption">{descriptor.label}</span>
           <span className="text-foreground text-line">{value}</span>
         </div>
       );
@@ -239,7 +246,7 @@ export const ComposerModelChoices = memo(function ComposerModelChoices(props: {
             {COMPOSER_ACCESS[mode].label}
           </Choice>
         ))}
-        <p className="px-2 pt-1 pb-1.5 text-pretty text-muted-foreground text-xs">
+        <p className="px-2 pt-1 pb-1.5 text-pretty text-muted-foreground text-caption">
           {COMPOSER_ACCESS[props.runtimeMode].description}
         </p>
       </ChoiceGroup>
@@ -286,7 +293,7 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
                       <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       {option.label}
                     </span>
-                    <span className="text-muted-foreground text-xs leading-4">
+                    <span className="text-muted-foreground text-caption leading-4">
                       {option.description}
                     </span>
                   </div>

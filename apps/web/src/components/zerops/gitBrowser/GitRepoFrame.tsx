@@ -56,7 +56,7 @@ function ClonePopover({
       <PopoverPopup align="end" width="lg">
         <div className="flex flex-col gap-4">
           <section aria-label="Clone with HTTPS" className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium text-foreground">Clone with HTTPS</h2>
+            <h2 className="text-body font-medium text-foreground">Clone with HTTPS</h2>
             <ZeropsGitCredentials appId={appId} repo={repo} />
           </section>
           {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
@@ -80,7 +80,7 @@ export function GitRepoHeading({
 }) {
   return (
     <>
-      <nav className="flex min-w-0 flex-wrap items-center gap-2 text-sm" aria-label="Repository">
+      <nav className="flex min-w-0 flex-wrap items-center gap-2 text-body" aria-label="Repository">
         <InlineButton onClick={onBack}>Git</InlineButton>
         <span className="text-muted-foreground"> / {project} / </span>
         <span className="break-all font-medium text-foreground">{repo}</span>
@@ -88,8 +88,8 @@ export function GitRepoHeading({
       </nav>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-medium text-foreground">{repo}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-title font-medium text-foreground">{repo}</h1>
+          <p className="mt-1 text-body text-muted-foreground">
             {project}’s {repo === "group" ? "setup repository" : "repository"}
           </p>
         </div>
@@ -160,7 +160,7 @@ export function GitRepoFrame({
       />
       <GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />
       {about?.mirror ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {about.mirror.syncedAt === null ? (
             mirrorLine(about.mirror)
           ) : (
@@ -194,7 +194,7 @@ export function GitRepoFrame({
             </Toggle>
           ))}
         </ToggleGroup>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Browsing source does not switch a Mate’s checkout.
         </p>
       </div>

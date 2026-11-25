@@ -159,7 +159,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarContent className="overflow-x-hidden">
         <SidebarGroup>
           <div className="flex flex-col gap-2">
-            <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground pointer-coarse:h-10">
+            <div className="flex h-8 items-center gap-2 rounded-control px-2 py-1.5 text-body font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground pointer-coarse:h-10">
               <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
               <SidebarInput
                 ref={searchInputRef}
@@ -208,7 +208,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
             {isSearching && results.length === 0 ? (
               <p
                 role="status"
-                className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
+                className="px-2 py-6 text-center text-caption text-sidebar-muted-foreground"
               >
                 No settings found
               </p>
@@ -234,7 +234,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     >
                       <SettingsSectionIcon to={item.to} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-sidebar-foreground">
+                        <span className="block truncate text-body font-medium text-sidebar-foreground">
                           {item.title}
                         </span>
                         <span className="block truncate text-2xs text-sidebar-muted-foreground/75">
@@ -287,7 +287,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       </SidebarContent>
       {/* The account's one line, as at the menu's foot: settings replace the menu, not the lapse. */}
       <AccountVoiceLine />
-      <SidebarFooter className="p-[var(--sidebar-content-inset)]">
+      <SidebarFooter>
         <SidebarUtilityMenu />
       </SidebarFooter>
     </>

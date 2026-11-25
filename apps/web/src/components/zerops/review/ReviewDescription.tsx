@@ -24,6 +24,7 @@ import ChatMarkdown, {
   type MarkdownFileElsewhere,
   type MarkdownPicture,
 } from "~/components/ChatMarkdown";
+import { Button, InlineButton } from "~/components/ui/button";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
@@ -112,9 +113,7 @@ export function ReviewDescription({
     <ReviewSection
       aside={
         onOpenRun === undefined ? undefined : (
-          <button className="rv-link" onClick={onOpenRun} type="button">
-            The run that made it
-          </button>
+          <InlineButton onClick={onOpenRun}>The run that made it</InlineButton>
         )
       }
       title={WHAT_IT_DOES}
@@ -216,9 +215,9 @@ function ReviewPicture({
   const where = descriptionPicture(picture.uri, hqAddress);
   if (where.kind === "elsewhere") {
     return (
-      <a className="rv-link" href={where.url} rel="noopener noreferrer" target="_blank">
+      <InlineButton render={<a href={where.url} rel="noopener noreferrer" target="_blank" />}>
         {picture.alt.length > 0 ? picture.alt : where.url}
-      </a>
+      </InlineButton>
     );
   }
   if (where.kind === "none") return <PictureLine alt={picture.alt} />;
@@ -377,33 +376,40 @@ function PictureViewer({
                 ) : null}
               </p>
             ) : null}
-            <DialogPrimitive.Close aria-label="Close" className="rv-viewer-x">
-              <XIcon aria-hidden="true" />
+            <DialogPrimitive.Close
+              aria-label="Close"
+              render={
+                <Button className="fixed end-4 top-4 size-10" size="icon-md" variant="scrim" />
+              }
+            >
+              <XIcon aria-hidden="true" className="size-5" />
             </DialogPrimitive.Close>
             {count > 1 ? (
               <>
-                <button
+                <Button
                   aria-label="The picture before"
-                  className="rv-viewer-step"
+                  className="fixed start-4 top-1/2 size-10 -translate-y-1/2"
                   data-side="before"
                   onClick={() => {
                     step(-1);
                   }}
-                  type="button"
+                  size="icon-md"
+                  variant="scrim"
                 >
-                  <ChevronLeftIcon aria-hidden="true" />
-                </button>
-                <button
+                  <ChevronLeftIcon aria-hidden="true" className="size-5" />
+                </Button>
+                <Button
                   aria-label="The picture after"
-                  className="rv-viewer-step"
+                  className="fixed end-4 top-1/2 size-10 -translate-y-1/2"
                   data-side="after"
                   onClick={() => {
                     step(1);
                   }}
-                  type="button"
+                  size="icon-md"
+                  variant="scrim"
                 >
-                  <ChevronRightIcon aria-hidden="true" />
-                </button>
+                  <ChevronRightIcon aria-hidden="true" className="size-5" />
+                </Button>
               </>
             ) : null}
           </DialogPrimitive.Popup>

@@ -40,6 +40,7 @@ import {
   ResultPicturesContext,
 } from "./runCardContext";
 import { type ChatLine } from "./runChatLine";
+import { Button } from "~/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Its calls
@@ -117,7 +118,7 @@ function StepPicture({
     return (
       <span
         aria-label="Loading the picture"
-        className="block h-20 w-32 rounded-lg bg-foreground/5"
+        className="block h-20 w-32 rounded-control bg-foreground/5"
         role="status"
       />
     );
@@ -126,20 +127,22 @@ function StepPicture({
     return <span className={cn(META, "text-muted-foreground")}>{name} is not there any more</span>;
   }
   return (
-    <button
+    <Button
       aria-label={`Open ${name}`}
-      className="block h-20 w-32 cursor-zoom-in overflow-hidden rounded-lg border border-border/60 bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+      className="block h-20 w-32 cursor-zoom-in"
       onClick={() => onOpen({ images: [{ src: asset.url, name }], index: 0 })}
-      type="button"
+      variant="bare"
     >
-      <AssetImage
-        loading="lazy"
-        decoding="async"
-        alt={name}
-        className="block size-full object-contain object-top"
-        src={asset.url}
-      />
-    </button>
+      <span className="block size-full overflow-hidden rounded-control border border-border/60 bg-card">
+        <AssetImage
+          loading="lazy"
+          decoding="async"
+          alt={name}
+          className="block size-full object-contain object-top"
+          src={asset.url}
+        />
+      </span>
+    </Button>
   );
 }
 

@@ -61,7 +61,6 @@ import { composerAttachmentRoute, optimisticFileAttachments } from "~/lib/compos
 import { fitPictureCopy, pictureCanvasEncoder } from "~/lib/imageCompression";
 import { drawPictureComposite } from "~/lib/pictureDrawing";
 import type { ChatAttachment } from "~/types";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -300,8 +299,8 @@ function State(props: {
   return (
     <section className="grid gap-2" data-harness-state={props.label}>
       <div>
-        <h2 className="font-medium text-foreground text-sm">{props.label}</h2>
-        <p className="text-muted-foreground text-xs">{props.note}</p>
+        <h2 className="font-medium text-foreground text-body">{props.label}</h2>
+        <p className="text-muted-foreground text-caption">{props.note}</p>
       </div>
       {props.children}
     </section>
@@ -390,7 +389,7 @@ function LiveComposer() {
   }, [files, pictures, playUploads]);
   return (
     <div className="grid gap-3">
-      <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+      <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
         <ComposerPromptEditor
           editorRef={editorRef}
           value={draft.prompt}
@@ -427,14 +426,17 @@ function LiveComposer() {
           }}
         />
       </div>
-      <pre className="whitespace-pre-wrap font-mono text-muted-foreground text-xs" data-live-wire>
+      <pre
+        className="whitespace-pre-wrap font-mono text-muted-foreground text-caption"
+        data-live-wire
+      >
         {materializePicturePrompt(draft.prompt, draft.images, draft.files)}
       </pre>
       <LiveSent
         text={materializePicturePrompt(draft.prompt, draft.images, draft.files)}
         attachments={[...optimisticFileAttachments(draft.files), ...draft.images]}
       />
-      <p className="text-muted-foreground text-xs" data-live-status>
+      <p className="text-muted-foreground text-caption" data-live-status>
         {error ?? pictures.blockReason ?? "Ready to send"}
       </p>
       {pictures.view}
@@ -448,7 +450,7 @@ function LiveSent(props: { readonly text: string; readonly attachments: ChatAtta
   if (!placed) return null;
   return (
     <div className="flex justify-end" data-live-sent>
-      <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+      <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
         <MessagePictureBody
           segments={placed.segments}
           dimensions={new Map()}
@@ -462,18 +464,20 @@ function LiveSent(props: { readonly text: string; readonly attachments: ChatAtta
 
 function Wire(props: { readonly parts: ReadonlyArray<PictureContentPart>; readonly made: Made }) {
   return (
-    <ol className="grid gap-0 rounded-2xl border border-border bg-card text-card-foreground">
+    <ol className="grid gap-0 rounded-card border border-border bg-card text-card-foreground">
       {props.parts.map((part) => (
         <li
           key={part.kind === "image" ? `image-${part.index}` : `text-${part.text}`}
           className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2 border-border border-t px-3.5 py-2 first:border-t-0"
           data-wire-part={part.kind}
         >
-          <span className="font-mono text-muted-foreground text-xs uppercase">{part.kind}</span>
+          <span className="font-mono text-muted-foreground text-caption uppercase">
+            {part.kind}
+          </span>
           {part.kind === "text" ? (
-            <pre className="whitespace-pre-wrap font-mono text-xs leading-5">{part.text}</pre>
+            <pre className="whitespace-pre-wrap font-mono text-caption leading-5">{part.text}</pre>
           ) : (
-            <span className="text-sm tabular-nums">
+            <span className="text-body tabular-nums">
               Picture {part.index + 1} ·{" "}
               {pictureDims(props.made.image.picture.width, props.made.image.picture.height)} ·{" "}
               {pictureTypeName(props.made.image.mimeType)} ·{" "}
@@ -580,7 +584,7 @@ function Harness() {
           label="The composer"
           note="The picture sits where it was pasted, between the words, with its marks drawn in. Click it to open it."
         >
-          <div className="rounded-3xl border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+          <div className="rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
             {made ? (
               <ComposerPromptEditor
                 editorRef={editorRef}
@@ -598,7 +602,7 @@ function Harness() {
                 onPaste={() => undefined}
               />
             ) : (
-              <p className="text-muted-foreground text-sm">Drawing the screenshot…</p>
+              <p className="text-muted-foreground text-body">Drawing the screenshot…</p>
             )}
           </div>
         </State>
@@ -613,7 +617,7 @@ function Harness() {
           note="Each picture where it was put, its notes under it; the original's line when it went along."
         >
           <div className="flex justify-end">
-            <div className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground">
+            <div className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground">
               {placed ? (
                 <MessagePictureBody
                   segments={placed.segments}
@@ -681,11 +685,10 @@ async function fitReport() {
   document.body.prepend(pre);
 }
 
-// The app sets the theme on the document element (`themePalette.ts`), so the
+// The app sets the appearance on the document element (`useTheme.ts`), so the
 // harness does the same.
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

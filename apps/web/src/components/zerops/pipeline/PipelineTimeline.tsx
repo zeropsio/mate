@@ -62,7 +62,7 @@ export function PipelineTimeline({
     return live ? (
       <PipelineCalculating aria-label={label} />
     ) : (
-      <p className="text-muted-foreground text-sm">No steps are kept for this pipeline.</p>
+      <p className="text-muted-foreground text-body">No steps are kept for this pipeline.</p>
     );
   }
   return (
@@ -111,7 +111,7 @@ function TimelineStep({
         <div className="flex items-start gap-3">
           <p
             className={cn(
-              "min-w-0 flex-1 text-sm leading-5",
+              "min-w-0 flex-1 text-body leading-5",
               quiet ? "text-muted-foreground" : "text-foreground",
             )}
           >
@@ -119,13 +119,13 @@ function TimelineStep({
             <span className="sr-only"> · {STATE_WORD[step.state]}</span>
           </p>
           {duration === undefined ? null : (
-            <span className="shrink-0 text-muted-foreground text-xs leading-5 tabular-nums">
+            <span className="shrink-0 text-muted-foreground text-caption leading-5 tabular-nums">
               {duration}
             </span>
           )}
         </div>
         {step.note === undefined ? null : (
-          <p className="mt-0.5 text-muted-foreground text-xs">{step.note}</p>
+          <p className="mt-0.5 text-muted-foreground text-caption">{step.note}</p>
         )}
         {step.state === "failed" ? (
           <FailureCause onServiceLog={onServiceLog} process={process} />
@@ -152,7 +152,7 @@ function FailureCause({
   }
   return (
     <div
-      className="mt-2 flex flex-col gap-1 rounded-lg bg-destructive/8 px-3 py-2 text-sm"
+      className="mt-2 flex flex-col gap-1 rounded-control bg-destructive/8 px-3 py-2 text-body"
       data-zerops-pipeline-cause
     >
       {error?.command === undefined ? null : (
@@ -163,7 +163,7 @@ function FailureCause({
       )}
       {words === undefined ? null : <p className="wrap-anywhere">{words}</p>}
       {error === undefined || error.code === "" ? null : (
-        <p className="font-mono text-muted-foreground text-xs">{error.code}</p>
+        <p className="font-mono text-muted-foreground text-caption">{error.code}</p>
       )}
       {onServiceLog === undefined ? null : (
         <p>

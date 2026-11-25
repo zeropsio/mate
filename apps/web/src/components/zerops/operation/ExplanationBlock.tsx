@@ -29,7 +29,7 @@ const VISIBLE_TAIL_LINES = 6;
 
 function LogLines({ lines }: { readonly lines: ReadonlyArray<{ key: string; line: string }> }) {
   return (
-    <ol className="space-y-0.5 overflow-x-auto rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] leading-relaxed">
+    <ol className="space-y-0.5 overflow-x-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed">
       {lines.map(({ key, line }) => {
         const error = isErrorLogLine(line);
         return (
@@ -59,9 +59,9 @@ export function ExplanationBlock({
   const visible = lines.slice(earlier.length);
   return (
     <div className="space-y-1.5" data-zerops-operation-explanation>
-      <p className="text-[13px] text-foreground">{explanation.reason}</p>
+      <p className="text-line text-foreground">{explanation.reason}</p>
       {earlier.length > 0 ? (
-        <details className="text-muted-foreground text-xs">
+        <details className="text-muted-foreground text-caption">
           <summary className="w-fit cursor-pointer list-none select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
             Earlier lines
           </summary>

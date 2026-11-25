@@ -40,7 +40,6 @@ import {
   AppWebhooksView,
 } from "~/components/zerops/projectAutomation/sourceForms";
 import { SectionLabel } from "~/components/zerops/system";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { TaskSession } from "~/zerops/taskSession.logic";
 import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
@@ -668,7 +667,9 @@ const INTAKE: AppIntakeRead = {
 function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
     <section className="grid content-start gap-3">
-      <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
+      <h2 className="text-caption font-medium tracking-wide text-muted-foreground uppercase">
+        {title}
+      </h2>
       {children}
     </section>
   );
@@ -679,7 +680,7 @@ function DialogFor({ kind }: { readonly kind: SourceKind }) {
   return (
     <SourceDialog kind={kind} onClose={nothing}>
       {missing !== null ? (
-        <p className="text-sm text-foreground">{missing}</p>
+        <p className="text-body text-foreground">{missing}</p>
       ) : kind === "github" ? (
         <ul className="grid">
           <AppIntakeView
@@ -746,7 +747,7 @@ function Harness() {
       <div className="grid content-start gap-8">
         {states.map((state) => (
           <div className="grid content-start gap-3" data-state={state.id} key={state.id}>
-            <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <h2 className="text-caption font-medium tracking-wide text-muted-foreground uppercase">
               {state.title}
             </h2>
             <OnPage>{state.view}</OnPage>
@@ -757,7 +758,7 @@ function Harness() {
         <div className="grid max-w-3xl gap-3">
           {SESSIONS.map(([label, session]) => (
             <div className="grid gap-1" key={label}>
-              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="text-caption text-muted-foreground">{label}</p>
               <MateTaskStatusView
                 onStop={session.stoppable ? nothing : undefined}
                 session={session}
@@ -773,7 +774,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

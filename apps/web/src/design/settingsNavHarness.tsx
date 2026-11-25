@@ -34,7 +34,6 @@ import {
   jumpMateOf,
   type SidebarJumpIndex,
 } from "~/components/zerops/JumpBox.logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
 import "../index.css";
@@ -157,7 +156,6 @@ const router = createRouter({
   history: createMemoryHistory({ initialEntries: [page] }),
 });
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

@@ -5,6 +5,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "~/components/WorkspaceBreadcrumb";
+import { InlineButton } from "~/components/ui/button";
 import { MiddleTruncate } from "~/components/ui/middle-truncate";
 import type { RepoPathTarget } from "./RepoMarkdown";
 
@@ -43,18 +44,25 @@ export function GitPathCrumbs({
         return [
           index === 0 ? null : <WorkspaceBreadcrumbSeparator key={`/${step.path}`} />,
           <WorkspaceBreadcrumbItem key={step.path} current={last}>
-            <a
-              className="flex min-w-0 font-mono text-xs underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-              href={hrefOf(step)}
+            <InlineButton
               aria-current={last ? "page" : undefined}
-              onClick={(event) => {
-                if (!plainClick(event)) return;
-                event.preventDefault();
-                onOpen(step);
-              }}
+              className="min-w-0"
+              render={
+                <a
+                  href={hrefOf(step)}
+                  onClick={(event) => {
+                    if (!plainClick(event)) return;
+                    event.preventDefault();
+                    onOpen(step);
+                  }}
+                />
+              }
+              tone={last ? "plain" : "muted"}
             >
-              <MiddleTruncate value={name} />
-            </a>
+              <span className="flex min-w-0 font-mono text-caption font-normal">
+                <MiddleTruncate value={name} />
+              </span>
+            </InlineButton>
           </WorkspaceBreadcrumbItem>,
         ];
       })}

@@ -233,6 +233,32 @@ function preconnectPlugin(): Plugin {
   };
 }
 
+/**
+ * Bundled dev runs plugin-react's refresh preamble inside the entry chunk, after the chunks the entry
+ * imports. Once an edit's rebuild moves components into such a chunk (the design harness page beside
+ * the app makes shared ones), each throws "can't detect preamble" and the page stays blank until the
+ * server restarts: the dev pool's preview after an agent's first edit. This classic script runs before
+ * every chunk: the globals that guard reads, and a devtools hook that keeps react-dom's registration
+ * for the refresh runtime the entry installs later, so Fast Refresh still applies edits.
+ */
+function bundledDevRefreshGlobalsPlugin(): Plugin {
+  return {
+    name: "mate:bundled-dev-refresh-globals",
+    apply: "serve",
+    transformIndexHtml: () => [
+      {
+        tag: "script",
+        children: [
+          "window.$RefreshReg$ = () => {};",
+          "window.$RefreshSig$ = () => (type) => type;",
+          "window.__REACT_DEVTOOLS_GLOBAL_HOOK__ ??= { renderers: new Map(), supportsFiber: true, inject(renderer) { const id = this.renderers.size + 1; this.renderers.set(id, renderer); return id; }, onScheduleFiberRoot() {}, onCommitFiberRoot() {}, onCommitFiberUnmount() {} };",
+        ].join("\n"),
+        injectTo: "head-prepend",
+      },
+    ],
+  };
+}
+
 function devCompressionPlugin(): Plugin {
   return {
     name: "t3code:dev-compression",
@@ -594,6 +620,7 @@ export default defineConfig(({ command }) => {
       // An origin root's page alone: a Mate's `/mate/` bundle opens its stream as it always did.
       ...(base === "/" ? [bootEntryPlugin()] : []),
       tanstackRouter({ autoCodeSplitting: true }),
+      ...(bundledDev ? [bundledDevRefreshGlobalsPlugin()] : []),
       react(),
       babel({
         // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0
@@ -634,6 +661,7 @@ export default defineConfig(({ command }) => {
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
       "import.meta.env.APP_COMMIT": JSON.stringify(builtCommit),
       "import.meta.env.VITE_APP_SHELL_WORKER": JSON.stringify(configuredAppShellWorker),
+      "import.meta.env.VITE_DESIGN_HARNESS": JSON.stringify(designHarness ?? ""),
     },
     resolve: {
       tsconfigPaths: true,

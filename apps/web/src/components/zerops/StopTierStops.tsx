@@ -54,11 +54,11 @@ export function StopTierStops({
         {rows.map((row) => (
           <li className={rowClassName} data-zerops-tier-stop={row.hostname} key={row.hostname}>
             <span className="flex min-w-0 flex-col">
-              <span className="min-w-0 truncate text-sm text-muted-foreground">
+              <span className="min-w-0 truncate text-body text-muted-foreground">
                 {row.hostname} · {row.line}
               </span>
               {trouble?.hostname === row.hostname ? (
-                <span className="text-xs text-status-failed-text">{trouble.text}</span>
+                <span className="text-caption text-status-failed-text">{trouble.text}</span>
               ) : null}
             </span>
             {row.deletable === undefined ? (

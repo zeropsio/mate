@@ -66,7 +66,7 @@ function ProjectTasksWaiting({ appId }: { readonly appId: string }) {
   const words = tasksWaitingWords(useAtomValue(appTasksWaitingAtom(appId)));
   return words === undefined ? null : (
     <span
-      className="shrink-0 truncate text-xs text-muted-foreground"
+      className="shrink-0 truncate text-caption text-muted-foreground"
       data-zerops-surface="sidebar-project-tasks-waiting"
     >
       {words}

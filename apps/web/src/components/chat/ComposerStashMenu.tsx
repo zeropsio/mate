@@ -2,7 +2,6 @@ import { XIcon } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { cn } from "~/lib/utils";
 import { stripInlinePicturePlaceholders } from "../../lib/composerPictures";
 import { type PromptStashEntry } from "../../promptStashStore";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
@@ -128,7 +127,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
         <CommandList className="max-h-64 scroll-pb-6">
           <CommandGroup>
             {entries.length === 0 ? (
-              <p className="px-3 py-1.5 text-secondary-label text-xs">
+              <p className="px-3 py-1.5 text-secondary-label text-caption">
                 Nothing stashed yet. Press ⌘S with a prompt in the composer to stash it.
               </p>
             ) : (
@@ -136,10 +135,8 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                 <CommandItem
                   key={entry.id}
                   value={entry.id}
-                  className={cn(
-                    "group/stash relative cursor-pointer select-none gap-3 rounded-lg px-3 py-1.5! hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit",
-                    highlightedId === entry.id && "bg-accent! text-accent-foreground!",
-                  )}
+                  active={highlightedId === entry.id}
+                  className="group/stash relative select-none"
                   onMouseMove={() => {
                     if (highlightedId !== entry.id) setHighlightedId(entry.id);
                   }}
@@ -150,16 +147,16 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                     onRestore(entry);
                   }}
                 >
-                  <span className="min-w-0 flex-1 truncate text-xs">
+                  <span className="min-w-0 flex-1 truncate text-caption">
                     {stashEntrySnippet(entry)}
                   </span>
                   {entry.pendingImageCount ? (
-                    <span className="shrink-0 text-xs text-secondary-label">
+                    <span className="shrink-0 text-caption text-secondary-label">
                       saving {entry.pendingImageCount} image
                       {entry.pendingImageCount === 1 ? "" : "s"}…
                     </span>
                   ) : missingImageCount(entry) > 0 ? (
-                    <span className="shrink-0 text-xs text-warning-foreground">
+                    <span className="shrink-0 text-caption text-warning-foreground">
                       {missingImageCount(entry)} image
                       {missingImageCount(entry) === 1 ? "" : "s"} dropped
                     </span>
@@ -172,26 +169,28 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                           src={attachment.dataUrl}
                           alt=""
                           aria-hidden="true"
-                          className="size-5 rounded border border-border/70 object-cover"
+                          className="size-5 rounded-mark border border-border/70 object-cover"
                         />
                       ))}
                     </span>
                   ) : null}
-                  <span className="shrink-0 text-secondary-label text-xs max-sm:hidden">
+                  <span className="shrink-0 text-secondary-label text-caption max-sm:hidden">
                     {formatRelativeTimeLabel(entry.createdAt)}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="pointer-events-none shrink-0 [--control-icon-color:currentColor] opacity-0 shadow-none! transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-                    aria-label="Delete stashed prompt"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(entry);
-                    }}
-                  >
-                    <XIcon className="size-3.5 stroke-2" />
-                  </Button>
+                  {/* The delete press shows on the row's hover or focus, always under a coarse pointer. */}
+                  <span className="pointer-events-none flex shrink-0 opacity-0 transition-opacity pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 group-hover/stash:pointer-events-auto group-hover/stash:opacity-100 group-focus-within/stash:pointer-events-auto group-focus-within/stash:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete stashed prompt"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(entry);
+                      }}
+                    >
+                      <XIcon className="size-3.5 stroke-2 text-foreground" />
+                    </Button>
+                  </span>
                 </CommandItem>
               ))
             )}

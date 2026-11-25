@@ -61,7 +61,6 @@ import { CrewmateJob } from "~/components/zerops/crew/CrewmateJob";
 import { CrewPanelBody, CrewPanelFrame } from "~/components/zerops/crew/CrewPanel";
 import { CrewSetup } from "~/components/zerops/crew/CrewSetup";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import "../index.css";
@@ -881,7 +880,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

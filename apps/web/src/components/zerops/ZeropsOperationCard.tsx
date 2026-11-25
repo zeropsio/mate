@@ -204,14 +204,16 @@ function CardHeader({
           role="status"
         >
           <KindGlyph kind={operation.kind} />
-          <span className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-xs")}>
+          <span
+            className={cn("shrink-0 text-muted-foreground", status !== undefined && "text-caption")}
+          >
             <Badge dot pulse={dotTone === "busy"} tone={STATUS_BADGE_TONE[dotTone]}>
               {status?.word ?? operation.statusWord}
             </Badge>
           </span>
           <OperationSubjectLine running={running} subject={subject} />
         </div>
-        <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs">
+        <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption">
           <HeaderMeta durationText={durationText} led={false} running={running} />
         </span>
       </header>
@@ -219,7 +221,7 @@ function CardHeader({
   }
   return (
     <header className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground text-sm">
+      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground text-body">
         <KindGlyph kind={operation.kind} />
         <span className="min-w-0" data-zerops-voice-source={operation.voiceSource}>
           {operation.voice}
@@ -227,7 +229,7 @@ function CardHeader({
       </div>
       <span
         aria-label="Result status"
-        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-xs"
+        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption"
         role="status"
       >
         <Badge dot pulse={tone === "busy"} tone={STATUS_BADGE_TONE[tone]}>
@@ -402,17 +404,16 @@ function DeployPipeline({
 
 export function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
   return (
-    <ServiceBrowserLink
+    <Button
       aria-label={`Open ${url}`}
-      className="inline-flex items-center gap-1.5 rounded-md bg-accent px-2 py-1 font-medium text-info-foreground text-xs hover:underline"
       data-zerops-chip-kind="url"
-      href={url}
-      rel="noreferrer"
-      target="_blank"
+      render={<ServiceBrowserLink href={url} rel="noreferrer" target="_blank" />}
+      size="xs"
+      variant="secondary"
     >
-      <GlobeIcon aria-hidden="true" className="size-3 text-success-foreground" />
+      <GlobeIcon aria-hidden="true" />
       <span>{label}</span>
-    </ServiceBrowserLink>
+    </Button>
   );
 }
 
@@ -518,27 +519,30 @@ function BrowserThumbnail({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={label}
-            className="block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-foreground/5 p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
+            className="block w-full shrink-0 cursor-zoom-in overflow-hidden max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
             data-zerops-browser-viewport
             {...intent}
             onClick={image !== undefined ? onOpenImage : onOpenPanel}
             style={{ aspectRatio }}
-            type="button"
+            variant="bare"
           />
         }
       >
-        {image !== undefined ? (
-          <AssetImage
-            loading="lazy"
-            decoding="async"
-            alt={live ? `Live view of ${subject}` : "Screenshot"}
-            className="block size-full object-cover object-top"
-            data-zerops-browser-image
-            src={image.src}
-          />
-        ) : null}
+        {/* The picture is the press's look: its ground stands while it loads, or with none. */}
+        <span className="block size-full bg-foreground/5">
+          {image !== undefined ? (
+            <AssetImage
+              loading="lazy"
+              decoding="async"
+              alt={live ? `Live view of ${subject}` : "Screenshot"}
+              className="block size-full object-cover object-top"
+              data-zerops-browser-image
+              src={image.src}
+            />
+          ) : null}
+        </span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>
@@ -578,7 +582,7 @@ function BrowserCard({
         onOpenPanel={onOpenPanel}
         subject={operation.subject}
       />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs" data-zerops-browser-body>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-caption" data-zerops-browser-body>
         {header}
         {operation.phase === "running" ? (
           <p className="text-muted-foreground" data-zerops-browser-live-caption>
@@ -598,7 +602,7 @@ function BrowserCard({
           </p>
         ) : null}
         {summary === undefined && !isRunningPhase(operation) && operation.closing !== undefined ? (
-          <p className="text-[13px] text-muted-foreground" data-zerops-card-outcome="true">
+          <p className="text-line text-muted-foreground" data-zerops-card-outcome="true">
             {operation.closing}
           </p>
         ) : null}
@@ -607,7 +611,7 @@ function BrowserCard({
         ) : null}
         {visibleSteps.length > 0 ? (
           <details data-zerops-browser-steps-expander>
-            <summary className="w-fit cursor-pointer list-none select-none text-info-foreground text-xs hover:underline [&::-webkit-details-marker]:hidden">
+            <summary className="w-fit cursor-pointer list-none select-none text-info-foreground text-caption hover:underline [&::-webkit-details-marker]:hidden">
               Show steps
             </summary>
             <div className="mt-1.5">
@@ -699,7 +703,7 @@ function StepsBody({
         ? null
         : (observed?.log ?? null)}
       {observed !== undefined && observed.provenance.length > 0 ? (
-        <p className="text-muted-foreground text-xs" data-zerops-operation-provenance>
+        <p className="text-muted-foreground text-caption" data-zerops-operation-provenance>
           {observed.provenance}
         </p>
       ) : null}
@@ -861,12 +865,12 @@ export function ZeropsOperationCard(props: {
           )}
           {hasResultRow ? (
             <div
-              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-caption"
               data-zerops-result-row
             >
               {closing !== undefined ? (
                 <p
-                  className="min-w-0 text-[13px] text-muted-foreground"
+                  className="min-w-0 text-line text-muted-foreground"
                   data-zerops-card-outcome="true"
                 >
                   {closing}
@@ -892,7 +896,7 @@ export function ZeropsOperationCard(props: {
               )}
               {version !== undefined ? (
                 <span
-                  className="flex items-baseline gap-1.5 text-muted-foreground text-xs"
+                  className="flex items-baseline gap-1.5 text-muted-foreground text-caption"
                   data-zerops-operation-version
                 >
                   <MicroLabel>Version</MicroLabel>

@@ -56,6 +56,7 @@ import { parseBrief, renderCrewHome, type CrewDefinition } from "@t3tools/shared
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { Button } from "~/components/ui/button";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
@@ -69,7 +70,6 @@ import { crewCardOrigin } from "~/components/zerops/crew/CrewTaskCard.logic";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -515,13 +515,13 @@ function ComposerSlot({ current }: { readonly current: HarnessState }) {
                 className="relative z-10 flex h-28 flex-col justify-between px-4 pt-3.5 pb-3"
                 data-chat-composer-main-surface="true"
               >
-                <span className="text-placeholder text-sm">
+                <span className="text-placeholder text-body">
                   {seat === null
                     ? `Ask ${FEN.name} anything…`
                     : crewMessagePlaceholder(seat.displayName)}
                 </span>
                 {seat === null ? null : (
-                  <span className="text-muted-foreground text-xs">
+                  <span className="text-muted-foreground text-caption">
                     {crewRunsOnWord({ login: "Claude Code", model: null, effort: null })}
                   </span>
                 )}
@@ -698,24 +698,24 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-e bg-sidebar p-4"
+        className="flex shrink-0 flex-col items-start gap-1 border-border border-e bg-sidebar p-4"
         style={{ width: MENU }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">A crewmate's empty conversation</p>
+        <p className="pb-2 text-muted-foreground text-caption">A crewmate's empty conversation</p>
         {STATES.map((each) => (
-          <button
+          <Button
             aria-current={each.id === current.id ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-sm aria-[current=true]:bg-accent"
             data-harness-state={each.id}
             key={each.id}
             onClick={() => {
               setCurrentId(each.id);
               setJob(null);
             }}
-            type="button"
+            size="sm"
+            variant={each.id === current.id ? "secondary" : "ghost"}
           >
             {each.label}
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
@@ -731,7 +731,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

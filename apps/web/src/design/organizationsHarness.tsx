@@ -12,7 +12,6 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ZeropsOrganizationChoice } from "~/components/zerops/ZeropsOrganizationScope";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -50,7 +49,7 @@ function HarnessPage() {
         }
       />
       {picked === null ? null : (
-        <p className="fixed inset-x-0 bottom-16 text-center text-xs text-muted-foreground">
+        <p className="fixed inset-x-0 bottom-16 text-center text-caption text-muted-foreground">
           Picked {picked}
         </p>
       )}
@@ -58,7 +57,6 @@ function HarnessPage() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

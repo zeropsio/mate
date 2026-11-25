@@ -28,7 +28,6 @@ import {
 } from "~/components/zerops/vault/vaultFixture";
 import { VAULT_STORE_FIXTURE } from "~/components/zerops/vault/vaultStoreFixture";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -137,7 +136,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

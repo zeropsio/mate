@@ -572,8 +572,7 @@ function ZeropsProjectStopDetailPage({
         ? undefined
         : withRenewal(
             stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
-            // By the viewer's role on the project, and never where HQ's own rule refuses the key.
-            renewKey.onRenew !== undefined && mayKeepKey(projectId) !== false,
+            renewKey.onRenew !== undefined,
           ),
     firstDeploy,
     notCreated,
@@ -1364,7 +1363,6 @@ export function ZeropsStopPane({
                       onRollBack: (from: HTMLElement) => onRollBack(rollBackTo, from),
                     },
                   })}
-              triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
           )}
         </>
@@ -1440,13 +1438,13 @@ export function ZeropsStopPane({
             )}
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
-            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
+            <p className="mt-1.5 px-3 text-body text-status-failed-text">{runAgain.refused}</p>
           )}
           {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
-            <p className="mt-1.5 px-3 text-sm text-muted-foreground">{runAgain.held}</p>
+            <p className="mt-1.5 px-3 text-body text-muted-foreground">{runAgain.held}</p>
           )}
           {down || renewing?.kind !== "failed" ? null : (
-            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{renewing.words}</p>
+            <p className="mt-1.5 px-3 text-body text-status-failed-text">{renewing.words}</p>
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.
@@ -1512,7 +1510,7 @@ export function ZeropsStopPane({
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-releases-unrecorded"
                 >
                   {`No releases are recorded for this production; it runs ${runs}.`}
@@ -1521,7 +1519,7 @@ export function ZeropsStopPane({
             ) : nextShown ? null : (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-releases-empty"
                 >
                   No releases yet. A release puts what is merged on main live here, and each one is
@@ -1649,7 +1647,7 @@ export function ZeropsStopPane({
                     routes={routes}
                   />
                   {routeTrouble === null || routeTrouble === undefined ? null : (
-                    <p className="text-sm text-status-failed-text">{routeTrouble}</p>
+                    <p className="text-body text-status-failed-text">{routeTrouble}</p>
                   )}
                 </PlaceSection>
               )}
@@ -1745,7 +1743,7 @@ export function ZeropsStopPane({
               {servicesWaiting || table.length > 0 || missingSlots.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
                 <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
                   data-zerops-surface="place-services-empty"
                 >
                   Nothing runs here yet. Its services appear as its first deploy lands.
@@ -1761,7 +1759,7 @@ export function ZeropsStopPane({
               {stopsUnverified.length === 0 ? null : (
                 // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
                 <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-body text-muted-foreground">
                     Stop not confirmed:{" "}
                     {[
                       ...new Set(
@@ -1787,7 +1785,9 @@ export function ZeropsStopPane({
         </div>
       </div>
       {/* A verb that refused says so under the card it was pressed in. */}
-      {trouble === null ? null : <p className="mt-2 text-sm text-status-failed-text">{trouble}</p>}
+      {trouble === null ? null : (
+        <p className="mt-2 text-body text-status-failed-text">{trouble}</p>
+      )}
       {vault === undefined || projectId === undefined ? null : (
         <StopVaultDrawer
           body={vault.body}
@@ -1804,7 +1804,7 @@ export function ZeropsStopPane({
 }
 
 /** A card of the place's page: a hairline and the card ground. */
-const PLACE_CARD_CLASS = "min-w-0 rounded-xl border border-border/70 bg-card";
+const PLACE_CARD_CLASS = "min-w-0 rounded-card border border-border/70 bg-card";
 
 /**
  * One section of the place's page: its label hugging its card, every section well apart from the

@@ -27,7 +27,7 @@ function SidebarSpecimens() {
     <div className="flex flex-col gap-8">
       <SpecimenBlock title='A whole menu: <Sidebar collapsible="none"> in a 320 × 420 box'>
         <Specimen label='<SidebarProvider> · <Sidebar collapsible="none"> · <SidebarInset>'>
-          <div className="flex h-[26rem] w-[40rem] overflow-hidden rounded-xl border">
+          <div className="flex h-[26rem] w-[40rem] overflow-hidden rounded-card border">
             <SidebarProvider className="min-h-0">
               <Sidebar collapsible="none">
                 <SidebarHeader>
@@ -81,7 +81,7 @@ function SidebarSpecimens() {
                 </SidebarFooter>
               </Sidebar>
               <SidebarInset>
-                <div className="flex items-center gap-2 p-3 text-sm">
+                <div className="flex items-center gap-2 p-3 text-body">
                   <SidebarTrigger />
                   <span>SidebarInset: the page beside the menu</span>
                 </div>

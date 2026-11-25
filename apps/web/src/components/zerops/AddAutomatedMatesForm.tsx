@@ -273,7 +273,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
           </ul>
           <section className="flex flex-col gap-1" aria-labelledby={`${id}-what`}>
             <h3
-              className="flex items-center gap-1.5 text-xs leading-4 font-medium text-muted-foreground"
+              className="flex items-center gap-1.5 text-caption leading-4 font-medium text-muted-foreground"
               id={`${id}-what`}
             >
               <BotIcon aria-hidden className="size-3.5" />
@@ -281,7 +281,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             </h3>
             {/* A key note learned after the first frame lands in room held for it, and the
                 sources in a line's height held for them: nothing under it moves. */}
-            <div className="grid min-h-10 text-sm text-pretty">
+            <div className="grid min-h-10 text-body text-pretty">
               {holdsKeyNote ? (
                 <p
                   aria-hidden
@@ -310,10 +310,13 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
           </section>
           <section
             aria-labelledby={`${id}-next`}
-            className="flex flex-col gap-1 rounded-xl bg-muted/60 px-3.5 pt-2.5 pb-3"
+            className="flex flex-col gap-1 rounded-card bg-muted/60 px-3.5 pt-2.5 pb-3"
             data-zerops-surface="what-happens-next"
           >
-            <h3 className="text-xs leading-4 font-medium text-muted-foreground" id={`${id}-next`}>
+            <h3
+              className="text-caption leading-4 font-medium text-muted-foreground"
+              id={`${id}-next`}
+            >
               What happens next
             </h3>
             <p className="text-line leading-5" data-zerops-automated-next="">
@@ -322,7 +325,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             <p className="text-line leading-5 text-muted-foreground">{TAB_MAY_CLOSE_LINE}</p>
           </section>
           {props.forecast}
-          <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">
+          <p className="text-body text-muted-foreground" data-zerops-mate-cost="">
             {automatedCost(names)}{" "}
             <InlineButton render={<a href={ZEROPS_PRICING_URL} rel="noreferrer" target="_blank" />}>
               Zerops pricing

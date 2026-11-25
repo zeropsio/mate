@@ -197,7 +197,7 @@ export function CustomModelEditor({
   const renderDescriptor = (descriptor: EditorDescriptor, index: number) => (
     <div
       key={descriptor.key}
-      className="flex flex-col gap-2 rounded-md border border-border/60 bg-background/40 p-2.5"
+      className="flex flex-col gap-2 rounded-control border border-border/60 bg-background/40 p-2.5"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-14 shrink-0 text-2xs text-muted-foreground">Option {index + 1}</span>
@@ -215,7 +215,7 @@ export function CustomModelEditor({
               {presets.map((preset) => (
                 <SelectItem key={preset.id} value={preset.id}>
                   <span className="flex items-baseline gap-2">
-                    <code className="font-mono text-xs">{preset.id}</code>
+                    <code className="font-mono text-caption">{preset.id}</code>
                     <span className="text-muted-foreground">{preset.label}</span>
                   </span>
                 </SelectItem>
@@ -291,7 +291,7 @@ export function CustomModelEditor({
 
   return (
     <div
-      className="mx-2 mt-1 mb-2 flex flex-col gap-3 rounded-md border border-border bg-muted/20 p-3"
+      className="mx-2 mt-1 mb-2 flex flex-col gap-3 rounded-control border border-border bg-muted/20 p-3"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -300,7 +300,7 @@ export function CustomModelEditor({
       }}
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor={domId("name")} className="text-xs text-muted-foreground">
+        <label htmlFor={domId("name")} className="text-caption text-muted-foreground">
           Display name
         </label>
         <Input
@@ -317,7 +317,7 @@ export function CustomModelEditor({
 
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">Options shown in the composer</span>
+          <span className="text-caption text-muted-foreground">Options shown in the composer</span>
           {startFromCandidates.length > 0 ? (
             <Select value={START_FROM_NONE} onValueChange={handleStartFrom}>
               <SelectTrigger
@@ -338,7 +338,7 @@ export function CustomModelEditor({
           ) : null}
         </div>
         {draft.descriptors.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70">
+          <p className="text-caption text-muted-foreground/70">
             No custom options. The composer uses the provider's default options.
           </p>
         ) : null}
@@ -373,7 +373,7 @@ export function CustomModelEditor({
         </div>
       </div>
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <p className="text-caption text-destructive">{error}</p> : null}
 
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" onClick={handleSave}>

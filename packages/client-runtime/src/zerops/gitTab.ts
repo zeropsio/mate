@@ -45,7 +45,7 @@ import {
   type ZeropsLifecycle,
 } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { repoOfUrl } from "@t3tools/shared/hqChanges";
+import { leaseMayBeOf, repoOfUrl } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
@@ -156,14 +156,8 @@ export function mateChangeIn(
  * say). Only another application or repository at the change's HQ is another repository.
  */
 export function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
-  if (repo === undefined || address === undefined) return true;
-  const leased = repoOfUrl(repo);
-  const own = repoOfUrl(address);
-  if (leased === null || own === null || !sameText(leased.hq, own.hq)) return true;
-  return sameText(leased.appId, own.appId) && sameText(leased.repo, own.repo);
+  return leaseMayBeOf(repo, address === undefined ? undefined : repoOfUrl(address));
 }
-
-const sameText = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
 
 /**
  * The fact that has to be proved rather than assumed. `undefined` means not

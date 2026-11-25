@@ -27,7 +27,7 @@ function TitleRow() {
         )}
         data-overview-stand-in-title=""
       >
-        <h1 className="text-xl font-medium text-foreground">Overview</h1>
+        <h1 className="text-title font-medium text-foreground">Overview</h1>
       </div>
     </InPhoneBar>
   );

@@ -31,7 +31,6 @@ import { FirstRunFormView, FirstRunView } from "~/components/zerops/projects/Fir
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import type { AppRouter } from "~/router";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
@@ -144,7 +143,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const rootRoute = createRootRoute({ component: Harness });
 const router = createRouter({

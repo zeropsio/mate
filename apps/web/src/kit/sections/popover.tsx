@@ -18,7 +18,7 @@ function Body() {
   return (
     <div className="flex flex-col gap-2">
       <PopoverTitle>Who can open it</PopoverTitle>
-      <p className="m-0 text-sm">Everyone on the team sees the preview; the public does not.</p>
+      <p className="m-0 text-body">Everyone on the team sees the preview; the public does not.</p>
       <div className="flex justify-end">
         <PopoverClose render={<Button size="sm" variant="secondary" />}>Done</PopoverClose>
       </div>

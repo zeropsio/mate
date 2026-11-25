@@ -398,10 +398,10 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
             <div key={descriptor.id}>
               {index > 0 ? <MenuDivider /> : null}
               <MenuGroup>
-                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-caption">
                   {descriptor.label}
                 </div>
-                <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">{value}</div>
+                <div className="px-2 pb-1.5 text-muted-foreground/80 text-caption">{value}</div>
               </MenuGroup>
             </div>
           );
@@ -417,11 +417,11 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
           <div key={descriptor.id}>
             {index > 0 ? <MenuDivider /> : null}
             <MenuGroup>
-              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-caption">
                 {descriptor.label}
               </div>
               {isLocked(descriptor) ? (
-                <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
+                <div className="px-2 pb-1.5 text-muted-foreground/80 text-caption">
                   Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
                   option.
                 </div>
@@ -452,7 +452,7 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
                         </span>
                       </span>
                       {option.description ? (
-                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
+                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-caption">
                           {option.description}
                         </span>
                       ) : null}
@@ -471,7 +471,7 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
           <div key={descriptor.id}>
             {index > 0 || selectDescriptors.length > 0 ? <MenuDivider /> : null}
             <MenuGroup>
-              <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+              <div className="px-2 py-1.5 font-medium text-muted-foreground text-caption">
                 {descriptor.label}
               </div>
               <MenuRadioGroup

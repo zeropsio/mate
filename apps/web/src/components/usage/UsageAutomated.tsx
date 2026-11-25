@@ -36,27 +36,34 @@ const ROW = "border-b border-border/50";
 const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
 
 function TaskTitle({ row }: { readonly row: UsageTaskRow }) {
-  const link = "min-w-0 truncate text-primary underline-offset-2 hover:underline";
   const target = row.target;
   if (target === null) return <span className="min-w-0 truncate">{row.title}</span>;
+  const label = <span className="truncate">{row.title}</span>;
   if (target.kind === "external")
     return (
-      <a className={link} href={target.href} rel="noreferrer" target="_blank">
-        {row.title}
-      </a>
+      <InlineButton
+        className="min-w-0 shrink"
+        render={<a href={target.href} rel="noreferrer" target="_blank" />}
+      >
+        {label}
+      </InlineButton>
     );
-  return target.kind === "mate" ? (
-    <Link className={link} params={{ projectId: target.projectId }} to="/mate/$projectId">
-      {row.title}
-    </Link>
-  ) : (
-    <Link
-      className={link}
-      params={{ environmentId: target.environmentId, threadId: target.threadId }}
-      to="/$environmentId/$threadId"
+  return (
+    <InlineButton
+      className="min-w-0 shrink"
+      render={
+        target.kind === "mate" ? (
+          <Link params={{ projectId: target.projectId }} to="/mate/$projectId" />
+        ) : (
+          <Link
+            params={{ environmentId: target.environmentId, threadId: target.threadId }}
+            to="/$environmentId/$threadId"
+          />
+        )
+      }
     >
-      {row.title}
-    </Link>
+      {label}
+    </InlineButton>
   );
 }
 
@@ -70,7 +77,7 @@ function TaskNote({
 }) {
   return (
     <tr className={ROW}>
-      <td className={cn("py-2 text-xs text-muted-foreground", taskIndent(nested))} colSpan={3}>
+      <td className={cn("py-2 text-caption text-muted-foreground", taskIndent(nested))} colSpan={3}>
         {children}
       </td>
     </tr>
@@ -153,7 +160,7 @@ export function UsageMateTaskRowsView({
       </TaskNote>
     );
   const listed = rows.map((row) => (
-    <tr key={row.id} className={cn(ROW, "text-xs")}>
+    <tr key={row.id} className={cn(ROW, "text-caption")}>
       <td className={cn("py-2", taskIndent(nested))}>
         <span className="flex min-w-0 items-baseline gap-2">
           <TaskTitle row={row} />
@@ -183,7 +190,7 @@ export function UsageAutomatedBudget() {
   const budget = automatedBudget(read.setting.state === "known" ? read.setting.held : null);
   if (budget === null) return null;
   return (
-    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+    <p className="flex items-center gap-2 text-caption text-muted-foreground">
       <AutomatedMatesMark />
       <span>
         Automated Mates spent{" "}
@@ -196,12 +203,12 @@ export function UsageAutomatedBudget() {
         {budget.reached ? ": they take no more tasks this month" : ""}.
       </span>
       {/* A finger's 40 px around the word on a touch screen. */}
-      <Link
-        className="relative text-primary underline-offset-2 hover:underline pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
-        to="/settings/automation"
+      <InlineButton
+        className="relative pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
+        render={<Link to="/settings/automation" />}
       >
         Change
-      </Link>
+      </InlineButton>
     </p>
   );
 }

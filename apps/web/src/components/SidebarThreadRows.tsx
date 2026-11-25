@@ -64,9 +64,12 @@ import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../provider
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 
 import { conversationCodeFolder } from "@t3tools/client-runtime/zerops";
+import { InlineButton } from "./ui/button";
+import { Input } from "./ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Kbd } from "./ui/kbd";
+import { Row } from "./ui/row";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -140,10 +143,10 @@ function SidebarThreadTooltip({
     <TooltipPopup side="right" align="start" sideOffset={4} variant="glass">
       {/* The viewport's own inset (py-1 px-2) plus this one make the floating inset. */}
       <div className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2">
-        <div className="min-w-0 truncate text-xs leading-tight font-medium text-foreground">
+        <div className="min-w-0 truncate text-caption leading-tight font-medium text-foreground">
           {thread.title}
         </div>
-        <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">
+        <div className="grid gap-1.5 pl-0.5 text-caption text-muted-foreground">
           {projectTitle ? (
             <div className="flex min-w-0 items-center gap-2">
               <ProjectFavicon
@@ -468,7 +471,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // a useful hierarchy nor a reliable hover cue. Status now lives in the row
   // content; surface is reserved for interaction (hover, multi-select, route).
   const rowSurfaceClassName = cn(
-    "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-control text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     props.isActive
       ? "bg-sidebar-row-active text-sidebar-foreground"
       : isSelected
@@ -480,7 +483,9 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const rowLayout = resolveThreadRowLayoutPresentation("card");
 
   const title = isRenaming ? (
-    <input
+    <Input
+      size="compact"
+      className="min-w-0 flex-1"
       autoFocus
       value={renamingTitle}
       aria-label="Thread title"
@@ -490,12 +495,11 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       onBlur={handleRenameBlur}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
-      className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
     />
   ) : (
     <span
       className={cn(
-        "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
+        "min-w-0 flex-1 text-body transition-opacity motion-reduce:transition-none",
         shouldRecede ? "font-normal" : "font-medium",
         cn(
           rowLayout.titleClassName,
@@ -518,22 +522,25 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const prBadge = linkedPullRequest ? (
     <LinkedPullRequestLink indicator={linkedPullRequest} onClick={handlePrClick} />
   ) : prStatus && pr ? (
-    <a
-      href={pr.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={handlePrClick}
-      className={cn(
-        // Sidebar chrome follows the interface font; tabular digits keep the
-        // number from reflowing as PR states stream in.
-        "shrink-0 text-xs tabular-nums hover:underline",
-        prStatus.colorClass,
-      )}
-      aria-label={prStatus.tooltip}
-    >
-      #{pr.number}
-    </a>
+    // Sidebar chrome follows the interface font; tabular digits keep the
+    // number from reflowing as PR states stream in.
+    <span className="shrink-0 text-caption tabular-nums">
+      <InlineButton
+        tone="plain"
+        render={
+          <a
+            href={pr.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={handlePrClick}
+            aria-label={prStatus.tooltip}
+          />
+        }
+      >
+        <span className={prStatus.colorClass}>#{pr.number}</span>
+      </InlineButton>
+    </span>
   ) : null;
   const terminalStatusIcon = terminalStatus ? (
     <span
@@ -584,7 +591,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   {props.projectTitle ? (
                     <span
                       className={cn(
-                        "min-w-0 flex-1 truncate text-secondary-label text-xs",
+                        "min-w-0 flex-1 truncate text-secondary-label text-caption",
                         shouldRecede ? "font-normal" : "font-medium",
                       )}
                     >
@@ -601,7 +608,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   actions on hover/keyboard focus or while the popover is open. Keeping
                   the hidden state out of flow lets the project label reclaim
                   space without either state overlapping it. */}
-              <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
+              <span className="group/sidebar-status-slot relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-caption">
                 <span
                   className={cn(
                     "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
@@ -644,7 +651,7 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               ) : null}
             </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-caption">
               {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
@@ -771,54 +778,52 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              id={props.resultId}
-              type="button"
-              role="option"
-              // aria-activedescendant options: focus stays on the search input,
-              // which owns all keyboard interaction for the listbox.
-              tabIndex={-1}
-              aria-selected={props.isHighlighted}
-              aria-current={props.isRouteActive ? "page" : undefined}
-              aria-label={
-                props.projectTitle ? `${thread.title}, ${props.projectTitle}` : thread.title
+            <Row
+              lead={
+                <ProjectFavicon
+                  environmentId={thread.environmentId}
+                  cwd={props.projectCwd ?? ""}
+                  faviconPath={props.projectFaviconPath}
+                  className="size-4 shrink-0"
+                  fallbackIcon={MessageSquareIcon}
+                />
               }
-              onMouseMove={props.onHighlight}
-              onClick={props.onSelect}
-              className={cn(
-                "flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-sm outline-none",
-                props.isHighlighted || props.isRouteActive
-                  ? "bg-sidebar-row-active text-sidebar-foreground"
-                  : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-              )}
+              line={
+                props.searchMatch ? (
+                  <ThreadSearchMatchExcerpt
+                    match={{
+                      source: props.searchMatch.source,
+                      snippet: props.searchMatch.snippet,
+                      query: props.searchQuery,
+                    }}
+                  />
+                ) : null
+              }
+              meta={threadTimeLabel(thread)}
+              picked={props.isHighlighted || props.isRouteActive}
+              pressable
+              render={
+                <button
+                  id={props.resultId}
+                  type="button"
+                  role="option"
+                  // aria-activedescendant options: focus stays on the search input,
+                  // which owns all keyboard interaction for the listbox.
+                  tabIndex={-1}
+                  aria-selected={props.isHighlighted}
+                  aria-current={props.isRouteActive ? "page" : undefined}
+                  aria-label={
+                    props.projectTitle ? `${thread.title}, ${props.projectTitle}` : thread.title
+                  }
+                  onMouseMove={props.onHighlight}
+                  onClick={props.onSelect}
+                />
+              }
+              size="sm"
+              title={thread.title}
             />
           }
-        >
-          <ProjectFavicon
-            environmentId={thread.environmentId}
-            cwd={props.projectCwd ?? ""}
-            faviconPath={props.projectFaviconPath}
-            className="size-4 shrink-0"
-            fallbackIcon={MessageSquareIcon}
-          />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-              <span className="shrink-0 text-xs text-muted-foreground/55 tabular-nums">
-                {threadTimeLabel(thread)}
-              </span>
-            </span>
-            {props.searchMatch ? (
-              <ThreadSearchMatchExcerpt
-                match={{
-                  source: props.searchMatch.source,
-                  snippet: props.searchMatch.snippet,
-                  query: props.searchQuery,
-                }}
-              />
-            ) : null}
-          </span>
-        </TooltipTrigger>
+        />
         <SidebarThreadTooltip
           thread={thread}
           projectTitle={props.projectTitle}

@@ -236,7 +236,7 @@ export function RepoMarkdown({
 }) {
   if (!isMarkdown(links.path))
     return (
-      <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+      <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-caption text-foreground">
         {content}
       </pre>
     );

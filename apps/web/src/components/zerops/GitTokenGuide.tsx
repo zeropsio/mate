@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import { Input } from "~/components/ui/input";
@@ -11,13 +12,13 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
     <section aria-label="Direct push token guide" className="flex min-w-0 flex-col gap-3">
       <div>
         <h2 className="text-base font-medium text-foreground">Token for your repository</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-caption text-muted-foreground">
           Direct push to a branch only. This guide does not connect a repository or check access.
         </p>
       </div>
       <Card variant="flat">
         <div className="flex min-w-0 flex-col gap-3 p-4">
-          <label htmlFor={id} className="text-sm font-medium text-foreground">
+          <label htmlFor={id} className="text-body font-medium text-foreground">
             Repository HTTPS URL
           </label>
           <Input
@@ -34,7 +35,7 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
           />
           <div
             id={`${id}-instructions`}
-            className="flex flex-col gap-2 text-sm text-muted-foreground"
+            className="flex flex-col gap-2 text-body text-muted-foreground"
           >
             {guide.kind === "empty" ? (
               <p>Enter your repository URL to see which token to create.</p>
@@ -78,16 +79,16 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
                   </>
                 )}
                 <p>
-                  <a
-                    className="text-primary underline underline-offset-2"
-                    href={guide.tokenUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Button
+                    className="-ms-2.5"
+                    render={<a href={guide.tokenUrl} rel="noopener noreferrer" target="_blank" />}
+                    size="sm"
+                    variant="link"
                   >
                     {guide.host === "unknown"
                       ? "Open likely token settings"
                       : `Create ${guide.host === "github" ? "GitHub fine-grained" : "GitLab personal access"} token`}
-                  </a>
+                  </Button>
                 </p>
               </>
             )}

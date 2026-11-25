@@ -4,26 +4,20 @@ import type {
   ServerProviderCompatibilityAdvisory,
 } from "@t3tools/contracts";
 
-/**
- * Visual treatment for each server-reported provider status. Centralized so
- * the default-driver card and per-instance cards share the same language.
- */
-export const PROVIDER_STATUS_STYLES = {
-  disabled: {
-    dot: "bg-muted-foreground/50",
-  },
-  error: {
-    dot: "bg-destructive",
-  },
-  ready: {
-    dot: "bg-success",
-  },
-  warning: {
-    dot: "bg-warning",
-  },
-} as const;
+import type { BadgeTone } from "../ui/badge";
 
-export type ProviderStatusKey = keyof typeof PROVIDER_STATUS_STYLES;
+/**
+ * Each server-reported provider status as a Badge tone. Centralized so the
+ * default-driver card and per-instance cards share the same language.
+ */
+export const PROVIDER_STATUS_TONE = {
+  disabled: "neutral",
+  error: "danger",
+  ready: "success",
+  warning: "warning",
+} as const satisfies Record<string, BadgeTone>;
+
+export type ProviderStatusKey = keyof typeof PROVIDER_STATUS_TONE;
 
 /**
  * Derive the headline + detail copy shown under a provider's name in the

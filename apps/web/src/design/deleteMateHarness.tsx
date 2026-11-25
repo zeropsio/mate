@@ -37,7 +37,6 @@ import { mateDeletionLine } from "~/components/zerops/SidebarMateRow.logic";
 import { ZeropsDeleteMateDialog } from "~/components/zerops/ZeropsDeleteMateDialog";
 import { deleteMateVerb, deleteMateWords } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -393,7 +392,7 @@ function Harness() {
         <Menu candidates={matesWith(quinnDeletion)} />
       </SidebarProvider>
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-        <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
+        <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
       </main>
       {dialog && open ? (
         <ZeropsDeleteMateDialog
@@ -422,7 +421,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 openAccountLifetime("design-delete-harness");
 
 // The menu asks the account's projects which environments an application has: none here, the

@@ -20,9 +20,9 @@ export function Specimen({
     <figure className="m-0 flex min-w-0 max-w-full flex-col items-start gap-2" data-kit-specimen="">
       <div className="flex min-h-9 min-w-0 max-w-full items-center">{children}</div>
       <figcaption className="flex min-w-0 max-w-full flex-col gap-0.5">
-        <code className="font-mono text-muted-foreground text-xs">{label}</code>
+        <code className="font-mono text-muted-foreground text-caption">{label}</code>
         {source ? (
-          <code className="font-mono text-muted-foreground/70 text-xs">{source}</code>
+          <code className="font-mono text-muted-foreground/70 text-caption">{source}</code>
         ) : null}
       </figcaption>
     </figure>
@@ -44,7 +44,7 @@ export function SpecimenBlock({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <h3 className="m-0 font-medium text-muted-foreground text-xs">{title}</h3>
+      <h3 className="m-0 font-medium text-muted-foreground text-caption">{title}</h3>
       {children}
     </div>
   );
@@ -75,13 +75,13 @@ export function SpecimenMatrix<Row extends string, Column extends string>({
       >
         <span />
         {columns.map((column) => (
-          <code className="font-mono text-muted-foreground text-xs" key={column}>
+          <code className="font-mono text-muted-foreground text-caption" key={column}>
             {specimenLabel({ [columnProp]: column })}
           </code>
         ))}
         {rows.map((row) => (
           <Fragment key={row}>
-            <code className="font-mono text-muted-foreground text-xs">
+            <code className="font-mono text-muted-foreground text-caption">
               {specimenLabel({ [rowProp]: row })}
             </code>
             {columns.map((column) => (

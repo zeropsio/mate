@@ -15,10 +15,10 @@ import { Badge } from "~/components/ui/badge";
  * same amber as a rebase (2026-09-19).
  */
 const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-[var(--zerops-status-ok)]/40",
-  busy: "border-[var(--zerops-status-busy)]/40",
-  attention: "border-[var(--zerops-status-attention)]/40",
-  failed: "border-[var(--zerops-status-failed)]/40",
+  ok: "border-status-ok/40",
+  busy: "border-status-busy/40",
+  attention: "border-status-attention/40",
+  failed: "border-status-failed/40",
   off: "border-border",
 };
 
@@ -28,7 +28,7 @@ const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
  * the layout shift it was put there to prevent.
  */
 const VERDICT_PANEL_CLASS =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border px-3 py-2.5";
 
 type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
   /** The answer, in one sentence a person could read aloud. */
@@ -64,7 +64,7 @@ function VerdictPanel({ children, className, detail, text, tone, ...props }: Ver
       className={cn(VERDICT_PANEL_CLASS, VERDICT_BORDER_CLASS[tone], className)}
       data-zerops-primitive="verdict-panel"
     >
-      <span className="flex min-w-0 flex-col gap-y-0.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+      <span className="flex min-w-0 flex-col gap-y-0.5 text-body sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
         <span className="min-w-0 text-foreground">
           <Badge dot tone={STATUS_BADGE_TONE[tone]}>
             {text}

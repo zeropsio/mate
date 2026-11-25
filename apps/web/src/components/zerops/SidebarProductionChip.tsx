@@ -11,11 +11,13 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { fixMatesOf } from "~/zerops/fixMates";
 import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 
+import { Badge, type BadgeTone } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Row } from "../ui/row";
 import { gatedPortal } from "../ui/portal-gate";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -35,26 +37,37 @@ export interface ChipMate {
   readonly threadKey: string | undefined;
 }
 
-/** A stop's dot in its place's head, and the same mark wherever a stop is listed (the jump box). */
-export function EnvDot({ dot, className }: { readonly dot: ChipDot; readonly className?: string }) {
-  return <span aria-hidden="true" className={cn("zerops-envdot", className)} data-dot={dot} />;
+const ENV_DOT_TONE = {
+  ok: "success",
+  attention: "warning",
+  failed: "danger",
+  off: "neutral",
+  spinner: "info",
+} as const satisfies Partial<Record<ChipDot, BadgeTone>>;
+
+/**
+ * A stop's dot in its place's head, and the same mark wherever a stop is listed (the jump box),
+ * named by the stop's word. A stop at rest on purpose is hollow, one on its way the busy tone.
+ */
+export function EnvDot({ dot, label }: { readonly dot: ChipDot; readonly label: string }) {
+  return dot === "hollow" ? (
+    <Badge aria-label={label} dot hollow />
+  ) : (
+    <Badge aria-label={label} dot tone={ENV_DOT_TONE[dot]} />
+  );
 }
 
 export function OpenInZerops({ projectId }: { readonly projectId: string }) {
   return (
-    <a
-      className="zerops-envpop-act zerops-envpop-press"
+    <Row
       data-zerops-surface="sidebar-production-zerops"
-      href={zeropsProjectUrl(projectId)}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        <ZeropsMark className="size-3.25 shrink-0" />
-        Open in Zerops
-      </span>
-      <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0" />
-    </a>
+      lead={<ZeropsMark className="size-3.5" />}
+      meta={<ArrowUpRightIcon aria-hidden="true" className="size-3.5" />}
+      pressable
+      render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
+      size="xs"
+      title="Open in Zerops"
+    />
   );
 }
 
@@ -105,14 +118,14 @@ export function AskToFix({
   return (
     <div className="zerops-envpop-ask" data-zerops-surface="sidebar-production-ask">
       <div className="flex items-center gap-1">
-        <button
+        <Button
           aria-expanded={drafting}
-          className="zerops-envpop-askbutton"
           data-zerops-surface="sidebar-production-ask-button"
           onClick={() => {
             setDrafting(!drafting);
           }}
-          type="button"
+          size="sm"
+          variant="secondary"
         >
           <MateFace
             className="size-4.5"
@@ -122,32 +135,32 @@ export function AskToFix({
             tint={mate.tint}
           />
           {`Ask ${mate.name} to fix it`}
-        </button>
+        </Button>
         {others.length === 0 ? null : (
-          <button
+          <Button
             aria-expanded={choosing}
             aria-label="Ask another of your Mates"
-            className="zerops-envpop-askmore"
             onClick={() => {
               setChoosing(!choosing);
             }}
-            type="button"
+            size="icon-sm"
+            variant="ghost"
           >
-            <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-          </button>
+            <ChevronDownIcon aria-hidden="true" />
+          </Button>
         )}
       </div>
       {choosing ? (
         <div className="zerops-envpop-others" role="group" aria-label="Your other Mates">
           {others.map((other) => (
-            <button
-              className="zerops-envpop-other"
+            <Button
               key={other.mateProjectId}
               onClick={() => {
                 setPickedId(other.mateProjectId);
                 setChoosing(false);
               }}
-              type="button"
+              size="sm"
+              variant="ghost"
             >
               <MateFace
                 className="size-4.5"
@@ -157,7 +170,7 @@ export function AskToFix({
                 tint={other.tint}
               />
               {other.name}
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -174,16 +187,16 @@ export function AskToFix({
               <p key={`words:${part.text}`}>{part.text}</p>
             ),
           )}
-          <button
-            className="zerops-envpop-askbutton"
+          <Button
+            className="self-start"
             data-zerops-surface="sidebar-production-ask-open"
             onClick={() => {
               onAsk(mate.mateProjectId, problem);
             }}
-            type="button"
+            size="sm"
           >
             {`Open ${mate.name}'s conversation`}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

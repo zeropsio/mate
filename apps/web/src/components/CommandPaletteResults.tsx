@@ -35,7 +35,7 @@ export function CommandPaletteResults(props: CommandPaletteResultsProps) {
         ? "No matching actions."
         : "No matching commands, projects, or threads.");
     return (
-      <div className="py-10 text-center text-sm text-muted-foreground">
+      <div className="py-10 text-center text-body text-muted-foreground">
         {/* Nothing to say yet (`paletteNoMatchMessage`): the line's room is held, so the box never
             grows when the sentence comes. */}
         {message === "" ? <span aria-hidden="true">{"\u00a0"}</span> : message}
@@ -46,7 +46,7 @@ export function CommandPaletteResults(props: CommandPaletteResultsProps) {
   return (
     <>
       {props.statusMessage ? (
-        <p role="status" className="px-3 py-2 text-sm text-muted-foreground">
+        <p role="status" className="px-3 py-2 text-body text-muted-foreground">
           {props.statusMessage}
         </p>
       ) : null}
@@ -80,11 +80,11 @@ function DisabledCommandPaletteResultRow(props: {
   item: CommandPaletteActionItem | CommandPaletteSubmenuItem;
 }) {
   return (
-    <div className="flex min-h-8 select-none items-center gap-2 rounded-sm px-2 py-1.5 text-base opacity-64 sm:min-h-7 sm:text-sm">
+    <div className="flex min-h-8 select-none items-center gap-2 rounded-control px-2 py-1.5 text-base opacity-64 sm:min-h-7 sm:text-body">
       {props.item.icon}
       {props.item.description || props.item.threadContentMatch ? (
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 text-body text-foreground">
             {props.item.titleLeadingContent}
             <span className="truncate">{props.item.title}</span>
           </span>
@@ -92,13 +92,13 @@ function DisabledCommandPaletteResultRow(props: {
             <ThreadSearchMatchExcerpt match={props.item.threadContentMatch} />
           ) : null}
           {props.item.description ? (
-            <span className="min-w-0 text-muted-foreground/70 text-xs">
+            <span className="min-w-0 text-muted-foreground/70 text-caption">
               {props.item.description}
             </span>
           ) : null}
         </span>
       ) : (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-foreground">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-foreground">
           {props.item.titleLeadingContent}
           <span className="truncate">{props.item.title}</span>
         </span>
@@ -132,7 +132,7 @@ function CommandPaletteResultRow(props: {
       {props.item.icon}
       {props.item.description || props.item.threadContentMatch ? (
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
+          <span className="flex min-w-0 items-center gap-1.5 text-body text-foreground">
             {props.item.titleLeadingContent}
             <span className="truncate">{props.item.title}</span>
           </span>
@@ -140,20 +140,20 @@ function CommandPaletteResultRow(props: {
             <ThreadSearchMatchExcerpt match={props.item.threadContentMatch} />
           ) : null}
           {props.item.description ? (
-            <span className="min-w-0 text-muted-foreground/70 text-xs">
+            <span className="min-w-0 text-muted-foreground/70 text-caption">
               {props.item.description}
             </span>
           ) : null}
         </span>
       ) : (
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-foreground">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-foreground">
           {props.item.titleLeadingContent}
           <span className="truncate">{props.item.title}</span>
         </span>
       )}
       {props.item.titleTrailingContent}
       {props.item.timestamp ? (
-        <span className="min-w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground/70">
+        <span className="min-w-12 shrink-0 text-right text-caption tabular-nums text-muted-foreground/70">
           {props.item.timestamp}
         </span>
       ) : null}

@@ -205,7 +205,7 @@ export function GitFileView({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="me-auto text-xs text-muted-foreground">
+        <span className="me-auto text-caption text-muted-foreground">
           {shape.kind === "text"
             ? `${lines(lineCount(shape.content))} · ${fileSize(blob.size)}`
             : fileSize(blob.size)}
@@ -279,7 +279,7 @@ export function GitFileView({
         ) : null}
       </div>
       {!wantRaw || raw.view.state === "known" || raw.view.state === "unread" ? null : (
-        <p className="text-sm text-status-failed" role="alert">
+        <p className="text-body text-status-failed" role="alert">
           {troubleWords(raw.view)}
         </p>
       )}
@@ -288,15 +288,15 @@ export function GitFileView({
           <img className="max-w-full self-start" src={raw.url} alt={blob.path} />
         ) : null
       ) : shape.kind === "beyond" ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           {fileSize(blob.size)} is more than the browser reads. Clone the repository to read it.
         </p>
       ) : shape.kind === "binary" ? (
-        <p className="text-sm text-muted-foreground">Binary file, {fileSize(blob.size)}.</p>
+        <p className="text-body text-muted-foreground">Binary file, {fileSize(blob.size)}.</p>
       ) : (
         <>
           {shape.cut ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-body text-muted-foreground">
               Showing the first 256 KiB of {fileSize(blob.size)}.{" "}
               {fits ? "Download it to read the rest." : "Clone the repository to read the rest."}
             </p>

@@ -3,10 +3,14 @@
  * with its line on hover, a blue word, a tooltip, the tab's ···, and a
  * change the tab watched arrive (`useArrived`) — never a first paint.
  */
-import { EllipsisIcon } from "lucide-react";
+import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Button, InlineButton } from "../../ui/button";
+import { Row } from "../../ui/row";
+import { SectionHeader } from "../../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 
 /** A tooltip saying what a press does; nothing around it while there is nothing to say. */
@@ -111,7 +115,48 @@ export function useArrived<T>(value: T): boolean {
   return seen.arrived;
 }
 
-/** A heading over one of the tab's groups: 12/500, muted. */
+/** A heading over one of the tab's groups: the kit's section heading, one level under the tab's. */
 export function CrewHeading({ children }: { readonly children: ReactNode }) {
-  return <div className="px-4 font-medium text-muted-foreground text-xs leading-4">{children}</div>;
+  return (
+    <div className="px-4">
+      <SectionHeader level={3} title={children} />
+    </div>
+  );
+}
+
+/**
+ * A choice in a view (Start with a lead and two builders, More): a quiet card, its edge at rest
+ * and the fill only under the pointer; one that waits sits back, its reason under its title.
+ */
+export function CrewChoice({
+  lead,
+  title,
+  line,
+  end,
+  disabled = false,
+  render,
+}: {
+  readonly lead?: ReactNode;
+  readonly title: ReactNode;
+  readonly line?: ReactNode;
+  /** At the row's end: a chevron unless said otherwise. */
+  readonly end?: ReactNode;
+  readonly disabled?: boolean;
+  /** The press itself, with its handler and hooks. */
+  readonly render: ReactElement;
+}) {
+  return (
+    <div className={cn("rounded-card ring-1 ring-foreground/10", disabled && "opacity-55")}>
+      <Row
+        aria-disabled={disabled || undefined}
+        lead={lead}
+        line={line}
+        lineWraps
+        meta={end ?? <ChevronRightIcon aria-hidden="true" className="size-4" />}
+        pressable
+        render={render}
+        title={title}
+      />
+    </div>
+  );
 }

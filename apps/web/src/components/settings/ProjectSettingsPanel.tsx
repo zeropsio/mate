@@ -66,7 +66,7 @@ import {
   type NewProjectScriptInput,
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
   MenuGroup,
@@ -144,7 +144,7 @@ export function ProjectSettingsPage({ projectKey }: { projectKey: string }) {
   }, [navigateToMainApp]);
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
+    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         <WorkspacePageHeader electron={isElectron}>
           <ProjectSettingsBreadcrumb projectKey={projectKey} />
@@ -188,19 +188,19 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
       <WorkspaceBreadcrumbSeparator />
       <WorkspaceBreadcrumbItem current>
         {selected ? (
-          <button
-            type="button"
+          <InlineButton
+            tone="plain"
             aria-haspopup="menu"
             aria-label="Switch project"
             onClick={openProjectMenu}
-            className="group/project-title inline-flex min-w-0 max-w-64 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="group/project-title min-w-0 max-w-64"
           >
             <span className="min-w-0 truncate">{selected.displayName}</span>
             <ChevronDownIcon
               aria-hidden
               className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
             />
-          </button>
+          </InlineButton>
         ) : projectsRead ? (
           <span className="truncate text-muted-foreground">Unavailable project</span>
         ) : null}
@@ -260,7 +260,7 @@ function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   }
   if (!selected) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center p-8 text-body text-muted-foreground">
         {state === "no-projects"
           ? "Add a project from the sidebar to configure it here."
           : "This project is no longer available."}
@@ -567,25 +567,26 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           }
         >
           <div className="px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center rounded-lg bg-muted/30 p-1 text-base text-muted-foreground sm:text-sm">
+            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-base text-muted-foreground sm:text-body">
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button
+                    <Button
                       aria-label="Copy checkout path"
-                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left outline-none hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                      type="button"
+                      className="group min-w-0 flex-1 justify-start"
                       onClick={() =>
                         copyPathToClipboard(selectedCheckout.workspaceRoot, {
                           path: selectedCheckout.workspaceRoot,
                         })
                       }
+                      size="sm"
+                      variant="ghost-muted"
                     >
-                      <code className="min-w-0 flex-1 truncate font-mono">
+                      <code className="min-w-0 flex-1 truncate text-left font-mono">
                         {selectedCheckout.workspaceRoot}
                       </code>
                       <CopyIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" />
-                    </button>
+                    </Button>
                   }
                 />
                 <TooltipPopup side="top">Copy path</TooltipPopup>
@@ -641,7 +642,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-foreground">Actions</h3>
-              <p className="text-pretty text-sm text-muted-foreground">
+              <p className="text-pretty text-body text-muted-foreground">
                 Saved and run only in {selectedCheckoutLabel}.
               </p>
             </div>
@@ -659,7 +660,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   <MenuPopup align="end" className="w-72">
                     <MenuGroup>
                       <MenuGroupLabel>Import from t3.json</MenuGroupLabel>
-                      <p className="px-2 pb-2 text-pretty text-sm text-muted-foreground">
+                      <p className="px-2 pb-2 text-pretty text-body text-muted-foreground">
                         Add actions declared by this checkout without editing them first.
                       </p>
                     </MenuGroup>
@@ -695,7 +696,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             </div>
           </div>
           {scripts.length === 0 ? (
-            <p className="px-3 py-2 text-base text-muted-foreground sm:px-4 sm:text-sm">
+            <p className="px-3 py-2 text-base text-muted-foreground sm:px-4 sm:text-body">
               No actions configured for this checkout.
             </p>
           ) : (
@@ -719,7 +720,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                         {script.command}
                       </code>
                       {script.runOnWorktreeCreate ? (
-                        <span className="shrink-0 rounded-sm border border-border/60 px-1.5 py-px text-[11px] font-normal text-muted-foreground">
+                        <span className="shrink-0 rounded-mark border border-border/60 px-1.5 py-px text-caption font-normal text-muted-foreground">
                           setup
                         </span>
                       ) : null}
@@ -728,20 +729,22 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   control={
                     <>
                       {shortcutLabel ? (
-                        <span className="text-xs text-muted-foreground">{shortcutLabel}</span>
+                        <span className="text-caption text-muted-foreground">{shortcutLabel}</span>
                       ) : null}
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="shrink-0 text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100"
-                        aria-label={`Edit ${script.name}`}
-                        disabled={isSavingScripts}
-                        onClick={() =>
-                          setEditorRequest(editorRequestForScript(script, keybindings))
-                        }
-                      >
-                        <SettingsIcon className="size-3.5" />
-                      </Button>
+                      {/* Shown while the row is hovered or holds focus. */}
+                      <span className="flex shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost-muted"
+                          aria-label={`Edit ${script.name}`}
+                          disabled={isSavingScripts}
+                          onClick={() =>
+                            setEditorRequest(editorRequestForScript(script, keybindings))
+                          }
+                        >
+                          <SettingsIcon className="size-3.5" />
+                        </Button>
+                      </span>
                     </>
                   }
                 />

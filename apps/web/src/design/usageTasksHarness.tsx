@@ -13,7 +13,6 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { UsageMateTaskRowsView } from "~/components/usage/UsageAutomated";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -55,7 +54,7 @@ const UNTIL = "2026-10-18T00:00:00.000Z";
 
 function MateRow({ name, cost }: { readonly name: string; readonly cost: string }) {
   return (
-    <tr className="border-b border-border/50 text-sm">
+    <tr className="border-b border-border/50 text-body">
       <td className="py-2 ps-6">{name}</td>
       <td className="py-2 text-right tabular-nums">{cost}</td>
       <td className="w-8" />
@@ -66,7 +65,7 @@ function MateRow({ name, cost }: { readonly name: string; readonly cost: string 
 function Case({ title, children }: { readonly title: string; readonly children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
+      <h2 className="text-caption font-medium text-muted-foreground">{title}</h2>
       <table className="w-full border-collapse">
         <tbody>{children}</tbody>
       </table>
@@ -116,7 +115,6 @@ function Harness() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>

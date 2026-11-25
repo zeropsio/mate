@@ -1,285 +1,527 @@
-import { useRef } from "react";
+import { ChevronRightIcon, SearchXIcon } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
-import { RenderErrorBoundary } from "~/components/RenderErrorBoundary";
-import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
-import { Badge } from "~/components/ui/badge";
-import { Separator } from "~/components/ui/separator";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-} from "~/components/ui/sidebar";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "~/components/ui/table";
+import { Button } from "~/components/ui/button";
+import { EmptyState } from "~/components/ui/empty";
+import { PageHeader } from "~/components/ui/page-header";
+import { Sidebar, SidebarInset, SidebarProvider } from "~/components/ui/sidebar";
 import { AnchoredToastProvider, ToastProvider } from "~/components/ui/toast";
-import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { useTheme } from "~/hooks/useTheme";
-import { appBasePathHref } from "~/basePath";
 
-import { type KitView, useKitAppearance } from "./kitAppearance";
-import { KIT_GROUPS, KIT_KINDS, type KitSection } from "./kitSection";
-import { KIT_OMISSIONS } from "./omissions";
+import { FlowPage } from "./flows/FlowPage";
+import { kitSearchQuery, useKitAppearance, type KitSearch, type KitView } from "./kitAppearance";
+import { decodeKitArgs, encodeKitArgs, type KitArgs, type KitPlayground } from "./kitPlayground";
+import type { KitSection } from "./kitSection";
+import { CensusBody, CensusSummary } from "./pages/CensusPage";
+import {
+  ComponentPage,
+  componentTabs,
+  PlaygroundCanvas,
+  VariantsCanvas,
+  type ComponentTab,
+} from "./pages/ComponentPage";
+import { FoundationsPage } from "./pages/FoundationsPage";
+import { OverviewPage, type KitLink } from "./pages/OverviewPage";
+import { KIT_PLAYGROUNDS } from "./playgroundRegistry";
 import { KIT_SECTIONS } from "./registry";
+import {
+  kitNavEntries,
+  kitPageKey,
+  resolveKitPage,
+  type KitPageRef,
+  type KitShellFlow,
+  type NavEntry,
+} from "./shell/kitPages";
+import { KitNav } from "./shell/KitNav";
+import {
+  KIT_PANE_READY,
+  KitCanvas,
+  KitStage,
+  isKitPaneMessage,
+  type KitPaneMessage,
+} from "./shell/KitStage";
+import {
+  CANVAS_TOOLS,
+  DOCUMENT_TOOLS,
+  FLOW_TOOLS,
+  KitToolbar,
+  type KitToolSet,
+} from "./shell/KitToolbar";
 
-const OMISSIONS_ID = "not-shown";
-const VIEWS: readonly KitView[] = ["light", "dark", "both"];
+const NO_FLOWS: readonly KitShellFlow[] = [];
+
+/** The nav's width: room for a component's or a flow state's name beside its group's inset. */
+const NAV_WIDTH = "17.5rem";
+
+/** The canvas's tools and view, which survive moving between pages. */
+const keepCanvas = ({ appearance, viewport, bg, zoom, outline }: KitSearch): KitSearch => ({
+  ...(appearance === undefined ? {} : { appearance }),
+  ...(viewport === undefined ? {} : { viewport }),
+  ...(bg === undefined ? {} : { bg }),
+  ...(zoom === undefined ? {} : { zoom }),
+  ...(outline === undefined ? {} : { outline }),
+});
+
+const addressOf = (search: KitSearch) => {
+  const query = kitSearchQuery(search);
+  return `${location.pathname}${query === "" ? "" : `?${query}`}`;
+};
+
+/** Whether a click is the plain one a page opens in place on (not a new tab or window). */
+const plainClick = (event: MouseEvent) =>
+  !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) && event.button === 0;
+
+const toolsOf = (ref: KitPageRef): KitToolSet =>
+  ref.kind === "component" || ref.kind === "census"
+    ? CANVAS_TOOLS
+    : ref.kind === "flow"
+      ? FLOW_TOOLS
+      : DOCUMENT_TOOLS;
+
+/** The width of an element as it resizes, for a flow that fills its room. */
+function useWidth(): [(element: HTMLElement | null) => () => void, number] {
+  const [width, setWidth] = useState(0);
+  const ref = useCallback((element: HTMLElement | null) => {
+    if (element === null) return () => {};
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
 
 /**
- * Every component the app is built from, on one page: the shared kit beside the home-made versions
- * features built instead. Static fixtures only; it reads no account, project or Mate.
+ * The kit: every component the app is built from, the foundations beneath them, the looks still
+ * home-made and, where the build carries the design harness, its flows. One page at a time, its
+ * whole view in the address. Static fixtures only; it reads no account, project or Mate.
  */
 export function KitPage({
-  view,
-  pane,
-  onViewChange,
+  search,
+  onSearchChange,
   sections = KIT_SECTIONS,
+  flows = NO_FLOWS,
 }: {
-  /** Unset shows the person's own appearance. */
-  readonly view: KitView | undefined;
-  readonly pane: boolean;
-  readonly onViewChange: (view: KitView) => void;
+  readonly search: KitSearch;
+  /** `push` for a new page, `replace` for a change of view on the same one. */
+  readonly onSearchChange: (search: KitSearch, mode: "push" | "replace") => void;
   readonly sections?: readonly KitSection[];
+  readonly flows?: readonly KitShellFlow[];
 }) {
   const { resolvedTheme } = useTheme();
-  const shown = view ?? resolvedTheme;
-  useKitAppearance(shown === "both" ? null : shown);
-
-  if (pane) {
-    return (
-      <ToastProvider>
-        <AnchoredToastProvider>
-          <div className="min-h-svh bg-background text-foreground">
-            <KitSections sections={sections} />
-          </div>
-        </AnchoredToastProvider>
-      </ToastProvider>
-    );
-  }
+  const ref = resolveKitPage(search.page, sections, flows);
+  const tools = toolsOf(ref);
+  // A page that is read has one appearance; "both" is the canvas's.
+  const view: KitView =
+    search.appearance === "both" && !tools.both
+      ? resolvedTheme
+      : (search.appearance ?? resolvedTheme);
+  useKitAppearance(view === "both" ? null : view);
 
   return (
     <ToastProvider>
       <AnchoredToastProvider>
-        <KitFrame sections={sections} view={shown} onViewChange={onViewChange} />
+        {search.pane === true ? (
+          <KitPane pageRef={ref} search={search} />
+        ) : (
+          <KitShell
+            flows={flows}
+            onSearchChange={onSearchChange}
+            pageRef={ref}
+            search={search}
+            sections={sections}
+            tools={tools}
+            view={view}
+          />
+        )}
       </AnchoredToastProvider>
     </ToastProvider>
   );
 }
 
-function KitFrame({
+function KitShell({
+  search,
+  onSearchChange,
   sections,
+  flows,
+  pageRef,
+  tools,
   view,
-  onViewChange,
 }: {
+  readonly search: KitSearch;
+  readonly onSearchChange: (search: KitSearch, mode: "push" | "replace") => void;
   readonly sections: readonly KitSection[];
+  readonly flows: readonly KitShellFlow[];
+  readonly pageRef: KitPageRef;
+  readonly tools: KitToolSet;
   readonly view: KitView;
-  readonly onViewChange: (view: KitView) => void;
 }) {
-  const panes = useRef<Array<HTMLIFrameElement | null>>([]);
-  // Side by side, each appearance is its own document, so its overlays portal into it too.
-  const jump = (id: string) => {
-    for (const frame of panes.current) {
-      frame?.contentDocument?.getElementById(id)?.scrollIntoView({ block: "start" });
-    }
-  };
+  const entries = useMemo(() => kitNavEntries(sections, flows), [sections, flows]);
+  const [measure, width] = useWidth();
+  const ground = search.bg ?? "page";
+  const zoom = search.zoom ?? 100;
+  const outline = search.outline === 1;
+  const oneAppearance = view === "both" ? "light" : view;
+
+  const open = (page: string, state?: string) =>
+    onSearchChange(
+      {
+        ...keepCanvas(search),
+        ...(page === "overview" ? {} : { page }),
+        ...(state === undefined ? {} : { state }),
+      },
+      "push",
+    );
+  const replace = (change: KitSearch) => onSearchChange({ ...search, ...change }, "replace");
+  const linkTo = (page: string): KitLink => ({
+    href: addressOf({ ...keepCanvas(search), page }),
+    onClick: (event) => {
+      if (!plainClick(event)) return;
+      event.preventDefault();
+      open(page);
+    },
+  });
+  const hrefFor = (entry: NavEntry) =>
+    addressOf({
+      ...keepCanvas(search),
+      ...(entry.page === "overview" ? {} : { page: entry.page }),
+      ...(entry.state === undefined ? {} : { state: entry.state }),
+    });
+
+  const paneSearch = (appearance: "light" | "dark"): KitSearch => ({
+    ...(search.page === undefined ? {} : { page: search.page }),
+    ...(search.tab === undefined ? {} : { tab: search.tab }),
+    ...(search.story === undefined ? {} : { story: search.story }),
+    ...(search.bg === undefined ? {} : { bg: search.bg }),
+    ...(search.zoom === undefined ? {} : { zoom: search.zoom }),
+    ...(search.outline === undefined ? {} : { outline: search.outline }),
+    appearance,
+    pane: true,
+  });
+  const paneHref = (appearance: "light" | "dark") => addressOf(paneSearch(appearance));
+  const paneMessage = useMemo<KitPaneMessage>(
+    () => ({ type: "kit-args", args: search.args }),
+    [search.args],
+  );
+  const stage = (label: string) => (content: ReactNode) => (
+    <KitStage
+      ground={ground}
+      label={label}
+      outline={outline}
+      paneHref={paneHref}
+      paneMessage={paneMessage}
+      view={view}
+      viewport={search.viewport}
+      zoom={zoom}
+    >
+      {content}
+    </KitStage>
+  );
+
+  const flowState =
+    pageRef.kind === "flow"
+      ? pageRef.flow.states?.find((candidate) => candidate.id === search.state)
+      : undefined;
+  const aloneHref =
+    pageRef.kind === "component" || pageRef.kind === "census"
+      ? addressOf({
+          ...paneSearch(oneAppearance),
+          ...(search.args === undefined ? {} : { args: search.args }),
+          ...(search.viewport === undefined ? {} : { viewport: search.viewport }),
+        })
+      : pageRef.kind === "flow"
+        ? (() => {
+            const query = new URLSearchParams(flowState?.search ?? "");
+            query.set("theme", oneAppearance);
+            return `${pageRef.flow.href}?${query}`;
+          })()
+        : undefined;
 
   return (
-    <SidebarProvider className="h-svh min-h-0">
+    <SidebarProvider
+      className="h-svh min-h-0"
+      style={{ "--sidebar-width": NAV_WIDTH } as CSSProperties}
+    >
       <Sidebar collapsible="none">
-        <SidebarHeader>
-          <div className="flex items-center justify-between gap-2 px-2 pt-1">
-            <h1 className="m-0 font-semibold text-sm">Kit</h1>
-            <Badge tone="neutral">{sections.length} sections</Badge>
-          </div>
-        </SidebarHeader>
-        <SidebarContent>
-          <KitIndex sections={sections} onJump={view === "both" ? jump : null} />
-        </SidebarContent>
+        <KitNav
+          entries={entries}
+          hrefFor={hrefFor}
+          onOpen={(entry) => open(entry.page, entry.state)}
+          page={search.page}
+          state={search.state}
+        />
       </Sidebar>
       <SidebarInset className="min-h-0">
-        <header className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-3">
-          <p className="m-0 text-muted-foreground text-sm">
-            Every component, every variant and size, with the props it renders with.
-          </p>
-          <ToggleGroup
-            aria-label="Appearance"
-            value={[view]}
-            onValueChange={(next) => {
-              const chosen = VIEWS.find((candidate) => next.includes(candidate));
-              if (chosen !== undefined) onViewChange(chosen);
+        <KitToolbar
+          aloneHref={aloneHref}
+          ground={ground}
+          onChange={(change) => {
+            const { viewport: _viewport, outline: _outline, ...kept } = search;
+            const viewport = "viewport" in change ? change.viewport : search.viewport;
+            const outlined = change.outline ?? search.outline === 1;
+            onSearchChange(
+              {
+                ...kept,
+                ...(change.appearance === undefined ? {} : { appearance: change.appearance }),
+                ...(change.bg === undefined ? {} : { bg: change.bg }),
+                ...(change.zoom === undefined ? {} : { zoom: change.zoom }),
+                ...(viewport === undefined ? {} : { viewport }),
+                ...(outlined ? { outline: 1 } : {}),
+              },
+              "replace",
+            );
+          }}
+          outline={outline}
+          tools={tools}
+          trail={<Trail pageRef={pageRef} stateLabel={flowState?.label} />}
+          view={view}
+          viewport={search.viewport}
+          zoom={zoom}
+        />
+        <div className="flex min-h-0 flex-1 flex-col" key={kitPageKey(pageRef)} ref={measure}>
+          <KitPageView
+            flowState={search.state}
+            linkTo={linkTo}
+            onArgsChange={(args, playgroundInitial) => {
+              const encoded = encodeKitArgs(args, playgroundInitial);
+              const { args: _previous, ...rest } = search;
+              onSearchChange(encoded === undefined ? rest : { ...rest, args: encoded }, "replace");
             }}
-          >
-            <Toggle value="light">Light</Toggle>
-            <Toggle value="dark">Dark</Toggle>
-            <Toggle value="both">Both</Toggle>
-          </ToggleGroup>
-        </header>
-        {view === "both" ? (
-          <div className="flex min-h-0 flex-1">
-            {(["light", "dark"] as const).map((appearance, index) => (
-              // oxlint-disable-next-line react/iframe-missing-sandbox -- the frame is this page itself
-              <iframe
-                className="h-full min-w-0 flex-1 border-0"
-                key={appearance}
-                ref={(frame) => {
-                  panes.current[index] = frame;
-                }}
-                src={`${appBasePathHref()}kit?appearance=${appearance}&pane=true`}
-                title={`Kit, ${appearance}`}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <KitSections sections={sections} />
-          </div>
-        )}
+            onFlowStateChange={(state) => {
+              const { state: _previous, ...rest } = search;
+              onSearchChange(state === undefined ? rest : { ...rest, state }, "push");
+            }}
+            onStoryChange={(story) => {
+              const { story: _story, args: _args, ...rest } = search;
+              onSearchChange({ ...rest, story }, "replace");
+            }}
+            onTabChange={(tab) => {
+              const { tab: _previous, ...rest } = search;
+              replace({ ...rest, tab });
+            }}
+            pageRef={pageRef}
+            flows={flows}
+            search={search}
+            sections={sections}
+            stage={stage}
+            view={view}
+            width={width}
+          />
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
 }
 
-function KitIndex({
-  sections,
-  onJump,
+function Trail({
+  pageRef,
+  stateLabel,
 }: {
-  readonly sections: readonly KitSection[];
-  /** In the side-by-side view the sections live in the two frames; a jump scrolls both. */
-  readonly onJump: ((id: string) => void) | null;
+  readonly pageRef: KitPageRef;
+  readonly stateLabel: string | undefined;
 }) {
-  const link = (id: string, title: string) => (
-    <SidebarMenuItem key={id}>
-      <SidebarMenuButton
-        render={
-          <a
-            href={`#${id}`}
-            onClick={(event) => {
-              if (onJump === null) return;
-              event.preventDefault();
-              onJump(id);
-            }}
-          />
-        }
-      >
-        <span>{title}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-
+  const parts: string[] =
+    pageRef.kind === "overview"
+      ? ["Overview"]
+      : pageRef.kind === "foundation"
+        ? ["Foundations", pageRef.foundation.title]
+        : pageRef.kind === "component"
+          ? ["Components", pageRef.section.title]
+          : pageRef.kind === "flow"
+            ? ["Flows", pageRef.flow.title, ...(stateLabel === undefined ? [] : [stateLabel])]
+            : pageRef.kind === "census"
+              ? ["Census"]
+              : ["Not found"];
   return (
     <>
-      {KIT_GROUPS.flatMap((group) => {
-        const inGroup = sections.filter((section) => section.group === group);
-        if (inGroup.length === 0) return [];
-        return [
-          <SidebarGroup key={group}>
-            <h2 className="m-0 px-2 pb-1 font-semibold text-xs">{group}</h2>
-            {KIT_KINDS.flatMap((kind) => {
-              const inKind = inGroup.filter((section) => section.kind === kind);
-              if (inKind.length === 0) return [];
-              return [
-                <div className="flex flex-col gap-0.5 pb-2" key={kind}>
-                  <h3 className="m-0 px-2 py-1 font-medium text-muted-foreground text-xs">
-                    {kind}
-                  </h3>
-                  <SidebarMenu>
-                    {inKind.map((section) => link(section.id, section.title))}
-                  </SidebarMenu>
-                </div>,
-              ];
-            })}
-          </SidebarGroup>,
-        ];
-      })}
-      <SidebarGroup>
-        <SidebarMenu>{link(OMISSIONS_ID, "Not shown")}</SidebarMenu>
-      </SidebarGroup>
+      {parts.map((part, index) => (
+        <span className="flex min-w-0 items-center gap-1.5" key={part}>
+          {index === 0 ? null : (
+            <ChevronRightIcon
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-muted-foreground"
+            />
+          )}
+          <span
+            className={
+              index === parts.length - 1
+                ? "truncate font-medium text-foreground"
+                : "shrink-0 text-muted-foreground"
+            }
+          >
+            {part}
+          </span>
+        </span>
+      ))}
     </>
   );
 }
 
-function KitSections({ sections }: { readonly sections: readonly KitSection[] }) {
-  return (
-    <div className="flex flex-col gap-10 px-8 py-8">
-      {sections.map((section) => (
-        <KitSectionView key={section.id} section={section} />
-      ))}
-      <section className="flex scroll-mt-6 flex-col gap-4" id={OMISSIONS_ID}>
-        <Separator />
-        <div className="flex flex-col gap-1">
-          <h2 className="m-0 font-semibold text-lg">Not shown</h2>
-          <p className="m-0 text-muted-foreground text-sm">
-            Components the page leaves out, and why.
-          </p>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Export</TableHead>
-              <TableHead>Source</TableHead>
-              <TableHead>Why</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {KIT_OMISSIONS.map((omission) => (
-              <TableRow key={omission.name}>
-                <TableCell>
-                  <code className="font-mono text-xs">{omission.name}</code>
-                </TableCell>
-                <TableCell>
-                  <code className="font-mono text-muted-foreground text-xs">{omission.source}</code>
-                </TableCell>
-                <TableCell>{omission.reason}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </section>
-    </div>
-  );
+/** The playground a component page plays: the one asked for by name, else its first. */
+function storyOf(
+  playgrounds: readonly KitPlayground[],
+  asked: string | undefined,
+): KitPlayground | undefined {
+  return playgrounds.find(({ name }) => name === asked) ?? playgrounds[0];
 }
 
-function KitSectionView({ section }: { readonly section: KitSection }) {
-  return (
-    <section
-      aria-labelledby={`${section.id}-title`}
-      className="flex scroll-mt-6 flex-col gap-6"
-      data-kit-section={section.id}
-      id={section.id}
-    >
-      <Separator />
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <h2 className="m-0 font-semibold text-lg" id={`${section.id}-title`}>
-            {section.title}
-          </h2>
-          <Badge tone="neutral">{section.group}</Badge>
-          <Badge tone="neutral">{section.kind}</Badge>
+/** The tab a component page shows: the one asked for when it has it, else its first. */
+function tabOf(tabs: readonly ComponentTab[], asked: string | undefined): ComponentTab {
+  return tabs.find((tab) => tab === asked) ?? tabs[0] ?? "variants";
+}
+
+function KitPageView({
+  pageRef,
+  search,
+  sections,
+  flows,
+  view,
+  width,
+  stage,
+  linkTo,
+  onTabChange,
+  onArgsChange,
+  onStoryChange,
+  flowState,
+  onFlowStateChange,
+}: {
+  readonly pageRef: KitPageRef;
+  readonly search: KitSearch;
+  readonly sections: readonly KitSection[];
+  readonly flows: readonly KitShellFlow[];
+  readonly view: KitView;
+  readonly width: number;
+  readonly stage: (label: string) => (content: ReactNode) => ReactNode;
+  readonly linkTo: (page: string) => KitLink;
+  readonly onTabChange: (tab: ComponentTab) => void;
+  readonly onArgsChange: (args: KitArgs, initial: KitArgs) => void;
+  readonly onStoryChange: (story: string) => void;
+  readonly flowState: string | undefined;
+  readonly onFlowStateChange: (state: string | undefined) => void;
+}) {
+  switch (pageRef.kind) {
+    case "overview":
+      return <OverviewPage flows={flows} linkTo={linkTo} sections={sections} />;
+    case "foundation":
+      return <FoundationsPage foundation={pageRef.foundation.id} />;
+    case "component": {
+      const playgrounds = KIT_PLAYGROUNDS.get(pageRef.section.id) ?? [];
+      const playground = storyOf(playgrounds, search.story);
+      const tabs = componentTabs(playground);
+      return (
+        <ComponentPage
+          args={decodeKitArgs(search.args)}
+          onArgsChange={(args) => onArgsChange(args, playground?.initial ?? {})}
+          onStoryChange={onStoryChange}
+          onTabChange={onTabChange}
+          playground={playground}
+          playgrounds={playgrounds}
+          section={pageRef.section}
+          stage={stage(pageRef.section.title)}
+          tab={tabOf(tabs, search.tab)}
+        />
+      );
+    }
+    case "flow":
+      return (
+        <FlowPage
+          appearance={view}
+          flow={pageRef.flow}
+          onStateChange={onFlowStateChange}
+          state={flowState}
+          viewport={search.viewport ?? Math.max(width - 32, 320)}
+          // The toolbar's zoom is a percentage; the flow scales its frame by a fraction.
+          zoom={(search.zoom ?? 100) / 100}
+        />
+      );
+    case "census":
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="shrink-0 border-b px-8 py-6">
+            <PageHeader line={<CensusSummary sections={sections} />} title="Census" />
+          </div>
+          {stage("Census")(<CensusBody at={pageRef.at} sections={sections} />)}
         </div>
-        <p className="m-0 text-muted-foreground text-sm">{section.purpose}</p>
-        <code className="font-mono text-muted-foreground/70 text-xs">{section.source}</code>
-      </div>
-      <RenderErrorBoundary
-        fallback={
-          <Alert variant="error">
-            <AlertTitle>{section.title} failed to render</AlertTitle>
-            <AlertDescription>The browser console has the error.</AlertDescription>
-          </Alert>
-        }
-      >
-        {section.render()}
-      </RenderErrorBoundary>
-    </section>
+      );
+    case "missing":
+      return (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <EmptyState
+            action={
+              <Button {...linkProps(linkTo("overview"))} variant="secondary">
+                Open the overview
+              </Button>
+            }
+            mark={<SearchXIcon />}
+            size="page"
+          >
+            The kit has no page called “{pageRef.page}”.
+          </EmptyState>
+        </div>
+      );
+  }
+}
+
+const linkProps = (link: KitLink) => ({
+  render: <a href={link.href} onClick={link.onClick} />,
+});
+
+/**
+ * The canvas alone, for a frame of the "both" view or "Open alone": no navigation or bar, its
+ * playground's arguments from the address and then from its page's messages.
+ */
+function KitPane({
+  pageRef,
+  search,
+}: {
+  readonly pageRef: KitPageRef;
+  readonly search: KitSearch;
+}) {
+  const [encoded, setEncoded] = useState(search.args);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== location.origin || !isKitPaneMessage(event.data)) return;
+      setEncoded(event.data.args);
+    };
+    window.addEventListener("message", onMessage);
+    if (window.parent !== window) window.parent.postMessage(KIT_PANE_READY, location.origin);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  const args = decodeKitArgs(encoded);
+  const content = (() => {
+    switch (pageRef.kind) {
+      case "component": {
+        const playground = storyOf(KIT_PLAYGROUNDS.get(pageRef.section.id) ?? [], search.story);
+        const tab = tabOf(componentTabs(playground), search.tab);
+        return tab === "playground" && playground !== undefined ? (
+          <PlaygroundCanvas args={args} playground={playground} section={pageRef.section} />
+        ) : (
+          <VariantsCanvas section={pageRef.section} />
+        );
+      }
+      case "census":
+        return <CensusBody at={pageRef.at} sections={KIT_SECTIONS} />;
+      default:
+        return null;
+    }
+  })();
+  return (
+    <KitCanvas
+      ground={search.bg ?? "page"}
+      outline={search.outline === 1}
+      viewport={search.viewport}
+      zoom={search.zoom ?? 100}
+    >
+      {content}
+    </KitCanvas>
   );
 }

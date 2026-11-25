@@ -14,7 +14,7 @@ export function GitRepositoryStorage({
 }) {
   const said = repositoryStorage(storage);
   return (
-    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+    <div className="flex flex-col gap-1 text-caption text-muted-foreground">
       <div className="flex flex-wrap items-center gap-2">
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} />}>{said.line}</TooltipTrigger>

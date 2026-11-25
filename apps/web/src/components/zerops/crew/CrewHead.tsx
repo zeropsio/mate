@@ -21,6 +21,7 @@ import type { CrewSummary } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 
+import { Button, InlineButton } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
 import { crewGoalTitle, type CrewModeLine, type CrewModePressKind } from "./CrewHead.logic";
@@ -71,40 +72,41 @@ export function CrewHead({
   return (
     <div className="flex flex-col gap-0.5 px-4 pt-4 @max-md:pt-3" data-crew-head>
       <div className="flex h-7 items-center gap-2">
-        <CrewTip side="bottom" tip={goal.hover}>
-          {onGoal === null ? (
-            <span
-              className={cn(
-                "min-w-0 truncate font-semibold text-base leading-6",
-                goal.placeholder ? "text-muted-foreground" : "text-foreground",
-              )}
-              data-crew-goal-title
-            >
-              {goal.title}
-            </span>
-          ) : (
-            <button
-              className={cn(
-                "min-w-0 cursor-pointer truncate text-start font-semibold text-base leading-6 outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                goal.placeholder ? "text-muted-foreground" : "text-foreground",
-              )}
-              data-crew-goal-title
-              onClick={onGoal}
-              type="button"
-            >
-              {goal.title}
-            </button>
-          )}
-        </CrewTip>
+        <span className="flex min-w-0 text-base leading-6">
+          <CrewTip side="bottom" tip={goal.hover}>
+            {onGoal === null ? (
+              <span
+                className={cn(
+                  "min-w-0 truncate font-semibold text-base leading-6",
+                  goal.placeholder ? "text-muted-foreground" : "text-foreground",
+                )}
+                data-crew-goal-title
+              >
+                {goal.title}
+              </span>
+            ) : (
+              <InlineButton
+                className="min-w-0"
+                data-crew-goal-title
+                onClick={onGoal}
+                tone={goal.placeholder ? "muted" : "plain"}
+              >
+                <span className="min-w-0 truncate font-semibold">{goal.title}</span>
+              </InlineButton>
+            )}
+          </CrewTip>
+        </span>
         <span className="grow" />
         {onMenu === null ? null : (
           <Menu>
             <MenuTrigger
               render={
-                <button
+                // At a phone's width a finger's 32.
+                <Button
                   aria-label={CREW_MENU_LABEL}
-                  className="crew-menu-btn -me-1.5 @max-md:-me-2"
-                  type="button"
+                  className="-me-1.5 @max-md:-me-2 @max-md:size-8"
+                  size="icon-sm"
+                  variant="sidebar"
                 />
               }
             >
@@ -119,7 +121,7 @@ export function CrewHead({
                 >
                   <span className="flex min-w-0 flex-col px-0.75 py-0.75">
                     <span>{item.label}</span>
-                    <span className="text-xs text-muted-foreground">{item.line}</span>
+                    <span className="text-caption text-muted-foreground">{item.line}</span>
                   </span>
                 </MenuItem>
               ))}

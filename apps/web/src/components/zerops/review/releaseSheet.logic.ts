@@ -24,6 +24,7 @@ import {
   runningSentence,
   type RunningLine,
 } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { keyRenewedBy } from "@t3tools/client-runtime/zerops/flow";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { NOT_RENEWING, type KeyRenewal } from "~/zerops/renewDeployKey.logic";
@@ -166,7 +167,7 @@ interface ReleaseSheetStepsInput {
   readonly environmentName?: string | undefined;
   /** The key's renewal run from the sheet; none where it runs none. */
   readonly renewal?: KeyRenewal | undefined;
-  /** False where the viewer has no admin access to production's project: the key is not theirs to renew. */
+  /** False where HQ does not offer this person the key's renewal. */
   readonly mayRenew?: boolean | undefined;
   readonly nowMs: number;
 }
@@ -278,7 +279,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
         ? said(renewal.words)
         : `${KEY_WORDS[trouble]} ${
             input.mayRenew === false
-              ? "Someone with admin access to production's project in Zerops renews it."
+              ? keyRenewedBy("production's project", trouble === "missing" ? "missing" : "invalid")
               : "Renewing makes a new one for this project only."
           }`,
     ],

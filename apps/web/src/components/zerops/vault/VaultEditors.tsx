@@ -13,6 +13,7 @@ import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
 import { Switch } from "../../ui/switch";
+import { Textarea } from "../../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   generateVaultValue,
@@ -70,8 +71,8 @@ export function VaultAddCard(props: VaultAddCardProps) {
   };
 
   return (
-    <div className="vault-card rounded-xl bg-card p-px" data-vault-add>
-      <div className="flex items-center gap-1 px-3 pt-2 font-medium text-xs text-foreground">
+    <div className="vault-card rounded-card bg-card p-px" data-vault-add>
+      <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
         New value in
         <Menu>
           <MenuTrigger
@@ -142,7 +143,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
         </div>
         {error === null ? null : (
           <p
-            className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
+            className="flex items-center gap-1.5 text-caption leading-4 text-destructive-foreground"
             data-vault-add-error
             role="alert"
           >
@@ -151,7 +152,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </p>
         )}
         <div className="flex items-center gap-2">
-          <label className="flex h-7 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <label className="flex h-7 cursor-pointer items-center gap-2 text-caption text-muted-foreground">
             <Switch
               aria-label="Hidden"
               checked={sensitive}
@@ -160,7 +161,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             <LockIcon aria-hidden="true" className="size-3" />
             <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
           </label>
-          <span className="truncate text-xs text-muted-foreground" data-vault-add-auto>
+          <span className="truncate text-caption text-muted-foreground" data-vault-add-auto>
             {sensitive ? "nobody reads it back once saved" : ""}
           </span>
           <span className="grow" />
@@ -172,7 +173,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             Save
           </Button>
         </div>
-        <p className="text-xs leading-4 text-muted-foreground">
+        <p className="text-caption leading-4 text-muted-foreground">
           Paste a whole .env into the name to add many at once.
         </p>
       </div>
@@ -217,10 +218,10 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           {which === "sensitive" ? <LockIcon aria-hidden="true" className="size-3" /> : null}
           {label}
         </div>
-        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-md bg-muted focus-within:ring-1 focus-within:ring-ring">
+        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
           <div
             aria-hidden="true"
-            className="vault-gutter py-2 text-center font-mono font-medium text-xs leading-5"
+            className="vault-gutter py-2 text-center font-mono font-medium text-caption leading-5"
           >
             {lineStarts(lines).map(({ start, line }) => {
               const mark = diff.marks[which][line] ?? null;
@@ -231,12 +232,12 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
               );
             })}
           </div>
-          <textarea
+          <Textarea
             aria-label={`${label} values as text`}
-            className="vault-textarea block w-full resize-none overflow-x-auto bg-transparent py-2 pr-2.5 pl-1 font-mono text-xs leading-5 whitespace-pre text-foreground outline-none"
             onChange={(event) =>
               props.onChange({ ...props.text, [which]: event.currentTarget.value })
             }
+            size="code"
             spellCheck={false}
             value={props.text[which]}
           />
@@ -248,7 +249,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
     <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
         <span className="font-medium text-line">{vaultName(props.scope, props.mateName)}</span>
-        <span className="text-xs text-muted-foreground">as text</span>
+        <span className="text-caption text-muted-foreground">as text</span>
         <span className="grow" />
         <Button onClick={props.onCancel} size="sm" variant="ghost">
           Cancel
@@ -267,7 +268,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
         <ul className="grid gap-1" data-vault-text-problems>
           {diff.problems.map((problem) => (
             <li
-              className="flex items-center gap-1.5 text-xs text-destructive-foreground"
+              className="flex items-center gap-1.5 text-caption text-destructive-foreground"
               key={`${problem.section}:${problem.line}`}
             >
               <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
@@ -276,7 +277,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           ))}
         </ul>
       )}
-      <p className="text-xs leading-4 text-muted-foreground">
+      <p className="text-caption leading-4 text-muted-foreground">
         {VAULT_MASK} keeps the stored value. Type over it to replace it; delete the line to remove
         it.
       </p>
@@ -312,7 +313,7 @@ export function VaultReview(props: VaultReviewProps) {
     <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-caption text-muted-foreground">
           {vaultName(props.scope, props.mateName)}
         </span>
       </div>
@@ -320,7 +321,7 @@ export function VaultReview(props: VaultReviewProps) {
         <div
           className={
             line.guarded && !forced.has(write.key)
-              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-md bg-warning-surface px-2 pt-2.25 pb-2.5"
+              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
               : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5"
           }
           data-vault-review-line={write.key}
@@ -333,10 +334,10 @@ export function VaultReview(props: VaultReviewProps) {
           </span>
           <div className="min-w-0">
             <div className="flex min-w-0 items-baseline gap-2">
-              <span className="shrink-0 font-mono font-medium text-xs leading-5 text-foreground">
+              <span className="shrink-0 font-mono font-medium text-caption leading-5 text-foreground">
                 {line.key}
               </span>
-              <span className="min-w-0 truncate font-mono text-xs leading-5 text-muted-foreground">
+              <span className="min-w-0 truncate font-mono text-caption leading-5 text-muted-foreground">
                 {write.kind === "remove"
                   ? ""
                   : write.sensitive
@@ -346,7 +347,7 @@ export function VaultReview(props: VaultReviewProps) {
                     : write.value}
               </span>
             </div>
-            <div className="text-xs leading-4.5 text-muted-foreground">
+            <div className="text-caption leading-4.5 text-muted-foreground">
               {forced.has(write.key) ? `${line.consequence} · removing anyway` : line.consequence}
             </div>
             {line.guarded && !forced.has(write.key) ? (
@@ -377,7 +378,7 @@ export function VaultReview(props: VaultReviewProps) {
         <Button onClick={props.onBack} size="sm" variant="ghost">
           Back to text
         </Button>
-        <span className="ml-auto truncate text-xs text-muted-foreground">
+        <span className="ml-auto truncate text-caption text-muted-foreground">
           {props.mateName === null
             ? "Each one shows what it needs once applied"
             : `${props.mateName} hears about them with your next message`}

@@ -586,6 +586,8 @@ function Change({
   under,
   nothingLive,
   mayRelease,
+  stages,
+  keyRenewal,
   mateOpenChanges,
   mateWorkingOn,
   queue,
@@ -598,6 +600,8 @@ function Change({
   readonly nothingLive?: boolean;
   /** `false`: HQ's rule refused the person the release. */
   readonly mayRelease?: boolean;
+  readonly stages?: ChangeReviewViewProps["stages"];
+  readonly keyRenewal?: ChangeReviewViewProps["keyRenewal"];
   /** How many open changes its Mate holds. */
   readonly mateOpenChanges?: number;
   /** Asking for the merge, or taking the ask back, as pressed. */
@@ -658,7 +662,13 @@ function Change({
       onOpenPage={frame === "page" ? undefined : noop}
       previews={PREVIEWS}
       project="Beviro"
-      stages={environments.some((entry) => entry.tier === "stage") ? ["stage"] : []}
+      stages={
+        stages ??
+        (environments.some((entry) => entry.tier === "stage")
+          ? [{ name: "stage", gap: undefined }]
+          : [])
+      }
+      keyRenewal={keyRenewal}
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -900,7 +910,7 @@ const THREE_PLAN: ReleasePlan = {
  * deploy key it keeps for it reaches more than its project.
  */
 const KEY_ENVIRONMENT = "acme-production";
-const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; a person with admin access to its project renews it in Zerops Mate`;
+const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; renew it in Zerops Mate`;
 const KEY_PLAN: ReleasePlan = {
   hash: "c".repeat(64),
   vault: { state: "known", gaps: [] },
@@ -1820,7 +1830,7 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
           creation: undefined,
           deploys: [
             deployOf("app", "refused", {
-              reason: `${KEY_ENVIRONMENT}'s deploy token no longer answers; a person with admin access to its project renews it in Zerops Mate`,
+              reason: `${KEY_ENVIRONMENT}'s deploy token no longer answers; renew it in Zerops Mate`,
               endedAt: secondsAgo(40),
             }),
             deployOf("api", "failed", {
@@ -2070,6 +2080,23 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Settling after={SETTLE_MS} frame="dialog" />,
   },
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  {
+    id: "ready-stage-key",
+    label: "Ready to merge · stage's key no longer works",
+    node: (
+      <Change
+        stages={[
+          {
+            name: "stage",
+            environment: "stage",
+            projectId: "stage",
+            gap: { kind: "invalid", project: "stage" },
+          },
+        ]}
+        keyRenewal={{ run: { kind: "none" }, onRenew: noop }}
+      />
+    ),
+  },
   {
     id: "core-push",
     label: "HQ brought main in after the change under it merged",
@@ -2826,8 +2853,8 @@ export function ReviewPageStage({
 }) {
   return (
     <section className="flex flex-col gap-2" data-review-harness-state={label}>
-      <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
-      <div className="h-dvh overflow-hidden rounded-xl border border-border">
+      <span className="px-2 text-caption font-medium text-muted-foreground">{label}</span>
+      <div className="h-dvh overflow-hidden rounded-card border border-border">
         <ZeropsHostedFrame bar={false} width="column">
           {children}
         </ZeropsHostedFrame>
@@ -2846,9 +2873,9 @@ export function ReviewStage({
 }) {
   return (
     <section className="flex flex-col gap-2" data-review-harness-state={label}>
-      <span className="px-2 text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="px-2 text-caption font-medium text-muted-foreground">{label}</span>
       <div
-        className="flex justify-center rounded-xl px-5 py-9"
+        className="flex justify-center rounded-card px-5 py-9"
         style={{ background: "color-mix(in oklab, var(--background), var(--color-black) 18%)" }}
       >
         <div className="rv" style={{ maxHeight: "none", width: 540 }}>
@@ -2924,7 +2951,7 @@ export function ReviewDialogTry({
             }}
             previews={PREVIEWS}
             project="Beviro"
-            stages={["stage"]}
+            stages={[{ name: "stage", gap: undefined }]}
             remarks={read ? remarksOf(TALKING) : []}
             onClose={() => {
               setOpen(false);

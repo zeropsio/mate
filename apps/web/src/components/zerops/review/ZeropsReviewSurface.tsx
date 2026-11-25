@@ -41,12 +41,15 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 
 import { Badge } from "~/components/ui/badge";
+import { Row } from "~/components/ui/row";
+import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Button, InlineButton } from "~/components/ui/button";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
@@ -331,22 +334,39 @@ export function ZeropsReviewSurface({
             </span>
           ) : (
             <span className="rv-kind">
-              <button className="rv-back" data-review-back="" onClick={back.onPress} type="button">
+              <Button
+                className="-ms-2.5"
+                data-review-back=""
+                onClick={back.onPress}
+                size="sm"
+                variant="ghost-muted"
+              >
                 <ArrowLeftIcon aria-hidden="true" />
                 {back.label}
-              </button>
+              </Button>
             </span>
           )}
           {queue === undefined ? null : <ReviewQueueSteps queue={queue} />}
           {menu === undefined || menu.length === 0 ? null : <ReviewMenu items={menu} />}
           {onOpenPage === undefined ? null : (
-            <button aria-label="Open as page" className="rv-x" onClick={onOpenPage} type="button">
-              <Maximize2Icon aria-hidden="true" size={14} />
-            </button>
+            <Button
+              aria-label="Open as page"
+              onClick={onOpenPage}
+              size="icon-sm"
+              variant="ghost-muted"
+            >
+              <Maximize2Icon aria-hidden="true" />
+            </Button>
           )}
-          <button aria-label="Close" className="rv-x" onClick={onClose} type="button">
-            <XIcon aria-hidden="true" size={16} />
-          </button>
+          <Button
+            aria-label="Close"
+            className="-me-1.5"
+            onClick={onClose}
+            size="icon-sm"
+            variant="ghost-muted"
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </Button>
         </div>
       )}
       <header className="rv-head" data-queue-in={queue?.arrived} data-review-kind={kind}>
@@ -641,8 +661,8 @@ function useHeldButtons(held: boolean, row: RefObject<HTMLDivElement | null>): (
 function ReviewMenu({ items }: { readonly items: ReadonlyArray<ReviewMenuItem> }) {
   return (
     <Menu>
-      <MenuTrigger render={<button aria-label="More" className="rv-x" type="button" />}>
-        <EllipsisIcon aria-hidden="true" size={16} />
+      <MenuTrigger render={<Button aria-label="More" size="icon-sm" variant="ghost-muted" />}>
+        <EllipsisIcon aria-hidden="true" className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end">
         {items.map((item) =>
@@ -696,23 +716,18 @@ export function ReviewSection({
 }) {
   if (fold !== undefined) {
     return (
-      <section>
+      <Collapsible onOpenChange={fold.onToggle} open={fold.open} render={<section />}>
         <h3 className="rv-sec-h">
-          <button
-            aria-expanded={fold.open}
-            className="rv-fold-row"
-            onClick={fold.onToggle}
-            type="button"
-          >
+          <CollapsibleTrigger className="-my-1.5 flex h-7 w-full items-center gap-2.5 text-start text-muted-foreground outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:relative pointer-coarse:after:absolute pointer-coarse:after:-inset-y-2 pointer-coarse:after:inset-x-0">
             <span>{title}</span>
             {aside === undefined ? null : <span className="rv-fold-aside">{aside}</span>}
             <ChevronDownIcon aria-hidden="true" className="rv-fold-chev" />
-          </button>
+          </CollapsibleTrigger>
         </h3>
-        <div className="rv-fold-body" hidden={!fold.open}>
+        <CollapsiblePanel className="mt-3" keepMounted>
           {children}
-        </div>
-      </section>
+        </CollapsiblePanel>
+      </Collapsible>
     );
   }
   return (
@@ -763,18 +778,18 @@ export function ReviewTry({
         {previews.map((preview) => {
           const words = tryItWords(mateName, preview.service);
           return (
-            <a
-              className="rv-try"
-              href={preview.url}
+            <Button
+              className="max-w-full"
               key={preview.service}
-              rel="noreferrer"
-              target="_blank"
+              render={<a href={preview.url} rel="noreferrer" target="_blank" />}
+              size="sm"
+              variant="secondary"
             >
               <GlobeIcon aria-hidden="true" />
               <span className="rv-try-service">{words.preview}</span>
               <span className="rv-try-part">· {words.part}</span>
               <ArrowUpRightIcon aria-hidden="true" />
-            </a>
+            </Button>
           );
         })}
       </div>
@@ -970,8 +985,9 @@ function FileRow({
   readonly onRetry: (() => void) | undefined;
 }) {
   return (
-    <>
-      <button aria-expanded={expanded} className="rv-file" onClick={onToggle} type="button">
+    // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
+    <Collapsible onOpenChange={onToggle} open={expanded}>
+      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-foreground/4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <span className="rv-st" data-status={letter}>
           {letter}
         </span>
@@ -987,11 +1003,11 @@ function FileRow({
         <span className="rv-chev">
           <ChevronDownIcon aria-hidden="true" />
         </span>
-      </button>
+      </CollapsibleTrigger>
       {diff === undefined ? null : (
         <ReviewDiff diff={diff} onRetry={onRetry} open={open} previousPath={file.previousPath} />
       )}
-    </>
+    </Collapsible>
   );
 }
 
@@ -1138,11 +1154,9 @@ export function ReviewReleaseRows({
       {rows.map((row) => {
         // Every change on the stage is the line's to say; a row says only what stands out.
         const mark = row.stage === "on-stage" ? undefined : STAGE_WORDS[row.stage];
-        const cells = (
-          <>
-            {row.face === undefined ? (
-              <span />
-            ) : (
+        const parts = {
+          lead:
+            row.face === undefined ? undefined : (
               <MateFace
                 className="size-4.5"
                 shape={row.face.shape}
@@ -1150,54 +1164,50 @@ export function ReviewReleaseRows({
                 state={row.face.state ?? "idle"}
                 tint={row.face.tint}
               />
-            )}
-            <span className="rv-relrow-t">{row.title}</span>
-            {mark === undefined ? (
+            ),
+          title: row.title,
+          line:
+            mark === undefined ? (
               row.sub === "" ? null : (
-                <span className="rv-relrow-sub">{row.sub}</span>
+                row.sub
               )
             ) : (
               <span className="rv-on" data-mark={row.stage}>
                 {mark}
               </span>
-            )}
-          </>
-        );
-        if (onOpen === undefined) {
-          return (
-            <div className="rv-relrow" key={row.key}>
-              {cells}
-            </div>
-          );
-        }
+            ),
+          size: "sm",
+        } as const;
+        const go = <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />;
+        if (onOpen === undefined) return <Row key={row.key} {...parts} />;
         if (row.change === undefined) {
           return appId === undefined || row.commit === undefined ? (
-            <div className="rv-relrow" key={row.key}>
-              {cells}
-            </div>
+            <Row key={row.key} {...parts} />
           ) : (
             <ReleaseCommitRow
               key={row.key}
               rowKey={row.key}
+              row={{ ...parts, meta: go }}
               to={gitCommitLink({ appId, repo: row.commit.repository }, row.commit.sha)}
-            >
-              {cells}
-            </ReleaseCommitRow>
+            />
           );
         }
         return (
-          <button
-            className="rv-relrow"
-            data-release-row={row.key}
+          <Row
             key={row.key}
-            onClick={() => {
-              onOpen(row);
-            }}
-            type="button"
-          >
-            {cells}
-            <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />
-          </button>
+            {...parts}
+            data-release-row={row.key}
+            meta={go}
+            pressable
+            render={
+              <button
+                onClick={() => {
+                  onOpen(row);
+                }}
+                type="button"
+              />
+            }
+          />
         );
       })}
     </div>
@@ -1208,17 +1218,14 @@ export function ReviewReleaseRows({
 function ReleaseCommitRow({
   rowKey,
   to,
-  children,
+  row,
 }: {
   readonly rowKey: string;
   readonly to: GitLink;
-  readonly children: ReactNode;
+  readonly row: Omit<ComponentProps<typeof Row>, "render">;
 }) {
   return (
-    <a className="rv-relrow" data-release-row={rowKey} {...useGitLinkProps(to)}>
-      {children}
-      <ChevronRightIcon aria-hidden="true" className="rv-relrow-go" />
-    </a>
+    <Row {...row} data-release-row={rowKey} pressable render={<a {...useGitLinkProps(to)} />} />
   );
 }
 
@@ -1254,29 +1261,29 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
   return (
     // Loose in the top line, as its other presses are: the last of them alone hugs the edge.
     <>
-      <button
+      <Button
         aria-label="Previous change"
-        className="rv-x disabled:pointer-events-none disabled:opacity-40"
         disabled={queue.onPrevious === undefined}
         onClick={queue.onPrevious}
         ref={previous}
-        type="button"
+        size="icon-sm"
+        variant="ghost-muted"
       >
-        <ChevronLeftIcon aria-hidden="true" size={16} />
-      </button>
+        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+      </Button>
       <span aria-live="polite" className="px-1 text-line text-muted-foreground tabular-nums">
         {queue.words}
       </span>
-      <button
+      <Button
         aria-label="Next change"
-        className="rv-x disabled:pointer-events-none disabled:opacity-40"
         disabled={queue.onNext === undefined}
         onClick={queue.onNext}
         ref={next}
-        type="button"
+        size="icon-sm"
+        variant="ghost-muted"
       >
-        <ChevronRightIcon aria-hidden="true" size={16} />
-      </button>
+        <ChevronRightIcon aria-hidden="true" className="size-4" />
+      </Button>
     </>
   );
 }

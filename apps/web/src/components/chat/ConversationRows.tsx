@@ -14,7 +14,8 @@ import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
  * Presentational: every word comes from the row. Every row here has its final
  * height from its first frame; only words and fixed-size marks change in place.
  */
-import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
+import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
+import { useOpenReview } from "~/zerops/review";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
@@ -169,7 +170,7 @@ const unconfirmedWords = (name: string) => `${name} hasn't confirmed this messag
 export function UnconfirmedMessageLine({ speakerName }: { readonly speakerName: string }) {
   return (
     <p
-      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-xs"
+      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-caption"
       data-unconfirmed-message-line=""
     >
       {unconfirmedWords(speakerName)}
@@ -194,7 +195,7 @@ export function HeldMessageLine({
 }) {
   return (
     <p
-      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-xs"
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-caption"
       data-held-message-line=""
     >
       <span>
@@ -260,7 +261,7 @@ export function Seam({
     <div
       aria-label={label}
       className={cn(
-        "flex items-center gap-3 text-xs",
+        "flex items-center gap-3 text-caption",
         fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
       )}
       data-seam={row.seam}
@@ -340,6 +341,57 @@ function ReleaseEndedLine({
   );
 }
 
+/**
+ * A merged change's title, which opens its review as the change's page does. Its parent is a
+ * flex row, so a long title ends in an ellipsis and the words after it stay.
+ */
+export function LandedTitle({ event }: { readonly event: ChangeLandedEvent }) {
+  const openReview = useOpenReview();
+  return (
+    <InlineButton
+      className="min-w-0 shrink"
+      tone="muted"
+      onClick={(press) =>
+        openReview(
+          {
+            kind: "change",
+            groupId: event.groupId,
+            repository: event.repository,
+            number: event.number,
+          },
+          { from: press.currentTarget },
+        )
+      }
+    >
+      <span className="truncate">{event.title}</span>
+    </InlineButton>
+  );
+}
+
+/** A change of this Mate's that merged. */
+function LandedLine({
+  event,
+  at,
+  timestampFormat,
+}: {
+  readonly event: ChangeLandedEvent;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  return (
+    <EventShell
+      at={at}
+      icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
+      timestampFormat={timestampFormat}
+    >
+      <span className="flex min-w-0">
+        <LandedTitle event={event} />
+        <span className="shrink-0 whitespace-pre"> merged</span>
+      </span>
+    </EventShell>
+  );
+}
+
 /** Something that happened in the conversation, not something the Mate wrote. */
 export function EventLine({
   event,
@@ -354,15 +406,7 @@ export function EventLine({
 }) {
   switch (event.type) {
     case "landed":
-      return (
-        <EventShell
-          at={at}
-          icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
-          timestampFormat={timestampFormat}
-        >
-          <span className="font-medium text-foreground">{event.event.title}</span> merged
-        </EventShell>
-      );
+      return <LandedLine at={at} event={event.event} timestampFormat={timestampFormat} />;
     case "release":
       return <ReleaseEndedLine at={at} event={event.event} timestampFormat={timestampFormat} />;
     case "compaction":
@@ -843,7 +887,7 @@ export function PauseBlock({
         // Resumed, the same block goes quiet — history, not a state to act
         // on: a line like an event's — and keeps
         // its height: newer rows may already sit under it.
-        "relative grid gap-3 rounded-xl border py-3 text-center",
+        "relative grid gap-3 rounded-card border py-3 text-center",
         history
           ? "border-x-0 border-transparent text-muted-foreground"
           : "border-border bg-muted/35 px-3.5",
@@ -869,7 +913,7 @@ export function PauseBlock({
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger
-              render={<span className="shrink-0 text-muted-foreground text-xs tabular-nums" />}
+              render={<span className="shrink-0 text-muted-foreground text-caption tabular-nums" />}
             >
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>

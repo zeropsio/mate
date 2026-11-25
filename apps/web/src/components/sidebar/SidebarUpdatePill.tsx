@@ -19,6 +19,7 @@ import {
 } from "../desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -80,28 +81,28 @@ function SidebarUpdateReleaseNotesTooltip({
       <div className="px-1">
         {state.status === "available" ? (
           <div>
-            <div className="whitespace-nowrap text-sm leading-5 font-medium">
+            <div className="whitespace-nowrap text-body leading-5 font-medium">
               Update ready to download
             </div>
             {state.availableVersion ? (
-              <div className="mt-0.5 text-xs leading-4 text-update-foreground">
+              <div className="mt-0.5 text-caption leading-4 text-update-foreground">
                 {state.availableVersion}
               </div>
             ) : null}
           </div>
         ) : (
-          <div className="text-sm leading-5 font-medium">{tooltip}</div>
+          <div className="text-body leading-5 font-medium">{tooltip}</div>
         )}
       </div>
       <div className="max-h-[min(28rem,calc(100vh-6rem))] overflow-y-auto px-1 pt-4 pb-1">
         {state.releaseNotes.map((releaseNote, index) => (
           <div key={releaseNote.version}>
-            {index > 0 && <Separator className="my-3 bg-border/60" />}
+            {index > 0 && <Separator className="my-3" />}
             <section>
-              <h3 className="text-foreground text-xs leading-4 font-semibold">
+              <h3 className="text-foreground text-caption leading-4 font-semibold">
                 {index === 0 ? "What's changed" : `Changes in ${releaseNote.version}`}
               </h3>
-              <ul className="mt-2 space-y-1.5 pl-4 text-xs leading-5 text-popover-foreground/90">
+              <ul className="mt-2 space-y-1.5 pl-4 text-caption leading-5 text-popover-foreground/90">
                 {keyReleaseNoteItems(releaseNote.items).map(({ item, key }) => (
                   <li className="list-disc break-words" key={key}>
                     {item}
@@ -310,35 +311,39 @@ function SidebarUpdateControl() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              type="button"
+            <Button
               aria-label={tooltip}
               aria-disabled={isInteractionDisabled || undefined}
-              className={cn(
-                "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2",
-                isInteractionDisabled ? "cursor-not-allowed" : "cursor-pointer",
-                showUpdateIconState
-                  ? cn(
-                      "bg-update-surface text-update-foreground",
-                      !isInteractionDisabled && "hover:bg-update/12",
-                    )
-                  : cn(
-                      "text-(--sidebar-icon-color)",
-                      !isInteractionDisabled &&
-                        "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-                    ),
-                disabled && !showUpdateIconState && "opacity-60",
-              )}
+              className={isInteractionDisabled ? "group/update cursor-not-allowed" : "group/update"}
               onClick={handleAction}
+              variant="bare"
             >
-              <DesktopUpdateStatusIcon
-                key={showCheckIcon ? checkAnimationKey : iconStatus}
-                downloadPercent={state?.downloadPercent ?? null}
-                isCheckAnimating={showCheckIcon && !prefersReducedMotion}
-                onCheckAnimationIteration={handleCheckAnimationIteration}
-                status={iconStatus}
-              />
-            </button>
+              {/* The press is its disc: the update's tint while one waits, the menu's icon ink otherwise. */}
+              <span
+                className={cn(
+                  "inline-flex size-8 items-center justify-center rounded-full transition-colors",
+                  showUpdateIconState
+                    ? cn(
+                        "bg-update-surface text-update-foreground",
+                        !isInteractionDisabled && "group-hover/update:bg-update/12",
+                      )
+                    : cn(
+                        "text-(--sidebar-icon-color)",
+                        !isInteractionDisabled &&
+                          "group-hover/update:bg-sidebar-row-hover group-hover/update:text-sidebar-foreground",
+                      ),
+                  disabled && !showUpdateIconState && "opacity-60",
+                )}
+              >
+                <DesktopUpdateStatusIcon
+                  key={showCheckIcon ? checkAnimationKey : iconStatus}
+                  downloadPercent={state?.downloadPercent ?? null}
+                  isCheckAnimating={showCheckIcon && !prefersReducedMotion}
+                  onCheckAnimationIteration={handleCheckAnimationIteration}
+                  status={iconStatus}
+                />
+              </span>
+            </Button>
           }
         />
         <TooltipPopup
@@ -347,7 +352,7 @@ function SidebarUpdateControl() {
             showUpdateDetails && state?.channel === "nightly" && state.releaseNotes.length > 0
               ? // pointer-events-auto overrides the positioner's pointer-events-none so the
                 // release notes stay open (and scrollable) when the cursor moves into them.
-                "pointer-events-auto text-balance"
+                "pointer-events-auto"
               : undefined
           }
           side="top"

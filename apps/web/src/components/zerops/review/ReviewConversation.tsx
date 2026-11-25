@@ -35,6 +35,7 @@ import { PersonAvatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
+import { Textarea } from "~/components/ui/textarea";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -244,9 +245,9 @@ function SayBox({
   return (
     <>
       <div className="rv-say">
-        <textarea
+        <Textarea
           aria-label="Say something on this change"
-          className="rv-say-box"
+          className="flex-1"
           onChange={(event) => {
             write(event.target.value);
           }}
@@ -258,6 +259,7 @@ function SayBox({
           }
           readOnly={pending !== null}
           rows={1}
+          size="line"
           value={pending?.body ?? said}
         />
         <SayVerb
@@ -266,9 +268,7 @@ function SayBox({
           onPress={() => {
             void comment();
           }}
-          verb={
-            <button className="rv-say-comment" data-zerops-primary-action="Comment" type="button" />
-          }
+          verb={<Button data-zerops-primary-action="Comment" size="sm" variant="ghost" />}
         >
           Comment
         </SayVerb>
@@ -279,7 +279,7 @@ function SayBox({
             onPress={() => {
               void ask();
             }}
-            verb={<button className="rv-say-ask" type="button" />}
+            verb={<Button size="sm" variant="secondary" />}
           >
             {asker.tint === undefined ? null : (
               <MateFace shape={asker.shape} size={16} state="idle" tint={asker.tint} />

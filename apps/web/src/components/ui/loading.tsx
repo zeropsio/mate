@@ -45,7 +45,7 @@ function LoadingCards({ count }: { readonly count: number }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4">
       {Array.from({ length: count }, (_, index) => (
-        <div className="flex h-56 flex-col gap-3 rounded-xl border p-4" key={index}>
+        <div className="flex h-56 flex-col gap-3 rounded-card border p-4" key={index}>
           <Skeleton className="h-4 w-1/2" />
           <Skeleton className="h-3 w-1/3" />
           <div className="mt-2">

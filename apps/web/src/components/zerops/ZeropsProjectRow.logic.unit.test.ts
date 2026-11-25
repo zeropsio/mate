@@ -107,6 +107,19 @@ it("MN66: A stopped project's row offers Start only to a person who operates it;
   expect(action(false)).toBe("none");
 });
 
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (startsAgain(candidate.service)) { → if (false) {
+it("MN77: A Mate whose container starts again after a stop reads Starting… on its projects-screen line, as its menu row does, and one never deployed before reads Coming up; breaks: its card says Coming up. A few minutes. beside a menu row that says Starting… (live check, 2026-11-24)", () => {
+  const starting = (activeAppVersion: { readonly id: string } | null): ZeropsRowCandidate => ({
+    ...running,
+    group: "provisioning",
+    service: { id: "s-zcp", name: "zcp", status: "STARTING", activeAppVersion },
+  });
+  const detail = (candidate: ZeropsRowCandidate) =>
+    deriveZeropsRowPresentation(row(candidate, every, "open")).detail;
+  expect(detail(starting({ id: "v1" }))).toBe("Starting…");
+  expect(detail(starting(null))).toBe("Coming up. A few minutes.");
+});
+
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return coming?.kind === "coming"; → return coming?.kind === "failed";
 it("MN13: A coming Mate's card on its project's page holds its menu, where Delete is, and any other Mate's card its one verb; breaks: a Mate whose setup stalls offers no Delete on its project's page (live check, 2026-11-20)", () => {
   expect(mateCardHoldsMenu({ kind: "coming", line: "Coming up" })).toBe(true);

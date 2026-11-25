@@ -38,8 +38,10 @@ import {
 import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 
+import { Input } from "../../ui/input";
 import { Radio, RadioGroup } from "../../ui/radio-group";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import {
   crewHandleFor,
   crewmateDraftOf,
@@ -64,7 +66,7 @@ import {
   crewmateSaveCommand,
   freeTints,
 } from "./CrewEditors.logic";
-import { CrewPress } from "./CrewParts";
+import { CrewChoice, CrewPress } from "./CrewParts";
 import {
   CrewIssues,
   CrewTextArea,
@@ -261,7 +263,7 @@ function JobForm({
       </CrewViewField>
       {lead ? null : (
         <div className="mt-6 flex flex-col" data-crew-job-does>
-          <span className="font-medium text-sm leading-5">{CREW_JOB_WORDS.does}</span>
+          <span className="font-medium text-body leading-5">{CREW_JOB_WORDS.does}</span>
           <div className="mt-2.5">
             <RadioGroup
               aria-label={CREW_JOB_WORDS.does}
@@ -271,7 +273,7 @@ function JobForm({
               <label className="flex cursor-pointer items-start gap-2.5">
                 <Radio className="mt-0.5" value="builds" />
                 <span className="flex flex-col">
-                  <span className="text-sm">{CREW_JOB_WORDS.builds}</span>
+                  <span className="text-body">{CREW_JOB_WORDS.builds}</span>
                   <span className="text-line leading-4.5 text-muted-foreground">
                     {crewBuildsLine(mateName)}
                   </span>
@@ -280,7 +282,7 @@ function JobForm({
               <label className="flex cursor-pointer items-start gap-2.5">
                 <Radio className="mt-0.5" value="reviews" />
                 <span className="flex flex-col">
-                  <span className="text-sm">{CREW_JOB_WORDS.reviews}</span>
+                  <span className="text-body">{CREW_JOB_WORDS.reviews}</span>
                   <span className="text-line leading-4.5 text-muted-foreground">
                     {CREW_JOB_WORDS.reviewsLine}
                   </span>
@@ -290,33 +292,34 @@ function JobForm({
           </div>
         </div>
       )}
-      <button
-        aria-expanded={moreOpen}
-        className="crew-option mt-6"
-        data-crew-job-more
-        data-more=""
-        onClick={() => setMore((open) => !open)}
-        type="button"
-      >
-        <span className="flex min-w-0 flex-col">
-          <span className="font-medium text-sm leading-5">{CREW_JOB_WORDS.more}</span>
-          {moreOpen ? null : (
-            <span className="truncate text-line leading-4.5 text-muted-foreground">
-              {crewMoreSummary({
-                runsOn: runsOnLabel,
-                check: writes && draft.check.trim() !== "" ? draft.check.trim() : null,
-                run: writes && draft.run.trim() !== "" ? draft.run.trim() : null,
-              })}
-            </span>
-          )}
-        </span>
-        <ChevronDownIcon
-          aria-hidden="true"
-          className={
-            moreOpen ? "size-4 rotate-180 text-muted-foreground" : "size-4 text-muted-foreground"
+      <div className="mt-6">
+        <CrewChoice
+          end={
+            <ChevronDownIcon
+              aria-hidden="true"
+              className={moreOpen ? "size-4 rotate-180" : "size-4"}
+            />
           }
+          line={
+            moreOpen
+              ? null
+              : crewMoreSummary({
+                  runsOn: runsOnLabel,
+                  check: writes && draft.check.trim() !== "" ? draft.check.trim() : null,
+                  run: writes && draft.run.trim() !== "" ? draft.run.trim() : null,
+                })
+          }
+          render={
+            <button
+              aria-expanded={moreOpen}
+              data-crew-job-more=""
+              onClick={() => setMore((open) => !open)}
+              type="button"
+            />
+          }
+          title={CREW_JOB_WORDS.more}
         />
-      </button>
+      </div>
       {moreOpen ? (
         <div className="flex flex-col" data-crew-job-more-open>
           {isNew ? null : (
@@ -326,21 +329,23 @@ function JobForm({
           )}
           {tints.length === 0 ? null : (
             <CrewViewField label={CREW_JOB_WORDS.face}>
-              <span className="flex flex-wrap gap-2" role="radiogroup">
+              <ToggleGroup
+                aria-label={CREW_JOB_WORDS.face}
+                className="flex-wrap"
+                onValueChange={(picked) => {
+                  const tint = tints.find((option) => picked.includes(option));
+                  if (tint !== undefined) set("tint", tint);
+                }}
+                size="lg"
+                value={draft.tint ? [draft.tint] : []}
+                variant="ghost"
+              >
                 {tints.map((option) => (
-                  <button
-                    aria-checked={draft.tint === option}
-                    aria-label={option}
-                    className="rounded-full p-0.5 ring-offset-2 ring-offset-background aria-checked:ring-2 aria-checked:ring-ring"
-                    key={option}
-                    onClick={() => set("tint", option)}
-                    role="radio"
-                    type="button"
-                  >
+                  <ToggleGroupItem aria-label={option} key={option} value={option}>
                     <MateFace size={24} state="idle" tint={option} />
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </span>
+              </ToggleGroup>
             </CrewViewField>
           )}
           {/* What it is told past its job: one place for the job, the row's words (run 2). */}
@@ -462,30 +467,30 @@ function JobForm({
           {writes ? (
             <>
               <CrewViewField label={CREW_JOB_WORDS.setup}>
-                <input
+                <Input
                   aria-label={CREW_JOB_WORDS.setup}
-                  className="crew-field font-mono"
-                  data-line=""
+                  font="mono"
+                  size="lg"
                   onChange={(event) => set("setup", event.target.value)}
                   placeholder="npm ci"
                   value={draft.setup}
                 />
               </CrewViewField>
               <CrewViewField label={CREW_JOB_WORDS.check}>
-                <input
+                <Input
                   aria-label={CREW_JOB_WORDS.check}
-                  className="crew-field font-mono"
-                  data-line=""
+                  font="mono"
+                  size="lg"
                   onChange={(event) => set("check", event.target.value)}
                   placeholder="npm test"
                   value={draft.check}
                 />
               </CrewViewField>
               <CrewViewField label={CREW_JOB_WORDS.run}>
-                <input
+                <Input
                   aria-label={CREW_JOB_WORDS.run}
-                  className="crew-field font-mono"
-                  data-line=""
+                  font="mono"
+                  size="lg"
                   onChange={(event) => set("run", event.target.value)}
                   placeholder="npm run dev -- --host 0.0.0.0 --port $CREW_PORT"
                   value={draft.run}
@@ -544,10 +549,9 @@ function NameField({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <input
+      <Input
         aria-label={CREW_JOB_WORDS.name}
-        className="crew-field"
-        data-line=""
+        size="lg"
         onChange={(event) => set("displayName", event.target.value)}
         value={draft.displayName}
       />

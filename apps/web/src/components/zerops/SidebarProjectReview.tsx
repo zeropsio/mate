@@ -34,6 +34,7 @@ import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview, useReviewShown } from "~/zerops/review";
 import { gatedPortal } from "../ui/portal-gate";
 import { Button } from "../ui/button";
+import { Row } from "../ui/row";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -160,12 +161,16 @@ export function ProjectReviewTags({
     <span className="menu-tags-room">
       {tags}
       <span aria-hidden="true" className="menu-tags invisible" inert>
-        <span className="menu-tag menu-tag-review">
-          <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
+        <span data-menu-tag="">
+          <span className="menu-tag menu-tag-review">
+            <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
+          </span>
         </span>
         {offer.shown === undefined ? null : (
-          <span className="menu-tag menu-tag-release">
-            <ReleaseFace count={releaseCount(offer.shown).count} />
+          <span data-menu-tag="">
+            <span className="menu-tag menu-tag-release">
+              <ReleaseFace count={releaseCount(offer.shown).count} />
+            </span>
           </span>
         )}
       </span>
@@ -323,9 +328,9 @@ function ReleaseTag({
     <Tooltip>
       <TooltipTrigger
         render={
-          <button
+          <Button
             aria-label={`Release: ${tip}`}
-            className="menu-tag menu-tag-release"
+            data-menu-tag=""
             data-phase={phase}
             // Somebody else's to make: a door still, asking the person nothing.
             data-quiet={release.quiet === true ? "" : undefined}
@@ -334,11 +339,13 @@ function ReleaseTag({
             onClick={(event) => {
               openReview({ kind: "release", groupId }, { from: event.currentTarget });
             }}
-            type="button"
+            variant="bare"
           />
         }
       >
-        <ReleaseFace count={count} />
+        <span className="menu-tag menu-tag-release">
+          <ReleaseFace count={count} />
+        </span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
@@ -421,9 +428,9 @@ function ReviewTag({
           render={
             <PopoverPrimitive.Trigger
               render={
-                <button
+                <Button
                   aria-label={read.label}
-                  className="menu-tag menu-tag-review"
+                  data-menu-tag=""
                   // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
                   data-zerops-changes={listed.map((item) => item.key).join(" ")}
                   data-phase={phase}
@@ -432,13 +439,15 @@ function ReviewTag({
                   data-zerops-surface="sidebar-project-review"
                   inert={leaving}
                   ref={tag}
-                  type="button"
+                  variant="bare"
                 />
               }
             />
           }
         >
-          <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
+          <span className="menu-tag menu-tag-review">
+            <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
+          </span>
         </TooltipTrigger>
         {only === undefined ? null : (
           <TooltipPopup side="bottom">
@@ -605,7 +614,7 @@ function ReviewList({
   const together = reviewTogether(live);
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const current = activeKey !== undefined && keys.includes(activeKey) ? activeKey : keys[0];
-  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const buttons = useRef(new Map<string, HTMLElement>());
 
   // The focused item left: the focus moves to the one that now leads, never to the page.
   useLayoutEffect(() => {
@@ -619,7 +628,7 @@ function ReviewList({
 
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     if (keys.length === 0) return;
-    const onItem = [...buttons.current.values()].includes(event.target as HTMLButtonElement);
+    const onItem = [...buttons.current.values()].includes(event.target as HTMLElement);
     const at = !onItem || current === undefined ? -1 : keys.indexOf(current);
     let to: string | undefined;
     switch (event.key) {
@@ -712,7 +721,7 @@ function ReviewListItem({
   readonly together: boolean;
   readonly onFocus: () => void;
   readonly onOpen: () => void;
-  readonly refOf: (element: HTMLButtonElement | null) => void;
+  readonly refOf: (element: HTMLElement | null) => void;
 }) {
   const bylineId = useId();
   const [truncated, setTruncated] = useState(false);
@@ -732,23 +741,35 @@ function ReviewListItem({
       ? VIEW_CHANGE
       : standingPressLabel(item.standing, REVIEW_LABEL);
   return (
-    <button
+    <Row
       aria-describedby={bylineId}
       aria-label={`${verb} ${item.title}`}
-      className="menu-tagpop-item"
       // In full where it is the viewer's move; paler where it is somebody else's.
       data-mine={waits ? undefined : ""}
       data-standing={item.standing}
       data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
+      lead={<ReviewMaker by={item.by} />}
+      line={<span id={bylineId}>{reviewItemByline(item)}</span>}
+      meta={
+        // The row is the press; its verb wears the one Review look, or none where nothing is asked.
+        <Button
+          data-menu-tagpop-verb=""
+          render={<span aria-hidden="true" />}
+          size="xs"
+          variant={waits || together ? "ghost" : "secondary"}
+        >
+          {verb}
+        </Button>
+      }
       onClick={onOpen}
       onFocus={onFocus}
+      pressable
       ref={refOf}
+      render={<button type="button" />}
+      size="sm"
       tabIndex={current ? 0 : -1}
-      type="button"
-    >
-      <ReviewMaker by={item.by} />
-      <span className="menu-tagpop-text">
+      title={
         <Tooltip disabled={!truncated}>
           <TooltipTrigger
             render={
@@ -766,20 +787,8 @@ function ReviewListItem({
           </TooltipTrigger>
           <TooltipPopup side="top">{item.title}</TooltipPopup>
         </Tooltip>
-        <span className="menu-tagpop-by" id={bylineId}>
-          {reviewItemByline(item)}
-        </span>
-      </span>
-      {/* The row is the press; its verb wears the one Review look, or none where nothing is asked. */}
-      <Button
-        data-menu-tagpop-verb=""
-        render={<span aria-hidden="true" />}
-        size="xs"
-        variant={waits || together ? "ghost" : "secondary"}
-      >
-        {verb}
-      </Button>
-    </button>
+      }
+    />
   );
 }
 

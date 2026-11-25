@@ -51,22 +51,22 @@ const ICON_COMPONENT = {
 const PRESENTATION = {
   queued: {
     icon: ICON_MAP.queued,
-    className: "border-[var(--zerops-status-off)] text-[var(--zerops-status-off)]",
+    className: "border-status-off text-status-off",
     tone: "off",
   },
   running: {
     icon: ICON_MAP.running,
-    className: "border-[var(--zerops-status-busy)] text-[var(--zerops-status-busy)]",
+    className: "border-status-busy text-status-busy",
     tone: "busy",
   },
   done: {
     icon: ICON_MAP.done,
-    className: "border-[var(--zerops-status-ok)] text-[var(--zerops-status-ok)]",
+    className: "border-status-ok text-status-ok",
     tone: "ok",
   },
   failed: {
     icon: ICON_MAP.failed,
-    className: "border-[var(--zerops-status-failed)] text-[var(--zerops-status-failed)]",
+    className: "border-status-failed text-status-failed",
     tone: "failed",
   },
 } as const satisfies Record<
@@ -130,7 +130,7 @@ function ProcessSteps({
                 ) : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                <span className="shrink-0 text-muted-foreground text-caption tabular-nums">
                   {formatStepDuration(step.durationMs)}
                 </span>
               ) : null}
@@ -149,7 +149,7 @@ function ProcessSteps({
             <span
               aria-hidden="true"
               className={cn(
-                "inline-flex size-[var(--zerops-process-step-glyph-size)] items-center justify-center rounded-full border-[length:var(--zerops-process-step-border-width)]",
+                "inline-flex size-[var(--zerops-process-step-glyph-size)] items-center justify-center rounded-full border-2",
                 glyphClassName,
                 step.state === "running" && "animate-status-pulse motion-reduce:animate-none",
               )}
@@ -158,7 +158,7 @@ function ProcessSteps({
             </span>
             <span className="flex min-w-0 items-start justify-between gap-2">
               <span className="min-w-0">
-                <span className="block text-sm text-foreground">
+                <span className="block text-body text-foreground">
                   {step.label}
                   {step.note !== undefined ? (
                     <span className="text-muted-foreground"> · {step.note}</span>
@@ -167,7 +167,7 @@ function ProcessSteps({
                 {showStateLabel ? <MicroLabel>{step.stateLabel}</MicroLabel> : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 pt-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="shrink-0 pt-0.5 font-mono text-2xs text-muted-foreground tabular-nums">
                   {formatStepDuration(step.durationMs)}
                 </span>
               ) : null}

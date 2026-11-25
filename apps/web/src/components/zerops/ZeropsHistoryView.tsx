@@ -33,6 +33,7 @@ import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { Badge } from "~/components/ui/badge";
+import { InlineButton } from "~/components/ui/button";
 import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 
 /** What to call the things a history row names. */
@@ -107,7 +108,7 @@ export function ZeropsHistoryView({
         ))}
       </ul>
       {earlier === undefined ? null : (
-        <p className="py-2 pl-7.5 text-xs text-muted-foreground">{earlier}</p>
+        <p className="py-2 pl-7.5 text-caption text-muted-foreground">{earlier}</p>
       )}
     </>
   );
@@ -148,35 +149,32 @@ function HistoryRow({
       <span className="relative flex w-5 shrink-0 flex-col items-center self-stretch">
         {/* Pinned to the row's first line, never centred in it: a centred node
             slides down the rail as a two-line row grows. */}
-        <span
-          aria-hidden="true"
-          className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-[var(--zerops-rail)]"}
-        />
+        <span aria-hidden="true" className={first ? "h-3.5 w-px" : "h-3.5 w-px bg-rail"} />
         {/* A commit something is running is a stop on this line, so it is the
             same filled node the menu gives one; the rest are open. */}
         <span
           aria-hidden="true"
           className={
             live
-              ? "size-2 shrink-0 rounded-full bg-[var(--zerops-status-ok)]"
-              : "size-2 shrink-0 rounded-full border border-[var(--zerops-rail)] bg-[var(--app-theme-surface)]"
+              ? "size-2 shrink-0 rounded-full bg-status-ok"
+              : "size-2 shrink-0 rounded-full border border-rail"
           }
         />
         <span aria-hidden="true" className={last ? RAIL_BLANK : RAIL_LINE} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-2">
-        <span className="flex min-w-0 items-baseline gap-2">
+        <span className="flex min-w-0 items-baseline gap-2 text-body leading-5">
           {onOpenChange === undefined || change === null ? (
-            <span className="min-w-0 flex-1 truncate text-sm leading-5 font-medium">
+            <span className="min-w-0 flex-1 truncate text-body leading-5 font-medium">
               {entry.subject}
             </span>
           ) : (
-            <button
-              className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-1.5 rounded-sm text-left text-sm leading-5 font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            <InlineButton
+              className="min-w-0 flex-1 shrink"
               onClick={(event) => {
                 onOpenChange(change, event.currentTarget);
               }}
-              type="button"
+              tone="plain"
             >
               <span className="min-w-0 truncate">{entry.subject}</span>
               {/* What opens says so at rest: hover was the only sign this row had more in it,
@@ -186,46 +184,42 @@ function HistoryRow({
                 aria-hidden="true"
                 className="size-3.5 shrink-0 self-center text-muted-foreground/60"
               />
-            </button>
+            </InlineButton>
           )}
           {/* The name it went live under, where a release carried it: on a
               stop's Deploys the version in plain text beside a release role
               tag, as the stop's release rows draw it; the green chip elsewhere. */}
           {entry.tags.map((tag) =>
             here === undefined ? (
-              <span
-                className="shrink-0 rounded-full bg-[var(--zerops-status-ok-surface)] px-1.5 text-[11px] leading-[18px] font-medium text-[var(--zerops-status-ok-text)]"
-                data-zerops-surface="zerops-history-release"
-                key={tag}
-              >
+              <Badge data-zerops-surface="zerops-history-release" key={tag} tone="success">
                 {tag}
-              </span>
+              </Badge>
             ) : (
               <span
                 className="flex shrink-0 items-center gap-1.5 self-center"
                 data-zerops-surface="zerops-history-release"
                 key={tag}
               >
-                <span className="text-[13px] leading-5 text-foreground tabular-nums">{tag}</span>
+                <span className="text-line leading-5 text-foreground tabular-nums">{tag}</span>
                 <ZeropsRoleTag label="release" />
               </span>
             ),
           )}
-          <span className="shrink-0 font-mono text-[11px] leading-5 text-muted-foreground tabular-nums">
+          <span className="shrink-0 font-mono text-2xs leading-5 text-muted-foreground tabular-nums">
             <GitBrowserLink to={gitCommitLink(at, entry.sha)} tone="muted">
               {entry.shortSha}
             </GitBrowserLink>
           </span>
         </span>
         {runsHere ? (
-          <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">
+          <span className="flex min-w-0 items-center gap-2 text-caption leading-4 text-muted-foreground">
             <Badge className="shrink-0" dot tone="success">
               {RUNNING_HERE}
             </Badge>
             {line === undefined ? null : <span className="truncate">{line}</span>}
           </span>
         ) : line === undefined ? null : (
-          <span className="truncate text-xs leading-4 text-muted-foreground">{line}</span>
+          <span className="truncate text-caption leading-4 text-muted-foreground">{line}</span>
         )}
       </span>
     </li>
@@ -233,5 +227,5 @@ function HistoryRow({
 }
 
 function HistoryNote({ children }: { readonly children: React.ReactNode }) {
-  return <p className="py-6 text-center text-sm text-muted-foreground">{children}</p>;
+  return <p className="py-6 text-center text-body text-muted-foreground">{children}</p>;
 }

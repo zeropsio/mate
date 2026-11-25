@@ -4,7 +4,7 @@ import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topol
 import { useState } from "react";
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
-import { Button } from "./ui/button";
+import { Button, InlineButton } from "./ui/button";
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -98,14 +98,17 @@ function ServiceBrowserPanel({
         data-site-address-row
       >
         <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <a
-          className="min-w-0 flex-1 truncate px-1 text-muted-foreground text-xs hover:text-foreground"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
-        </a>
+        <span className="flex min-w-0 flex-1 px-1 text-caption">
+          <InlineButton
+            tone="muted"
+            className="max-w-full"
+            render={<a href={url} target="_blank" rel="noreferrer" />}
+          >
+            <span className="truncate font-normal">
+              {url.replace(/^https?:\/\//u, "").replace(/\/$/u, "")}
+            </span>
+          </InlineButton>
+        </span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -193,11 +196,11 @@ export function ServiceBrowserPanels({
             }
           />
         ) : (
-          <p className="p-4 text-sm text-muted-foreground">
+          <p className="p-4 text-body text-muted-foreground">
             Preview is available only for known service domains.{" "}
-            <a className="underline" href={surface.url} target="_blank" rel="noreferrer">
+            <InlineButton render={<a href={surface.url} rel="noreferrer" target="_blank" />}>
               Open in new tab
-            </a>
+            </InlineButton>
           </p>
         )}
       </div>

@@ -32,6 +32,7 @@ import { useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Row } from "../../ui/row";
 import { MateFace } from "../primitives";
 import { readFinishedWork } from "./CrewmateEmptyState.logic";
 import { CrewHeading, CrewTextButton, CrewTip } from "./CrewParts";
@@ -106,7 +107,7 @@ export function CrewInFensCode({
   return (
     <div className="mt-8.5 flex flex-col @max-md:mt-7.5" data-crew-in-code>
       <CrewHeading>{crewInCodeHeading(mateName)}</CrewHeading>
-      <div className="mt-1 flex flex-col">
+      <div className="mt-1 flex flex-col px-2.5">
         {shown.map((task) => {
           const owner = crewmates.find((mate) => mate.handle === task.owner);
           const when =
@@ -115,20 +116,20 @@ export function CrewInFensCode({
               : compactSidebarTimeLabel(formatRelativeTimeLabel(task.landedAt));
           return (
             <CrewTip key={task.id} tip={CREW_WHAT_CHANGED}>
-              <button
-                className="crew-code-row"
+              <Row
                 data-crew-in-code-task={task.id}
-                onClick={(event) => onReview(task.id, event.currentTarget)}
-                type="button"
-              >
-                <span className="flex justify-center">
-                  <MateFace size={20} state="idle" tint={owner?.tint ?? "slate"} />
-                </span>
-                <span className="crew-ink-2 truncate text-line leading-4.5">{task.title}</span>
-                <span className="text-line leading-4.5 tabular-nums text-muted-foreground">
-                  {when}
-                </span>
-              </button>
+                lead={<MateFace size={16} state="idle" tint={owner?.tint ?? "slate"} />}
+                meta={when}
+                pressable
+                render={
+                  <button
+                    onClick={(event) => onReview(task.id, event.currentTarget)}
+                    type="button"
+                  />
+                }
+                size="xs"
+                title={task.title}
+              />
             </CrewTip>
           );
         })}

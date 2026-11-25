@@ -1,5 +1,5 @@
 /**
- * A Mate's name, as the New Mate and New project dialogs ask it: the proposed name, taken whole
+ * A Mate's name, as the New Mate dialog and the New project page ask it: the proposed name, taken whole
  * by the first key typed over it, and — where the dialog can propose another — a die at the
  * field's end (board D1) for another name free on the account. A name rolled is a name typed:
  * the face follows it until a pick sticks.

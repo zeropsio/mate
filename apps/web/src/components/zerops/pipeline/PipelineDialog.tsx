@@ -219,7 +219,7 @@ function PipelineBody({
         <div className={hasOutput ? "grid gap-6 md:grid-cols-3" : "flex flex-col gap-6"}>
           <div className="min-w-0">
             {readout === undefined ? (
-              <p className="text-muted-foreground text-sm">Reading its steps…</p>
+              <p className="text-muted-foreground text-body">Reading its steps…</p>
             ) : (
               <PipelineTimeline
                 live={view.live}
@@ -294,7 +294,7 @@ function CancelBuildControl({
         {canceling ? "Cancelling…" : "Cancel build"}
       </Button>
       {trouble === null ? null : (
-        <p className="min-w-0 text-destructive-foreground text-sm" role="alert">
+        <p className="min-w-0 text-destructive-foreground text-body" role="alert">
           {trouble}
         </p>
       )}

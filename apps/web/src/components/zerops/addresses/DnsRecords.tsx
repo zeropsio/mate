@@ -60,7 +60,7 @@ export function DnsRecords({
   return (
     <div className="grid gap-2" data-dns-records="">
       <RecordTable found={found} records={all} rooted={roots.length > 1} />
-      <ul className="m-0 grid list-none gap-0.5 p-0 text-muted-foreground text-xs">
+      <ul className="m-0 grid list-none gap-0.5 p-0 text-muted-foreground text-caption">
         {roots.length === 0 ? null : (
           <li>
             <span className="font-mono text-foreground">@</span> means {namesWords(roots)} itself.
@@ -96,7 +96,7 @@ export function DnsRecords({
           </Button>
         </div>
         {ways ? (
-          <div className="grid gap-2.5 pt-1.5 text-muted-foreground text-xs">
+          <div className="grid gap-2.5 pt-1.5 text-muted-foreground text-caption">
             {oneRecord.length === 0 ? null : (
               <div className="grid gap-1.5" data-dns-way="cname">
                 <p>
@@ -174,13 +174,13 @@ function RecordTable({
   const beside = records.map((record) => record.name);
   return (
     <div
-      className="rounded-lg bg-muted/60 px-3 text-foreground text-sm"
+      className="rounded-card bg-muted/60 px-3 text-foreground text-body"
       data-dns-table=""
       role="table"
     >
       {/* A phone hides the header's line, not its names: each cell still has its column's. */}
       <div
-        className={`${COLUMNS} h-8 border-b border-border/70 text-muted-foreground text-xs max-sm:sr-only`}
+        className={`${COLUMNS} h-8 border-b border-border/70 text-muted-foreground text-caption max-sm:sr-only`}
         role="row"
       >
         <span role="columnheader">Type</span>
@@ -208,7 +208,7 @@ function RecordTable({
                 <RecordName beside={beside} name={record.name} rooted={rooted} />
               </span>
               <span
-                className="min-w-0 break-all font-mono max-sm:col-span-2 max-sm:row-start-2 max-sm:text-xs"
+                className="min-w-0 break-all font-mono max-sm:col-span-2 max-sm:row-start-2 max-sm:text-caption"
                 role="cell"
               >
                 {record.value}
@@ -218,7 +218,7 @@ function RecordTable({
                 role="cell"
               >
                 {there ? (
-                  <span className="me-1.5 inline-flex items-center gap-1 font-medium text-status-ok-text text-xs">
+                  <span className="me-1.5 inline-flex items-center gap-1 font-medium text-status-ok-text text-caption">
                     <CheckIcon aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
                     Found
                   </span>

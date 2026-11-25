@@ -37,7 +37,7 @@ export function ZeropsAccountControl({
       <MenuTrigger
         aria-label={`Account: ${account.name}`}
         render={<Button size="sm" variant="ghost" />}
-        className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
+        className="min-w-0"
         data-zerops-account-control="true"
       >
         <PersonAvatar
@@ -45,7 +45,7 @@ export function ZeropsAccountControl({
           picture={account.avatarUrl}
           size={24}
         />
-        <span className="hidden max-w-40 truncate text-sm font-normal sm:inline">
+        <span className="hidden max-w-40 truncate text-body font-normal sm:inline">
           {account.name}
         </span>
         <ChevronDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
@@ -77,11 +77,11 @@ export function ZeropsAccountMenu({
           size={32}
         />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate text-body font-medium text-foreground">
             {account.fullName ?? account.name}
           </p>
           {account.email === null ? null : (
-            <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+            <p className="truncate text-caption text-muted-foreground">{account.email}</p>
           )}
         </div>
       </div>

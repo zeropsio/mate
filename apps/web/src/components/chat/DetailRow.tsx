@@ -8,6 +8,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import { ElapsedSince } from "./ConversationRows";
@@ -58,48 +59,45 @@ export function DetailRow({
   /** It opens onto its own work elsewhere (a helper's card): the row is its button. */
   readonly onOpen?: (() => void) | undefined;
 }) {
-  const cells = (
-    <>
-      <span className="flex justify-center">
-        <ToneDot tone={tone} />
-      </span>
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span
-          className={cn(
-            "text-foreground",
-            long === "title" || word === undefined ? "min-w-0 truncate" : "shrink-0",
-          )}
-        >
-          {title}
-        </span>
-        {word === undefined ? null : long === "word" ? (
-          <Tooltip>
-            <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground" />}>
-              {word}
-            </TooltipTrigger>
-            <TooltipPopup className="max-w-md" side="bottom">
-              {word}
-            </TooltipPopup>
-          </Tooltip>
-        ) : (
-          <span className="shrink-0 text-muted-foreground">{word}</span>
+  const line = (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span
+        className={cn(
+          "text-foreground",
+          long === "title" || word === undefined ? "min-w-0 truncate" : "shrink-0",
         )}
+      >
+        {title}
       </span>
-      <span className="text-muted-foreground tabular-nums">{time}</span>
-    </>
+      {word === undefined ? null : long === "word" ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground" />}>
+            {word}
+          </TooltipTrigger>
+          <TooltipPopup className="max-w-md" side="bottom">
+            {word}
+          </TooltipPopup>
+        </Tooltip>
+      ) : (
+        <span className="shrink-0 text-muted-foreground">{word}</span>
+      )}
+    </span>
   );
+  const lead = <ToneDot tone={tone} />;
   return onOpen === undefined ? (
-    <li className="run-bar">{cells}</li>
+    <Row lead={lead} meta={time} render={<li />} size="bar" title={line} />
   ) : (
     <li>
-      <button
+      <Row
         aria-label={`${title}: ${word ?? TONE_SAID[tone]}. Open its work`}
-        className="run-bar cursor-pointer transition-colors hover:bg-foreground/4"
+        lead={lead}
+        meta={time}
         onClick={onOpen}
-        type="button"
-      >
-        {cells}
-      </button>
+        pressable
+        render={<button type="button" />}
+        size="bar"
+        title={line}
+      />
     </li>
   );
 }

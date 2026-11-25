@@ -20,12 +20,12 @@ export function ZeropsGitChangeRow({
       <div className="min-w-0 flex-1">
         {/* A phone reads a change's title whole, on two lines where one cuts it. */}
         <p
-          className="truncate text-sm max-sm:line-clamp-2 max-sm:whitespace-normal"
+          className="truncate text-body max-sm:line-clamp-2 max-sm:whitespace-normal"
           data-zerops-surface="pull-request-title"
         >
           {pull.title}
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
           <span>{line}</span>
           <span>{changeKindTag(pull)}</span>
           {status === undefined ? null : (

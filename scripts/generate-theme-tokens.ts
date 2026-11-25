@@ -9,8 +9,8 @@ import {
   type MobileThemeVariables,
 } from "@t3tools/shared/mobileThemeVariables";
 import {
-  BUILT_IN_THEMES,
   THEME_COLOR_ROLES,
+  WEB_THEME_ROLE_TOKENS,
   ZEROPS_THEME,
   type ThemeAppearance,
   type ThemeColors,
@@ -44,6 +44,11 @@ export const MOBILE_THEME_TOKEN_MARKERS = {
 export const WEB_SCALE_TOKEN_MARKERS = {
   start: "/* generated:scale-tokens start */",
   end: "/* generated:scale-tokens end */",
+} as const;
+
+export const WEB_THEME_COLOR_MARKERS = {
+  start: "/* generated:theme-colors start */",
+  end: "/* generated:theme-colors end */",
 } as const;
 
 export const WEB_MOTION_TOKEN_MARKERS = {
@@ -175,8 +180,8 @@ const renderBootPaletteProperties = (palette: BootPalette, indentation: string):
     `${indentation}sidebar: ${JSON.stringify(palette.sidebar)},`,
   ].join("\n");
 
-const renderDefaultThemePalettes = (): string => {
-  const lines = ["        const DEFAULT_THEME_PALETTES = {"];
+const renderThemePalettes = (): string => {
+  const lines = ["        const THEME_PALETTES = {"];
   for (const appearance of APPEARANCES) {
     lines.push(`          ${appearance}: {`);
     lines.push(
@@ -185,46 +190,6 @@ const renderDefaultThemePalettes = (): string => {
         "            ",
       ),
     );
-    lines.push("          },");
-  }
-  lines.push("        };");
-  return lines.join("\n");
-};
-
-const renderSplashColors = (): string => {
-  const lines = ["        const SPLASH_COLORS = {"];
-  for (const appearance of APPEARANCES) {
-    const colors = colorsForTheme(ZEROPS_THEME, appearance);
-    lines.push(
-      `          ${appearance}: {`,
-      `            background: ${JSON.stringify(themeColorToNativeColor(colors.canvas))},`,
-      `            foreground: ${JSON.stringify(themeColorToNativeColor(colors.text))},`,
-      `            accent: ${JSON.stringify(themeColorToNativeColor(colors.accent))},`,
-      `            sidebar: ${JSON.stringify(themeColorToNativeColor(colors.sidebar))},`,
-      "          },",
-    );
-  }
-  lines.push("        };");
-  return lines.join("\n");
-};
-
-const propertyName = (value: string): string =>
-  /^[a-z_$][\w$]*$/iu.test(value) ? value : JSON.stringify(value);
-
-const renderBuiltInThemePalettes = (): string => {
-  const lines = ["        const BUILT_IN_THEME_PALETTES = {"];
-  for (const theme of BUILT_IN_THEMES) {
-    lines.push(`          ${propertyName(theme.id)}: {`);
-    for (const appearance of APPEARANCES) {
-      lines.push(`            ${appearance}: {`);
-      lines.push(
-        renderBootPaletteProperties(
-          bootPalette(colorsForTheme(theme, appearance)),
-          "              ",
-        ),
-      );
-      lines.push("            },");
-    }
     lines.push("          },");
   }
   lines.push("        };");
@@ -241,19 +206,10 @@ const renderWebThemeTokens = (): string =>
     "      (() => {",
     '        const LIGHT_BACKGROUND = "#ffffff";',
     '        const DARK_BACKGROUND = "#0a0a0a";',
-    '        const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";',
-    '        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";',
     '        const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";',
-    '        const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";',
-    renderSplashColors(),
-    "        // These are the runtime defaults used to complete a custom palette",
-    "        // when a stored theme omits a role. Keep them separate from the",
-    "        // unselected splash so a partial custom theme does not flash generic",
-    "        // app colors before React mounts.",
-    renderDefaultThemePalettes(),
-    "        // This generated boot-time copy makes the selected theme visible before",
-    "        // the app has mounted.",
-    renderBuiltInThemePalettes(),
+    "        // This generated boot-time copy of the Zerops palette paints the first",
+    "        // frame in the colours the app then paints.",
+    renderThemePalettes(),
   ].join("\n");
 
 // The splash is the still, open mark — the same one the favicon and the
@@ -328,17 +284,42 @@ const renderWebMotionTokens = (): string =>
     `  --ease-in-out-strong: ${MOTION.easing.inOut};`,
   ].join("\n");
 
+// The Zerops palette as the stylesheet's semantic custom properties: light on the root, dark
+// under its `dark` variant. This is the only place the web's role colours are written.
+const renderWebThemeColors = (): string => {
+  const declarations = (appearance: ThemeAppearance, indentation: string): Array<string> => {
+    const colors = colorsForTheme(ZEROPS_THEME, appearance);
+    return THEME_COLOR_ROLES.flatMap((role) =>
+      WEB_THEME_ROLE_TOKENS[role].map((token) => `${indentation}${token}: ${colors[role]};`),
+    );
+  };
+  return [
+    ":root {",
+    ...declarations("light", "  "),
+    "",
+    "  @variant dark {",
+    ...declarations("dark", "    "),
+    "  }",
+    "}",
+  ].join("\n");
+};
+
 const projectWebStylesheetTokens = (source: string): string =>
   replaceGeneratedRegion(
     replaceGeneratedRegion(
-      source,
-      renderWebScaleTokens(),
+      replaceGeneratedRegion(
+        source,
+        renderWebScaleTokens(),
+        "apps/web/src/index.css",
+        WEB_SCALE_TOKEN_MARKERS,
+      ),
+      renderWebMotionTokens(),
       "apps/web/src/index.css",
-      WEB_SCALE_TOKEN_MARKERS,
+      WEB_MOTION_TOKEN_MARKERS,
     ),
-    renderWebMotionTokens(),
+    renderWebThemeColors(),
     "apps/web/src/index.css",
-    WEB_MOTION_TOKEN_MARKERS,
+    WEB_THEME_COLOR_MARKERS,
   );
 
 const renderVariant = (name: ThemeAppearance, variables: MobileThemeVariables): string => {

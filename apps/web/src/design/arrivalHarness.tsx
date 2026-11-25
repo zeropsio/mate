@@ -50,6 +50,7 @@ import {
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
 import { Dialog, DialogTrigger } from "~/components/ui/dialog";
+import { Textarea } from "~/components/ui/textarea";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { MateFace } from "~/components/zerops/primitives";
 import {
@@ -62,7 +63,6 @@ import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/Mat
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import type { Spoken } from "~/components/zerops/MateLinkLine";
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { type ArrivalService, type ArrivalStepInput } from "~/zerops/mateArrival";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -291,6 +291,13 @@ const recoveryFixtures: ReadonlyArray<readonly [string, MateRecovery]> = [
     "container-failed",
     { standing: { kind: "unknown" }, status: "ACTION_FAILED", process: undefined },
   ],
+  ...(["stopping", "stopped", "starting"] as const).map(
+    (stop) =>
+      [
+        stop,
+        { standing: { kind: "unknown" }, status: stop.toUpperCase(), process: undefined, stop },
+      ] as const,
+  ),
   [
     "disk-full",
     { standing: { kind: "unknown" }, status: "ACTIVE", process: undefined, diskFull: true },
@@ -770,11 +777,10 @@ function FixtureSignIn({
       onStart={onStart}
       onSubmitCode={onSubmitCode}
       terminal={(agentId) => (
-        <pre className="h-full overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-xs leading-4">
+        <pre className="h-full overflow-auto whitespace-pre-wrap break-all p-3 font-mono text-caption leading-4">
           {TERMINAL[agentId]}
         </pre>
       )}
-      usual={state.id === "colleague" ? null : "claude-code"}
       viewerSubject={ZeropsUserId.make("u-harness")}
       watching={state.watching === true}
     />
@@ -912,7 +918,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
         <MateLinkLineView
           onTryNow={askAgainLabel(voice.actions) === null ? undefined : () => undefined}
           processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
-          projects={<a href="#projects" />}
+          // The app fills this with the router's Link; the harness has no router, nowhere to go.
+          projects={<span />}
           projectUrl={WREN.projectUrl}
           voice={{ ...voice, text: null }}
         />
@@ -1138,11 +1145,9 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
       </div>
       {state.id === "empty" ? (
         <div className="shrink-0 px-6 pb-5" data-harness-composer>
-          <textarea
-            aria-label="Message Wren"
-            className="mx-auto block min-h-17.5 w-full max-w-3xl rounded-2xl border border-border bg-background p-4"
-            placeholder="Ask Wren to do something…"
-          />
+          <div className="mx-auto max-w-3xl">
+            <Textarea aria-label="Message Wren" placeholder="Ask Wren to do something…" />
+          </div>
         </div>
       ) : null}
       {state.dialog === undefined ? null : (
@@ -1181,7 +1186,7 @@ function Header({ state }: { readonly state: HarnessState }) {
         </span>
       ) : null}
       {state.crew === true ? (
-        <span className="ms-6 flex items-center gap-4 text-muted-foreground text-sm">
+        <span className="ms-6 flex items-center gap-4 text-muted-foreground text-body">
           <span>Conversation</span>
           <span className="font-medium text-foreground">Crew</span>
         </span>
@@ -1208,10 +1213,10 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 overflow-y-auto border-border border-r p-4"
+        className="flex shrink-0 flex-col items-start gap-1 overflow-y-auto border-border border-r p-4"
         style={{ width: 435 }}
       >
-        <p className="pb-1 text-muted-foreground text-xs">
+        <p className="pb-1 text-muted-foreground text-caption">
           A Mate's arrival — Direction A, sign-in S1
         </p>
         <div className="pb-2">
@@ -1220,16 +1225,16 @@ function Harness() {
           </Button>
         </div>
         {STATES.map((candidate) => (
-          <button
+          <Button
             aria-current={candidate.id === current ? "true" : undefined}
-            className="rounded-lg px-3 py-1.5 text-left text-sm aria-[current=true]:bg-accent"
             data-harness-state={candidate.id}
             key={candidate.id}
             onClick={() => setCurrent(candidate.id)}
-            type="button"
+            size="sm"
+            variant={candidate.id === current ? "secondary" : "ghost"}
           >
             {candidate.label}
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
@@ -1241,7 +1246,6 @@ function Harness() {
 }
 
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

@@ -88,7 +88,7 @@ export function ZeropsDataRowDrawer({
       </div>
 
       {addressable ? null : (
-        <p className="text-muted-foreground text-xs" data-zerops-data-row-unaddressable>
+        <p className="text-muted-foreground text-caption" data-zerops-data-row-unaddressable>
           This row can&rsquo;t be addressed.
         </p>
       )}
@@ -98,19 +98,19 @@ export function ZeropsDataRowDrawer({
           const detail = describeCell(record[name]);
           return (
             <div className="space-y-0.5" key={name}>
-              <dt className="text-muted-foreground text-xs" data-zerops-data-row-field={name}>
+              <dt className="text-muted-foreground text-caption" data-zerops-data-row-field={name}>
                 {name}
               </dt>
               <dd>
                 {detail.kind === "json" || detail.detail.includes("\n") ? (
                   <pre
-                    className="overflow-x-auto whitespace-pre-wrap break-words text-xs"
+                    className="overflow-x-auto whitespace-pre-wrap break-words text-caption"
                     data-zerops-data-row-value={name}
                   >
                     {detail.detail}
                   </pre>
                 ) : (
-                  <p className="break-words text-xs" data-zerops-data-row-value={name}>
+                  <p className="break-words text-caption" data-zerops-data-row-value={name}>
                     {detail.detail}
                   </p>
                 )}

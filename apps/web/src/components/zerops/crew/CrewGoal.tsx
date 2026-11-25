@@ -19,6 +19,7 @@ import { useState } from "react";
 import { withBrief } from "../../../zerops/crew/crewHome";
 import type { UseCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useCrewHome, type CrewHomeRead } from "../../../zerops/crew/useCrewHome";
+import { Input } from "../../ui/input";
 import { crewRewriteBlockers } from "./CrewEditors.logic";
 import { crewGoalFields, crewGoalMarkdown, type CrewGoalFields } from "./CrewGoal.logic";
 import { CrewPress } from "./CrewParts";
@@ -106,10 +107,10 @@ function GoalForm({
   return (
     <>
       <CrewViewField gap={22} label={CREW_GOAL_WORDS.titleField}>
-        <input
-          className="crew-field"
-          data-line=""
+        <Input
+          aria-label={CREW_GOAL_WORDS.titleField}
           onChange={(event) => set("title", event.target.value)}
+          size="lg"
           value={fields.title}
         />
       </CrewViewField>

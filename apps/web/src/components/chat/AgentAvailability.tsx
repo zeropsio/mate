@@ -8,6 +8,7 @@ import { CircleAlertIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import type { ProviderAvailability } from "./providerAvailability.logic";
@@ -26,19 +27,14 @@ export function AvailabilityDot({
   /** On an icon's top-right corner, rather than in the line. */
   readonly corner?: boolean;
 }) {
+  const tone = availability.tone === "error" ? "danger" : "warning";
+  if (!corner)
+    return <Badge aria-label={availability.title} className="me-2 align-middle" dot tone={tone} />;
+  // On an icon's top-right corner, ringed by the control's ground: a mark on a thing, not a label.
   return (
-    <span
-      role="img"
-      aria-label={availability.title}
-      data-tone={availability.tone}
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        corner
-          ? "absolute -top-0.5 -right-0.5 ring-2 ring-(--contrast-input)"
-          : "me-2 inline-block align-middle",
-        availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-      )}
-    />
+    <span className="absolute -top-1 -right-1 flex rounded-full ring-2 ring-(--contrast-input)">
+      <Badge aria-label={availability.title} dot tone={tone} />
+    </span>
   );
 }
 
@@ -58,7 +54,7 @@ export function AvailabilityNote({
 }) {
   return (
     <div
-      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-xs leading-snug"
+      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-caption leading-snug"
       data-agent-availability=""
     >
       <span

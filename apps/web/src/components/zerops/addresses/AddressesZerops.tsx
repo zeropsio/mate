@@ -6,6 +6,7 @@
 import type { AddressDomain, PlaceAddresses, ZeropsAddress } from "@t3tools/client-runtime/data";
 import { ArrowUpRightIcon } from "lucide-react";
 
+import { InlineButton } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { Switch } from "../../ui/switch";
 import { keepsWorking } from "./addresses.logic";
@@ -187,14 +188,13 @@ function HostLink({
 }) {
   const named = host.host.startsWith(`${service}-`) || host.host.startsWith(`${service}.`);
   return (
-    <a
-      className="inline-flex min-w-0 max-w-full items-center gap-1 hover:underline"
-      href={host.url}
-      rel="noreferrer"
-      target="_blank"
+    <InlineButton
+      className="min-w-0 max-w-full"
+      render={<a href={host.url} rel="noreferrer" target="_blank" />}
+      tone="plain"
     >
       {/* Its size is set here, around the mono face's own: every address of a service is one size. */}
-      <span className="min-w-0 truncate text-sm max-sm:text-xs">
+      <span className="min-w-0 truncate text-body max-sm:text-caption">
         <span className="real-name">
           <span className="font-medium">{named ? service : host.host}</span>
           {named ? (
@@ -203,6 +203,6 @@ function HostLink({
         </span>
       </span>
       <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
-    </a>
+    </InlineButton>
   );
 }

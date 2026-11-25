@@ -23,6 +23,7 @@ import { threadStatusPill, type ThreadStatusPill } from "~/zerops/statusPill";
 import { THREAD_STATUS_TONE_CLASSES } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
+import { InlineButton } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 interface PrStatusIndicator {
@@ -61,23 +62,26 @@ export function linkedPullRequestIndicator(
 export function LinkedPullRequestLink(props: {
   readonly indicator: LinkedPullRequestIndicator;
   readonly children?: ReactNode;
-  readonly className?: string;
   readonly onClick?: MouseEventHandler<HTMLAnchorElement>;
 }) {
   return (
-    <a
-      href={props.indicator.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onPointerDown={(event) => event.stopPropagation()}
-      onClick={props.onClick}
-      className={
-        props.className ?? "shrink-0 text-muted-foreground text-xs tabular-nums hover:underline"
-      }
-      aria-label={props.indicator.tooltip}
-    >
-      {props.children ?? props.indicator.label}
-    </a>
+    <span className="shrink-0 text-caption tabular-nums">
+      <InlineButton
+        tone="muted"
+        render={
+          <a
+            href={props.indicator.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={props.onClick}
+            aria-label={props.indicator.tooltip}
+          />
+        }
+      >
+        {props.children ?? props.indicator.label}
+      </InlineButton>
+    </span>
   );
 }
 
@@ -101,7 +105,7 @@ export function prStatusIndicator(
   if (pr.state === "open") {
     return {
       label: `${presentation.shortName} open`,
-      colorClass: "text-emerald-600 dark:text-emerald-300/90",
+      colorClass: "text-status-busy-text",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -111,7 +115,7 @@ export function prStatusIndicator(
   if (pr.state === "closed") {
     return {
       label: `${presentation.shortName} closed`,
-      colorClass: "text-red-600 dark:text-red-300/90",
+      colorClass: "text-muted-foreground",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -121,7 +125,7 @@ export function prStatusIndicator(
   if (pr.state === "merged") {
     return {
       label: `${presentation.shortName} merged`,
-      colorClass: "text-violet-600 dark:text-violet-300/90",
+      colorClass: "text-status-ok-text",
       tooltip,
       tooltipLead,
       tooltipTitle: pr.title,
@@ -357,7 +361,7 @@ export function terminalStatusFromRunningIds(
   }
   return {
     label: "Terminal process running",
-    colorClass: "text-teal-600 dark:text-teal-300/90",
+    colorClass: "text-status-busy-text",
     pulse: true,
   };
 }
@@ -423,7 +427,7 @@ function ThreadStatusLabel({
             <span
               role="img"
               aria-label={status.label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.colorClass}`}
+              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.textClass}`}
             />
           }
         >
@@ -445,7 +449,7 @@ function ThreadStatusLabel({
           <span
             role="img"
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-3xs ${tone.colorClass}`}
+            className={`inline-flex items-center gap-1 text-3xs ${tone.textClass}`}
           />
         }
       >

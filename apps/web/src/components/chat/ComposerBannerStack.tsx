@@ -16,8 +16,6 @@ export interface ComposerBannerStackItem {
   readonly title: ReactNode;
   readonly description?: ReactNode;
   readonly actions?: ReactNode;
-  readonly className?: string;
-  readonly actionClassName?: string;
   readonly dismissLabel?: string;
   readonly onDismiss?: () => void;
 }
@@ -90,14 +88,16 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
             <div className="relative">
               {hasStack && !expanded ? (
                 // The edge of the next notice peeks above the front one; a click opens the stack.
-                <button
-                  type="button"
-                  className="chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5"
+                <Button
+                  className="absolute inset-x-0 -top-3 z-0 h-3 after:absolute after:inset-x-0 after:-top-2 after:h-5"
                   aria-label={`Show ${items.length - 1} more ${items.length === 2 ? "notice" : "notices"}`}
                   aria-expanded={false}
                   aria-controls={detailsId}
                   onClick={() => setExpanded(true)}
-                />
+                  variant="bare"
+                >
+                  <span className="chat-composer-banner-stack-cap mx-auto block h-full rounded-t-card border border-b-0" />
+                </Button>
               ) : null}
               <ComposerBannerStackAlert
                 item={frontItem}
@@ -167,29 +167,24 @@ function ComposerBannerStackAlert({
     </Button>
   ) : null;
 
-  return (
+  const alert = (
     <Alert
       variant={item.variant}
       layout={item.layout ?? "row"}
-      className={cn(
-        attached
-          ? "chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4"
-          : "alert-glass rounded-2xl",
-        item.className,
-      )}
-      data-variant={item.variant}
+      surface={attached ? "bare" : "glass"}
+      // In the drawer the notice's words end a step above the drawer's open bottom edge.
+      className={attached ? "mb-1.5" : undefined}
     >
       {item.icon}
       <AlertTitle>{item.title}</AlertTitle>
       {item.description ? <AlertDescription>{item.description}</AlertDescription> : null}
       {item.actions || item.onDismiss || stackToggle ? (
         <AlertAction
-          className={cn(
-            item.actionClassName,
+          className={
             dismissOnly
               ? "max-sm:col-start-3 max-sm:row-start-1 max-sm:mt-0 max-sm:self-start"
-              : undefined,
-          )}
+              : undefined
+          }
         >
           {stackToggle}
           {item.actions}
@@ -197,5 +192,18 @@ function ComposerBannerStackAlert({
         </AlertAction>
       ) : null}
     </Alert>
+  );
+
+  // The front notice is set in the composer's drawer, which draws its surface and tints it from
+  // data-variant; the expanded ones float as glass.
+  return attached ? (
+    <div
+      className="chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 text-caption sm:px-4"
+      data-variant={item.variant}
+    >
+      {alert}
+    </div>
+  ) : (
+    alert
   );
 }

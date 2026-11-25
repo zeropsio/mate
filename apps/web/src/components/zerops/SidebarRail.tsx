@@ -71,6 +71,7 @@ import {
 } from "./SidebarRail.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
+import { Button } from "../ui/button";
 
 export const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
@@ -352,17 +353,29 @@ function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid
   );
 }
 
+/** What a rail press draws, the menu's own looks: a tile, a group's kid, the menu's opener. */
+const RAIL_LOOK = {
+  tile: "menu-rail-tile",
+  kid: "menu-rail-kid",
+  open: "menu-rail-open",
+} as const;
+
+/** A rail press: the kit's bare press around its look, which keys its hover and current on it. */
 function RailControl({
   tip,
+  look,
   children,
   ...button
 }: {
   readonly tip: ReactNode;
+  readonly look: keyof typeof RAIL_LOOK;
   readonly children: ReactNode;
-} & ComponentProps<"button">) {
+} & Omit<ComponentProps<"button">, "className">) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<button type="button" {...button} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button data-rail-press="" variant="bare" {...button} />}>
+        <span className={RAIL_LOOK[look]}>{children}</span>
+      </TooltipTrigger>
       <TooltipPopup side="right">{tip}</TooltipPopup>
     </Tooltip>
   );
@@ -438,7 +451,7 @@ function RailTileView({
         <RailControl
           aria-current={tile.current ? "page" : undefined}
           aria-label={comingLabel(tile, projectName)}
-          className="menu-rail-tile"
+          look="tile"
           data-current={tile.current ? "" : undefined}
           data-zerops-surface="sidebar-rail-mate"
           onClick={press}
@@ -470,7 +483,7 @@ function RailTileView({
         <RailControl
           aria-current={tile.current ? "page" : undefined}
           aria-label={mateLabel(mate)}
-          className="menu-rail-tile"
+          look="tile"
           data-current={tile.current ? "" : undefined}
           data-zerops-surface="sidebar-rail-mate"
           onClick={press}
@@ -505,7 +518,7 @@ function RailTileView({
         aria-label={`${name}, ${String(tile.mates.length + tile.coming.length)} Mates${
           tile.dot === undefined ? "" : `, ${railDotWords(tile.dot)}`
         }`}
-        className="menu-rail-tile"
+        look="tile"
         data-current={tile.current ? "" : undefined}
         data-zerops-surface="sidebar-rail-group"
         onClick={press}
@@ -554,7 +567,7 @@ function RailTileView({
               <RailControl
                 aria-current={current ? "page" : undefined}
                 aria-label={mateLabel(mate)}
-                className="menu-rail-kid"
+                look="kid"
                 data-current={current ? "" : undefined}
                 data-zerops-surface="sidebar-rail-mate"
                 key={mate.projectId}
@@ -576,7 +589,7 @@ function RailTileView({
               <RailControl
                 aria-current={current ? "page" : undefined}
                 aria-label={comingLabel(coming, name)}
-                className="menu-rail-kid"
+                look="kid"
                 data-current={current ? "" : undefined}
                 data-zerops-surface="sidebar-rail-mate"
                 key={`coming:${member.intent ?? member.projectId}`}
@@ -640,34 +653,48 @@ export function SidebarRail({
   const head = chief ?? (
     // Without a Chief the mark leads to the overview, what waits on the viewer on its corner.
     <div className="menu-rail-chief">
-      <RailControl
-        aria-current={overviewCurrent ? "page" : undefined}
-        aria-label="Overview"
-        className="menu-rail-head"
-        data-current={overviewCurrent ? "" : undefined}
-        data-zerops-surface="sidebar-rail-overview"
-        onClick={onOverview}
-        tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
-      >
-        <MateMark awake playful className="h-8.25 w-7" />
-      </RailControl>
-      {waiting.length === 0 ? null : (
-        <SidebarWaitingPopover
-          items={waiting}
-          tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
-          trigger={
-            <button
-              aria-label={words.label}
-              className="menu-rail-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-rail-waiting"
-              type="button"
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-current={overviewCurrent ? "page" : undefined}
+              aria-label="Overview"
+              data-current={overviewCurrent ? "" : undefined}
+              data-zerops-surface="sidebar-rail-overview"
+              onClick={onOverview}
+              variant="bare"
             />
           }
-          verbs={verbs}
         >
-          {waiting.length}
-        </SidebarWaitingPopover>
+          <span className="menu-rail-head">
+            <MateMark awake playful className="h-8.25 w-7" />
+          </span>
+        </TooltipTrigger>
+        <TooltipPopup side="right">
+          <RailTip line={headline} name="Overview" shortcut="⌥0" />
+        </TooltipPopup>
+      </Tooltip>
+      {waiting.length === 0 ? null : (
+        // The count's seat on the tile's corner, cut out of the tile by the menu's ground.
+        <span className="menu-rail-count">
+          <SidebarWaitingPopover
+            items={waiting}
+            tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
+            trigger={
+              <Button
+                aria-label={words.label}
+                data-waiting-trigger=""
+                data-zerops-surface="sidebar-rail-waiting"
+                shape="round"
+                size="2xs"
+                variant="warning"
+              />
+            }
+            verbs={verbs}
+          >
+            {waiting.length}
+          </SidebarWaitingPopover>
+        </span>
       )}
     </div>
   );
@@ -700,7 +727,7 @@ export function SidebarRail({
           {account}
           <RailControl
             aria-label="Open the menu"
-            className="menu-rail-open"
+            look="open"
             data-zerops-surface="sidebar-rail-open"
             onClick={onOpenMenu}
             tip={<RailTip name="Open the menu" shortcut={openShortcut} />}

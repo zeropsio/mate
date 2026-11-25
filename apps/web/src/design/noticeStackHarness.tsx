@@ -14,7 +14,6 @@ import {
   type ComposerBannerStackItem,
 } from "~/components/chat/ComposerBannerStack";
 import { Button } from "~/components/ui/button";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
@@ -49,14 +48,14 @@ function Composer({
 }) {
   return (
     <section className="flex w-full max-w-3xl flex-col gap-2">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-caption font-medium text-muted-foreground">{label}</span>
       <div className="pt-6">
         <ComposerBannerStack className="relative z-0" items={items} />
         <div
-          className="relative z-10 w-full overflow-hidden rounded-3xl border border-border bg-card"
+          className="relative z-10 w-full overflow-hidden rounded-sheet border border-border bg-card"
           data-chat-composer-main-surface="true"
         >
-          <div className="px-4 pt-3 pb-12 text-placeholder text-sm">
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">
             Describe what you want to build or change…
           </div>
         </div>
@@ -74,7 +73,7 @@ function Harness() {
   );
 }
 
-applyThemePalette(ZEROPS_THEME_ID, appearance);
+document.documentElement.classList.toggle("dark", appearance === "dark");
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

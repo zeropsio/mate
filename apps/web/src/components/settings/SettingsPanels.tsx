@@ -51,13 +51,7 @@ import {
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
 import { isElectron } from "../../env";
-import { useCustomThemes } from "../../hooks/useCustomThemes";
-import {
-  readAppearanceModePreference,
-  readThemeHalves,
-  readThemePreference,
-  useTheme,
-} from "../../hooks/useTheme";
+import { readAppearanceModePreference, useTheme } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { expressLabNote } from "../express/expressGate.logic";
@@ -126,9 +120,9 @@ import {
 } from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ThemeLibrary } from "./ThemeSettings";
 import { WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
 import {
   backgroundActivityOverrideSettings,
@@ -453,15 +447,7 @@ function AboutVersionSection() {
 }
 
 export function useSettingsRestore(onRestored?: () => void) {
-  const {
-    theme,
-    setTheme,
-    followSystem,
-    setFollowSystem,
-    setThemeHalf,
-    clearThemeHalves,
-    themeHalves,
-  } = useTheme();
+  const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -479,9 +465,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
   const changedSettingLabels = useMemo(
     () => [
-      ...(theme !== "system" ? ["Theme"] : []),
-      ...(!followSystem ? ["Follow system"] : []),
-      ...(themeHalves !== null ? ["Theme mix"] : []),
+      ...(appearanceMode !== "system" ? ["Color scheme"] : []),
       ...(settings.appearanceContrast !== DEFAULT_UNIFIED_SETTINGS.appearanceContrast
         ? ["Contrast"]
         : []),
@@ -574,9 +558,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.inAppNotificationsEnabled,
       settings.sendShortcut,
       settings.wordWrap,
-      followSystem,
-      theme,
-      themeHalves,
+      appearanceMode,
     ],
   );
 
@@ -591,55 +573,17 @@ export function useSettingsRestore(onRestored?: () => void) {
     );
     if (!confirmed) return;
 
-    // Only touch the theme keys that are actually dirty, so a theme-storage
-    // failure cannot block restoring unrelated settings. Preferences are
-    // re-read after the confirmation dialog: they may have changed (another
-    // tab, an OS flip) while it was open, and rollback must restore the live
-    // values rather than the ones captured at render time.
-    let previousTheme = theme;
-    try {
-      previousTheme = readThemePreference();
-    } catch {
-      // Storage is unreadable; the render-time value is the best rollback.
-    }
-    // The mix may have changed while the confirmation dialog was open; both
-    // the dirty check and the rollback must see the live value.
-    const liveHalves = readThemeHalves();
-    const needsThemeReset = previousTheme !== "system";
-    const needsMixReset = liveHalves !== null;
-    // Same for the appearance mode: trusting the render-time value would skip
-    // the reset and report success while a non-system mode stayed in storage.
-    const needsFollowSystemReset = readAppearanceModePreference(previousTheme) !== "system";
-    const notifyThemeRestoreFailure = () => {
+    // The stored scheme is re-read after the confirmation dialog: another tab
+    // or this one may have changed it while the dialog was open. A failed
+    // write leaves the other settings unrestored too.
+    if (readAppearanceModePreference() !== "system" && !setAppearanceMode("system")) {
       toastManager.add(
         stackedThreadToast({
           type: "error",
-          title: "Couldn’t restore theme settings",
+          title: "Couldn’t restore the color scheme",
           description: "Try again.",
         }),
       );
-    };
-    // Rollback restores the base preference first (which clears any mix) and
-    // then re-applies the captured mix on top, so no failure path can leave
-    // the pair of keys half-restored.
-    const previousHalves = liveHalves;
-    const rollbackThemeState = () => {
-      if (needsThemeReset) setTheme(previousTheme);
-      if (previousHalves?.light) setThemeHalf("light", previousHalves.light);
-      if (previousHalves?.dark) setThemeHalf("dark", previousHalves.dark);
-    };
-    if (needsThemeReset && !setTheme("system")) {
-      notifyThemeRestoreFailure();
-      return;
-    }
-    if (needsMixReset && !clearThemeHalves()) {
-      rollbackThemeState();
-      notifyThemeRestoreFailure();
-      return;
-    }
-    if (needsFollowSystemReset && !setFollowSystem(true)) {
-      rollbackThemeState();
-      notifyThemeRestoreFailure();
       return;
     }
     updateSettings({
@@ -678,17 +622,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
     });
     onRestored?.();
-  }, [
-    changedSettingLabels,
-    clearThemeHalves,
-    onRestored,
-    setFollowSystem,
-    setTheme,
-    setThemeHalf,
-    theme,
-    themeHalves,
-    updateSettings,
-  ]);
+  }, [changedSettingLabels, onRestored, setAppearanceMode, updateSettings]);
 
   return {
     changedSettingLabels,
@@ -730,11 +664,11 @@ function BackgroundActivityAdvancedDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
-          <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
+          <div className="overflow-hidden rounded-card border bg-card text-card-foreground">
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Shared policy</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Shared policy</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Controls whether background work may run after a subscribed interval fires.
                 </p>
               </div>
@@ -771,8 +705,8 @@ function BackgroundActivityAdvancedDialog({
 
             <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Git fetch interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Git fetch interval</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Refresh remote branch status in the background.
                 </p>
               </div>
@@ -803,14 +737,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase Git fetch interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Provider health interval</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Provider health interval</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Refresh provider availability, versions, auth state, and model metadata.
                 </p>
               </div>
@@ -841,14 +775,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase provider health interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Host power monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Host power monitor</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Poll host power state while clients are active.
                 </p>
               </div>
@@ -879,14 +813,14 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase active host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1">
-                <div className="text-sm font-medium">Idle host monitor</div>
-                <p className="text-xs leading-relaxed text-muted-foreground">
+                <div className="text-body font-medium">Idle host monitor</div>
+                <p className="text-caption leading-relaxed text-muted-foreground">
                   Poll host power state when no foreground client is active.
                 </p>
               </div>
@@ -917,7 +851,7 @@ function BackgroundActivityAdvancedDialog({
                     <NumberFieldIncrement aria-label="Increase idle host power interval" />
                   </NumberFieldGroup>
                 </NumberField>
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-caption text-muted-foreground">seconds</span>
               </div>
             </div>
 
@@ -927,7 +861,7 @@ function BackgroundActivityAdvancedDialog({
                   key={key}
                   className="flex items-center justify-between gap-3 border-b px-4 py-3 last:border-b-0 sm:border-r sm:even:border-r-0"
                 >
-                  <span className="text-sm font-medium">{label}</span>
+                  <span className="text-body font-medium">{label}</span>
                   <Switch
                     checked={resolvedBackgroundActivity[key]}
                     onCheckedChange={(checked) =>
@@ -962,19 +896,14 @@ function BackgroundActivityAdvancedDialog({
   );
 }
 
+const COLOR_SCHEMES = [
+  { mode: "system", label: "System" },
+  { mode: "light", label: "Light" },
+  { mode: "dark", label: "Dark" },
+] as const;
+
 export function AppearanceSettingsPanel() {
-  const {
-    appearanceMode,
-    refreshTheme,
-    resolvedTheme,
-    setAppearanceMode,
-    setTheme,
-    setThemeHalf,
-    theme,
-    themeHalves,
-  } = useTheme();
-  const customThemes = useCustomThemes();
-  const [isImportThemeOpen, setIsImportThemeOpen] = useState(false);
+  const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
   const glassOpacityRatio =
@@ -994,21 +923,34 @@ export function AppearanceSettingsPanel() {
   return (
     <SettingsPageContainer>
       <SettingsSection id="appearance" title="Appearance">
-        <div id={searchableSetting("theme").id}>
-          <ThemeLibrary
-            appearanceMode={appearanceMode}
-            customThemes={customThemes}
-            initialAppearance={resolvedTheme}
-            refreshTheme={refreshTheme}
-            isImportOpen={isImportThemeOpen}
-            setAppearanceMode={setAppearanceMode}
-            setTheme={setTheme}
-            setThemeHalf={setThemeHalf}
-            theme={theme}
-            themeHalves={themeHalves}
-            onImportOpenChange={setIsImportThemeOpen}
-          />
-        </div>
+        <SettingsRow
+          {...searchableSetting("color-scheme")}
+          description="Light, dark, or the same as your system."
+          control={
+            <ToggleGroup
+              aria-label="Color scheme"
+              onValueChange={(next) => {
+                const picked = COLOR_SCHEMES.find((scheme) => scheme.mode === next[0]);
+                if (picked === undefined || setAppearanceMode(picked.mode)) return;
+                toastManager.add(
+                  stackedThreadToast({
+                    type: "error",
+                    title: "Couldn’t save the color scheme",
+                    description: "Try again.",
+                  }),
+                );
+              }}
+              value={[appearanceMode]}
+              variant="segmented"
+            >
+              {COLOR_SCHEMES.map((scheme) => (
+                <Toggle key={scheme.mode} value={scheme.mode}>
+                  {scheme.label}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          }
+        />
 
         <SettingsRow
           {...searchableSetting("setting-appearance-contrast")}
@@ -1028,7 +970,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="appearance-contrast"
               >
                 {settings.appearanceContrast}%
@@ -1074,7 +1016,7 @@ export function AppearanceSettingsPanel() {
           control={
             <div className="flex w-full items-center gap-3 sm:w-52">
               <output
-                className="min-w-12 rounded-md bg-muted px-2 py-1 text-center font-mono text-xs font-medium tabular-nums text-foreground"
+                className="min-w-12 rounded-control bg-muted px-2 py-1 text-center font-mono text-caption font-medium tabular-nums text-foreground"
                 htmlFor="glass-opacity"
               >
                 {settings.glassOpacity}%
@@ -1460,7 +1402,7 @@ function TypographySection() {
     <SettingsSection
       title="Typography"
       headerAction={
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-muted-foreground">
+        <label className="flex cursor-pointer items-center gap-2 text-caption font-medium text-muted-foreground">
           Advanced
           <Switch
             checked={advanced}
@@ -1755,7 +1697,7 @@ function FoldedSettingsSection({
     <section className="space-y-3">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="group flex min-h-8 w-full items-center gap-2 px-3 sm:px-4">
-          <h2 className="text-lg font-semibold tracking-[-0.025em] text-muted-foreground transition-colors group-hover:text-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-muted-foreground transition-colors group-hover:text-foreground">
             {title}
           </h2>
           <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90" />
@@ -2510,7 +2452,7 @@ export function GeneralSettingsPanel() {
           }
           control={
             !hasTextGenerationProvider ? (
-              <span className="text-sm text-muted-foreground">
+              <span className="text-body text-muted-foreground">
                 No text generation providers available.
               </span>
             ) : (
@@ -2698,7 +2640,7 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
-      <p className="text-xs text-muted-foreground max-sm:px-3">
+      <p className="text-caption text-muted-foreground max-sm:px-3">
         Only Mates the app is connected to.
       </p>
       {archivedGroups.length === 0 ? (

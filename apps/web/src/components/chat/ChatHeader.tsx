@@ -39,7 +39,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
-import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Button, InlineButton } from "../ui/button";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
@@ -580,13 +581,11 @@ export const ChatHeader = memo(function ChatHeader({
   // upstream's header, in place of the title.
   const renameInput = (over: boolean) =>
     renamingTitle === null ? null : (
-      <input
+      <Input
         autoFocus
         aria-label="Thread title"
-        className={cn(
-          "min-w-0 flex-1 text-sm font-medium text-foreground outline-none ring-1 ring-ring/50 focus:ring-ring",
-          over ? "h-8 rounded-lg bg-background px-2" : "rounded-sm bg-transparent",
-        )}
+        className="min-w-0 flex-1"
+        unstyled={!over}
         defaultValue={renamingTitle}
         onBlur={(event) => {
           if (renameCommittedRef.current) return;
@@ -604,15 +603,15 @@ export const ChatHeader = memo(function ChatHeader({
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
+            <InlineButton
               ref={titleButtonRef}
-              type="button"
               aria-label={`Thread actions for ${headline}`}
               aria-haspopup="menu"
               onClick={openMenuFromTitle}
               onDoubleClick={handleTitleDoubleClick}
               onBlur={cancelPendingTitleMenu}
-              className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              className="group/thread-title min-w-0 max-w-full shrink text-left"
+              tone="plain"
             />
           }
         >
@@ -782,11 +781,11 @@ export const ChatHeader = memo(function ChatHeader({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <button
-                          type="button"
+                        <InlineButton
                           aria-label={`New thread in ${activeProjectName}`}
                           onClick={onNewThreadInProject}
-                          className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                          className="min-w-0 shrink"
+                          tone="muted"
                         />
                       }
                     >

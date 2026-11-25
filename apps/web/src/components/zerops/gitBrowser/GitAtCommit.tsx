@@ -11,7 +11,7 @@ import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 /** Missing commit facts are pending, not evidence of an empty branch. */
 export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
   return (
-    <p className="text-sm text-muted-foreground">
+    <p className="text-body text-muted-foreground">
       {pending === true ? "Commit metadata is pending." : "No commits on this branch yet."}
     </p>
   );
@@ -20,7 +20,7 @@ export function GitNoCommit({ pending }: { readonly pending?: boolean | undefine
 /** A read not answered yet: reading, or waiting for HQ before it can. */
 function GitReading({ busy, words }: { readonly busy: boolean; readonly words: string }) {
   return (
-    <p className="text-sm text-muted-foreground" role="status">
+    <p className="text-body text-muted-foreground" role="status">
       {busy ? words : "Waiting for HQ…"}
     </p>
   );
@@ -66,7 +66,7 @@ export function GitReadStopped({
   readonly onAgain: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 text-body">
       <p className="text-status-failed" role="alert">
         {words ?? troubleWords(view)}
       </p>
@@ -137,7 +137,7 @@ export function GitAtCommit({
 }) {
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-3 text-body text-muted-foreground">
         <GitNoCommit pending={home.answer.pending} />
         <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
       </div>
@@ -146,7 +146,7 @@ export function GitAtCommit({
     );
   if (home.state === "unread")
     return (
-      <p className="text-sm text-muted-foreground" role="status">
+      <p className="text-body text-muted-foreground" role="status">
         Reading the repository…
       </p>
     );

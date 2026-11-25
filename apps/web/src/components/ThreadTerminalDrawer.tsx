@@ -44,6 +44,8 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Button } from "~/components/ui/button";
 import { PanelTabCloseButton } from "~/components/ui/panel-tab-close-button";
+import { Row } from "~/components/ui/row";
+import { Tab, TabPress } from "~/components/ui/tab-strip";
 import { readTextFromClipboard, writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
@@ -1210,7 +1212,8 @@ interface ThreadTerminalDrawerProps {
 
 interface TerminalActionButtonProps {
   label: string;
-  className: string;
+  /** At its limit (no more splits): it says so, and the press stays quiet. */
+  unavailable?: boolean;
   onClick: () => void;
   children: ReactNode;
 }
@@ -1253,12 +1256,25 @@ export function TerminalDrawerResizeHandle({
   );
 }
 
-function TerminalActionButton({ label, className, onClick, children }: TerminalActionButtonProps) {
+function TerminalActionButton({
+  label,
+  unavailable = false,
+  onClick,
+  children,
+}: TerminalActionButtonProps) {
   return (
     <Popover>
       <PopoverTrigger
         openOnHover
-        render={<button type="button" className={className} onClick={onClick} aria-label={label} />}
+        render={
+          <Button
+            aria-disabled={unavailable || undefined}
+            aria-label={label}
+            onClick={onClick}
+            size="icon-2xs"
+            variant="ghost"
+          />
+        }
       >
         {children}
       </PopoverTrigger>
@@ -1658,7 +1674,7 @@ export default function ThreadTerminalDrawer({
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
         {resizeHandle}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body text-muted-foreground">
           <p>No terminal sessions for this thread yet.</p>
           <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
             {newTerminalActionLabel}
@@ -1695,15 +1711,11 @@ export default function ThreadTerminalDrawer({
                 "pointer-events-none absolute right-2 top-2 z-20 max-sm:static max-sm:flex max-sm:justify-end max-sm:bg-(--terminal-background) max-sm:px-2 max-sm:pt-2 max-sm:pb-1"
           }
         >
-          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
+          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-control border border-border/80 bg-background shadow-xs">
             {/* Half a phone's width is no terminal: the splits stay off it. */}
             <span className="contents max-sm:hidden">
               <TerminalActionButton
-                className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-3.5 ${
-                  hasReachedSplitLimit
-                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                    : "hover:bg-accent"
-                }`}
+                unavailable={hasReachedSplitLimit}
                 onClick={onSplitTerminalAction}
                 label={splitTerminalActionLabel}
               >
@@ -1711,11 +1723,7 @@ export default function ThreadTerminalDrawer({
               </TerminalActionButton>
               <div className="h-4 w-px bg-border/80" />
               <TerminalActionButton
-                className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-3.5 ${
-                  hasReachedSplitLimit
-                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                    : "hover:bg-accent"
-                }`}
+                unavailable={hasReachedSplitLimit}
                 onClick={onSplitTerminalVerticalAction}
                 label={splitTerminalVerticalActionLabel}
               >
@@ -1723,16 +1731,11 @@ export default function ThreadTerminalDrawer({
               </TerminalActionButton>
               <div className="h-4 w-px bg-border/80" />
             </span>
-            <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-3.5"
-              onClick={onNewTerminalAction}
-              label={newTerminalActionLabel}
-            >
+            <TerminalActionButton onClick={onNewTerminalAction} label={newTerminalActionLabel}>
               <Plus className="size-3.25" />
             </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-3.5"
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
@@ -1843,38 +1846,28 @@ export default function ThreadTerminalDrawer({
           {hasTerminalSidebar && (
             <aside className="flex w-36 min-w-36 flex-col border border-border/70 bg-muted/10">
               <div className="flex h-[22px] items-stretch justify-end border-b border-border/70">
-                <div className="inline-flex h-full items-stretch">
+                <div className="inline-flex h-full items-center">
                   <TerminalActionButton
-                    className={`inline-flex h-full items-center px-1 text-foreground/90 transition-colors ${
-                      hasReachedSplitLimit
-                        ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                        : "hover:bg-accent/70"
-                    }`}
+                    unavailable={hasReachedSplitLimit}
                     onClick={onSplitTerminalAction}
                     label={splitTerminalActionLabel}
                   >
                     <SquareSplitHorizontal className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
-                    className={`inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors ${
-                      hasReachedSplitLimit
-                        ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                        : "hover:bg-accent/70"
-                    }`}
+                    unavailable={hasReachedSplitLimit}
                     onClick={onSplitTerminalVerticalAction}
                     label={splitTerminalVerticalActionLabel}
                   >
                     <SquareSplitVertical className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
-                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={onNewTerminalAction}
                     label={newTerminalActionLabel}
                   >
                     <Plus className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
-                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
                     label={closeTerminalActionLabel}
                   >
@@ -1906,21 +1899,22 @@ export default function ThreadTerminalDrawer({
                   return (
                     <div key={terminalGroup.id} className="pb-0.5">
                       {showGroupHeaders && (
-                        <button
-                          type="button"
-                          className={`flex h-[22px] w-full cursor-pointer items-center gap-1 rounded px-1.5 text-2xs ${
-                            isGroupActive
-                              ? "bg-accent/50 text-foreground"
-                              : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-                          }`}
-                          onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                        <div
+                          className={cn(
+                            "rounded-control",
+                            isGroupActive ? "bg-accent/50" : "hover:bg-accent/40",
+                          )}
                         >
-                          <GroupIcon className="size-3 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate text-left">{groupLabel}</span>
-                          <span className="text-muted-foreground/70 text-3xs tabular-nums">
-                            {terminalCount}
-                          </span>
-                        </button>
+                          <Row
+                            size="xs"
+                            pressable="band"
+                            render={<button type="button" />}
+                            onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                            lead={<GroupIcon className="size-3 text-muted-foreground" />}
+                            title={groupLabel}
+                            meta={terminalCount}
+                          />
+                        </div>
                       )}
 
                       <div className="flex flex-col gap-0.5">
@@ -1931,14 +1925,11 @@ export default function ThreadTerminalDrawer({
                             isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ""
                           }`;
                           return (
-                            <div
+                            <Tab
                               key={terminalId}
-                              className={cn(
-                                "group/tab flex h-6 w-full items-center gap-0.5 rounded-md pr-2 pl-1.5 text-xs",
-                                isActive
-                                  ? "bg-accent text-foreground"
-                                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                              )}
+                              active={isActive}
+                              className="w-full max-w-none"
+                              tabId={terminalId}
                             >
                               <PanelTabCloseButton
                                 label={closeTerminalLabel}
@@ -1947,14 +1938,13 @@ export default function ThreadTerminalDrawer({
                               >
                                 <TerminalSquare className="size-3 shrink-0" />
                               </PanelTabCloseButton>
-                              <button
-                                type="button"
-                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
+                              <TabPress
+                                className="flex-1"
                                 onClick={() => onActiveTerminalChange(terminalId)}
                               >
                                 <span className="truncate">{terminalLabel}</span>
-                              </button>
-                            </div>
+                              </TabPress>
+                            </Tab>
                           );
                         })}
                       </div>

@@ -16,11 +16,14 @@ export function OperationSubjectLine({
   readonly subject: OperationSubject;
 }) {
   return (
-    <p className="min-h-5 text-xs leading-5 [overflow-wrap:anywhere]" data-zerops-operation-subject>
+    <p
+      className="min-h-5 text-caption leading-5 [overflow-wrap:anywhere]"
+      data-zerops-operation-subject
+    >
       {subject.kind === "named" ? (
         <>
           <span
-            className="me-1.5 inline-flex rounded-[var(--zerops-chip-radius)] bg-muted px-1.5 font-medium text-foreground"
+            className="me-1.5 inline-flex rounded-control bg-muted px-1.5 font-medium text-foreground"
             data-zerops-subject-chip
           >
             {subject.host}
@@ -37,7 +40,7 @@ export function OperationSubjectLine({
       ) : running ? (
         <span
           aria-hidden="true"
-          className="inline-block h-3 w-28 rounded-sm bg-muted align-middle"
+          className="inline-block h-3 w-28 rounded-mark bg-muted align-middle"
           data-zerops-subject-placeholder
         />
       ) : (

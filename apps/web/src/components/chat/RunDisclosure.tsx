@@ -3,6 +3,8 @@ import { flushSync } from "react-dom";
 import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import { Button, InlineButton } from "../ui/button";
+import { Collapsible, CollapsibleTrigger } from "../ui/collapsible";
 import { META, ROW } from "./RunBubble";
 import { RunShimmer } from "./RunShimmer";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
@@ -66,19 +68,19 @@ export function DisclosureButton({
     return <div className={cn("block w-full min-w-0", className)}>{children}</div>;
   }
   return (
-    <button
-      aria-expanded={open}
-      aria-label={label}
-      className={cn(
-        "group/disclose block w-full min-w-0 cursor-pointer text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
-        className,
-      )}
-      data-chat-disclose
-      onClick={onToggle}
-      type="button"
-    >
-      {children}
-    </button>
+    // A disclosure row is the kit's CollapsibleTrigger; what it opens is drawn by its caller.
+    <Collapsible className="contents" open={open} onOpenChange={onToggle}>
+      <CollapsibleTrigger
+        aria-label={label}
+        className={cn(
+          "group/disclose block w-full min-w-0 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset",
+          className,
+        )}
+        data-chat-disclose
+      >
+        {children}
+      </CollapsibleTrigger>
+    </Collapsible>
   );
 }
 
@@ -161,34 +163,32 @@ export function OpensWhole({
           {children}
         </CappedBox>
         {cut && !disclosure.open ? (
-          <button
+          <Button
             aria-expanded={false}
             aria-label={`Show all of the ${what}`}
-            className="run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            className="absolute inset-0"
             data-chat-disclose
             onClick={() => disclosure.set(true)}
-            type="button"
+            variant="bare"
           >
             <span aria-hidden="true" className={cn(META, "run-item-more")}>
               more
             </span>
-          </button>
+          </Button>
         ) : null}
       </div>
       {disclosure.open ? (
-        <button
-          aria-expanded
-          className={cn(
-            META,
-            "mt-1 block cursor-pointer rounded-sm not-italic text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-          )}
-          // It stands at the foot of what it opened: closing folds what
-          // stands above it, and it stays under the pointer (K12).
-          onClick={(event) => collapseInPlace(event.currentTarget, () => disclosure.set(false))}
-          type="button"
-        >
-          Show less
-        </button>
+        <div className={cn(META, "mt-1 not-italic")}>
+          <InlineButton
+            aria-expanded
+            tone="muted"
+            // It stands at the foot of what it opened: closing folds what
+            // stands above it, and it stays under the pointer (K12).
+            onClick={(event) => collapseInPlace(event.currentTarget, () => disclosure.set(false))}
+          >
+            Show less
+          </InlineButton>
+        </div>
       ) : null}
     </>
   );

@@ -46,6 +46,7 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
+import { Button } from "~/components/ui/button";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
@@ -54,7 +55,6 @@ import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { readTimelinePosition } from "~/components/chat/timelineScrollAnchoring";
 import type { TimelineEntry } from "~/session-logic";
-import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
@@ -346,6 +346,7 @@ const novaLanding = (createdAt: string): TimelineEntry => ({
   createdAt,
   event: {
     key: `landed:${LANDED_ID}`,
+    groupId: "application-harness",
     repository: "storefront",
     number: 42,
     title: "Show HQ's sign-in in the landing's card",
@@ -938,7 +939,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
         style={{ height: COMPOSER_HEIGHT }}
       >
         <div
-          className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
+          className="mx-auto max-w-3xl rounded-sheet border border-border bg-card shadow-sm"
           style={{ height: COMPOSER_HEIGHT - 20 }}
         />
       </div>
@@ -1020,30 +1021,30 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-r p-4"
+        className="flex shrink-0 flex-col items-start gap-1 border-border border-r p-4"
         style={{ width: 435 }}
       >
-        <p className="pb-2 text-muted-foreground text-xs">
+        <p className="pb-2 text-muted-foreground text-caption">
           Switching Mates · first open waits {LATENCY_MS} ms
         </p>
         {THREADS.map((candidate) => (
-          <button
+          <Button
             key={candidate.key}
-            type="button"
             data-harness-thread={candidate.key}
             aria-current={candidate.key === current ? "true" : undefined}
-            className="rounded-lg px-3 py-2 text-left text-sm aria-[current=true]:bg-accent"
             onClick={() => setCurrent(candidate.key)}
+            size="sm"
+            variant={candidate.key === current ? "secondary" : "ghost"}
           >
             {candidate.name} · {candidate.turns} turns
-          </button>
+          </Button>
         ))}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         {/* The app's own top bar (`WorkspacePageHeader`), so the conversation
             under it stands where ChatView's does. */}
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-sm"
+          className="relative bg-background font-medium text-body"
           data-chat-header
         >
           {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}
@@ -1084,7 +1085,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
 
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
-applyThemePalette(ZEROPS_THEME_ID, appearance);
 
 const host = document.getElementById("design");
 if (host) {

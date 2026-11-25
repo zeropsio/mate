@@ -1,11 +1,13 @@
-/* A project's own page: its header, then a main column for what changes day to day and a side
-   column for what is set up once, the place page's frame. Side by side once both have room, the
-   side column under the main one below that. A label hugs its card; sections stand three times
-   further apart. */
+/* A project's own page: its header, then what changes day to day and, under it, what is set up
+   once, all in one centred column no wider than reads well. A label hugs its card; sections stand
+   three times further apart. */
 .pp {
   display: grid;
+  width: 100%;
   min-width: 0;
+  max-width: 880px;
   gap: 32px;
+  margin-inline: auto;
 }
 
 .pp-head {
@@ -36,13 +38,7 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 30px 40px;
-}
-
-@container flow (min-width: 980px) {
-  .pp-cols {
-    grid-template-columns: minmax(0, 1fr) 392px;
-  }
+  gap: 30px;
 }
 
 /* The label's own line box holds 7 px over and under its words: these gaps read as 36 and 32. */
@@ -97,7 +93,7 @@
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   display: grid;
   min-width: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -138,17 +134,6 @@
   text-wrap: pretty;
 }
 
-.pp-brought-more {
-  color: var(--primary);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.pp-brought-more:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .pp-place-note,
 .pp-empty {
   color: var(--muted-foreground);
@@ -169,7 +154,7 @@
 .pp-setup-card {
   gap: 12px;
   padding: 14px 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
 }
 
 /* A side card of rows (the code repositories): the rows' own padding stands in for the card's. */
@@ -243,7 +228,7 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--primary) 14%, transparent);
   color: var(--primary);
 }
@@ -313,7 +298,7 @@
 
 /* A group of the list the picture's count led to: lit a moment. */
 [data-zerops-surface="project-changes"] [data-zerops-change-group] {
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   transition: background-color 260ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
@@ -399,8 +384,8 @@
 }
 
 [data-zerops-surface="project-changes"] .ov-change-row {
-  --ov-change-pad-y: 10px;
-  --ov-change-pad-x: 10px;
+  --row-pad-y: 10px;
+  --row-pad-x: 10px;
 }
 
 /* Setup files: no change a release ships, said quietly. */
@@ -424,7 +409,7 @@
 .pp-hist-release {
   display: grid;
   min-width: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .pp-hist-release[data-open] {
@@ -432,30 +417,13 @@
   background: var(--ov-lift);
 }
 
-.pp-hist-head {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  grid-template-columns: 18px auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  text-align: left;
+/* A release that opens lights under the pointer while it is shut. */
+.pp-hist-release {
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-button.pp-hist-head:hover {
+.pp-hist-release:not([data-open]):has(> [data-hist-head]:hover) {
   background: var(--ov-hover);
-}
-
-.pp-hist-release[data-open] > button.pp-hist-head:hover {
-  background: none;
-}
-
-.pp-hist-head:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
 }
 
 .pp-hist-chevron {
@@ -540,22 +508,22 @@ button.pp-hist-head:hover {
 }
 
 .pp-hist-body .ov-change-row {
-  --ov-change-pad-y: 8px;
-  --ov-change-pad-x: 0px;
+  --row-pad-y: 8px;
+  --row-pad-x: 0px;
   --ov-change-gap: 12px;
 }
 
-.pp-hist-body .ov-change {
+.pp-hist-body [data-ov-change] {
   align-items: center;
   border-radius: 0;
 }
 
-.pp-hist-body .ov-change:hover,
-.pp-hist-body .ov-change:focus-visible {
+.pp-hist-body [data-ov-change]:hover,
+.pp-hist-body [data-ov-change]:focus-visible {
   background: none;
 }
 
-.pp-hist-body .ov-change:hover .ov-change-title {
+.pp-hist-body [data-ov-change]:hover .ov-change-title {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -599,7 +567,7 @@ button.pp-hist-head:hover {
 /* The Automation section, opened on the page: the Changes card's anatomy, for tasks. A one-line
    masthead says the pool; under its hairline one ledger — a mark, a title, then facts in columns
    that run down every group — and the sources its tasks come from as rows of the same list. Its
-   rows are the Changes ledger's own (`.ov-change-row`, `.ov-change`, `.ov-change-title`), 40 px
+   rows are the Changes ledger's own (`.ov-change-row`, `[data-ov-change]`, `.ov-change-title`), 40 px
    here, with a cost column. */
 .pa {
   --ln-ground: transparent;
@@ -707,8 +675,8 @@ button.pp-hist-head:hover {
 }
 
 .pa .pa-row {
-  --ov-change-pad-y: 6px;
-  --ov-change-pad-x: 10px;
+  --row-pad-y: 6px;
+  --row-pad-x: 10px;
   position: relative;
   grid-column: 1 / -1;
   border-top: 1px solid var(--ov-rule);
@@ -718,13 +686,13 @@ button.pp-hist-head:hover {
   border-top-color: transparent;
 }
 
-.pa-row > .ov-change {
+.pa-row > [data-ov-change] {
   min-height: 40px;
   align-items: center;
 }
 
 /* The row holds its ground while any of it is pointed at: its Stop and its Review stand over it. */
-.pa-row:hover > .ov-change:not([data-plain]) {
+.pa-row:hover > [data-ov-change]:not([data-plain]) {
   background: var(--ov-hover);
 }
 
@@ -775,18 +743,6 @@ button.pp-hist-head:hover {
    too narrow for columns, and they go under the title as one line. */
 .pa-facts {
   display: contents;
-}
-
-/* Where a queued task came from, linked where it has an address. */
-.pa-from {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.pa-from:hover,
-.pa-pr:hover {
-  color: var(--foreground);
 }
 
 .pa-out {
@@ -864,7 +820,7 @@ button.pp-hist-head:hover {
   grid-column: 5;
 }
 
-.pa .ov-change:not(:hover, :focus-visible) .ov-go {
+.pa [data-ov-change]:not(:hover, :focus-visible) .ov-go {
   opacity: 0.55;
 }
 
@@ -1091,7 +1047,7 @@ button.pp-hist-head:hover {
   min-height: 0;
   overflow-y: auto;
   border-top: 1px solid var(--border);
-  border-radius: 0 0 calc(var(--radius-2xl) - 1px) calc(var(--radius-2xl) - 1px);
+  border-radius: 0 0 calc(var(--radius-sheet) - 1px) calc(var(--radius-sheet) - 1px);
 }
 
 /* The Automation ledger there starts on the title's edge. */

@@ -9,6 +9,7 @@ import {
   getProviderUpdateSidebarPillView,
   type ProviderUpdateSidebarPillView,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 const PROVIDER_UPDATE_PILL_STYLES = {
@@ -129,7 +130,7 @@ export function SidebarProviderUpdatePill() {
 
   return (
     <div
-      className={`group/provider-update relative flex min-h-7 w-full shrink-0 items-center overflow-hidden rounded-lg text-2xs leading-4 font-medium transform-gpu transition-all duration-180 ease-drawer will-change-transform ${
+      className={`group/provider-update relative flex min-h-7 w-full shrink-0 items-center overflow-hidden rounded-control text-2xs leading-4 font-medium transform-gpu transition-all duration-180 ease-drawer will-change-transform ${
         PROVIDER_UPDATE_PILL_STYLES[displayedView.tone]
       } ${
         exitingKey === displayedView.key
@@ -166,28 +167,30 @@ export function SidebarProviderUpdatePill() {
           }
         />
       ) : null}
-      <div className="pointer-events-none absolute inset-0 rounded-lg transition-colors" />
+      <div className="pointer-events-none absolute inset-0 rounded-control transition-colors" />
       <Tooltip>
         <TooltipTrigger
           render={
-            <button
-              type="button"
+            <Button
               aria-label={displayedView.description}
               data-provider-update-main
-              className="relative z-[1] flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+              className="relative z-1 flex min-w-0 flex-1 text-left"
               onClick={openProviderSettings}
+              variant="bare"
             >
-              {displayedView.tone === "loading" ? (
-                <LoaderIcon className="size-3.5 shrink-0 animate-spin" />
-              ) : displayedView.tone === "success" ? (
-                <CircleCheckIcon className="size-3.5 shrink-0" />
-              ) : displayedView.tone === "error" ? (
-                <TriangleAlertIcon className="size-3.5 shrink-0" />
-              ) : (
-                <DownloadIcon className="size-3.5 shrink-0" />
-              )}
-              <span className="min-w-0 wrap-break-word">{displayedView.title}</span>
-            </button>
+              <span className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5">
+                {displayedView.tone === "loading" ? (
+                  <LoaderIcon className="size-3.5 shrink-0 animate-spin" />
+                ) : displayedView.tone === "success" ? (
+                  <CircleCheckIcon className="size-3.5 shrink-0" />
+                ) : displayedView.tone === "error" ? (
+                  <TriangleAlertIcon className="size-3.5 shrink-0" />
+                ) : (
+                  <DownloadIcon className="size-3.5 shrink-0" />
+                )}
+                <span className="min-w-0 wrap-break-word">{displayedView.title}</span>
+              </span>
+            </Button>
           }
         />
         <TooltipPopup side="top">{displayedView.description}</TooltipPopup>
@@ -196,14 +199,14 @@ export function SidebarProviderUpdatePill() {
         <Tooltip>
           <TooltipTrigger
             render={
-              <button
-                type="button"
+              <Button
                 aria-label="Dismiss provider update notice"
-                className="relative z-[1] mr-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-70 outline-none hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/dismiss relative z-1 mr-1 flex size-5 shrink-0 items-center justify-center"
                 onClick={() => startExit(displayedView.key, null, displayedView.key)}
+                variant="bare"
               >
-                <XIcon className="size-3.5 shrink-0" />
-              </button>
+                <XIcon className="size-3.5 shrink-0 opacity-70 group-hover/dismiss:opacity-100 group-focus-visible/dismiss:opacity-100" />
+              </Button>
             }
           />
           <TooltipPopup side="top">Dismiss until provider status changes</TooltipPopup>

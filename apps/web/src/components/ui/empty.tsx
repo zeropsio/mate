@@ -48,7 +48,7 @@ const emptyMediaVariants = cva(
     variants: {
       variant: {
         default: "bg-transparent",
-        icon: "relative flex size-9 shrink-0 items-center justify-center rounded-md border bg-card not-dark:bg-clip-padding text-foreground shadow-sm/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='size-'])]:size-4.5",
+        icon: "relative flex size-9 shrink-0 items-center justify-center rounded-control border bg-card bg-clip-ground text-foreground shadow-sm/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-control)-1px)] before:shadow-edge [&_svg:not([class*='size-'])]:size-4.5",
       },
     },
   },
@@ -91,7 +91,7 @@ function EmptyMedia({
 
 function EmptyTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("font-semibold text-xl", className)} data-slot="empty-title" {...props} />
+    <div className={cn("font-semibold text-title", className)} data-slot="empty-title" {...props} />
   );
 }
 
@@ -99,7 +99,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <div
       className={cn(
-        "text-muted-foreground text-sm [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4 [[data-slot=empty-title]+&]:mt-1 [[data-slot=empty-description]+&]:mt-1",
+        "text-muted-foreground text-body [&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4 [[data-slot=empty-title]+&]:mt-1 [[data-slot=empty-description]+&]:mt-1",
         className,
       )}
       data-slot="empty-description"
@@ -112,7 +112,7 @@ function EmptyContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "flex w-full min-w-0 max-w-sm flex-col items-center gap-4 text-balance text-sm",
+        "flex w-full min-w-0 max-w-sm flex-col items-center gap-4 text-balance text-body",
         className,
       )}
       data-slot="empty-content"
@@ -143,7 +143,7 @@ function EmptyState({
   if (size === "row") {
     return (
       <div
-        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-sm [&_svg]:size-4 [&_svg]:shrink-0"
+        className="flex min-h-12 min-w-0 items-center gap-3 px-2 text-muted-foreground text-body [&_svg]:size-4 [&_svg]:shrink-0"
         data-size="row"
         data-slot="empty"
       >
