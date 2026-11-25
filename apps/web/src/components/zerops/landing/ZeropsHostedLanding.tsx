@@ -11,6 +11,7 @@ import {
   ZeropsLandingShell,
   ZeropsSignInActions,
 } from "./ZeropsLandingShell";
+import { Text } from "~/components/ui/text";
 
 /**
  * How tall HQ's login and sign-up stand in the landing's card, their heading included: the frame's
@@ -47,9 +48,9 @@ export function ZeropsHostedLanding() {
           </Button>
         </div>
         {/* A background retry speaks here, in room the line always holds: nothing moves. */}
-        <p className="min-h-4 text-center text-caption text-muted-foreground" aria-live="polite">
+        <Text className="min-h-4 text-center" render={<p />} variant="note" aria-live="polite">
           {retrying === true ? "Trying again…" : null}
-        </p>
+        </Text>
       </ZeropsLandingShell>
     );
   // HQ's sign-in, out by itself where HQ's bridge serves Mate, or from a click in a device login.

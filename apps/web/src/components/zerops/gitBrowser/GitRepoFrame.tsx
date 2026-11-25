@@ -20,6 +20,7 @@ import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
 import { GitStorageFigure } from "./GitStorageFigure";
 import type { PickerChange } from "./GitRefPicker.logic";
+import { Text } from "~/components/ui/text";
 
 /** How HQ follows GitHub, in one line. */
 const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
@@ -56,7 +57,9 @@ function ClonePopover({
       <PopoverPopup align="end" width="lg">
         <div className="flex flex-col gap-4">
           <section aria-label="Clone with HTTPS" className="flex flex-col gap-2">
-            <h2 className="text-body font-medium text-foreground">Clone with HTTPS</h2>
+            <Text render={<h2 />} variant="heading">
+              Clone with HTTPS
+            </Text>
             <ZeropsGitCredentials appId={appId} repo={repo} />
           </section>
           {repo === "group" ? null : <GitTokenGuide key={`${appId}:${repo}`} project={project} />}
@@ -89,9 +92,9 @@ export function GitRepoHeading({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-title font-medium text-foreground">{repo}</h1>
-          <p className="mt-1 text-body text-muted-foreground">
+          <Text className="mt-1" render={<p />} variant="description">
             {project}’s {repo === "group" ? "setup repository" : "repository"}
-          </p>
+          </Text>
         </div>
         {actions}
       </div>
@@ -160,13 +163,13 @@ export function GitRepoFrame({
       />
       <GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />
       {about?.mirror ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           {about.mirror.syncedAt === null ? (
             mirrorLine(about.mirror)
           ) : (
             <GitWhen at={about.mirror.syncedAt}>{mirrorLine(about.mirror)}</GitWhen>
           )}
-        </p>
+        </Text>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <GitRefPicker
@@ -194,9 +197,9 @@ export function GitRepoFrame({
             </Toggle>
           ))}
         </ToggleGroup>
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Browsing source does not switch a Mate’s checkout.
-        </p>
+        </Text>
       </div>
     </div>
   );

@@ -34,6 +34,7 @@ import { useOpenPipeline } from "~/zerops/pipelineSearch";
 import { ServiceList, ServiceRow, serviceRunsLine } from "../system";
 import type { PlaceServiceRow } from "./place.logic";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /**
  * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
@@ -170,16 +171,13 @@ export function PlaceMissingService({
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
           {answer === undefined ? (
-            <span className="truncate text-caption text-muted-foreground">
+            <Text truncate variant="note">
               {absentWords(byRelease)}
-            </span>
+            </Text>
           ) : (
-            <span
-              className="truncate text-caption text-muted-foreground"
-              data-zerops-job-state={answer.state}
-            >
+            <Text truncate variant="note" data-zerops-job-state={answer.state}>
               {answer.line}
-            </span>
+            </Text>
           )}
         </span>
         {verb}
@@ -270,12 +268,13 @@ function PlaceServiceLine({
       usageRead={usageRead}
     >
       {code === undefined ? null : answer !== undefined ? (
-        <span className="text-caption text-muted-foreground" data-zerops-job-state={answer.state}>
+        <Text variant="note" data-zerops-job-state={answer.state}>
           {answer.line}
-        </span>
+        </Text>
       ) : code.job === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-col items-start gap-1 text-caption text-muted-foreground"
+        <Text
+          className="flex min-w-0 flex-col items-start gap-1"
+          variant="note"
           data-zerops-surface="stop-service-job"
           data-zerops-job-state={code.job.state}
         >
@@ -295,17 +294,18 @@ function PlaceServiceLine({
           {code.job.reason === undefined || code.job.reason === said ? null : (
             <span>{code.job.reason}</span>
           )}
-        </span>
+        </Text>
       )}
       {row.absent === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-caption text-muted-foreground"
+        <Text
+          className="flex min-w-0 flex-wrap items-center justify-between gap-2"
+          variant="note"
           data-zerops-missing-service={row.hostname}
           data-zerops-surface="stop-not-in-zerops"
         >
           <span className="truncate">{absentWords(byRelease)}</span>
           {row.absent.add ? absentVerb(row.hostname) : null}
-        </span>
+        </Text>
       )}
       {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
       {code?.drift === undefined ? null : (
@@ -415,9 +415,9 @@ export function PlaceAddressCard({
         <StopPublicAccessStatus access={publicAccess} />
       </div>
       {nothing ? (
-        <p className="px-3 py-2.5 text-body text-muted-foreground">
+        <Text className="px-3 py-2.5" render={<p />} variant="description">
           {NOT_PUBLIC_YET} · nothing here answers from the internet.
-        </p>
+        </Text>
       ) : null}
       {ordered.map((route) => {
         const subdomain = isPlatformSubdomain(route.host);
@@ -452,9 +452,9 @@ export function PlaceAddressCard({
             data-zerops-surface="stop-route-offer"
             key={offer.serviceId}
           >
-            <span className="text-body text-muted-foreground">
+            <Text variant="description">
               {`${offer.service} answers on ${String(offer.port)}, not from outside.`}
-            </span>
+            </Text>
             <StopPublicAccessStatus access={publicAccess} serviceId={offer.serviceId} />
             <Button
               disabled={opening || enablingServiceId !== null}

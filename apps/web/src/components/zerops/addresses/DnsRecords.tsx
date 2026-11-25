@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Button } from "../../ui/button";
 import { dnsZone, namesWords, recordHost, recordKey } from "./addresses.logic";
 import { CopyButton } from "./AddressesSheetBits";
+import { Text } from "~/components/ui/text";
 
 const NONE_FOUND: ReadonlySet<string> = new Set();
 const NO_CNAMES: ReadonlyArray<DnsRecord & { readonly ipv4: boolean }> = [];
@@ -96,7 +97,7 @@ export function DnsRecords({
           </Button>
         </div>
         {ways ? (
-          <div className="grid gap-2.5 pt-1.5 text-muted-foreground text-caption">
+          <Text className="grid gap-2.5 pt-1.5" render={<div />} variant="note">
             {oneRecord.length === 0 ? null : (
               <div className="grid gap-1.5" data-dns-way="cname">
                 <p>
@@ -121,7 +122,7 @@ export function DnsRecords({
                 )}
               </p>
             )}
-          </div>
+          </Text>
         ) : null}
       </div>
     </div>
@@ -147,14 +148,14 @@ function RecordName({
   return (
     // What is typed is never cut: it wraps where it is long. The rest of the domain after it is
     // there to be recognised, and gives way first.
-    <span className="flex min-w-0 items-baseline font-mono">
+    <Text className="flex min-w-0 items-baseline" variant="code">
       <span className="min-w-0 break-all">{host}</span>
       {rest === "" ? null : (
         <span className="min-w-0 flex-1 truncate whitespace-pre text-muted-foreground/70">
           {rest}
         </span>
       )}
-    </span>
+    </Text>
   );
 }
 

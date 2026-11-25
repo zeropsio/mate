@@ -32,6 +32,7 @@ import {
   type HistoryChange,
   type HistoryRelease,
 } from "./projectHistory.logic";
+import { Text } from "~/components/ui/text";
 
 /** A change as History opens it: by its repository and number. */
 type HistoryChangeKey = Pick<FlowPullRequest, "repository" | "number">;
@@ -210,9 +211,9 @@ function ReleaseRow({
         )}
       </span>
       {open ? (
-        <span className="min-w-0 truncate text-line leading-5 text-muted-foreground">
+        <Text className="min-w-0" truncate variant="remark">
           {releaseFacts(release, byName)}
-        </span>
+        </Text>
       ) : (
         <span className="min-w-0 truncate text-body leading-5 text-foreground/85">
           {release.failure ?? gist.text}

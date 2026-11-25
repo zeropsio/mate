@@ -66,6 +66,7 @@ import { Loading } from "~/components/ui/loading";
 import { SectionLabel } from "../system/SectionLabel";
 import { Failure } from "~/components/ui/failure";
 import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -618,9 +619,11 @@ export function AddAccessPicker({
           ))}
         </ul>
       )}
-      <dl
+      <Text
+        className="grid gap-1 px-3 pt-2"
+        render={<dl />}
+        variant="note"
         aria-label="What Read and Full give"
-        className="grid gap-1 px-3 pt-2 text-caption text-muted-foreground"
       >
         {(["read", "full"] as const).map((level) => (
           <div key={level}>
@@ -630,7 +633,7 @@ export function AddAccessPicker({
             <dd className="inline">{ACCESS_LEVEL_LINES[level]}</dd>
           </div>
         ))}
-      </dl>
+      </Text>
       <div className={PICK_FOOT}>
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}
@@ -672,12 +675,12 @@ export function AccessDraftFold({
           {open ? "Done" : "Change who can open it"}
         </Button>
       </div>
-      <p className="text-body text-muted-foreground text-pretty" data-zerops-access="line">
+      <Text render={<p />} variant="description" data-zerops-access="line">
         {summary.line}
         {summary.changes === null ? null : (
           <span className="text-foreground"> · {summary.changes}</span>
         )}
-      </p>
+      </Text>
       {open ? (
         <div className="pt-2" id={listId}>
           {children}

@@ -20,6 +20,7 @@ import type {
   McpSigning,
   mcpProgress,
 } from "./mcpProposal.logic";
+import { Text } from "~/components/ui/text";
 
 interface McpProposalCardProps {
   readonly askId: string;
@@ -154,8 +155,10 @@ export function McpProposalCard(props: McpProposalCardProps) {
               value={values[field.key] ?? ""}
             />
           ) : (
-            <label
-              className="grid min-w-0 gap-1.5 text-caption text-muted-foreground"
+            <Text
+              className="grid min-w-0 gap-1.5"
+              render={<label />}
+              variant="note"
               key={field.key}
             >
               {full ? field.label : null}
@@ -171,12 +174,12 @@ export function McpProposalCard(props: McpProposalCardProps) {
                 spellCheck={false}
                 value={values[field.key] ?? ""}
               />
-            </label>
+            </Text>
           ),
         );
 
   const paste = pasting ? (
-    <label className="grid min-w-0 gap-1.5 text-caption text-muted-foreground">
+    <Text className="grid min-w-0 gap-1.5" render={<label />} variant="note">
       {SIGN_IN_PASTE}
       <Input
         aria-label={SIGN_IN_PASTE}
@@ -190,7 +193,7 @@ export function McpProposalCard(props: McpProposalCardProps) {
         spellCheck={false}
         value={landed}
       />
-    </label>
+    </Text>
   ) : null;
 
   const body = full ? (
@@ -205,7 +208,9 @@ export function McpProposalCard(props: McpProposalCardProps) {
         ]}
       />
       {view.scopeLine === null ? null : (
-        <p className="text-caption text-muted-foreground">{view.scopeLine}</p>
+        <Text render={<p />} variant="note">
+          {view.scopeLine}
+        </Text>
       )}
       {props.progress === null || props.progress === undefined ? null : (
         <AskSteps
@@ -220,19 +225,19 @@ export function McpProposalCard(props: McpProposalCardProps) {
       )}
       {fields}
       {view.redirects.length === 0 ? null : (
-        <div className="grid gap-1 text-caption text-muted-foreground" data-mcp-redirects>
+        <Text className="grid gap-1" render={<div />} variant="note" data-mcp-redirects>
           <span>Register these addresses in your app, so each agent is sent back:</span>
           {view.redirects.map((redirect) => (
-            <span className="font-mono" key={redirect.agent}>
+            <Text variant="code" key={redirect.agent}>
               {redirect.agent} · {redirect.url}
-            </span>
+            </Text>
           ))}
-        </div>
+        </Text>
       )}
       {view.cannot === null ? null : (
-        <p className="text-caption text-muted-foreground" data-mcp-cannot>
+        <Text render={<p />} variant="note" data-mcp-cannot>
           {view.cannot}
-        </p>
+        </Text>
       )}
       {paste}
       {props.refusal === undefined ? null : <Problem alert words={props.refusal} />}
@@ -284,9 +289,9 @@ export function McpProposalCard(props: McpProposalCardProps) {
 
 function Problem({ words }: { readonly words: string; readonly alert?: boolean }) {
   return (
-    <p className="flex items-start gap-1.5 text-caption text-destructive-foreground" role="alert">
+    <Text className="flex items-start gap-1.5" render={<p />} variant="error" role="alert">
       <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
       {words}
-    </p>
+    </Text>
   );
 }

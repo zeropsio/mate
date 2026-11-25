@@ -31,6 +31,7 @@ import {
   chiefSetupSteps,
 } from "~/zerops/chiefSetup.logic";
 import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
+import { Text } from "~/components/ui/text";
 
 /** The Chief as its page draws it before it exists: the product's mark, its name. */
 const CHIEF_DRAWN = {
@@ -113,7 +114,9 @@ export function ChiefStage({
                   Set up Chief
                 </Button>
                 {view.blocked === undefined ? null : (
-                  <p className="text-body text-muted-foreground">{view.blocked}</p>
+                  <Text render={<p />} variant="description">
+                    {view.blocked}
+                  </Text>
                 )}
               </div>
             </ArrivalSwap>

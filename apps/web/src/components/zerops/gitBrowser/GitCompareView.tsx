@@ -19,6 +19,7 @@ import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFile
 import type { PickerChange } from "./GitRefPicker.logic";
 import { GitRefPicker } from "./GitRefPicker";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 type CompareProps = Pick<
   GitRepoPageProps,
@@ -39,7 +40,9 @@ function GitCompareSummary({
           {summary.headline}
         </h2>
         {summary.cut === null ? null : (
-          <p className="text-caption text-muted-foreground">{summary.cut}</p>
+          <Text render={<p />} variant="note">
+            {summary.cut}
+          </Text>
         )}
       </header>
       {summary.nothing ? null : (

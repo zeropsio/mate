@@ -30,6 +30,7 @@ import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards } from "./ProjectCards";
 import type { ProjectWait } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
+import { Text } from "~/components/ui/text";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
 /** A stage being added, as its card's Stage line says it. */
@@ -340,9 +341,9 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         <OverviewCardsStandIn />
       ) : (
         <>
-          <p role="status" className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description" role="status">
             {props.placementNotice}
-          </p>
+          </Text>
           {props.hqCard}
         </>
       )}

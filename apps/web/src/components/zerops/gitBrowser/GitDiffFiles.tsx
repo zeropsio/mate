@@ -21,6 +21,7 @@ import { Button } from "../../ui/button";
 import { Row } from "../../ui/row";
 import { troubleWords } from "./GitAtCommit";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
+import { Text } from "~/components/ui/text";
 
 /** A file's hunks the page left for later, as their own read stands. */
 export type GitLaterHunks = GitBrowseView<GitCommitFileHunks>;
@@ -94,7 +95,7 @@ export function GitChangedFiles({
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
   return (
     <section aria-label="Changed files" className="flex min-w-0 flex-col gap-1">
-      <p className="text-caption text-muted-foreground">
+      <Text render={<p />} variant="note">
         {filesTruncated
           ? `Showing ${count(files.length, "file", "files")} of ${totalFiles} changed`
           : `${count(totalFiles, "file", "files")} changed`}
@@ -104,7 +105,7 @@ export function GitChangedFiles({
         {deletions > 0 ? (
           <span className="ml-1 font-mono text-diff-deletion-foreground">−{deletions}</span>
         ) : null}
-      </p>
+      </Text>
       <ul className="flex min-w-0 flex-col">
         {files.map((file) => (
           <li key={file.path}>
@@ -118,10 +119,10 @@ export function GitChangedFiles({
                 file.binary ? (
                   "Binary file"
                 ) : (
-                  <span className="font-mono">
+                  <Text variant="code">
                     <span className="text-diff-addition-foreground">+{file.additions}</span>{" "}
                     <span className="text-diff-deletion-foreground">−{file.deletions}</span>
-                  </span>
+                  </Text>
                 )
               }
               pressable

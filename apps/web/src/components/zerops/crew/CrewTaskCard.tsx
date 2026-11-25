@@ -28,6 +28,7 @@ import { Card } from "../../ui/card";
 import type { CrewCard } from "../../chat/conversation.logic";
 import { crewTaskCardModel } from "./CrewTaskCard.logic";
 import { CrewRestartLine, CrewSeamLine } from "./CrewSeamLine";
+import { Text } from "~/components/ui/text";
 
 export interface CrewTimeline {
   /** The timeline row of the stint's first card, while the conversation is loaded from its start. */
@@ -78,12 +79,14 @@ export function CrewTaskCard({ id, card }: { readonly id: string; readonly card:
         <div className="flex flex-col gap-1 px-4 py-2.5">
           <p className="min-w-0 truncate text-prose font-medium text-foreground">{model.heading}</p>
           {model.text.length === 0 ? null : (
-            <p className="whitespace-pre-wrap text-line text-muted-foreground">{model.text}</p>
+            <Text className="whitespace-pre-wrap" render={<p />} variant="remark">
+              {model.text}
+            </Text>
           )}
           {model.doneWhen === null ? null : (
-            <p className="text-line text-muted-foreground">
+            <Text render={<p />} variant="remark">
               <span className="font-medium text-foreground">Done when:</span> {model.doneWhen}
-            </p>
+            </Text>
           )}
         </div>
       </Card>

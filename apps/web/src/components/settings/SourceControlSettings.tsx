@@ -237,7 +237,10 @@ function itemSummary({
       return (
         <span>
           {item.label} is not authenticated on this server. Sign in or configure credentials using
-          the <code className="rounded-mark bg-muted px-1 py-px text-2xs">{item.executable}</code>{" "}
+          the{" "}
+          <Text chip render={<code />} variant="code">
+            {item.executable}
+          </Text>{" "}
           tool on the server host to enable change request features.
         </span>
       );

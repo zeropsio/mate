@@ -15,6 +15,7 @@ import { GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch } from "./GitBrowseView";
 import { FINDER_PAGE, finderMatches } from "./GitFileFinder.logic";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -123,16 +124,16 @@ export function GitFileFinder({
         }}
       />
       {view.state === "known" && view.answer.truncated ? (
-        <p className="text-caption text-muted-foreground" role="status">
+        <Text render={<p />} variant="note" role="status">
           The finder sees the first {PATHS_LIMIT.toLocaleString("en-US")} files. Search the content
           to reach the rest.
-        </p>
+        </Text>
       ) : null}
       {found !== null ? (
         found.rows.length === 0 ? (
-          <p className="text-body text-muted-foreground" role="status">
+          <Text render={<p />} variant="description" role="status">
             {paths?.length === 0 ? "No files here." : "No file at this commit matches that name."}
-          </p>
+          </Text>
         ) : (
           <ul aria-label="Files" className="flex min-w-0 flex-col">
             {found.rows.map((row) => (

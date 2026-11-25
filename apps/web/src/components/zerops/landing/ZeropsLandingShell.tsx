@@ -22,6 +22,7 @@ import { MateMark } from "../../MateMark";
 import { ZeropsMark } from "../../ZeropsMark";
 import { WaitLine } from "../WaitLine";
 import { ZeropsHostedFrame } from "./ZeropsHostedFrame";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsLandingShell({
   title,
@@ -41,7 +42,9 @@ export function ZeropsLandingShell({
         <MateMark playful className="mx-auto h-20 w-auto" />
         <div className="space-y-1.5 text-center">
           <h1 className="text-title font-semibold tracking-tight text-foreground">{title}</h1>
-          <p className="text-body text-muted-foreground">{description}</p>
+          <Text render={<p />} variant="description">
+            {description}
+          </Text>
         </div>
 
         <Card variant="sheet">
@@ -49,7 +52,9 @@ export function ZeropsLandingShell({
         </Card>
 
         {foot === undefined ? null : (
-          <p className="text-center text-caption text-muted-foreground">{foot}</p>
+          <Text className="text-center" render={<p />} variant="note">
+            {foot}
+          </Text>
         )}
       </div>
     </ZeropsHostedFrame>
@@ -197,12 +202,12 @@ export function ZeropsSignInActions({
         <ZeropsMark className="size-4" tone="current" />
         Continue with your Zerops account
       </Button>
-      <p className="text-center text-caption text-muted-foreground">
+      <Text className="text-center" render={<p />} variant="note">
         No account yet?{" "}
         <InlineButton tone="muted" onClick={onCreateAccount}>
           Create one on Zerops
         </InlineButton>
-      </p>
+      </Text>
     </div>
   );
 }

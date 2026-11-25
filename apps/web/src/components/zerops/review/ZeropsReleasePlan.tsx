@@ -31,6 +31,7 @@ import {
   type ReleaseValueStep,
   type Words,
 } from "./releaseSheet.logic";
+import { Text } from "~/components/ui/text";
 
 /** Words drawn, the names in them in code type. */
 export function WordsOf({ words }: { readonly words: Words }) {
@@ -40,9 +41,9 @@ export function WordsOf({ words }: { readonly words: Words }) {
         typeof word === "string" ? (
           <Fragment key={key}>{word}</Fragment>
         ) : (
-          <span className="font-mono" key={key}>
+          <Text variant="code" key={key}>
             {word.code}
-          </span>
+          </Text>
         ),
       )}
     </>
@@ -474,7 +475,11 @@ function PlanStep({
       )}
       {/* Live, its ways in stand on a line of their own under the way back. */}
       {live === undefined || (live.open === undefined && live.onAddDomain === undefined) ? null : (
-        <p className="col-span-2 col-start-2 row-start-3 mt-1 flex flex-wrap gap-x-1.5 text-caption text-muted-foreground wrap-anywhere">
+        <Text
+          className="col-span-2 col-start-2 row-start-3 mt-1 flex flex-wrap gap-x-1.5 wrap-anywhere"
+          render={<p />}
+          variant="note"
+        >
           {live.open === undefined ? null : (
             <InlineButton render={<a href={live.open.url} rel="noreferrer" target="_blank" />}>
               Open {live.open.host}
@@ -486,7 +491,7 @@ function PlanStep({
           {live.onAddDomain === undefined ? null : (
             <InlineButton onClick={live.onAddDomain}>Put it on your domain</InlineButton>
           )}
-        </p>
+        </Text>
       )}
       {open === "import" && yaml !== undefined && step.creates !== undefined ? (
         <div className={MORE} data-zerops-surface="release-import">

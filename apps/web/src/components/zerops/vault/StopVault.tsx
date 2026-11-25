@@ -10,6 +10,7 @@ import { PreviewPanelShell } from "../../RightPanelShell";
 import { Sheet, SheetPopup } from "../../ui/sheet";
 import type { PlaceVault } from "./placeVault.logic";
 import { ProjectVaultPanel } from "./VaultPanelContainer";
+import { Text } from "~/components/ui/text";
 
 /** The environment's vault in a drawer over its page, from the right edge. */
 export function StopVaultDrawer({
@@ -43,10 +44,14 @@ export function StopVaultDrawer({
       >
         <PreviewPanelShell mode="sheet">
           {/* Whose values these are: the drawer reads as the place's own, not the page's. */}
-          <h2 className="flex h-12 flex-none items-center gap-1.5 px-4 pe-12 text-body font-medium text-foreground">
+          <Text
+            className="flex h-12 flex-none items-center gap-1.5 px-4 pe-12"
+            render={<h2 />}
+            variant="heading"
+          >
             Vault
             <span className="font-normal text-muted-foreground">· {name}</span>
-          </h2>
+          </Text>
           {body ?? (
             <ProjectVaultPanel
               actor="environment"

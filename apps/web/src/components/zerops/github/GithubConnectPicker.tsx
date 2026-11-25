@@ -93,6 +93,7 @@ import {
   pressShown,
   useRepoPress,
 } from "./repoPress";
+import { Text } from "~/components/ui/text";
 
 interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
@@ -857,10 +858,10 @@ function pickStep(
   const notes = (
     <>
       {unanswered === 0 ? null : (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           GitHub didn't answer about {several}, so {unanswered === 1 ? "its" : "their"} repositories
           aren't listed. {tryAgain}
-        </p>
+        </Text>
       )}
       <WaitingAccounts accounts={waiting} />
     </>
@@ -963,9 +964,7 @@ function pickStep(
               <AccountFace account={each.account} />
               {each.account}
               {addedWords(each, nameOf) === null ? null : (
-                <span className="text-caption text-muted-foreground">
-                  {addedWords(each, nameOf)}
-                </span>
+                <Text variant="note">{addedWords(each, nameOf)}</Text>
               )}
             </Toggle>
           ))}
@@ -987,9 +986,9 @@ function pickStep(
               />
             ) : null}
             {rows.length === 0 && input.offer === null ? (
-              <p className="text-body text-muted-foreground">
+              <Text render={<p />} variant="description">
                 Mate may not use any repository on {account.account} yet.
-              </p>
+              </Text>
             ) : (
               <RepositoryList
                 account={account}
@@ -1008,7 +1007,7 @@ function pickStep(
                 rows={shown}
               />
             )}
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               Not listed?{" "}
               <span onClickCapture={actions.leaving}>
                 <OutLink href={account.installation.manageUrl}>
@@ -1029,7 +1028,7 @@ function pickStep(
                 </>
               ) : null}
               {checkAgain}
-            </p>
+            </Text>
           </>
         )}
         {notes}
@@ -1069,10 +1068,10 @@ function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting"
 
 function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string> }) {
   return accounts.length === 0 ? null : (
-    <p className="text-caption text-muted-foreground">
+    <Text render={<p />} variant="note">
       {accounts.join(", ")} {accounts.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
       Settings › Automation.
-    </p>
+    </Text>
   );
 }
 
@@ -1297,7 +1296,7 @@ function NewRepositoryRow({
             <span className="truncate">{created.name}</span>
           )}
         </span>
-        <span className="text-caption text-muted-foreground">Mate creates it on GitHub, empty</span>
+        <Text variant="note">Mate creates it on GitHub, empty</Text>
       </span>
       <Badge tone="info">New · private</Badge>
     </div>
@@ -1442,7 +1441,7 @@ function explainStep(
               value={input.makeOwner}
             />
           ) : null}
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             {trip.kind === "install" ? `GitHub's page calls Mate “${trip.app.name}”. ` : null}
             No repository yet? {newRepository} first.
             {trip.kind === "make" && input.makeOwner === null ? (
@@ -1465,7 +1464,7 @@ function explainStep(
                 </InlineButton>
               </>
             ) : null}
-          </p>
+          </Text>
         </div>
         <Refusal words={input.authority ?? input.refusal} />
       </>
@@ -1535,12 +1534,12 @@ function progressStep(
             </Badge>
           </p>
           <p className="text-title font-medium">{repo} is connected, and the two mains differ</p>
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
             commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
             project's Mate to bring them back in step: it opens one change that holds both. Merge it
             in Mate and pushing starts.
-          </p>
+          </Text>
         </div>
       ),
       foot: (
@@ -1588,12 +1587,14 @@ function progressStep(
             </Badge>
           </p>
           <p className="text-title font-medium">{repo} is on GitHub</p>
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.
-          </p>
+          </Text>
           {gate === undefined || governance === "governed" ? null : (
-            <p className="text-caption text-muted-foreground">{gate}</p>
+            <Text render={<p />} variant="note">
+              {gate}
+            </Text>
           )}
         </div>
       ),
@@ -1622,7 +1623,7 @@ function progressStep(
       <>
         <Card variant="inset">
           <p className="px-3.5 py-2.5 text-body">
-            {repo} → <span className="font-mono">{shownAs}</span>
+            {repo} → <Text variant="code">{shownAs}</Text>
           </p>
         </Card>
         <ol aria-live="polite" className="grid gap-2.5">
@@ -1651,9 +1652,9 @@ function progressStep(
       </>
     ),
     foot: (
-      <p className="me-auto text-caption text-muted-foreground">
+      <Text className="me-auto" render={<p />} variant="note">
         You can close this. The project page shows the same steps.
-      </p>
+      </Text>
     ),
     // A card stays where it is: nothing to close, nothing to say under its steps.
     card: null,

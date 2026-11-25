@@ -5,6 +5,7 @@ import type * as React from "react";
 import { cn } from "~/lib/utils";
 import { MicroLabel } from "./MicroLabel";
 import { StepGlyph, type StepGlyphState } from "./StepGlyph";
+import { Text } from "~/components/ui/text";
 
 /** A compact list's marks are every step list's: `StepGlyph`. */
 const COMPACT_GLYPH: Record<ProcessStepState, StepGlyphState> = {
@@ -130,9 +131,9 @@ function ProcessSteps({
                 ) : null}
               </span>
               {step.durationMs !== undefined ? (
-                <span className="shrink-0 text-muted-foreground text-caption tabular-nums">
+                <Text className="shrink-0" variant="meta">
                   {formatStepDuration(step.durationMs)}
-                </span>
+                </Text>
               ) : null}
             </li>
           );

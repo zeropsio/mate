@@ -11,6 +11,7 @@ import type { MouseEvent } from "react";
 
 import { EmptyState } from "~/components/ui/empty";
 import { Row } from "~/components/ui/row";
+import { Text } from "~/components/ui/text";
 
 /** Rows drawn as a plain list; a longer folder draws only the rows in view. */
 const PLAIN_ROWS = 100;
@@ -93,9 +94,9 @@ export function GitDirectoryList({ entries, truncated, hrefOf, onOpen }: GitDire
         </div>
       )}
       {truncated ? (
-        <p className="text-body text-muted-foreground">
+        <Text render={<p />} variant="description">
           Only the first entries are shown. Clone the repository to read the whole folder.
-        </p>
+        </Text>
       ) : null}
     </div>
   );

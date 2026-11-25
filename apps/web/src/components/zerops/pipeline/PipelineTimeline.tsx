@@ -25,6 +25,7 @@ import { InlineButton } from "../../ui/button";
 import { EmptyState } from "../../ui/empty";
 import { StepGlyph, type StepGlyphState } from "../primitives";
 import { PipelineCalculating } from "../operation/PipelineStepList";
+import { Text } from "~/components/ui/text";
 
 const GLYPH_STATE: Readonly<Record<PipelineSpokenState, StepGlyphState>> = {
   waiting: "waiting",
@@ -127,7 +128,9 @@ function TimelineStep({
           )}
         </div>
         {step.note === undefined ? null : (
-          <p className="mt-0.5 text-muted-foreground text-caption">{step.note}</p>
+          <Text className="mt-0.5" render={<p />} variant="note">
+            {step.note}
+          </Text>
         )}
         {step.state === "failed" ? (
           <FailureCause onServiceLog={onServiceLog} process={process} />
@@ -156,7 +159,9 @@ function FailureCause({
     <Alert className="mt-2" data-zerops-pipeline-cause="" surface="tint" variant="error">
       {error?.command === undefined ? null : (
         <AlertTitle>
-          <code className="font-mono">{error.command}</code>
+          <Text render={<code />} variant="code">
+            {error.command}
+          </Text>
           {error.exit === undefined ? " failed." : ` ended with ${error.exit}.`}
         </AlertTitle>
       )}

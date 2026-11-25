@@ -37,6 +37,7 @@ import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
+import { Text } from "~/components/ui/text";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -120,12 +121,14 @@ export function ReviewConversation({
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
       ) : readOnly ? (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           You have Read access, so you can read this conversation.
-        </p>
+        </Text>
       ) : null}
       {commentable && asker === undefined && reaches !== undefined ? (
-        <p className="mt-1.5 text-body text-muted-foreground">{reaches} sees this on the change.</p>
+        <Text className="mt-1.5" render={<p />} variant="description">
+          {reaches} sees this on the change.
+        </Text>
       ) : null}
     </ReviewSection>
   );

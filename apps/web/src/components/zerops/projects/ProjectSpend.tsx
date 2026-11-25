@@ -37,6 +37,7 @@ import {
   type SpendSeries,
   type SpendState,
 } from "./projectSpend.logic";
+import { Text } from "~/components/ui/text";
 
 const READING_COMPUTE = Atom.make<ComputeSpendRead>({ kind: "reading" });
 const READING_TOKENS = Atom.make<AgentUsageRead>({ kind: "reading" });
@@ -220,14 +221,14 @@ export function ProjectSpendRowView({ state }: { readonly state: SpendState }) {
   return (
     <SetupRow label="Spend" surface="project-spend">
       {series.totalUsd === 0 ? (
-        <p className="text-line text-muted-foreground">No spend in the last 30 days</p>
+        <Text render={<p />} variant="remark">
+          No spend in the last 30 days
+        </Text>
       ) : (
         <>
           <p className="flex h-7 min-w-0 flex-wrap items-baseline gap-x-2">
             <Money usd={series.totalUsd} />
-            <span className="text-caption text-muted-foreground">
-              {spendDaily(series.averageUsd, series.days.length)}
-            </span>
+            <Text variant="meta">{spendDaily(series.averageUsd, series.days.length)}</Text>
           </p>
           <SpendBars geometry={ROW_BARS} series={series} />
         </>

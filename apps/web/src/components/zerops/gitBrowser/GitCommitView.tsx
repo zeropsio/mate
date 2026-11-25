@@ -16,6 +16,7 @@ import type { GitRepoAt } from "./GitBrowserLink";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitChangedFiles, GitDiffFiles, type GitLaterHunks } from "./GitDiffFiles";
 import { GitWhen } from "./GitWhen";
+import { Text } from "~/components/ui/text";
 
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 
@@ -54,16 +55,20 @@ export function GitCommitSummary({
       <header className="flex min-w-0 flex-col gap-2">
         <h2 className="text-emphasis font-medium break-words text-foreground">{commit.subject}</h2>
         {commit.body === "" ? null : (
-          <p className="text-body break-words whitespace-pre-wrap text-muted-foreground">
+          <Text className="break-words whitespace-pre-wrap" render={<p />} variant="description">
             {commit.body}
-          </p>
+          </Text>
         )}
         {commit.messageCut ? (
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             The message is longer than 64 KiB. Its end is not shown.
-          </p>
+          </Text>
         ) : null}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+        <Text
+          className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
+          render={<div />}
+          variant="note"
+        >
           <span>
             <span className="text-foreground">{commit.authorName}</span>
             {" · "}
@@ -93,7 +98,7 @@ export function GitCommitSummary({
                 }
                 tone="plain"
               >
-                <span className="font-mono">{parent.slice(0, 7)}</span>
+                <Text variant="code">{parent.slice(0, 7)}</Text>
               </InlineButton>
             ))}
           </span>
@@ -111,11 +116,11 @@ export function GitCommitSummary({
               Merged from change #{commit.change.number}
             </Button>
           )}
-        </div>
+        </Text>
         {commit.parents.length > 1 ? (
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             Showing what it brought against its first parent.
-          </p>
+          </Text>
         ) : null}
       </header>
       <GitChangedFiles
@@ -188,9 +193,9 @@ function PageState({
   if (view.state === "known") return null;
   if (view.state === "unread")
     return (
-      <p className="text-body text-muted-foreground" role="status">
+      <Text render={<p />} variant="description" role="status">
         Reading the {what}…
-      </p>
+      </Text>
     );
   return <GitReadStopped view={view} at={at} onAgain={onAgain} />;
 }
