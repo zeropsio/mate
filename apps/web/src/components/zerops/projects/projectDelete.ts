@@ -8,8 +8,6 @@ import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
-
-import { groupDeletionTarget } from "../ZeropsDeleteApplicationDialog.logic";
 import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { deleteOffered } from "./emptyApps.logic";
 
@@ -32,7 +30,7 @@ export function projectDeleteActions(input: {
       disabled: input.offer !== "allowed",
       onSelect: () => {
         if (offered === "empty") input.openEmpty();
-        else useDeleteApplicationDialog.getState().open({ target: groupDeletionTarget(group) });
+        else useDeleteApplicationDialog.getState().open({ appId: group.groupId, name: group.name });
       },
     },
   ];

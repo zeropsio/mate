@@ -7,7 +7,6 @@ import { useCodeStandings } from "../../zerops/useCodeStandings";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { codeStandingLine, projectDeleteOffered } from "@t3tools/client-runtime/zerops";
-import { groupDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/components/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
@@ -2358,7 +2357,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         ? {
             name: group.name,
             act: () => {
-              useDeleteApplicationDialog.getState().open({ target: groupDeletionTarget(group) });
+              useDeleteApplicationDialog
+                .getState()
+                .open({ appId: group.groupId, name: group.name });
             },
           }
         : undefined,

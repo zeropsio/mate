@@ -33,7 +33,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, repositoryWhere, type GitPageState } from "./ZeropsGitPage.logic";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
-import { lastMateDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useAccountOrgId, useProjection } from "~/zerops/accountData";
 import { KeptCodeQuestion, useKeptCodeAnswer } from "./KeptCodeQuestion";
 import { CodeStandingActions, CodeStandingBanner } from "./CodeStandingActions";
@@ -556,9 +555,7 @@ export function ZeropsGitPage() {
     const group = registry.registry.groups.find(({ groupId }) => groupId === appId);
     const app = structure?.apps.find(({ id }) => id === appId);
     if (group !== undefined && app !== undefined)
-      useDeleteApplicationDialog.getState().open({
-        target: lastMateDeletionTarget(inventory?.projects ?? [], app),
-      });
+      useDeleteApplicationDialog.getState().open({ appId: app.id, name: app.name });
   };
 
   return (
