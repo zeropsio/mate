@@ -4,10 +4,10 @@
  * opens, saying why. A colleague's read-along footer and a held footer draw none: that viewer
  * cannot act on the agent.
  */
-import { CircleAlertIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -53,30 +53,31 @@ export function AvailabilityNote({
   readonly children?: ReactNode;
 }) {
   return (
-    <div
-      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-caption leading-snug"
+    <Alert
+      className="shrink-0"
       data-agent-availability=""
+      icon={
+        availability.tone === "error" ? (
+          <CircleAlertIcon aria-hidden="true" />
+        ) : (
+          <TriangleAlertIcon aria-hidden="true" />
+        )
+      }
+      role="note"
+      surface="band"
+      variant={availability.tone === "error" ? "error" : "warning"}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-1.5 size-1.5 shrink-0 rounded-full",
-          availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{availability.title}</p>
-        {availability.message === null ? null : (
-          <p className="text-muted-foreground">{availability.message}</p>
-        )}
-        {onOpenSetup === null ? null : (
-          <InlineButton className="mt-0.5" onClick={onOpenSetup}>
-            Open coding agent setup
-          </InlineButton>
-        )}
-        {children}
-      </div>
-    </div>
+      <AlertTitle>{availability.title}</AlertTitle>
+      {availability.message === null ? null : (
+        <AlertDescription>{availability.message}</AlertDescription>
+      )}
+      {onOpenSetup === null ? null : (
+        <p className="m-0 mt-0.5">
+          <InlineButton onClick={onOpenSetup}>Open coding agent setup</InlineButton>
+        </p>
+      )}
+      {children}
+    </Alert>
   );
 }
 

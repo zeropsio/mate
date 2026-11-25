@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import {
   ChevronDownIcon,
   CircleXIcon,
@@ -649,10 +650,10 @@ function WhenExpressionBuilder({
           ) : null}
         </InputGroup>
         {parseError ? (
-          <div className="flex items-center gap-1.5 text-2xs text-destructive">
+          <Text className="flex items-center gap-1.5" role="alert" variant="error">
             <CircleXIcon className="size-3.5" />
             {parseError}
-          </div>
+          </Text>
         ) : null}
       </div>
 
@@ -1241,13 +1242,10 @@ export function KeybindingsSettingsPanel() {
         }
       >
         {!isElectron ? (
-          <div className="flex items-start gap-2 border-b border-warning/20 bg-warning/5 px-3 py-2.5 text-caption leading-relaxed text-muted-foreground sm:px-4">
-            <InfoIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
-            <p>
-              Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
-              desktop app for better keybinding support.
-            </p>
-          </div>
+          <Alert icon={<InfoIcon />} surface="band" variant="warning">
+            Some shortcuts may be claimed by the browser before Zerops Mate sees them. Use the
+            desktop app for better keybinding support.
+          </Alert>
         ) : null}
 
         <ScrollArea

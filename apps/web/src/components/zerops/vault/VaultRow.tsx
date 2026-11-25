@@ -3,6 +3,8 @@
  * read-only rows. Drawn from props only; the panel (`VaultPanel.tsx`) holds which row is open and
  * what is in flight.
  */
+import { Alert } from "~/components/ui/alert";
+import { Failure } from "~/components/ui/failure";
 import type {
   VaultImpact,
   VaultRevealed,
@@ -446,11 +448,7 @@ function RowBody(props: VaultRowProps) {
               : `Hidden from everyone, ${props.mateName ?? "your Mate"} included. Your apps still get it.`}
           </p>
         ) : null}
-        {revealRefusal === null ? null : (
-          <p className="text-destructive-foreground" role="alert">
-            {revealRefusal}
-          </p>
-        )}
+        {revealRefusal === null ? null : <Failure cause={revealRefusal} role="alert" size="line" />}
         {stepUp ? <VaultStepUp onConfirmed={() => void show()} /> : null}
         <p>
           {usedByWords(value, scope, props.mateName)}
@@ -531,12 +529,15 @@ function RowBody(props: VaultRowProps) {
       ) : null}
 
       {guard ? (
-        <div
+        <Alert
           aria-label={`Remove ${value.key}`}
-          className="grid gap-2.5 rounded-control bg-warning-surface px-3 py-2.5 text-line leading-4.75"
+          controlAlignment="first-line"
+          icon={<TriangleAlertIcon aria-hidden="true" />}
           role="alertdialog"
+          surface="tint"
+          variant="warning"
         >
-          <p>
+          <p className="m-0">
             <VaultWords
               parts={removeGuardWords(
                 value.key,
@@ -545,12 +546,12 @@ function RowBody(props: VaultRowProps) {
             />
           </p>
           {breaks.length === 0 ? null : (
-            <p data-vault-remove-breaks>
+            <p className="m-0" data-vault-remove-breaks>
               Removing it breaks {namesWords(breaks.map((service) => service.hostname))} until it's
               replaced, so nothing restarts {breaks.length === 1 ? "it" : "them"} now.
             </p>
           )}
-          <div className="flex justify-end gap-1.5">
+          <div className="mt-2 flex justify-end gap-1.5">
             <Button onClick={remove} size="sm" variant="destructive">
               Remove anyway
             </Button>
@@ -558,7 +559,7 @@ function RowBody(props: VaultRowProps) {
               Cancel
             </Button>
           </div>
-        </div>
+        </Alert>
       ) : null}
     </div>
   );
