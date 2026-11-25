@@ -755,40 +755,6 @@
   padding-bottom: 0;
 }
 
-/* The project's people (`ProjectAccessChips rows`): one per 38 px row, lit under the pointer. */
-.ov-chips[data-rows] {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin: 0;
-}
-
-.ov-chips[data-rows] > .ov-chip {
-  column-gap: 8px;
-  height: 38px;
-  padding: 0 10px 0 6px;
-  background: transparent;
-}
-
-.ov-chips[data-rows] > .ov-chip[data-menu] {
-  padding-right: 4px;
-}
-
-.ov-chips[data-rows] > .ov-chip:hover {
-  background: color-mix(in oklab, var(--foreground) 4%, transparent);
-}
-
-.ov-chips[data-rows] .ov-chip-who {
-  grid-template-columns: 24px minmax(0, 1fr);
-  column-gap: 8px;
-}
-
-.ov-chips[data-rows] .ov-chip-text {
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: center;
-}
-
 /* *Add people* (the kit's Card in the section's place for the button): the people found, one
    Row each with Read or Full; what those give; its two presses. */
 .np-add-list {

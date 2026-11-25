@@ -106,7 +106,7 @@ interface ProjectAccessChipsProps {
   readonly adding?: boolean;
   /** Whether a chip's face leads to that person's Team page; absent, none does. */
   readonly personPage?: PersonPageLink;
-  /** One person a row, a small face and the level at the row's end: the New project page's list. */
+  /** One person a `Row`, a small face and the level at the row's end: the New project page's list. */
   readonly rows?: boolean;
 }
 
@@ -154,19 +154,21 @@ export function ProjectAccessChips({
       ) : view.kind === "unreadable" ? (
         <Failure cause={view.line} size="line" />
       ) : (
-        <ul aria-label={label} className="ov-chips" data-rows={rows || undefined}>
-          {view.people.map((person) => (
-            <AccessChip
-              busy={saving?.has(person.key) === true}
-              face={rows ? 24 : 32}
-              key={person.key}
-              linked={personPage?.(person.key) === true}
-              {...(onChoose === undefined
-                ? {}
-                : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
-              person={person}
-            />
-          ))}
+        <ul aria-label={label} className={rows ? "flex flex-col" : "ov-chips"}>
+          {view.people.map((person) => {
+            const Person = rows ? AccessRow : AccessChip;
+            return (
+              <Person
+                busy={saving?.has(person.key) === true}
+                key={person.key}
+                linked={personPage?.(person.key) === true}
+                {...(onChoose === undefined
+                  ? {}
+                  : { onChoose: (choice: AccessChoice) => onChoose(person, choice) })}
+                person={person}
+              />
+            );
+          })}
         </ul>
       )}
       {said.map(({ key, line }) => (
@@ -203,27 +205,18 @@ export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?:
   );
 }
 
-function AccessChip({
-  person,
-  busy,
-  face,
-  linked,
-  onChoose,
-}: {
+interface AccessPersonProps {
   readonly person: ProjectPerson;
   readonly busy: boolean;
-  /** The face's size: 32 on a chip, 24 on a row. */
-  readonly face: 24 | 32;
   /** The face leads to the person's own Team page. */
   readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
-}) {
+}
+
+/** A pill in the chips' grid: a 32 px face, the short name over the level, then the ⋮. */
+function AccessChip({ person, busy, linked, onChoose }: AccessPersonProps) {
   const change = person.change;
-  const [asking, setAsking] = useState<AccessChoice | null>(null);
-  const choose = (choice: AccessChoice) => {
-    if (change !== null && asksFirst(change, choice)) setAsking(choice);
-    else onChoose?.(choice);
-  };
+  const { choose, asking } = useAskFirst(person, onChoose);
   return (
     <li
       className="ov-chip"
@@ -244,13 +237,9 @@ function AccessChip({
             )
           }
         >
-          <PersonAvatar name={person.name} picture={person.avatarUrl} size={face} />
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
           <span className="ov-chip-text">
-            <span
-              className="ov-chip-name"
-              data-creator={person.creator || undefined}
-              data-part="name"
-            >
+            <span className="ov-chip-name" data-part="name">
               {person.creator ? "You" : person.short}
             </span>
             <AccessBadge busy={busy} level={person.level} />
@@ -263,35 +252,115 @@ function AccessChip({
       {change === null || onChoose === undefined ? null : (
         <ChipMenu busy={busy} change={change} name={person.name} onChoose={choose} />
       )}
-      {change?.selfLower === undefined ? null : (
-        <AlertDialog
-          onOpenChange={(open) => {
-            if (!open) setAsking(null);
-          }}
-          open={asking !== null}
-        >
-          <AlertDialogPopup>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
-              <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
-              <Button
-                onClick={() => {
-                  if (asking !== null) onChoose?.(asking);
-                  setAsking(null);
-                }}
-                variant="destructive"
-              >
-                Give it up
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogPopup>
-        </AlertDialog>
-      )}
+      {asking}
     </li>
   );
+}
+
+/**
+ * One person a row (the kit's `Row`, as the *Add people* card's found people): a 20 px face, the
+ * short name with who they are on hover, and the level and the ⋮ at the row's end. An invitation's
+ * face and name are dimmed; its level and menu stay at full ink.
+ */
+function AccessRow({ person, busy, linked, onChoose }: AccessPersonProps) {
+  const change = person.change;
+  const { choose, asking } = useAskFirst(person, onChoose);
+  const dim = person.pending ? "opacity-55" : undefined;
+  return (
+    <Row
+      control={
+        <>
+          <AccessBadge busy={busy} level={person.level} />
+          {change === null || onChoose === undefined ? null : (
+            <ChipMenu
+              busy={busy}
+              change={change}
+              name={person.name}
+              onChoose={choose}
+              size="icon-xs"
+            />
+          )}
+          {asking}
+        </>
+      }
+      lead={
+        <span className={dim}>
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={20} />
+        </span>
+      }
+      render={<li />}
+      size="sm"
+      title={
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              linked ? (
+                <Link
+                  className="underline-offset-2 hover:underline"
+                  params={{ clientUserId: person.key }}
+                  to="/settings/team/$clientUserId"
+                />
+              ) : (
+                <span className="cursor-default" />
+              )
+            }
+          >
+            <span className={dim} data-part="name">
+              {person.creator ? "You" : person.short}
+            </span>
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            <HoverCard person={person} />
+          </TooltipPopup>
+        </Tooltip>
+      }
+    />
+  );
+}
+
+/**
+ * A choice from a person's ⋮, asked first where it takes the viewer's own access down: `choose`
+ * for the menu, and `asking`, the question, to draw beside it.
+ */
+function useAskFirst(
+  person: ProjectPerson,
+  onChoose: ((choice: AccessChoice) => void) | undefined,
+) {
+  const change = person.change;
+  const [asked, setAsked] = useState<AccessChoice | null>(null);
+  const choose = (choice: AccessChoice) => {
+    if (change !== null && asksFirst(change, choice)) setAsked(choice);
+    else onChoose?.(choice);
+  };
+  const asking =
+    change?.selfLower === undefined ? null : (
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open) setAsked(null);
+        }}
+        open={asked !== null}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{change.selfLower.title}</AlertDialogTitle>
+            <AlertDialogDescription>{change.selfLower.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
+            <Button
+              onClick={() => {
+                if (asked !== null) onChoose?.(asked);
+                setAsked(null);
+              }}
+              variant="destructive"
+            >
+              Give it up
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+    );
+  return { choose, asking };
 }
 
 /** Who someone is: full name, e-mail and role — then what they may do here. */
@@ -321,11 +390,14 @@ function ChipMenu({
   name,
   busy,
   onChoose,
+  size = "icon-sm",
 }: {
   readonly change: PersonChange;
   readonly name: string;
   readonly busy: boolean;
   readonly onChoose: (choice: AccessChoice) => void;
+  /** A row's ⋮ is its line's height (`icon-xs`); a chip's, the pill's (`icon-sm`). */
+  readonly size?: "icon-xs" | "icon-sm";
 }) {
   const entries = personMenu(change);
   const actions = entries.flatMap((entry) => (entry.kind === "action" ? [entry] : []));
@@ -337,7 +409,7 @@ function ChipMenu({
       <MenuTrigger
         aria-label={`Change ${name}'s access`}
         disabled={busy}
-        render={<Button size="icon-sm" variant="ghost" />}
+        render={<Button size={size} variant="ghost" />}
       >
         <MoreVerticalIcon aria-hidden="true" />
       </MenuTrigger>
