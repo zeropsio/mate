@@ -260,7 +260,11 @@ function Page() {
     const role = params.get("role") === "developer" ? "developer" : "guest";
     return (
       <TeamInviteView
-        actions={{ check: answered({ kind: "new" }), send: answered(undefined) }}
+        actions={{
+          confirm: answered("confirmed" as const),
+          check: answered({ kind: "new" }),
+          send: answered(undefined),
+        }}
         from={params.get("from") ?? (details ? "g-snap" : undefined)}
         initialEmail={details ? "marie.cerna@example.com" : ""}
         initialMembership={presetMembership(details ? role : "developer")}

@@ -213,6 +213,18 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
         : write({ kind: "continue-operation", orgId: clientId, id }),
     [clientId, write],
   );
+  /**
+   * Zerops sends an invitation only from a session in sudo: HQ's prompt first, from the press, where
+   * the session is not known to be in it (`zeropsHq.ts`).
+   */
+  const prompts = session?.zeropsHq ?? null;
+  const sudoAhead = useCallback(
+    () =>
+      prompts === null
+        ? Promise.reject(new Error("Zerops isn't reachable from here."))
+        : prompts.sudoAhead(),
+    [prompts],
+  );
   const deleteAccessChange = useCallback(
     (id: string) =>
       clientId === null
@@ -240,6 +252,7 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     write,
     check,
     startAccessChange,
+    sudoAhead,
     continueAccessChange,
     deleteAccessChange,
     operations: operationsOf,
