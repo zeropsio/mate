@@ -5,7 +5,7 @@ import { ZeropsMark } from "../ZeropsMark";
  * The way into Zerops from a Mate's conversation: its project on the
  * dashboard, in a new tab. It stands where the editor picker stands in a
  * conversation on a machine of one's own — the header's one button style,
- * the Zerops loop, and the label only where the header has room for it.
+ * the Zerops ring, and the label only where the header has room for it.
  */
 export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
   return (
