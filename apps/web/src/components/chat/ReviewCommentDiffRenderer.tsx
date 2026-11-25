@@ -7,6 +7,7 @@ import {
 } from "../../reviewCommentContext";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
+import { Card } from "~/components/ui/card";
 
 export default function ReviewCommentDiffRenderer({
   comment,
@@ -34,9 +35,9 @@ export default function ReviewCommentDiffRenderer({
   }
   if (renderablePatch?.kind === "raw") {
     return (
-      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">
-        {renderablePatch.text}
-      </pre>
+      <Card variant="inset">
+        <pre className="overflow-x-auto p-2 text-caption">{renderablePatch.text}</pre>
+      </Card>
     );
   }
   return null;

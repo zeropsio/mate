@@ -45,6 +45,7 @@ import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 import { waitedWords } from "./runCard.logic";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -330,7 +331,7 @@ function ReleaseEndedLine({
       data-conversation-event="release"
       data-release-outcome={event.outcome}
     >
-      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
+      <Separator aria-hidden="true" className="min-w-6 flex-1" />
       <Tooltip>
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>
           {event.outcome === "live" ? (
@@ -345,7 +346,7 @@ function ReleaseEndedLine({
         </TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
       </Tooltip>
-      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
+      <Separator aria-hidden="true" className="min-w-6 flex-1" />
     </Text>
   );
 }

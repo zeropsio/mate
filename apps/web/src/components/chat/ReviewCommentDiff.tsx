@@ -4,6 +4,7 @@ import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { Button } from "../ui/button";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 const loadDiffRenderer = () => import("./ReviewCommentDiffRenderer");
 
@@ -38,9 +39,9 @@ export function ReviewCommentDiff({
   const Renderer = renderer.component;
   const rawPatch = useMemo(
     () => (
-      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">
-        {comment.diff}
-      </pre>
+      <Card variant="inset">
+        <pre className="overflow-x-auto p-2 text-caption">{comment.diff}</pre>
+      </Card>
     ),
     [comment.diff],
   );
