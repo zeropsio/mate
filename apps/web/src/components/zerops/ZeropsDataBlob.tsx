@@ -16,6 +16,7 @@ import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
 import { Text } from "~/components/ui/text";
 
 interface ZeropsDataBlobProps {
@@ -78,9 +79,9 @@ function Body({
     case "hex":
       return (
         <>
-          <pre className="overflow-x-auto font-mono text-caption" data-zerops-data-blob-hex>
+          <CodeBlock data-zerops-data-blob-hex wrap={false}>
             {preview.dump}
-          </pre>
+          </CodeBlock>
           {preview.moreBytes === undefined ? null : <MoreBytes count={preview.moreBytes} />}
         </>
       );
@@ -88,34 +89,34 @@ function Body({
       return (
         <>
           <Note text="Embedding collapsed" />
-          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
+          <CodeBlock data-zerops-data-blob-text wrap={false}>
             {preview.text}
-          </pre>
+          </CodeBlock>
         </>
       );
     case "stream-summary":
       return (
         <>
           <Note text="Stream summary, not message content" />
-          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
+          <CodeBlock data-zerops-data-blob-text wrap={false}>
             {preview.text}
-          </pre>
+          </CodeBlock>
         </>
       );
     case "text":
       return (
         <>
-          <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
+          <CodeBlock data-zerops-data-blob-text wrap={false}>
             {preview.text}
-          </pre>
+          </CodeBlock>
           {preview.moreBytes === undefined ? null : <MoreBytes count={preview.moreBytes} />}
         </>
       );
     case "json":
       return (
-        <pre className="overflow-x-auto text-caption" data-zerops-data-blob-text>
+        <CodeBlock data-zerops-data-blob-text wrap={false}>
           {preview.text}
-        </pre>
+        </CodeBlock>
       );
   }
 }

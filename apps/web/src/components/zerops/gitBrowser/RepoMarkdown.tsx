@@ -12,6 +12,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { MARKDOWN_SANITIZE_SCHEMA } from "../../markdownSanitizeSchema";
+import { CodeBlock } from "~/components/ui/code-block";
 
 /** A path of the repository a README link opens. */
 export interface RepoPathTarget {
@@ -234,12 +235,7 @@ export function RepoMarkdown({
 }: ReadmeLinks & {
   readonly content: string;
 }) {
-  if (!isMarkdown(links.path))
-    return (
-      <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-caption text-foreground">
-        {content}
-      </pre>
-    );
+  if (!isMarkdown(links.path)) return <CodeBlock>{content}</CodeBlock>;
   return (
     <ReadmeLinksContext value={links}>
       <div className="chat-markdown w-full min-w-0">

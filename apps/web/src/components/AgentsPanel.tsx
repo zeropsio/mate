@@ -27,7 +27,7 @@ import type {
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
-import { Bot, Braces, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
 import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -48,9 +48,8 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Row } from "~/components/ui/row";
-import { Loading } from "~/components/ui/loading";
+import { CodeBlock } from "~/components/ui/code-block";
 import { EmptyState } from "~/components/ui/empty";
-import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
 
 /**
@@ -323,37 +322,23 @@ function WorkflowScriptView({
     orchestrationEnvironment.workflowScript({ environmentId, input: { threadId, scriptPath } }),
   );
   return (
-    <div className="mx-1.5 mb-1 rounded-control border border-border/60 bg-background/60">
-      <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1">
-        <Braces aria-hidden className="size-3 text-muted-foreground" />
-        <span className="truncate font-mono text-3xs text-muted-foreground">
-          {scriptPath.split("/").at(-1)}
-        </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onClose}
-          aria-label="Close script"
-          className="ml-auto"
-        >
+    <CodeBlock
+      actions={
+        <Button size="icon-sm" variant="ghost" onClick={onClose} aria-label="Close script">
           <X aria-hidden />
         </Button>
-      </div>
-      <div className="max-h-72 overflow-auto p-2">
-        {result._tag === "Success" ? (
-          <pre className="whitespace-pre-wrap break-words font-mono text-2xs leading-relaxed text-foreground/90">
-            {result.value.contents}
-            {result.value.truncated ? "\n… (truncated)" : ""}
-          </pre>
-        ) : result._tag === "Failure" ? (
-          <Text render={<p />} variant="error">
-            Could not load the script.
-          </Text>
-        ) : (
-          <Loading count={3} label="The script" shape="lines" />
-        )}
-      </div>
-    </div>
+      }
+      className="mx-1.5 mb-1"
+      height="md"
+      title={scriptPath.split("/").at(-1)}
+      tone={result._tag === "Failure" ? "error" : "default"}
+    >
+      {result._tag === "Success"
+        ? `${result.value.contents}${result.value.truncated ? "\n… (truncated)" : ""}`
+        : result._tag === "Failure"
+          ? "Could not load the script."
+          : "Reading the script…"}
+    </CodeBlock>
   );
 }
 

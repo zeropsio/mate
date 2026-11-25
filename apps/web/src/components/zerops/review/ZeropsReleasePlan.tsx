@@ -12,12 +12,10 @@ import { MOTION } from "@t3tools/shared/brand";
 import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
 import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
@@ -32,6 +30,7 @@ import {
   type Words,
 } from "./releaseSheet.logic";
 import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 /** Words drawn, the names in them in code type. */
 export function WordsOf({ words }: { readonly words: Words }) {
@@ -406,7 +405,6 @@ function PlanStep({
   readonly live: ReleasePlanProps["live"];
 }) {
   const [open, setOpen] = useState<"import" | "log" | undefined>(undefined);
-  const { copyToClipboard, isCopied } = useCopyToClipboard();
   const yaml =
     step.creates === undefined ? undefined : servicePlanImportYaml({ operations: [step.creates] });
   const acts: Array<ReactElement> = [];
@@ -497,16 +495,9 @@ function PlanStep({
         <div className={MORE} data-zerops-surface="release-import">
           {step.creates.cost.trim() === "" ? null : <p>{step.creates.cost}</p>}
           {/* Its import, as YAML, scrolling inside its own box. */}
-          <Card variant="inset">
-            <pre className="max-h-60 overflow-auto px-3 py-2.5 font-mono text-caption whitespace-pre">
-              {yaml}
-            </pre>
-          </Card>
-          <p>
-            <InlineButton onClick={() => copyToClipboard(yaml)}>
-              {isCopied ? "Copied" : "Copy"}
-            </InlineButton>
-          </p>
+          <CodeBlock copy="the import" height="md" title="Import" wrap={false}>
+            {yaml}
+          </CodeBlock>
         </div>
       ) : null}
       {open === "log" && log !== undefined && step.service !== undefined ? (
