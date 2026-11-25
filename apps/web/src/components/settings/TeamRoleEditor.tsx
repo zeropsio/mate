@@ -24,6 +24,7 @@ import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { advancedChoices, roleCards } from "./teamMember.logic";
+import { SectionHeader } from "../ui/section";
 
 export function TeamRoleEditor({
   editorRole,
@@ -50,9 +51,7 @@ export function TeamRoleEditor({
   const current = advanced.roles.find(({ roleCode }) => roleCode === value.roleCode);
   return (
     <div className="tm-role" data-zerops-surface="team-role">
-      <h2 className="tm-block-title" id={`${id}-preset`}>
-        Role
-      </h2>
+      <SectionHeader id={`${id}-preset`} title="Role" />
       <RadioGroup
         aria-labelledby={`${id}-preset`}
         layout="columns"

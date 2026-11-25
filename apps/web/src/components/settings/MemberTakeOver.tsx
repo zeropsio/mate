@@ -13,6 +13,8 @@ import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { EmptyState } from "../ui/empty";
+import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 
 interface TakeOverPerson {
   readonly userId: string;
@@ -57,43 +59,47 @@ function TakeOverRow({
         ? `Replaced by one you mint; the Mate stays with ${owner.name}.`
         : "Its owner is leaving: pick who gets the Mate.";
   return (
-    <li className="tm-block-head" data-token={item.tokenId}>
-      <span className="tm-block-text">
-        <span className="tm-block-title">
-          {kindWords[item.kind]} · {item.label}
-        </span>
-        <span className="tm-block-desc">{line}</span>
-      </span>
-      {picks ? (
-        <Select value={picked ?? ""} onValueChange={(value) => setPicked(value || null)}>
-          <SelectTrigger
+    <Row
+      control={
+        <>
+          {picks ? (
+            <Select value={picked ?? ""} onValueChange={(value) => setPicked(value || null)}>
+              <SelectTrigger
+                size="sm"
+                className="w-full sm:w-48"
+                aria-label={`New owner of ${item.label}`}
+              >
+                <SelectValue>
+                  {candidates.find(({ userId }) => userId === picked)?.name ?? "New owner"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {candidates.map(({ userId, name }) => (
+                  <SelectItem key={userId} hideIndicator value={userId}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          ) : null}
+          <Button
+            aria-busy={busy || undefined}
+            disabled={busy || (picks && picked === null)}
+            onClick={() => onReplace(picks && picked !== null ? picked : undefined)}
             size="sm"
-            className="w-full sm:w-48"
-            aria-label={`New owner of ${item.label}`}
+            variant="secondary"
           >
-            <SelectValue>
-              {candidates.find(({ userId }) => userId === picked)?.name ?? "New owner"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {candidates.map(({ userId, name }) => (
-              <SelectItem key={userId} hideIndicator value={userId}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      ) : null}
-      <Button
-        aria-busy={busy || undefined}
-        disabled={busy || (picks && picked === null)}
-        onClick={() => onReplace(picks && picked !== null ? picked : undefined)}
-        size="sm"
-        variant="secondary"
-      >
-        {item.inUse ? "Replace" : "Delete"}
-      </Button>
-    </li>
+            {item.inUse ? "Replace" : "Delete"}
+          </Button>
+        </>
+      }
+      data-token={item.tokenId}
+      line={line}
+      lineWraps
+      render={<li />}
+      size="sm"
+      title={`${kindWords[item.kind]} · ${item.label}`}
+    />
   );
 }
 
@@ -119,13 +125,10 @@ export function MemberTakeOverView({
   const working = action.kind === "working";
   return (
     <section aria-label="Before removing" className="tm-section">
-      <span className="tm-block-text">
-        <h2 className="tm-block-title">Before removing</h2>
-        <span className="tm-block-desc">
-          Zerops refuses to remove {memberName} while a token they made exists. Replace each one
-          here: HQ makes its successor with your sign-in and deletes theirs.
-        </span>
-      </span>
+      <SectionHeader
+        line={`Zerops refuses to remove ${memberName} while a token they made exists. Replace each one here: HQ makes its successor with your sign-in and deletes theirs.`}
+        title="Before removing"
+      />
       {list.state === "known" ? (
         <>
           {list.list.items.length === 0 ? (

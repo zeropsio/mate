@@ -58,6 +58,7 @@ import { useTeam } from "./useTeam";
 import { MemberTakeOverView } from "./MemberTakeOver";
 import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
 import { EmptyState } from "../ui/empty";
+import { SectionHeader } from "../ui/section";
 
 /** What the page asks HQ to start; each rejects with what to tell the person. */
 export interface TeamMemberActions {
@@ -284,26 +285,26 @@ export function TeamMemberView({
           ) : null}
           <div aria-hidden="true" className="tm-rule" />
           <section aria-label="Danger zone" className="tm-section">
-            <div className="tm-block-head">
-              <span className="tm-block-text">
-                <h2 className="tm-block-title">Danger zone</h2>
-                <span className="tm-block-desc">
-                  {end === "withdraw"
-                    ? "The invitation stops working at once; you can invite them again later."
-                    : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`}
-                </span>
-              </span>
-              <Button
-                aria-busy={removal.pending || undefined}
-                disabled={unnamed || removal.pending}
-                onClick={() => setAskingRemove(true)}
-                size="sm"
-                variant="destructive"
-              >
-                <Trash2Icon aria-hidden="true" />
-                {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
-              </Button>
-            </div>
+            <SectionHeader
+              action={
+                <Button
+                  aria-busy={removal.pending || undefined}
+                  disabled={unnamed || removal.pending}
+                  onClick={() => setAskingRemove(true)}
+                  size="sm"
+                  variant="destructive"
+                >
+                  <Trash2Icon aria-hidden="true" />
+                  {end === "withdraw" ? "Withdraw invite" : `Remove from ${organizationName}`}
+                </Button>
+              }
+              line={
+                end === "withdraw"
+                  ? "The invitation stops working at once; you can invite them again later."
+                  : `They lose access to every project in ${organizationName} at once. Their Mates stay in the organization.`
+              }
+              title="Danger zone"
+            />
             {removal.trouble === null ? null : (
               <Failure cause={removal.trouble} role="alert" size="line" />
             )}

@@ -41,6 +41,7 @@ import {
   type InviteProject,
 } from "./teamMember.logic";
 import { useTeam } from "./useTeam";
+import { SectionHeader } from "../ui/section";
 
 /** What the invitation asks Zerops and HQ; each rejects with what to tell the person. */
 export interface TeamInviteActions {
@@ -221,10 +222,7 @@ export function TeamInviteView({
         />
       </section>
       <section aria-label="Projects" className="tm-section">
-        <span className="tm-block-text">
-          <h2 className="tm-block-title">Projects</h2>
-          <span className="tm-block-desc">{inviteReachLine(membership, projects.length)}</span>
-        </span>
+        <SectionHeader line={inviteReachLine(membership, projects.length)} title="Projects" />
         {level === null || projects.length === 0 ? null : (
           <>
             <ul aria-label="Projects to give" className="tm-invite-projects">
@@ -255,9 +253,7 @@ export function TeamInviteView({
               </span>
             ) : offered.levels.length > 1 ? (
               <div className="tm-role">
-                <h2 className="tm-block-title" id={`${id}-level`}>
-                  Access
-                </h2>
+                <SectionHeader id={`${id}-level`} title="Access" />
                 <RadioGroup
                   aria-labelledby={`${id}-level`}
                   layout="columns"

@@ -24,6 +24,7 @@ import {
   type ProjectChip,
   type ProjectChipAction,
 } from "./teamMember.logic";
+import { SectionHeader } from "../ui/section";
 
 const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
   read: "Read",
@@ -60,38 +61,36 @@ export function MemberProjectAccess({
   const [open, setOpen] = useState(false);
   return (
     <div className="tm-access">
-      <div className="tm-block-head">
-        <span className="tm-block-text">
-          <h2 className="tm-block-title">Project access</h2>
-          <span className="tm-block-desc">
-            {projectAccessIntro({ roleCode: memberRole, createsProjects, viewerGives })}
-          </span>
-        </span>
-        {editable && candidates.length > 0 ? (
-          <Popover onOpenChange={setOpen} open={open}>
-            <PopoverTrigger
-              render={
-                <Button data-zerops-surface="set-custom-access" size="sm" variant="secondary" />
-              }
-            >
-              <PlusIcon aria-hidden="true" />
-              Choose projects
-            </PopoverTrigger>
-            <PopoverPopup align="end" padding="none" width="lg">
-              {open ? (
-                <ProjectPicker
-                  candidates={candidates}
-                  levels={levels}
-                  onAdd={(picks) => {
-                    setOpen(false);
-                    onAdd(picks);
-                  }}
-                />
-              ) : null}
-            </PopoverPopup>
-          </Popover>
-        ) : null}
-      </div>
+      <SectionHeader
+        action={
+          editable && candidates.length > 0 ? (
+            <Popover onOpenChange={setOpen} open={open}>
+              <PopoverTrigger
+                render={
+                  <Button data-zerops-surface="set-custom-access" size="sm" variant="secondary" />
+                }
+              >
+                <PlusIcon aria-hidden="true" />
+                Choose projects
+              </PopoverTrigger>
+              <PopoverPopup align="end" padding="none" width="lg">
+                {open ? (
+                  <ProjectPicker
+                    candidates={candidates}
+                    levels={levels}
+                    onAdd={(picks) => {
+                      setOpen(false);
+                      onAdd(picks);
+                    }}
+                  />
+                ) : null}
+              </PopoverPopup>
+            </Popover>
+          ) : null
+        }
+        line={projectAccessIntro({ roleCode: memberRole, createsProjects, viewerGives })}
+        title="Project access"
+      />
       {chips.length === 0 ? null : (
         <ul aria-label="Their projects" className="ov-chips" data-wide="">
           {chips.map((chip) => (

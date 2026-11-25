@@ -1370,46 +1370,12 @@ a.ov-chip-who:focus-visible {
   gap: 14px;
 }
 
-/* A block's own heading: what it is on the left, its one action at the end, its line under it. */
-.tm-block-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 24px;
-  align-items: center;
-}
-
-.tm-block-text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.tm-block-title {
-  color: var(--foreground);
-  font-size: var(--text-emphasis);
-  font-weight: 600;
-  line-height: 22px;
-}
-
+/* A quiet line in the page's column: a field's hint, what a choice gives. */
 .tm-block-desc {
   color: var(--muted-foreground);
   font-size: var(--text-body);
   line-height: 18px;
   text-wrap: pretty;
-}
-
-/* Beside an action, a block's line keeps clear of it. */
-.tm-block-head .tm-block-desc {
-  max-width: 52ch;
-}
-
-/* On a phone the action stands under what it is about, at the column's start. */
-@media (max-width: 39.999rem) {
-  .tm-block-head {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 12px;
-    justify-items: start;
-  }
 }
 
 .tm-access {
