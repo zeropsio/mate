@@ -87,6 +87,7 @@ import {
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 interface TerminalInputTarget {
   readonly environmentId: EnvironmentId;
@@ -1726,7 +1727,7 @@ export default function ThreadTerminalDrawer({
               >
                 <SquareSplitHorizontal className="size-3.25" />
               </TerminalActionButton>
-              <div className="h-4 w-px bg-border/80" />
+              <Separator className="h-4" orientation="vertical" />
               <TerminalActionButton
                 unavailable={hasReachedSplitLimit}
                 onClick={onSplitTerminalVerticalAction}
@@ -1734,12 +1735,12 @@ export default function ThreadTerminalDrawer({
               >
                 <SquareSplitVertical className="size-3.25" />
               </TerminalActionButton>
-              <div className="h-4 w-px bg-border/80" />
+              <Separator className="h-4" orientation="vertical" />
             </span>
             <TerminalActionButton onClick={onNewTerminalAction} label={newTerminalActionLabel}>
               <Plus className="size-3.25" />
             </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
+            <Separator className="h-4" orientation="vertical" />
             <TerminalActionButton
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}

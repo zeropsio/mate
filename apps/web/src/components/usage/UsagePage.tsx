@@ -706,7 +706,7 @@ export function UsagePage({
                   </Text>
                   <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
-                      <div className="h-5 w-36 rounded-mark bg-muted" />
+                      <Skeleton className="h-5 w-36" />
                     ) : costsHidden ? (
                       <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
@@ -1004,7 +1004,7 @@ function UsageTotals({
             label={label}
             value={
               totals === null ? (
-                <span aria-hidden className="block h-6 w-16 rounded-mark bg-muted" />
+                <Skeleton aria-hidden className="h-6 w-16" />
               ) : unknown && key !== "totalTokens" ? (
                 "Unknown"
               ) : (

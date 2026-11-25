@@ -23,6 +23,7 @@ import { threadFileWritesCommands } from "~/state/threadFileWritesCommands";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { useKnownMate } from "~/zerops/useZeropsMates";
+import { Card } from "~/components/ui/card";
 
 type Read =
   | { readonly state: "reading" }
@@ -103,9 +104,9 @@ export default function WrittenFilePanel({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <div className="rounded-card bg-foreground/4">
+          <Card variant="inset">
             <WrittenChanges write={read.file.write} />
-          </div>
+          </Card>
         </div>
       )}
     </div>
