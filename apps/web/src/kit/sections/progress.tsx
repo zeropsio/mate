@@ -1,4 +1,5 @@
 import { defineKitSection } from "../kitSection";
+import { SpecimenBlock, Specimens } from "../Specimen";
 import { ChosenProgress } from "../states/Chosen";
 
 export default defineKitSection({
@@ -9,5 +10,14 @@ export default defineKitSection({
   group: "Chosen",
   kind: "Feedback",
   source: "apps/web/src/components/ui/progress.tsx",
-  render: () => <ChosenProgress />,
+  render: () => (
+    <Specimens>
+      <SpecimenBlock
+        note="Its step in words, its clock beside an honest estimate, a bar that only moves forward."
+        title="Under way, done and failed"
+      >
+        <ChosenProgress />
+      </SpecimenBlock>
+    </Specimens>
+  ),
 });

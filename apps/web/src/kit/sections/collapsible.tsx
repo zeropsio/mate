@@ -4,7 +4,7 @@ import { Button } from "~/components/ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function Sample({ defaultOpen }: { readonly defaultOpen: boolean }) {
   return (
@@ -26,18 +26,22 @@ function Sample({ defaultOpen }: { readonly defaultOpen: boolean }) {
 
 function CollapsibleSpecimens() {
   return (
-    <SpecimenGrid>
-      <Specimen label="<Collapsible> (closed)">
-        <div className="w-64">
-          <Sample defaultOpen={false} />
-        </div>
-      </Specimen>
-      <Specimen label="<Collapsible defaultOpen>">
-        <div className="w-64">
-          <Sample defaultOpen />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="Press the trigger to open or close it in place." title="Closed and open">
+        <SpecimenGrid size="md">
+          <Specimen align="start" label="<Collapsible>" note="Closed">
+            <div className="w-full max-w-64">
+              <Sample defaultOpen={false} />
+            </div>
+          </Specimen>
+          <Specimen align="start" label="<Collapsible defaultOpen>" note="Open">
+            <div className="w-full max-w-64">
+              <Sample defaultOpen />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   );
 }
 

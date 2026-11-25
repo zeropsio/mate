@@ -8,7 +8,7 @@ import {
 } from "~/components/ui/combobox";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const BRANCHES = ["main", "fix/cache-main-20260918-180825", "feat/vault", "release/0.15"];
@@ -47,24 +47,32 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/combobox.tsx",
   render: () => (
-    <SpecimenGrid>
-      {(["sm", "default", "lg"] as const).map((size) => (
-        <Specimen key={size} label={specimenLabel({ size })}>
-          <div className="w-56">
-            <Sample size={size} />
-          </div>
-        </Specimen>
-      ))}
-      <Specimen label="showClear">
-        <div className="w-56">
-          <Sample showClear />
-        </div>
-      </Specimen>
-      <Specimen label="disabled">
-        <div className="w-56">
-          <Sample disabled />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Sizes">
+        <SpecimenGrid size="md">
+          {(["sm", "default", "lg"] as const).map((size) => (
+            <Specimen key={size} label={specimenLabel({ size })}>
+              <div className="w-full max-w-56">
+                <Sample size={size} />
+              </div>
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Clearing and states">
+        <SpecimenGrid size="md">
+          <Specimen label="showClear" note="A press that clears the value">
+            <div className="w-full max-w-56">
+              <Sample showClear />
+            </div>
+          </Specimen>
+          <Specimen label="disabled">
+            <div className="w-full max-w-56">
+              <Sample disabled />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

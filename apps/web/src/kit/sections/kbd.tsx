@@ -4,36 +4,44 @@ import { Button } from "~/components/ui/button";
 import { Kbd, KbdGroup } from "~/components/ui/kbd";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function KbdSpecimens() {
   return (
-    <SpecimenGrid>
-      <Specimen label="<Kbd>">
-        <Kbd>Esc</Kbd>
-      </Specimen>
-      <Specimen label="<Kbd> + icon">
-        <Kbd>
-          <CommandIcon />
-        </Kbd>
-      </Specimen>
-      <Specimen label="<KbdGroup>">
-        <KbdGroup>
-          <Kbd>⌘</Kbd>
-          <Kbd>K</Kbd>
-        </KbdGroup>
-      </Specimen>
-      <Specimen label='<Kbd tone="ink"> on a press'>
-        <Button>
-          Merge <Kbd tone="ink">⌘↵</Kbd>
-        </Button>
-      </Specimen>
-      <Specimen label="inside a sentence">
-        <span className="text-body">
-          Press <Kbd>⌘</Kbd> <Kbd>Enter</Kbd> to send.
-        </span>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Keys and chords">
+        <SpecimenGrid>
+          <Specimen label="<Kbd>" note="A key">
+            <Kbd>Esc</Kbd>
+          </Specimen>
+          <Specimen label="<Kbd> · <CommandIcon />" note="A key drawn as its icon">
+            <Kbd>
+              <CommandIcon />
+            </Kbd>
+          </Specimen>
+          <Specimen label="<KbdGroup>" note="A chord">
+            <KbdGroup>
+              <Kbd>⌘</Kbd>
+              <Kbd>K</Kbd>
+            </KbdGroup>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="In place">
+        <SpecimenGrid size="md">
+          <Specimen label='<Kbd tone="ink">' note="On a press, in its ink">
+            <Button>
+              Merge <Kbd tone="ink">⌘↵</Kbd>
+            </Button>
+          </Specimen>
+          <Specimen label="<Kbd>" note="Inside a sentence">
+            <span className="text-body">
+              Press <Kbd>⌘</Kbd> <Kbd>Enter</Kbd> to send.
+            </span>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   );
 }
 

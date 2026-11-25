@@ -5,19 +5,22 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/in
 import { Spinner } from "~/components/ui/spinner";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const ALIGNS = ["inline-start", "inline-end", "block-start", "block-end"] as const;
 
 function InputGroupSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Addon alignments">
-        <SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="An addon at either end of the line, or above or below it."
+        title="Addon alignments"
+      >
+        <SpecimenGrid size="md">
           {ALIGNS.map((align) => (
             <Specimen key={align} label={`<InputGroupAddon ${specimenLabel({ align })}>`}>
-              <div className="w-64">
+              <div className="w-full max-w-64">
                 <InputGroup>
                   <InputGroupAddon align={align}>
                     {align.startsWith("block") ? (
@@ -34,9 +37,9 @@ function InputGroupSpecimens() {
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock title="Variants and content">
-        <SpecimenGrid>
-          <Specimen label='<InputGroup variant="ghost">'>
-            <div className="w-64">
+        <SpecimenGrid size="md">
+          <Specimen label='<InputGroup variant="ghost">' note="No frame until it is used">
+            <div className="w-full max-w-64">
               <InputGroup variant="ghost">
                 <InputGroupAddon>
                   <SearchIcon />
@@ -45,8 +48,8 @@ function InputGroupSpecimens() {
               </InputGroup>
             </div>
           </Specimen>
-          <Specimen label="addon: <Spinner />">
-            <div className="w-64">
+          <Specimen label="<InputGroupAddon> · <Spinner />" note="Searching">
+            <div className="w-full max-w-64">
               <InputGroup>
                 <InputGroupAddon>
                   <Spinner />
@@ -55,8 +58,11 @@ function InputGroupSpecimens() {
               </InputGroup>
             </div>
           </Specimen>
-          <Specimen label='addon: <Button size="icon-xs">'>
-            <div className="w-64">
+          <Specimen
+            label='<InputGroupAddon align="inline-end"> · <Button size="icon-sm">'
+            note="A press inside the frame"
+          >
+            <div className="w-full max-w-64">
               <InputGroup>
                 <InputGroupInput
                   aria-label="Address"
@@ -73,7 +79,7 @@ function InputGroupSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

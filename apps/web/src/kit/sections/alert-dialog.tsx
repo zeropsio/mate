@@ -12,13 +12,16 @@ import {
 } from "~/components/ui/alert-dialog";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 function Opener({ footer }: { readonly footer: "default" | "bare" }) {
   const [open, setOpen] = useState(false);
   return (
-    <Specimen label={`<AlertDialogFooter ${specimenLabel({ variant: footer })}>`}>
+    <Specimen
+      label={`<AlertDialogFooter ${specimenLabel({ variant: footer })}>`}
+      note={footer === "default" ? "A footer on its own band" : "A footer on the body's ground"}
+    >
       <Button onClick={() => setOpen(true)} variant="destructive">
         Delete project
       </Button>
@@ -48,9 +51,13 @@ export default defineKitSection({
   kind: "Overlays",
   source: "apps/web/src/components/ui/alert-dialog.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Opener footer="default" />
-      <Opener footer="bare" />
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="Each press opens the confirmation it names." title="Footers">
+        <SpecimenGrid size="md">
+          <Opener footer="default" />
+          <Opener footer="bare" />
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

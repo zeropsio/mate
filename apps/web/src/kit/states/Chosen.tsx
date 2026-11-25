@@ -26,7 +26,7 @@ const STEPS = [
 
 /** A state pattern's specimens. */
 function Chosen({ children }: { readonly children: ReactNode }) {
-  return <SpecimenGrid>{children}</SpecimenGrid>;
+  return <SpecimenGrid size="xl">{children}</SpecimenGrid>;
 }
 
 const SHAPES: ReadonlyArray<{ readonly shape: LoadingShape; readonly count: number }> = [
@@ -147,7 +147,7 @@ export function ChosenEmpty() {
           </EmptyState>
         </div>
       </Specimen>
-      <Specimen label='<EmptyState size="page">'>
+      <Specimen label='<EmptyState size="page">' span="row">
         <StateFrame size="page">
           <EmptyState mark={<BoxIcon className="size-10 text-muted-foreground" />} size="page">
             Nothing waits on you. A question from one of your Mates shows up here.
@@ -280,6 +280,7 @@ export function ChosenProgress() {
       <Specimen
         label="<StatusPage> + <Progress /> · a whole page waiting"
         source="apps/web/src/components/ui/status-page.tsx"
+        span="row"
       >
         <StateFrame size="page">
           <StatusPage title="Setting up Mate for Acme">
@@ -331,7 +332,7 @@ export function ChosenFailure() {
           />
         </div>
       </Specimen>
-      <Specimen label='<Failure size="page" …> · open Details: nothing above moves'>
+      <Specimen label='<Failure size="page" …> · open Details: nothing above moves' span="row">
         <StateFrame size="page">
           <Failure
             action={
