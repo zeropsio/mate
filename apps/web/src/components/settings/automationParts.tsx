@@ -14,7 +14,7 @@ import type {
 import { ArrowUpRightIcon } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 
 import { Button, InlineButton } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -112,34 +112,14 @@ export function PublicChoice({
   );
 }
 
-export function CopyLine({
-  label,
-  copy,
-  value,
-}: {
-  readonly label: string;
-  /** The press's words: what it copies. */
-  readonly copy: string;
-  readonly value: string;
-}) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
+/** A value to copy under its name, the name in a column of its own beside it: a webhook's URL, its secret. */
+export function NamedCopyLine({ name, value }: { readonly name: string; readonly value: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-3">
       <Text className="w-24 shrink-0" variant="label">
-        {label}
+        {name}
       </Text>
-      <code className="min-w-0 flex-1 truncate font-mono text-caption text-foreground">
-        {value}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(value, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : copy}
-      </Button>
+      <CopyLine className="flex-1" label={`the ${name.toLowerCase()}`} value={value} />
     </div>
   );
 }

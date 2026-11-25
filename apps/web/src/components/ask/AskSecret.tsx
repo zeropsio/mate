@@ -13,7 +13,7 @@ import { Input } from "../ui/input";
 import { KEEP_HIDDEN } from "./ask.logic";
 import type { AskDensity } from "./AskCard";
 import { Text } from "~/components/ui/text";
-import { Card } from "~/components/ui/card";
+import { CopyLine } from "~/components/ui/copy-line";
 
 /** No browser or password manager offers to save or fill what is typed here, shown or masked. */
 const NOT_A_PASSWORD = {
@@ -145,7 +145,6 @@ export function AskRevealed({
   readonly seconds?: number;
 }) {
   const [left, setLeft] = useState(seconds);
-  const [copied, setCopied] = useState(false);
   const hide = useEffectEvent(onHide);
   useEffect(() => {
     const started = Date.now();
@@ -165,25 +164,9 @@ export function AskRevealed({
       document.removeEventListener("visibilitychange", leave);
     };
   }, [seconds]);
-  useEffect(() => {
-    if (!copied) return;
-    const reset = window.setTimeout(() => setCopied(false), 1600);
-    return () => window.clearTimeout(reset);
-  }, [copied]);
   return (
     <div className="grid min-w-0 gap-1.5" data-ask-revealed>
-      <div className="flex min-w-0 items-center gap-2">
-        <Card className="min-w-0 flex-1" variant="inset">
-          <code className="min-w-0 break-all px-2.5 py-1.5 font-mono text-body">{value}</code>
-        </Card>
-        <Button
-          onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
-          size="sm"
-          variant="secondary"
-        >
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
+      <CopyLine label="the value" value={value} wrap />
       <Text render={<p />} variant="note" aria-live="off">
         Hides in {left} s or when you leave
       </Text>

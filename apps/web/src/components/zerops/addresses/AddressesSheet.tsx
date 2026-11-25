@@ -27,7 +27,8 @@ import {
 } from "./addresses.logic";
 import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import { AddressesDomains, type WebMode } from "./AddressesDomains";
-import { Confirm, CopyButton, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
+import { Confirm, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
 import { AddressesZerops } from "./AddressesZerops";
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
@@ -311,7 +312,7 @@ function IpSection({
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
         {ips.v6 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.v6} />}
+            action={<CopyButton label={ips.v6} value={ips.v6} />}
             caption="Yours, included"
             data="ipv6"
             label="IPv6"
@@ -320,7 +321,7 @@ function IpSection({
         )}
         {ips.ownV4 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.ownV4} />}
+            action={<CopyButton label={ips.ownV4} value={ips.ownV4} />}
             caption={own}
             data="own-ipv4"
             label="Your own IPv4"
@@ -329,7 +330,7 @@ function IpSection({
         )}
         {ips.sharedV4 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.sharedV4} />}
+            action={<CopyButton label={ips.sharedV4} value={ips.sharedV4} />}
             caption={SHARED_WORDS}
             data="shared-ipv4"
             label="Shared IPv4"

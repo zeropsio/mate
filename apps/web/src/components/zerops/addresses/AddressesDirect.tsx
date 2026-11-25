@@ -30,7 +30,6 @@ import {
 } from "./addresses.logic";
 import {
   Confirm,
-  CopyButton,
   Face,
   GroupBody,
   RealName,
@@ -42,6 +41,7 @@ import {
   useRevealed,
   type SheetContext,
 } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
 import { Text } from "~/components/ui/text";
 
 export type DirectMode =
@@ -177,7 +177,7 @@ function PortRow({
       <span className="truncate font-mono text-caption">
         {port.address ?? `port ${port.publicPort}`}
       </span>
-      {port.address === undefined ? null : <CopyButton value={port.address} />}
+      {port.address === undefined ? null : <CopyButton label={port.address} value={port.address} />}
       {port.internalPort === port.publicPort && udp === "" ? null : (
         <RowMeta>
           {port.internalPort === port.publicPort ? "" : `→ port ${port.internalPort}`}

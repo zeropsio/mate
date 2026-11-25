@@ -12,7 +12,7 @@ import { useState } from "react";
 
 import { Button } from "../../ui/button";
 import { dnsZone, namesWords, recordHost, recordKey } from "./addresses.logic";
-import { CopyButton } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
 import { Text } from "~/components/ui/text";
 
 const NONE_FOUND: ReadonlySet<string> = new Set();
@@ -224,7 +224,7 @@ function RecordTable({
                     Found
                   </span>
                 ) : (
-                  <CopyButton value={record.value} />
+                  <CopyButton label={record.value} value={record.value} />
                 )}
               </span>
             </div>

@@ -3,10 +3,8 @@
  * pill, the stages of an address's way to answering, a tile for a value that stands alone, a copy
  * button, and what went wrong under the control it belongs to.
  */
-import { CheckIcon, CopyIcon, TriangleAlertIcon, XIcon } from "lucide-react";
-import { Children, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
-
-import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
+import { CheckIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { Children, useEffect, useRef, type ReactNode, type Ref } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "../../ui/alert";
 import { Badge } from "../../ui/badge";
@@ -320,33 +318,6 @@ export function Face({ word, tone }: { readonly word: string; readonly tone: Fac
 }
 
 const FACE_TONE = { ok: "success", warn: "warning", busy: "info", fail: "danger" } as const;
-
-/** How long a copied value says so. */
-const COPIED_MS = 1_200;
-
-export function CopyButton({ value }: { readonly value: string }) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_MS);
-    return () => clearTimeout(timer);
-  }, [copied]);
-  return (
-    <Button
-      aria-label={copied ? `Copied ${value}` : `Copy ${value}`}
-      onClick={() => {
-        void writeTextToClipboard(value, value).then(
-          () => setCopied(true),
-          () => setCopied(false),
-        );
-      }}
-      size="icon-sm"
-      variant="ghost"
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </Button>
-  );
-}
 
 /** Why the last press of a control failed, under it; nothing when none did. */
 export function Trouble({ text }: { readonly text: string | undefined }) {

@@ -33,6 +33,14 @@ export default defineKitSection({
           <Specimen label="value={null}" note="Being read: the room held, Copy waits">
             <CopyLine className="w-full" label="the address" value={null} />
           </Specimen>
+          <Specimen label='value={null} placeholder="…"' note="Not made yet: words in its room">
+            <CopyLine
+              className="w-full"
+              label="the address"
+              placeholder="Made when you save the app's keys"
+              value={null}
+            />
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock note="The place's own label names it, over or beside it." title="Named">

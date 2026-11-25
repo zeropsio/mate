@@ -7,7 +7,7 @@
 import { ArrowUpRightIcon } from "lucide-react";
 import { useId, type FormEvent, type ReactNode } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -182,32 +182,12 @@ export function AddressField({
   /** The address; `null` while it is read: the room is held and Copy waits. */
   readonly value: string | null;
 }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="grid gap-1.5">
       <Text render={<p />} variant="heading">
         {label}
       </Text>
-      <div className="flex min-w-0 items-center gap-2">
-        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-control border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
-          {value}
-        </code>
-        <Button
-          disabled={value === null}
-          onClick={() => {
-            if (value !== null) copyToClipboard(value, undefined);
-          }}
-          size="sm"
-          variant="secondary"
-        >
-          <span className="grid">
-            <span aria-hidden className="invisible col-start-1 row-start-1">
-              Copied
-            </span>
-            <span className="col-start-1 row-start-1">{isCopied ? "Copied" : "Copy"}</span>
-          </span>
-        </Button>
-      </div>
+      <CopyLine label={`the ${label}`} value={value} />
       {hint ? (
         <Text render={<p />} variant="note">
           {hint}
@@ -232,9 +212,7 @@ export function PendingAddress({
       <Text render={<p />} variant="heading">
         {label}
       </Text>
-      <p className="flex h-7.5 items-center rounded-control border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
-        {words}
-      </p>
+      <CopyLine label={`the ${label}`} placeholder={words} value={null} />
       {hint ? (
         <Text render={<p />} variant="note">
           {hint}

@@ -16,20 +16,27 @@ export default definePlayground({
     value: { kind: "enum", options: ["url", "command", "path"], note: "one value to copy" },
     wrap: { kind: "boolean", note: "wrap anywhere instead of cutting with an ellipsis" },
     reading: { kind: "boolean", note: "value={null}: the room held, Copy waits" },
+    placeholder: { kind: "text", note: "words in its room while there is no value yet" },
   },
-  initial: { value: "url", wrap: false, reading: false },
-  render: ({ value, wrap, reading }) => (
+  initial: { value: "url", wrap: false, reading: false, placeholder: "" },
+  render: ({ value, wrap, reading, placeholder }) => (
     <CopyLine
       className="w-full max-w-96"
       label={`the ${value}`}
       value={reading ? null : VALUES[value]}
       wrap={wrap}
+      {...(placeholder === "" ? {} : { placeholder })}
     />
   ),
-  jsx: ({ value, wrap, reading }) =>
+  jsx: ({ value, wrap, reading, placeholder }) =>
     jsxElement(
       "CopyLine",
-      { label: `the ${value}`, value: reading ? { code: "null" } : VALUES[value], wrap },
+      {
+        label: `the ${value}`,
+        value: reading ? { code: "null" } : VALUES[value],
+        placeholder: placeholder === "" ? undefined : placeholder,
+        wrap,
+      },
       undefined,
       { wrap: false },
     ),
