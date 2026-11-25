@@ -41,6 +41,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { PageHeader } from "../ui/page-header";
 import { Spinner } from "../ui/spinner";
 import {
   menuMateVisibilities,
@@ -556,28 +557,24 @@ export function ZeropsProjectsHeader({
   const inBar = useInPhoneBar();
   return (
     <InPhoneBar>
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3",
-          // Its row stands on the menu's logo row, centre to centre, not a bar's height below it;
-          // on a phone it is the bar's line, beside the menu's button.
-          inBar ? "min-w-0 flex-1" : "-mt-1.5",
-        )}
-        data-zerops-project-scope="true"
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-title font-medium text-foreground">Overview</h1>
-          {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {newProject ? (
+      <PageHeader
+        actions={
+          newProject ? (
             <Button onClick={askNewProject} size="sm" variant="secondary">
               <PlusIcon />
               New project
             </Button>
-          ) : null}
-        </div>
-      </div>
+          ) : undefined
+        }
+        // Its line stands on the menu's logo row, centre to centre, not a bar's height below it;
+        // on a phone it is the bar's line, beside the menu's button.
+        className={inBar ? "min-w-0 flex-1" : "-mt-2"}
+        data-zerops-project-scope="true"
+        summary={
+          notice === null ? undefined : <ProjectsFreshness notice={notice} onRetry={onRetry} />
+        }
+        title="Overview"
+      />
     </InPhoneBar>
   );
 }
@@ -996,7 +993,7 @@ export function ZeropsProjectsContent({
       plainEvidenceOf({
         hqKnown,
         structure: knownStructure,
-        local: [...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId]))],
+        local: made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
       }),
     [hqKnown, knownStructure, made],
   );
@@ -2830,7 +2827,8 @@ export function ZeropsProjectsContent({
   return (
     <>
       {/* Its head stands with the page's one wait (`overviewPaints`), never under it. */}
-      {painted ? (
+      {/* A project's own page heads itself (`ProjectPageBody`). */}
+      {painted && project === undefined ? (
         <ZeropsProjectsHeader
           newProject={roleOffered.newProject}
           notice={projectsFreshnessNotice(listing, nowMs)}

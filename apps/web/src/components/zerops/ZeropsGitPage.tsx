@@ -10,6 +10,7 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useContext, useEffect, useMemo, useState } from "react";
 import { Button, InlineButton } from "../ui/button";
+import { PageHeader } from "../ui/page-header";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
@@ -371,17 +372,16 @@ export function ZeropsGitPage() {
       }
     >
       {detailOpen ? null : (
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
-            <h1 className="text-title font-medium text-foreground">Git</h1>
-            <Text render={<p />} variant="description">
-              Repositories and open changes across your projects.
-            </Text>
-          </div>
-          <Button variant="ghost" size="sm" onClick={readAgain}>
-            Read again
-          </Button>
-        </div>
+        <PageHeader
+          actions={
+            <Button variant="ghost" size="sm" onClick={readAgain}>
+              Read again
+            </Button>
+          }
+          data-zerops-surface="git-header"
+          line="Repositories and open changes across your projects."
+          title="Git"
+        />
       )}
       {search.appId !== undefined && search.repo !== undefined ? (
         <ZeropsRepositoryBrowser

@@ -71,7 +71,8 @@ import { fixProblemOf, type ProductionChip } from "./SidebarProductionChip.logic
 import { placeLabel } from "./projects/projectCard.logic";
 import { HiddenEnvironmentAsks } from "./projects/ReadAccessRequests";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
-import { PageHeader, usePageTrail } from "./system";
+import { PageHeader } from "../ui/page-header";
+import { PageTrail, usePageTrail } from "./system";
 import {
   NO_ROUTE_ENVIRONMENTS,
   NO_ROUTE_NAVIGATION,
@@ -427,7 +428,7 @@ function UnreadGroupDetail({
   // environments already read stand.
   return (
     <div className={PAGE} data-zerops-surface="project-page">
-      <PageHeader title={groupName} trail={trail} />
+      <PageHeader title={groupName} trail={<PageTrail trail={trail} />} />
       <div className={PAGE_COLS}>
         <div className={PAGE_MAIN}>
           {undrawn ? (

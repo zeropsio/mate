@@ -41,6 +41,7 @@ import { createRoot } from "react-dom/client";
 
 import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
 import { PutLiveRow } from "~/components/zerops/ProductionRun";
+import { ZeropsProjectsHeader } from "~/components/zerops/ZeropsProjectsPage";
 import { MateFace } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
@@ -53,9 +54,9 @@ import { rowStanding } from "~/components/zerops/system/ChangeRow.logic";
 import { changesReadyLine, MateCard } from "~/components/zerops/system/MateCard";
 import { PlaceDoors } from "~/components/zerops/place/PlaceDoors";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
-import { PageHeader } from "~/components/zerops/system/PageHeader";
+import { PageHeader } from "~/components/ui/page-header";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
-import { usePageTrail } from "~/components/zerops/system/Crumbs";
+import { PageTrail, usePageTrail } from "~/components/zerops/system/Crumbs";
 import { placeLines } from "~/components/zerops/projects/projectCard.logic";
 import { Page } from "~/components/ui/page";
 import { Skeleton } from "~/components/ui/skeleton";
@@ -1334,7 +1335,7 @@ function HarnessPlacePage({
       <PageHeader
         summary={line === undefined ? undefined : <PlaceLine density="header" line={line} />}
         title={title}
-        trail={trail}
+        trail={<PageTrail trail={trail} />}
       />
       <Skeleton className="h-40 w-full" />
       <Skeleton className="h-24 w-full" />
@@ -1391,12 +1392,7 @@ function HarnessPage() {
           {PAGE !== null && place !== null ? (
             <HarnessPlacePage groupId={PAGE} projectId={place} />
           ) : null}
-          {PAGE === null ? (
-            <div className="flex items-center justify-between">
-              <h1 className="text-title font-medium text-foreground">Overview</h1>
-              <Button variant="secondary">New project</Button>
-            </div>
-          ) : null}
+          {PAGE === null ? <ZeropsProjectsHeader /> : null}
           {/* The overview's body, as the app's stands it under its head (`ZeropsProjectsContent`). */}
           <div className="space-y-6">
             {PAGE === null ? (

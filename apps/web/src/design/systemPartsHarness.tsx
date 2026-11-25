@@ -19,6 +19,7 @@ import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
 import { MenuItem } from "~/components/ui/menu";
+import { PageHeader } from "~/components/ui/page-header";
 import { MateFace } from "~/components/zerops/primitives";
 import { pull } from "~/components/zerops/projects/flowTestFixtures";
 import type {
@@ -35,7 +36,7 @@ import {
   MateRowTime,
   NextBlock,
   NextRelease,
-  PageHeader,
+  PageTrail,
   PlaceLine,
   SectionAction,
   SectionLabel,
@@ -286,7 +287,7 @@ function Harness() {
             }
             summary={<span className="text-muted-foreground">teashop.example ↗</span>}
             title="Tea Shop"
-            trail={TRAIL.slice(0, 1).concat({ label: "Tea Shop" })}
+            trail={<PageTrail trail={TRAIL.slice(0, 1).concat({ label: "Tea Shop" })} />}
           />
         </Surface>
         <Surface label="place page (header PlaceLine as summary)" width={1100}>
@@ -303,11 +304,11 @@ function Harness() {
               />
             }
             title="Production"
-            trail={TRAIL}
+            trail={<PageTrail trail={TRAIL} />}
           />
         </Surface>
         <Surface label="title unread" width={1100}>
-          <PageHeader title={undefined} trail={TRAIL.slice(0, 1)} />
+          <PageHeader title={undefined} trail={<PageTrail trail={TRAIL.slice(0, 1)} />} />
         </Surface>
       </Part>
 

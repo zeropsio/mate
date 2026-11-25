@@ -7,7 +7,7 @@ export {
   rowStanding,
   type RowStanding,
 } from "./ChangeRow.logic";
-export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
+export { Crumbs, PageTrail, usePageTrail, type Crumb } from "./Crumbs";
 export { GrowsInPlace } from "./GrowsInPlace";
 export { MateRow, MateRowTime } from "./MateRow";
 export { NextBlock, NextRelease, type NextReleaseInput } from "./NextRelease";
@@ -17,7 +17,6 @@ export {
   readyOfFlow,
   type NextReleaseView,
 } from "./NextRelease.logic";
-export { PageHeader } from "./PageHeader";
 export { PlaceLine } from "./PlaceLine";
 export { ProjectLine } from "./ProjectLine";
 export {

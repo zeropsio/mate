@@ -52,7 +52,8 @@ import {
 import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { Crumbs, PageHeader, SectionLabel, usePageTrail, type Crumb } from "./system";
+import { PageHeader } from "../ui/page-header";
+import { Crumbs, PageTrail, SectionLabel, usePageTrail, type Crumb } from "./system";
 import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -554,7 +555,13 @@ export function DetailShell({
     // The project page's width: the trail and the title stay put going between them.
     <ZeropsHostedFrame bar={false} width="page">
       {/* The frame's rhythm spaces the header and every block after it, as on the project page. */}
-      <PageHeader actions={actions} summary={summary} tag={titleTag} title={title} trail={trail} />
+      <PageHeader
+        actions={actions}
+        summary={summary}
+        tag={titleTag}
+        title={title}
+        trail={<PageTrail trail={trail} />}
+      />
       {children}
     </ZeropsHostedFrame>
   );

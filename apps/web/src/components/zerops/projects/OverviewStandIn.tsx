@@ -11,6 +11,7 @@ import { cn } from "~/lib/utils";
 import { overviewDrewCards, rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
+import { PageHeader } from "../../ui/page-header";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "../system/PhoneBar";
@@ -22,15 +23,11 @@ function TitleRow() {
   const inBar = useInPhoneBar();
   return (
     <InPhoneBar>
-      <div
-        className={cn(
-          "flex min-h-7 items-center justify-between gap-3",
-          inBar ? "min-w-0 flex-1" : "-mt-1.5",
-        )}
+      <PageHeader
+        className={inBar ? "min-w-0 flex-1" : "-mt-2"}
         data-overview-stand-in-title=""
-      >
-        <h1 className="text-title font-medium text-foreground">Overview</h1>
-      </div>
+        title="Overview"
+      />
     </InPhoneBar>
   );
 }

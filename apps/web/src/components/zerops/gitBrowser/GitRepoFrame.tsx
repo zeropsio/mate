@@ -7,8 +7,14 @@ import { githubRepositoryUrl } from "@t3tools/client-runtime/zerops/gitBrowse/ho
 import type { GitHome, GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { GitHubIcon } from "~/components/Icons";
+import {
+  WorkspaceBreadcrumb,
+  WorkspaceBreadcrumbItem,
+  WorkspaceBreadcrumbSeparator,
+} from "~/components/WorkspaceBreadcrumb";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
+import { PageHeader } from "~/components/ui/page-header";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -82,23 +88,29 @@ export function GitRepoHeading({
   readonly actions?: ReactNode;
 }) {
   return (
-    <>
-      <nav className="flex min-w-0 flex-wrap items-center gap-2 text-body" aria-label="Repository">
-        <InlineButton onClick={onBack}>Git</InlineButton>
-        <span className="text-muted-foreground"> / {project} / </span>
-        <span className="break-all font-medium text-foreground">{repo}</span>
-        {repo === "group" ? <Badge>Setup</Badge> : null}
-      </nav>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-title font-medium text-foreground">{repo}</h1>
-          <Text className="mt-1" render={<p />} variant="description">
-            {project}’s {repo === "group" ? "setup repository" : "repository"}
-          </Text>
-        </div>
-        {actions}
-      </div>
-    </>
+    <PageHeader
+      actions={actions}
+      line={`${project}’s ${repo === "group" ? "setup repository" : "repository"}`}
+      tag={repo === "group" ? <Badge>Setup</Badge> : undefined}
+      title={repo}
+      trail={
+        <WorkspaceBreadcrumb ariaLabel="Repository">
+          <WorkspaceBreadcrumbItem>
+            <InlineButton onClick={onBack} tone="muted">
+              Git
+            </InlineButton>
+          </WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbSeparator />
+          <WorkspaceBreadcrumbItem className="min-w-0 shrink">
+            <span className="min-w-0 truncate">{project}</span>
+          </WorkspaceBreadcrumbItem>
+          <WorkspaceBreadcrumbSeparator />
+          <WorkspaceBreadcrumbItem className="min-w-0 shrink" current>
+            <span className="min-w-0 truncate">{repo}</span>
+          </WorkspaceBreadcrumbItem>
+        </WorkspaceBreadcrumb>
+      }
+    />
   );
 }
 

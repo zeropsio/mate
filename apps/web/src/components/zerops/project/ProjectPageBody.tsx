@@ -31,6 +31,7 @@ import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
 
+import { PageHeader } from "../../ui/page-header";
 import { Button, InlineButton } from "../../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../../ui/dialog";
 import { Skeleton } from "../../ui/skeleton";
@@ -70,7 +71,7 @@ import {
   lineMarkOf,
   NextRelease,
   nextReleaseView,
-  PageHeader,
+  PageTrail,
   PlaceLine,
   ProjectLine,
   projectLine,
@@ -257,7 +258,7 @@ export function ProjectPageBody<T>({
           ) : undefined
         }
         title={group.name}
-        trail={trail}
+        trail={<PageTrail trail={trail} />}
       />
       <div className={PAGE_COLS}>
         <div className={PAGE_MAIN}>
