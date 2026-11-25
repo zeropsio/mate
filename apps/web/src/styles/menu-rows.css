@@ -379,8 +379,8 @@
   }
 
   /* What waits in a project, marked after its row's name and nothing more (`ProjectReviewMarks`):
-     a change waiting on a review, what waits for production; a small number where there are more.
-     A press is the row's. */
+     the kit's Badge pills — a change waiting on a review, what waits for production; a small
+     number where there are more. A press is the row's. */
   .menu-marks {
     display: inline-flex;
     flex: none;
@@ -397,7 +397,7 @@
     flex: 0 1000000000 auto;
     flex-wrap: wrap;
     min-width: 0;
-    height: 18px;
+    height: 20px;
     overflow: hidden;
     margin-inline: 7px 1px;
   }
@@ -409,60 +409,15 @@
     margin-inline-end: -6px;
   }
 
-  /* Each on a chip of its own colour, so it stands apart from the name before it. */
-  .menu-mark {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    height: 18px;
-    padding-inline: 5px;
-    border-radius: var(--radius-mark);
-    background: color-mix(in oklab, currentColor 11%, transparent);
-    font-size: var(--text-2xs);
-    font-weight: 600;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* The header's blue (`chat-header-review`): the mark and the door it stands for, one colour. */
-  .menu-mark-merge {
-    color: var(--primary);
-  }
-
-  /* Its Mate still works on every change it stands for: there, quieter, asking nothing yet. */
-  .menu-mark-merge[data-in-progress] {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* A door: its press opens what waits for production (`ProjectReviewMarks`). */
-  .menu-mark-release {
-    color: var(--primary);
+  /* The release mark is a door inside the row's press (a press cannot hold another): the pointer
+     opens what waits for production from it, and its pill firms under the pointer as a tag's does. */
+  [data-menu-mark-door] {
     cursor: pointer;
-    transition: background-color var(--duration-quick) var(--ease-out-strong);
+    transition: box-shadow var(--duration-quick) var(--ease-out-strong);
   }
 
-  .menu-mark-release:hover {
-    background: color-mix(in oklab, currentColor 20%, transparent);
-  }
-
-  /* Somebody else's release: there, as quiet as a change its Mate still works on. */
-  .menu-mark-release[data-quiet] {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* This tab's run on its project's row: under way in the busy ink, stopped in the failed one. */
-  .menu-mark-release[data-run="releasing"] {
-    color: var(--zerops-status-busy-text);
-  }
-
-  .menu-mark-release[data-run="failed"] {
-    color: var(--zerops-status-failed-text);
-  }
-
-  .menu-mark-icon {
-    flex: none;
-    width: 12px;
-    height: 12px;
+  [data-menu-mark-door]:hover {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
   }
 
   /* The conversation's header holds what waits on the person right after the Mate's name

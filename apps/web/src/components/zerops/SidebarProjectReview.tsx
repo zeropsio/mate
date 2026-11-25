@@ -31,6 +31,7 @@ import {
 import { usePutLiveStanding } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview, useReviewShown } from "~/zerops/review";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
@@ -246,60 +247,60 @@ export function ProjectReviewMarks({
   return (
     <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
       {mark === undefined ? null : (
-        <span
+        <Badge
           aria-label={mark.label}
-          className="menu-mark menu-mark-merge"
-          // Its Mate still works on every change it stands for, or every one waits on the people
-          // who merge: quieter, asking the person nothing.
-          data-in-progress={mark.asks ? undefined : ""}
           data-zerops-surface="sidebar-project-review-mark"
           role="img"
+          // Its Mate still works on every change it stands for, or every one waits on the people
+          // who merge: a plain fact, asking the person nothing.
+          tone={mark.asks ? "info" : "neutral"}
         >
-          <GitMergeIcon aria-hidden="true" className="menu-mark-icon" />
-          {mark.count > 1 ? <span>{mark.count}</span> : null}
-        </span>
+          <GitMergeIcon aria-hidden="true" />
+          {mark.count > 1 ? <span className="tabular-nums">{mark.count}</span> : null}
+        </Badge>
       )}
       {run === undefined ? null : (
         <Tooltip>
           <TooltipTrigger
             render={
-              <span
+              <Badge
                 aria-label={run.tip}
-                className="menu-mark menu-mark-release"
-                data-run={run.kind}
+                data-menu-mark-door=""
                 data-zerops-surface="sidebar-project-run-mark"
                 onClick={(event) => {
                   event.stopPropagation();
                   openReview({ kind: "release", groupId }, { from: event.currentTarget });
                 }}
                 role="img"
-              />
+                tone={run.kind === "failed" ? "danger" : "info"}
+              >
+                {run.kind === "releasing" ? (
+                  <Spinner aria-hidden="true" role="presentation" size="xs" />
+                ) : (
+                  <RocketIcon aria-hidden="true" />
+                )}
+              </Badge>
             }
-          >
-            {run.kind === "releasing" ? (
-              <Spinner aria-hidden="true" role="presentation" size="xs" />
-            ) : (
-              <RocketIcon aria-hidden="true" className="menu-mark-icon" />
-            )}
-          </TooltipTrigger>
+          />
           <TooltipPopup side="bottom">{run.tip}</TooltipPopup>
         </Tooltip>
       )}
       {release === undefined || run !== undefined ? null : (
-        <span
+        <Badge
           aria-label={`Release: ${releaseTagTip(release)}`}
-          className="menu-mark menu-mark-release"
-          data-quiet={release.quiet === true ? "" : undefined}
+          data-menu-mark-door=""
           data-zerops-surface="sidebar-project-release-mark"
           onClick={(event) => {
             event.stopPropagation();
             openReview({ kind: "release", groupId }, { from: event.currentTarget });
           }}
           role="img"
+          // Somebody else's release: there, as plain as a change its Mate still works on.
+          tone={release.quiet === true ? "neutral" : "info"}
         >
-          <RocketIcon aria-hidden="true" className="menu-mark-icon" />
+          <RocketIcon aria-hidden="true" />
           <ReleaseMarkCount release={release} />
-        </span>
+        </Badge>
       )}
     </span>
   );
@@ -307,7 +308,9 @@ export function ProjectReviewMarks({
 
 function ReleaseMarkCount({ release }: { readonly release: ReleaseWaiting }) {
   const { count, atLeast } = releaseCount(release);
-  return count > 1 ? <span>{`${String(count)}${atLeast ? "+" : ""}`}</span> : null;
+  return count > 1 ? (
+    <span className="tabular-nums">{`${String(count)}${atLeast ? "+" : ""}`}</span>
+  ) : null;
 }
 
 function ReleaseTag({
