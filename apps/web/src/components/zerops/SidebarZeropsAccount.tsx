@@ -165,7 +165,7 @@ export function SidebarZeropsAccount({
   const [heldAtFirst] = useState(namePending);
   const nameHeld = heldAtFirst && !menuFilled;
   const menu = (
-    <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
+    <MenuPopup align={collapsed ? "start" : "end"} side="top" width="md">
       <SidebarZeropsAccountMenu
         account={account}
         activeOrganization={activeOrganization}

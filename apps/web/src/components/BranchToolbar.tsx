@@ -176,11 +176,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
         {triggerContent}
         <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
       </MenuTrigger>
-      <MenuPopup
-        align="start"
-        side="top"
-        className={previousWorktreeLabel ? "w-[min(21rem,calc(100vw-2rem))]" : undefined}
-      >
+      <MenuPopup align="start" side="top" width={previousWorktreeLabel ? "lg" : "auto"}>
         {showEnvironmentPicker && availableEnvironments && onEnvironmentChange ? (
           <>
             <MenuGroup>

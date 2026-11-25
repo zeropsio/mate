@@ -220,7 +220,7 @@ export function SidebarCreateButton({
         </TooltipTrigger>
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
-      <MenuPopup align="end" className="w-50">
+      <MenuPopup align="end" width="sm">
         <CreateInProject label="New Mate" kind="mate" onPick={onNewMate} projects={projects} />
         {onNewAutomatedMates === undefined ? null : (
           <CreateInProject

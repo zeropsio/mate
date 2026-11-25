@@ -98,7 +98,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             {vaultName(scope, props.mateName)}
             <ChevronDownIcon />
           </MenuTrigger>
-          <MenuPopup align="start" className="min-w-44">
+          <MenuPopup align="start" width="fit">
             {props.scopes.map((candidate) => (
               <MenuItem key={candidate.id} onClick={() => setScopeId(candidate.id)}>
                 {`${vaultName(candidate, props.mateName)} · ${vaultReach(candidate, props.mateName)}`}

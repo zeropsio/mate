@@ -81,7 +81,7 @@ export function ZeropsStopMenu({
       >
         <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
       </MenuTrigger>
-      <MenuPopup align="end" className="max-w-[24rem] min-w-56">
+      <MenuPopup align="end" width="fit">
         <MenuGroup data-zerops-surface="stop-menu-running">
           <MenuGroupLabel>Running</MenuGroupLabel>
           {/* A fact, not a door: the environment's own page is right below. */}

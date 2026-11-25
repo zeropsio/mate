@@ -55,7 +55,7 @@ export function CrewmateMenuPopup({
     <MenuPopup
       align={from === "row" ? "end" : "start"}
       aria-describedby={headingId}
-      className={from === "row" ? "w-91" : "w-max max-w-100"}
+      width={from === "row" ? "lg" : "fit"}
       data-crewmate-menu
     >
       <Text className="px-2.75 pt-1.5 pb-2" render={<p />} variant="remark" id={headingId}>

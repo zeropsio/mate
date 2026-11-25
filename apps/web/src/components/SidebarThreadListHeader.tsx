@@ -206,7 +206,7 @@ export function SidebarProjectScopeRow({
           </span>
           <ChevronDownIcon className="-mr-px size-4 shrink-0" />
         </MenuTrigger>
-        <MenuPopup align="start" className="w-(--anchor-width)">
+        <MenuPopup align="start" width="anchor">
           <MenuRadioGroup
             value={projectScopeKey ?? "all"}
             onValueChange={(value) =>

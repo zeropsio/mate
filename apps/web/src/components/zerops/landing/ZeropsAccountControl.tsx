@@ -51,7 +51,7 @@ export function ZeropsAccountControl({
         </span>
         <ChevronDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       </MenuTrigger>
-      <MenuPopup align="end" className="w-64">
+      <MenuPopup align="end" width="md">
         <ZeropsAccountMenu account={account} busy={busy} error={error} onSignOut={onSignOut} />
       </MenuPopup>
     </Menu>

@@ -114,7 +114,7 @@ export function CrewHead({
             >
               <CrewDots />
             </MenuTrigger>
-            <MenuPopup align="end" className="w-79">
+            <MenuPopup align="end" width="lg">
               {items.map((item) => (
                 <MenuItem
                   data-crew-menu-item={item.id}

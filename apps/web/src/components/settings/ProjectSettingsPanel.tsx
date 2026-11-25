@@ -632,7 +632,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     Import scripts
                     <ChevronDownIcon className="size-3.5" />
                   </MenuTrigger>
-                  <MenuPopup align="end" className="w-72">
+                  <MenuPopup align="end" width="md">
                     <MenuGroup>
                       <MenuGroupLabel>Import from t3.json</MenuGroupLabel>
                       <Text className="px-2 pb-2" render={<p />} variant="description">

@@ -423,7 +423,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         >
           <EllipsisIcon />
         </MenuTrigger>
-        <MenuPopup align="end" className="min-w-52">
+        <MenuPopup align="end" width="fit">
           {writable.map((scope) => (
             <MenuItem
               disabled={editing}

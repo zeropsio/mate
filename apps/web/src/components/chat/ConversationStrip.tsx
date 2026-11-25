@@ -135,7 +135,7 @@ function MateChatsMenu({
         >
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
         </MenuTrigger>
-        <MenuPopup align="start" className="w-72">
+        <MenuPopup align="start" width="md">
           <MenuRadioGroup
             onValueChange={(value: string) => {
               const chat = chats.chats.find((each) => each.threadId === value);

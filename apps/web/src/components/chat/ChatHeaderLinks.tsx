@@ -115,7 +115,7 @@ export function ChatHeaderLinks({
     ) : addresses.length === 0 ? null : (
       <Menu>
         <MenuTrigger render={sitesButton}>{sitesWords}</MenuTrigger>
-        <MenuPopup align="end" aria-label="The Mate's sites" className="w-72">
+        <MenuPopup align="end" aria-label="The Mate's sites" width="md">
           {browserSiteGroups(addresses).map((group) => (
             <MenuGroup data-browser-site-group={group.key} key={group.key}>
               <MenuGroupLabel>{group.title}</MenuGroupLabel>

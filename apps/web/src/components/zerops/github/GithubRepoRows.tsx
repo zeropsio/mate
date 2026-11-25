@@ -332,7 +332,7 @@ function RepoRow({
             >
               <MoreHorizontalIcon aria-hidden="true" />
             </MenuTrigger>
-            <MenuPopup align="end" className="min-w-52">
+            <MenuPopup align="end" width="fit">
               {items.open === null ? null : (
                 <MenuItem render={<a href={items.open.href} rel="noreferrer" target="_blank" />}>
                   Open on GitHub ↗

@@ -296,7 +296,7 @@ export function MateMenu({
                   DOMRect.fromRect({ x: at.x, y: at.y, width: 0, height: 0 }),
               },
             })}
-        className="w-56"
+        width="sm"
         data-zerops-surface="sidebar-mate-menu"
       >
         {project === undefined || project.entries.length === 0 ? (
@@ -386,7 +386,7 @@ export function ProjectMenu({
                   DOMRect.fromRect({ x: at.x, y: at.y, width: 0, height: 0 }),
               },
             })}
-        className="w-56"
+        width="sm"
         data-zerops-surface="sidebar-project-menu"
       >
         <ProjectMenuItems entries={entries} />

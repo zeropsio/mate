@@ -450,7 +450,7 @@ function BotGroup({
               >
                 <MoreHorizontalIcon aria-hidden="true" />
               </MenuTrigger>
-              <MenuPopup align="end" className="min-w-56">
+              <MenuPopup align="end" width="fit">
                 <MenuItem disabled={busy || unsealed} onClick={onInstall}>
                   Add an account with this bot
                 </MenuItem>
