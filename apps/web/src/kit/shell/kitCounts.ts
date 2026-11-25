@@ -13,6 +13,7 @@ export const KIT_GUARDS = [
   { rule: "no-arbitrary-values", line: "A value off the scale, like p-[13px]" },
   { rule: "no-theme-escape-hatches", line: "A colour or surface that bypasses the theme's tokens" },
   { rule: "no-unknown-classes", line: "A class Tailwind does not generate" },
+  { rule: "prefer-text", line: "Words styled by hand instead of a Text role" },
 ] as const;
 
 /** A ledger entry as far as the kit reads it: when it is due. */
@@ -28,7 +29,7 @@ const WEB_CLIENT = "apps/web/";
 const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> = import.meta.glob<
   readonly LedgerEntry[]
 >(
-  "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes}.json",
+  "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes,prefer-text}.json",
   { eager: true, import: "default" },
 );
 
