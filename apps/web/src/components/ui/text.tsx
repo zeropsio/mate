@@ -30,10 +30,12 @@ import { cn } from "~/lib/utils";
  * - `error` — what is wrong with a value or a step, said where it went wrong. 12/16, the error ink.
  *   Under a base-ui `Field` it is `FieldError`; an action's refusal is `Failure size="line"`.
  * - `code` — a literal someone may copy: an id, a path, a command, a hash. Monospace, in the step
- *   and ink of the words around it.
+ *   and ink of the words around it. With `chip` it stands on its own quiet ground, a 4 px corner,
+ *   at 11/16 in the ink around it: a literal set apart in a sentence (a `${NAME}` in a value, the
+ *   tool to run), or an id or a level standing alone beside a name.
  *
- * `className` places it (margin, padding, gap, width, flex, alignment); `truncate` cuts it to one line with an
- * ellipsis (it needs a block or a flex item: a `p`, a `div`, or `block` in `className`). The wrap
+ * `className` places it (margin, padding, gap, width, flex, alignment); `truncate` cuts it to one
+ * line with an ellipsis (it needs a block or a flex item: a `p`, a `div`, or `block` in `className`). The wrap
  * is set on its style alone (`text-wrap-style`): `text-pretty` would set the whole `text-wrap` and
  * undo a `truncate` or a `whitespace-nowrap`.
  */
@@ -54,22 +56,33 @@ const textVariants = cva("", {
       true: "truncate",
       false: "",
     },
+    chip: {
+      true: "rounded-mark bg-foreground/7 px-1 py-px text-2xs",
+      false: "",
+    },
   },
 });
 
 type TextVariant = NonNullable<VariantProps<typeof textVariants>["variant"]>;
 
 type TextProps = useRender.ComponentProps<"span"> & {
-  readonly variant: TextVariant;
   /** One line, cut with an ellipsis. */
   readonly truncate?: boolean;
-};
+} & (
+    | {
+        readonly variant: "code";
+        /** The literal on its own quiet ground: a code chip. */
+        readonly chip?: boolean;
+      }
+    | { readonly variant: Exclude<TextVariant, "code">; readonly chip?: never }
+  );
 
-function Text({ className, variant, truncate = false, render, ...props }: TextProps) {
+function Text({ className, variant, truncate = false, chip = false, render, ...props }: TextProps) {
   const defaultProps = {
-    className: cn(textVariants({ variant, truncate }), className),
+    className: cn(textVariants({ variant, truncate, chip }), className),
     "data-slot": "text",
     "data-variant": variant,
+    "data-chip": chip ? "" : undefined,
   };
   return useRender({
     defaultTagName: "span",

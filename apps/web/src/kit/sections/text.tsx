@@ -84,6 +84,27 @@ function TextSpecimens() {
               </Text>
             </div>
           </Specimen>
+          <Specimen label='variant="code" chip' note="A literal set apart in a sentence">
+            <div className="w-full">
+              <Text render={<p />} variant="description">
+                Run{" "}
+                <Text chip variant="code">
+                  gh auth login
+                </Text>{" "}
+                on the server, then try again.
+              </Text>
+            </div>
+          </Specimen>
+          <Specimen label='variant="code" chip' note="An id beside a name">
+            <div className="flex w-full items-baseline gap-2">
+              <Text variant="heading">Claude</Text>
+              <Text variant="meta">
+                <Text chip variant="code">
+                  claude-work
+                </Text>
+              </Text>
+            </div>
+          </Specimen>
           <Specimen label='variant="note" truncate' note="Too long for its place">
             <div className="w-full">
               <Text render={<p />} truncate variant="note">
