@@ -459,11 +459,6 @@
   white-space: nowrap;
 }
 
-.ov-mate-change .menu-change-mark {
-  margin-right: 0;
-  flex: none;
-}
-
 /* The line keeps its height: the Review button stands in it, a little over its edges. */
 .ov-mate-change > [data-slot="button"] {
   flex: none;

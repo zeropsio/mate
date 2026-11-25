@@ -448,7 +448,10 @@ export function OverviewCardMate({
         </span>
       ) : marked ? (
         <span className="ov-mate-change" data-zerops-surface="card-mate-change">
-          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          <GitPullRequestIcon
+            aria-hidden="true"
+            className="inline-block size-3.5 flex-none align-[-2px]"
+          />
           <span className="ov-mate-change-title">{reading.text}</span>
           {reviewButton}
         </span>

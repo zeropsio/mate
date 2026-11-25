@@ -27,6 +27,7 @@ import { DetailRow, spanOf } from "../chat/DetailRow";
 import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/messageFold";
 import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
+import { mateTintStyle } from "./mateTint";
 
 /**
  * Opens another Mate's conversation by its project: the conversation pane gives it (`OpenMateProvider`
@@ -90,13 +91,17 @@ export function MateMessageRow({
   const folded = folds && !expanded;
   return (
     <article
-      className="mate-letter flex min-w-0 flex-col gap-2 rounded-card px-4 pt-3 pb-2"
-      data-mate-tint={look.tint}
+      // A message another of the person's Mates sent, or its answer, wears that Mate's hue so it
+      // reads as another voice at a glance (the owner, 2026-11-17: "in the color of the bot or
+      // something, to make it distinct"): a wash of the hue, its edge in the hue, the sender's name
+      // in the hue mixed into the ink.
+      className="flex min-w-0 flex-col gap-2 rounded-card border border-mate-edge bg-mate-wash px-4 pt-3 pb-2"
+      style={mateTintStyle(look.tint)}
       data-zerops-surface="mate-message"
     >
       <header className="flex min-w-0 items-center gap-2 text-line">
         {notice ? null : <MateFace size={24} state="idle" {...look} />}
-        <span className="mate-letter-from min-w-0 truncate">{name}</span>
+        <span className="min-w-0 truncate font-semibold text-mate-ink">{name}</span>
         {rest === null ? null : (
           <span className="min-w-0 truncate text-muted-foreground">
             {item.kind === "answer" ? rest : `· ${rest}`}

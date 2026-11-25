@@ -17,7 +17,7 @@ export function MateComingLine({ line }: { readonly line: MateBornLine }) {
   return (
     <span
       className={cn(
-        "truncate menu-line2 tabular-nums",
+        "truncate block text-body leading-5.5 tabular-nums",
         line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}

@@ -114,6 +114,7 @@ import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/provider
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
 import { MateFace } from "./zerops/primitives";
+import { mateTintStyle } from "./zerops/mateTint";
 
 const COMPOSER_EDITOR_HMR_KEY = `composer-editor-${Math.random().toString(36).slice(2)}`;
 const SURROUND_SYMBOLS: [string, string][] = [
@@ -309,7 +310,7 @@ function ComposerCrewmateDecorator(props: {
         className={COMPOSER_INLINE_MATE_CHIP_CLASS_NAME}
         contentEditable={false}
         spellCheck={false}
-        data-mate-tint={props.tint}
+        style={mateTintStyle(props.tint)}
         data-composer-mate-chip={props.handle}
       >
         <MateFace size={16} state="idle" tint={props.tint} shape={props.shape} />

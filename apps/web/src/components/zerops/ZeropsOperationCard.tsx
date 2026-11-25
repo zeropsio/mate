@@ -818,14 +818,15 @@ export function ZeropsOperationCard(props: {
     (links.length > 0 && !addressRows) ||
     props.onRestartRetry !== undefined;
 
-  // On its own a card of the kit (a failed one wears its border in the failed ink, `index.css`);
-  // inside another card's frame only its layout.
+  // On its own a card of the kit (a failed one wears its border in the failed ink); inside another
+  // card's frame only its layout.
   const Frame = headless ? HeadlessFrame : FlatFrame;
   return (
     <Frame
       data-zerops-card
       data-zerops-card-kind={operation.kind}
       data-zerops-card-tone={tone}
+      failed={tone === "failed"}
       data-zerops-operation-key={operation.key}
     >
       {operation.kind === "browser" ? (
@@ -921,7 +922,11 @@ export function ZeropsOperationCard(props: {
 }
 
 /** A headless card's frame: no surface of its own, the line above it is its head. */
-function HeadlessFrame({ children, ...props }: ComponentProps<"div">) {
+function HeadlessFrame({
+  children,
+  failed: _failed,
+  ...props
+}: ComponentProps<"div"> & { readonly failed: boolean }) {
   return (
     <div
       className="@container flex flex-col gap-2 overflow-hidden"
@@ -933,9 +938,19 @@ function HeadlessFrame({ children, ...props }: ComponentProps<"div">) {
   );
 }
 
-function FlatFrame({ children, ...props }: ComponentProps<"div">) {
+function FlatFrame({
+  children,
+  failed,
+  ...props
+}: ComponentProps<"div"> & { readonly failed: boolean }) {
   return (
-    <Card className="@container overflow-hidden" size="sm" variant="flat" {...props}>
+    <Card
+      className="@container overflow-hidden"
+      size="sm"
+      tone={failed ? "failed" : "default"}
+      variant="flat"
+      {...props}
+    >
       {children}
     </Card>
   );

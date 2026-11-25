@@ -406,6 +406,23 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-review-what-folds: review-what-folds var(--duration-base) var(--ease-out-strong)
     forwards;
   --animate-review-what-gap: review-what-gap var(--duration-base) var(--ease-out-strong) forwards;
+  /* The conversation header's Review and Release pill: arriving, each half coming and going,
+     its count rolling, a change opening its place in the popover. */
+  --animate-review-arrive: review-arrive var(--duration-slow) var(--ease-out-strong) both;
+  --animate-tag-in: tag-in var(--duration-base) var(--ease-out-strong);
+  --animate-tag-out: tag-out var(--duration-quick) var(--ease-out-strong) forwards;
+  --animate-digit-from-below: digit-from-below var(--duration-quick) var(--ease-out-strong);
+  --animate-digit-from-above: digit-from-above var(--duration-quick) var(--ease-out-strong);
+  --animate-digit-to-above: digit-to-above var(--duration-quick) var(--ease-out-strong) forwards;
+  --animate-digit-to-below: digit-to-below var(--duration-quick) var(--ease-out-strong) forwards;
+  --animate-tagpop-arrive: tagpop-arrive var(--duration-base) var(--ease-out-strong);
+  /* A crew's minis on their Mate's row: each hops with its face's own turn on its staggered beat
+     (`--mate-face-phase`); a cheer when its work ends while watched, a turn-out when it comes to
+     need the person. A working Mate's clock's dot breathes, stepped. */
+  --animate-mini-march: mini-march 2.4s calc(var(--mate-face-phase, 0) * -0.18s) infinite;
+  --animate-mini-cheer: mini-cheer 900ms var(--ease-out-strong) both;
+  --animate-mini-turn: mini-turn 560ms var(--ease-out-strong) both;
+  --animate-clock-breathe: clock-breathe 2.4s steps(8, jump-none) infinite alternate;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);
@@ -520,6 +537,43 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--contrast-sidebar-foreground) 6%,
     color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar))
   );
+  /* A press's shade on a solid pill (the conversation header's Review and Release doors). */
+  --color-press-shade: var(--zerops-press-shade);
+  /* A Mate's own hue (`--mate-tint`, `mateTintStyle`) in what it says: its words' ink, the hue
+     mixed into the ink so it holds its contrast in light and dark; its message card's wash and
+     edge; its mention chip's wash and edge. */
+  --color-mate-ink: light-dark(
+    color-mix(in oklab, var(--mate-tint) 45%, var(--foreground)),
+    color-mix(in oklab, var(--mate-tint) 62%, var(--foreground))
+  );
+  --color-mate-wash: light-dark(
+    color-mix(in oklab, var(--mate-tint) 12%, var(--card)),
+    color-mix(in oklab, var(--mate-tint) 10%, var(--card))
+  );
+  --color-mate-edge: light-dark(
+    color-mix(in oklab, var(--mate-tint) 45%, var(--border)),
+    color-mix(in oklab, var(--mate-tint) 35%, var(--border))
+  );
+  --color-mate-chip: light-dark(
+    color-mix(in oklab, var(--mate-tint) 16%, var(--card)),
+    color-mix(in oklab, var(--mate-tint) 14%, var(--card))
+  );
+  --color-mate-chip-edge: light-dark(
+    color-mix(in oklab, var(--mate-tint) 40%, var(--border)),
+    color-mix(in oklab, var(--mate-tint) 35%, var(--border))
+  );
+  /* A person's disc (`PersonAvatar`) on their own hue (`--person-hue`): lighter at the top left,
+     lighter on a light ground and deeper on a dark one; their letter in the hue's dark ink on the
+     light tints and white on the deep ones, at least 4.5:1 against either end on every hue. */
+  --color-person-from: light-dark(
+    oklch(0.8 0.07 var(--person-hue)),
+    oklch(0.55 0.07 var(--person-hue))
+  );
+  --color-person-to: light-dark(
+    oklch(0.62 0.1 var(--person-hue)),
+    oklch(0.37 0.1 var(--person-hue))
+  );
+  --color-person-ink: light-dark(oklch(0.2 0.06 var(--person-hue)), oklch(1 0 var(--person-hue)));
   /* A Mate's dot at work (`MateDot`): its own hue (`--mate-tint`), or the muted ink without one,
      mixed into the menu's ink. */
   --color-mate-dot: color-mix(
@@ -569,6 +623,37 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
     100% {
       opacity: 1;
+    }
+  }
+  /* A crew mini at work: a 3 px hop in a few frames when its face's turn starts (55 %), then still;
+     stepped, so a menu of crews costs a handful of frames a beat. */
+  @keyframes mini-march {
+    0%,
+    55% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+    56% {
+      transform: none;
+      animation-timing-function: steps(3, end);
+    }
+    60% {
+      transform: translateY(-3px);
+      animation-timing-function: steps(4, end);
+    }
+    66%,
+    100% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+  }
+  /* A working Mate's clock's dot, breathing slowly. */
+  @keyframes clock-breathe {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.3;
     }
   }
   @keyframes zerops-appear {

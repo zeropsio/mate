@@ -4,7 +4,7 @@ import { type RefObject, useLayoutEffect } from "react";
 const TAG_TIME_GAP_PX = 6;
 
 /**
- * The room a project's places' tag takes at the end of its row's first line (`menu-row-tags`): the
+ * The room a project's places' tag takes at the end of its row's first line (`ROW_TAGS`): the
  * tag stands beside the row's own button, never inside it, just before the time (`data-menu-time`),
  * by the widths the two measure — before the first paint, and again whenever the tag comes, goes
  * or changes its words, or the time its width. The line under the name never moves for it (run 2:

@@ -15,3 +15,93 @@
     background-color: color-mix(in oklab, var(--info-foreground) 12%, var(--popover));
   }
 }
+
+/* What waits on the person, in the conversation's header, arriving with a small rise, once. */
+@keyframes review-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
+  }
+}
+
+/* A half of that pill coming and going. */
+@keyframes tag-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+@keyframes tag-out {
+  to {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+
+/* A count's new number rolling in as the old one rolls out. */
+@keyframes digit-from-below {
+  from {
+    opacity: 0;
+    translate: 0 70%;
+  }
+}
+
+@keyframes digit-from-above {
+  from {
+    opacity: 0;
+    translate: 0 -70%;
+  }
+}
+
+@keyframes digit-to-above {
+  to {
+    opacity: 0;
+    translate: 0 -70%;
+  }
+}
+
+@keyframes digit-to-below {
+  to {
+    opacity: 0;
+    translate: 0 70%;
+  }
+}
+
+/* A change arriving in the Review popover opens its place. */
+@keyframes tagpop-arrive {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+/* A mini whose work ended while watched: up with a little scale and tilt, a counter-tilt,
+   settled. */
+@keyframes mini-cheer {
+  0% {
+    transform: none;
+  }
+  25% {
+    transform: translateY(-6px) scale(1.25) rotate(-10deg);
+  }
+  50% {
+    transform: translateY(0) scale(1) rotate(8deg);
+  }
+  72% {
+    transform: translateY(-2px) rotate(-4deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* A mini that comes to need the person: turned away, it turns round to face them. */
+@keyframes mini-turn {
+  0% {
+    transform: perspective(60px) rotateY(85deg) scale(0.85);
+  }
+  100% {
+    transform: none;
+  }
+}

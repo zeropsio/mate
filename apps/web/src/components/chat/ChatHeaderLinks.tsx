@@ -32,7 +32,7 @@ const sitesButton = (
     // A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle:
     // Sites stands there only while the Mate's name is alone on it. A Review, a task's state or a
     // crew takes its room; the menu's row and the panel's Browser still lead to every address.
-    className="max-sm:[[data-chat-header]:has([data-conversation-strip]_:is(.chat-header-review,[data-zerops-surface=mate-task-session],[data-conversation-crew]))_&]:hidden"
+    className="max-sm:[[data-chat-header]:has([data-conversation-strip]_:is([data-chat-header-review],[data-zerops-surface=mate-task-session],[data-conversation-crew]))_&]:hidden"
     data-header-sites=""
     size="sm"
     variant="sidebar"

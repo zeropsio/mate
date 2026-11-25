@@ -10,6 +10,7 @@ import {
   CHAT_INLINE_MATE_CHIP_CLASS_NAME,
 } from "../composerInlineChip";
 import { MateFace } from "../zerops/primitives";
+import { mateTintStyle } from "../zerops/mateTint";
 
 /**
  * The person's other Mates their own bubble draws as chips: given around a person's message only,
@@ -42,7 +43,7 @@ export function renderMateMentions(
 function MateMentionChip(props: { readonly mate: MentionableMate; readonly source: string }) {
   return (
     <span className="inline-flex align-middle leading-none" data-markdown-copy={props.source}>
-      <span className={CHAT_INLINE_MATE_CHIP_CLASS_NAME} data-mate-tint={props.mate.tint}>
+      <span className={CHAT_INLINE_MATE_CHIP_CLASS_NAME} style={mateTintStyle(props.mate.tint)}>
         <MateFace size={16} state="idle" tint={props.mate.tint} shape={props.mate.shape} />
         <span className={CHAT_INLINE_CHIP_LABEL_CLASS_NAME}>{props.mate.name}</span>
       </span>

@@ -4,6 +4,10 @@ import { ArrowUpRightIcon } from "lucide-react";
 import { Row } from "../ui/row";
 import { ZeropsMark } from "../ZeropsMark";
 
+/** A project with no Mate: its mark where a face would stand. */
+export const PROJECT_MARK =
+  "grid size-8 place-items-center rounded-control bg-sidebar-foreground/6 text-sidebar-muted-foreground";
+
 /**
  * A project only Platform holds, by name: no face, since no Mate lives there; pressing it opens the
  * project's own page in Platform, in a tab of its own.
@@ -17,12 +21,12 @@ export function PlatformProjectRow({
 }) {
   return (
     <div
-      className="menu-unit group/platform flex flex-col transition-colors hover:bg-sidebar-row-hover"
+      className="group/platform flex flex-col rounded-card transition-colors hover:bg-sidebar-row-hover"
       data-zerops-platform-project={projectId}
     >
       <Row
         lead={
-          <span aria-hidden="true" className="menu-project-mark">
+          <span aria-hidden="true" className={PROJECT_MARK}>
             <ZeropsMark className="size-4" tone="current" />
           </span>
         }

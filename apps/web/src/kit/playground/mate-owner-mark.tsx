@@ -1,6 +1,8 @@
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 
+import { cn } from "~/lib/utils";
 import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
+import { FACE_CUT } from "~/components/zerops/menuFace";
 import { MateFace } from "~/components/zerops/primitives";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 
@@ -24,7 +26,7 @@ export default definePlayground({
   render: ({ seat, owner, picture, tint }) => (
     // The menu's row seats it so: the face cut where the mark stands, the mark on its corner.
     <span className="relative flex">
-      <span className="menu-face-cut relative flex">
+      <span className={cn("relative flex", FACE_CUT)}>
         <MateFace className="size-9" size={32} state="idle" tint={tint} />
       </span>
       <MateOwnerMark
@@ -52,7 +54,7 @@ export default definePlayground({
     }),
   usage: {
     do: [
-      "Seat it on the corner of a colleague's Mate's face, cut out of the face (menu-face-cut).",
+      "Seat it on the corner of a colleague's Mate's face, cut out of the face (FACE_CUT).",
       "Seat nobody on a Mate whose records name no owner: it says so in words on hover.",
       "Read the seat from ownerBadge: the viewer's own Mate wears nothing.",
     ],

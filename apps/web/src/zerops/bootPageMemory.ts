@@ -79,7 +79,7 @@ export function bootPage(): Record<string, unknown> {
   // The seat the header's Review door takes after the Mate's name, as wide as it stood: the next
   // load holds it for the door, which the menu's fill brings (`doorSeatStood`).
   const door = document.querySelector(
-    "main [data-chat-header] .chat-header-review:not([data-seat])",
+    "main [data-chat-header] [data-chat-header-review]:not([data-seat])",
   );
   // To the hundredth: a seat a pixel wider than its door moved the subject by that pixel.
   if (door !== null && painted(door))

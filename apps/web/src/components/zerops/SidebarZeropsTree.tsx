@@ -208,6 +208,8 @@ import {
 import { MateDeletingLine } from "./SidebarMateDeletingLine";
 import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
+import { FACE_CUT, FACE_CUT_KID, FACE_PALE } from "./menuFace";
+import { PROJECT_MARK } from "./SidebarPlatformProjectRow";
 import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
 import { useRowDrag } from "./SidebarRowDrag";
 import { useMateCrew } from "~/zerops/crew/useCrew";
@@ -1974,7 +1976,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         // the key its row had while HQ was making it, so the row stays one row through the hello.
         // Never its candidate's key, which moves between the project and the project's container
         // as the listing's services are read, and a key that moves rebuilds every row at once.
-        <MateUnit active={active} key={mateKeyOf(item)} projectId={item.project.id}>
+        <MateUnit
+          active={active}
+          key={mateKeyOf(item)}
+          kid={at === "kid"}
+          projectId={item.project.id}
+        >
           <MateRow
             keyedReadings={keyedReadings}
             actions={getMateActions?.(item, getActivity?.(item))}
@@ -2013,7 +2020,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       return (
         // Keyed by its birth: the row stays the same row while its project's id replaces the
         // birth's own, and once its Mate's row stands in its place.
-        <MateUnit active={active} key={memberKeyOf(member)} projectId={member.projectId}>
+        <MateUnit
+          active={active}
+          key={memberKeyOf(member)}
+          kid={at === "kid"}
+          projectId={member.projectId}
+        >
           <ComingMateRow
             active={active}
             shared={member.intent === undefined ? undefined : getBirth?.(member.intent)}
@@ -2519,7 +2531,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       <section className="flex flex-col gap-1.5" data-zerops-ungrouped="true">
         {/* Nothing groups these: a quiet word sets them apart where there are projects above. */}
         {groups.length > 0 ? (
-          <span className="menu-ungrouped" data-zerops-surface="sidebar-ungrouped-label">
+          <span className={QUIET_LINE} data-zerops-surface="sidebar-ungrouped-label">
             Ungrouped
           </span>
         ) : null}
@@ -2536,7 +2548,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     (onShowPlatformProjects === undefined && !showPlatformProjects) ? null : (
       <section className="flex flex-col" data-zerops-platform-projects="true">
         <span
-          className="menu-ungrouped flex items-center gap-1.5"
+          className={`${QUIET_LINE} flex items-center gap-1.5`}
           data-zerops-surface="sidebar-platform-label"
         >
           <span className="truncate">{`${String(platformRows.length)} Platform ${platformRows.length === 1 ? "project" : "projects"}`}</span>
@@ -2614,7 +2626,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         <div className="mt-3 flex flex-col" data-zerops-surface="sidebar-left-out">
           {hiddenMates === 0 || onShowEveryone === undefined ? null : (
             <span
-              className="menu-ungrouped flex items-center gap-1.5"
+              className={`${QUIET_LINE} flex items-center gap-1.5`}
               data-zerops-surface="sidebar-hidden-mates"
             >
               <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
@@ -2976,7 +2988,7 @@ function GroupRowWords<T extends RosterCandidate>({
       badges={<ProjectNameMarks />}
       meta={
         <span
-          className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:min-w-0"
+          className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 in-data-tags:opacity-100! pointer-coarse:min-w-0"
           data-menu-time-box=""
         >
           <span className="flex items-center" data-menu-time="">
@@ -2996,10 +3008,13 @@ function GroupRowWords<T extends RosterCandidate>({
           // holds it (`mateRowHeldLines`), so the rows under a project never move when it is read
           // (a row with no line is 63 px, with one 66).
           state.heldLines === 0 ? undefined : (
-            <span aria-hidden="true" className="menu-line2 h-5.5" />
+            <span aria-hidden="true" className="block text-body leading-5.5 h-5.5" />
           )
         ) : (
-          <span className="menu-line2 flex min-w-0" data-zerops-surface="sidebar-project-line">
+          <span
+            className="text-body leading-5.5 flex min-w-0"
+            data-zerops-surface="sidebar-project-line"
+          >
             <span
               className={cn(
                 "shrink-0 whitespace-pre text-sidebar-foreground",
@@ -3020,7 +3035,7 @@ function GroupRowWords<T extends RosterCandidate>({
                   view={state.view}
                 />
               ) : (
-                <span className="menu-line2 truncate text-sidebar-foreground">
+                <span className="block text-body leading-5.5 truncate text-sidebar-foreground">
                   {crewNeed.words}
                 </span>
               )}
@@ -3137,7 +3152,8 @@ function ProjectGroupRow<T extends RosterCandidate>({
   const body = (tags: ReactNode, globe: ReactNode) => (
     <MateUnit active={current} projectId={`group:${groupId}`}>
       <div
-        className="menu-row-box relative"
+        className={ROW_BOX}
+        data-menu-row-box=""
         data-zerops-project-row={groupId}
         data-zerops-surface="sidebar-project-row"
         onContextMenu={(event) => {
@@ -3247,13 +3263,14 @@ function ProjectGroupRow<T extends RosterCandidate>({
           );
         })()}
         {hasTags ? (
-          <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
+          <span className={ROW_TAGS} data-row-control="" ref={tagsBox}>
             {tags}
           </span>
         ) : null}
         <span
-          className="menu-row-verbs absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100"
+          className={ROW_VERBS}
           data-row-control=""
+          data-row-verbs=""
           data-zerops-surface="sidebar-project-actions"
         >
           {globe}
@@ -3308,7 +3325,8 @@ function ProjectBareRow({
   const body = (tags: ReactNode, globe: ReactNode) => (
     <MateUnit active={false} projectId={`group:${groupId}`}>
       <div
-        className="menu-row-box relative"
+        className={ROW_BOX}
+        data-menu-row-box=""
         data-zerops-project-row={groupId}
         data-zerops-surface="sidebar-project-row"
         onContextMenu={(event) => {
@@ -3323,7 +3341,7 @@ function ProjectBareRow({
       >
         <Row
           lead={
-            <span aria-hidden="true" className="menu-project-mark">
+            <span aria-hidden="true" className={PROJECT_MARK}>
               <BoxIcon className="size-4.5" />
             </span>
           }
@@ -3358,13 +3376,14 @@ function ProjectBareRow({
           title={<span data-zerops-surface="sidebar-project-name">{name}</span>}
         />
         {hasTags ? (
-          <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
+          <span className={ROW_TAGS} data-row-control="" ref={tagsBox}>
             {tags}
           </span>
         ) : null}
         <span
-          className="menu-row-verbs absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100"
+          className={ROW_VERBS}
           data-row-control=""
+          data-row-verbs=""
           data-zerops-surface="sidebar-project-actions"
         >
           {globe}
@@ -3956,7 +3975,8 @@ function MateRowView<T extends RosterCandidate>({
     // the row beside the button, never inside it. Both are lit as the row's
     // unit (`MateUnit`), wherever on it the pointer is.
     <div
-      className="menu-row-box relative"
+      className={ROW_BOX}
+      data-menu-row-box=""
       data-zerops-mate-row={candidate.project.id}
       data-zerops-surface="sidebar-mate-row"
       onContextMenu={
@@ -4025,7 +4045,6 @@ function MateRowView<T extends RosterCandidate>({
               }${crewWords === undefined ? "" : `, ${crewWords}`}`
         }
         aria-disabled={deleting || outsideHq || undefined}
-        data-kid={kid ? "" : undefined}
         data-zerops-row=""
         data-zerops-surface="sidebar-mate"
         // Resting on it, focusing or touching it warms its conversation, so
@@ -4099,8 +4118,8 @@ function MateRowView<T extends RosterCandidate>({
             <span
               className={cn(
                 "relative flex",
-                badge !== null && "menu-face-cut",
-                notYours && "menu-face-pale",
+                badge !== null && (kid ? FACE_CUT_KID : FACE_CUT),
+                notYours && FACE_PALE,
               )}
             >
               {/* Until its socket answers the face stands in idle or asleep, the
@@ -4136,11 +4155,11 @@ function MateRowView<T extends RosterCandidate>({
               // The project's name holds; the Mate's gives way first. The space before the dot is
               // a fixed one: a flex item drops a leading space.
               <>
-                <span className="menu-name-project">{project}</span>
+                <span className="min-w-0 truncate">{project}</span>
                 {/* What waits for production after the project's name, the Mate's changes
                   after the Mate's (the owner, 2026-10-12). */}
                 {kid ? null : <ProjectNameMarks />}
-                <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
+                <span className={MATE_NAME_AFTER}>{`\u00a0· ${name}`}</span>
               </>
             )}
           </span>
@@ -4173,7 +4192,9 @@ function MateRowView<T extends RosterCandidate>({
             className={cn(
               // The room the row's verbs take on hover; under a finger they stand on the line
               // below, and the name has it.
-              "relative flex h-5.5 shrink-0 items-center justify-end pointer-coarse:min-w-0",
+              // Beside a places' tag the time stays where it is, under the pointer too: the verbs
+              // come in before the tag.
+              "relative flex h-5.5 shrink-0 items-center justify-end in-data-tags:opacity-100! pointer-coarse:min-w-0",
               project === undefined ? "min-w-11" : "min-w-16",
               menuShown &&
                 "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
@@ -4208,7 +4229,7 @@ function MateRowView<T extends RosterCandidate>({
             {heldLines === 0 || crewLine !== undefined ? null : (
               // As tall as the line it holds the place of (14/22): two pixels short, every row
               // below grew by them when its Mate's words were read, a moment after the menu filled.
-              <span aria-hidden="true" className="menu-line2 h-5.5" />
+              <span aria-hidden="true" className="block text-body leading-5.5 h-5.5" />
             )}
             {crewLine === undefined ? (
               <MateSecondLine
@@ -4221,7 +4242,7 @@ function MateRowView<T extends RosterCandidate>({
               />
             ) : (
               <span
-                className="menu-line2 truncate text-sidebar-foreground"
+                className="block text-body leading-5.5 truncate text-sidebar-foreground"
                 data-zerops-surface="sidebar-mate-crew-need"
               >
                 {crewLine}
@@ -4231,7 +4252,7 @@ function MateRowView<T extends RosterCandidate>({
         }
       />
       {tags === undefined ? null : (
-        <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
+        <span className={ROW_TAGS} data-row-control="" ref={tagsBox}>
           {tags}
         </span>
       )}
@@ -4249,15 +4270,9 @@ function MateRowView<T extends RosterCandidate>({
       )}
       {!menuShown && globe === undefined ? null : (
         <span
-          className={cn(
-            "menu-row-verbs absolute top-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
-            "end-2",
-            // A finger never hovers: the time keeps its place and the row's ··· stands at the end
-            // of the line under it (`.menu-row-verbs`).
-            "pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100",
-            armed && "opacity-100",
-          )}
+          className={cn(ROW_VERBS, armed && "opacity-100")}
           data-row-control=""
+          data-row-verbs=""
           data-zerops-surface="sidebar-mate-actions"
         >
           {actions?.stop === undefined ? null : (
@@ -4280,7 +4295,8 @@ function MateRowView<T extends RosterCandidate>({
                 }
               >
                 {armed ? (
-                  <span className="menu-stop-armed">Stop?</span>
+                  // "Stop?" crossfades in where the ■ stood.
+                  <span className="motion-safe:animate-arrive">Stop?</span>
                 ) : (
                   <SquareIcon aria-hidden="true" className="size-2.5 fill-current" />
                 )}
@@ -4409,7 +4425,7 @@ function MateSecondLine({
     case "stop":
       return (
         <span
-          className="menu-line2 truncate text-muted-foreground"
+          className="block text-body leading-5.5 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-moving"
         >
           {second.text}
@@ -4419,18 +4435,22 @@ function MateSecondLine({
     case "restart-failed":
       return (
         <span
-          className="menu-line2 truncate text-status-failed-text"
+          className="block text-body leading-5.5 truncate text-status-failed-text"
           data-zerops-surface="sidebar-mate-move-failed"
         >
           {second.text}
         </span>
       );
     case "outside":
-      return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
+      return (
+        <span className="block text-body leading-5.5 truncate text-muted-foreground">
+          {NOT_IN_HQ_LINE}
+        </span>
+      );
     case "no-container":
       return (
         <span
-          className="menu-line2 truncate text-muted-foreground"
+          className="block text-body leading-5.5 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-no-container"
         >
           {NO_CONTAINER_LINE}
@@ -4455,7 +4475,7 @@ function MateSecondLine({
     case "waits-on":
       return (
         <span
-          className="menu-line2 truncate text-muted-foreground"
+          className="block text-body leading-5.5 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-waits-on"
         >
           {second.text}
@@ -4464,7 +4484,7 @@ function MateSecondLine({
     case "paused":
       return (
         <span
-          className="menu-line2 truncate text-muted-foreground"
+          className="block text-body leading-5.5 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-paused-line"
         >
           {/* the time slot says when it picks up; this line says why, once */}
@@ -4475,7 +4495,7 @@ function MateSecondLine({
       return (
         <span
           className={cn(
-            "menu-line2 truncate",
+            "block text-body leading-5.5 truncate",
             second.on ? "text-sidebar-foreground" : "text-muted-foreground",
           )}
           data-zerops-surface="sidebar-mate-task"
@@ -4487,12 +4507,15 @@ function MateSecondLine({
       return (
         <span
           className={cn(
-            "menu-line2 truncate",
+            "block text-body leading-5.5 truncate",
             second.mine ? "text-sidebar-foreground" : "text-muted-foreground",
           )}
           data-zerops-surface="sidebar-mate-change"
         >
-          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          <GitPullRequestIcon
+            aria-hidden="true"
+            className="me-1.5 inline-block size-3.5 align-[-2px]"
+          />
           {changeLineWords(second)}
         </span>
       );
@@ -4580,12 +4603,46 @@ function MateSlot({
   }
 }
 
+/**
+ * A row's box (`useTagsRoom` measures it): the container its tags read, the room its places' tag
+ * and time take at the end of the name's line (`data-tags`, `--menu-tags-w`, `--menu-time-w`),
+ * which the name gives up — under the pointer the verbs' room too, never under them. Under a
+ * finger nothing hovers, so the row's verbs stand at rest at the end of the line under the name,
+ * which stops short of its ··· (and of a working Mate's ■ before it); a row of one line has its
+ * ··· where its time would stand.
+ */
+const ROW_BOX =
+  "relative @container/menu-row data-tags:[&_[data-slot=row-meta]]:min-w-[calc(var(--menu-time-w,0px)+var(--menu-tags-w,0px))] data-tags:[&_[data-slot=row-meta]]:justify-end pointer-fine:data-tags:hover:[&_[data-slot=row-meta]]:min-w-[calc(var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px+var(--spacing)*16)] pointer-fine:data-tags:has-focus-visible:[&_[data-slot=row-meta]]:min-w-[calc(var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px+var(--spacing)*16)] pointer-fine:data-tags:has-data-popup-open:[&_[data-slot=row-meta]]:min-w-[calc(var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px+var(--spacing)*16)] pointer-coarse:[&_[data-slot=row-line]>*]:pe-8 pointer-coarse:has-[>[data-row-verbs]>[data-zerops-surface=sidebar-mate-stop]]:[&_[data-slot=row-line]>*]:pe-15 pointer-coarse:[&:not(:has([data-slot=row-line]>*))_[data-menu-time-box]]:opacity-0!";
+
+/**
+ * A project's places' tag — there only while a place is not calm — at the end of the name's line,
+ * just before the time, beside the row's own button and never in it (the owner, 2026-10-16: at
+ * the start of the second line a busy stage's chip pushed the Mate's words aside, and back). Only
+ * its doors take a press; the rest of it is its row's.
+ */
+const ROW_TAGS =
+  "pointer-events-none absolute top-2.75 end-[calc(10px+var(--menu-time-w,0px))] z-1 flex h-5.5 items-center gap-2 [&_:is(button,a,[role=button])]:pointer-events-auto";
+
+/**
+ * A row's verbs at its end, in the time's place under the pointer and on focus; beside a places'
+ * tag they come in before it. Under a finger they stand at rest on the line under the name.
+ */
+const ROW_VERBS =
+  "absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 in-data-tags:end-[calc(10px+var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px)] pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100 pointer-coarse:in-data-tags:end-2";
+
+/** A quiet line in the list: the word above Mates in no project, and what the list leaves out. */
+const QUIET_LINE = "px-2 pt-3.5 pb-1 text-caption font-medium text-sidebar-muted-foreground";
+
+/** "Project · Mate": the Mate's name after the project's, muted, gives way first. */
+const MATE_NAME_AFTER =
+  "min-w-0 flex-[0_1000_auto] truncate font-normal text-sidebar-muted-foreground";
+
 const TIME_CLASS = "shrink-0 text-caption text-muted-foreground tabular-nums";
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
-  muted: "menu-ink-3",
-  "ink-2": "menu-ink-2",
+  muted: "text-muted-foreground/91",
+  "ink-2": "text-sidebar-foreground/76",
   ink: "text-sidebar-foreground",
   failed: "text-status-failed-text",
   attention: "text-status-attention-text",
@@ -4611,7 +4668,7 @@ function MateAskLine({
   if (line.kind === "nothing-asked") {
     return (
       <span
-        className="truncate menu-line2 menu-ink-3"
+        className="truncate block text-body leading-5.5 text-muted-foreground/91"
         data-zerops-surface="sidebar-mate-nothing-asked"
       >
         {NOTHING_ASKED_YET}
@@ -4622,12 +4679,12 @@ function MateAskLine({
   const by = line.kind === "ask" ? line.by : undefined;
   const drafting = line.kind === "draft";
   return (
-    <span className="grid min-w-0 menu-line2">
+    <span className="grid min-w-0 text-body leading-5.5">
       {ask === undefined ? null : (
         <span
           aria-hidden={drafting ? true : undefined}
           className={cn(
-            "menu-ink-2 col-start-1 row-start-1 truncate",
+            "text-sidebar-foreground/76 col-start-1 row-start-1 truncate",
             drafting && "invisible",
             rises && "animate-words-in motion-reduce:animate-none",
           )}
@@ -4643,7 +4700,7 @@ function MateAskLine({
       )}
       {drafting ? (
         <span
-          className="col-start-1 row-start-1 truncate menu-ink-3"
+          className="col-start-1 row-start-1 truncate text-muted-foreground/91"
           data-zerops-surface="sidebar-mate-draft"
         >
           <span className="font-medium text-sidebar-foreground">Draft:</span>{" "}
@@ -4685,7 +4742,7 @@ function MateReply({
     return (
       <span
         aria-hidden="true"
-        className="menu-line2 h-5.5"
+        className="block text-body leading-5.5 h-5.5"
         data-zerops-surface="sidebar-mate-held"
       />
     );
@@ -4697,7 +4754,7 @@ function MateReply({
       // took the rise's place and a new step never rose.
       <span
         className={cn(
-          "truncate menu-line2 menu-ink-3",
+          "truncate block text-body leading-5.5 text-muted-foreground/91",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
         data-zerops-surface="sidebar-mate-live-step"
@@ -4717,7 +4774,7 @@ function MateReply({
   return (
     <span
       className={cn(
-        "truncate menu-line2",
+        "truncate block text-body leading-5.5",
         reply.lastKnown === true && "pe-24",
         REPLY_TONE_CLASS[reply.tone],
         wordsChanged && "animate-words-in motion-reduce:animate-none",
@@ -4782,13 +4839,12 @@ function ComingMateRow({
   const row = (
     <Row
       aria-current={active ? "true" : undefined}
-      data-kid={kid ? "" : undefined}
       data-zerops-mate-row={coming.projectId}
       data-zerops-row=""
       data-zerops-surface="sidebar-mate-coming"
       lead={
         <span className="relative flex size-9 items-center justify-center">
-          <span className="menu-face-cut menu-face-pale relative flex">
+          <span className={cn("relative flex", kid ? FACE_CUT_KID : FACE_CUT, FACE_PALE)}>
             <MateFace
               className={kid ? "size-7" : "size-9"}
               shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
@@ -4823,8 +4879,8 @@ function ComingMateRow({
             <span className="min-w-0 truncate">{name}</span>
           ) : (
             <>
-              <span className="menu-name-project">{project}</span>
-              <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
+              <span className="min-w-0 truncate">{project}</span>
+              <span className={MATE_NAME_AFTER}>{`\u00a0· ${name}`}</span>
             </>
           )}
         </span>
