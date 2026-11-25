@@ -104,22 +104,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
-    "owner": "kit pass",
-    "reason": "a range input: the kit has no slider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input> className=\"settings-slider min-w-0 flex-1\"",
-    "owner": "kit pass",
-    "reason": "a range input: the kit has no slider",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",

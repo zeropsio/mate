@@ -1,7 +1,7 @@
 import { ArchiveIcon, ArchiveX, ChevronRightIcon, SettingsIcon } from "lucide-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { Link } from "@tanstack/react-router";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -121,6 +121,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
+import { Slider } from "../ui/slider";
 import { Switch } from "../ui/switch";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
@@ -908,20 +909,6 @@ export function AppearanceSettingsPanel() {
   const { appearanceMode, setAppearanceMode } = useTheme();
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
-  const glassOpacityRatio =
-    (settings.glassOpacity - MIN_GLASS_OPACITY) / (MAX_GLASS_OPACITY - MIN_GLASS_OPACITY);
-  const glassOpacitySliderStyle = {
-    "--settings-slider-progress": `${glassOpacityRatio * 100}%`,
-    "--settings-slider-fill-offset": `${0.5 - glassOpacityRatio}rem`,
-  } as CSSProperties;
-  const appearanceContrastRatio =
-    (settings.appearanceContrast - MIN_APPEARANCE_CONTRAST) /
-    (MAX_APPEARANCE_CONTRAST - MIN_APPEARANCE_CONTRAST);
-  const appearanceContrastSliderStyle = {
-    "--settings-slider-progress": `${appearanceContrastRatio * 100}%`,
-    "--settings-slider-fill-offset": `${0.5 - appearanceContrastRatio}rem`,
-  } as CSSProperties;
-
   return (
     <SettingsPageContainer>
       <SettingsSection id="appearance" title="Appearance">
@@ -977,25 +964,14 @@ export function AppearanceSettingsPanel() {
               >
                 {settings.appearanceContrast}%
               </output>
-              <input
+              <Slider
                 aria-label="Contrast"
-                className="settings-slider min-w-0 flex-1"
+                className="min-w-0 flex-1"
                 id="appearance-contrast"
                 max={MAX_APPEARANCE_CONTRAST}
                 min={MIN_APPEARANCE_CONTRAST}
-                onChange={(event) => {
-                  const appearanceContrast = Number(event.currentTarget.value);
-                  if (
-                    Number.isInteger(appearanceContrast) &&
-                    appearanceContrast >= MIN_APPEARANCE_CONTRAST &&
-                    appearanceContrast <= MAX_APPEARANCE_CONTRAST
-                  ) {
-                    updateSettings({ appearanceContrast });
-                  }
-                }}
+                onValueChange={(appearanceContrast) => updateSettings({ appearanceContrast })}
                 step={5}
-                style={appearanceContrastSliderStyle}
-                type="range"
                 value={settings.appearanceContrast}
               />
             </div>
@@ -1023,25 +999,14 @@ export function AppearanceSettingsPanel() {
               >
                 {settings.glassOpacity}%
               </output>
-              <input
+              <Slider
                 aria-label="Glass opacity"
-                className="settings-slider min-w-0 flex-1"
+                className="min-w-0 flex-1"
                 id="glass-opacity"
                 max={MAX_GLASS_OPACITY}
                 min={MIN_GLASS_OPACITY}
-                onChange={(event) => {
-                  const glassOpacity = Number(event.currentTarget.value);
-                  if (
-                    Number.isInteger(glassOpacity) &&
-                    glassOpacity >= MIN_GLASS_OPACITY &&
-                    glassOpacity <= MAX_GLASS_OPACITY
-                  ) {
-                    updateSettings({ glassOpacity });
-                  }
-                }}
+                onValueChange={(glassOpacity) => updateSettings({ glassOpacity })}
                 step={5}
-                style={glassOpacitySliderStyle}
-                type="range"
                 value={settings.glassOpacity}
               />
             </div>
