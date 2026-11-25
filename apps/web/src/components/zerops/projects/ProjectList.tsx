@@ -13,7 +13,6 @@ import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { Button } from "../../ui/button";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
 import { PlaceLine } from "../system/PlaceLine";
 import { placeLines } from "./projectCard.logic";
@@ -35,7 +34,7 @@ function OtherProject<T>({
   const line = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs }).find(
     (place) => place.kind === "production",
   );
-  const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
+  const held = entry.line ?? props.heldWords?.(entry.group.groupId);
   return (
     <li
       className="group/other -ms-2 flex h-10 min-w-0 items-center gap-2.5 rounded-control px-2 text-body transition-colors duration-150 ease-out-strong hover:bg-item-hover"
