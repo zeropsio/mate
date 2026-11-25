@@ -228,6 +228,8 @@ export function lastChoiceWords(
   project: DeletionProject,
   plan: ProjectDeletionPlan,
   mate: string,
+  /** The Productions slid, by project id: the whole project's choice names each. */
+  slid: ReadonlySet<string>,
 ): {
   readonly description: string;
   readonly only: { readonly title: string; readonly line: string };
@@ -241,10 +243,14 @@ export function lastChoiceWords(
     },
     whole: {
       title: `${mate} and the whole project`,
-      line:
-        plan.stages.length === 0
-          ? `${project.name} and its code go. This can't be undone.`
-          : `${project.name}, its code and Stage go. This can't be undone.`,
+      line: `${listed([
+        project.name,
+        "its code",
+        ...(plan.stages.length === 0 ? [] : ["Stage"]),
+        ...plan.productions.flatMap((production) =>
+          slid.has(production.projectId) ? [`Production ${production.name}`] : [],
+        ),
+      ])} go. This can't be undone.`,
     },
   };
 }
@@ -472,12 +478,16 @@ export interface DeletionPart {
   readonly part: "mate" | "stage" | "production" | "code";
   /** "Stage shop-stage", "Quinn", "Its code". */
   readonly label: string;
-  readonly state: "gone" | "deleting" | "pending";
+  /** `here`: not gone, in a deletion that ended failed, so nothing deletes it any more. */
+  readonly state: "gone" | "deleting" | "pending" | "here";
 }
 
 const PART_STATES: ReadonlySet<string> = new Set(["gone", "deleting", "pending"]);
 
-/** HQ's parts of the deletion, named by what the person knows of them; one unknown is passed by. */
+/**
+ * HQ's parts of the deletion, named by what the person knows of them; one unknown is passed by.
+ * Once the deletion ended failed, a part not gone is still here, whatever step it stopped at.
+ */
 export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionPart> {
   const name = (projectId: string | undefined) =>
     projectId === undefined
@@ -490,7 +500,10 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
         )[0]);
   return (project.steps ?? []).flatMap((step): ReadonlyArray<DeletionPart> => {
     if (!PART_STATES.has(step.state)) return [];
-    const state = step.state as DeletionPart["state"];
+    const state: DeletionPart["state"] =
+      project.deletion.kind === "failed" && step.state !== "gone"
+        ? "here"
+        : (step.state as DeletionPart["state"]);
     const named = name(step.projectId);
     switch (step.part) {
       case "mate":

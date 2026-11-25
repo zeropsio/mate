@@ -79,6 +79,7 @@ const PART_WORDS: Readonly<Record<DeletionPart["state"], string>> = {
   gone: "Gone",
   deleting: "Deleting",
   pending: "Waiting its turn",
+  here: "Still here",
 };
 
 /** HQ's parts of its deletion, each with how it stands. */
@@ -486,7 +487,7 @@ export function ZeropsDeletionForm({
           {offer.kind === "project"
             ? "This can't be undone."
             : offer.kind === "last-choice"
-              ? lastChoiceWords(project, offer.plan, mateName).description
+              ? lastChoiceWords(project, offer.plan, mateName, slid).description
               : mateWords.body}
         </DialogDescription>
       </DialogHeader>
@@ -502,16 +503,16 @@ export function ZeropsDeletionForm({
               value={choice}
             >
               <RadioCard
-                title={lastChoiceWords(project, offer.plan, mateName).only.title}
+                title={lastChoiceWords(project, offer.plan, mateName, slid).only.title}
                 value="mate"
               >
-                {lastChoiceWords(project, offer.plan, mateName).only.line}
+                {lastChoiceWords(project, offer.plan, mateName, slid).only.line}
               </RadioCard>
               <RadioCard
-                title={lastChoiceWords(project, offer.plan, mateName).whole.title}
+                title={lastChoiceWords(project, offer.plan, mateName, slid).whole.title}
                 value="project"
               >
-                {lastChoiceWords(project, offer.plan, mateName).whole.line}
+                {lastChoiceWords(project, offer.plan, mateName, slid).whole.line}
               </RadioCard>
             </RadioGroup>
           )}

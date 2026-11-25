@@ -4,6 +4,7 @@ import { expect, it } from "vite-plus/test";
 
 import {
   deletionOffer,
+  deletionParts,
   deletionStart,
   productionStaysWords,
   projectDeletionPlan,
@@ -258,4 +259,17 @@ it("MN+3: A project's Delete opens only once every Stage is slid and its name is
   expect(ready(["Z_STAGE", "Z_REVIEW"], false)).toBe(false);
   expect(ready(["Z_STAGE", "Z_REVIEW"], true)).toBe(true);
   expect(ready(["Z_STAGE", "Z_REVIEW", "Z_LIVE"], true)).toBe(true);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | project.deletion.kind === "failed" && step.state !== "gone" → project.deletion.kind === "waiting" && step.state !== "gone"
+it("MN+4: A project's deletion that ended failed lists every part not gone as still here, the one it stopped at included, and only a running deletion lists a part as deleting; breaks: a stopped deletion still reads as deleting its Stage", () => {
+  const steps = [
+    { part: "mate", projectId: "Z_RYE", state: "gone" },
+    { part: "stage", projectId: "Z_STAGE", state: "deleting" },
+    { part: "code", state: "pending" },
+  ];
+  const states = (operation: Partial<HqOperation>) =>
+    deletionParts(bakery({ deletion: deletion(operation), steps })).map((part) => part.state);
+  expect(states({})).toEqual(["gone", "deleting", "pending"]);
+  expect(states({ failure: zeropsRefusal })).toEqual(["gone", "here", "here"]);
 });
