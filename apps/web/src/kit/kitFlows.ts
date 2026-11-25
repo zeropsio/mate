@@ -13,14 +13,30 @@ const THEME_PARAM = "theme";
 export const flowThemeOf = (search: string): FlowTheme =>
   new URLSearchParams(search).get(THEME_PARAM) === "dark" ? "dark" : "light";
 
-/** A state's page in one appearance: the flow's address, the state's query, then its theme. */
+/**
+ * The query parameter the kit's frames add, `?kit=frame`: the page leaves out its own list of
+ * states, which the kit's picker stands for. Opened alone it keeps it.
+ */
+const FRAME_PARAM = "kit";
+const FRAMED = "frame";
+
+/** Whether the kit frames the page that has this query (`harnessPage.ts` reads it). */
+export const flowFramedOf = (search: string): boolean =>
+  new URLSearchParams(search).get(FRAME_PARAM) === FRAMED;
+
+/**
+ * A state's page in one appearance: the flow's address, the state's query, then its theme, and
+ * the kit's mark when it draws in the kit's frame.
+ */
 export const flowSrc = (
   flow: KitFlow,
   state: KitFlowState | undefined,
   theme: FlowTheme | undefined,
+  { framed = false }: { readonly framed?: boolean } = {},
 ): string => {
   const params = new URLSearchParams(state?.search ?? "");
   if (theme !== undefined) params.set(THEME_PARAM, theme);
+  if (framed) params.set(FRAME_PARAM, FRAMED);
   const query = params.toString();
   return query === "" ? flow.href : `${flow.href}?${query}`;
 };

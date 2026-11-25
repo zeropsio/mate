@@ -80,7 +80,7 @@ import {
   type MateStandUpPhase,
 } from "~/zerops/mateStandUp";
 import "../index.css";
-import { harnessAppearance } from "./harnessPage";
+import { harnessAppearance, harnessFramed } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
 
@@ -1213,31 +1213,34 @@ function Harness() {
   };
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside
-        className="flex shrink-0 flex-col items-start gap-1 overflow-y-auto border-border border-r p-4"
-        style={{ width: 435 }}
-      >
-        <p className="pb-1 text-muted-foreground text-caption">
-          A Mate's arrival — Direction A, sign-in S1
-        </p>
-        <div className="pb-2">
-          <Button onClick={play} size="sm" variant="secondary">
-            Play the arrival
-          </Button>
-        </div>
-        {STATES.map((candidate) => (
-          <Button
-            aria-current={candidate.id === current ? "true" : undefined}
-            data-harness-state={candidate.id}
-            key={candidate.id}
-            onClick={() => setCurrent(candidate.id)}
-            size="sm"
-            variant={candidate.id === current ? "secondary" : "ghost"}
-          >
-            {candidate.label}
-          </Button>
-        ))}
-      </aside>
+      {/* The kit lists the states above its frame. */}
+      {harnessFramed ? null : (
+        <aside
+          className="flex shrink-0 flex-col items-start gap-1 overflow-y-auto border-border border-r p-4"
+          style={{ width: 435 }}
+        >
+          <p className="pb-1 text-muted-foreground text-caption">
+            A Mate's arrival — Direction A, sign-in S1
+          </p>
+          <div className="pb-2">
+            <Button onClick={play} size="sm" variant="secondary">
+              Play the arrival
+            </Button>
+          </div>
+          {STATES.map((candidate) => (
+            <Button
+              aria-current={candidate.id === current ? "true" : undefined}
+              data-harness-state={candidate.id}
+              key={candidate.id}
+              onClick={() => setCurrent(candidate.id)}
+              size="sm"
+              variant={candidate.id === current ? "secondary" : "ghost"}
+            >
+              {candidate.label}
+            </Button>
+          ))}
+        </aside>
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
         <Header state={state} />
         <Pane go={setCurrent} state={state} />

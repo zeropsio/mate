@@ -180,7 +180,7 @@ function FlowThumb({
             <ThumbPreview
               key={theme}
               near={near}
-              src={flowSrc(flow, state, theme)}
+              src={flowSrc(flow, state, theme, { framed: true })}
               title={`${flow.title}, ${state.label}, ${theme}`}
               viewport={viewport}
             />

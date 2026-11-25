@@ -58,7 +58,7 @@ import type { TimelineEntry } from "~/session-logic";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
-import { harnessAppearance } from "./harnessPage";
+import { harnessAppearance, harnessFramed } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
 const LATENCY_MS = Number(params.get("latency") ?? 320);
@@ -1021,26 +1021,29 @@ function Harness() {
   const thread = THREADS.find((candidate) => candidate.key === current)!;
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside
-        className="flex shrink-0 flex-col items-start gap-1 border-border border-r p-4"
-        style={{ width: 435 }}
-      >
-        <p className="pb-2 text-muted-foreground text-caption">
-          Switching Mates · first open waits {LATENCY_MS} ms
-        </p>
-        {THREADS.map((candidate) => (
-          <Button
-            key={candidate.key}
-            data-harness-thread={candidate.key}
-            aria-current={candidate.key === current ? "true" : undefined}
-            onClick={() => setCurrent(candidate.key)}
-            size="sm"
-            variant={candidate.key === current ? "secondary" : "ghost"}
-          >
-            {candidate.name} · {candidate.turns} turns
-          </Button>
-        ))}
-      </aside>
+      {/* The kit lists the threads among its states above its frame. */}
+      {harnessFramed ? null : (
+        <aside
+          className="flex shrink-0 flex-col items-start gap-1 border-border border-r p-4"
+          style={{ width: 435 }}
+        >
+          <p className="pb-2 text-muted-foreground text-caption">
+            Switching Mates · first open waits {LATENCY_MS} ms
+          </p>
+          {THREADS.map((candidate) => (
+            <Button
+              key={candidate.key}
+              data-harness-thread={candidate.key}
+              aria-current={candidate.key === current ? "true" : undefined}
+              onClick={() => setCurrent(candidate.key)}
+              size="sm"
+              variant={candidate.key === current ? "secondary" : "ghost"}
+            >
+              {candidate.name} · {candidate.turns} turns
+            </Button>
+          ))}
+        </aside>
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
         {/* The app's own top bar (`WorkspacePageHeader`), so the conversation
             under it stands where ChatView's does. */}

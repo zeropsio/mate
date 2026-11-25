@@ -74,6 +74,7 @@ import { readCrewThread, type CrewRead } from "~/zerops/crew/useCrew";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import "../index.css";
+import { harnessFramed } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
@@ -696,27 +697,30 @@ function Harness() {
   const current = STATES.find((each) => each.id === currentId) ?? STATES[0]!;
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
-      <aside
-        className="flex shrink-0 flex-col items-start gap-1 border-border border-e bg-sidebar p-4"
-        style={{ width: MENU }}
-      >
-        <p className="pb-2 text-muted-foreground text-caption">A crewmate's empty conversation</p>
-        {STATES.map((each) => (
-          <Button
-            aria-current={each.id === current.id ? "true" : undefined}
-            data-harness-state={each.id}
-            key={each.id}
-            onClick={() => {
-              setCurrentId(each.id);
-              setJob(null);
-            }}
-            size="sm"
-            variant={each.id === current.id ? "secondary" : "ghost"}
-          >
-            {each.label}
-          </Button>
-        ))}
-      </aside>
+      {/* The kit lists the states above its frame. */}
+      {harnessFramed ? null : (
+        <aside
+          className="flex shrink-0 flex-col items-start gap-1 border-border border-e bg-sidebar p-4"
+          style={{ width: MENU }}
+        >
+          <p className="pb-2 text-muted-foreground text-caption">A crewmate's empty conversation</p>
+          {STATES.map((each) => (
+            <Button
+              aria-current={each.id === current.id ? "true" : undefined}
+              data-harness-state={each.id}
+              key={each.id}
+              onClick={() => {
+                setCurrentId(each.id);
+                setJob(null);
+              }}
+              size="sm"
+              variant={each.id === current.id ? "secondary" : "ghost"}
+            >
+              {each.label}
+            </Button>
+          ))}
+        </aside>
+      )}
       <main className="flex min-w-0 flex-1 flex-col">
         {/* The app's own top bar, so the conversation under it stands where ChatView's does. */}
         <WorkspacePageHeader

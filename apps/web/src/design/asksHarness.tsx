@@ -60,6 +60,7 @@ import {
 } from "~/components/zerops/vault/vaultRequest.logic";
 import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 import "../index.css";
+import { harnessFramed } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
 const MENU = Number(params.get("menu") ?? 435);
@@ -1135,15 +1136,18 @@ function Harness() {
         <div className="mx-auto grid w-full max-w-3xl gap-10">
           <header className="grid gap-3">
             <h1 className="font-medium text-title">Mate Asks</h1>
-            <States
-              label="Density"
-              onChange={setDensity}
-              states={[
-                ["full", "In the conversation"],
-                ["compact", "Above the composer"],
-              ]}
-              value={density}
-            />
+            {/* The kit lists the densities among its states above its frame. */}
+            {harnessFramed ? null : (
+              <States
+                label="Density"
+                onChange={setDensity}
+                states={[
+                  ["full", "In the conversation"],
+                  ["compact", "Above the composer"],
+                ]}
+                value={density}
+              />
+            )}
           </header>
           <Approve density={density} />
           <Provide density={density} />
