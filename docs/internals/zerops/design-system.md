@@ -278,6 +278,11 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/prefer-failure` (a plain element whose class string is a failure's ink
     with a type step or an alert/status role, beside only its place); its ledger only shrinks
 
+- **R18** — Machine text is the kit's: a block is `CodeBlock`, arriving lines `LogView`, one value to
+  copy `CopyLine`, a change's size `DiffStat`
+  - _Enforced by:_ `t3code/prefer-code-block` (a `<pre>` in the web client outside `components/ui`,
+    the kit and the design harness); its ledger only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
