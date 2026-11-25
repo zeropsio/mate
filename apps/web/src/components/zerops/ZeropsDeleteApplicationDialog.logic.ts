@@ -24,6 +24,8 @@ import {
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
+import { lastMateGoes } from "./ZeropsDeleteMateDialog.logic";
+
 export interface DeleteApplicationTarget {
   readonly appId: string;
   /** Its name, as HQ holds it: the dialog asks for it typed. */
@@ -116,6 +118,11 @@ export function applicationDeletionHold(
   appId: string,
   /** The application's `contents.deletingProjectIds`. */
   deleting: ReadonlyArray<string>,
+  /**
+   * HQ took the deletion of its last Mate from this dialog: a Mate HQ's navigation does not show
+   * going yet is that deletion on its way, not a Mate still at work.
+   */
+  mateTaken = false,
 ):
   | { readonly words: string; readonly failed: boolean; readonly details: string | null }
   | undefined {
@@ -142,7 +149,7 @@ export function applicationDeletionHold(
       failed: true,
       details: operationFailureDetails(failed.failure),
     };
-  if (deletions.some((deletion) => deletion.kind === "none"))
+  if (!mateTaken && deletions.some((deletion) => deletion.kind === "none"))
     return {
       words: "A Mate still works on this project. Delete it first.",
       failed: true,
@@ -172,6 +179,8 @@ export function applicationHoldings(detail: {
 export interface DeleteApplicationWords {
   /** "Delete shop?" */
   readonly title: string;
+  /** Under the title: that it can't be undone, and why its last Mate goes with it. */
+  readonly body: string;
   /** Each thing that goes; `undefined` until HQ said what the project holds. */
   readonly goes: ReadonlyArray<string> | undefined;
   /** The Zerops projects of the productions that stay, in the target's order: each named live. */
@@ -194,12 +203,15 @@ function listed(names: ReadonlyArray<string>): string {
 export function deleteApplicationWords(
   target: DeleteApplicationTarget,
   holdings: ApplicationHoldings | undefined,
+  /** Its last Mate, which its Delete deletes first; its services as `deleteMateServiceCount`. */
+  mate?: { readonly name: string; readonly services: number | undefined },
 ): DeleteApplicationWords {
   const code = holdings?.repos.filter((name) => name !== RECIPE_REPO) ?? [];
   const goes =
     holdings === undefined
       ? undefined
       : [
+          ...(mate === undefined ? [] : [lastMateGoes(mate.name, mate.services)]),
           ...(code.length === 0
             ? []
             : [
@@ -219,6 +231,10 @@ export function deleteApplicationWords(
         ];
   return {
     title: `Delete ${target.name}?`,
+    body:
+      mate === undefined
+        ? "This can't be undone."
+        : `${mate.name} is the last Mate of ${target.name}, so ${target.name} goes with it. This can't be undone.`,
     goes,
     productions: target.productions.flatMap((production) =>
       "projectId" in production ? [production.projectId] : [],

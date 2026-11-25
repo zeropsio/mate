@@ -54,6 +54,14 @@ function whatGoesWithIt(services: number | undefined): string {
   return `with its ${services} services and everything in them`;
 }
 
+/**
+ * The last Mate in its project's Delete, the first line of what goes: deleting the project deletes
+ * it first, with its conversations and its environment.
+ */
+export function lastMateGoes(name: string, services: number | undefined): string {
+  return `${name}, its conversations, and its environment ${whatGoesWithIt(services)}`;
+}
+
 export function deleteMateWords(input: {
   /** The Mate's name. */
   readonly name: string;
