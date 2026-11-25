@@ -193,6 +193,8 @@
   }
 }
 
+/* A card's head: its name on a 28 px line with the project's menu at its end, its quiet line
+   and its credit under it. */
 .ov-card-head {
   padding: 0 6px;
 }
@@ -559,6 +561,7 @@
   padding-bottom: 12px;
 }
 
+/* The chips' grid: as many columns of at least 168 px as fit. */
 .ov-chips {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
@@ -940,6 +943,7 @@ a.ov-chip-who:focus-visible {
   --ov-rule: color-mix(in oklab, var(--foreground) 10%, transparent);
 }
 
+/* Settings › Team: the search, the operations, the grid of face cards. */
 .tm-team {
   display: grid;
   gap: 20px;
@@ -1365,6 +1369,7 @@ a.ov-chip-who:focus-visible {
   padding-inline: 12px;
 }
 
+/* One section of a person's page or the invitation: its heading, then what it holds. */
 .tm-section {
   display: grid;
   gap: 14px;
@@ -1378,6 +1383,7 @@ a.ov-chip-who:focus-visible {
   text-wrap: pretty;
 }
 
+/* A person's project access: its heading, then the chips of their projects. */
 .tm-access {
   display: grid;
   gap: 14px;
@@ -1392,11 +1398,13 @@ a.ov-chip-who:focus-visible {
   gap: 8px;
 }
 
+/* The role's choice: its heading, the role cards, the fine-tune switch and panel. */
 .tm-role {
   display: grid;
   gap: 10px;
 }
 
+/* After Fine-tune permissions, the custom role it makes, in the text's own weight. */
 .tm-advanced-custom {
   font-weight: 400;
 }
@@ -1434,6 +1442,7 @@ label.tm-advanced-row:not([data-disabled]) {
   width: auto;
 }
 
+/* A project's chip face on a person's page: a folder on a muted 32 px disc. */
 .tm-project-face {
   display: inline-flex;
   align-items: center;
@@ -1501,6 +1510,7 @@ label.tm-advanced-row:not([data-disabled]) {
   }
 }
 
+/* The invitation's first and last name, side by side, each a label over its field. */
 .tm-names {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1521,6 +1531,7 @@ label.tm-advanced-row:not([data-disabled]) {
   background: var(--ov-lift);
 }
 
+/* The disabled Add a Mate row's face: a dashed 32 px ring around its plus. */
 .ov-add-face {
   display: grid;
   width: 32px;
@@ -1597,6 +1608,7 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--zerops-status-busy-text);
 }
 
+/* Under a card's places: each read that stopped, its words and its Read again. */
 .ov-reads {
   display: contents;
 }
