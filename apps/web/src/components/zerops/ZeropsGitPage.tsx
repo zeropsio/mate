@@ -1,4 +1,5 @@
 /** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
+import { EmptyState } from "../ui/empty";
 import { Card } from "../ui/card";
 import {
   gitRepositoryLine,
@@ -235,7 +236,7 @@ export function ZeropsGitOverview({
                     ) : changeRows.length === 1 ? (
                       changeRows
                     ) : repository.coverage === "complete" ? (
-                      <p className="mt-2 text-caption text-muted-foreground">No open changes.</p>
+                      <EmptyState size="row">No open changes.</EmptyState>
                     ) : null}
                   </div>
                 );
@@ -276,7 +277,7 @@ export function ZeropsGitOverview({
           </Button>
         </div>
       ) : (
-        <p className="text-body text-muted-foreground">No open changes.</p>
+        <EmptyState size="row">No open changes.</EmptyState>
       )}
     </>
   );

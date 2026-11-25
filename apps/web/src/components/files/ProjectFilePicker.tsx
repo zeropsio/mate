@@ -8,6 +8,7 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { EmptyState } from "../ui/empty";
 import { type CommandPaletteActionItem } from "../CommandPalette.logic";
 import { CommandPaletteResults } from "../CommandPaletteResults";
 import {
@@ -61,9 +62,7 @@ export function EmptyProjectFilePicker() {
       testId="project-file-picker"
       value=""
     >
-      <div className="py-10 text-center text-body text-muted-foreground">
-        Open a project to search its files.
-      </div>
+      <EmptyState>Open a project to search its files.</EmptyState>
     </CommandPaletteContent>
   );
 }

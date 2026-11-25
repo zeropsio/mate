@@ -10,6 +10,7 @@ import { useProjectContentSearch } from "~/state/queries";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
 import { CommandPaletteContent } from "../CommandPaletteContent";
+import { EmptyState } from "../ui/empty";
 import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Row } from "../ui/row";
@@ -94,9 +95,7 @@ export function EmptyContentSearchDialog() {
       testId="project-content-search"
       value=""
     >
-      <p className="m-auto px-6 text-center text-muted-foreground text-body">
-        Open a project to search its files.
-      </p>
+      <EmptyState>Open a project to search its files.</EmptyState>
     </CommandPaletteContent>
   );
 }

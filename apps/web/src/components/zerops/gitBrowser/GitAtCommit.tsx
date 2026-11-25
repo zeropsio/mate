@@ -5,15 +5,16 @@
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
+import { EmptyState } from "~/components/ui/empty";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 
 /** Missing commit facts are pending, not evidence of an empty branch. */
 export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
   return (
-    <p className="text-body text-muted-foreground">
+    <EmptyState size="row">
       {pending === true ? "Commit metadata is pending." : "No commits on this branch yet."}
-    </p>
+    </EmptyState>
   );
 }
 
