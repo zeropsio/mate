@@ -18,6 +18,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
+  CREW_MINI_NEEDS_WORD,
   CREW_NEXT_WORD,
   CREW_ROW_VERBS,
   crewMenuOfWord,
@@ -55,6 +56,7 @@ import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { formatRelativeTimeLabel, formatWorkingTime } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
+import { Badge } from "../../ui/badge";
 import { Button, InlineButton } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Menu, MenuTrigger } from "../../ui/menu";
@@ -365,7 +367,9 @@ function CrewRow(
           )}
           <span className="grow" />
           {model.needsYou ? (
-            <span className="crew-dot" data-arrived={needed ? "" : undefined} />
+            <span className="crew-dot flex" data-arrived={needed ? "" : undefined}>
+              <Badge aria-label={CREW_MINI_NEEDS_WORD} dot tone="warning" />
+            </span>
           ) : null}
           <RowTime slot={model.slot} />
           {menu.items.length === 0 ? null : (

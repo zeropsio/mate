@@ -127,6 +127,7 @@ export function CrewHeading({ children }: { readonly children: ReactNode }) {
 /**
  * A choice in a view (Start with a lead and two builders, More): a quiet card, its edge at rest
  * and the fill only under the pointer; one that waits sits back, its reason under its title.
+ * Without `render` it is the choice's place while what it started runs: still, its `end` a press.
  */
 export function CrewChoice({
   lead,
@@ -142,21 +143,25 @@ export function CrewChoice({
   /** At the row's end: a chevron unless said otherwise. */
   readonly end?: ReactNode;
   readonly disabled?: boolean;
-  /** The press itself, with its handler and hooks. */
-  readonly render: ReactElement;
+  /** The press itself, with its handler and hooks; none while the choice runs. */
+  readonly render?: ReactElement;
 }) {
   return (
     <div className={cn("rounded-card ring-1 ring-foreground/10", disabled && "opacity-55")}>
-      <Row
-        aria-disabled={disabled || undefined}
-        lead={lead}
-        line={line}
-        lineWraps
-        meta={end ?? <ChevronRightIcon aria-hidden="true" className="size-4" />}
-        pressable
-        render={render}
-        title={title}
-      />
+      {render === undefined ? (
+        <Row lead={lead} line={line} lineWraps meta={end} title={title} />
+      ) : (
+        <Row
+          aria-disabled={disabled || undefined}
+          lead={lead}
+          line={line}
+          lineWraps
+          meta={end ?? <ChevronRightIcon aria-hidden="true" className="size-4" />}
+          pressable
+          render={render}
+          title={title}
+        />
+      )}
     </div>
   );
 }

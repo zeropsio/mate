@@ -6,16 +6,6 @@
    white surface; blue is what clicks, an amber dot what needs you, red what
    is broken. Rhythm, text edge to text edge: row to row 22 px, a heading to
    its first row 11, group to group 44. */
-/* The crew's blue — what a press says in words: the action blue, and on the
-   dark ground the theme's lighter focus blue, legible as words (the board's). */
-:root {
-  --crew-act: var(--message-action);
-}
-
-:root.dark {
-  --crew-act: var(--ring);
-}
-
 @layer components {
   /* The words' second ink — what a crewmate is on — as the menu's rows have it. */
   .crew-ink-2 {
@@ -50,6 +40,7 @@
     }
   }
 
+  /* What stands over the row's whole-row press (its plan, its answer) takes the pointer itself. */
   .crew-row-above {
     position: relative;
     z-index: 1;
@@ -72,15 +63,6 @@
   .crew-row:hover .crew-row-time,
   .crew-row:has([data-crew-row-open]:focus-visible) .crew-row-time {
     display: none;
-  }
-
-  /* What needs you: an amber dot before the time (S3). */
-  .crew-dot {
-    flex: none;
-    width: 7px;
-    height: 7px;
-    border-radius: 9999px;
-    background: var(--zerops-status-attention);
   }
 
   /* The composer, at the top: 48 px tall on a sheet's corners, the tab's only white surface. */
@@ -140,6 +122,7 @@
     background: color-mix(in oklab, var(--foreground) 5%, transparent);
   }
 
+  /* Why the composer is locked: body words, two lines at most, in a softened ink. */
   .crew-locked-words {
     flex: 1 1 auto;
     min-width: 0;
@@ -177,6 +160,7 @@
     background: color-mix(in oklab, var(--background) 60%, var(--card));
   }
 
+  /* A task's line in the tray: its face, its owner, what it is, its ×. */
   .crew-tray-row {
     position: relative;
     display: grid;
@@ -215,6 +199,7 @@
     }
   }
 
+  /* A view's foot (`CrewViewFoot`): its presses on the panel's ground, in reach while it scrolls. */
   .crew-view-foot {
     position: sticky;
     bottom: 0;
@@ -224,18 +209,6 @@
     padding: 14px 16px 20px;
     border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
     background: var(--background);
-  }
-
-  /* A row standing in for a choice while it runs, or saying why it failed: a
-     choice's quiet edge, its press at the end. */
-  .crew-option {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    column-gap: 12px;
-    align-items: center;
-    padding: 12px 12px 12px 10px;
-    border-radius: var(--radius-card);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
   }
 
   /* No crew yet: the Mate, and three seats waiting. */
@@ -275,6 +248,7 @@
     animation: crew-fade var(--duration-base) var(--ease-out-strong) backwards;
   }
 
+  /* What needs you (the kit's amber dot, S3) scales in before the time. */
   .crew-dot[data-arrived] {
     animation: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
   }
