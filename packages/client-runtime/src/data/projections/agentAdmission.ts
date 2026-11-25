@@ -66,7 +66,7 @@ export function admissionNeedsSignIn(
   const snapshot = read?.state === "known" ? read.value : null;
   return (
     snapshot !== null &&
-    zeropsAgentSignInRequired(snapshot, undefined) &&
+    zeropsAgentSignInRequired(snapshot, undefined, undefined) &&
     !openCodeRunsOnKey(providers) &&
     !openCodeChosen(providers, defaultModel)
   );

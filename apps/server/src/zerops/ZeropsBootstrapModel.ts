@@ -25,10 +25,11 @@
 import {
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  type ModelSelection,
   type ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
-import { isAgentWithoutSignInReady } from "@t3tools/shared/zeropsAgentAuth";
+import { standsInForSignIn } from "@t3tools/shared/openCodeKeyProviders";
 
 /**
  * The model the bootstrap thread opens on for one instance.
@@ -52,15 +53,18 @@ export const resolveBootstrapModelSlug = (snapshot: ServerProvider): string => {
 };
 
 /**
- * The ready instance of an agent Mate signs nobody in to — OpenCode
- * (`isAgentWithoutSignInReady`): `current`, the conversation's own, when it is one of them, else
- * the first in the registry's order; `undefined` when none is. The agents people sign in to never
+ * The ready instance of an agent Mate signs nobody in to that stands in for the person's sign-in
+ * (`standsInForSignIn`: OpenCode on a key they set, or on its free models only once they chose
+ * them as `defaultModel`): `current`, the conversation's own, when it is one of them, else the
+ * first in the registry's order; `undefined` when none is. The agents people sign in to never
  * answer here: on a Zerops project their sign-in is the feed's to say, and the person's (D6).
  */
 export const pickReadyAgentWithoutSignIn = (
   providers: ReadonlyArray<ServerProvider>,
+  /** The Mate's default model (its settings' `defaultModelSelection`). */
+  defaultModel: ModelSelection | null,
   current?: ProviderInstanceId,
 ): ServerProvider | undefined => {
-  const ready = providers.filter(isAgentWithoutSignInReady);
+  const ready = providers.filter((provider) => standsInForSignIn(provider, defaultModel));
   return ready.find((snapshot) => snapshot.instanceId === current) ?? ready[0];
 };

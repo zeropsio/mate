@@ -62,8 +62,9 @@ import { ZeropsToldToStop } from "./ZeropsToldToStop.ts";
  *
  * @module ZeropsHqLink
  */
-import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
+import { mateRunsWithoutSignIn } from "@t3tools/shared/openCodeKeyProviders";
 import { ProviderInstances } from "../spi/providerInstances.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import * as NodeDns from "node:dns";
 import * as NodeNet from "node:net";
 
@@ -74,6 +75,7 @@ import type {
   MateAttention,
   MateHealth,
   MateHqKey,
+  ModelSelection,
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -1092,6 +1094,9 @@ interface OverviewSources {
   readonly serverVersion: string;
   readonly providers?: {
     readonly latest: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    /** The Mate's default model, whose choice of OpenCode's free models signs it in. */
+    readonly defaultModel: Effect.Effect<ModelSelection | null>;
+    /** The providers' changes and the settings'. */
     readonly changes: Stream.Stream<unknown>;
   };
   /** The thread shells of the project at the workspace root. */
@@ -1159,6 +1164,7 @@ const mateOverviewFeed = (
                 runsWithoutSignIn: mateRunsWithoutSignIn(
                   yield* sources.providers.latest,
                   snapshot.agents,
+                  yield* sources.providers.defaultModel,
                 ),
               }),
         },
@@ -1203,6 +1209,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const paths = yield* Path.Path;
       const fs = yield* FileSystem.FileSystem;
       const providers = yield* ProviderInstances;
+      const settings = yield* ServerSettingsService;
       // Separate home database: capture IO cannot lock the orchestration event store.
       // Admission waits for a subscribed capture service, including across storage recovery.
       const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
@@ -1230,7 +1237,15 @@ export const layer = (crew: OverviewSources["crew"]) =>
       );
       const descriptor = yield* (yield* ServerEnvironment).getDescriptor;
       const feed = yield* mateOverviewFeed({
-        providers: { latest: providers.providers, changes: providers.changes },
+        providers: {
+          latest: providers.providers,
+          // Unread, nothing was chosen: the Mate is told to wait for its person's sign-in.
+          defaultModel: settings.getSettings.pipe(
+            Effect.map((current) => current.defaultModelSelection),
+            Effect.catch(() => Effect.succeed(null)),
+          ),
+          changes: Stream.merge(providers.changes, settings.streamChanges),
+        },
         environmentId: descriptor.environmentId,
         serverVersion: descriptor.serverVersion,
         threads: chats.threads,

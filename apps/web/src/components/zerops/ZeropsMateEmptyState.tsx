@@ -201,7 +201,9 @@ export function useMateEmptyState({
     agentAuth !== null &&
     viewerSubject !== undefined &&
     mateStandUpSignedIn(agentAuth, viewerSubject);
-  const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
+  const agentReady =
+    !viewerSignedIn &&
+    zeropsOtherAgentReady(providers, serverConfig?.settings.defaultModelSelection);
   const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0, live: true });
   // It speaks of the stand-up where the stand-up holds the composer: the Mate's main conversation,
   // or its opening draft while it has none (`useMateStandUp`).

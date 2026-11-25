@@ -12,8 +12,9 @@
  *   signed an agent in here (`ZeropsProjectSigners`, kept by HQ and sent on its
  *   link's `signers` frame) for the sign-in; the durable record for the stand-up.
  * - **It starts the stand-up**: once HQ names the person who asked for it and
- *   that person signed an agent in here, or another agent is ready to run,
- *   it sends the ask into the Mate's main
+ *   that person signed an agent in here, or an agent that stands in for their
+ *   sign-in is ready (`standsInForSignIn`: never OpenCode's free models
+ *   unless they chose them), it sends the ask into the Mate's main
  *   conversation, admitted as that person's session exactly as their send
  *   would be (D6). Once: the record lives in the server's database, so a
  *   restart repeats nothing. No client sends one.
@@ -139,6 +140,11 @@ export class ZeropsSetupReads extends Context.Service<
      * agent-auth feed (`overlayZeropsAgentAuth`), every other driver by its own probe.
      */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    /**
+     * The Mate's default model (its settings' `defaultModelSelection`): OpenCode's free models
+     * stand in for a sign-in only once its person chose them there (`standsInForSignIn`).
+     */
+    readonly defaultModel: Effect.Effect<ModelSelection | null>;
     /** What an automated Mate's agents start on: its organization's model (`ZeropsAutomation`). */
     readonly automatedModel: Effect.Effect<ModelSelection>;
     /**
@@ -148,7 +154,8 @@ export class ZeropsSetupReads extends Context.Service<
     readonly takePersona: (persona: MatePersona) => Effect.Effect<void>;
     /**
      * The change streams of what decides whether the stand-up may go: HQ's state (`hq`), the
-     * sign-ins (`signers`), the agent-auth feed (`agents`) and the providers (`providers`).
+     * sign-ins (`signers`), the agent-auth feed (`agents`), the providers (`providers`) and the
+     * settings (`defaultModel`).
      */
     readonly changes: ReadonlyArray<Stream.Stream<unknown>>;
   }
@@ -464,7 +471,8 @@ export const makeZeropsSetup = Effect.gen(function* () {
     const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
     const signers = yield* reads.signers;
     const readyWithoutSignIn =
-      marked && pickReadyAgentWithoutSignIn(yield* reads.providers) !== undefined;
+      marked &&
+      pickReadyAgentWithoutSignIn(yield* reads.providers, yield* reads.defaultModel) !== undefined;
     const signedIn =
       ran ||
       readyWithoutSignIn ||
@@ -635,7 +643,9 @@ export const makeZeropsSetup = Effect.gen(function* () {
             (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
           )
         : allProviders;
-      const ready = pickReadyAgentWithoutSignIn(providers);
+      // An automated Mate's OpenCode is its organization's choice, made for it.
+      const defaultModel = automated ? AUTOMATED_MODEL_SELECTION : yield* reads.defaultModel;
+      const ready = pickReadyAgentWithoutSignIn(providers, defaultModel);
       const signers = automated ? {} : yield* reads.signers;
       const agents = automated ? [] : yield* reads.agents;
       const requestedBy =
@@ -666,6 +676,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
       const mainSelection = selectionOf(main);
       const readyHere = pickReadyAgentWithoutSignIn(
         providers,
+        defaultModel,
         mainSelection?.modelSelection.instanceId,
       );
       const decision = standUpDecision({
@@ -827,6 +838,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
       const mayRun = automated
         ? []
         : standUpAgents(yield* reads.agents, yield* reads.signers, userId);
+      const defaultModel = automated ? AUTOMATED_MODEL_SELECTION : yield* reads.defaultModel;
       const own = main?.agent ?? null;
       if (own !== null) {
         // Its own agent, as the run's admission will judge it for the caller.
@@ -834,12 +846,15 @@ export const makeZeropsSetup = Effect.gen(function* () {
         const runs =
           automated ||
           (agentId === undefined
-            ? pickReadyAgentWithoutSignIn(providers, ProviderInstanceId.make(own.instanceId))
-                ?.instanceId === own.instanceId
+            ? pickReadyAgentWithoutSignIn(
+                providers,
+                defaultModel,
+                ProviderInstanceId.make(own.instanceId),
+              )?.instanceId === own.instanceId
             : mayRun.includes(agentId));
         if (!runs) return false;
       } else {
-        const readyHere = pickReadyAgentWithoutSignIn(providers);
+        const readyHere = pickReadyAgentWithoutSignIn(providers, defaultModel);
         let chosen: ModelSelection;
         if (automated) {
           chosen = yield* reads.automatedModel;
@@ -1057,6 +1072,15 @@ export const liveReadsLayer = Layer.effect(
           : watchFiles([statusFilePath]),
       processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
+      // Unread, nothing was chosen: the Mate waits for its person's sign-in.
+      defaultModel: settings.getSettings.pipe(
+        Effect.map((current) => current.defaultModelSelection),
+        Effect.catch((error) =>
+          Effect.logWarning("zerops setup: the Mate's default model was not read", {
+            reason: error.message,
+          }).pipe(Effect.as(null)),
+        ),
+      ),
       automatedModel: automation.modelSelection,
       takePersona: (persona) =>
         settings.getSettings.pipe(
@@ -1070,7 +1094,13 @@ export const liveReadsLayer = Layer.effect(
             }),
           ),
         ),
-      changes: [link.changes, projectSigners.changes, agentAuth.changes, instances.changes],
+      changes: [
+        link.changes,
+        projectSigners.changes,
+        agentAuth.changes,
+        instances.changes,
+        settings.streamChanges,
+      ],
     });
   }),
 );
