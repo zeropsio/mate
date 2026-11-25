@@ -237,6 +237,12 @@ numbered steps of these. Every ask is the same card, in two densities.
     in the web client outside `components/ui`, the kit and the design harness, also one handed to a
     `render` prop that carries its own `className`); its ledger only shrinks
 
+- **R13** — A surface draws with the kit and utilities, not a stylesheet
+  - _Enforced by:_ `scripts/check-css-tokens.ts` (`WEB_STYLESHEETS`: the foundation, tokens, base,
+    document, rendered markdown, fonts, the boot frame's geometry, the Mate face's drawing and the
+    few rules no utility can say; a list that only shrinks); a surface's keyframes go in
+    `apps/web/src/styles/motion-*.css`, which holds `@keyframes` only
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
