@@ -240,6 +240,7 @@
   color: var(--muted-foreground);
 }
 
+/* A card's quiet line under its name: why it holds no Mate yet, or what it waits for. */
 .ov-card-site {
   display: block;
   max-width: 100%;
@@ -250,16 +251,6 @@
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-decoration: underline 1px transparent;
-  text-underline-offset: 3px;
-  transition:
-    color 150ms var(--ease-out-strong),
-    text-decoration-color 150ms var(--ease-out-strong);
-}
-
-a.ov-card-site:hover {
-  color: var(--foreground);
-  text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 
 /* Why Put it live stands off, under the line that carries it, in from its dot. */

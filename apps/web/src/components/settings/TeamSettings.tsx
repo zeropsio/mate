@@ -13,6 +13,7 @@ import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "../ui/badge";
+import { EmptyState } from "../ui/empty";
 import { Button, InlineButton } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -217,7 +218,9 @@ export function TeamList({
         ) : view.kind === "unreadable" ? (
           <p className="tm-empty">{view.line}</p>
         ) : shown.length === 0 ? (
-          <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
+          <EmptyState mark={<SearchIcon aria-hidden="true" />}>
+            Nobody matches “{query.trim()}”.
+          </EmptyState>
         ) : (
           <>
             {placed.unplaced.length === 0 ? null : (
