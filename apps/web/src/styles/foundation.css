@@ -454,6 +454,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
   --color-mint-panel: var(--zerops-mint-panel);
+  --color-stage: var(--zerops-stage);
+  --color-stage-foreground: var(--zerops-stage-foreground);
+  --color-annotation: var(--zerops-annotation);
   /* What a table's sticky header and first column stand on: the card's, or the ground of the
      surface it sits in, which sets --table-ground. */
   --color-table-ground: var(--table-ground, var(--color-card));

@@ -1,4 +1,8 @@
-import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./chat/composerTypography";
+import {
+  COMPOSER_ATTACHMENT_RUNS_CLASS_NAME,
+  COMPOSER_ATTACHMENT_SLOT_CLASS_NAME,
+  COMPOSER_PROMPT_TYPE_CLASS_NAME,
+} from "./chat/composerTypography";
 import { LexicalComposer, type InitialConfigType } from "@lexical/react/LexicalComposer";
 import { composerEditorAria } from "./composerEditorAria";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -667,7 +671,8 @@ class ComposerPictureNode extends DecoratorNode<React.ReactElement> {
 
   override createDOM(): HTMLElement {
     const dom = document.createElement("span");
-    dom.className = "composer-picture-slot composer-attachment-slot";
+    dom.className = COMPOSER_ATTACHMENT_SLOT_CLASS_NAME;
+    dom.dataset.attachmentSlot = "picture";
     return dom;
   }
 
@@ -728,7 +733,8 @@ class ComposerFileNode extends DecoratorNode<React.ReactElement> {
 
   override createDOM(): HTMLElement {
     const dom = document.createElement("span");
-    dom.className = "composer-file-slot composer-attachment-slot";
+    dom.className = COMPOSER_ATTACHMENT_SLOT_CLASS_NAME;
+    dom.dataset.attachmentSlot = "file";
     return dom;
   }
 
@@ -1852,7 +1858,7 @@ function $offsetAtPoint(editor: LexicalEditor, event: DragEvent): number | null 
     range.startContainer instanceof Element
       ? range.startContainer
       : range.startContainer.parentElement;
-  const slot = container?.closest(".composer-picture-slot");
+  const slot = container?.closest('[data-attachment-slot="picture"]');
   if (slot && root.contains(slot)) {
     const box = slot.getBoundingClientRect();
     if (event.clientY < box.top + box.height / 2) range.setStartBefore(slot);
@@ -2695,6 +2701,7 @@ function ComposerPromptEditorInner({
                     // The scroll box clips at its edge: it reaches 4 px left of the words, so a
                     // picture at the start of a line keeps its ring and rounded corners whole.
                     "-ms-1 block max-h-50 min-h-17.5 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent ps-1 leading-relaxed text-foreground focus:outline-none",
+                    COMPOSER_ATTACHMENT_RUNS_CLASS_NAME,
                     // In the composer: room for the full-screen toggle in its corner, and its
                     // measured full-screen height (`--composer-full-height`), eased both ways.
                     "in-data-chat-composer-form:transition-[min-height,max-height] in-data-chat-composer-form:duration-260 in-data-chat-composer-form:ease-out-strong in-data-chat-composer-form:sm:pe-7 in-data-[composer-full=on]:max-h-(--composer-full-height) in-data-[composer-full=on]:min-h-(--composer-full-height) motion-reduce:transition-none",

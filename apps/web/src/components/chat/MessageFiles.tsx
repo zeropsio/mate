@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrls } from "~/assets/assetUrls";
 import { useTheme } from "~/hooks/useTheme";
+import { cn } from "~/lib/utils";
 import type { ChatAttachment } from "~/types";
 import { AttachedFileFace } from "./ComposerFile";
 import { formatPictureBytes } from "./ComposerPictureView";
@@ -43,6 +44,10 @@ export function useMessageFileUrls(
   );
 }
 
+/** A file in a sent message: its icon, name and size on one quiet line. */
+const MESSAGE_FILE_CLASS_NAME =
+  "inline-flex h-10 max-w-full items-center gap-2 rounded-control bg-foreground/5 px-3 text-inherit no-underline ring-1 ring-foreground/12";
+
 export function MessageFile(props: { readonly file: ChatAttachment; readonly url: string | null }) {
   const { resolvedTheme } = useTheme();
   const face = (
@@ -54,7 +59,10 @@ export function MessageFile(props: { readonly file: ChatAttachment; readonly url
   );
   return props.url ? (
     <AssetDownloadLink
-      className="message-file"
+      className={cn(
+        MESSAGE_FILE_CLASS_NAME,
+        "hover:bg-foreground/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
       source={props.url}
       download={props.file.name}
       aria-label={`Download ${props.file.name}`}
@@ -62,7 +70,7 @@ export function MessageFile(props: { readonly file: ChatAttachment; readonly url
       {face}
     </AssetDownloadLink>
   ) : (
-    <span className="message-file">{face}</span>
+    <span className={MESSAGE_FILE_CLASS_NAME}>{face}</span>
   );
 }
 
@@ -73,7 +81,7 @@ export function MessageFilesAbove(props: {
 }) {
   if (props.files.length === 0) return null;
   return (
-    <div className="message-files">
+    <div className="mb-2 flex flex-wrap gap-2">
       {props.files.map((file) => (
         <MessageFile key={file.id} file={file} url={props.urls.get(file.id) ?? null} />
       ))}

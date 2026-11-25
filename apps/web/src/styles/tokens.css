@@ -106,6 +106,11 @@
   /* The composer's lift: a soft, low shadow in light; in dark a longer, deeper one, since a light
      ring alone would not lift a surface off a dark canvas. */
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
+  /* A picture opened large stands on a dark stage in both appearances, as a lightbox does. */
+  --zerops-stage: #101114;
+  --zerops-stage-foreground: #f4f5f7;
+  /* Notes on a picture: their pink is burnt into the copy the Mate sees, the same in both. */
+  --zerops-annotation: #e5267a;
 
   @variant dark {
     color-scheme: dark;

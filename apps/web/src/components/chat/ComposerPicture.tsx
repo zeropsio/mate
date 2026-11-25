@@ -64,15 +64,17 @@ export function ComposerPicture({ id }: { readonly id: string }) {
     }
   };
   return (
+    // 80 px tall on the control radius, its edge a hairline that lights under the pointer and when
+    // picked; amber when its upload did not go through. Dragged, it fades where it stood.
     <span
-      className="composer-picture"
+      className="group/picture relative block w-fit max-w-full rounded-control data-dragging:opacity-35"
       draggable
       data-composer-picture={id}
       data-preparing={picture.preparing ? "true" : undefined}
       data-failed={picture.failed ? "true" : undefined}
     >
       <Button
-        className="block"
+        className="group/press block"
         variant="bare"
         aria-label={`Picture ${picture.number}, ${picture.name}. Opens it to crop or add notes.`}
         onMouseDown={(event) => event.preventDefault()}
@@ -83,7 +85,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
           <AssetImage
             loading="lazy"
             decoding="async"
-            className="composer-picture-img"
+            className="block h-20 max-w-full rounded-control bg-muted object-cover outline-1 outline-foreground/14 transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning"
             src={picture.src}
             alt=""
             draggable={false}
@@ -92,12 +94,17 @@ export function ComposerPicture({ id }: { readonly id: string }) {
           />
         ) : (
           <span
-            className="composer-picture-img"
+            className="block h-20 max-w-full rounded-control bg-muted object-cover outline-1 outline-foreground/14 transition-[box-shadow,outline-color] duration-150 ease-out-strong group-hover/press:ring-4 group-hover/press:ring-ring/20 in-data-composer-chip-selected:outline-2 in-data-composer-chip-selected:outline-ring group-data-failed/picture:outline-2 group-data-failed/picture:outline-warning"
             style={{ width: picture.width, height: picture.height }}
           />
         )}
       </Button>
-      {picture.keepOriginal ? <span className="composer-picture-tag">Original</span> : null}
+      {/* Over the picture, on the stage's dark ground: the untouched file goes along. */}
+      {picture.keepOriginal ? (
+        <span className="pointer-events-none absolute bottom-1.5 left-1.5 h-4.5 rounded-mark bg-stage/66 px-1.5 text-caption leading-4.5 font-medium text-stage-foreground">
+          Original
+        </span>
+      ) : null}
       {picture.unsaved ? (
         <Tooltip>
           <TooltipTrigger
@@ -105,7 +112,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
               <span
                 role="img"
                 aria-label="Not kept for a reload"
-                className="composer-picture-unsaved"
+                className="absolute top-1.5 left-1.5 flex rounded-mark bg-popover p-0.5 text-warning-foreground [&_svg]:size-3"
               />
             }
           >
@@ -117,7 +124,7 @@ export function ComposerPicture({ id }: { readonly id: string }) {
         </Tooltip>
       ) : null}
       {picture.failed ? (
-        <span className="composer-picture-retry">
+        <span className="absolute right-1.5 bottom-1.5 flex">
           <Button
             variant="secondary"
             size="icon-2xs"
@@ -130,7 +137,8 @@ export function ComposerPicture({ id }: { readonly id: string }) {
           </Button>
         </span>
       ) : null}
-      <span className="composer-picture-remove">
+      {/* Remove on its top corner, shown with hover or focus, always under a finger. */}
+      <span className="absolute -top-2 -right-2 flex opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/picture:opacity-100 group-hover/picture:opacity-100 pointer-coarse:opacity-100">
         <Button
           variant="secondary"
           size="icon-2xs"

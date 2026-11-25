@@ -16,7 +16,7 @@ import { Fragment, type ReactNode, use } from "react";
 import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
 import { LocalPreviewRelease } from "../useAttachmentPreviewHandoff";
-import { formatPictureBytes } from "./ComposerPictureView";
+import { formatPictureBytes, PictureNoteNumber } from "./ComposerPictureView";
 import { MessageFile } from "./MessageFiles";
 import {
   GALLERY_PICTURE_MAX_HEIGHT,
@@ -49,7 +49,7 @@ export function MessagePictureBody(props: {
   readonly renderText: (segment: Extract<MessagePictureSegment, { kind: "text" }>) => ReactNode;
 }) {
   return (
-    <div className="message-pictures">
+    <div className="flex flex-col gap-2.5">
       {messagePictureRows(props.segments).map((row) => {
         if (row.kind === "text") {
           return <Fragment key={`words-after-${row.after}`}>{props.renderText(row)}</Fragment>;
@@ -58,7 +58,8 @@ export function MessagePictureBody(props: {
         return (
           <div
             key={`attachments:${row.items.map((item) => `${item.kind}${item.kind === "text" ? "" : item.n}`).join()}`}
-            className="message-picture-row"
+            // Pictures written one after another: side by side, wrapping, each at most 160 px tall.
+            className="flex flex-wrap items-start gap-2.5"
             data-gallery={gallery ? "" : undefined}
           >
             {row.items.map((segment) =>
@@ -108,9 +109,17 @@ function MessagePicture(props: {
       ? maxHeight
       : Math.round(Math.min(size.width, (maxHeight * size.width) / size.height));
   return (
-    <figure className="message-picture" style={{ width: reservedWidth, maxWidth: "100%" }}>
+    // Each picture where it was put, its notes under it.
+    <figure
+      className="m-0 flex min-w-0 flex-col gap-2"
+      style={{ width: reservedWidth, maxWidth: "100%" }}
+    >
       {props.state?._tag === "Failure" ? (
-        <ImageUnavailable className="message-picture-img" reason={props.state.reason} style={box} />
+        <ImageUnavailable
+          className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40"
+          reason={props.state.reason}
+          style={box}
+        />
       ) : segment.image.previewUrl ? (
         <Button
           className="block max-w-full cursor-zoom-in"
@@ -123,7 +132,7 @@ function MessagePicture(props: {
           <AssetImage
             loading="lazy"
             decoding="async"
-            className="message-picture-img"
+            className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40"
             src={segment.image.previewUrl}
             alt={`Picture ${segment.n}`}
             width={size?.width ?? 300}
@@ -136,26 +145,27 @@ function MessagePicture(props: {
       ) : (
         // Its room, held until its address arrives: nothing moves when it does.
         <span
-          className="message-picture-img message-picture-pending"
+          className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40 bg-muted"
           role="img"
           aria-label={`Picture ${segment.n}`}
           style={box}
         />
       )}
       {segment.notes.length > 0 ? (
-        <ol className="message-picture-notes" aria-label={`Notes on picture ${segment.n}`}>
+        <ol
+          className="m-0 flex list-none flex-col gap-1 p-0"
+          aria-label={`Notes on picture ${segment.n}`}
+        >
           {segment.notes.map((note) => (
-            <li key={note.number}>
-              <span className="picture-note-badge" aria-hidden="true">
-                {note.number}
-              </span>
+            <li key={note.number} className="flex items-start gap-2 text-body">
+              <PictureNoteNumber className="mt-px">{note.number}</PictureNoteNumber>
               <span>{note.text}</span>
             </li>
           ))}
         </ol>
       ) : null}
       {segment.original ? (
-        <span className="message-picture-original">
+        <span className="text-line leading-4.5 tabular-nums text-muted-foreground">
           Original kept · {formatPictureBytes(segment.original.sizeBytes)}
         </span>
       ) : null}
