@@ -659,7 +659,7 @@ export function ZeropsReviewSurface({
 const KIND =
   "flex h-7 min-w-0 flex-1 items-center gap-2 text-body leading-4.5 text-muted-foreground *:[svg]:size-3.75 *:[svg]:flex-none";
 /** The head: the title, its one line, and why where that is not all. */
-const HEAD_SHEET = "grid flex-none gap-1 border-b border-border px-6 pt-1.5 pb-4 max-sm:px-4";
+const HEAD_SHEET = "grid flex-none gap-1 border-b border-rule px-6 pt-1.5 pb-4 max-sm:px-4";
 const HEAD_PAGE = "grid flex-none gap-1 pb-4";
 /**
  * A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
@@ -703,7 +703,7 @@ const BODY_PAGE =
  * it: the one button never stands alone, and nothing stands above it.
  */
 const FOOT_SHEET =
-  "mt-auto flex flex-none flex-col gap-2.5 border-t border-border bg-card px-6 pt-4 pb-5 max-sm:px-4";
+  "mt-auto flex flex-none flex-col gap-2.5 border-t border-rule bg-card px-6 pt-4 pb-5 max-sm:px-4";
 /** On the page it is a card that stays in view, clear of a phone's home bar. */
 const FOOT_PAGE =
   "sticky bottom-[max(16px,env(safe-area-inset-bottom))] z-1 -mx-2 mt-7 flex flex-none flex-col gap-2.5 rounded-card bg-card px-4 pt-3 pb-3.5 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/10";

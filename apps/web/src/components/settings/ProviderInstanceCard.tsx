@@ -702,7 +702,7 @@ export function ProviderInstanceCard({
         inert={readOnly}
         aria-disabled={readOnly || undefined}
         className={cn(
-          "flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3",
+          "flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-rule px-4 py-3",
           readOnly && "opacity-50 select-none",
         )}
       >
@@ -841,7 +841,7 @@ export function ProviderInstanceCard({
             </div>
           ) : null}
 
-          {setup ? <div className="border-b border-border/60 px-4 py-3">{setup}</div> : null}
+          {setup ? <div className="border-b border-rule px-4 py-3">{setup}</div> : null}
 
           <div>
             <label htmlFor={`provider-instance-${instanceId}-display-name`} className="block">
