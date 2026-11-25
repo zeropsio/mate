@@ -62,7 +62,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
-import { Tab, TabPress, TabStrip, useTabStripCompact } from "./ui/tab-strip";
+import { Tab, TabPress, TabStrip, useTabFolded } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -575,7 +575,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
 
 /**
  * A page's tab: its icon, which turns into its close button under the pointer, and its name. Folded
- * (`useTabStripCompact`), a tab other than the open one is its icon alone, which opens it, its name
+ * (`useTabFolded`), a tab other than the open one is its icon alone, which opens it, its name
  * in a tooltip; it closes from its menu or a middle click. Where nothing hovers (a finger), the icon
  * stays an icon and never closes blind: a press anywhere on a tab opens it, and the open tab shows
  * its close after its name.
@@ -588,7 +588,7 @@ function SurfaceTabFace(props: {
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }) {
-  const compact = useTabStripCompact() && !props.active;
+  const compact = useTabFolded();
   const pendingDot = props.pending ? (
     <span
       className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"

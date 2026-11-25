@@ -12,7 +12,7 @@ import {
 import { useState, type ComponentProps, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
-import { Tab, TabPress, TabStrip, useTabStripCompact } from "~/components/ui/tab-strip";
+import { Tab, TabLabel, TabPress, TabStrip } from "~/components/ui/tab-strip";
 
 import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
@@ -37,31 +37,6 @@ const WIDTHS = {
   "44": "flex h-10 w-[44rem] items-center border border-border bg-background px-2",
 } as const;
 const WIDTH_IDS = Object.keys(WIDTHS) as (keyof typeof WIDTHS)[];
-
-/** A tab's face: its icon and name, or only its icon while the strip folds the ones not open. */
-function TabFace({
-  id,
-  icon,
-  active,
-  onPress,
-}: {
-  readonly id: string;
-  readonly icon: ReactNode;
-  readonly active: boolean;
-  readonly onPress: () => void;
-}) {
-  const compact = useTabStripCompact() && !active;
-  return compact ? (
-    <TabPress aria-label={id} onClick={onPress}>
-      {icon}
-    </TabPress>
-  ) : (
-    <TabPress onClick={onPress}>
-      {icon}
-      <span className="truncate">{id}</span>
-    </TabPress>
-  );
-}
 
 function Strip({
   size,
@@ -92,7 +67,10 @@ function Strip({
       >
         {pages.map(({ id, icon }) => (
           <Tab active={id === active} key={id} size={size} tabId={id}>
-            <TabFace active={id === active} icon={icon} id={id} onPress={() => setActive(id)} />
+            <TabPress onClick={() => setActive(id)}>
+              {icon}
+              <TabLabel>{id}</TabLabel>
+            </TabPress>
           </Tab>
         ))}
       </TabStrip>
@@ -103,7 +81,7 @@ function Strip({
 export default definePlayground({
   section: "tab-strip",
   name: "TabStrip",
-  imports: 'import { Tab, TabPress, TabStrip } from "~/components/ui/tab-strip";',
+  imports: 'import { Tab, TabLabel, TabPress, TabStrip } from "~/components/ui/tab-strip";',
   controls: {
     size: { kind: "enum", options: SIZES, note: "sm: a panel's pages; md: a page's own views" },
     count: { kind: "enum", options: COUNTS, note: "how many tabs are open" },
@@ -128,14 +106,14 @@ export default definePlayground({
       jsxElement(
         "Tab",
         { active: jsxCode("page.id === active"), tabId: jsxCode("page.id"), size },
-        "<TabPress>{page.icon}{page.label}</TabPress>",
+        "<TabPress>\n  {page.icon}\n  <TabLabel>{page.label}</TabLabel>\n</TabPress>",
         { size: "sm" },
       ),
     ),
   usage: {
     do: [
       "Use sm for a panel's pages and md for a page's own views.",
-      "Give every tab an icon: past the strip's room the others fold to their icons.",
+      "Give every tab an icon and its name in TabLabel: past the strip's room the others fold to their icons by themselves.",
       "Put the add press in action: it stays in reach however many tabs are open.",
     ],
     dont: [
