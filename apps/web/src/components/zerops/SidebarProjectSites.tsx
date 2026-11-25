@@ -61,6 +61,7 @@ import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty";
+import { Loading } from "../ui/loading";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
@@ -1245,9 +1246,10 @@ function SitesLinks({
 }) {
   if (links === undefined) {
     return (
-      <p className="zerops-sites-quiet" data-zerops-surface="sidebar-project-sites-reading">
-        Reading…
-      </p>
+      // A stand-in where its first address will stand, at that row's height and its words' start.
+      <div className="ps-7.5" data-zerops-surface="sidebar-project-sites-reading">
+        <Loading className="flex h-6 items-center" label="Addresses" quiet shape="line" />
+      </div>
     );
   }
   if (links.length === 0) {
