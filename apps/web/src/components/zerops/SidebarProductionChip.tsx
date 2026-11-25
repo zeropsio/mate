@@ -16,6 +16,7 @@ import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
 
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import { Row } from "../ui/row";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -171,28 +172,30 @@ export function AskToFix({
         </div>
       ) : null}
       {drafting ? (
-        <div className="zerops-envpop-draft" data-zerops-surface="sidebar-production-draft">
-          <div className="zerops-envpop-draft-to">
-            <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
-            {`Opens ${mate.name}'s conversation with this in the composer`}
-          </div>
-          {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
-            part.kind === "code" ? (
-              <pre key={`code:${part.text}`}>{part.text}</pre>
-            ) : (
-              <p key={`words:${part.text}`}>{part.text}</p>
-            ),
-          )}
-          <Button
-            className="self-start"
-            data-zerops-surface="sidebar-production-ask-open"
-            onClick={() => {
-              onAsk(mate.mateProjectId, problem);
-            }}
-            size="sm"
-          >
-            {`Open ${mate.name}'s conversation`}
-          </Button>
+        <div className="zerops-envpop-draft">
+          <Card data-zerops-surface="sidebar-production-draft" size="sm">
+            <div className="zerops-envpop-draft-to">
+              <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
+              {`Opens ${mate.name}'s conversation with this in the composer`}
+            </div>
+            {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
+              part.kind === "code" ? (
+                <pre key={`code:${part.text}`}>{part.text}</pre>
+              ) : (
+                <p key={`words:${part.text}`}>{part.text}</p>
+              ),
+            )}
+            <Button
+              className="self-start"
+              data-zerops-surface="sidebar-production-ask-open"
+              onClick={() => {
+                onAsk(mate.mateProjectId, problem);
+              }}
+              size="sm"
+            >
+              {`Open ${mate.name}'s conversation`}
+            </Button>
+          </Card>
         </div>
       ) : null}
     </div>

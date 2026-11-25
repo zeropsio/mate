@@ -41,15 +41,9 @@
   gap: 4px;
 }
 
+/* Around the kit's Card of the words that go into the Mate's composer: long hosts and paths
+   break anywhere rather than widen the popover, and the card rises in as it opens. */
 .zerops-envpop-draft {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: var(--radius-control);
-  background-color: var(--card);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card-foreground) 12%, transparent);
-  color: var(--card-foreground);
   line-height: 19px;
   overflow-wrap: anywhere;
 }
