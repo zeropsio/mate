@@ -3,6 +3,8 @@ import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/con
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
+import { Meter } from "~/components/ui/meter";
+import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
 
 function formatPercentage(value: number | null): string | null {
@@ -44,10 +46,8 @@ export function ContextWindowMeter(props: {
   const wedgeLength = wedgeCircumference * (normalizedPercentage / 100);
   const totalProcessedTokens = usage.totalProcessedTokens ?? null;
   const showTotalProcessed = totalProcessedTokens !== null && totalProcessedTokens > 0;
+  // Past 90% the pie and its popover's Meter turn to danger together, in the Meter's own inks.
   const isOverloaded = normalizedPercentage > 90;
-  const usageColor = isOverloaded
-    ? "var(--color-error)"
-    : "color-mix(in oklab, var(--color-muted-foreground) 72%, transparent)";
 
   return (
     <Popover>
@@ -92,10 +92,12 @@ export function ContextWindowMeter(props: {
                   cy="12"
                   r={wedgeRadius}
                   fill="none"
-                  stroke={usageColor}
                   strokeWidth={radius}
                   strokeDasharray={`${wedgeLength} ${wedgeCircumference}`}
-                  className="transition-[stroke-dasharray,stroke] duration-260 ease-out-strong motion-reduce:transition-none"
+                  className={cn(
+                    "transition-[stroke-dasharray,stroke] duration-260 ease-out-strong motion-reduce:transition-none",
+                    isOverloaded ? "stroke-status-failed" : "stroke-muted-foreground/70",
+                  )}
                 />
               </svg>
             </span>
@@ -124,19 +126,12 @@ export function ContextWindowMeter(props: {
             )}
           </div>
           {usage.meterWindow !== null ? (
-            <div
-              className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(normalizedPercentage)}
-              aria-label="Context window usage"
-            >
-              <div
-                className="h-full rounded-full transition-[width,background-color] duration-260 ease-out-strong motion-reduce:transition-none"
-                style={{ width: `${normalizedPercentage}%`, backgroundColor: usageColor }}
-              />
-            </div>
+            <Meter
+              label="Context window usage"
+              size="md"
+              tone={isOverloaded ? "danger" : "neutral"}
+              value={normalizedPercentage / 100}
+            />
           ) : null}
           {showTotalProcessed ? (
             <div className="flex items-center justify-between gap-3 text-caption leading-4">
