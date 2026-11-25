@@ -75,7 +75,6 @@ jobs:
 
   selection:
     name: CI selection
-    needs: verification
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 9
@@ -90,11 +89,6 @@ jobs:
       test_server: ${{ steps.blame.outputs.test_server }}
       selection_manifest: ${{ steps.blame.outputs.selection_manifest }}
     steps:
-      - name: Reject invalid mate-hq pin
-        env:
-          HQ_REF_VALID: ${{ needs.verification.outputs.hq_ref_valid }}
-        run: test "$HQ_REF_VALID" = success
-
       - name: Checkout CI selector
         uses: actions/checkout@v6
         with:
@@ -115,7 +109,7 @@ jobs:
 
   prepare:
     name: CI promotion
-    needs: [selection]
+    needs: [selection, verification]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -129,11 +123,16 @@ jobs:
             exit 1
           fi
 
+      - name: Reject invalid mate-hq pin
+        env:
+          HQ_REF_VALID: ${{ needs.verification.outputs.hq_ref_valid }}
+        run: test "$HQ_REF_VALID" = success
+
   cache:
     name: Check cache
-    needs: selection
+    needs: [selection, verification]
     # Writes each cache whose key main does not hold yet.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.verification.outputs.hq_ref_valid == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -243,8 +242,8 @@ jobs:
 
   check:
     name: Check
-    needs: [selection]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -298,8 +297,8 @@ jobs:
 
   check_guards:
     name: Check Guards
-    needs: [selection]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_guards') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_guards') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -369,8 +368,8 @@ jobs:
 
   check_types:
     name: Check Types
-    needs: [selection]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_types') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_types') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -412,8 +411,8 @@ jobs:
 
   check_build:
     name: Check Build
-    needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_build') }}
+    needs: [selection, verification, changes]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_build') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -463,8 +462,8 @@ jobs:
   # their combined verdict without serializing package execution.
   test:
     name: Test
-    needs: [selection, test_packages, test_scripts, test_client_runtime]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test') }}
+    needs: [selection, verification, test_packages, test_scripts, test_client_runtime]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -473,8 +472,8 @@ jobs:
 
   test_packages:
     name: Test Packages
-    needs: [selection, changes]
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_packages') }}
+    needs: [selection, verification, changes]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_packages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -555,8 +554,8 @@ jobs:
 
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
-    needs: selection
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_scripts') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_scripts') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -592,8 +591,8 @@ jobs:
   # client-runtime alone outran every other package in Test Packages and set that job's length.
   test_client_runtime:
     name: Test Client Runtime ${{ matrix.shard }}
-    needs: selection
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_client_runtime') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_client_runtime') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -630,8 +629,8 @@ jobs:
   # Its files run in parallel workers, so each added runner divides it.
   test_web:
     name: Test Web ${{ matrix.shard }}
-    needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_web') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_web') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -673,8 +672,8 @@ jobs:
   # (scripts/lib/spread-shard.ts), longest first.
   test_server:
     name: Test Server ${{ matrix.shard }}
-    needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_server') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_server') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -737,8 +736,8 @@ jobs:
   # Changed paths select native checks. An unresolved diff enables all three areas.
   changes:
     name: Changes
-    needs: selection
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'changes') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'changes') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -824,8 +823,8 @@ jobs:
   # only enforcer of T1's budget (scripts/t1.ts). Required for a release.
   t1:
     name: T1
-    needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 't1') }}
+    needs: [selection, verification]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 't1') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -882,6 +881,7 @@ jobs:
     needs:
       [
         selection,
+        verification,
         check,
         check_guards,
         check_types,
@@ -890,7 +890,7 @@ jobs:
         test_mobile,
         mobile_native_static_analysis,
       ]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'release_smoke') }}
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'release_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -905,8 +905,8 @@ jobs:
 
   test_mobile:
     name: Test Mobile
-    needs: [selection, changes]
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_mobile') && needs.changes.outputs.native_clients != 'false' }}
+    needs: [selection, verification, changes]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_mobile') && needs.changes.outputs.native_clients != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -938,8 +938,8 @@ jobs:
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
-    needs: [selection, changes]
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.mobile_native != 'false' }}
+    needs: [selection, verification, changes]
+    if: ${{ !cancelled() && needs.verification.outputs.hq_ref_valid == 'success' && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.mobile_native != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
