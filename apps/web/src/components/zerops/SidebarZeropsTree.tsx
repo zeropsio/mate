@@ -3295,8 +3295,8 @@ function ProjectGroupRow<T extends RosterCandidate>({
 }
 
 /**
- * A project with no Mate in it — its Mates deleted, or a stage or a production alone: the project's
- * mark where a face would be, its name, and its standing; a press opens the project. Its tags and
+ * A project with no Mate in it, with a stage, production or hidden environment: the project's mark
+ * where a face would be, its name, and its standing; a press opens the project. Its tags and
  * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
 function ProjectBareRow({

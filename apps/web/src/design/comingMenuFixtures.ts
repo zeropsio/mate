@@ -339,7 +339,6 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
           id: "acme",
           name: "Acme Docs",
           createdAt: minutesAgo(60),
-          empty: false,
           hiddenEnvironments: [],
           members: [
             placedMate(FEN),

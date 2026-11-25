@@ -919,7 +919,7 @@ export function ZeropsProjectsContent({
   const projectOrder = useProjectOrderOptions();
   // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
   // under the birth's key, before the listing holds its project — the same row the menu draws.
-  // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
+  // An application is drawn only while it has a visible member or a hidden environment.
   const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths } = useSharedBirthState();
