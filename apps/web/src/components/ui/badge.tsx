@@ -51,6 +51,14 @@ const badgeVariants = cva(
   },
 );
 
+/**
+ * A door: a pill that opens what it names (a menu row's environment tag, a project's release
+ * mark). It stays a pill, never a Button's rectangle; its hairline firms in its own ink under the
+ * pointer and while what it opens is open — on itself, or on the bare press around it.
+ */
+const DOOR =
+  "cursor-pointer transition-shadow duration-150 ease-out-strong hover:inset-ring-1 hover:inset-ring-current/30 data-popup-open:inset-ring-1 data-popup-open:inset-ring-current/30 [:hover>&]:inset-ring-1 [:hover>&]:inset-ring-current/30 [[data-popup-open]>&]:inset-ring-1 [[data-popup-open]>&]:inset-ring-current/30 motion-reduce:transition-none";
+
 const DOT_TONE = {
   neutral: "bg-status-off",
   info: "bg-status-busy",
@@ -74,6 +82,8 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
   readonly tone?: BadgeTone;
   /** The one size: 20 px, caption type. */
   readonly size?: "sm";
+  /** A pill that opens what it names (`DOOR`). */
+  readonly door?: boolean;
 } & (
     | { readonly dot?: false; readonly pulse?: never; readonly children: ReactNode }
     | {
@@ -103,6 +113,7 @@ function Badge({
   className,
   tone = "neutral",
   size: _size,
+  door = false,
   dot,
   pulse,
   render,
@@ -118,6 +129,7 @@ function Badge({
     className: cn(
       badgeVariants({ form, tone }),
       wraps && "shrink items-start whitespace-normal",
+      door && DOOR,
       className,
     ),
     "data-slot": "badge",

@@ -13,23 +13,33 @@ export default definePlayground({
     dot: { kind: "boolean", note: "a status dot before its words" },
     pulse: { kind: "boolean", note: "the dot breathes while work runs" },
     hollow: { kind: "boolean", note: "the dot's ring only: nothing there yet, or at rest" },
+    door: { kind: "boolean", note: "a pill that opens what it names: its hairline firms on hover" },
     children: { kind: "text", note: "a short word or count" },
   },
-  initial: { tone: "success", dot: false, pulse: false, hollow: false, children: "Running" },
-  render: ({ tone, dot, pulse, hollow, children }) =>
+  initial: {
+    tone: "success",
+    dot: false,
+    pulse: false,
+    hollow: false,
+    door: false,
+    children: "Running",
+  },
+  render: ({ tone, dot, pulse, hollow, door, children }) =>
     dot ? (
-      <Badge dot hollow={hollow} pulse={pulse} tone={tone}>
+      <Badge door={door} dot hollow={hollow} pulse={pulse} tone={tone}>
         {children}
       </Badge>
     ) : (
-      <Badge tone={tone}>{children}</Badge>
+      <Badge door={door} tone={tone}>
+        {children}
+      </Badge>
     ),
-  jsx: ({ tone, dot, pulse, hollow, children }) =>
+  jsx: ({ tone, dot, pulse, hollow, door, children }) =>
     jsxElement(
       "Badge",
-      { tone, dot, pulse: dot ? pulse : undefined, hollow: dot ? hollow : undefined },
+      { tone, dot, pulse: dot ? pulse : undefined, hollow: dot ? hollow : undefined, door },
       children,
-      { tone: "neutral", dot: false, pulse: false, hollow: false },
+      { tone: "neutral", dot: false, pulse: false, hollow: false, door: false },
     ),
   usage: {
     do: [
@@ -38,7 +48,7 @@ export default definePlayground({
       "Keep it to a word or a count beside the thing it describes.",
     ],
     dont: [
-      "Make it pressable: a label never reads as a press.",
+      "Make it a Button: a label never reads as a press; one that opens what it names is a door.",
       "Pick a tone for its colour; each tone carries a meaning.",
     ],
   },

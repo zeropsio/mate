@@ -60,6 +60,11 @@ function BadgeSpecimens() {
               Stopped
             </Badge>
           </Specimen>
+          <Specimen label="door (opens what it names; hover it)">
+            <Badge door tone="warning">
+              Release · 2
+            </Badge>
+          </Specimen>
           <Specimen label='tone="success" + icon'>
             <Badge tone="success">
               <CircleCheckIcon />
