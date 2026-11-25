@@ -17,6 +17,7 @@ import { Section } from "../../ui/section";
 import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
 import { RealName as KitRealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /** What every part of the sheet reads: whose place, what is under way, and how to write. */
 export interface SheetContext {
@@ -77,7 +78,9 @@ export function SheetSection({
   return (
     <Section action={action} data-addresses-part={part} level={3} title={title}>
       {caption === undefined ? null : (
-        <p className="-mt-1.5 max-w-xl text-muted-foreground text-caption">{caption}</p>
+        <Text className="-mt-1.5 max-w-xl" render={<p />} variant="note">
+          {caption}
+        </Text>
       )}
       {lead}
       {groups.length === 0 ? null : apart ? (
@@ -293,12 +296,14 @@ export function Tile({
   return (
     <Card data-addresses-tile={data} size="sm" variant="flat">
       <div className="flex min-h-7 min-w-0 items-center justify-between gap-2">
-        <span className="font-medium text-muted-foreground text-caption">{label}</span>
+        <Text variant="label">{label}</Text>
         {action}
       </div>
       <div className="grid min-w-0 gap-0.5">
         <div className="min-w-0 break-all text-foreground text-body">{value}</div>
-        <div className="text-muted-foreground text-caption">{caption}</div>
+        <Text render={<div />} variant="note">
+          {caption}
+        </Text>
       </div>
     </Card>
   );
@@ -347,13 +352,9 @@ export function CopyButton({ value }: { readonly value: string }) {
 export function Trouble({ text }: { readonly text: string | undefined }) {
   if (text === undefined) return null;
   return (
-    <p
-      className="py-1.5 text-destructive-foreground text-caption"
-      data-addresses-trouble=""
-      role="alert"
-    >
+    <Text className="py-1.5" render={<p />} variant="error" data-addresses-trouble="" role="alert">
       {text}
-    </p>
+    </Text>
   );
 }
 

@@ -15,6 +15,7 @@ import { GitAtCommit, GitHomeAgain, GitNotRead } from "./GitAtCommit";
 import { GitDirectoryList } from "./GitDirectoryList";
 import { GitWhen } from "./GitWhen";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
+import { Text } from "~/components/ui/text";
 
 const entryTarget = (entry: { readonly path: string; readonly type: string }): RepoPathTarget => ({
   path: entry.path,
@@ -48,9 +49,13 @@ function OpenChanges({
         </div>
       )}
       {repository === undefined || repository.coverage === "unread" ? (
-        <p className="text-body text-muted-foreground">Changes not read yet.</p>
+        <Text render={<p />} variant="description">
+          Changes not read yet.
+        </Text>
       ) : repository.coverage === "failed" ? (
-        <p className="text-body text-muted-foreground">Showing the last read changes.</p>
+        <Text render={<p />} variant="description">
+          Showing the last read changes.
+        </Text>
       ) : null}
       {repository !== undefined && repository.changes.length > 0 ? (
         <Card variant="flat">
@@ -100,12 +105,16 @@ function HomeAt({
   return (
     <>
       <Card variant="flat">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-body text-muted-foreground">
+        <Text
+          className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3"
+          render={<div />}
+          variant="description"
+        >
           <GitWhen at={about.updatedAt}>Updated {formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
           <span>{count(about.branchCount, "branch", "branches")}</span>
           <span>{count(about.tagCount, "tag", "tags")}</span>
           {homeAgain}
-        </div>
+        </Text>
       </Card>
       <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
         <Card variant="flat">
@@ -148,9 +157,9 @@ function HomeAt({
                 onOpen={(target) => navigate(atCommit(target))}
               />
               {readme.truncated ? (
-                <p className="text-body text-muted-foreground">
+                <Text render={<p />} variant="description">
                   Only the first 256 KiB are shown. Clone to read the whole file.
-                </p>
+                </Text>
               ) : null}
             </div>
           </Card>

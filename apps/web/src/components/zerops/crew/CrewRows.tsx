@@ -78,6 +78,7 @@ import {
   type CrewRowSlot,
   type CrewRowThread,
 } from "./CrewRows.logic";
+import { Text } from "~/components/ui/text";
 
 interface CrewRowsProps {
   readonly environmentId: EnvironmentId;
@@ -354,9 +355,9 @@ function CrewRow(
       <div className="flex min-w-0 flex-col">
         <div className="flex h-5 items-center gap-2">
           {open === null ? (
-            <span className="min-w-0 truncate font-medium text-body text-foreground">
+            <Text className="min-w-0" truncate variant="heading">
               {model.name}
-            </span>
+            </Text>
           ) : (
             <CrewTip tip={crewOpenConversationWord(model.name)}>
               {/* The row opens its crewmate's conversation: the name's press spans the whole

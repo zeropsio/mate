@@ -26,6 +26,7 @@ import { Button, InlineButton } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
 import { crewGoalTitle, type CrewModeLine, type CrewModePressKind } from "./CrewHead.logic";
+import { Text } from "~/components/ui/text";
 
 export type CrewHeadMenuItem = "goal" | "addCrewmate" | "letItWork" | "removeCrew";
 
@@ -122,7 +123,7 @@ export function CrewHead({
                 >
                   <span className="flex min-w-0 flex-col px-0.75 py-0.75">
                     <span>{item.label}</span>
-                    <span className="text-caption text-muted-foreground">{item.line}</span>
+                    <Text variant="note">{item.line}</Text>
                   </span>
                 </MenuItem>
               ))}

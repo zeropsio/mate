@@ -3,6 +3,7 @@ import type { GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { Text } from "~/components/ui/text";
 
 /** One HQ repository's storage, under its heading, with its limit's control where one is offered. */
 export function GitRepositoryStorage({
@@ -14,7 +15,7 @@ export function GitRepositoryStorage({
 }) {
   const said = repositoryStorage(storage);
   return (
-    <div className="flex flex-col gap-1 text-caption text-muted-foreground">
+    <Text className="flex flex-col gap-1" render={<div />} variant="note">
       <div className="flex flex-wrap items-center gap-2">
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} />}>{said.line}</TooltipTrigger>
@@ -28,6 +29,6 @@ export function GitRepositoryStorage({
           <span>Starting a new workspace may take longer.</span>
         </div>
       ) : null}
-    </div>
+    </Text>
   );
 }

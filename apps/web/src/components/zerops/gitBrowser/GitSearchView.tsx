@@ -25,6 +25,7 @@ import { GitNoCommit, GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { GitFileFinder, gitPageAnchor } from "./GitFileFinder";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** Lines mounted at first and added on each "Show more": each is highlighted. */
 const RESULTS_PAGE = 100;
@@ -89,11 +90,11 @@ function ContentResults({
   const unreadable = view.state === "refused" && view.reason === "invalid" && regex;
   return answer !== null ? (
     <>
-      <p className="text-caption text-muted-foreground" role="status">
+      <Text render={<p />} variant="note" role="status">
         {answer.matches.length === 0
           ? "No line at this commit matches."
           : `${answer.matches.length.toLocaleString("en-US")} matching ${answer.matches.length === 1 ? "line" : "lines"} in ${fileCount.toLocaleString("en-US")} ${fileCount === 1 ? "file" : "files"}`}
-      </p>
+      </Text>
       {answer.deadlineHit ? (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-body text-status-attention" role="alert">
@@ -287,18 +288,18 @@ function ContentSearch({
         </Button>
       </form>
       {tooShort || (!asked && q !== "" && !outside) ? (
-        <p className="text-body text-muted-foreground" role="status">
+        <Text render={<p />} variant="description" role="status">
           Type at least {GREP_QUERY_MIN} characters to search.
-        </p>
+        </Text>
       ) : null}
       {outside ? (
         <p className="text-body text-status-failed" role="alert">
           This folder is outside the repository. Name it from the top, like src/app.
         </p>
       ) : !asked ? (
-        <p className="text-body text-muted-foreground">
+        <Text render={<p />} variant="description">
           Search every text file at this commit. Binary files are not searched.
-        </p>
+        </Text>
       ) : (
         <ContentResults
           key={JSON.stringify(params)}

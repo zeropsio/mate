@@ -9,6 +9,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { useRepoStorage } from "~/zerops/useRepoStorage";
 import { GitRepositoryStorage } from "./GitRepositoryStorage";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /**
  * A repository's storage figure, from HQ's storage read once it answers (and a set's answer after),
@@ -88,19 +89,19 @@ function StorageLimit({
         {capGiB === null && view.state === "unread" ? (
           <Loading label="The storage limit" shape="line" />
         ) : capGiB === null ? (
-          <p className="text-body text-muted-foreground" role="alert">
+          <Text render={<p />} variant="description" role="alert">
             {view.state === "refused" || view.state === "failed"
               ? view.words
               : "You can't read this repository's storage limit."}
-          </p>
+          </Text>
         ) : (
           <form className="flex flex-col gap-2" noValidate onSubmit={submit}>
-            <label className="text-body font-medium text-foreground" htmlFor={id}>
+            <Text render={<label htmlFor={id} />} variant="heading">
               Storage limit
-            </label>
-            <p className="text-caption text-muted-foreground">
+            </Text>
+            <Text render={<p />} variant="note">
               In whole GiB, from 1 to 100. It is {capGiB} GiB now.
-            </p>
+            </Text>
             <div className="flex items-center gap-2">
               <Input
                 id={id}
@@ -114,15 +115,15 @@ function StorageLimit({
                 disabled={pending}
                 onChange={(event) => setDraft(event.currentTarget.value)}
               />
-              <span className="text-caption text-muted-foreground">GiB</span>
+              <Text variant="note">GiB</Text>
               <Button type="submit" size="sm" disabled={whole === null || pending}>
                 {pending ? "Saving…" : "Save"}
               </Button>
             </div>
             {error === null ? null : (
-              <p className="text-caption text-destructive-foreground" role="alert">
+              <Text render={<p />} variant="error" role="alert">
                 {error}
-              </p>
+              </Text>
             )}
           </form>
         )}
