@@ -35,7 +35,6 @@ import "../index.css";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const ROLE = params.get("role");
 const CREATES = ROLE !== "reader" && ROLE !== "guest";
 const REACHES_EVERY_PROJECT = ROLE !== "developer" && ROLE !== "guest";
@@ -141,8 +140,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const rootRoute = createRootRoute({ component: Harness });
 const router = createRouter({

@@ -35,7 +35,6 @@ import {
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const view = params.get("view") ?? "connected";
 const NEBIUS = OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === "nebius")!;
 const nothing = () => {};
@@ -364,8 +363,6 @@ function Automation({
     </Page>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

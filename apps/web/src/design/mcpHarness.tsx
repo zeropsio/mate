@@ -40,7 +40,6 @@ import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "board";
 const AGENT = ProviderDriverKind.make(params.get("agent") ?? "claudeAgent");
 const FAIL = params.get("fail") === "1";
@@ -406,8 +405,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

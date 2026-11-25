@@ -27,7 +27,6 @@ import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const TASK = params.get("task") ?? "";
 const FAIL = params.get("fail") === "1";
 
@@ -189,7 +188,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

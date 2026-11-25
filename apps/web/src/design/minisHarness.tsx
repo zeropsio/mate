@@ -21,8 +21,6 @@ import { Row as KitRow } from "~/components/ui/row";
 import { MateFace } from "~/components/zerops/primitives";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const MENU_WIDTH = 435;
 const ENVIRONMENT = EnvironmentId.make("env-harness");
 
@@ -181,8 +179,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

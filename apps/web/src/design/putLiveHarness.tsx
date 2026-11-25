@@ -27,7 +27,6 @@ import {
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const SHEET = params.get("sheet") === "1";
 const ASKED_SHAPE = params.get("shape");
 const SHAPE: ProductionShape | undefined =
@@ -176,8 +175,6 @@ function Harness() {
     </TooltipProvider>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

@@ -47,8 +47,6 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import type { AppRouter } from "~/router";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const GROUP = "grp-acme";
@@ -529,7 +527,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own, so a place's name opens its page as it does in the app.
 const router = createRouter({
   routeTree: createRootRoute({ component: Harness }),

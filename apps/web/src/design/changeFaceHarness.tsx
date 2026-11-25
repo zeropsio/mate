@@ -44,7 +44,6 @@ import type { AppRouter } from "~/router";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "idle";
 /** The dialog stands open from the first paint, over the menu, in every state but the menu's. */
 const OPENS_AT_START = STATE !== "menu" && STATE !== "before";
@@ -316,7 +315,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 openAccountLifetime("design-face-harness");
 
 const router = createRouter({

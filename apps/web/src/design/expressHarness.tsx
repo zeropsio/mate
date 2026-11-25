@@ -15,8 +15,6 @@ import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const noop = () => {};
 
 function Harness() {
@@ -92,8 +90,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

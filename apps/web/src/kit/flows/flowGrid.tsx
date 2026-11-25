@@ -5,11 +5,11 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { Spinner } from "~/components/ui/spinner";
 
-import type { KitFlow, KitFlowState } from "../kitFlows";
+import { flowSrc, type FlowTheme, type KitFlow, type KitFlowState } from "../kitFlows";
 import { watchCrossings } from "~/lib/restingIntersections";
 
 import { allowCanvasScroll } from "./heldScroll";
-import { flowSrc, type FlowTheme, PaintedFrame, useLoadTurn } from "./flowFrame";
+import { PaintedFrame, useLoadTurn } from "./flowFrame";
 
 /** A thumbnail's window: the reference window's shape on a desktop width, a phone's below. */
 const thumbHeightOf = (viewport: number) =>

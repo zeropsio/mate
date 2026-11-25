@@ -45,7 +45,6 @@ import { MergingHarness } from "./projectMergingFixtures";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const DIALOG = params.get("dialog") as SourceKind | null;
 const MERGING = params.get("merging");
 const STATE = params.get("state");
@@ -772,8 +771,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

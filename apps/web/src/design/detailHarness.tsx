@@ -2303,9 +2303,6 @@ function HarnessStates() {
   );
 }
 
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 /** A failed deploy's log reads the account's projects: stand-ins that hold none. */
 function Standins({ children }: { readonly children: ReactNode }) {
   const inventory: Inventory = {

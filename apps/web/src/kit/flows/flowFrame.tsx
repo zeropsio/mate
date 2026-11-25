@@ -3,18 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Spinner } from "~/components/ui/spinner";
 
-import type { KitFlow, KitFlowState } from "../kitFlows";
-
-export type FlowTheme = "light" | "dark";
-
-/** A state's page in one appearance: the flow's address, the state's query, then `theme`. */
-export const flowSrc = (flow: KitFlow, state: KitFlowState, theme: FlowTheme | undefined) => {
-  const params = new URLSearchParams(state.search);
-  if (theme !== undefined) params.set("theme", theme);
-  const query = params.toString();
-  return query === "" ? flow.href : `${flow.href}?${query}`;
-};
-
 /** How long a page may take to draw before its frame shows anyway, as far as it got. */
 const PAINT_PATIENCE_MS = 5000;
 const PAINT_POLL_MS = 40;

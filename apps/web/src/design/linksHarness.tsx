@@ -20,9 +20,6 @@ import ChatMarkdown from "~/components/ChatMarkdown";
 import { ServiceBrowserScope } from "~/components/ServiceBrowserLink";
 import "../index.css";
 
-const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-
 const host = "webdev-1a2b-3000.prg1.zerops.app";
 const services: ZeropsTopologyService[] = [
   {
@@ -76,7 +73,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <Harness />

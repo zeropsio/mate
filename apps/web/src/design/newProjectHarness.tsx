@@ -43,7 +43,6 @@ import type { AppRouter } from "~/router";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "idle";
 const MENU_WIDTH = 435;
 
@@ -181,8 +180,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const router = createRouter({
   routeTree: createRootRoute({ component: Harness }),

@@ -685,11 +685,6 @@ async function fitReport() {
   document.body.prepend(pre);
 }
 
-// The app sets the appearance on the document element (`useTheme.ts`), so the
-// harness does the same.
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

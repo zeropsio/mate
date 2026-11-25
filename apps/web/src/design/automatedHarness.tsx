@@ -47,7 +47,6 @@ import type { TaskSession } from "~/zerops/taskSession.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const NEBIUS = OPENCODE_KEY_PROVIDERS[0]!;
 // Built from parts: never a whole secret-shaped literal in the source.
 const SECRET = ["whsec", "3f9a", "tea", "shop", "c1d2"].join("_");
@@ -534,8 +533,6 @@ function Settle({ landed }: { readonly landed: boolean }) {
 }
 
 const settle = params.get("settle");
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

@@ -58,6 +58,7 @@ import {
   type StandupServiceRow,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const SPEAKER: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW = Date.now();
@@ -1558,18 +1559,12 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-// The app sets the appearance on the document element (`useTheme.ts`), so the
-// harness does the same rather than nesting a `.dark` wrapper the tokens never
-// reach.
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
-
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
       <Standins>
-        <TimelineRowCtx value={{ ...SHARED, resolvedTheme: appearance }}>
+        <TimelineRowCtx value={{ ...SHARED, resolvedTheme: harnessAppearance }}>
           <TimelineRowActivityCtx value={WORKING}>
             <Harness />
           </TimelineRowActivityCtx>

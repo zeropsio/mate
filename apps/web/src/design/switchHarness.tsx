@@ -58,6 +58,7 @@ import type { TimelineEntry } from "~/session-logic";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const params = new URLSearchParams(location.search);
 const LATENCY_MS = Number(params.get("latency") ?? 320);
@@ -915,7 +916,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             onImageExpand: () => undefined,
             activeThreadEnvironmentId: ENVIRONMENT,
             markdownCwd: undefined,
-            resolvedTheme: appearance,
+            resolvedTheme: harnessAppearance,
             timestampFormat: "locale",
             workspaceRoot: undefined,
             anchorMessageId: ANCHORED ? lastPersonMessage(entries) : null,
@@ -1082,9 +1083,6 @@ function Standins({ children }: { readonly children: ReactNode }) {
     </ZeropsDataContext>
   );
 }
-
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

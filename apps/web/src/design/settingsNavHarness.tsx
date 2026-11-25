@@ -39,7 +39,6 @@ import { ZeropsSessionContext } from "~/zerops/sessionContext";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const page = params.get("page") ?? "/settings/appearance";
 const MENU_WIDTH = 435;
 
@@ -156,7 +155,6 @@ const router = createRouter({
   history: createMemoryHistory({ initialEntries: [page] }),
 });
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <RouterProvider router={router} />

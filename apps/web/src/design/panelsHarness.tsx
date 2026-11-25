@@ -81,9 +81,9 @@ import {
 } from "~/rightPanelKinds";
 import type { AppRouter } from "~/router";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const params = new URLSearchParams(window.location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const shownPanel = params.get("panel") === "git" ? "code" : (params.get("panel") ?? "both");
 const widths = params.get("w") === null ? [420, 540] : [Number(params.get("w"))];
 const only = params.get("s");
@@ -778,7 +778,7 @@ const patchFiles = (patch: string, scope: string) => {
 
 /** The page's "What changed", from fixtures, under the scenario's project and repositories. */
 function HarnessCode({ scenario, top }: { readonly scenario: Scenario; readonly top: ReactNode }) {
-  const theme = appearance;
+  const theme = harnessAppearance;
   const [mode, setMode] = useState<DiffRenderMode>("stacked");
   const [wrap, setWrap] = useState(false);
   const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
@@ -1115,7 +1115,6 @@ function HarnessPage() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 // A router of its own, so a place's name and the project's page link as they do in the app.
 const router = createRouter({
   routeTree: createRootRoute({ component: HarnessPage }),

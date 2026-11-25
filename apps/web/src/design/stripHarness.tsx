@@ -61,7 +61,6 @@ import { crewTryOf, crewTryPress, crewTryStops } from "@t3tools/client-runtime/z
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 /** The owner's chat column: 1786 wide, the menu at 435. */
 const WIDTH = Number(params.get("width") ?? 1351);
 /** Whose menu is open: a frame's id, or `none`. */
@@ -837,8 +836,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

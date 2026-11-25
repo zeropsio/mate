@@ -35,7 +35,6 @@ import { ReviewContext, reviewTargetKey, type OpenReview } from "~/zerops/review
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const OPEN = params.get("open");
 /** Orbit's changes come and go on their own every `live` ms, so an open popover can be watched. */
 const LIVE = Number(params.get("live") ?? 0);
@@ -369,8 +368,6 @@ function Harness() {
     </ReviewContext>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

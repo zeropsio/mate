@@ -30,6 +30,7 @@ import {
   type MentionableMate,
 } from "~/zerops/mateMentions";
 import "../index.css";
+import { harnessAppearance } from "./harnessPage";
 
 const MATES: ReadonlyArray<MentionableMate> = [
   { projectId: "p-fia-7Kq2", name: "Fia", project: "Mate Web", tint: "violet", shape: "gem" },
@@ -43,14 +44,12 @@ const MATES: ReadonlyArray<MentionableMate> = [
   },
 ];
 
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-
 const SHARED: TimelineRowSharedState = {
   timestampFormat: "24-hour",
   routeThreadKey: "harness",
   threadRef: null,
   markdownCwd: undefined,
-  resolvedTheme: appearance,
+  resolvedTheme: harnessAppearance,
   workspaceRoot: undefined,
   skills: [],
   mateMentions: mateMentionMatcher(MATES),
@@ -116,7 +115,7 @@ function Composer() {
         <ComposerCommandMenu
           listId="harness-mentions"
           items={items}
-          resolvedTheme={appearance}
+          resolvedTheme={harnessAppearance}
           isLoading={false}
           triggerKind="path"
           activeItemId={active ?? items[0]?.id ?? null}
@@ -197,8 +196,6 @@ function Harness() {
     </TimelineRowCtx>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

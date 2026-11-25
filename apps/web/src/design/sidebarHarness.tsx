@@ -2050,14 +2050,6 @@ function Harness() {
   );
 }
 
-// The app sets the appearance on the document element (`useTheme.ts`), so the
-// harness does the same rather than nesting a `.dark` wrapper the tokens never
-// reach — which is exactly how the first pass produced two identical light panels.
-document.documentElement.classList.toggle(
-  "dark",
-  new URLSearchParams(location.search).get("theme") === "dark",
-);
-
 // An account is open, as in the app: the order and the mutes are kept under
 // its key. A draft stands in Iris's composer, as the composer would keep it,
 // and one in Rhea's new conversation, nothing sent yet.

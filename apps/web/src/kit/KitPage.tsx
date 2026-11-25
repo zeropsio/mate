@@ -17,6 +17,7 @@ import { useTheme } from "~/hooks/useTheme";
 
 import { FlowPage } from "./flows/FlowPage";
 import { kitSearchQuery, useKitAppearance, type KitSearch, type KitView } from "./kitAppearance";
+import { flowSrc } from "./kitFlows";
 import { decodeKitArgs, encodeKitArgs, type KitArgs, type KitPlayground } from "./kitPlayground";
 import type { KitSection } from "./kitSection";
 import {
@@ -232,11 +233,7 @@ function KitShell({
           ...(search.viewport === undefined ? {} : { viewport: search.viewport }),
         })
       : pageRef.kind === "flow"
-        ? (() => {
-            const query = new URLSearchParams(flowState?.search ?? "");
-            query.set("theme", oneAppearance);
-            return `${pageRef.flow.href}?${query}`;
-          })()
+        ? flowSrc(pageRef.flow, flowState, oneAppearance)
         : undefined;
 
   return (

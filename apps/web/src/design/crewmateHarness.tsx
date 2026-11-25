@@ -79,7 +79,6 @@ const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
 const pools = pooled ? ["tinypool"] : [];
 const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 /** The left menu's width: the owner's 435 by default, `?menu=` for another. */
 const MENU = Number(params.get("menu") ?? 435);
 /** The Crew tab beside the conversation, at its default 540; `?panel=0` closes it. */
@@ -729,8 +728,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

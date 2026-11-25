@@ -62,7 +62,6 @@ import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const MENU = Number(params.get("menu") ?? 435);
 const MATE = "Juno";
 const FACE = <MateFace size={24} state="needs" tint="sky" />;
@@ -1161,8 +1160,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

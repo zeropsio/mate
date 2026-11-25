@@ -16,8 +16,6 @@ import {
 import { Button } from "~/components/ui/button";
 import "../index.css";
 
-const appearance = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
-
 const CPU: ComposerBannerStackItem = {
   id: "cpu",
   variant: "default",
@@ -73,7 +71,6 @@ function Harness() {
   );
 }
 
-document.documentElement.classList.toggle("dark", appearance === "dark");
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(

@@ -69,7 +69,6 @@ const params = new URLSearchParams(location.search);
 const pooled = params.get("pool") === "1";
 const pools = pooled ? ["tinypool"] : [];
 const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
-const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const STATE = params.get("state") ?? "idle";
 
 /** Who looks: the person who runs the crew's agent, or — `&viewer=` — somebody who may not. */
@@ -878,8 +877,6 @@ function Harness() {
     </div>
   );
 }
-
-document.documentElement.classList.toggle("dark", appearance === "dark");
 
 const host = document.getElementById("design");
 if (host) {

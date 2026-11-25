@@ -59,6 +59,8 @@ let lastSnapshot: ThemeSnapshot | null = null;
 let snapshotStale = true;
 let lastDesktopTheme: ThemePreferenceMode | null = null;
 let lastAppliedTheme: ThemeSnapshot | null = null;
+/** An appearance the page holds for itself (`holdAppearance`), in place of the stored preference. */
+let heldAppearance: ThemeAppearance | null = null;
 
 function emitChange() {
   snapshotStale = true;
@@ -172,7 +174,7 @@ function resolveAppearance(snapshot: ThemeSnapshot): "light" | "dark" {
 }
 
 function readSnapshot(): ThemeSnapshot {
-  const appearanceMode = readAppearanceModePreference();
+  const appearanceMode = heldAppearance ?? readAppearanceModePreference();
   return { appearanceMode, systemDark: appearanceMode === "system" ? getSystemDark() : false };
 }
 
@@ -236,6 +238,17 @@ export function syncDesktopTheme(mode: ThemePreferenceMode) {
       lastDesktopTheme = null;
     }
   });
+}
+
+/**
+ * Draws this page in one appearance whatever the person's stored preference says, without storing
+ * it: a design harness page, framed light beside dark in the kit, where a stored preference would
+ * be shared by both frames (and by the app on the same origin).
+ */
+export function holdAppearance(appearance: ThemeAppearance): void {
+  heldAppearance = appearance;
+  applyTheme();
+  emitChange();
 }
 
 // Apply immediately on module load to prevent flash
