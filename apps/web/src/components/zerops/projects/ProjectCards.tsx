@@ -66,6 +66,7 @@ import type {
   StageSettingUp,
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -648,29 +649,39 @@ function CardWaits({
   if (waits.length === 0) return null;
   const more = waits.length - CARD_WAITS;
   return (
-    <section
+    // The amber is what waits on the viewer; a release ready for somebody else asks them nothing.
+    <Alert
       aria-label={heading}
-      className="ov-waits"
+      className="mt-4"
       data-zerops-surface={heading === WAITING_ON_YOU ? "card-waits" : "card-ready"}
+      role="region"
+      surface="tint"
+      variant={heading === WAITING_ON_YOU ? "warning" : "default"}
     >
-      <SectionLabel level={3}>{heading}</SectionLabel>
-      {waits.slice(0, CARD_WAITS).map((wait) => (
-        <div className="ov-wait" data-zerops-wait={wait.key} key={wait.key}>
-          <span aria-hidden="true" className="ov-wait-face">
-            {wait.face}
-          </span>
-          <span className="ov-wait-text">{wait.text}</span>
-          <span className="ov-wait-verb">{wait.verb}</span>
+      <AlertTitle>
+        <SectionLabel level={3}>{heading}</SectionLabel>
+      </AlertTitle>
+      <AlertDescription>
+        <div className="ov-waits">
+          {waits.slice(0, CARD_WAITS).map((wait) => (
+            <div className="ov-wait" data-zerops-wait={wait.key} key={wait.key}>
+              <span aria-hidden="true" className="ov-wait-face">
+                {wait.face}
+              </span>
+              <span className="ov-wait-text">{wait.text}</span>
+              <span className="ov-wait-verb">{wait.verb}</span>
+            </div>
+          ))}
+          {more > 0 ? (
+            <MoreLink
+              groupId={groupId}
+              label={`${String(more)} more waiting in ${project}`}
+              more={more}
+            />
+          ) : null}
         </div>
-      ))}
-      {more > 0 ? (
-        <MoreLink
-          groupId={groupId}
-          label={`${String(more)} more waiting in ${project}`}
-          more={more}
-        />
-      ) : null}
-    </section>
+      </AlertDescription>
+    </Alert>
   );
 }
 

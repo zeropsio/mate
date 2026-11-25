@@ -62,6 +62,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useAtomValue } from "@effect/atom-react";
 import { mateWorkingOnAtom } from "@t3tools/client-runtime/data";
 import type { ConversationWorkingOn } from "@t3tools/contracts";
+import { Alert, AlertAction, AlertTitle } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -994,32 +995,43 @@ export interface ChangeReviewViewProps {
  * to fix failed ones is the verdict's own press.
  */
 function GithubChecksLine({ checks }: { readonly checks: ReviewGithubChecks }) {
-  return (
-    <div
-      className="rv-why"
-      data-tone={checks.state === "failing" ? "attention" : undefined}
-      data-zerops-surface="change-github-checks-line"
+  const toGithub = (
+    <Button
+      render={<a href={checks.url} rel="noreferrer" target="_blank" />}
+      size="sm"
+      variant="link"
     >
+      See them on GitHub
+      <ArrowUpRightIcon aria-hidden="true" />
+    </Button>
+  );
+  if (checks.state === "failing") {
+    return (
+      <Alert
+        className="mt-2.5"
+        controlAlignment="first-line"
+        data-zerops-surface="change-github-checks-line"
+        surface="tint"
+        variant="warning"
+      >
+        <AlertTitle>{checks.words}</AlertTitle>
+        <AlertAction>{toGithub}</AlertAction>
+      </Alert>
+    );
+  }
+  return (
+    <div className="rv-why" data-zerops-surface="change-github-checks-line">
       {checks.state === "pending" ? (
         <Badge dot tone="info">
           {checks.words}
         </Badge>
-      ) : checks.state === "passing" ? (
+      ) : (
         <span className="rv-checks" data-mark="passed">
           <CheckIcon aria-hidden="true" />
           {checks.words}
         </span>
-      ) : (
-        <span>{checks.words}</span>
       )}
-      <Button
-        render={<a href={checks.url} rel="noreferrer" target="_blank" />}
-        size="sm"
-        variant="link"
-      >
-        See them on GitHub
-        <ArrowUpRightIcon aria-hidden="true" />
-      </Button>
+      {toGithub}
     </div>
   );
 }

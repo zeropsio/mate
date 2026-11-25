@@ -264,7 +264,8 @@
 .rv-checks[data-mark="passed"] {
   color: var(--foreground);
 }
-/* Why, under the line: quiet while all is well, a tinted box for trouble, its fix a link in it. */
+/* Why, under the line, while all is well: a quiet line, its fix a link in it. Trouble is the
+   kit's tinted callout (Alert `tint`) instead. */
 .rv-why {
   display: flex;
   flex-wrap: wrap;
@@ -276,25 +277,8 @@
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-.rv-why[data-tone="attention"],
-.rv-why[data-tone="failed"] {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-card);
-  color: var(--foreground);
-}
-.rv-why[data-tone="attention"] {
-  background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
-}
-.rv-why[data-tone="failed"] {
-  background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
-}
 .rv-why > [data-slot="button"] {
   margin: -3px 0 -3px -8px;
-}
-/* Whose move the fix is, where the press is not the reader's: quiet beside the reason. */
-.rv-why-whose {
-  color: var(--muted-foreground);
 }
 
 /* The review as a page: the same column, flush with the page's own edges; the foot's card stands
@@ -696,83 +680,6 @@
   color: var(--muted-foreground);
 }
 
-/* What HQ found: each finding a soft box — the statement beside its mark, who acts next under it,
-   and its identifiers folded under Details. */
-.rv-findings {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.rv-finding {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: 4px 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius-card);
-  background: color-mix(in oklab, var(--zerops-status-attention) 9%, transparent);
-}
-.rv-finding > svg {
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  color: var(--zerops-status-attention);
-}
-.rv-finding > :not(svg) {
-  grid-column: 2;
-}
-.rv-finding-what {
-  margin: 0;
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 20px;
-  text-wrap: pretty;
-}
-.rv-finding-next {
-  margin: 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-  color: var(--muted-foreground);
-  text-wrap: pretty;
-}
-.rv-finding-next > span {
-  color: var(--foreground);
-}
-.rv-finding-more {
-  margin-top: 2px;
-  font-size: var(--text-caption);
-  line-height: 16px;
-  color: var(--muted-foreground);
-}
-.rv-finding-more > summary {
-  width: fit-content;
-  cursor: pointer;
-  border-radius: var(--radius-mark);
-  outline-offset: 2px;
-}
-.rv-finding-more > summary:hover {
-  color: var(--foreground);
-}
-.rv-finding-more > dl {
-  display: grid;
-  gap: 4px;
-  margin: 6px 0 0;
-}
-.rv-finding-more > dl > div {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  gap: 8px;
-}
-.rv-finding-more dt {
-  color: var(--muted-foreground);
-}
-.rv-finding-more dd {
-  margin: 0;
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-  color: color-mix(in oklab, var(--foreground) 80%, transparent);
-}
 /* What could not be read (the kit's Failure), where it would have stood: inset to the list's
    rows, or to the diff's code. */
 .rv-files .rv-failed {

@@ -46,6 +46,7 @@ import {
   type RefObject,
 } from "react";
 
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
 import { Kbd } from "~/components/ui/kbd";
@@ -297,6 +298,12 @@ export function ZeropsReviewSurface({
   // buttons keep their one row.
   const leadingFix = primary?.plain === true ? fix : undefined;
   const linkedFix = leadingFix === undefined ? fix : undefined;
+  const whyCopy =
+    whySaid && verdict.copyWhy === true ? (
+      <Button onClick={() => copyToClipboard(verdict.why)} size="sm" variant="link">
+        {isCopied ? "Copied" : "Copy"}
+      </Button>
+    ) : null;
   const softAsk = leadingFix === undefined ? ask : undefined;
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
@@ -411,22 +418,43 @@ export function ZeropsReviewSurface({
         )}
         {subtitle === undefined ? notice : null}
         {subtitle === undefined && (whySaid || linkedFix !== undefined || fixNote !== undefined) ? (
-          <div className="rv-why" data-tone={verdict.tone}>
-            {whySaid ? <span>{verdict.why}</span> : null}
-            {whySaid && verdict.copyWhy === true ? (
-              <Button onClick={() => copyToClipboard(verdict.why)} size="sm" variant="link">
-                {isCopied ? "Copied" : "Copy"}
-              </Button>
-            ) : null}
-            {linkedFix === undefined ? null : (
-              <Button onClick={linkedFix.onPress} size="sm" variant="link">
-                {linkedFix.label}
-              </Button>
-            )}
-            {fix !== undefined || fixNote === undefined ? null : (
-              <span className="rv-why-whose">{fixNote}</span>
-            )}
-          </div>
+          verdict.tone === "attention" || verdict.tone === "failed" ? (
+            // Trouble: a tinted callout, its fix the callout's action.
+            <Alert
+              className="mt-2.5"
+              controlAlignment="first-line"
+              data-review-why={verdict.tone}
+              surface="tint"
+              variant={verdict.tone === "failed" ? "error" : "warning"}
+            >
+              {whySaid ? <AlertTitle>{verdict.why}</AlertTitle> : null}
+              {fix !== undefined || fixNote === undefined ? null : (
+                <AlertDescription>{fixNote}</AlertDescription>
+              )}
+              {whyCopy === null && linkedFix === undefined ? null : (
+                <AlertAction>
+                  {whyCopy}
+                  {linkedFix === undefined ? null : (
+                    <Button onClick={linkedFix.onPress} size="sm" variant="link">
+                      {linkedFix.label}
+                    </Button>
+                  )}
+                </AlertAction>
+              )}
+            </Alert>
+          ) : (
+            // All is well: the why is a quiet line under the title.
+            <div className="rv-why">
+              {whySaid ? <span>{verdict.why}</span> : null}
+              {whyCopy}
+              {linkedFix === undefined ? null : (
+                <Button onClick={linkedFix.onPress} size="sm" variant="link">
+                  {linkedFix.label}
+                </Button>
+              )}
+              {fix !== undefined || fixNote === undefined ? null : <span>{fixNote}</span>}
+            </div>
+          )
         ) : null}
       </header>
       <div className="rv-body" data-queue-in={queue?.arrived}>

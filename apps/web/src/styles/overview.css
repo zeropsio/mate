@@ -292,26 +292,15 @@
   }
 }
 
-/* What waits on you, lifted: one tinted box under the places, each wait a row on the card's own
-   ground inside it — a sentence and its one verb. */
+/* What waits on you, lifted into the kit's tinted callout (Alert `tint`): each wait a row on the
+   card's own ground inside it — a sentence and its one verb. The rows reach out toward the
+   callout's edge, 7 from it, so a wait's sentence keeps the width it had in the tray. */
 .ov-waits {
   container: ov-waits / inline-size;
   display: grid;
-  gap: 6px;
-  margin-top: 16px;
-  padding: 0 6px 6px;
-  border-radius: var(--radius-card);
-  background: var(--ov-wait-ground);
-}
-
-.ov-card {
-  --ov-wait-ground: color-mix(in oklab, var(--zerops-status-attention-text) 9%, var(--ov-ground));
-}
-
-/* A release that is somebody else's to make ("Ready for production"): the same strip on a plain
-   ground — the amber is what waits on the viewer, and this asks them nothing. */
-.ov-waits[data-zerops-surface="card-ready"] {
-  --ov-wait-ground: color-mix(in oklab, var(--foreground) 5%, var(--ov-ground));
+  gap: 8px;
+  margin-inline: -8px;
+  color: var(--foreground);
 }
 
 .ov-wait {
@@ -1643,8 +1632,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 /* The section label hugs the first row: the row's own padding is its hover's, not air. */
-.ov-mates > [data-zerops-section-label],
-.ov-waits > [data-zerops-section-label] {
+.ov-mates > [data-zerops-section-label] {
   margin-bottom: -2px;
   padding: 0 6px;
 }
