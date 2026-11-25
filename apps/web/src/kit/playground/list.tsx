@@ -11,6 +11,8 @@ const STOPS = [
   { title: "Production", line: "Once Stage is running" },
 ] as const;
 
+const EDGES = { none: false, both: true, top: "top" } as const;
+
 export default definePlayground({
   section: "list",
   name: "List",
@@ -21,13 +23,17 @@ export default definePlayground({
       options: ["full", "inset"],
       note: "inset: each rule starts at the items' words",
     },
-    edges: { kind: "boolean", note: "rules above the first and under the last" },
+    edges: {
+      kind: "enum",
+      options: ["none", "both", "top"],
+      note: "rules above the first and under the last, or only above the first",
+    },
     card: { kind: "boolean", note: "the list inside a flat card" },
   },
-  initial: { rule: "full", edges: false, card: true },
+  initial: { rule: "full", edges: "none", card: true },
   render: ({ rule, edges, card }) => {
     const list = (
-      <List edges={edges} render={<ol />} rule={rule}>
+      <List edges={EDGES[edges]} render={<ol />} rule={rule}>
         {STOPS.map((stop, index) => (
           <li className="grid grid-cols-[24px_minmax(0,1fr)] gap-x-4 px-4 py-3" key={stop.title}>
             <StepNumber n={index + 1} />
@@ -42,10 +48,15 @@ export default definePlayground({
     return <div className="w-96">{card ? <Card variant="flat">{list}</Card> : list}</div>;
   },
   jsx: ({ rule, edges }) =>
-    jsxElement("List", { rule, edges, render: jsxCode("<ol />") }, "<li>…</li>\n<li>…</li>", {
-      rule: "full",
-      edges: false,
-    }),
+    jsxElement(
+      "List",
+      { rule, edges: EDGES[edges], render: jsxCode("<ol />") },
+      "<li>…</li>\n<li>…</li>",
+      {
+        rule: "full",
+        edges: false,
+      },
+    ),
   usage: {
     do: [
       "Part like things in one column with a List: it draws the rules, the items none.",

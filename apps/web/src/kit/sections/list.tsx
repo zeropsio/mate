@@ -99,6 +99,19 @@ function ListSpecimens() {
               ))}
             </List>
           </Specimen>
+          <Specimen label='<List edges="top">' note="A hairline over every item, under its heading">
+            <List className="w-full max-w-96" edges="top" render={<ul />}>
+              {["Petra Malá", "Jan Svoboda"].map((name) => (
+                <Row
+                  key={name}
+                  lead={<PersonAvatar name={name} size={32} />}
+                  line="Developer"
+                  render={<li />}
+                  title={name}
+                />
+              ))}
+            </List>
+          </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
     </Specimens>

@@ -17,7 +17,8 @@ import { cn } from "~/lib/utils";
  * - `rule="inset"`: each rule starts where the items' words start, past a 16 px padding, a 24 px
  *   mark and a 16 px gap (a route's stops, a plan's steps), and ends at that padding;
  * - `edges`: rules above the first item and under the last too, for a list standing between
- *   other content with no card around it.
+ *   other content with no card around it; `edges="top"` only above the first, a hairline over
+ *   every item (a record under its heading, what an opened release put live).
  *
  * The list sets no layout of its own: it is a block, a flex column or a grid by its `className`;
  * its ground and padding belong to what holds it (a card, a padded wrapper).
@@ -34,6 +35,7 @@ const listVariants = cva("min-w-0", {
     },
     edges: {
       true: "border-y border-rule",
+      top: "border-t border-rule",
       false: "",
     },
   },
