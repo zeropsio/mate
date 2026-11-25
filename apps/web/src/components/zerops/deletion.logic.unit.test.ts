@@ -262,7 +262,7 @@ it("MN+3: A project's Delete opens only once every Stage is slid and its name is
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | project.deletion.kind === "failed" && step.state !== "gone" → project.deletion.kind === "waiting" && step.state !== "gone"
-it("MN+4: A project's deletion that ended failed lists every part not gone as still here, the one it stopped at included, and only a running deletion lists a part as deleting; breaks: a stopped deletion still reads as deleting its Stage", () => {
+it("MN+4: A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage", () => {
   const steps = [
     { part: "mate", projectId: "Z_RYE", state: "gone" },
     { part: "stage", projectId: "Z_STAGE", state: "deleting" },
@@ -271,5 +271,11 @@ it("MN+4: A project's deletion that ended failed lists every part not gone as st
   const states = (operation: Partial<HqOperation>) =>
     deletionParts(bakery({ deletion: deletion(operation), steps })).map((part) => part.state);
   expect(states({})).toEqual(["gone", "deleting", "pending"]);
+  expect(
+    states({
+      failure: { ...zeropsRefusal, code: "token_expired", origin: "hq" },
+      continueBy: "u-theo",
+    }),
+  ).toEqual(["gone", "stopped", "pending"]);
   expect(states({ failure: zeropsRefusal })).toEqual(["gone", "here", "here"]);
 });

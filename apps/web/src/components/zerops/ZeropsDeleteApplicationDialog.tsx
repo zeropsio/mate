@@ -79,6 +79,7 @@ const PART_WORDS: Readonly<Record<DeletionPart["state"], string>> = {
   gone: "Gone",
   deleting: "Deleting",
   pending: "Waiting its turn",
+  stopped: "Stopped here",
   here: "Still here",
 };
 

@@ -478,15 +478,19 @@ export interface DeletionPart {
   readonly part: "mate" | "stage" | "production" | "code";
   /** "Stage shop-stage", "Quinn", "Its code". */
   readonly label: string;
-  /** `here`: not gone, in a deletion that ended failed, so nothing deletes it any more. */
-  readonly state: "gone" | "deleting" | "pending" | "here";
+  /**
+   * `stopped`: the part a waiting deletion stopped at, to which nothing is sent while it waits;
+   * `here`: not gone, in a deletion that ended failed, so nothing deletes it any more.
+   */
+  readonly state: "gone" | "deleting" | "pending" | "stopped" | "here";
 }
 
 const PART_STATES: ReadonlySet<string> = new Set(["gone", "deleting", "pending"]);
 
 /**
  * HQ's parts of the deletion, named by what the person knows of them; one unknown is passed by.
- * Once the deletion ended failed, a part not gone is still here, whatever step it stopped at.
+ * While it waits, the part it was deleting is stopped there; once it ended failed, a part not
+ * gone is still here, whatever step it stopped at.
  */
 export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionPart> {
   const name = (projectId: string | undefined) =>
@@ -503,7 +507,9 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
     const state: DeletionPart["state"] =
       project.deletion.kind === "failed" && step.state !== "gone"
         ? "here"
-        : (step.state as DeletionPart["state"]);
+        : project.deletion.kind === "waiting" && step.state === "deleting"
+          ? "stopped"
+          : (step.state as DeletionPart["state"]);
     const named = name(step.projectId);
     switch (step.part) {
       case "mate":
@@ -549,7 +555,7 @@ export function deletionStandingWords(
 } {
   const parts = deletionParts(project);
   const at =
-    parts.find((part) => part.state === "deleting") ??
+    parts.find((part) => part.state === "deleting" || part.state === "stopped") ??
     parts.find((part) => part.state === "pending");
   if (deletion.kind === "going")
     return {
