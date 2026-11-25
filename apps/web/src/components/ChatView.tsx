@@ -2244,7 +2244,7 @@ function ConversationView(props: ChatViewProps) {
     attachDraftHeroTransitionGroupRef,
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
-  ] = useDraftHeroLayoutTransition(isDraftHeroState);
+  ] = useDraftHeroLayoutTransition(isDraftHeroState, !mateSignIn);
 
   const gitCwd = activeProject
     ? conversationCodeFolder({
