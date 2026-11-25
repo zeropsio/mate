@@ -354,7 +354,7 @@ export function ZeropsGitPage() {
 
   return (
     <ZeropsHostedFrame
-      width="expanded"
+      width="full"
       actions={
         <>
           {scoped ? (

@@ -551,9 +551,9 @@ export function DetailShell({
   readonly children: React.ReactNode;
 }) {
   return (
-    // The overview's and the project page's width: the trail and the title stay put going between them.
-    <ZeropsHostedFrame bar={false} width="full">
-      {/* The frame's page gap spaces the header and every block after it, as on /zerops. */}
+    // The project page's width: the trail and the title stay put going between them.
+    <ZeropsHostedFrame bar={false} width="page">
+      {/* The frame's rhythm spaces the header and every block after it, as on the project page. */}
       <PageHeader actions={actions} summary={summary} tag={titleTag} title={title} trail={trail} />
       {children}
     </ZeropsHostedFrame>

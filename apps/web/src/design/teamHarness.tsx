@@ -36,6 +36,7 @@ import { createRoot } from "react-dom/client";
 import { TeamInviteView } from "~/components/settings/TeamInvitePage";
 import { TeamMemberView } from "~/components/settings/TeamMemberPage";
 import { TeamList } from "~/components/settings/TeamSettings";
+import { Page as PageFrame } from "~/components/ui/page";
 import { ToastProvider } from "~/components/ui/toast";
 import {
   teamPeople,
@@ -303,10 +304,10 @@ function HarnessPage() {
           style={{ width: MENU_WIDTH }}
         />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          {/* The team, a person and the invitation share one column, as the app's pages do. */}
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12">
+          {/* The team, a person and the invitation share Settings' frame, as the app's pages do. */}
+          <PageFrame inset="rows" width="wide">
             <Page />
-          </div>
+          </PageFrame>
         </main>
       </div>
     </ToastProvider>

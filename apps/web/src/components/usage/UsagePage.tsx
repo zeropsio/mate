@@ -50,6 +50,7 @@ import {
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
+import { Page } from "../ui/page";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
@@ -59,7 +60,6 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import {
@@ -506,29 +506,46 @@ export function UsagePage({
         <WorkspacePageHeader electron={isElectron}>{topbarContent}</WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer className="max-sm:px-4" width="wide">
-            {showingLimits ? null : (
-              <div className="flex flex-col gap-2 lg:hidden">
-                <Text className="md:hidden" render={<p />} variant="note">
-                  {windowLabel}
-                </Text>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <UsageScopeFilters
-                    scope={scope}
-                    identities={overallIndex.identities}
-                    projects={projects}
-                    dimensions={overallDimensions}
-                    canSeeOtherPeople={canSeeOtherPeople}
-                    onScopeChange={onScopeChange}
-                  />
+          <Page width="wide">
+            {/* What the page reads and how, its lines together; its sections stand apart. */}
+            <div className="flex flex-col gap-6">
+              {showingLimits ? null : (
+                <div className="flex flex-col gap-2 lg:hidden">
+                  <Text className="md:hidden" render={<p />} variant="note">
+                    {windowLabel}
+                  </Text>
+                  <div className="flex min-w-0 flex-wrap gap-2">
+                    <UsageScopeFilters
+                      scope={scope}
+                      identities={overallIndex.identities}
+                      projects={projects}
+                      dimensions={overallDimensions}
+                      canSeeOtherPeople={canSeeOtherPeople}
+                      onScopeChange={onScopeChange}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
-            <Text render={<p />} variant="note">
-              {showingLimits
-                ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
-                : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
-            </Text>
+              )}
+              <Text render={<p />} variant="note">
+                {showingLimits
+                  ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
+                  : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
+              </Text>
+              {showingLimits || noTotals ? null : (
+                <>
+                  {report?.coverageMore || report?.groupsMore ? (
+                    <Text render={<p />} variant="note" role="status">
+                      This report contains more sources or groups than can be shown.
+                    </Text>
+                  ) : null}
+                  {/* One reserved line: the read's state, and the month's automated spend beside it. */}
+                  <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
+                    <UsageReadStatus read={read} label="usage" onRetry={refresh} />
+                    <UsageAutomatedBudget />
+                  </div>
+                </>
+              )}
+            </div>
             {showingLimits ? (
               baseline === "unavailable" ? (
                 <Text render={<p />} variant="description">
@@ -555,17 +572,6 @@ export function UsagePage({
               )
             ) : (
               <>
-                {report?.coverageMore || report?.groupsMore ? (
-                  <Text render={<p />} variant="note" role="status">
-                    This report contains more sources or groups than can be shown.
-                  </Text>
-                ) : null}
-                {/* One reserved line: the read's state, and the month's automated spend beside it. */}
-                <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
-                  <UsageReadStatus read={read} label="usage" onRetry={refresh} />
-                  <UsageAutomatedBudget />
-                </div>
-
                 <section className="grid min-h-80 gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
                   {settling ? (
                     <UsageSummarySkeleton />
@@ -938,7 +944,7 @@ export function UsagePage({
                 onMate={(mate) => onScopeChange({ ...scope, mate: mate as EnvironmentId })}
               />
             ) : null}
-          </WorkspacePageContainer>
+          </Page>
         </ScrollArea>
       </div>
       {openModel === null ? null : (

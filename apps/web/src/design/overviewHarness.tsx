@@ -57,6 +57,7 @@ import { PageHeader } from "~/components/zerops/system/PageHeader";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
 import { usePageTrail } from "~/components/zerops/system/Crumbs";
 import { placeLines } from "~/components/zerops/projects/projectCard.logic";
+import { Page } from "~/components/ui/page";
 import { Skeleton } from "~/components/ui/skeleton";
 import { pagesViewTransition } from "~/pageTransitions";
 import { useUiStateStore } from "~/uiStateStore";
@@ -1386,7 +1387,7 @@ function HarnessPage() {
       </aside>
       {/* The page's content region, as the app's frame marks it (`SidebarInset`). */}
       <main className="min-w-0 flex-1 overflow-y-auto bg-background" data-slot="sidebar-inset">
-        <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
+        <Page width={PAGE === null ? "full" : "page"}>
           {PAGE !== null && place !== null ? (
             <HarnessPlacePage groupId={PAGE} projectId={place} />
           ) : null}
@@ -1396,312 +1397,315 @@ function HarnessPage() {
               <Button variant="secondary">New project</Button>
             </div>
           ) : null}
-          {PAGE === null ? (
-            <OverviewFilters
-              mine={PROJECTS.filter(({ entry }) => [...entry.mates.values()].some(mineOf)).length}
-              onShow={() => {}}
-              ownsMates
-              show={undefined}
-              waiting={ALL_WAITS.length}
-            />
-          ) : null}
-          {ARRIVAL === null ? null : (
-            <ArrivalWelcome
-              apps={PROJECTS.slice(0, 1).map(({ entry }) => ({
-                groupId: entry.group.groupId,
-                name: entry.group.name,
-                mine: false,
-                addMate: ARRIVAL.canCreateProjects !== false,
-              }))}
-              onStart={() => {}}
-              gateOf={() => null}
-              orgId="harness"
-              organizationName="Acme"
-              painted
-              settled
-              viewer={ARRIVAL}
-            />
-          )}
-          {place !== null ? null : (
-            <ZeropsProjectsFlow<Mate>
-              cardPlaces={(entry) => {
-                const found = byId.get(entry.group.groupId);
-                return {
-                  chip: found?.chip,
-                  since: found?.since,
-                  releaseSince: found?.releaseSince,
-                };
-              }}
-              getKey={(entry) => entry.id}
-              groups={overviewOrder(
-                PROJECTS.map((entry) => entry.entry),
-                (entry) => ({
-                  broken: ["down", "failed"].includes(
-                    byId.get(entry.group.groupId)?.chip?.state ?? "",
-                  ),
-                  asks: waitingOf(entry).some((item) => item.kind !== "change"),
-                  reviews:
-                    waitingOf(entry).some((item) => item.kind === "change") ||
-                    entry.flow.production.kind === "ready-to-release",
-                }),
-              )}
-              hqCard={null}
-              isMate={() => true}
-              onRetryContainers={() => {}}
-              openMate={() => () => {}}
-              page={
-                PAGE === null
-                  ? undefined
-                  : {
-                      groupId: PAGE,
-                      render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
-                      unread: () => null,
-                    }
-              }
-              renderProductionRun={(entry) =>
-                entry.group.groupId === "tea" ? (
-                  <PutLiveRow
-                    onAgain={() => acted.push("run-again")}
-                    onContinue={undefined}
-                    onReview={() => acted.push("run-review")}
-                    project="Tea Shop"
-                    standing={{ kind: "going", releasing: true, since: NOW - 42_000 }}
-                  />
-                ) : null
-              }
-              renderEnvironment={() => null}
-              renderGroupMenu={(entry) => (
-                // Its places' vaults, as the app's card menu offers them.
-                <ZeropsProjectMenu
-                  actions={placeVaults(entry.flow, NOW).map((vault) => ({
-                    id: `vault:${vault.projectId}`,
-                    label: `${vault.name} vault`,
-                    onSelect: () => placeVault.open?.(vault),
-                  }))}
-                  label="Project menu"
-                />
-              )}
-              renderMate={(entry, options) => {
-                // Whose press its change waits for, as `OverviewCardMate` reads it.
-                const stands =
-                  options.review === undefined || HARNESS_STANDING === null
+          {/* The overview's body, as the app's stands it under its head (`ZeropsProjectsContent`). */}
+          <div className="space-y-6">
+            {PAGE === null ? (
+              <OverviewFilters
+                mine={PROJECTS.filter(({ entry }) => [...entry.mates.values()].some(mineOf)).length}
+                onShow={() => {}}
+                ownsMates
+                show={undefined}
+                waiting={ALL_WAITS.length}
+              />
+            ) : null}
+            {ARRIVAL === null ? null : (
+              <ArrivalWelcome
+                apps={PROJECTS.slice(0, 1).map(({ entry }) => ({
+                  groupId: entry.group.groupId,
+                  name: entry.group.name,
+                  mine: false,
+                  addMate: ARRIVAL.canCreateProjects !== false,
+                }))}
+                onStart={() => {}}
+                gateOf={() => null}
+                orgId="harness"
+                organizationName="Acme"
+                painted
+                settled
+                viewer={ARRIVAL}
+              />
+            )}
+            {place !== null ? null : (
+              <ZeropsProjectsFlow<Mate>
+                cardPlaces={(entry) => {
+                  const found = byId.get(entry.group.groupId);
+                  return {
+                    chip: found?.chip,
+                    since: found?.since,
+                    releaseSince: found?.releaseSince,
+                  };
+                }}
+                getKey={(entry) => entry.id}
+                groups={overviewOrder(
+                  PROJECTS.map((entry) => entry.entry),
+                  (entry) => ({
+                    broken: ["down", "failed"].includes(
+                      byId.get(entry.group.groupId)?.chip?.state ?? "",
+                    ),
+                    asks: waitingOf(entry).some((item) => item.kind !== "change"),
+                    reviews:
+                      waitingOf(entry).some((item) => item.kind === "change") ||
+                      entry.flow.production.kind === "ready-to-release",
+                  }),
+                )}
+                hqCard={null}
+                isMate={() => true}
+                onRetryContainers={() => {}}
+                openMate={() => () => {}}
+                page={
+                  PAGE === null
                     ? undefined
-                    : HARNESS_STANDING(PAGE ?? "tea", options.review);
-                const press =
-                  options.review === undefined ? undefined : rowStanding(options.review, stands);
-                const read = cardMateReading({
-                  view: entry.view,
-                  status: entry.status,
-                  mine: mineOf(entry),
-                  review: options.review,
-                  standing: stands,
-                });
-                // On a card its wait stands in Waiting on you: the row is never lifted.
-                const reading = options.quiet === true ? { ...read, lift: undefined } : read;
-                // A change waiting for review that is not lifted carries its own Review, at the
-                // change's end, as the app's row has it (`OverviewCardMate`).
-                const review =
-                  options.review === undefined ||
-                  options.quiet === true ||
-                  reading.lift !== undefined ? null : (
-                    <Button
-                      data-zerops-surface="card-mate-review"
-                      onClick={() => acted.push(`review:${entry.id}`)}
-                      size="xs"
-                      variant={standingWaits(press) ? "ghost" : "secondary"}
-                    >
-                      {standingPressLabel(press, REVIEW_LABEL)}
-                    </Button>
-                  );
-                const lifted =
-                  reading.lift === undefined ? null : (
-                    <CardMateLiftActions
-                      lift={reading.lift}
-                      name={entry.name}
-                      onApprove={() => acted.push(`approve:${entry.id}`)}
-                      onFix={() => acted.push(`fix:${entry.id}`)}
-                      onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
-                      onReview={() => acted.push(`review:${entry.id}`)}
-                      choices={(entry.choices ?? []).map((choice) => ({
-                        label: choice,
-                        primary: false,
-                        onPick: () => acted.push(`pick:${entry.id}:${choice}`),
-                      }))}
-                    />
-                  );
-                const card = options.layout === "page-card";
-                const face = (
-                  <>
-                    <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
-                    {mineOf(entry) ? null : (
-                      <MateOwnerMark
-                        className={card ? OWNER_ON_CARD : OWNER_ON_ROW}
-                        seat={{
-                          kind: "person",
-                          mark: ownerMark({
-                            name: entry.owner.name,
-                            initials: entry.owner.initials,
-                            avatarUrl: null,
-                          }),
-                        }}
-                      />
-                    )}
-                  </>
-                );
-                const mark = entry.automated === true ? <MateAutomatedMark /> : undefined;
-                const time = <MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>;
-                // On its project's page a Mate is a card, from the same reading (`MateCard`): its
-                // previews behind its Sites door, its vault beside it, and a change that waits
-                // said as a line. Its own change is its line; a colleague's Mate says its own
-                // words and, under them, that a change of its waits (`OverviewCardMate`).
-                if (card) {
-                  const waits = review !== null;
-                  const own = waits && !mineOf(entry);
-                  const said = own
-                    ? cardMateReading({
-                        view: entry.view,
-                        status: entry.status,
-                        mine: false,
-                        review: undefined,
-                      })
-                    : reading;
-                  return (
-                    <MateCard
-                      actions={reading.lift?.kind === "review" ? null : lifted}
-                      changes={
-                        own
-                          ? {
-                              count: 1,
-                              mine: !standingWaits(press),
-                              ...(press === undefined
-                                ? {}
-                                : {
-                                    says: press === "to-ask" ? changesReadyLine(1) : stands?.word,
-                                  }),
-                            }
-                          : undefined
+                    : {
+                        groupId: PAGE,
+                        render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
+                        unread: () => null,
                       }
-                      doors={
-                        <PlaceDoors
-                          look="card"
-                          name={entry.name}
-                          sites={
-                            options.parts.length === 0
-                              ? undefined
-                              : { groupId: PAGE ?? "", mateProjectId: entry.id }
-                          }
-                          vault={{
-                            onOpen: () =>
-                              placeVault.open?.({ projectId: entry.id, name: entry.name }),
+                }
+                renderProductionRun={(entry) =>
+                  entry.group.groupId === "tea" ? (
+                    <PutLiveRow
+                      onAgain={() => acted.push("run-again")}
+                      onContinue={undefined}
+                      onReview={() => acted.push("run-review")}
+                      project="Tea Shop"
+                      standing={{ kind: "going", releasing: true, since: NOW - 42_000 }}
+                    />
+                  ) : null
+                }
+                renderEnvironment={() => null}
+                renderGroupMenu={(entry) => (
+                  // Its places' vaults, as the app's card menu offers them.
+                  <ZeropsProjectMenu
+                    actions={placeVaults(entry.flow, NOW).map((vault) => ({
+                      id: `vault:${vault.projectId}`,
+                      label: `${vault.name} vault`,
+                      onSelect: () => placeVault.open?.(vault),
+                    }))}
+                    label="Project menu"
+                  />
+                )}
+                renderMate={(entry, options) => {
+                  // Whose press its change waits for, as `OverviewCardMate` reads it.
+                  const stands =
+                    options.review === undefined || HARNESS_STANDING === null
+                      ? undefined
+                      : HARNESS_STANDING(PAGE ?? "tea", options.review);
+                  const press =
+                    options.review === undefined ? undefined : rowStanding(options.review, stands);
+                  const read = cardMateReading({
+                    view: entry.view,
+                    status: entry.status,
+                    mine: mineOf(entry),
+                    review: options.review,
+                    standing: stands,
+                  });
+                  // On a card its wait stands in Waiting on you: the row is never lifted.
+                  const reading = options.quiet === true ? { ...read, lift: undefined } : read;
+                  // A change waiting for review that is not lifted carries its own Review, at the
+                  // change's end, as the app's row has it (`OverviewCardMate`).
+                  const review =
+                    options.review === undefined ||
+                    options.quiet === true ||
+                    reading.lift !== undefined ? null : (
+                      <Button
+                        data-zerops-surface="card-mate-review"
+                        onClick={() => acted.push(`review:${entry.id}`)}
+                        size="xs"
+                        variant={standingWaits(press) ? "ghost" : "secondary"}
+                      >
+                        {standingPressLabel(press, REVIEW_LABEL)}
+                      </Button>
+                    );
+                  const lifted =
+                    reading.lift === undefined ? null : (
+                      <CardMateLiftActions
+                        lift={reading.lift}
+                        name={entry.name}
+                        onApprove={() => acted.push(`approve:${entry.id}`)}
+                        onFix={() => acted.push(`fix:${entry.id}`)}
+                        onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
+                        onReview={() => acted.push(`review:${entry.id}`)}
+                        choices={(entry.choices ?? []).map((choice) => ({
+                          label: choice,
+                          primary: false,
+                          onPick: () => acted.push(`pick:${entry.id}:${choice}`),
+                        }))}
+                      />
+                    );
+                  const card = options.layout === "page-card";
+                  const face = (
+                    <>
+                      <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
+                      {mineOf(entry) ? null : (
+                        <MateOwnerMark
+                          className={card ? OWNER_ON_CARD : OWNER_ON_ROW}
+                          seat={{
+                            kind: "person",
+                            mark: ownerMark({
+                              name: entry.owner.name,
+                              initials: entry.owner.initials,
+                              avatarUrl: null,
+                            }),
                           }}
                         />
-                      }
+                      )}
+                    </>
+                  );
+                  const mark = entry.automated === true ? <MateAutomatedMark /> : undefined;
+                  const time = <MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>;
+                  // On its project's page a Mate is a card, from the same reading (`MateCard`): its
+                  // previews behind its Sites door, its vault beside it, and a change that waits
+                  // said as a line. Its own change is its line; a colleague's Mate says its own
+                  // words and, under them, that a change of its waits (`OverviewCardMate`).
+                  if (card) {
+                    const waits = review !== null;
+                    const own = waits && !mineOf(entry);
+                    const said = own
+                      ? cardMateReading({
+                          view: entry.view,
+                          status: entry.status,
+                          mine: false,
+                          review: undefined,
+                        })
+                      : reading;
+                    return (
+                      <MateCard
+                        actions={reading.lift?.kind === "review" ? null : lifted}
+                        changes={
+                          own
+                            ? {
+                                count: 1,
+                                mine: !standingWaits(press),
+                                ...(press === undefined
+                                  ? {}
+                                  : {
+                                      says: press === "to-ask" ? changesReadyLine(1) : stands?.word,
+                                    }),
+                              }
+                            : undefined
+                        }
+                        doors={
+                          <PlaceDoors
+                            look="card"
+                            name={entry.name}
+                            sites={
+                              options.parts.length === 0
+                                ? undefined
+                                : { groupId: PAGE ?? "", mateProjectId: entry.id }
+                            }
+                            vault={{
+                              onOpen: () =>
+                                placeVault.open?.({ projectId: entry.id, name: entry.name }),
+                            }}
+                          />
+                        }
+                        face={face}
+                        key={entry.id}
+                        line={
+                          waits && !own ? (
+                            <span data-zerops-surface="card-mate-change">
+                              <GitPullRequestIcon
+                                aria-hidden="true"
+                                className="relative top-0.5 me-1 inline-block size-3.5"
+                              />
+                              {reading.text}
+                            </span>
+                          ) : undefined
+                        }
+                        mark={mark}
+                        name={entry.name}
+                        onOpen={() => acted.push(`open:${entry.id}`)}
+                        reading={{
+                          ...said,
+                          lift: reading.lift?.kind === "review" ? undefined : reading.lift,
+                        }}
+                        time={time}
+                      />
+                    );
+                  }
+                  return (
+                    <MateRow
+                      actions={lifted}
                       face={face}
                       key={entry.id}
                       line={
-                        waits && !own ? (
-                          <span data-zerops-surface="card-mate-change">
-                            <GitPullRequestIcon
-                              aria-hidden="true"
-                              className="relative top-0.5 me-1 inline-block size-3.5"
-                            />
-                            {reading.text}
+                        review === null ? undefined : (
+                          <span className={MATE_CHANGE} data-zerops-surface="card-mate-change">
+                            <GitPullRequestIcon aria-hidden="true" className="size-3.5 flex-none" />
+                            <span className="min-w-0 flex-1 truncate">{reading.text}</span>
+                            {review}
                           </span>
-                        ) : undefined
+                        )
                       }
                       mark={mark}
                       name={entry.name}
                       onOpen={() => acted.push(`open:${entry.id}`)}
-                      reading={{
-                        ...said,
-                        lift: reading.lift?.kind === "review" ? undefined : reading.lift,
-                      }}
+                      parts={options.parts}
+                      reading={reading}
                       time={time}
                     />
                   );
+                }}
+                renderComingBirth={(projectId) =>
+                  projectId !== STUCK_BIRTH.id
+                    ? undefined
+                    : {
+                        line: sharedBirthPresentation(STUCK_BIRTH).row,
+                        stopped: sharedBirthPresentation(STUCK_BIRTH).attention,
+                        onOpen: () => acted.push("open-birth"),
+                        menu: (
+                          <ZeropsProjectMenu
+                            actions={[
+                              {
+                                id: "delete",
+                                label: "Delete",
+                                onSelect: () => acted.push("birth-delete"),
+                              },
+                            ]}
+                            label="More for Sol"
+                          />
+                        ),
+                      }
                 }
-                return (
-                  <MateRow
-                    actions={lifted}
-                    face={face}
-                    key={entry.id}
-                    line={
-                      review === null ? undefined : (
-                        <span className={MATE_CHANGE} data-zerops-surface="card-mate-change">
-                          <GitPullRequestIcon aria-hidden="true" className="size-3.5 flex-none" />
-                          <span className="min-w-0 flex-1 truncate">{reading.text}</span>
-                          {review}
-                        </span>
-                      )
-                    }
-                    mark={mark}
-                    name={entry.name}
-                    onOpen={() => acted.push(`open:${entry.id}`)}
-                    parts={options.parts}
-                    reading={reading}
-                    time={time}
-                  />
-                );
-              }}
-              renderComingBirth={(projectId) =>
-                projectId !== STUCK_BIRTH.id
-                  ? undefined
-                  : {
-                      line: sharedBirthPresentation(STUCK_BIRTH).row,
-                      stopped: sharedBirthPresentation(STUCK_BIRTH).attention,
-                      onOpen: () => acted.push("open-birth"),
-                      menu: (
-                        <ZeropsProjectMenu
-                          actions={[
-                            {
-                              id: "delete",
-                              label: "Delete",
-                              onSelect: () => acted.push("birth-delete"),
-                            },
-                          ]}
-                          label="More for Sol"
-                        />
-                      ),
-                    }
-              }
-              mateTint={(entry) => entry.tint}
-              renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
-              renderReleaseVerb={(entry) =>
-                projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (
-                  <Button size="sm">Review release</Button>
-                )
-              }
-              // `?viewer=owner`: an Owner who owns no Mate in these projects — each release is
-              // offered to them and is its people's to make (`releaseWaitsOnViewer`).
-              releaseOnViewer={() => HARNESS_VIEWER !== "owner"}
-              // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
-              // failed release has no Mate of theirs, so its wait opens the place.
-              placeFix={(entry) => ({
-                fixer: entry.group.groupId === "harbor" ? "Nell" : undefined,
-                onVerb: () => acted.push(`fix-place:${entry.group.groupId}`),
-              })}
-              cardWaits={(entry) =>
-                projectWaits({ items: waitingOf(entry), flow: entry.flow }).map((wait) => ({
-                  wait,
-                  face: <MateFace size={24} state={wait.mate.face} tint={wait.mate.tint} />,
-                  onVerb: () => acted.push(`wait:${wait.key}`),
-                }))
-              }
-              setUpProduction={(entry) =>
-                byId.get(entry.group.groupId)?.canPutLive === true
-                  ? () => acted.push(`put-live:${entry.group.groupId}`)
-                  : undefined
-              }
-              addMate={(entry) => ({
-                onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
-                why: null,
-              })}
-              openPlaceVault={placeVault.open}
-              ungrouped={[]}
-            />
-          )}
-          {placeVault.drawer}
-        </div>
+                mateTint={(entry) => entry.tint}
+                renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
+                renderReleaseVerb={(entry) =>
+                  projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (
+                    <Button size="sm">Review release</Button>
+                  )
+                }
+                // `?viewer=owner`: an Owner who owns no Mate in these projects — each release is
+                // offered to them and is its people's to make (`releaseWaitsOnViewer`).
+                releaseOnViewer={() => HARNESS_VIEWER !== "owner"}
+                // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
+                // failed release has no Mate of theirs, so its wait opens the place.
+                placeFix={(entry) => ({
+                  fixer: entry.group.groupId === "harbor" ? "Nell" : undefined,
+                  onVerb: () => acted.push(`fix-place:${entry.group.groupId}`),
+                })}
+                cardWaits={(entry) =>
+                  projectWaits({ items: waitingOf(entry), flow: entry.flow }).map((wait) => ({
+                    wait,
+                    face: <MateFace size={24} state={wait.mate.face} tint={wait.mate.tint} />,
+                    onVerb: () => acted.push(`wait:${wait.key}`),
+                  }))
+                }
+                setUpProduction={(entry) =>
+                  byId.get(entry.group.groupId)?.canPutLive === true
+                    ? () => acted.push(`put-live:${entry.group.groupId}`)
+                    : undefined
+                }
+                addMate={(entry) => ({
+                  onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
+                  why: null,
+                })}
+                openPlaceVault={placeVault.open}
+                ungrouped={[]}
+              />
+            )}
+            {placeVault.drawer}
+          </div>
+        </Page>
       </main>
     </div>
   );

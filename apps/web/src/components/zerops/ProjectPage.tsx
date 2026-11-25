@@ -126,7 +126,7 @@ export function ZeropsGroupDetailPage({
     [addMate, groupId],
   );
   return (
-    <ZeropsHostedFrame bar={false} width="full">
+    <ZeropsHostedFrame bar={false} width="page">
       <ZeropsProjectsContent project={project} search={NO_SEARCH} />
       {mirroring && groupName !== undefined ? (
         <GitMirrorDialog
