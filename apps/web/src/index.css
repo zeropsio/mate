@@ -2671,41 +2671,6 @@ code {
   animation: ultrathink-chroma-shift 10s linear infinite;
 }
 
-@keyframes preview-loading-progress {
-  from {
-    transform: scaleX(0.04);
-  }
-
-  to {
-    transform: scaleX(0.9);
-  }
-}
-
-.preview-loading-progress {
-  opacity: 0;
-  transform: scaleX(1);
-  transition:
-    transform 150ms ease-out,
-    opacity 150ms ease-out 220ms;
-}
-
-.preview-loading-progress[data-loading="true"] {
-  opacity: 1;
-  animation: preview-loading-progress 5.3s cubic-bezier(0.1, 0.5, 0.2, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .preview-loading-progress,
-  .preview-loading-progress[data-loading="true"] {
-    transition: none;
-    animation: none;
-  }
-
-  .preview-loading-progress[data-loading="true"] {
-    transform: scaleX(0.9);
-  }
-}
-
 /* A run's card is drawn a slice per row, and rows stand on eighth-of-a-pixel
    positions, each clipped to its own box by the list (`contain: content`):
    where two slices met, each row's clip snapped away from the joint and the
@@ -4345,12 +4310,6 @@ code {
 
   /* ==== end of the menu by project ==== */
 
-  /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
-     and a smaller corner than the Mate's row above it. */
-  .menu-line {
-    border-radius: var(--radius-control);
-  }
-
   /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
      column, "Draft" and its words in the second line's 14/20 — never a tinted pill (the owner,
      2026-10-12: "ugly nonfitting"). */
@@ -4859,78 +4818,6 @@ code {
 
 /* ==== Pass 16 · the menu's projects and production ==== */
 
-/* A stop's dot where no status dot draws it (`EnvDot`): hollow for a stop on purpose, a small
-   stepped spinner while something is on its way. */
-/* The chip's menu: a 330 px card under the chip, growing from its corner. */
-.zerops-envpop {
-  display: flex;
-  flex-direction: column;
-  width: min(330px, calc(100vw - 16px));
-  max-height: var(--available-height);
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  background-color: var(--card);
-  color: var(--card-foreground);
-  box-shadow:
-    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
-    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
-  font-size: var(--text-body);
-  line-height: 18px;
-  outline: none;
-  transform-origin: var(--transform-origin);
-  transition:
-    opacity 160ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong),
-    translate 160ms var(--ease-out-strong);
-}
-
-.zerops-envpop:is([data-starting-style], [data-ending-style]) {
-  opacity: 0;
-  scale: 0.97;
-  translate: 0 -4px;
-}
-
-.dark .zerops-envpop {
-  box-shadow:
-    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zerops-envpop {
-    transition: opacity 160ms ease;
-  }
-
-  .zerops-envpop:is([data-starting-style], [data-ending-style]) {
-    scale: 1;
-    translate: none;
-  }
-}
-
-.zerops-envpop-title {
-  padding: 6px 10px 4px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-}
-
-.zerops-envpop-stop {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  padding: 7px 10px;
-  border-radius: var(--radius-control);
-  text-align: start;
-}
-
-.zerops-envpop-stop > [data-slot="badge"] {
-  justify-self: center;
-}
-
 /* A version is a real thing's name: the mono face, on the x-height of the title beside it. */
 .zerops-envpop-version {
   margin-inline-start: 6px;
@@ -4952,60 +4839,9 @@ code {
   color: var(--zerops-status-failed-text);
 }
 
-.zerops-envpop-note {
-  padding: 0 10px 6px 36px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 17px;
-}
-
-.zerops-envpop-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 36px;
-  border-radius: var(--radius-control);
-  color: var(--muted-foreground);
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.zerops-envpop-link:is(:hover, :focus-visible) {
-  background-color: var(--accent);
-  color: var(--foreground);
-}
-
-.zerops-envpop-service {
-  flex-shrink: 0;
-  color: var(--foreground);
-  font-weight: 500;
-}
-
 .zerops-envpop-port {
   color: var(--muted-foreground);
   font-weight: 400;
-}
-
-.zerops-envpop-separator {
-  height: 1px;
-  margin: 6px 4px;
-  background-color: var(--border);
-}
-
-.zerops-envpop-review {
-  padding: 3px 8px;
-  border-radius: var(--radius-control);
-  color: var(--info-foreground);
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  transition: background-color 150ms ease;
-}
-
-.zerops-envpop-review:is(:hover, :focus-visible) {
-  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
 }
 
 /* "Ask <your Mate> to fix it" (S6): a button with the Mate's face in it,
@@ -5745,7 +5581,6 @@ code {
     margin-top: 12px;
   }
 
-  .menu-wait-reading,
   .menu-wait-error {
     flex: 1 1 100%;
     font-size: var(--text-body);
@@ -6831,47 +6666,6 @@ a.ov-card-site:hover {
   -webkit-line-clamp: 2;
 }
 
-/* Settings → Team: a project's people rows, on the settings page's own ground. */
-.ov-team {
-  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
-  display: grid;
-  gap: 2px;
-}
-
-/* A project's people: a Mate row's face and two lines, never lifted; an invitation dimmed; an
-   owner's or admin's ··· at the end. */
-.ov-people {
-  display: grid;
-  gap: 2px;
-}
-
-.ov-person {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  column-gap: 12px;
-  align-items: start;
-  padding: 6px 0;
-}
-
-/* An invitation is dimmed; its menu stays at full ink. */
-.ov-person[data-pending] > :not(.ov-person-more) {
-  opacity: 0.55;
-}
-
-/* A person's ···, centred on their face. */
-.ov-person-more {
-  display: flex;
-  align-items: center;
-  height: 32px;
-}
-
-.ov-person-you {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
-}
-
 .ov-acts,
 .ov-reply {
   position: relative;
@@ -7284,8 +7078,7 @@ a.ov-chip-who:focus-visible {
    accent is a hair lighter than the lift there, so a quiet button's hover on it showed nothing
    (the owner, 2026-11-11, of a Mate card's Sites and Vault: "why does the buttons have no
    hover?"). In the dark theme the app's accent already stands above the lift. */
-:root:not(.dark)
-  :is(.ov-mate[data-lift], .ov-chip, .tm-card, .tm-advanced, .tm-invite-card, .tm-invite-projects) {
+:root:not(.dark) :is(.ov-mate[data-lift], .ov-chip, .tm-card, .tm-advanced, .tm-invite-projects) {
   --accent: color-mix(in oklab, var(--foreground) 6%, var(--ov-lift));
 }
 
@@ -7986,18 +7779,6 @@ label.tm-advanced-row:not([data-disabled]) {
   background: var(--ov-rule);
 }
 
-/* One field needs no more room than an address: the e-mail step stands narrow in the column. */
-.tm-invite-card {
-  display: grid;
-  gap: 18px;
-  justify-self: center;
-  width: 100%;
-  max-width: 420px;
-  padding: 24px;
-  border-radius: var(--radius-card);
-  background: var(--ov-lift);
-}
-
 .tm-names {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8081,14 +7862,9 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--zerops-status-failed-text);
 }
 
-.ov-run-quiet,
 .ov-run-cause {
   color: var(--muted-foreground);
   font-size: var(--text-caption);
-}
-
-.ov-run-quiet {
-  flex: none;
 }
 
 .ov-run-acts {
@@ -8096,24 +7872,6 @@ label.tm-advanced-row:not([data-disabled]) {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-}
-
-.ov-run-link {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 4px;
-  overflow: hidden;
-  color: var(--foreground);
-  font-size: var(--text-line);
-  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
-  text-overflow: ellipsis;
-  text-underline-offset: 3px;
-  white-space: nowrap;
-}
-
-.ov-run-link:hover {
-  text-decoration-color: currentColor;
 }
 
 /* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
@@ -8587,56 +8345,6 @@ label.tm-advanced-row:not([data-disabled]) {
   .ov-changes:not(:has(.ov-change-face > *, .ov-change-icon))
   .ov-change-face {
   display: none;
-}
-
-/* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
-.ov-change-release {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px 4px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.ov-change-release::before,
-.ov-change-release::after {
-  height: 1px;
-  flex: 1;
-  background: var(--ov-rule);
-  content: "";
-}
-
-.ov-change-release::before {
-  max-width: 10px;
-}
-
-.ov-release-tag {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.ov-release-live {
-  display: inline-flex;
-  height: 18px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--zerops-status-ok) 14%, transparent);
-  color: var(--foreground);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.ov-release-live::before {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--zerops-status-ok);
-  content: "";
 }
 
 /* Where nothing is said yet: one quiet line where the list would be. */
@@ -12269,36 +11977,6 @@ a.message-file:focus-visible {
     }
   }
 }
-/* "← Release", where a review says what kind of thing it is: its arrow on the text's edge. */
-.rv-back {
-  display: inline-flex;
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  margin-left: -8px;
-  padding: 0 10px 0 8px;
-  border-radius: var(--radius-control);
-  font-size: var(--text-body);
-  font-weight: 500;
-  line-height: 18px;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-.rv-back svg {
-  width: 15px;
-  height: 15px;
-}
-.rv-back:hover {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-.rv-back:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 /* What was already done, where the button would stand: "Merged". */
 .rv-settled {
   display: inline-flex;
@@ -14003,140 +13681,6 @@ a.message-file:focus-visible {
 }
 
 /* ---- the Mate's steps while it comes up (`ZeropsArrivalSteps`) ---- */
-/* p25/arrival: the steps are as wide as their words, centred under the sentence on its axis —
-   not a wide block with its labels flush left and its times at the far edge. The rows share
-   one grid (subgrid), so the labels start on one line and the times end on one; the time's
-   column holds its longest form, so a tick never changes the width. */
-.arrival-steps {
-  display: grid;
-  grid-template-columns: 20px minmax(0, max-content) max-content;
-  column-gap: 12px;
-  width: fit-content;
-  max-width: 100%;
-  margin-inline: auto;
-  /* Centred as a block, never its words: the stage around it centres its text. */
-  text-align: start;
-}
-
-.arrival-step {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: subgrid;
-  align-items: center;
-  min-height: 32px;
-}
-
-.arrival-step-mark {
-  display: flex;
-  justify-content: center;
-}
-
-.arrival-step-label {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--foreground);
-  font-size: var(--text-body);
-  line-height: 20px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.arrival-step:is([data-state="active"], [data-state="you"]) .arrival-step-label {
-  font-weight: 500;
-}
-
-.arrival-step[data-state="waiting"] .arrival-step-label {
-  color: var(--muted-foreground);
-}
-
-.arrival-step-why {
-  color: var(--zerops-status-failed-text);
-  font-weight: 400;
-}
-
-.arrival-step-time {
-  min-width: 136px;
-  padding-inline-start: 12px;
-  text-align: end;
-  color: var(--muted-foreground);
-  font-size: var(--text-body);
-  line-height: 18px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.arrival-step-note {
-  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
-}
-
-/* p26/signin */
-/* A step with no time to say gives its words the time's column: "You sign Wren in with your
-   Claude or ChatGPT subscription" reads whole. The time's column stops growing at the widest
-   time, so words that span it widen the words' column, never the times'. */
-.arrival-steps {
-  grid-template-columns: 20px minmax(0, max-content) fit-content(12rem);
-}
-
-.arrival-step-label[data-spans-time] {
-  grid-column: 2 / -1;
-  /* Where the stage is narrow (a phone) it wraps rather than cut what the person signs in
-     with; each brand keeps its logo on its line. */
-  overflow: visible;
-  white-space: normal;
-  text-wrap: pretty;
-}
-
-.arrival-step-sub {
-  grid-column: 2 / -1;
-  /* Wraps within the words' width, never widening the steps. */
-  contain: inline-size;
-  padding: 2px 0 8px;
-}
-
-/* p37/one-screen: the steps this tab runs, under the project's row — a small mark and the words
-   each, quieter than the steps, one under another. Drawn from the press to the hand-over, so they
-   never come or go under what is read. */
-.arrival-substeps {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding-inline-start: 0;
-  list-style: none;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.arrival-substep {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.arrival-substep-mark {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 18px;
-}
-
-.arrival-substep-mark .arrival-glyph {
-  width: 12px;
-  height: 12px;
-}
-
-.arrival-substep[data-state="active"] .arrival-substep-label {
-  color: var(--foreground);
-}
-
-.arrival-substep-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* The copy's services, one name and one dot each, quieter than the steps. */
 .arrival-services {
   display: flex;
@@ -14217,27 +13761,6 @@ a.message-file:focus-visible {
   }
 }
 
-/* A step's mark: a soft check, an arc turning a notch at a time (R6), an empty ring, a cross,
-   the person's picture ringed in the focus colour. */
-.arrival-glyph {
-  display: block;
-  flex: none;
-  width: 16px;
-  height: 16px;
-}
-
-.arrival-glyph-ok-bg {
-  fill: color-mix(in oklab, var(--zerops-status-ok) 24%, transparent);
-}
-
-.arrival-glyph-ok-ink {
-  fill: none;
-  stroke: var(--zerops-status-ok-text);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .arrival-glyph-track {
   fill: none;
   stroke: color-mix(in oklab, var(--foreground) 12%, transparent);
@@ -14262,34 +13785,6 @@ a.message-file:focus-visible {
   to {
     rotate: 360deg;
   }
-}
-
-.arrival-glyph-wait {
-  fill: none;
-  stroke: color-mix(in oklab, var(--foreground) 24%, transparent);
-  stroke-width: 1.5;
-}
-
-.arrival-glyph-fail-bg {
-  fill: color-mix(in oklab, var(--zerops-status-attention) 20%, transparent);
-}
-
-.arrival-glyph-fail-ink {
-  fill: none;
-  stroke: var(--zerops-status-attention-text);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-
-.arrival-glyph-you {
-  display: flex;
-  width: 16px;
-  height: 16px;
-  overflow: hidden;
-  border-radius: 9999px;
-  box-shadow:
-    0 0 0 1.5px var(--background),
-    0 0 0 2.5px color-mix(in oklab, var(--ring) 70%, transparent);
 }
 
 .arrival-spin {
