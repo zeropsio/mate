@@ -24,15 +24,13 @@ interface LedgerEntry {
 /** The kit is the web client's: a ledger's entries for other clients are not its to count. */
 const WEB_CLIENT = "apps/web/";
 
-// The ledgers are read at build, and only where the build carries the design harness: production's
-// kit counts none and bundles none.
-const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> =
-  import.meta.env.VITE_DESIGN_HARNESS === ""
-    ? {}
-    : import.meta.glob<readonly LedgerEntry[]>(
-        "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes}.json",
-        { eager: true, import: "default" },
-      );
+// The ledgers are read at build, by every build: they ride in the kit's own chunk, never the app's.
+const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> = import.meta.glob<
+  readonly LedgerEntry[]
+>(
+  "../../../../../oxlint-plugin-t3code/exceptions/{no-raw-controls,no-restyle,no-arbitrary-values,no-theme-escape-hatches,no-unknown-classes}.json",
+  { eager: true, import: "default" },
+);
 
 /** A guard's ledger: the places still to fix, and those it keeps on purpose (`expires: "never"`). */
 export interface KitGuardCount {
@@ -40,7 +38,7 @@ export interface KitGuardCount {
   readonly kept: number;
 }
 
-/** Each guard's ledger, by rule; absent when this build does not carry the ledgers. */
+/** Each guard's ledger, by rule. */
 export const KIT_GUARD_COUNTS: ReadonlyMap<string, KitGuardCount> = new Map(
   Object.entries(ledgers).map(([path, all]) => {
     const entries = all.filter((entry) => entry.path.startsWith(WEB_CLIENT));

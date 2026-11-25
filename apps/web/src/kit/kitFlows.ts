@@ -1,7 +1,7 @@
 /**
  * The design harness's pages as the kit's flows: a surface's states over made-up data, drawn from
- * the kit's components. A build serves them only where it carries the harness (the dev server, a
- * Mate's preview, the hosted harness); production lists none and bundles none.
+ * the kit's components. A build serves them where it carries the harness (the dev server and every
+ * hosted setup, `zerops.yml`); a build without it lists none and bundles none.
  */
 /** The appearance a harness page draws in. */
 export type FlowTheme = "light" | "dark";
