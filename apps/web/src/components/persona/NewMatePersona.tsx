@@ -69,7 +69,8 @@ export function NewMatePersona(props: {
   return (
     <section
       aria-labelledby={`${id}-label`}
-      className="new-mate-persona"
+      // Its heading and line, *Add persona*, over a rule.
+      className="flex flex-col items-start gap-2 border-b border-border py-6"
       data-zerops-surface="new-mate-persona"
     >
       <SectionHeader

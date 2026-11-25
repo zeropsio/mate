@@ -253,8 +253,10 @@ export function ZeropsNewMateForm({
   });
 
   return (
+    // As wide as the dialog, so its options can stand 24 px from the dialog's edges whatever
+    // the scrollbar's gutter takes (100cqw against the body's 100%).
     <form
-      className="flex min-h-0 flex-col"
+      className="@container flex min-h-0 flex-col"
       data-options={options ? "" : undefined}
       data-zerops-surface="new-mate-form"
       onSubmit={(event) => {
@@ -295,12 +297,14 @@ export function ZeropsNewMateForm({
         <div className="min-h-0 overflow-hidden">
           <div
             className={cn(
-              "new-mate-body transition-[opacity,visibility] ease-out-strong",
+              // The scrollbar the open options bring takes no width: nothing moves sideways.
+              "scrollbar-gutter-both max-h-full overflow-y-auto overscroll-contain transition-[opacity,visibility] ease-out-strong",
               closed === undefined ? "delay-100 duration-200" : "invisible opacity-0 duration-150",
             )}
             inert={closed !== undefined}
           >
-            <div className="new-mate-creator">
+            {/* The face ring, the name and its two presses, centred. */}
+            <div className="flex flex-col items-center px-6 pb-8">
               <MateFaceRing
                 className="my-3"
                 face={face}
@@ -313,7 +317,8 @@ export function ZeropsNewMateForm({
                 open={styling}
                 size="dialog"
               />
-              <p className="new-mate-name">
+              {/* The Mate's name, at the headline's size, cut to one line. */}
+              <p className="m-0 max-w-full truncate text-display tracking-tight text-foreground">
                 <MateNameText
                   describedBy={`${id}-line`}
                   invalid={refused !== undefined}
@@ -321,7 +326,7 @@ export function ZeropsNewMateForm({
                   value={botName}
                 />
               </p>
-              <div className="new-mate-acts">
+              <div className="mt-4 flex justify-center gap-1">
                 <Button
                   aria-busy={shuffle.rolling || undefined}
                   onClick={shuffle.roll}
@@ -346,15 +351,21 @@ export function ZeropsNewMateForm({
                 </Button>
               </div>
             </div>
+            {/* The options open as a glide, the dialog growing with them (`useOptionsGlide`),
+                their words fading in behind it. */}
             <div
-              className="new-mate-options-room"
+              className="group/room max-h-0 overflow-hidden transition-[max-height] duration-260 ease-in-out-strong motion-reduce:transition-none"
               data-open={options ? "" : undefined}
               ref={optionsRoom}
             >
               <div className="min-h-0 overflow-hidden" inert={!options}>
-                <div className="new-mate-options">
+                <div className="mx-[calc(24px-(100cqw-100%)/2)] pb-2 opacity-0 transition-opacity duration-200 ease-out-strong group-data-open/room:opacity-100 group-data-open/room:delay-200 group-data-open/room:duration-260">
                   <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
-                  {access === undefined ? null : access(setUserRoles, bot)}
+                  {/* Who can work with it: 20 px under the persona's rule, its press 20 px under
+                      its line. */}
+                  {access === undefined ? null : (
+                    <div className="*:mt-5 *:gap-5">{access(setUserRoles, bot)}</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -363,7 +374,13 @@ export function ZeropsNewMateForm({
         </div>
       </div>
       {closed === undefined ? (
-        <div className="new-mate-foot">
+        // The line saying what Add does over the press, a rule above while the options show.
+        <div
+          className={cn(
+            "flex flex-col gap-2.5 px-6 py-4",
+            options ? "border-t border-border" : undefined,
+          )}
+        >
           <Button
             aria-busy={waiting || undefined}
             className="w-full"
@@ -393,7 +410,13 @@ export function ZeropsNewMateForm({
             variant="ghost-muted"
           >
             {options ? "Close" : "Mate access & persona setup"}
-            <ChevronDownIcon aria-hidden className="new-mate-chevron" />
+            <ChevronDownIcon
+              aria-hidden
+              className={cn(
+                "transition-[rotate] duration-200 ease-out-strong",
+                options ? "rotate-180" : undefined,
+              )}
+            />
           </Button>
         </div>
       ) : (
