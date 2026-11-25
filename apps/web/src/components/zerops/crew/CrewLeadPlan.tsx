@@ -139,7 +139,7 @@ export function CrewLeadPlanBlock({
     <div className="flex flex-col" data-crew-plan>
       {words === null ? null : <p className="text-line leading-4.5 text-foreground">{words}</p>}
       {/* The lead's plan: one line per task in a quiet tray, over the row's whole-row press. */}
-      <div className="relative z-1 mt-2.5 rounded-card bg-well px-3 py-1 ring-1 ring-foreground/8">
+      <div className="relative z-1 mt-2.5 flex flex-col rounded-card bg-well px-3 py-1 ring-1 ring-foreground/8">
         <List className="flex flex-col">
           {plan.rows.map((row) => (
             <div
