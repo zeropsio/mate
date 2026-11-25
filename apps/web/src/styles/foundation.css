@@ -423,6 +423,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
   --color-mint-panel: var(--zerops-mint-panel);
+  /* What a table's sticky header and first column stand on: the card's, or the ground of the
+     surface it sits in, which sets --table-ground. */
+  --color-table-ground: var(--table-ground, var(--color-card));
   --shadow-popup: var(--zerops-shadow-popup);
   --shadow-edge: var(--zerops-shadow-edge);
   /* A handle dragged over a colour plane: a white ring with a dark hairline, alike in both
