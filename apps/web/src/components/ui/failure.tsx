@@ -1,41 +1,72 @@
-import { CircleAlertIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon, CopyIcon } from "lucide-react";
 import type * as React from "react";
 
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { cn } from "~/lib/utils";
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "./alert";
+import { Button, InlineButton } from "./button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./collapsible";
 import { StatusPage } from "./status-page";
 
 /**
- * The source's own words for a failure, folded under "Details": never the first thing read, always
- * there for whoever reports it, to select and copy. `fields` says them as labelled lines instead
- * ("Where", "Rule", "Evidence"): each value in the source's own monospace, its label muted beside it.
+ * The source's words as it sent them, in a well that scrolls past twelve lines, with one Copy: what
+ * `FailureDetails` draws for words given as a string, for a panel that holds more beside them.
  */
-function FailureDetails({
+function FailureWords({ words }: { readonly words: string }) {
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "the details" });
+  return (
+    <div className="relative rounded-control border border-well-edge bg-well">
+      <pre className="m-0 max-h-48 overflow-auto py-2.5 ps-3 pe-10 text-left font-mono text-caption text-foreground/80 whitespace-pre-wrap wrap-anywhere">
+        {words}
+      </pre>
+      <Button
+        aria-label={isCopied ? "Copied" : "Copy the details"}
+        className="absolute top-1.5 right-1.5"
+        onClick={() => copyToClipboard(words)}
+        size="icon-xs"
+        variant="ghost"
+      >
+        {isCopied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+      </Button>
+    </div>
+  );
+}
+
+const DETAILS_ALIGN = {
+  start: "text-start",
+  center: "text-center",
+  end: "text-end",
+} as const;
+
+type DetailsFields = ReadonlyArray<{ readonly label: string; readonly value: React.ReactNode }>;
+
+/** The press that unfolds Details: muted words in the size of the text around it, a chevron. */
+function DetailsTrigger({ label }: { readonly label: string }) {
+  return (
+    <CollapsibleTrigger render={<InlineButton tone="muted" />}>
+      {label}
+      <ChevronDownIcon
+        aria-hidden="true"
+        className="size-3.5 transition-transform duration-200 ease-out-strong in-data-panel-open:rotate-180"
+      />
+    </CollapsibleTrigger>
+  );
+}
+
+/** What Details unfolds, read from the start whatever stands around it. */
+function DetailsPanel({
   children,
   fields,
-  align = "start",
 }: {
   readonly children?: React.ReactNode;
-  readonly fields?: ReadonlyArray<{ readonly label: string; readonly value: React.ReactNode }>;
-  /** Where "Details" stands: under a sentence at a line's end, `end`. The words read from the start. */
-  readonly align?: "start" | "end";
+  readonly fields?: DetailsFields | undefined;
 }) {
   return (
-    <Collapsible data-slot="failure-details">
-      <div className={align === "end" ? "flex justify-end" : "flex"}>
-        <CollapsibleTrigger className="text-muted-foreground text-caption underline-offset-4 hover:underline">
-          Details
-        </CollapsibleTrigger>
-      </div>
-      <CollapsiblePanel>
-        {fields === undefined ? (
-          <p className="m-0 mt-1.5 whitespace-pre-wrap break-words text-left font-mono text-muted-foreground text-caption">
-            {children}
-          </p>
-        ) : (
-          <dl className="m-0 mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-left text-caption">
+    <CollapsiblePanel>
+      <div className="pt-2 text-left">
+        {fields !== undefined ? (
+          <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
             {fields.map((field) => (
               <div className="contents" key={field.label}>
                 <dt className="text-muted-foreground">{field.label}</dt>
@@ -43,18 +74,61 @@ function FailureDetails({
               </div>
             ))}
           </dl>
+        ) : typeof children === "string" ? (
+          <FailureWords words={children} />
+        ) : (
+          children
         )}
-      </CollapsiblePanel>
-    </Collapsible>
+      </div>
+    </CollapsiblePanel>
   );
 }
 
 /**
- * Something failed: the cause in the person's words, the one action that fixes it, and the
- * source's own words folded under Details. Never a spinner beside it. `inline` stands in the place
- * that failed (a card, a list, a panel); `page` is a whole page that failed, in a fixed frame;
- * `line` is an action's refusal said where the action stands (under a form, beside its buttons, in
- * a card's foot): the cause alone, one red line of body text that wraps, no box and no mark.
+ * The source's own words for a failure, or a slow stage's diagnostics, folded under one muted
+ * "Details" with its chevron: never the first thing read, always there for whoever reports it.
+ * Words given as a string sit in a well, in the source's monospace, to select or copy whole;
+ * other children (a log being read, a list of services) stand in the panel as they are. `fields`
+ * says them as labelled lines instead ("Where", "Rule", "Evidence"): each value in monospace, its
+ * label muted beside it. `align` places the press on its line (a stage's centred column, a line's
+ * end); what it opens always reads from the start.
+ */
+function FailureDetails({
+  children,
+  fields,
+  label = "Details",
+  align = "start",
+}: {
+  readonly children?: React.ReactNode;
+  readonly fields?: DetailsFields;
+  /** The press's words, when they name what it folds: "Project services (3)". */
+  readonly label?: string;
+  readonly align?: keyof typeof DETAILS_ALIGN;
+}) {
+  return (
+    <Collapsible className="w-full min-w-0" data-slot="failure-details">
+      <div className={DETAILS_ALIGN[align]}>
+        <DetailsTrigger label={label} />
+      </div>
+      <DetailsPanel fields={fields}>{children}</DetailsPanel>
+    </Collapsible>
+  );
+}
+
+const given = (node: React.ReactNode) => node !== undefined && node !== null && node !== "";
+
+/**
+ * Something failed, said as one form in every place: what failed (the cause, in the person's
+ * words), why or what is kept (one more line, when the cause needs it), the one action that fixes
+ * it, and the source's own words folded under Details. Never a spinner beside it, never a status
+ * code or a raw answer as its headline.
+ *
+ * - `inline` — stands in the place that failed (a card, a list, a panel): an error notice.
+ * - `page` — a whole page that failed, in a fixed frame, marked with its subject.
+ * - `line` — an action's refusal said where the action stands (under a form, beside its buttons,
+ *   in a card's foot, in a person's row): the cause as one red line of body text that wraps, no
+ *   box and no mark; its why in muted words under it; then its action and Details on one line,
+ *   flowing with the text's own alignment.
  */
 function Failure({
   cause,
@@ -68,7 +142,7 @@ function Failure({
 }: Omit<React.HTMLAttributes<HTMLElement>, "children"> & {
   /** What went wrong, in the person's words: the headline. */
   readonly cause: React.ReactNode;
-  /** One more line, when the cause needs it: what is kept, what happens next. */
+  /** One more line, when the cause needs it: why, what is kept, what happens next. */
   readonly children?: React.ReactNode;
   /** The one action that fixes the cause; none when nothing here can. */
   readonly action?: React.ReactNode;
@@ -79,28 +153,52 @@ function Failure({
   readonly size?: "inline" | "page" | "line";
 }) {
   if (size === "line") {
+    const foot = given(action) || given(details);
+    if (!given(children) && !foot) {
+      return (
+        <span
+          className={cn("block text-pretty text-body text-status-failed-text", className)}
+          data-size="line"
+          data-slot="failure"
+          {...props}
+        >
+          {cause}
+        </span>
+      );
+    }
     return (
       <span
-        className={cn("block text-pretty text-body text-status-failed-text", className)}
+        className={cn("flex min-w-0 flex-col gap-1 text-body", className)}
         data-size="line"
         data-slot="failure"
         {...props}
       >
-        {cause}
+        <span className="text-pretty text-status-failed-text">{cause}</span>
+        {given(children) ? (
+          <span className="text-pretty text-muted-foreground">{children}</span>
+        ) : null}
+        {foot ? (
+          // Its action and Details' press share one line in inline flow, so they follow the
+          // alignment of the words above; what Details unfolds spans the line under them.
+          <Collapsible className="block" data-slot="failure-details" render={<span />}>
+            <span className="block space-x-3">
+              {action}
+              {given(details) ? <DetailsTrigger label="Details" /> : null}
+            </span>
+            {given(details) ? <DetailsPanel>{details}</DetailsPanel> : null}
+          </Collapsible>
+        ) : null}
       </span>
     );
   }
-  const folded =
-    details === undefined || details === null || details === "" ? null : (
-      <FailureDetails>{details}</FailureDetails>
-    );
+  const folded = given(details) ? <FailureDetails>{details}</FailureDetails> : null;
   if (size === "page") {
     return (
       <StatusPage
         actions={action}
         className={className}
         data-slot="failure"
-        footer={folded}
+        footer={folded === null ? null : <FailureDetails align="center">{details}</FailureDetails>}
         mark={mark}
         title={<span role="alert">{cause}</span>}
         {...props}
@@ -125,9 +223,9 @@ function Failure({
           {folded}
         </AlertDescription>
       )}
-      {action === undefined || action === null ? null : <AlertAction>{action}</AlertAction>}
+      {given(action) ? <AlertAction>{action}</AlertAction> : null}
     </Alert>
   );
 }
 
-export { Failure, FailureDetails };
+export { Failure, FailureDetails, FailureWords };

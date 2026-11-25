@@ -5,7 +5,7 @@
 import { BoxIcon, InboxIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 import { Loading, type LoadingShape } from "~/components/ui/loading";
@@ -330,6 +330,23 @@ export function ChosenFailure() {
             role="alert"
             size="line"
           />
+        </div>
+      </Specimen>
+      <Specimen
+        label={'<Failure size="line" cause action details>why</Failure> · a row\'s refusal, whole'}
+      >
+        <div className="w-[480px]">
+          <Failure
+            action={<InlineButton tone="destructive">Delete</InlineButton>}
+            cause="The invitation to marie.cerna@example.com was withdrawn, but Zerops didn't send it again."
+            details={
+              '{\n  "step": "invite",\n  "code": "tooManyInvitations",\n  "origin": "zerops",\n  "zerops": { "words": "The invitation could not be sent." }\n}'
+            }
+            role="alert"
+            size="line"
+          >
+            Zerops refused: The invitation could not be sent.
+          </Failure>
         </div>
       </Specimen>
       <Specimen label='<Failure size="page" …> · open Details: nothing above moves' span="row">
