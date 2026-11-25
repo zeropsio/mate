@@ -156,6 +156,7 @@
 .ov-card,
 .ov-other {
   --ov-ground: var(--card);
+  --table-ground: var(--ov-ground);
   --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
   --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
@@ -628,69 +629,21 @@
 
 /* An app's access as one table: people down, its places across. It scrolls sideways inside its card,
    never the page, the people column standing still on the card's own ground. */
+/* The access table (the kit's Table, `md`), its people column sticking on the card's ground:
+   reaching out so its words stand on the section's edge. */
 .ov-acc-scroll {
   /* Holds its own screen-reader words, which would otherwise widen the page from off its edge. */
   position: relative;
   max-width: 100%;
-  margin: 2px -6px 0;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  margin: 2px -8px 0;
 }
 
-.ov-acc {
-  min-width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: var(--text-body);
-  line-height: 18px;
-}
-
-.ov-acc th,
-.ov-acc td {
-  padding: 0 6px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.ov-acc thead th {
-  height: 32px;
-  color: var(--muted-foreground);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  vertical-align: bottom;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--ov-rule);
-}
-
-.ov-acc tbody tr:is(tr):where(:not(:first-child)) > * {
-  border-top: 1px solid var(--ov-rule);
-}
-
-.ov-acc tbody td,
-.ov-acc tbody th {
-  height: 44px;
-}
-
-/* The places share the width the people leave; each column at least its level's menu. */
-.ov-acc thead th:not(.ov-acc-who) {
-  min-width: 112px;
-}
-
-.ov-acc-who {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  width: 1%;
-  min-width: 220px;
-  background: var(--ov-ground);
-  font-weight: 400;
-}
-
-.ov-acc [data-focus] {
+/* The place a place's page linked to: its column lit. */
+.ov-acc-scroll [data-focus] {
   background: color-mix(in oklab, var(--primary) 7%, transparent);
 }
 
-.ov-acc thead th[data-focus] {
+.ov-acc-scroll thead th[data-focus] {
   color: var(--foreground);
 }
 
@@ -749,7 +702,7 @@ a.ov-acc-face:hover [data-part="name"] {
 }
 
 /* An invitation is dimmed; its menu stays at full ink. */
-.ov-acc tr[data-pending] .ov-acc-face,
+.ov-acc-scroll tr[data-pending] .ov-acc-face,
 .ov-acc-stack-row[data-pending] [data-acc-open] > :not(.ov-acc-caret) {
   opacity: 0.55;
 }

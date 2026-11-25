@@ -42,6 +42,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../../ui/menu";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../ui/table";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { PersonAvatar } from "../primitives";
 import {
@@ -260,14 +261,15 @@ function AccessGrid({
   }, [focus]);
   return (
     <div className="ov-acc-scroll" ref={scroller}>
-      <table aria-label={label} className="ov-acc">
-        <thead>
-          <tr>
-            <th className="ov-acc-who" scope="col">
+      <Table aria-label={label} size="md">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-px min-w-55" scope="col" sticky>
               <span className="sr-only">Person</span>
-            </th>
+            </TableHead>
             {columns.map((column) => (
-              <th
+              <TableHead
+                className="min-w-28"
                 data-focus={focus === column.projectId || undefined}
                 data-kind={column.kind}
                 id={columnAnchor(column.projectId)}
@@ -275,23 +277,26 @@ function AccessGrid({
                 scope="col"
               >
                 <ColumnHead column={column} />
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr data-pending={row.pending || undefined} key={row.key}>
-              <th className="ov-acc-who" scope="row">
+            <TableRow data-pending={row.pending || undefined} key={row.key}>
+              <TableHead className="w-px min-w-55" scope="row" sticky>
                 <span className="ov-acc-person">
                   <Who linked={personPage?.(row.key) === true} row={row} />
                   <RowMenu busy={saving?.has(row.key) === true} handlers={handlers} row={row} />
                 </span>
-              </th>
+              </TableHead>
               {row.cells.map((cell, index) => {
                 const column = columns[index]!;
                 return (
-                  <td data-focus={focus === column.projectId || undefined} key={cell.projectId}>
+                  <TableCell
+                    data-focus={focus === column.projectId || undefined}
+                    key={cell.projectId}
+                  >
                     <Cell
                       busy={
                         saving?.has(row.key) === true ||
@@ -307,13 +312,13 @@ function AccessGrid({
                           })}
                       row={row}
                     />
-                  </td>
+                  </TableCell>
                 );
               })}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
