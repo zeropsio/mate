@@ -20,6 +20,7 @@ import type {
   UsageScope,
 } from "./usageDimensions";
 import { Button, InlineButton } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 /**
  * Person series, in legend order: the Mate identity tints, so a person reads
@@ -177,7 +178,7 @@ export function UsagePeopleSplit({
             </span>
             <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
               <span className="font-medium text-foreground">{amount(metric, person)}</span>
-              <span className="text-caption text-muted-foreground">{share(metric, person)}</span>
+              <Text variant="meta">{share(metric, person)}</Text>
             </span>
           </li>
         ))}

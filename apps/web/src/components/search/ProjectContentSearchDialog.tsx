@@ -18,6 +18,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedSearchLine } from "./HighlightedSearchLine";
+import { Text } from "~/components/ui/text";
 
 interface ProjectContentSearchDialogProps {
   readonly onOpenChange: (open: boolean) => void;
@@ -76,7 +77,7 @@ function SearchOptionButton(props: {
           />
         }
       >
-        <span className="font-mono">{props.children}</span>
+        <Text variant="code">{props.children}</Text>
       </TooltipTrigger>
       <TooltipPopup side="top">{props.label}</TooltipPopup>
     </Tooltip>
@@ -241,11 +242,15 @@ function OpenContentSearchDialog(props: {
       ) : null}
 
       {matches.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-muted-foreground">
+        <Text
+          className="flex flex-1 items-center justify-center px-6 text-center"
+          render={<div />}
+          variant="description"
+        >
           {search.hasQuery && !search.isPending && !search.error
             ? "No results found."
             : "Type to search across your project."}
-        </div>
+        </Text>
       ) : (
         <ScrollArea className="min-h-0 flex-1" scrollFade>
           <div className="py-2">
@@ -284,7 +289,7 @@ function OpenContentSearchDialog(props: {
                         onClick={() => openMatch(match)}
                         render={<button type="button" disabled={!canOpenMatches} />}
                         title={
-                          <span className="flex min-w-0 gap-3 font-mono">
+                          <Text className="flex min-w-0 gap-3" variant="code">
                             <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
                               {match.lineNumber}
                             </span>
@@ -295,7 +300,7 @@ function OpenContentSearchDialog(props: {
                                 theme={resolvedTheme}
                               />
                             </span>
-                          </span>
+                          </Text>
                         }
                       />
                     </div>

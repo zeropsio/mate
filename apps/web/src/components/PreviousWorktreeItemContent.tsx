@@ -1,6 +1,7 @@
 import { HistoryIcon } from "lucide-react";
 
 import { MiddleTruncate } from "./ui/middle-truncate";
+import { Text } from "~/components/ui/text";
 
 export function PreviousWorktreeItemContent({ branch }: { branch: string | null }) {
   return (
@@ -9,9 +10,9 @@ export function PreviousWorktreeItemContent({ branch }: { branch: string | null 
       <span className="flex min-w-0 flex-col">
         <span>Previous worktree</span>
         {branch ? (
-          <span className="min-w-0 text-caption text-muted-foreground">
+          <Text className="min-w-0" variant="note">
             <MiddleTruncate value={branch} />
-          </span>
+          </Text>
         ) : null}
       </span>
     </span>

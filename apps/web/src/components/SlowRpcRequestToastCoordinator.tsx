@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { toastManager } from "~/lib/toasts";
+import { Text } from "~/components/ui/text";
 
 function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): string {
   const count = requests.length;
@@ -15,7 +16,7 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
   return (
-    <ul className="space-y-2.5 text-caption text-muted-foreground">
+    <Text className="space-y-2.5" render={<ul />} variant="note">
       {requests.map((request) => (
         <li
           className="min-w-0 border-border/50 border-b pb-2 last:border-b-0 last:pb-0"
@@ -27,7 +28,7 @@ function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRe
           </div>
         </li>
       ))}
-    </ul>
+    </Text>
   );
 }
 

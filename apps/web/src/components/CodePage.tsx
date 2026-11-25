@@ -46,6 +46,7 @@ import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MatePanelColumn } from "./zerops/MatePanelPlaces";
 import { SectionLabel } from "./zerops/system";
+import { Text } from "~/components/ui/text";
 
 /** One file of "What changed", folded unless opened. */
 export interface CodeFile {
@@ -134,9 +135,9 @@ export function CodeChangesToolbar({
                       >
                         <span className="flex w-full items-center gap-3">
                           <span>{choice.label}</span>
-                          <span className="ml-auto text-caption tabular-nums text-muted-foreground">
+                          <Text className="ml-auto" variant="meta">
                             {diffChoiceCount(choice)}
-                          </span>
+                          </Text>
                         </span>
                       </DropdownMenuRadioItem>
                     ))}
@@ -277,8 +278,10 @@ export function CodeCompare({
   readonly children: ReactNode;
 }) {
   return (
-    <div
-      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-caption text-muted-foreground"
+    <Text
+      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden"
+      render={<div />}
+      variant="note"
       aria-label={`Comparing ${head} against ${base}`}
     >
       <Tooltip>
@@ -289,7 +292,7 @@ export function CodeCompare({
         <TooltipPopup side="top">{`${head} → ${base}`}</TooltipPopup>
       </Tooltip>
       {children}
-    </div>
+    </Text>
   );
 }
 

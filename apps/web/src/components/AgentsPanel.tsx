@@ -50,6 +50,7 @@ import { Collapsible, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Row } from "~/components/ui/row";
 import { Loading } from "~/components/ui/loading";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -347,7 +348,9 @@ function WorkflowScriptView({
             {result.value.truncated ? "\n… (truncated)" : ""}
           </pre>
         ) : result._tag === "Failure" ? (
-          <p className="text-caption text-destructive-foreground">Could not load the script.</p>
+          <Text render={<p />} variant="error">
+            Could not load the script.
+          </Text>
         ) : (
           <Loading count={3} label="The script" shape="lines" />
         )}

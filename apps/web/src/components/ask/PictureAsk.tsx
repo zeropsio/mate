@@ -28,6 +28,7 @@ import {
   pictureAskSteps,
   pictureAsksPassed,
 } from "./pictureAsk.logic";
+import { Text } from "~/components/ui/text";
 
 interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
@@ -325,7 +326,11 @@ function PictureWords({
   const [copied, setCopied] = useState(false);
   return (
     <figure className="grid min-w-0 gap-1">
-      <figcaption className="flex min-h-7 items-center justify-between gap-3 text-caption text-muted-foreground">
+      <Text
+        className="flex min-h-7 items-center justify-between gap-3"
+        render={<figcaption />}
+        variant="note"
+      >
         {label}
         {copy ? (
           <Button
@@ -344,7 +349,7 @@ function PictureWords({
             {copied ? "Copied" : "Copy"}
           </Button>
         ) : null}
-      </figcaption>
+      </Text>
       <div className="whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
         {words}
       </div>

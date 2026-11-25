@@ -64,6 +64,7 @@ import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
 import { Tab, TabPress, TabStrip, useTabFolded } from "./ui/tab-strip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
+import { Text } from "~/components/ui/text";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
@@ -436,10 +437,12 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
           from its title instead of losing the top under the tab bar. */}
       <div className="m-auto w-full max-w-lg">
         <div className="mb-4 text-center">
-          <h3 className="font-medium text-foreground text-body">Open a page</h3>
-          <p className="mt-1 text-muted-foreground text-caption">
+          <Text render={<h3 />} variant="heading">
+            Open a page
+          </Text>
+          <Text className="mt-1" render={<p />} variant="note">
             Choose what to show beside the chat.
-          </p>
+          </Text>
         </div>
         {/* Rows of one height, the tallest card's: words that need a third line in a narrow panel
             raise every card with them. */}

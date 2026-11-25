@@ -15,6 +15,7 @@ import {
   CommandShortcut,
 } from "./ui/command";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
+import { Text } from "~/components/ui/text";
 
 interface CommandPaletteResultsProps {
   emptyStateMessage?: string;
@@ -35,20 +36,20 @@ export function CommandPaletteResults(props: CommandPaletteResultsProps) {
         ? "No matching actions."
         : "No matching commands, projects, or threads.");
     return (
-      <div className="py-10 text-center text-body text-muted-foreground">
+      <Text className="py-10 text-center" render={<div />} variant="description">
         {/* Nothing to say yet (`paletteNoMatchMessage`): the line's room is held, so the box never
             grows when the sentence comes. */}
         {message === "" ? <span aria-hidden="true">{"\u00a0"}</span> : message}
-      </div>
+      </Text>
     );
   }
 
   return (
     <>
       {props.statusMessage ? (
-        <p role="status" className="px-3 py-2 text-body text-muted-foreground">
+        <Text className="px-3 py-2" render={<p />} variant="description" role="status">
           {props.statusMessage}
-        </p>
+        </Text>
       ) : null}
       <CommandList>
         {props.groups.map((group) => (

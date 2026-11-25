@@ -86,6 +86,7 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
+import { Text } from "~/components/ui/text";
 
 interface TerminalInputTarget {
   readonly environmentId: EnvironmentId;
@@ -1674,12 +1675,16 @@ export default function ThreadTerminalDrawer({
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
         {resizeHandle}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body text-muted-foreground">
+        <Text
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center"
+          render={<div />}
+          variant="description"
+        >
           <p>No terminal sessions for this thread yet.</p>
           <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
             {newTerminalActionLabel}
           </Button>
-        </div>
+        </Text>
       </aside>
     );
   }

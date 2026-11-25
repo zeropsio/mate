@@ -30,6 +30,7 @@ import {
   loadExpress,
   resetExpress,
 } from "./expressSdk";
+import { Text } from "~/components/ui/text";
 
 type Stage =
   | { readonly kind: "idle" }
@@ -284,9 +285,9 @@ export function ExpressPanel({
             <ExpressMark className="size-10 shrink-0 rounded-control shadow-xs/10" />
             <div className="flex min-w-0 flex-col">
               <h2 className="text-emphasis font-semibold">Adobe Express</h2>
-              <p className="text-muted-foreground text-body leading-5">
+              <Text render={<p />} variant="description">
                 {`Design here; what you save goes into your message to ${mate ?? "this Mate"}.`}
-              </p>
+              </Text>
             </div>
           </header>
 
@@ -328,9 +329,9 @@ export function ExpressPanel({
 
           {history.length === 0 ? null : (
             <section className="flex flex-col gap-2">
-              <h3 className="text-muted-foreground text-caption font-medium">
+              <Text render={<h3 />} variant="label">
                 In this conversation
-              </h3>
+              </Text>
               <div className="grid grid-cols-2 gap-2 @md:grid-cols-3">
                 {history
                   .slice(0, HISTORY_SHOWN)
@@ -391,10 +392,10 @@ export function ExpressPanel({
             />
           )}
 
-          <footer className="text-muted-foreground mt-auto flex items-center gap-2 text-caption">
+          <Text className="mt-auto flex items-center gap-2" render={<footer />} variant="note">
             <ExpressMark className="size-4 rounded-mark" />
             <span>Powered by Adobe Express · saving asks for your Adobe account</span>
-          </footer>
+          </Text>
         </div>
       )}
     </div>

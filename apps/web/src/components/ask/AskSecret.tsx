@@ -12,6 +12,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { KEEP_HIDDEN } from "./ask.logic";
 import type { AskDensity } from "./AskCard";
+import { Text } from "~/components/ui/text";
 
 /** No browser or password manager offers to save or fill what is typed here, shown or masked. */
 const NOT_A_PASSWORD = {
@@ -94,7 +95,7 @@ export function AskSecretField(props: AskSecretFieldProps) {
   const { keepHidden: hidden } = props;
   const keepHidden =
     hidden === undefined ? null : (
-      <span className="flex shrink-0 items-center gap-2 text-caption text-muted-foreground">
+      <Text className="flex shrink-0 items-center gap-2" variant="note">
         <Checkbox
           aria-labelledby={hiddenId}
           checked={hidden.already || hidden.value}
@@ -102,12 +103,9 @@ export function AskSecretField(props: AskSecretFieldProps) {
           onCheckedChange={(checked) => hidden.onChange(checked === true)}
         />
         <span id={hiddenId}>{KEEP_HIDDEN}</span>
-      </span>
+      </Text>
     );
-  const hint =
-    props.hint === undefined ? null : (
-      <span className="text-caption text-muted-foreground">{props.hint}</span>
-    );
+  const hint = props.hint === undefined ? null : <Text variant="note">{props.hint}</Text>;
   if (compact) {
     return (
       // The field keeps a width to type in; Keep hidden goes under it where both do not fit.
@@ -185,9 +183,9 @@ export function AskRevealed({
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
-      <p className="text-caption text-muted-foreground" aria-live="off">
+      <Text render={<p />} variant="note" aria-live="off">
         Hides in {left} s or when you leave
-      </p>
+      </Text>
     </div>
   );
 }

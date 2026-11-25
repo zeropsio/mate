@@ -18,6 +18,7 @@ import {
   usageTaskListCut,
   type UsageTaskRow,
 } from "./usageAutomated.logic";
+import { Text } from "~/components/ui/text";
 
 /** In place of a face: automated Mates are nobody's own. Decorative: their name stands beside it. */
 export function AutomatedMatesMark() {
@@ -190,7 +191,7 @@ export function UsageAutomatedBudget() {
   const budget = automatedBudget(read.setting.state === "known" ? read.setting.held : null);
   if (budget === null) return null;
   return (
-    <p className="flex items-center gap-2 text-caption text-muted-foreground">
+    <Text className="flex items-center gap-2" render={<p />} variant="note">
       <AutomatedMatesMark />
       <span>
         Automated Mates spent{" "}
@@ -209,6 +210,6 @@ export function UsageAutomatedBudget() {
       >
         Change
       </InlineButton>
-    </p>
+    </Text>
   );
 }

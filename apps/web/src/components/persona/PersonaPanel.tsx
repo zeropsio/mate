@@ -79,6 +79,7 @@ import {
   type PersonaSummary,
   type PersonaTemplateRow,
 } from "./PersonaPanel.logic";
+import { Text } from "~/components/ui/text";
 
 const PERSONA_PAGE_WORDS = {
   none: "No persona",
@@ -941,9 +942,9 @@ function PersonaEditor(props: {
           value={draft.name}
         />
         {errors.name === undefined ? null : (
-          <span className="text-caption text-destructive-foreground" role="alert">
+          <Text variant="error" role="alert">
             {errors.name}
-          </span>
+          </Text>
         )}
       </label>
       <label className="flex flex-col gap-1">
@@ -971,9 +972,9 @@ function PersonaEditor(props: {
           value={draft.instructions}
         />
         {errors.instructions === undefined ? null : (
-          <span className="text-caption text-destructive-foreground" role="alert">
+          <Text variant="error" role="alert">
             {errors.instructions}
-          </span>
+          </Text>
         )}
       </label>
       {personaLeavesTemplate(props.base, draft) ? (

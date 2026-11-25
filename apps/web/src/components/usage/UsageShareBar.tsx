@@ -2,6 +2,7 @@ import { formatPercent } from "@t3tools/shared/usageFormat";
 import type { ReactNode } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Text } from "~/components/ui/text";
 
 export interface ShareSegment {
   readonly label: string;
@@ -31,7 +32,9 @@ export function UsageShareBar({
   return (
     <div className="flex min-w-0 flex-col gap-2.5">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-body font-medium text-foreground">{label}</h3>
+        <Text render={<h3 />} variant="heading">
+          {label}
+        </Text>
         {aside}
       </div>
       <div

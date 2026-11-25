@@ -61,6 +61,7 @@ import { WaitLine } from "../zerops/WaitLine";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
+import { Text } from "~/components/ui/text";
 
 const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
   ahead: { label: "Ahead of pace: spending faster than the window elapses", icon: TrendingUpIcon },
@@ -208,10 +209,10 @@ export function LimitWindows({
               </span>
             </span>
             <WindowBar color={color} window={window} now={now} />
-            <span className="flex items-center gap-2 text-caption whitespace-nowrap text-muted-foreground tabular-nums">
+            <Text className="flex items-center gap-2 whitespace-nowrap" variant="meta">
               {pace ? <PaceIcon pace={pace} /> : null}
               <span className="ms-auto shrink-0">{resetsIn ?? ""}</span>
-            </span>
+            </Text>
           </Fragment>
         );
       })}
@@ -267,7 +268,11 @@ function AccountHeading({
   readonly accentColor?: string | undefined;
 }) {
   return (
-    <h2 className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-body font-medium text-foreground">
+    <Text
+      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+      render={<h2 />}
+      variant="heading"
+    >
       <ProviderInstanceIcon
         driverKind={driver}
         displayName={instanceLabel}
@@ -303,7 +308,7 @@ function AccountHeading({
           hideTooltip="Click to hide email"
         />
       ) : null}
-    </h2>
+    </Text>
   );
 }
 
@@ -377,11 +382,7 @@ function AccountLimits({
       {places ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <PlaceChips places={places} />
-          {places.length > 1 ? (
-            <span className="text-caption text-muted-foreground">
-              newest of {places.length} reads
-            </span>
-          ) : null}
+          {places.length > 1 ? <Text variant="note">newest of {places.length} reads</Text> : null}
         </div>
       ) : null}
       <LimitWindows driver={provider.driver} windows={limits.windows} now={now} />
@@ -453,7 +454,7 @@ export function ResetCredits({
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+    <Text className="flex flex-wrap items-center gap-x-3 gap-y-1" render={<div />} variant="note">
       <span className="tabular-nums">{summary}</span>
       {credits.availableCount > 0 ? (
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
@@ -476,7 +477,7 @@ export function ResetCredits({
           </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
-    </div>
+    </Text>
   );
 }
 
@@ -504,7 +505,7 @@ function SourceAccountLimits({
         email={account.email}
       />
       {notice ? (
-        <span className="text-caption text-muted-foreground">{notice}</span>
+        <Text variant="note">{notice}</Text>
       ) : (
         <LimitWindows driver={account.driver} windows={account.usageLimits.windows} now={now} />
       )}
@@ -532,13 +533,13 @@ function SourceLimits({ source, now }: { readonly source: LimitsSource; readonly
   return (
     <div className="flex flex-col gap-6">
       {source.error ? (
-        <span className="text-caption text-muted-foreground">{source.error}</span>
+        <Text variant="note">{source.error}</Text>
       ) : source.accounts.length === 0 ? (
-        <span className="text-caption text-muted-foreground">
+        <Text variant="note">
           {source.hiddenAccountCount > 0
             ? "All accounts are shown by connected providers."
             : "No accounts reported."}
-        </span>
+        </Text>
       ) : (
         source.accounts.map((account) => (
           <SourceAccountLimits
@@ -627,7 +628,7 @@ export function UsageLimitsSection({
   }
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (
-      <p className="text-body text-muted-foreground">
+      <Text render={<p />} variant="description">
         Subscription limits could not be read from every Mate.
         {onRetry === undefined ? null : (
           <>
@@ -635,15 +636,15 @@ export function UsageLimitsSection({
             <InlineButton onClick={onRetry}>Try again</InlineButton>
           </>
         )}
-      </p>
+      </Text>
     );
   }
   if (state === "none") {
     return (
       <div className="flex flex-col gap-8">
-        <p className="text-body text-muted-foreground">
+        <Text render={<p />} variant="description">
           No coding agent on your connected Mates reports subscription limits.
-        </p>
+        </Text>
         {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
       </div>
     );
@@ -654,10 +655,7 @@ export function UsageLimitsSection({
         block.kind === "notices" ? (
           <div className="flex flex-col gap-1" key={block.key}>
             {block.notices.map((group) => (
-              <p
-                key={`${group.driver}:${group.notice}`}
-                className="text-caption text-muted-foreground"
-              >
+              <Text render={<p />} variant="note" key={`${group.driver}:${group.notice}`}>
                 {limitsNoticeLine({
                   driverLabel: getDriverOption(group.driver)?.label ?? String(group.driver),
                   notice: group.notice,
@@ -665,7 +663,7 @@ export function UsageLimitsSection({
                     ? placesOf(group.environmentIds).map((place) => place.name)
                     : [],
                 })}
-              </p>
+              </Text>
             ))}
           </div>
         ) : block.entry.kind === "account" ? (
@@ -680,11 +678,11 @@ export function UsageLimitsSection({
         ) : null,
       )}
       {page.unread.length > 0 || unavailableNames.length > 0 ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Limits unavailable from{" "}
           {[...unavailableNames, ...placesOf(page.unread).map((place) => place.name)].join(", ")}.
           Values from these Mates are not included.
-        </p>
+        </Text>
       ) : null}
       {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}
       {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}

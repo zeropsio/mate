@@ -131,6 +131,7 @@ import {
   buildSidebarProjectSnapshots,
 } from "../sidebarProjectGrouping";
 import type { Project } from "../types";
+import { Text } from "~/components/ui/text";
 
 const selectCommandPaletteSortOrders = (settings: ClientSettings) => ({
   sidebarProjectSortOrder: settings.sidebarProjectSortOrder,
@@ -1222,9 +1223,9 @@ export function OpenCommandPaletteDialog(props: {
       value={query}
     >
       {threadSearch.incomplete && !threadSearch.isPending ? (
-        <p role="status" className="px-3 pb-2 text-caption text-muted-foreground">
+        <Text className="px-3 pb-2" render={<p />} variant="note" role="status">
           Some conversations could not be searched.
-        </p>
+        </Text>
       ) : null}
       <CommandPaletteResults
         groups={filteredGroups}

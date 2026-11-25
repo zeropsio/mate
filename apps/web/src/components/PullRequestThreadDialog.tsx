@@ -25,6 +25,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
+import { Text } from "~/components/ui/text";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -231,10 +232,10 @@ export function PullRequestThreadDialog({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
-                  <p className="truncate text-muted-foreground text-caption">
+                  <Text render={<p />} truncate variant="note">
                     #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
                     {resolvedPullRequest.baseBranch}
-                  </p>
+                  </Text>
                 </div>
                 <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
                   {resolvedPullRequest.state}
@@ -244,10 +245,10 @@ export function PullRequestThreadDialog({
           ) : null}
 
           {isResolving ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-caption">
+            <Text className="flex items-center gap-2" render={<div />} variant="note">
               <Spinner size="sm" />
               Resolving {terminology.singular}...
-            </div>
+            </Text>
           ) : null}
 
           {errorMessage ? <p className="text-destructive text-caption">{errorMessage}</p> : null}

@@ -88,6 +88,7 @@ import {
   saveUsagePagePreferences,
   type UsagePagePreferences,
 } from "./usagePagePreferences";
+import { Text } from "~/components/ui/text";
 
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
@@ -499,7 +500,9 @@ export function UsagePage({
           <WorkspacePageContainer className="max-sm:px-4" width="wide">
             {showingLimits ? null : (
               <div className="flex flex-col gap-2 lg:hidden">
-                <p className="text-caption text-muted-foreground md:hidden">{windowLabel}</p>
+                <Text className="md:hidden" render={<p />} variant="note">
+                  {windowLabel}
+                </Text>
                 <div className="flex min-w-0 flex-wrap gap-2">
                   <UsageScopeFilters
                     scope={scope}
@@ -512,17 +515,17 @@ export function UsagePage({
                 </div>
               </div>
             )}
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               {showingLimits
                 ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
                 : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
-            </p>
+            </Text>
             {showingLimits ? (
               baseline === "unavailable" ? (
-                <p className="text-body text-muted-foreground">
+                <Text render={<p />} variant="description">
                   Subscription limits could not be read.{" "}
                   <InlineButton onClick={identityRead.refresh}>Try again</InlineButton>
-                </p>
+                </Text>
               ) : (
                 <UsageLimitsSection
                   now={limitsNow}
@@ -537,14 +540,16 @@ export function UsagePage({
               read.kind === "unavailable" ? (
                 <UsageReadStatus read={read} label="Usage" onRetry={refresh} />
               ) : (
-                <p className="text-body text-muted-foreground">{state.message}</p>
+                <Text render={<p />} variant="description">
+                  {state.message}
+                </Text>
               )
             ) : (
               <>
                 {report?.coverageMore || report?.groupsMore ? (
-                  <p role="status" className="text-caption text-muted-foreground">
+                  <Text render={<p />} variant="note" role="status">
                     This report contains more sources or groups than can be shown.
-                  </p>
+                  </Text>
                 ) : null}
                 {/* One reserved line: the read's state, and the month's automated spend beside it. */}
                 <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
@@ -565,7 +570,7 @@ export function UsagePage({
                               : formatUsd(merged.costUsd)
                             : formatTokens(merged.totalTokens)}
                         </span>
-                        <span className="text-caption text-muted-foreground">
+                        <Text variant="note">
                           {sessionsLabel}
                           {metric === "cost" && (
                             <>
@@ -576,11 +581,11 @@ export function UsagePage({
                           )}
                           {whoSummary}
                           {costsHidden ? ` · ${COSTS_HIDDEN}` : ""}
-                        </span>
+                        </Text>
                       </div>
 
                       {dimensions.mates.length === 1 ? (
-                        <p className="text-body text-muted-foreground">
+                        <Text render={<p />} variant="description">
                           {[
                             dimensions.mates[0]!.mateName,
                             dimensions.mates[0]!.projectName,
@@ -588,7 +593,7 @@ export function UsagePage({
                           ]
                             .filter(Boolean)
                             .join(" · ")}
-                        </p>
+                        </Text>
                       ) : null}
                       {canSeeOtherPeople && dimensions.visible.person ? (
                         <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
@@ -641,21 +646,21 @@ export function UsagePage({
                                   : formatTokens(totals?.totalTokens ?? 0)}
                               </span>
                             </div>
-                            <span className="text-caption text-muted-foreground">
+                            <Text variant="note">
                               {metric === "cost"
                                 ? `${totals.costKnown === false ? unpriced : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
                                 : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? unpriced : formatUsageCost(totals)}`}
-                            </span>
+                            </Text>
                           </div>
                         );
                       })}
                     </div>
                   )}
                   <div className="flex min-w-0 flex-col gap-3">
-                    <h2 className="text-body font-medium text-foreground">
+                    <Text render={<h2 />} variant="heading">
                       {isPast24Hours ? "Hourly" : "Daily"}{" "}
                       {metric === "tokens" ? "processed tokens" : "priced cost"}
-                    </h2>
+                    </Text>
                     <div className="min-h-5">
                       {settling ? null : read.kind === "read" &&
                         read.stale &&
@@ -673,9 +678,9 @@ export function UsagePage({
                         <span className="text-3xs">&nbsp;</span>
                       </div>
                     ) : metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
-                      <p className="text-body text-muted-foreground">
+                      <Text render={<p />} variant="description">
                         Recorded tokens have no usable prices.
-                      </p>
+                      </Text>
                     ) : (
                       <UsageProviderChart
                         providers={activeProviders}
@@ -692,11 +697,13 @@ export function UsagePage({
                 </section>
 
                 <section className="flex flex-col gap-2">
-                  <h2 className="text-body font-medium text-foreground">Agent-reported costs</h2>
-                  <p className="text-caption text-muted-foreground">
+                  <Text render={<h2 />} variant="heading">
+                    Agent-reported costs
+                  </Text>
+                  <Text render={<p />} variant="note">
                     Reported by the coding agent, separately from the API-equivalent token-price
                     estimate.
-                  </p>
+                  </Text>
                   <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
                       <div className="h-5 w-36 rounded-mark bg-muted" />
@@ -718,7 +725,9 @@ export function UsagePage({
 
                 <section className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-body font-medium text-foreground">Breakdown</h2>
+                    <Text render={<h2 />} variant="heading">
+                      Breakdown
+                    </Text>
                     <div className="hidden sm:block">
                       <ToggleGroup
                         aria-label="Usage breakdown"
@@ -766,9 +775,9 @@ export function UsagePage({
                     <UsageReadStatus read={sections.models} label="model usage" onRetry={refresh} />
                   ) : null}
                   {!settling && breakdown === "model" ? (
-                    <p className="text-caption text-muted-foreground">
+                    <Text render={<p />} variant="note">
                       A turn can use several models. Each model row shows its own consumption.
-                    </p>
+                    </Text>
                   ) : null}
                   {settling ? (
                     <div className="h-44 rounded-control bg-muted/35" />
@@ -985,7 +994,9 @@ function UsageTotals({
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-body font-medium text-foreground">Totals</h2>
+      <Text render={<h2 />} variant="heading">
+        Totals
+      </Text>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
         {USAGE_TOTALS.map(([label, key]) => (
           <Metric
@@ -1021,7 +1032,9 @@ function Metric({
       <span className="text-caption text-muted-foreground">{label}</span>
       <span className="text-emphasis font-medium text-foreground tabular-nums">{value}</span>
       {detail === undefined ? null : (
-        <span className="truncate text-caption text-muted-foreground tabular-nums">{detail}</span>
+        <Text truncate variant="meta">
+          {detail}
+        </Text>
       )}
     </div>
   );

@@ -70,6 +70,7 @@ import {
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
+import { Text } from "~/components/ui/text";
 
 export interface BranchToolbarBranchSelectorHandle {
   open: () => void;
@@ -676,7 +677,9 @@ export function BranchToolbarBranchSelector({
               <span className="truncate font-medium">
                 Checkout {sourceControlPresentation.terminology.singular}
               </span>
-              <span className="truncate text-muted-foreground text-caption">{prReference}</span>
+              <Text truncate variant="note">
+                {prReference}
+              </Text>
             </span>
           </div>
         </ComboboxItem>

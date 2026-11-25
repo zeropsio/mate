@@ -565,6 +565,7 @@ import {
   VaultPanelContainer,
   FilePreviewPanel,
 } from "./ConversationLazyPanels";
+import { Text } from "~/components/ui/text";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -7594,12 +7595,14 @@ function ConversationView(props: ChatViewProps) {
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <div data-over-conversation="">
                             {pendingSendNotice && (
-                              <p
+                              <Text
+                                className="px-4 py-2"
+                                render={<p />}
+                                variant="description"
                                 role="status"
-                                className="px-4 py-2 text-body text-muted-foreground"
                               >
                                 {pendingSendNotice}
-                              </p>
+                              </Text>
                             )}
                             <AgentAdmissionExplanation
                               attention={admissionPlacement.composer}

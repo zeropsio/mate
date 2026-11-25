@@ -72,6 +72,7 @@ import {
   type McpActionResult,
   type McpSignInResult,
 } from "./useMcpServers";
+import { Text } from "~/components/ui/text";
 
 export const MCP_WORDS = {
   builtIn: "Built in",
@@ -306,12 +307,12 @@ export function McpPanelBody(props: {
 
         {shown.map((group) => (
           <section className="flex flex-col gap-2" data-mcp-group={group.id} key={group.id}>
-            <h3 className="flex items-center gap-2 font-medium text-caption text-muted-foreground">
+            <Text className="flex items-center gap-2" render={<h3 />} variant="label">
               {MCP_WORDS.groups[group.id]}
               <span className="tabular-nums" data-mcp-group-count>
                 {group.count}
               </span>
-            </h3>
+            </Text>
             <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-card border border-border bg-card">
               {group.id === "waiting"
                 ? proposals.map((proposal) => (
@@ -419,9 +420,9 @@ function RowHead(props: {
       {props.tile}
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex h-5 min-w-0 items-center gap-2">{props.title}</span>
-        <span className="flex h-4.5 min-w-0 items-center gap-2 text-caption text-muted-foreground">
+        <Text className="flex h-4.5 min-w-0 items-center gap-2" variant="meta">
           {props.meta}
-        </span>
+        </Text>
       </span>
       <span className="relative flex min-w-22 items-center justify-end" data-mcp-right>
         {props.right}
@@ -597,9 +598,9 @@ function ToolRow(props: {
   const rightColumn =
     right.kind === "state" ? (
       <Badge dot tone={STATUS_BADGE_TONE[right.tone]}>
-        <span className="text-caption text-muted-foreground" data-mcp-state-words>
+        <Text variant="meta" data-mcp-state-words>
           {right.words}
-        </span>
+        </Text>
       </Badge>
     ) : (
       <Button
@@ -665,9 +666,9 @@ function ToolRow(props: {
               >
                 {row.name}
               </span>
-              <span className="min-w-0 shrink-[2] truncate text-caption text-muted-foreground">
+              <Text className="min-w-0 shrink-[2]" truncate variant="note">
                 {row.runs}
-              </span>
+              </Text>
               {row.managed ? <Badge className="shrink-0">{MCP_WORDS.builtIn}</Badge> : null}
             </>
           }
@@ -683,12 +684,12 @@ function ToolRow(props: {
             />
 
             {signing === null ? null : signing.landing === "mate" ? (
-              <p className="text-caption text-muted-foreground" data-mcp-signing="mate">
+              <Text render={<p />} variant="note" data-mcp-signing="mate">
                 {MCP_WORDS.signInMate}{" "}
                 <InlineButton onClick={() => void openSignInPage(null, signing.url)} tone="muted">
                   {MCP_WORDS.signInOpenAgain}
                 </InlineButton>
-              </p>
+              </Text>
             ) : (
               <form
                 className="flex flex-col gap-1.5"
@@ -698,7 +699,7 @@ function ToolRow(props: {
                   void finishSignIn(signing);
                 }}
               >
-                <span className="text-caption text-muted-foreground">{MCP_WORDS.signInPaste}</span>
+                <Text variant="note">{MCP_WORDS.signInPaste}</Text>
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Input
@@ -760,11 +761,11 @@ function ToolRow(props: {
                     value={editing}
                   />
                 </FieldLine>
-                <span className="text-caption text-muted-foreground">{MCP_WORDS.editHint}</span>
+                <Text variant="note">{MCP_WORDS.editHint}</Text>
                 {editError === null ? null : (
-                  <span className="text-caption text-destructive-foreground" role="alert">
+                  <Text variant="error" role="alert">
                     {editError}
-                  </span>
+                  </Text>
                 )}
                 <div className="flex items-center gap-2">
                   <Button disabled={pending !== null} size="sm" type="submit" variant="primary">
@@ -793,9 +794,9 @@ function ToolRow(props: {
               run={run}
             />
             {failure === null ? null : (
-              <p className="text-caption text-destructive-foreground" role="alert">
+              <Text render={<p />} variant="error" role="alert">
                 {failure}
-              </p>
+              </Text>
             )}
           </div>
         </CollapsiblePanel>
@@ -890,9 +891,9 @@ function ToolFacts(props: {
         <Fact label={MCP_WORDS.observes}>{props.observe}</Fact>
       ) : null}
       <Fact label={row.config.kind === "command" ? MCP_WORDS.runs : MCP_WORDS.connectsTo}>
-        <span className="break-all font-mono">
+        <Text className="break-all" variant="code">
           {row.config.kind === "command" ? row.config.line : row.config.url}
-        </span>
+        </Text>
       </Fact>
       {row.signInLabel === null && !row.actions.signOut ? null : (
         <Fact label={MCP_WORDS.signsIn}>
@@ -911,10 +912,10 @@ function ToolFacts(props: {
         <Fact label={row.secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}>
           <span className="flex flex-col" data-mcp-secrets>
             {row.secrets.names.map((name) => (
-              <span className="flex min-w-0 gap-2 font-mono" key={name}>
+              <Text className="flex min-w-0 gap-2" variant="code" key={name}>
                 <span className="min-w-0 truncate">{name}</span>
                 <span className="shrink-0 text-muted-foreground">{MCP_SECRET_MASK}</span>
-              </span>
+              </Text>
             ))}
           </span>
         </Fact>
@@ -1050,9 +1051,9 @@ function FieldLine(props: {
       </span>
       {props.children}
       {props.error === undefined ? null : (
-        <span className="text-caption text-destructive-foreground" role="alert">
+        <Text variant="error" role="alert">
           {props.error}
-        </span>
+        </Text>
       )}
     </label>
   );
@@ -1146,7 +1147,9 @@ function SignInFields(props: {
               {props.redirects.map((redirect) => (
                 <span className="flex min-w-0 gap-2" key={redirect.agent}>
                   <span className="shrink-0">{redirect.agent}</span>
-                  <span className="min-w-0 break-all font-mono">{redirect.url}</span>
+                  <Text className="min-w-0 break-all" variant="code">
+                    {redirect.url}
+                  </Text>
                 </span>
               ))}
             </div>
@@ -1154,9 +1157,9 @@ function SignInFields(props: {
         </>
       ) : null}
       {props.error === undefined ? null : (
-        <span className="text-caption text-destructive-foreground" role="alert">
+        <Text variant="error" role="alert">
           {props.error}
-        </span>
+        </Text>
       )}
     </div>
   );
@@ -1265,7 +1268,9 @@ function McpAddCard(props: {
         title={MCP_WORDS.addTitle(props.mate)}
         where={{ scope: "mate", detail: null }}
       >
-        <p className="text-caption text-muted-foreground">{MCP_WORDS.addLine}</p>
+        <Text render={<p />} variant="note">
+          {MCP_WORDS.addLine}
+        </Text>
         <FieldLine error={errors.target} label={MCP_WORDS.where}>
           <Input
             autoCapitalize="off"
@@ -1283,9 +1288,9 @@ function McpAddCard(props: {
           />
         </FieldLine>
         {reach.words === null ? null : (
-          <span className="text-caption text-muted-foreground" data-mcp-reach>
+          <Text variant="note" data-mcp-reach>
             {reach.words}
-          </span>
+          </Text>
         )}
         <FieldLine error={errors.name} label={MCP_WORDS.name}>
           <Input
@@ -1320,14 +1325,14 @@ function McpAddCard(props: {
           />
         )}
         {cannot.length === 0 ? null : (
-          <p className="text-caption text-muted-foreground" data-mcp-add-cannot>
+          <Text render={<p />} variant="note" data-mcp-add-cannot>
             {cannot.join(" ")}
-          </p>
+          </Text>
         )}
         {failure === null ? null : (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {failure}
-          </p>
+          </Text>
         )}
       </AskCard>
     </form>

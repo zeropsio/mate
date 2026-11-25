@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
 import { Button, InlineButton } from "./ui/button";
+import { Text } from "~/components/ui/text";
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -196,12 +197,12 @@ export function ServiceBrowserPanels({
             }
           />
         ) : (
-          <p className="p-4 text-body text-muted-foreground">
+          <Text className="p-4" render={<p />} variant="description">
             Preview is available only for known service domains.{" "}
             <InlineButton render={<a href={surface.url} rel="noreferrer" target="_blank" />}>
               Open in new tab
             </InlineButton>
-          </p>
+          </Text>
         )}
       </div>
     );

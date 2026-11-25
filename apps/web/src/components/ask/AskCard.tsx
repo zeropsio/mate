@@ -23,6 +23,7 @@ import {
   askWhereWords,
   isProduction,
 } from "./ask.logic";
+import { Text } from "~/components/ui/text";
 
 export type AskDensity = "full" | "compact";
 
@@ -113,9 +114,9 @@ function AskCardFace(
           <p className="text-emphasis font-medium text-foreground">{title}</p>
         </div>
         {why === null || why === undefined ? null : (
-          <p className="text-body text-muted-foreground" data-ask-why>
+          <Text render={<p />} variant="description" data-ask-why>
             <span className="font-medium">{why.who}:</span> <q>{why.words}</q>
-          </p>
+          </Text>
         )}
         {body === undefined ? null : <div className="grid min-w-0 gap-2">{body}</div>}
         {props.footer}
@@ -234,9 +235,9 @@ export function AskFooter(props: AskFooterProps) {
       <div className="grid min-w-0 flex-1 gap-0.5">
         <Line state={state} />
         {state.kind === "done" && state.told !== null ? (
-          <p className="text-caption text-muted-foreground" data-ask-told>
+          <Text render={<p />} variant="note" data-ask-told>
             {state.told}
-          </p>
+          </Text>
         ) : null}
       </div>
       {props.action}
@@ -293,7 +294,7 @@ function Presses(props: AskFooterProps & { readonly size: "sm" | "md" }) {
       )}
       {/* Compact, the card's line under its title says it (`AskCard`'s `note`). */}
       {working === null && props.note !== undefined && props.density === "full" ? (
-        <span className="text-caption text-muted-foreground">{props.note}</span>
+        <Text variant="note">{props.note}</Text>
       ) : null}
     </div>
   );
@@ -331,7 +332,7 @@ function Line({ state }: { readonly state: AskState }) {
         </span>
       );
     case "othersToAnswer":
-      return <span className="text-caption text-muted-foreground">{state.words}</span>;
+      return <Text variant="note">{state.words}</Text>;
     default:
       return null;
   }
@@ -408,14 +409,12 @@ export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) 
             <span className="min-w-0">
               {step.label}
               {step.detail === undefined ? null : (
-                <span className="ms-1.5 text-caption text-muted-foreground">{step.detail}</span>
+                <Text className="ms-1.5" variant="note">
+                  {step.detail}
+                </Text>
               )}
             </span>
-            {step.end === undefined ? (
-              <span />
-            ) : (
-              <span className="text-caption text-muted-foreground">{step.end}</span>
-            )}
+            {step.end === undefined ? <span /> : <Text variant="note">{step.end}</Text>}
           </li>
         ))}
       </ol>

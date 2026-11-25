@@ -48,6 +48,7 @@ import { Label } from "./ui/label";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
+import { Text } from "~/components/ui/text";
 
 const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
   { id: "play", label: "Play" },
@@ -299,9 +300,9 @@ export function ProjectScriptEditorDialog({
                   readOnly
                   onKeyDown={captureKeybinding}
                 />
-                <p className="text-caption text-muted-foreground">
+                <Text render={<p />} variant="note">
                   Press a shortcut. Use <code>Backspace</code> to clear.
-                </p>
+                </Text>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="script-command">Command</Label>

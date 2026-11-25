@@ -12,6 +12,7 @@ import { Row } from "../ui/row";
 import { ExpressMark } from "./ExpressMark";
 import { expressDesignId } from "./expressOpen";
 import { ExpressHistoryContext } from "./useExpressHistory";
+import { Text } from "~/components/ui/text";
 
 /** A card's picture: 36 px at twice the pixels. */
 const CARD_PICTURE = { width: 72, height: 72 } as const;
@@ -79,7 +80,7 @@ function ExpressDesignCard({
         line={
           words === undefined ? (
             <>
-              Open in the side panel · <span className="font-mono">{shortId}</span>
+              Open in the side panel · <Text variant="code">{shortId}</Text>
             </>
           ) : (
             "Open in the side panel"
