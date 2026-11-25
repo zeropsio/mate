@@ -1,4 +1,4 @@
-next: MN82
+next: MN83
 
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
@@ -81,4 +81,4 @@ next: MN82
 - MN78 — A change that waits on the person reads "Ready for your review" on the project's line and under "Waiting on you" only where nothing stops it: one whose GitHub checks failed, or that anything else stops, keeps that word.
 - MN79 — A repository's row says where its code also lives from its remote on any host, else what it follows, else that it is only in Mate; breaks: a repository on another host than GitHub reads as only in Mate
 - MN80 — The menu says how many kept-code questions are open in one line and none when there is none; breaks: the menu offers the answer in a second place, or says nothing while a question waits
-- MN+1 — A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page
+- MN82 — A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page

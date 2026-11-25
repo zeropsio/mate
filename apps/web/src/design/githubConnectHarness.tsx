@@ -13,7 +13,7 @@
  * imports this module.
  */
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import { StrictMode } from "react";
+import { StrictMode, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -29,6 +29,11 @@ import {
   type GithubConnectPickerViewProps,
 } from "~/components/zerops/github/GithubConnectPicker";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
+import { RepositoryUpkeepView } from "~/components/zerops/github/RepositoryUpkeep";
+import { GitRepoHeading, GitRepoFacts } from "~/components/zerops/gitBrowser/GitRepoFrame";
+import { GitStorageFigure } from "~/components/zerops/gitBrowser/GitStorageFigure";
+import { Button } from "~/components/ui/button";
+import { GitHubIcon } from "~/components/Icons";
 import type {
   GitMirrorAppEntry,
   GitMirrorApps,
@@ -39,6 +44,8 @@ import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const DIALOG = params.get("dialog");
+const ROW = params.get("row");
+const UPKEEP = params.get("upkeep");
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const inDays = (days: number) => new Date(NOW + days * 86_400_000).toISOString();
@@ -230,34 +237,171 @@ const ROWS: ReadonlyArray<RepoListEntry> = [
   }),
 ];
 
-const ACTIONS = {
-  sendDisconnect: never,
-  replaceToken: never,
-  unfollow: never,
-  deleteRepository: never,
-};
-
 function Rows() {
   return (
     <section className="grid w-180 gap-1 rounded-card border bg-card p-3" data-harness="rows">
       <h2 className="px-2 text-body font-medium text-muted-foreground">Repositories</h2>
       <RepoRowsView
-        actions={ACTIONS}
         admin
         apps={TWO_APPS.kind === "ready" ? TWO_APPS : null}
         authority={null}
-        dependencies={[]}
         now={NOW}
         onConnect={nothing}
-        onSetUpGithub={nothing}
         orgId="org-acme"
         orgName="Acme Org"
         pressOf={(repo) => (repo === "gone" ? "disconnecting" : null)}
         project="tea"
-        projectName="Tea Shop"
-        repos={ROWS}
+        repos={
+          ROW === "connected"
+            ? [ROWS[2]!]
+            : ROW === "unconnected"
+              ? [ROWS[0]!]
+              : ROW === "fix"
+                ? [ROWS[3]!]
+                : ROWS
+        }
       />
     </section>
+  );
+}
+
+/** The same page view, with HQ's offers and repository facts supplied by this flow. */
+function Upkeep({ kind }: { readonly kind: string }) {
+  const reader = kind === "reader";
+  const empty = kind === "empty";
+  const current = empty
+    ? entry("tea-shop")
+    : kind === "following"
+      ? entry("following", { follows: "https://github.com/octo-dev/upstream.git" })
+      : kind === "diverged"
+        ? entry("docsdev", {
+            remote: remote("https://github.com/octo-dev/docs.git", {
+              via: "app",
+              githubAppId: 202,
+              divergedSince: "2026-11-03T10:00:00Z",
+            }),
+          })
+        : reader
+          ? entry(
+              "appdev",
+              {
+                remote: remote("https://github.com/octo-dev/tea.git", {
+                  via: "app",
+                  githubAppId: 202,
+                }),
+              },
+              false,
+            )
+          : entry("labdev", { remote: remote("https://gitlab.com/octo-dev/lab.git") });
+  const held = {
+    kind: "disconnect",
+    requestId: "request-1",
+    target: null,
+    via: null,
+    appName: null,
+  } as const;
+  const opened = useRef(false);
+  useEffect(() => {
+    if (kind !== "token" && kind !== "empty") return;
+    const trigger = document.querySelector<HTMLButtonElement>(
+      `[aria-label="More for ${current.name}"]`,
+    );
+    if (trigger === null) return;
+    // Base UI sets aria-expanded when its trigger is ready. Open the recorded flow at that event.
+    const show = () => {
+      if (opened.current || trigger.getAttribute("aria-expanded") === null) return;
+      opened.current = true;
+      observer.disconnect();
+      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    };
+    const observer = new MutationObserver(show);
+    observer.observe(trigger, { attributes: true, attributeFilter: ["aria-expanded"] });
+    show();
+    return () => observer.disconnect();
+  }, [kind, current.name]);
+  return (
+    <RepositoryUpkeepView
+      entry={current}
+      project="tea"
+      projectName="Tea Shop"
+      orgId="org-acme"
+      orgName="Acme Org"
+      now={NOW}
+      apps={TWO_APPS.kind === "ready" ? TWO_APPS : null}
+      writes={!reader}
+      admin={!reader}
+      dependencies={[]}
+      actions={
+        reader
+          ? {}
+          : { sendDisconnect: never, replaceToken: never, unfollow: never, deleteRepository: never }
+      }
+      storage={{
+        view: {
+          state: "known",
+          answer: { capGiB: 5, usedBytes: 110592, limitBytes: 5368709120 },
+          busy: false,
+          failed: false,
+        },
+        offer: reader ? { kind: "refused", reason: "role" } : { kind: "allowed" },
+        set: reader
+          ? undefined
+          : kind === "storage-refused"
+            ? async () => {
+                throw new Error("HQ refused this change.");
+              }
+            : never,
+      }}
+      pressState={
+        kind === "press"
+          ? { kind: "working", press: held, answered: false }
+          : kind === "refused"
+            ? { kind: "refused", press: held, words: "HQ refused the disconnect." }
+            : kind === "unconfirmed"
+              ? {
+                  kind: "unconfirmed",
+                  press: held,
+                  words: "HQ couldn't confirm the disconnect. Check the row before trying again.",
+                }
+              : { kind: "none" }
+      }
+      onSetUpGithub={nothing}
+    >
+      {({ menu, status, storage }) => (
+        <section className="grid w-180 gap-3 rounded-card border bg-card p-4" data-harness="upkeep">
+          <GitRepoHeading
+            appId="tea"
+            project="Tea Shop"
+            repo={current.name}
+            actions={
+              <div className="flex items-center gap-2">
+                {current.remote?.url.startsWith("https://github.com/") ? (
+                  <Button
+                    render={
+                      <a href="https://github.com/octo-dev/tea" target="_blank" rel="noreferrer" />
+                    }
+                    size="sm"
+                    variant="secondary"
+                  >
+                    <GitHubIcon aria-hidden="true" />
+                    Open on GitHub
+                  </Button>
+                ) : null}
+                <Button size="sm" variant="secondary">
+                  Clone
+                </Button>
+                {menu}
+              </div>
+            }
+          />
+          <GitRepoFacts
+            about={null}
+            storage={<GitStorageFigure storage={undefined} view={storage} />}
+          />
+          {status}
+        </section>
+      )}
+    </RepositoryUpkeepView>
   );
 }
 
@@ -416,7 +560,7 @@ function Harness() {
   const picker = DIALOG === null ? null : pickerFor(DIALOG);
   return (
     <div className="flex min-h-screen flex-wrap content-start gap-8 bg-background p-8 text-foreground">
-      <Rows />
+      {UPKEEP === null ? <Rows /> : <Upkeep kind={UPKEEP} />}
       {picker === null ? null : (
         <Dialog onOpenChange={nothing} open>
           <DialogPopup>

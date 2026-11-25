@@ -27,7 +27,7 @@ const actions: RepoRowActions = {
 };
 
 // witness: apps/web/src/components/zerops/github/repoUpkeep.logic.ts | writes && press === null && remote != null && actions.sendDisconnect !== undefined → press === null && remote != null && actions.sendDisconnect !== undefined
-it("MN+1: A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page", () => {
+it("MN82: A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page", () => {
   const rows: Array<{ input: Parameters<typeof repositoryUpkeep>[0]; entries: string[] }> = [
     {
       input: {

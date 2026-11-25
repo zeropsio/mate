@@ -25,6 +25,7 @@ import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
 import { GitStorageFigure } from "./GitStorageFigure";
+import { RepositoryUpkeep } from "../github/RepositoryUpkeep";
 import { GitHomeAgain } from "./GitAtCommit";
 import type { PickerChange } from "./GitRefPicker.logic";
 import { Text } from "~/components/ui/text";
@@ -232,62 +233,68 @@ export function GitRepoFrame({
 }) {
   const about = home.state === "known" ? home.answer.about : null;
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <GitRepoHeading
-        appId={appId}
-        project={project}
-        repo={repo}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {about?.remote ? (
-              <Button
-                render={
-                  <a
-                    href={githubRepositoryUrl(about.remote)}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  />
-                }
-                size="sm"
-                variant="secondary"
-              >
-                <GitHubIcon aria-hidden="true" />
-                Open on GitHub
-              </Button>
-            ) : null}
-            <ClonePopover
-              appId={appId}
-              repo={repo}
-              project={project}
-              sha={home.state === "known" ? home.answer.sha : null}
-            />
-          </div>
-        }
-      />
-      <GitRepoFacts
-        about={about}
-        storage={<GitStorageFigure appId={appId} repo={repo} storage={about?.storage} />}
-        again={
-          home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
-        }
-      />
-      {banner}
-      <GitRepoTabs
-        view={view}
-        openChanges={openChanges}
-        onTab={onTab}
-        picker={
-          <GitRefPicker
+    <RepositoryUpkeep key={`${appId}:${repo}`} appId={appId} project={project} repo={repo}>
+      {({ menu, status, storage }) => (
+        <div className="flex min-w-0 flex-col gap-3">
+          <GitRepoHeading
             appId={appId}
+            project={project}
             repo={repo}
-            label={readingLabel(home, rev)}
-            kind={home.state === "known" ? home.answer.ref.kind : null}
-            changes={changes}
-            mounted={about?.remote != null}
-            onPick={onPick}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                {about?.remote ? (
+                  <Button
+                    render={
+                      <a
+                        href={githubRepositoryUrl(about.remote)}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      />
+                    }
+                    size="sm"
+                    variant="secondary"
+                  >
+                    <GitHubIcon aria-hidden="true" />
+                    Open on GitHub
+                  </Button>
+                ) : null}
+                <ClonePopover
+                  appId={appId}
+                  repo={repo}
+                  project={project}
+                  sha={home.state === "known" ? home.answer.sha : null}
+                />
+                {menu}
+              </div>
+            }
           />
-        }
-      />
-    </div>
+          <GitRepoFacts
+            about={about}
+            storage={<GitStorageFigure view={storage} storage={about?.storage} />}
+            again={
+              home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
+            }
+          />
+          {status}
+          {banner}
+          <GitRepoTabs
+            view={view}
+            openChanges={openChanges}
+            onTab={onTab}
+            picker={
+              <GitRefPicker
+                appId={appId}
+                repo={repo}
+                label={readingLabel(home, rev)}
+                kind={home.state === "known" ? home.answer.ref.kind : null}
+                changes={changes}
+                mounted={about?.remote != null}
+                onPick={onPick}
+              />
+            }
+          />
+        </div>
+      )}
+    </RepositoryUpkeep>
   );
 }

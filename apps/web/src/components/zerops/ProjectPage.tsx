@@ -192,12 +192,7 @@ function ProjectPage<T>({
         {/* Each code repository and where its code goes: once it has one. */}
         {groupName === undefined || flow === undefined || (repos ?? []).length === 0 ? null : (
           <SetupRow label="Code" rows surface="project-repositories">
-            <ProjectRepositories
-              environments={flow.environments}
-              groupId={groupId}
-              groupName={groupName}
-              repos={repos}
-            />
+            <ProjectRepositories groupId={groupId} groupName={groupName} repos={repos} />
           </SetupRow>
         )}
         {/* Standing on the page, Automation needs no row to open it. */}
