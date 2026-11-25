@@ -2,6 +2,7 @@ import { RotateCcwIcon } from "lucide-react";
 
 import { LineMark } from "~/components/chat/ConversationRows";
 import { InlineButton } from "~/components/ui/button";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * A crew seam (PRD §4.5, design-system *Seams*): one quiet line across the
@@ -22,7 +23,7 @@ export function CrewSeamLine({
       data-crew-seam
       {...(link === undefined ? { "aria-label": text, role: "separator" } : {})}
     >
-      <span aria-hidden="true" className="h-px flex-1 bg-border" />
+      <Separator aria-hidden="true" className="flex-1" />
       <span className="flex shrink-0 items-baseline gap-1">
         <span>{text}</span>
         {link === undefined ? null : (
@@ -32,7 +33,7 @@ export function CrewSeamLine({
           </>
         )}
       </span>
-      <span aria-hidden="true" className="h-px flex-1 bg-border" />
+      <Separator aria-hidden="true" className="flex-1" />
     </div>
   );
 }
