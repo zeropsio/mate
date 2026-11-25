@@ -150,7 +150,7 @@ export default definePlayground({
     place: {
       kind: "enum",
       options: PLACES,
-      note: "inline has no search field: it would take focus here",
+      note: "inline, its field waits to be pressed; in the dialog it takes focus",
     },
     shortcuts: { kind: "boolean", note: "an action's keys at its row's end" },
     footer: { kind: "boolean", note: "the keys that work in it" },
@@ -162,6 +162,7 @@ export default definePlayground({
     ) : (
       <div className="w-96 rounded-sheet border">
         <Command items={GROUPS}>
+          <CommandInput placeholder="Search projects and actions" />
           <CommandPanel>
             <Results shortcuts={shortcuts} />
           </CommandPanel>
@@ -174,7 +175,7 @@ export default definePlayground({
       "Command",
       { items: jsxCode("groups") },
       [
-        place === "dialog" ? '<CommandInput placeholder="Search projects and actions" />' : "",
+        '<CommandInput placeholder="Search projects and actions" />',
         jsxElement("CommandPanel", {}, RESULTS_CODE(shortcuts)),
         footer ? FOOTER_CODE : "",
       ]

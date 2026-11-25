@@ -3,6 +3,7 @@
 import { Dialog as CommandDialogPrimitive } from "@base-ui/react/dialog";
 import { SearchIcon, XIcon } from "lucide-react";
 import type * as React from "react";
+import { createContext, use } from "react";
 import { cn } from "~/lib/utils";
 import {
   Autocomplete,
@@ -44,6 +45,9 @@ function CommandDialogViewport({ className, ...props }: CommandDialogPrimitive.V
   );
 }
 
+/** Whether the command stands in its dialog, which opens to be typed in: its field takes focus. */
+const CommandInDialogContext = createContext(false);
+
 function CommandDialogPopup({
   className,
   children,
@@ -65,7 +69,7 @@ function CommandDialogPopup({
           data-slot="command-dialog-popup"
           {...props}
         >
-          {children}
+          <CommandInDialogContext value={true}>{children}</CommandInDialogContext>
           <CommandDialogPrimitive.Close
             aria-label="Close"
             className="absolute end-2 top-2"
@@ -95,15 +99,21 @@ function Command({
   );
 }
 
+/**
+ * Its search field. In a `CommandDialogPopup` it takes focus as the dialog opens; inline in a page
+ * it waits to be pressed, as the page's other fields do. `autoFocus` says otherwise either way.
+ */
 function CommandInput({
   className,
   placeholder,
+  autoFocus,
   ...props
 }: React.ComponentProps<typeof AutocompleteInput>) {
+  const inDialog = use(CommandInDialogContext);
   return (
     <div className="px-[var(--command-shell-inset)] py-1.5 pe-12 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
       <AutocompleteInput
-        autoFocus
+        autoFocus={autoFocus ?? inDialog}
         className={cn(
           "border-transparent! bg-transparent! shadow-none before:hidden has-focus-visible:ring-0 placeholder:text-placeholder *:data-[slot=autocomplete-input]:ps-9! sm:*:data-[slot=autocomplete-input]:ps-[calc(var(--command-shell-inset)+1.5rem)]!",
           className,
