@@ -694,8 +694,9 @@ function ArrivalComposition({
         {notice}
         <ArrivalSwap
           className={cn(
-            "w-full max-w-126 text-center",
-            signingIn ? "mt-9" : slot.node !== null && "mt-7",
+            // Signing in, the slot holds two of the sign-in's cards to a line.
+            "w-full text-center",
+            signingIn ? "mt-9 max-w-178" : ["max-w-126", slot.node !== null && "mt-7"],
           )}
           id={slot.id}
           kind="slot"

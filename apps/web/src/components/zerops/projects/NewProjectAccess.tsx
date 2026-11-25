@@ -200,6 +200,7 @@ function AddPeopleCard({
                     <ToggleGroupItem value="full">Full</ToggleGroupItem>
                   </ToggleGroup>
                 }
+                controlStays
                 key={candidate.clientUserId}
                 lead={
                   <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={20} />
