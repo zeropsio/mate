@@ -30,6 +30,7 @@ import preferFailure from "./rules/prefer-failure.ts";
 import preferCodeBlock from "./rules/prefer-code-block.ts";
 import noHandPopup from "./rules/no-hand-popup.ts";
 import preferMarks from "./rules/prefer-marks.ts";
+import preferMeter from "./rules/prefer-meter.ts";
 import preferText from "./rules/prefer-text.ts";
 import noSizedSlotIcon from "./rules/no-sized-slot-icon.ts";
 import noHandDrawnBox from "./rules/no-hand-drawn-box.ts";
@@ -89,6 +90,7 @@ export default definePlugin({
     "prefer-code-block": preferCodeBlock,
     "no-hand-popup": noHandPopup,
     "prefer-marks": preferMarks,
+    "prefer-meter": preferMeter,
     "prefer-text": preferText,
     "no-sized-slot-icon": noSizedSlotIcon,
     "no-hand-drawn-box": noHandDrawnBox,

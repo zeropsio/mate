@@ -144,14 +144,6 @@
     "expires": "surface:choices"
   },
   {
-    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"flex h-28 items-end gap-1 overflow-hidden rounded-control bg-muted/10 p-2\"",
-    "owner": "unify pass",
-    "reason": "a chart's frame; it moves onto the meters family's kit piece",
-    "expires": "surface:meters"
-  },
-  {
     "path": "apps/web/src/components/settings/KeybindingsSettings.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className=\"flex items-center gap-2 rounded-control border border-border/70 bg-background/60 px-2 py-2\"",
@@ -190,14 +182,6 @@
     "owner": "unify pass",
     "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
     "expires": "surface:choices"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<div> className=\"flex h-32 items-end gap-1 overflow-hidden rounded-control border border-border/40 bg-muted/8 px-2 pt-3 pb-2\"",
-    "owner": "unify pass",
-    "reason": "a chart's frame; it moves onto the meters family's kit piece",
-    "expires": "surface:meters"
   },
   {
     "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",

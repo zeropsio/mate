@@ -171,6 +171,7 @@ export const RATCHET_RULES = [
   "no-hand-popup",
   "no-hand-drawn-box",
   "no-hand-drawn-rules",
+  "prefer-meter",
   "no-infinite-motion",
   "no-legacy-vocabulary",
   "require-static-classes",

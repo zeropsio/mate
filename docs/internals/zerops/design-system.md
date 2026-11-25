@@ -320,6 +320,11 @@ numbered steps of these. Every ask is the same card, in two densities.
     `not-first:before:h-px` hairline), an unpositioned one-pixel element in the border's or the
     rule's ink, an empty element that only draws a rule); its ledger only shrinks
 
+- **R23** — A quantity drawn as a shape is the kit's
+  - _Enforced by:_ `t3code/prefer-meter` (a plain element whose inline style sizes a fill from data,
+    a width in percent or a scale or slide along x, on a ground; or paints a small round swatch from
+    data: `Meter`, `ShareBar`, `SeriesSwatch`); its ledger only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;

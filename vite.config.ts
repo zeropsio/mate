@@ -186,6 +186,7 @@ export default defineConfig({
       "t3code/prefer-code-block": "error",
       "t3code/no-hand-popup": "error",
       "t3code/prefer-marks": "error",
+      "t3code/prefer-meter": "error",
       "t3code/prefer-text": "error",
       "t3code/no-sized-slot-icon": "error",
       "t3code/no-hand-drawn-box": "error",
