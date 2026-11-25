@@ -261,13 +261,13 @@ const projectWebThemeTokens = (source: string): string =>
 
 const rem = (pixels: number): string => `${pixels / 16}rem`;
 
-// The scale's Tailwind theme: `text-caption`…`text-display`, `rounded-control|card|sheet` and the
-// two easings as `ease-*` utilities.
+// The scale's Tailwind theme: every `text-*` step, `rounded-mark|control|card|sheet` and the two
+// easings as `ease-*` utilities.
 const renderWebScaleTokens = (): string =>
   [
-    ...Object.entries(TYPE_SCALE).flatMap(([step, { fontSize, lineHeight }]) => [
-      `  --text-${step}: ${rem(fontSize)};`,
-      `  --text-${step}--line-height: ${rem(lineHeight)};`,
+    ...Object.entries(TYPE_SCALE).flatMap(([step, type]) => [
+      `  --text-${step}: ${rem(type.fontSize)};`,
+      `  --text-${step}--line-height: ${"relative" in type ? `calc(${type.lineHeight} / ${type.fontSize})` : rem(type.lineHeight)};`,
     ]),
     ...Object.entries(RADII).map(([step, radius]) => `  --radius-${step}: ${rem(radius)};`),
     `  --ease-out-strong: ${MOTION.easing.out};`,

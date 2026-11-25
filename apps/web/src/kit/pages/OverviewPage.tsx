@@ -32,7 +32,10 @@ const PRINCIPLES = [
   ["Blue acts, teal identifies", "Blue is for what acts; teal is the Mate's identity."],
   ["Tokens only", "Palette and contrast come from the shared tokens, never a literal."],
   ["A mark says its word", "A status mark carries its word, or an accessible name."],
-  ["One scale", "Five type steps, a 4 px grid, four radii, three durations."],
+  [
+    "One scale",
+    "Twelve type steps in brand.ts, a 4 px grid, four radii, three durations; nothing between them.",
+  ],
   ["Radii run parallel", "An outer radius is the inner one plus the space between them."],
   [
     "An action is a Button",

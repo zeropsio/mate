@@ -30,6 +30,7 @@ import {
 } from "~/components/ui/table";
 
 import type { FoundationId } from "../shell/kitPages";
+import { TYPE_CLASS, TYPE_USE } from "../typeSteps";
 import { KitDocument } from "./KitDocument";
 
 const LIGHT = getThemeColorsForAppearance(ZEROPS_THEME, "light");
@@ -206,27 +207,10 @@ function ColourPage() {
   );
 }
 
-/** The type steps as utilities; static, so the class guard can read them. */
-const TYPE_CLASS: Readonly<Record<keyof typeof TYPE_SCALE, string>> = {
-  caption: "text-caption",
-  body: "text-body",
-  emphasis: "text-emphasis",
-  title: "text-title",
-  display: "text-display",
-};
-
-const TYPE_USE: Readonly<Record<keyof typeof TYPE_SCALE, string>> = {
-  caption: "Meta, counts, a row's second line",
-  body: "Every control and most text",
-  emphasis: "A section's or a card's heading",
-  title: "A page's title",
-  display: "A figure, a hero's one line",
-};
-
 function TypePage() {
   return (
     <KitDocument
-      line="Five steps from packages/shared/src/brand.ts. A size between two steps takes the nearer one."
+      line="Every size from packages/shared/src/brand.ts: the five steps, the dense metadata below them, the conversation's own two and a phone's field. A size between two steps takes the nearer one."
       title="Type"
     >
       <Card variant="flat">

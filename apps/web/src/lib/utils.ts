@@ -1,5 +1,5 @@
 import { CommandId, MessageId, ThreadId } from "@t3tools/contracts";
-import { RADII } from "@t3tools/shared/brand";
+import { RADII, TYPE_SCALE } from "@t3tools/shared/brand";
 import { type CxOptions, cx } from "class-variance-authority";
 import * as Hex from "effect/encoding/Hex";
 import { extendTailwindMerge } from "tailwind-merge";
@@ -12,19 +12,7 @@ const twMerge = extendTailwindMerge({
   extend: {
     classGroups: { "bg-clip": [{ "bg-clip": ["ground"] }] },
     theme: {
-      text: [
-        "caption",
-        "body",
-        "emphasis",
-        "title",
-        "display",
-        "2xs",
-        "3xs",
-        "4xs",
-        "5xs",
-        "line",
-        "prose",
-      ],
+      text: Object.keys(TYPE_SCALE),
       radius: Object.keys(RADII),
     },
   },
