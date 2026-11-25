@@ -781,3 +781,75 @@ it.effect(
       expect([...(yield* Fiber.join(heard))][1]).toEqual(relayed);
     }).pipe(Effect.scoped),
 );
+
+const whereText =
+  "Where the work stands, read by zcp at 2026-11-25T21:56:00Z. A tool result you received after that is newer.\nwebpool-1 (this conversation's): branch feat-x, 1 unsaved file";
+const whereAnswer = JSON.stringify({
+  where: whereText,
+  readAt: "2026-11-25T21:56:00Z",
+  tookMs: 42,
+});
+
+// witness: apps/server/src/zerops/ZeropsCli.ts | ...(input.lease === undefined ? [] : ["--lease", input.lease]), → ...[],
+it.effect(
+  "ZC+1: zcp is asked where the work stands as `where --json`, with `--lease` and the alias when the conversation holds one, its stdin closed; breaks: zcp marks no copy as the conversation's",
+  () =>
+    Effect.gen(function* () {
+      const plain = zcpAnswering({ stdout: whereAnswer }, "9.275.0");
+      expect(yield* (yield* plain.cli).where({})).toBe(whereText);
+      expect(plain.calls).toEqual([
+        { args: ["version"], stdin: "" },
+        { args: ["where", "--json"], stdin: "" },
+      ]);
+      const leased = zcpAnswering({ stdout: whereAnswer }, "9.275.0");
+      expect(yield* (yield* leased.cli).where({ lease: "webpool-1" })).toBe(whereText);
+      expect(leased.calls).toEqual([
+        { args: ["version"], stdin: "" },
+        { args: ["where", "--lease", "webpool-1", "--json"], stdin: "" },
+      ]);
+    }),
+);
+
+// witness: apps/server/src/zerops/ZeropsCli.ts | if (code !== 0) return { outcome: "none", reason: `exit ${code}` } as const; → if (false && code !== 0) return { outcome: "none", reason: `exit ${code}` } as const;
+it.effect(
+  "ZC+2: A where answer reads its text only on exit 0 with a text; an empty text, an error answer, an exit of a zcp without the verb, stdout that is no answer, a zcp that did not answer in time and a missing zcp all read none and never fail; breaks: a zcp that cannot answer fails or holds a person's message",
+  () =>
+    Effect.gen(function* () {
+      const timeout = new ProcessRunner.ProcessTimeoutError({
+        command: "zcp",
+        argumentCount: 0,
+        timeoutMs: 5000,
+      });
+      const answers: ReadonlyArray<readonly [ZcpAnswer, string | null]> = [
+        [{ stdout: `notice\n${whereAnswer}\n` }, whereText],
+        [
+          { stdout: JSON.stringify({ where: "", readAt: "2026-11-25T21:56:00Z", tookMs: 1 }) },
+          null,
+        ],
+        [{ stdout: '{"error":"unavailable"}', code: 1 }, null],
+        [{ stderr: "unknown command", code: 2 }, null],
+        [{ stdout: "not an answer" }, null],
+        [{ stdout: whereAnswer, code: 1 }, null],
+        [timeout, null],
+        [missingZcp(), null],
+      ];
+      for (const [answer, expected] of answers) {
+        const cli = yield* zcpAnswering(answer, "9.275.0").cli;
+        const exit = yield* Effect.exit(cli.where({}));
+        expect(Exit.isSuccess(exit) ? exit.value : "failed").toBe(expected);
+      }
+    }),
+);
+
+// witness: apps/server/src/zerops/ZeropsCli.ts | const ZCP_WHERE_SINCE = "9.275.0"; → const ZCP_WHERE_SINCE = "0.0.0";
+it.effect(
+  "ZC+3: A zcp older than 9.275.0, a dev build of one, or one whose version cannot be read is asked only its version, never where; breaks: an old zcp starts its MCP server on the verb it does not know",
+  () =>
+    Effect.gen(function* () {
+      for (const version of ["9.274.0", "9.274.0-3-gabc", "dev"]) {
+        const zcp = zcpAnswering({ stdout: whereAnswer }, version);
+        expect(yield* (yield* zcp.cli).where({})).toBeNull();
+        expect(zcp.calls).toEqual([{ args: ["version"], stdin: "" }]);
+      }
+    }),
+);

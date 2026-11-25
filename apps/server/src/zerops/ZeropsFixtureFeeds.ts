@@ -504,6 +504,7 @@ const zeropsCliFixtureLayer = () =>
         throw new Error("ZeropsCli fixture: mateUpdate is unreachable");
       },
       // Fixture scenes have no live pool.
+      where: () => Effect.succeed(null),
       leaseAcquire: () =>
         Effect.succeed({ outcome: "refused", detail: "There is no dev pool here." }),
       leaseReleaseCopy: () =>
