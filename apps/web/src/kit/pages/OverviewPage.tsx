@@ -1,5 +1,4 @@
 import {
-  LayersIcon,
   type LucideIcon,
   PaletteIcon,
   RectangleHorizontalIcon,
@@ -46,29 +45,31 @@ const PRINCIPLES = [
   ["A label is a Badge", "A pill in one of five tones, so it never reads as a press."],
 ] as const;
 
-function StatTile({
-  value,
-  label,
-  line,
-}: {
-  readonly value: number | undefined;
-  readonly label: string;
-  readonly line: string;
-}) {
+/** A guard as the overview names it: plain words first, its rule's id under them. */
+const GUARD_NAME: Readonly<Record<(typeof KIT_GUARDS)[number]["rule"], string>> = {
+  "no-raw-controls": "Raw controls",
+  "no-restyle": "Restyled kit components",
+  "no-arbitrary-values": "Values off the scale",
+  "no-theme-escape-hatches": "Colours around the theme",
+  "no-unknown-classes": "Unknown classes",
+};
+
+/** One figure of the kit's size: the number large, what it counts under it. */
+function Figure({ value, label }: { readonly value: number | undefined; readonly label: string }) {
   return (
-    <Card size="md" variant="flat">
-      <span className="font-semibold text-display tabular-nums">
-        {value === undefined ? "–" : value}
-      </span>
-      <span className="flex flex-col">
-        <span className="font-medium text-body">{label}</span>
-        <span className="text-caption text-muted-foreground">{line}</span>
-      </span>
-    </Card>
+    <div className="flex flex-col gap-1">
+      {/* The number's line is held while the sources are still being counted. */}
+      <dd className="m-0 h-9 font-semibold text-display text-foreground tabular-nums">
+        {value === undefined ? null : (
+          <span className="animate-zerops-appear motion-reduce:animate-none">{value}</span>
+        )}
+      </dd>
+      <dt className="text-body text-muted-foreground">{label}</dt>
+    </div>
   );
 }
 
-/** The kit's front page: what it is, how big it is, how far the app is from it, where to start, and what it leaves out. */
+/** The kit's front page: what it is, how big it is, where to start, how far the app is from it, and what it leaves out. */
 export function OverviewPage({
   sections,
   flows,
@@ -81,7 +82,6 @@ export function OverviewPage({
   const counts = useKitSourceCounts();
   const components = sections.filter(isComponentSection).length;
   const states = flows.reduce((total, flow) => total + (flow.states?.length ?? 0), 0);
-  const ledgersShipped = KIT_GUARD_COUNTS.size > 0;
   const toFix = [...KIT_GUARD_COUNTS.values()].reduce((total, count) => total + count.toFix, 0);
 
   const quickLinks: ReadonlyArray<readonly [string, string, string, LucideIcon]> = [
@@ -98,61 +98,26 @@ export function OverviewPage({
 
   return (
     <KitDocument
-      line="Every component Mate is built from, with the props it renders with, and whole surfaces in their states over made-up data. Change a piece here first; the app picks it up everywhere it is used."
+      line={
+        flows.length === 0
+          ? "Every component Mate is built from, with the props it renders with. Change a piece here first; the app picks it up everywhere it is used."
+          : "Every component Mate is built from, with the props it renders with, and whole surfaces in their states over made-up data. Change a piece here first; the app picks it up everywhere it is used."
+      }
       title="Mate kit"
     >
-      <div className="grid grid-cols-4 gap-4">
-        <StatTile label="Components" line="Chosen and kit, in their sections" value={components} />
-        <StatTile label="Specimens" line="Variants and states drawn" value={counts?.specimens} />
-        <StatTile
-          label="Flows"
-          line={flows.length === 0 ? "This build carries none" : "Surfaces over fixtures"}
-          value={flows.length}
-        />
-        <StatTile label="Flow states" line="Each one shareable" value={states} />
-      </div>
+      <dl className="m-0 flex flex-wrap gap-x-16 gap-y-6 border-y py-6">
+        <Figure label="Components" value={components} />
+        <Figure label="Specimens" value={counts?.specimens} />
+        {flows.length === 0 ? null : (
+          <>
+            <Figure label="Flows" value={flows.length} />
+            <Figure label="Flow states" value={states} />
+          </>
+        )}
+      </dl>
 
-      <div className="grid grid-cols-2 items-start gap-8">
-        <Section count={ledgersShipped ? `${toFix} to fix` : undefined} title="Guard health">
-          <Card variant="flat">
-            <div className="flex flex-col p-1">
-              {KIT_GUARDS.map(({ rule, line }) => {
-                const count = KIT_GUARD_COUNTS.get(rule);
-                return (
-                  <Row
-                    key={rule}
-                    line={line}
-                    meta={
-                      count === undefined ? (
-                        "—"
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          {count.kept > 0 ? (
-                            <span className="text-caption text-muted-foreground">
-                              {count.kept} kept
-                            </span>
-                          ) : null}
-                          <Badge tone={count.toFix === 0 ? "success" : "warning"}>
-                            {count.toFix}
-                          </Badge>
-                        </span>
-                      )
-                    }
-                    size="sm"
-                    title={<code className="font-mono">{rule}</code>}
-                  />
-                );
-              })}
-            </div>
-          </Card>
-          <p className="m-0 text-caption text-muted-foreground">
-            {ledgersShipped
-              ? "Each number is a place that still breaks the rule: drive them to zero. Kept ones break it on purpose, each with its reason (a vendor's icon colours, a native picker). A ledger only shrinks."
-              : "This build does not carry the guards' ledgers; the dev server and the design harness do."}
-          </p>
-        </Section>
-
-        <Section title="Start here">
+      <div className="grid grid-cols-1 items-start gap-x-8 gap-y-12 lg:grid-cols-2">
+        <Section line="The pages most work begins on." title="Start here">
           <Card variant="flat">
             <div className="flex flex-col p-1">
               {quickLinks.map(([page, title, line, Icon]) => {
@@ -172,32 +137,70 @@ export function OverviewPage({
             </div>
           </Card>
         </Section>
+
+        <Section
+          count={toFix === 0 ? undefined : `${toFix} to fix`}
+          line="Where the app still steps outside the kit. Kept ones do on purpose."
+          title="Guard health"
+        >
+          <Card variant="flat">
+            <div className="flex flex-col p-1">
+              {KIT_GUARDS.map(({ rule, line }) => {
+                const count = KIT_GUARD_COUNTS.get(rule) ?? { toFix: 0, kept: 0 };
+                return (
+                  <Row
+                    badges={
+                      <code className="truncate font-mono text-caption text-muted-foreground">
+                        {rule}
+                      </code>
+                    }
+                    key={rule}
+                    line={line}
+                    meta={
+                      <span className="flex items-center gap-2">
+                        {count.kept > 0 ? (
+                          <span className="text-caption text-muted-foreground tabular-nums">
+                            {count.kept} kept
+                          </span>
+                        ) : null}
+                        {count.toFix === 0 ? (
+                          <Badge tone="success">Clear</Badge>
+                        ) : (
+                          <Badge tone="warning">{count.toFix} to fix</Badge>
+                        )}
+                      </span>
+                    }
+                    size="sm"
+                    title={GUARD_NAME[rule]}
+                  />
+                );
+              })}
+            </div>
+          </Card>
+        </Section>
       </div>
 
-      <Section count={PRINCIPLES.length} title="Principles">
-        <div className="grid grid-cols-2 gap-x-8">
+      <Section count={PRINCIPLES.length} line={<PrinciplesSource />} title="Principles">
+        <ol className="m-0 grid list-none grid-cols-1 gap-x-12 gap-y-5 p-0 lg:grid-cols-2">
           {PRINCIPLES.map(([title, line], index) => (
-            <Row
-              key={title}
-              lead={
-                <span className="font-medium text-caption text-muted-foreground tabular-nums">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-              }
-              line={line}
-              lineWraps
-              size="sm"
-              title={title}
-            />
+            <li className="flex gap-3" key={title}>
+              <span className="w-5 shrink-0 pt-px font-mono text-caption text-muted-foreground tabular-nums">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="font-medium text-body text-foreground">{title}</span>
+                <span className="text-body text-muted-foreground">{line}</span>
+              </span>
+            </li>
           ))}
-        </div>
-        <p className="m-0 flex items-center gap-1.5 text-caption text-muted-foreground">
-          <LayersIcon aria-hidden="true" className="size-3.5" />
-          From the design guide, docs/internals/zerops/design-system.md §3.
-        </p>
+        </ol>
       </Section>
 
-      <Section count={KIT_OMISSIONS.length} title="Not shown">
+      <Section
+        count={KIT_OMISSIONS.length}
+        line="Exports with no look of their own."
+        title="Not shown"
+      >
         <Card variant="flat">
           <div className="flex flex-col p-1">
             {KIT_OMISSIONS.map((omission) => (
@@ -206,17 +209,26 @@ export function OverviewPage({
                 line={
                   <>
                     {omission.reason}{" "}
-                    <code className="font-mono text-muted-foreground/80">{omission.source}</code>
+                    <code className="font-mono text-muted-foreground">{omission.source}</code>
                   </>
                 }
                 lineWraps
                 size="sm"
-                title={<code className="font-mono">{omission.name}</code>}
+                title={omission.name}
               />
             ))}
           </div>
         </Card>
       </Section>
     </KitDocument>
+  );
+}
+
+function PrinciplesSource() {
+  return (
+    <>
+      The grammar every piece follows, from{" "}
+      <code className="font-mono text-caption">docs/internals/zerops/design-system.md</code> §3.
+    </>
   );
 }
