@@ -156,3 +156,4 @@ next: ZV188
 - ZV185 — A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is
 - ZV186 — Every open kept-code question has a group on the Git overview, the listed project's own or one made from the question when the project is not listed; breaks: an Owner cannot answer a question about a project whose changes HQ does not offer them
 - ZV187 — A kept, asked or deleting project's code is said in one sentence that names the project and what is kept, and a project in use has none; breaks: the banner of a project that holds only its setup says its code is billed
+- ZV+1 — A release's creation HQ refused is told apart from one Zerops failed or left unresolved, by HQ's job state alone; breaks: a person is told Zerops could not create a service HQ never asked Zerops for.
