@@ -82,6 +82,7 @@ import {
 import { hasSpecificPierreIconForFileName, syntheticFileNameForLanguageId } from "../pierre-icons";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "./ui/collapsible";
 import { ScrollArea } from "./ui/scroll-area";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu";
@@ -2458,30 +2459,27 @@ const CHAT_MARKDOWN_COMPONENTS = {
       </li>
     );
   },
-  input: function MarkdownInput({ node: _node, type, checked, disabled: _disabled, ...props }) {
+  // The sanitizer lets an input through only as a task list's checkbox (`defaultSchema`).
+  input: function MarkdownTaskBox({ checked }) {
     const { onTaskListChange } = use(ChatMarkdownRendererContext);
-    if (type !== "checkbox" || !onTaskListChange) {
-      return (
-        <input
-          {...props}
-          type={type}
-          checked={checked}
-          disabled={_disabled}
-          readOnly={type === "checkbox"}
-        />
-      );
+    // `data-task` is the step's state wherever it is drawn: the copy reads it back as `[x]`.
+    const task = checked ? "done" : "open";
+    // A list the person may tick keeps its checkboxes; one the Mate wrote is its steps, drawn as
+    // marks (index.css), never as boxes that look pressable and are not.
+    if (!onTaskListChange) {
+      return <span aria-label={checked ? "Done" : "To do"} data-task={task} role="img" />;
     }
     return (
-      <input
-        {...props}
-        type="checkbox"
-        name="markdown-task"
+      <Checkbox
         aria-label="Toggle task"
-        checked={checked}
-        onChange={(event) => {
-          const markerOffset = Number(event.currentTarget.closest("li")?.dataset.taskMarkerOffset);
+        checked={checked === true}
+        data-task={task}
+        onCheckedChange={(next, details) => {
+          const target = details.event.target;
+          const item = target instanceof Element ? target.closest("li") : null;
+          const markerOffset = Number(item?.dataset.taskMarkerOffset);
           if (!Number.isSafeInteger(markerOffset)) return;
-          onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
+          onTaskListChange({ markerOffset, checked: next });
         }}
       />
     );

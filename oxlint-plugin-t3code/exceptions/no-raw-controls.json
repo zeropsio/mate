@@ -24,22 +24,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatMarkdown.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<input>",
-    "owner": "kit pass",
-    "reason": "an input inside rendered markdown (a task list's box): the markdown's own element, which its list styles and copy read",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/ServiceBrowserLink.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<a>",
