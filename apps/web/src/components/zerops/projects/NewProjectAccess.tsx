@@ -50,7 +50,11 @@ export function NewProjectAccess({
   const [adding, setAdding] = useState(false);
   const candidates = view.kind === "people" && view.invite ? view.candidates : [];
   return (
-    <section aria-label={label} className="np-access" data-zerops-surface="new-project-access">
+    <section
+      aria-label={label}
+      className="flex flex-col gap-3"
+      data-zerops-surface="new-project-access"
+    >
       <SectionHeader
         level={3}
         line={
@@ -65,7 +69,8 @@ export function NewProjectAccess({
         }
         title={label}
       />
-      <div className="np-access-body">
+      {/* The press, or the Add people card, over the people, 24 px apart. */}
+      <div className="flex flex-col gap-6">
         {candidates.length === 0 ? null : adding ? (
           <AddPeopleCard
             candidates={candidates}
@@ -167,7 +172,7 @@ function AddPeopleCard({
       {typed === "" ? null : shown.length === 0 ? (
         <EmptyState size="row">Nobody matches “{typed}”.</EmptyState>
       ) : (
-        <ul aria-label="People in the organization" className="np-add-list">
+        <ul aria-label="People in the organization" className="m-0 flex flex-col">
           {shown.map((candidate) => {
             const level = ticked[candidate.clientUserId];
             return (
@@ -209,16 +214,22 @@ function AddPeopleCard({
         </ul>
       )}
       {picks.length === 0 && typed === "" ? null : (
-        <dl aria-label="What Read and Full give" className="np-add-hints">
+        // What Read and Full give, in caption, the word first.
+        <dl
+          aria-label="What Read and Full give"
+          className="m-0 flex flex-col gap-0.5 text-caption leading-4.25"
+        >
           {(["read", "full"] as const).map((one) => (
             <div key={one}>
-              <dt>{one === "read" ? "Read" : "Full"}</dt>
-              <dd>{ACCESS_LEVEL_LINES[one]}</dd>
+              <dt className="me-1 inline font-semibold text-foreground">
+                {one === "read" ? "Read" : "Full"}
+              </dt>
+              <dd className="m-0 inline text-muted-foreground">{ACCESS_LEVEL_LINES[one]}</dd>
             </div>
           ))}
         </dl>
       )}
-      <div className="np-add-foot">
+      <div className="flex justify-end gap-2">
         <Button onClick={onClose} size="sm" variant="ghost">
           Cancel
         </Button>

@@ -82,6 +82,7 @@ import { SidebarInset } from "../ui/sidebar";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { CreditForecastLine } from "./ZeropsCreditForecast";
 import {
+  NewProjectPageFrame,
   ZeropsNewProjectPage,
   type NewProjectChoice,
   type NewProjectFormInput,
@@ -136,11 +137,9 @@ function NewProjectPage() {
   // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
   if (answer.kind === "organization-wait")
     return (
-      <div className="new-project-page">
-        <div className="new-project-stage">
-          <ZeropsOrganizationWait />
-        </div>
-      </div>
+      <NewProjectPageFrame>
+        <ZeropsOrganizationWait />
+      </NewProjectPageFrame>
     );
   // The page leaves in the very render that draws the first Mate's view.
   if (answer.landed) return null;

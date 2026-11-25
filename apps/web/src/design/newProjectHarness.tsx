@@ -104,24 +104,28 @@ function Harness() {
     // Reached the way a person reaches them, a step at a time.
     const steps: Array<() => void> = [];
     if (["advanced", "adding", "found", "ticked"].includes(STATE))
-      steps.push(() => click('.new-project-advanced [data-slot="collapsible-trigger"]'));
+      steps.push(() =>
+        click('[data-zerops-new-project="setup"] [data-slot="collapsible-trigger"]'),
+      );
     if (["adding", "found", "ticked"].includes(STATE))
       steps.push(() => click('[data-zerops-surface="add-access"]'));
     if (["found", "ticked"].includes(STATE))
       steps.push(() => typeInto('input[aria-label="Search people"]', "ka"));
     if (STATE === "ticked")
-      steps.push(() => click('.np-add-row [data-slot="toggle-group"] > :last-child'));
+      steps.push(() =>
+        click('[data-zerops-surface="add-people"] [data-slot="toggle-group"] > :last-child'),
+      );
     if (STATE === "unnamed") steps.push(() => click('[data-zerops-new-project="start"]'));
     if (["mate", "style", "picked", "creating", "pressing"].includes(STATE)) {
       steps.push(() => typeInto("#zerops-new-project", "Acme CRM"));
       steps.push(() => click('[data-zerops-new-project="start"]'));
     }
     if (STATE === "style" || STATE === "picked")
-      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+      steps.push(() => click('[data-zerops-new-project="style"]'));
     if (STATE === "picked") {
       steps.push(() => click('[role="radio"][aria-label="Rose"]'));
       steps.push(() => click('[role="radio"][aria-label="Seal"]'));
-      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+      steps.push(() => click('[data-zerops-new-project="style"]'));
     }
     if (STATE === "pressing") steps.push(() => click('[data-zerops-new-project="create"]'));
     const timers = steps.map((run, index) => window.setTimeout(run, 150 + index * 250));

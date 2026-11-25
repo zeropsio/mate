@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
@@ -373,12 +375,19 @@ export function FirstMateField({
  * Where it lives, as tiles, each with this browser's latency to it — only where the account has
  * more than one place.
  */
-export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) {
+export function NewProjectLocation({
+  form,
+  className,
+}: {
+  readonly form: NewProjectForm;
+  /** Its room in the form around it. */
+  readonly className?: string;
+}) {
   const { locations, locationId, onLocation, creating, retry, closed } = form.input;
   if (closed !== undefined || locations.length <= 1) return null;
   const held = creating || retry !== undefined;
   return (
-    <div className="region" data-zerops-surface="region">
+    <div className={cn("flex flex-col gap-4", className)} data-zerops-surface="region">
       <SectionHeader id={REGION_LABEL} level={3} title="Where the services should run" />
       <RadioGroup
         aria-labelledby={REGION_LABEL}
@@ -415,13 +424,14 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
           );
         })}
       </RadioGroup>
-      <ul className="region-notes">
-        <li>
-          <InfoIcon aria-hidden />
+      {/* Why to choose one over another. */}
+      <ul className="m-0 flex list-none flex-col gap-2 p-0 text-body leading-4.5 text-muted-foreground">
+        <li className="flex items-start gap-2">
+          <InfoIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           Pick the region closest to your users. That gives them the lowest latency.
         </li>
-        <li>
-          <InfoIcon aria-hidden />
+        <li className="flex items-start gap-2">
+          <InfoIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           GDPR requirements often point to EU hosting.
         </li>
       </ul>
@@ -540,14 +550,17 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   if (closed !== undefined)
     return (
       <NewProjectPageFrame>
-        <h1 className="new-project-heading">What do you want to build?</h1>
-        <p className="new-project-closed">{closed}</p>
+        <h1 className={HEADING_CLASS}>What do you want to build?</h1>
+        <p className="m-0 text-center text-body text-muted-foreground">{closed}</p>
       </NewProjectPageFrame>
     );
   if (step === "mate")
     return (
       <NewProjectPageFrame centered>
-        <NewProjectFormFrame className="new-project-form new-project-mate" form={form}>
+        <NewProjectFormFrame
+          className="flex w-full max-w-md flex-col items-center gap-2.5"
+          form={form}
+        >
           <MateFaceRing
             className="my-4"
             face={form.face}
@@ -556,7 +569,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             open={styling}
             size="page"
           />
-          <h1 className="new-project-heading">
+          <h1 className={HEADING_CLASS}>
             <MateNameText
               describedBy={LINE}
               onValueChange={form.nameMate}
@@ -564,7 +577,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
               value={form.botName}
             />
           </h1>
-          <div className="new-project-mate-acts">
+          {/* Its two pill presses, 16 px under the name and 32 px over the press. */}
+          <div className="mt-1.5 mb-5.5 flex justify-center gap-1">
             {/* Pills, so they read as tools on the Mate rather than the page's next step. */}
             <Button
               aria-busy={shuffle.rolling || undefined}
@@ -579,6 +593,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             </Button>
             <Button
               aria-expanded={styling}
+              data-zerops-new-project="style"
               disabled={creating}
               shape="round"
               size="sm"
@@ -594,7 +609,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           <CreateProjectButton
             buttonRef={addMate}
             rolling={shuffle.rolling}
-            className="w-full"
+            className="w-80"
             form={form}
             // By the name as typed; with none yet, the Mate it will be.
             label={`Add ${form.botName.replace(/\s+/g, " ").trim() || "mate"} to your project`}
@@ -604,7 +619,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           <NewProjectLine className="text-center empty:-mt-2.5" form={form} />
           {forecast}
           <Button
-            className="w-full"
+            className="w-80"
             data-zerops-new-project="back"
             disabled={creating}
             onClick={() => {
@@ -622,9 +637,9 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     );
   return (
     <NewProjectPageFrame>
-      <h1 className="new-project-heading">What do you want to build?</h1>
+      <h1 className={HEADING_CLASS}>What do you want to build?</h1>
       <form
-        className="new-project-form"
+        className="flex w-full flex-col items-center pt-6"
         data-zerops-surface="new-project-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -633,7 +648,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           else setStep("mate");
         }}
       >
-        <div className="new-project-primary">
+        {/* The name and its press, 48 px each. */}
+        <div className="flex w-full flex-col gap-4">
           <NewProjectNameInput form={form} inputRef={nameField} />
           <Button className="w-full" data-zerops-new-project="start" size="lg" type="submit">
             Start a project
@@ -645,7 +661,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             refusal={form.unnamed ? NAME_YOUR_PROJECT : undefined}
           />
         </div>
-        <div className="new-project-advanced">
+        {/* *Project access & region setup*: 20 px under the press, as wide as the column. */}
+        <div className="self-stretch pt-5" data-zerops-new-project="setup">
           <Collapsible className="flex flex-col">
             <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1.5 self-center rounded-full px-4 py-2 font-medium text-body text-muted-foreground leading-4.5 outline-ring outline-offset-2 hover:text-foreground focus-visible:outline-2 ">
               Project access & region setup
@@ -655,8 +672,9 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
               />
             </CollapsibleTrigger>
             <CollapsiblePanel>
-              <div className="new-project-advanced-fields">
-                <NewProjectLocation form={form} />
+              {/* The region and the people, 40 px apart, opening under it. */}
+              <div className="flex flex-col gap-10 px-px pt-2.5 pb-0.5 text-start">
+                <NewProjectLocation className="pt-6" form={form} />
                 {access === undefined ? null : access(form.setUserRoles)}
               </div>
             </CollapsiblePanel>
@@ -667,7 +685,18 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   );
 }
 
-function NewProjectPageFrame({
+/** The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
+const HEADING_CLASS =
+  "m-0 text-center text-title font-normal tracking-tight text-balance text-foreground sm:text-display";
+
+/**
+ * New project, as a page beside the menu (the owner, 2026-11-23, to the design's measures): the
+ * project's step a 480 px column whose question stands in the window's middle while folded,
+ * opening its options downward, the question staying where it was; the Mate's step centred both
+ * ways, scrolling once taller than the window. A scrollbar coming as the options open takes no
+ * width from the column: nothing moves.
+ */
+export function NewProjectPageFrame({
   centered = false,
   children,
 }: {
@@ -677,11 +706,23 @@ function NewProjectPageFrame({
 }) {
   return (
     <section
-      className="new-project-page"
-      data-centered={centered ? "" : undefined}
+      className={cn(
+        "scrollbar-gutter-both flex h-full min-h-0 justify-center overflow-y-auto ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)",
+        centered ? "pb-0" : "pb-10",
+      )}
       data-zerops-surface="new-project"
     >
-      <div className="new-project-stage">{children}</div>
+      {/* As tall as what it holds, so the page scrolls to its end and the room under it shows. */}
+      <div
+        className={cn(
+          "flex w-full flex-col items-center",
+          centered
+            ? "my-auto max-w-176 gap-7 py-12"
+            : "mt-[max(3rem,calc(50dvh-125px))] max-w-120 gap-2.5 self-start px-2",
+        )}
+      >
+        {children}
+      </div>
     </section>
   );
 }
