@@ -273,16 +273,23 @@ export function SidebarSelectedBand({
   }, []);
 
   return (
+    // Behind every row of the list, which is its own stacking context, over the open Mate's unit;
+    // its own box is where it stands, and paints nothing. What it shows: four nested layers of one
+    // size, each clipping to the row's corners, the innermost filled with the band's white alone;
+    // what all four leave is the band (`bandLayers`). Layers of their own from the start, so a
+    // slide runs on the compositor while the page it opens is drawn. Stepped aside while its
+    // ground is carried up into the Chief's row (`data-away`).
     <span
       aria-hidden="true"
-      className="menu-band"
+      className="pointer-events-none absolute top-0 left-0 -z-1 opacity-0 data-on:not-data-away:opacity-100"
+      data-menu-band=""
       data-zerops-surface="sidebar-selected-band"
       ref={band}
     >
-      <span className="menu-band-layer">
-        <span className="menu-band-layer">
-          <span className="menu-band-layer">
-            <span className="menu-band-layer" />
+      <span className="absolute top-0 left-0 overflow-clip rounded-card will-change-transform">
+        <span className="absolute inset-0 overflow-clip rounded-card will-change-transform">
+          <span className="absolute inset-0 overflow-clip rounded-card will-change-transform">
+            <span className="absolute inset-0 overflow-clip rounded-card will-change-transform bg-sidebar-row-active" />
           </span>
         </span>
       </span>

@@ -48,7 +48,7 @@ export function SidebarJumpButton({
         {shortcut === undefined ? null : (
           <kbd
             aria-hidden="true"
-            className="menu-search-key"
+            className="ms-2 inline-flex items-center gap-px tabular-nums opacity-70"
             data-zerops-surface="sidebar-jump-key"
           >
             <KeyLabel label={shortcut} />

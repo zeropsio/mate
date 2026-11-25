@@ -484,6 +484,21 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
+  /* The ground of a project's open group on the closed menu's rail, and a press on it: a step of
+     the menu's ink into its ground. */
+  --color-rail-group: color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar));
+  --color-rail-group-hover: color-mix(
+    in oklab,
+    var(--contrast-sidebar-foreground) 6%,
+    color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar))
+  );
+  /* A Mate's dot at work (`MateDot`): its own hue (`--mate-tint`), or the muted ink without one,
+     mixed into the menu's ink. */
+  --color-mate-dot: color-mix(
+    in oklab,
+    var(--mate-tint, var(--contrast-sidebar-muted-foreground)) 80%,
+    var(--sidebar-foreground)
+  );
   @keyframes skeleton {
     /* Transform-only so the highlight sweep stays on the compositor, then a
        long hold with the band parked off-screen instead of a constant shimmer. */

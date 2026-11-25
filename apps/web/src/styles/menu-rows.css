@@ -847,110 +847,6 @@
     }
   }
   /* ---- end of the crew as mini Mates ---- */
-
-  /* The one selected band (`SidebarSelectedBand`): behind every row of the
-     list, which is its own stacking context, over the open Mate's unit — its
-     row and its crew's line. Its own box is where it stands, and paints nothing. */
-  .menu-band {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: -1;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  /* What it shows: four nested layers of one size, each clipping to the row's corners, the
-     innermost filled; what all four leave is the band (`bandLayers`). A slide to a newly opened
-     Mate shifts them and nothing else, so its edges travel together with true corners. Layers of
-     their own from the start: a slide runs on the compositor while the page it opens is drawn,
-     never waiting on that draw to begin. */
-  .menu-band-layer {
-    position: absolute;
-    inset: 0;
-    overflow: clip;
-    border-radius: var(--radius-card);
-    will-change: transform;
-  }
-
-  .menu-band > .menu-band-layer {
-    inset: 0 auto auto 0;
-  }
-
-  /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
-  .menu-band-layer:empty {
-    background: var(--sidebar-row-active);
-  }
-
-  .menu-band[data-on] {
-    opacity: 1;
-  }
-
-  /* A Mate's state as one dot (`MateDot`), the same on a row, the rail and a card: one meaning
-     per colour (S3) — amber needs you, blue finished and unseen (the blue of what clicks), red
-     broken, the Mate's own tint at work. */
-  .menu-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-  }
-
-  .menu-dot[data-dot="attention"] {
-    background: var(--zerops-status-attention);
-  }
-
-  .menu-dot[data-dot="unread"] {
-    background: var(--info-foreground);
-  }
-
-  .menu-dot[data-dot="failed"] {
-    background: var(--zerops-status-failed);
-  }
-
-  .menu-dot[data-dot="working"] {
-    background: color-mix(
-      in oklab,
-      var(--menu-dot-tint, var(--sidebar-muted-foreground)) 80%,
-      var(--sidebar-foreground)
-    );
-  }
-
-  /* Hung in the gap before its text, as the working clock's mark is: nothing beside it moves. */
-  .menu-dot[data-place="before"] {
-    position: absolute;
-    top: 50%;
-    right: calc(100% + 5px);
-    margin-top: -3px;
-  }
-
-  .menu-dot[data-place="corner"] {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    z-index: 6;
-    width: 9px;
-    height: 9px;
-    box-shadow: 0 0 0 2px var(--menu-ground);
-  }
-
-  .menu-dot[data-place="inline"] {
-    display: inline-block;
-  }
-}
-
-/* A dot that arrives while the person watches scales in, once (T6); with
-   reduced motion it only fades in (T8). */
-@media (prefers-reduced-motion: no-preference) {
-  .menu-dot[data-arrived] {
-    animation: menu-dot-in var(--duration-base) var(--ease-out-strong) backwards;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .menu-dot[data-arrived] {
-    animation: menu-dot-fade var(--duration-base) var(--ease-out-strong) backwards;
-  }
 }
 
 /* p26/row — a working Mate's clock reads as a live clock, not a timestamp (the owner,
@@ -1029,27 +925,6 @@
   }
   to {
     opacity: 0.3;
-  }
-}
-
-@keyframes menu-dot-in {
-  from {
-    scale: 0;
-    opacity: 0;
-  }
-}
-
-@keyframes menu-dot-fade {
-  from {
-    opacity: 0;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .menu-chief-lit:not([data-travel]) {
-    transition:
-      opacity var(--duration-base) var(--ease-out-strong),
-      transform var(--duration-slow) var(--ease-out-strong);
   }
 }
 

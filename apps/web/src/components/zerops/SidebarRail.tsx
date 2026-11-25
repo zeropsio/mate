@@ -46,6 +46,8 @@ import { MateMark } from "../MateMark";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { MateDot } from "./MateDot";
 import { MateOwnerMark } from "./MateOwnerMark";
+import { RailTip } from "./SidebarRailTip";
+import { FACE_CUT, FACE_CUT_KID, FACE_PALE } from "./menuFace";
 import { MateFace } from "./primitives";
 import {
   mateAutomation,
@@ -241,20 +243,27 @@ function RailMateTip({ mate }: { readonly mate: RailMate }) {
     activity?.snippet ??
     (mate.line.length > 0 ? mate.line : undefined);
   return (
-    <span className="menu-rail-card" data-zerops-surface="sidebar-rail-card">
-      <span className="menu-rail-card-name">
+    <span className="grid max-w-80 gap-1 px-0.5 py-1" data-zerops-surface="sidebar-rail-card">
+      <span className="flex min-w-0 items-baseline gap-1.5 text-body font-semibold">
         {mate.projectName.length === 0 ? mate.name : mate.projectName}
         {mate.projectName.length === 0 ? null : (
-          <span className="menu-rail-card-project">{mate.name}</span>
+          <span className="truncate text-body font-normal text-muted-foreground">{mate.name}</span>
         )}
       </span>
       {mate.dot === undefined ? null : (
-        <span className="menu-rail-card-state" data-dot={mate.dot}>
+        <span
+          className="text-caption font-medium data-[dot=attention]:text-status-attention-text data-[dot=failed]:text-status-failed-text data-[dot=unread]:text-info-foreground data-[dot=working]:text-muted-foreground"
+          data-dot={mate.dot}
+        >
           {railDotWords(mate.dot)}
         </span>
       )}
-      {asked === undefined ? null : <span className="menu-rail-card-asked">{asked}</span>}
-      {answer === undefined ? null : <span className="menu-rail-card-answer">{answer}</span>}
+      {asked === undefined ? null : (
+        <span className="line-clamp-2 text-body leading-4.5">{asked}</span>
+      )}
+      {answer === undefined ? null : (
+        <span className="line-clamp-2 text-body leading-4.5 text-muted-foreground">{answer}</span>
+      )}
     </span>
   );
 }
@@ -270,52 +279,34 @@ function RailGroupTip({
   readonly mates: ReadonlyArray<RailMate>;
 }) {
   return (
-    <span className="menu-rail-card" data-zerops-surface="sidebar-rail-card">
-      <span className="menu-rail-card-name">
+    <span className="grid max-w-80 gap-1 px-0.5 py-1" data-zerops-surface="sidebar-rail-card">
+      <span className="flex min-w-0 items-baseline gap-1.5 text-body font-semibold">
         {name}
-        <span className="menu-rail-card-project">{`${String(mates.length + coming.length)} Mates`}</span>
+        <span className="truncate text-body font-normal text-muted-foreground">{`${String(mates.length + coming.length)} Mates`}</span>
       </span>
       {mates.map((mate) => (
-        <span className="menu-rail-card-mate" key={mate.projectId}>
-          <span className="menu-rail-card-mate-name">
+        <span className="grid min-w-0 pt-1" key={mate.projectId}>
+          <span className="flex items-baseline gap-2 text-body leading-4.5 font-medium">
             {mate.name}
             {mate.dot === undefined ? null : (
-              <span className="menu-rail-card-state" data-dot={mate.dot}>
+              <span
+                className="text-caption font-medium data-[dot=attention]:text-status-attention-text data-[dot=failed]:text-status-failed-text data-[dot=unread]:text-info-foreground data-[dot=working]:text-muted-foreground"
+                data-dot={mate.dot}
+              >
                 {railDotWords(mate.dot)}
               </span>
             )}
           </span>
-          {mate.line.length === 0 ? null : <span className="menu-rail-card-line">{mate.line}</span>}
+          {mate.line.length === 0 ? null : (
+            <span className="truncate text-caption text-muted-foreground">{mate.line}</span>
+          )}
         </span>
       ))}
       {coming.map(({ member }) => (
-        <span className="menu-rail-card-mate" key={member.projectId}>
+        <span className="grid min-w-0 pt-1" key={member.projectId}>
           {member.name}
         </span>
       ))}
-    </span>
-  );
-}
-
-/** A tooltip beside the rail: what the control is, its key, and its line. */
-function RailTip({
-  name,
-  shortcut,
-  line,
-}: {
-  readonly name: string;
-  readonly shortcut?: string | undefined;
-  readonly line?: string | undefined;
-}) {
-  return (
-    <span className="menu-rail-tip">
-      <span className="menu-rail-tip-name">
-        {name}
-        {shortcut === undefined ? null : <span className="menu-rail-tip-key">{shortcut}</span>}
-      </span>
-      {line === undefined || line.length === 0 ? null : (
-        <span className="menu-rail-tip-line">{line}</span>
-      )}
     </span>
   );
 }
@@ -324,19 +315,35 @@ function RailTip({
 function RailDotMark({
   dot,
   tint,
+  kid = false,
 }: {
   readonly dot: RailDot | undefined;
   readonly tint: MateTintId | undefined;
+  /** Under its open group, on a kid's face: still, the face already moves while it works. */
+  readonly kid?: boolean;
 }) {
   if (dot === undefined) return null;
-  return <MateDot place="corner" tint={tint} tone={dot} />;
+  return (
+    <MateDot
+      className={kid ? "top-0.5 right-0.5 size-2" : undefined}
+      place="corner"
+      tint={tint}
+      tone={dot}
+    />
+  );
 }
 
 /** A Mate's face as its menu row wears it: a colleague's paler, their mark on its corner. */
 function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid?: boolean }) {
   return (
-    <span className="menu-rail-face" data-kid={kid ? "" : undefined}>
-      <span className={cn("relative flex", mate.badge !== null && "menu-face-cut menu-face-pale")}>
+    <span className="relative grid size-9 place-items-center">
+      <span
+        className={cn(
+          "relative flex",
+          mate.badge !== null && (kid ? FACE_CUT_KID : FACE_CUT),
+          mate.badge !== null && FACE_PALE,
+        )}
+      >
         <MateFace
           className={kid ? "size-7" : "size-9"}
           greets
@@ -348,16 +355,20 @@ function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid
         />
       </span>
       {mate.badge === null ? null : <MateOwnerMark seat={mate.badge} />}
-      <RailDotMark dot={mate.dot} tint={mate.tint} />
+      <RailDotMark dot={mate.dot} kid={kid} tint={mate.tint} />
     </span>
   );
 }
 
-/** What a rail press draws, the menu's own looks: a tile, a group's kid, the menu's opener. */
+/**
+ * What a rail press draws, the menu's own looks: a tile, a group's kid, the menu's opener. Lit from
+ * its press (`RailControl`, the kit's bare Button, `group/rail`), which holds the focus outline; the
+ * ground a face's rings are cut in (`--menu-ground`) follows its light.
+ */
 const RAIL_LOOK = {
-  tile: "menu-rail-tile",
-  kid: "menu-rail-kid",
-  open: "menu-rail-open",
+  tile: "flex w-20 flex-col items-center gap-1 rounded-card pt-2 pb-1.5 text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
+  kid: "grid h-10 w-11 place-items-center rounded-control transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
+  open: "grid size-9 place-items-center rounded-control text-sidebar-muted-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-hover/rail:text-sidebar-foreground motion-reduce:transition-none",
 } as const;
 
 /** A rail press: the kit's bare press around its look, which keys its hover and current on it. */
@@ -373,7 +384,7 @@ function RailControl({
 } & Omit<ComponentProps<"button">, "className">) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button data-rail-press="" variant="bare" {...button} />}>
+      <TooltipTrigger render={<Button className="group/rail" variant="bare" {...button} />}>
         <span className={RAIL_LOOK[look]}>{children}</span>
       </TooltipTrigger>
       <TooltipPopup side="right">{tip}</TooltipPopup>
@@ -406,7 +417,7 @@ function RailComingFace({
 }) {
   const tint = member.face?.tint ?? "slate";
   return (
-    <span className="menu-rail-face" data-kid={kid ? "" : undefined}>
+    <span className="relative grid size-9 place-items-center">
       <MateFace
         className={kid ? "size-7" : "size-9"}
         shape={member.face?.shape ?? mateShapeOf(undefined, tint)}
@@ -414,7 +425,7 @@ function RailComingFace({
         state={mateBirthFace(stopped)}
         tint={tint}
       />
-      <RailDotMark dot={comingDot(stopped)} tint={tint} />
+      <RailDotMark dot={comingDot(stopped)} kid={kid} tint={tint} />
     </span>
   );
 }
@@ -444,7 +455,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={projectName.length > 0 ? projectName : undefined}
-        className="menu-rail-project"
+        className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -460,7 +471,7 @@ function RailTileView({
           <RailComingFace coming={tile} />
           <span
             aria-hidden="true"
-            className="menu-rail-name"
+            className="max-w-18 truncate text-caption font-medium"
             data-zerops-surface="sidebar-rail-name"
           >
             {projectName.length > 0 ? projectName : member.name}
@@ -476,7 +487,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={mate.projectName.length > 0 ? mate.projectName : undefined}
-        className="menu-rail-project"
+        className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -492,7 +503,7 @@ function RailTileView({
           <RailFace mate={mate} />
           <span
             aria-hidden="true"
-            className="menu-rail-name"
+            className="max-w-18 truncate text-caption font-medium"
             data-zerops-surface="sidebar-rail-name"
           >
             {name}
@@ -507,8 +518,11 @@ function RailTileView({
     <div
       aria-current={tile.holdsCurrent ? "true" : undefined}
       aria-label={name}
-      className="menu-rail-project"
-      data-open={tile.open ? "" : undefined}
+      className={
+        tile.open
+          ? "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card bg-rail-group pb-1.5 [--menu-ground:var(--color-rail-group)] [--menu-rail-hover:var(--color-rail-group-hover)]"
+          : "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
+      }
       data-zerops-surface="sidebar-rail-project"
       role="group"
     >
@@ -524,7 +538,7 @@ function RailTileView({
         onClick={press}
         tip={<RailGroupTip coming={tile.coming} mates={tile.mates} name={name} />}
       >
-        <span className="menu-rail-face">
+        <span className="relative grid size-9 place-items-center">
           <ProjectCluster
             faces={tile.faces.map((face) => {
               if (face.kind === "mate") {
@@ -556,7 +570,11 @@ function RailTileView({
           />
           <RailDotMark dot={tile.dot} tint={working?.tint} />
         </span>
-        <span aria-hidden="true" className="menu-rail-name" data-zerops-surface="sidebar-rail-name">
+        <span
+          aria-hidden="true"
+          className="max-w-18 truncate text-caption font-medium"
+          data-zerops-surface="sidebar-rail-name"
+        >
           {name}
         </span>
       </RailControl>
@@ -652,7 +670,7 @@ export function SidebarRail({
   const words = waitingCountWords(waiting);
   const head = chief ?? (
     // Without a Chief the mark leads to the overview, what waits on the viewer on its corner.
-    <div className="menu-rail-chief">
+    <div className="relative grid">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -661,12 +679,13 @@ export function SidebarRail({
               aria-label="Overview"
               data-current={overviewCurrent ? "" : undefined}
               data-zerops-surface="sidebar-rail-overview"
+              className="group/rail"
               onClick={onOverview}
               variant="bare"
             />
           }
         >
-          <span className="menu-rail-head">
+          <span className="grid size-12 place-items-center rounded-card text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-data-current/rail:bg-sidebar-row-active motion-reduce:transition-none">
             <MateMark awake playful className="h-8.25 w-7" />
           </span>
         </TooltipTrigger>
@@ -676,7 +695,7 @@ export function SidebarRail({
       </Tooltip>
       {waiting.length === 0 ? null : (
         // The count's seat on the tile's corner, cut out of the tile by the menu's ground.
-        <span className="menu-rail-count">
+        <span className="absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5">
           <SidebarWaitingPopover
             items={waiting}
             tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
@@ -701,17 +720,24 @@ export function SidebarRail({
   return (
     // Cards open at once, and instantly from one tile to the next while moving along the rail.
     <TooltipProvider closeDelay={0} delay={80} timeout={700}>
-      <div className="menu-rail" data-zerops-surface="sidebar-rail">
+      <div
+        className="flex size-full min-h-0 flex-col items-center [--menu-ground:var(--color-sidebar)] [--menu-rail-hover:var(--color-sidebar-row-hover)]"
+        data-zerops-surface="sidebar-rail"
+      >
         {showMark ? (
-          <div className="menu-rail-top">{head}</div>
+          <div className="grid h-(--workspace-topbar-height) w-full flex-none place-items-center">
+            {head}
+          </div>
         ) : (
           <>
-            <div className="menu-rail-top" />
-            <div className="menu-rail-under-top">{head}</div>
+            <div className="h-(--workspace-topbar-height) w-full flex-none" />
+            <div className="grid flex-none place-items-center pb-1">{head}</div>
           </>
         )}
-        {actions === undefined ? null : <div className="menu-rail-actions">{actions}</div>}
-        <div className="menu-rail-tiles">
+        {actions === undefined ? null : (
+          <div className="flex flex-none justify-center gap-1 pt-0.5 pb-1.5">{actions}</div>
+        )}
+        <div className="flex min-h-0 w-full flex-auto scrollbar-none flex-col items-center gap-0.5 overflow-y-auto overscroll-contain pt-1 pb-3">
           {tiles.map((tile) => (
             <RailTileView
               activeProjectId={activeProjectId}
@@ -723,7 +749,7 @@ export function SidebarRail({
             />
           ))}
         </div>
-        <div className="menu-rail-foot">
+        <div className="flex flex-none flex-col items-center gap-2.5 pt-2.5 pb-3.5">
           {account}
           <RailControl
             aria-label="Open the menu"

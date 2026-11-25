@@ -52,7 +52,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron: boolean;
   /**
    * What stands in the mark's place: the Chief's row, the bar's whole width, the squares floating
-   * over its end (`.menu-top`). Its own pieces take the bar's grid: whatever spans both columns
+   * over its end. Its own pieces take the bar's grid: whatever spans both columns
    * runs under the squares, whatever keeps to the first stops short of them.
    */
   brand?: ReactNode;
@@ -71,8 +71,15 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     // The row is the top bar's (`--workspace-topbar-height`), so a page's header beside it shares
     // its centre and its bottom edge; on the web its 40 px mark stands centred in it on the Mates'
     // faces' column. Beside a desktop's traffic lights the bar is the title bar's height, centred
-    // on them.
-    <SidebarHeader variant="bar" dragRegion={isElectron} className="@container/sidebar-header">
+    // on them. With the Chief in it the bar grows to hold its card at a Mate card's height, past
+    // the page header's line.
+    <SidebarHeader
+      variant="bar"
+      dragRegion={isElectron}
+      className={
+        brand === undefined ? "@container/sidebar-header" : "@container/sidebar-header h-auto"
+      }
+    >
       {/* The phone's sheet has no toggle of its own up here: the bar is the Chief's and the
           squares', whole. A tap beside the sheet, a swipe, or the foot's toggle closes it. */}
       {brand === undefined ? (
@@ -89,11 +96,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           )}
         </>
       ) : (
-        <div className="menu-top">
+        // One grid the bar's height: the Chief's row across both its columns, the squares in the
+        // second floating over the row's end; the row's words keep to the first column, its band
+        // runs on under the squares.
+        <div className="grid min-w-0 flex-auto grid-cols-[minmax(0,1fr)_auto] items-center self-stretch *:row-start-1">
           {brand}
           {status === undefined && actions === undefined ? null : (
             <div
-              className="menu-top-squares flex items-center justify-end gap-1 pe-4"
+              className="relative z-1 col-start-2 mt-[calc(var(--sidebar-content-inset)+1px)] flex items-center justify-end gap-1 pe-4"
               data-zerops-surface="sidebar-top-actions"
             >
               {status}

@@ -422,7 +422,7 @@ function Sidebar({
           className={cn(
             "relative w-(--sidebar-width) bg-transparent",
             layered
-              ? // The page's edge travels with the menu's own (`.menu-stage-menu`).
+              ? // The page's edge travels with the menu's own (`SidebarStage`).
                 "transition-[width] duration-260 ease-out-strong group-data-[state=collapsed]:duration-200 motion-reduce:transition-none"
               : "transition-[width] duration-200 ease-out-strong",
             "group-data-[collapsible=offcanvas]:w-0",

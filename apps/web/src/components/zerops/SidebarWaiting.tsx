@@ -33,6 +33,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
+import { RailTip } from "./SidebarRailTip";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
@@ -174,18 +175,18 @@ export function SidebarWaitingCount({
 }) {
   const words = waitingCountWords(items);
   return (
-    <span className={seat === "rail" ? "menu-rail-count" : "menu-chief-count"}>
+    // Its seat: on a rail tile's corner, the menu's ground around it cutting it out of the tile; or
+    // over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle.
+    <span
+      className={
+        seat === "rail"
+          ? "absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5"
+          : "relative z-1 col-start-1 me-1 mt-[calc(var(--sidebar-content-inset)+1px)] grid place-items-center justify-self-end"
+      }
+    >
       <SidebarWaitingPopover
         items={items}
-        tooltip={
-          <span className="menu-rail-tip">
-            <span className="menu-rail-tip-name">
-              Waiting on you
-              <span className="menu-rail-tip-key">⌥↓</span>
-            </span>
-            <span className="menu-rail-tip-line">{words.line}</span>
-          </span>
-        }
+        tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
         trigger={
           <Button
             aria-label={words.label}
@@ -227,7 +228,8 @@ export function WaitingList({
       <div className="px-2 py-1.5">
         <SectionHeader
           action={
-            <span className="menu-wait-key">
+            // A key's hint means nothing under a finger.
+            <span className="inline-flex items-center gap-1.5 text-body text-muted-foreground pointer-coarse:hidden">
               <Kbd>⌥↓</Kbd>
               next
             </span>
@@ -236,7 +238,7 @@ export function WaitingList({
           title="Waiting on you"
         />
       </div>
-      <div className="menu-wait-items">
+      <div className="-mb-3">
         {listed.map((item) => (
           <WaitingEntry
             item={item}
@@ -304,14 +306,14 @@ function WaitingEntry({
   };
   return (
     <div
-      className="menu-wait-item"
+      className="mb-3 grid grid-cols-[32px_minmax(0,1fr)] gap-x-3 rounded-control p-2"
       data-waiting-kind={item.kind}
       data-waiting-key={item.key}
       ref={element}
     >
-      <span className="menu-wait-face" aria-hidden="true">
+      <span className="flex h-8" aria-hidden="true">
         {item.kind === "release" ? (
-          <span className="menu-wait-letter">
+          <span className="grid size-8 place-items-center rounded-full bg-foreground/7 text-body font-semibold">
             {item.release.name.trim().charAt(0).toUpperCase()}
           </span>
         ) : (
@@ -323,14 +325,14 @@ function WaitingEntry({
           />
         )}
       </span>
-      <div className="menu-wait-body">
-        <p className="menu-wait-title" data-waiting-title="">
+      <div className="min-w-0 pt-1.5">
+        <p className="truncate text-body font-semibold" data-waiting-title="">
           {waitingTitle(item)}
         </p>
-        <p className="menu-wait-text">
+        <p className="mt-0.5 line-clamp-2 text-body empty:hidden">
           {item.kind === "release" ? releaseWaitingLine(item.release) : item.mate.text}
         </p>
-        <div className="menu-wait-actions">
+        <div className="mt-3 flex flex-wrap gap-2">
           {item.kind === "release" ? (
             <ReviewButton
               label={WAITING_VERBS.release}

@@ -26,6 +26,7 @@ import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
 import type { WaitingItem } from "~/zerops/waiting.logic";
 import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
+import { RailTip } from "../SidebarRailTip";
 
 export interface SidebarChiefRowProps {
   /** The state its mark wears, as its Mate's face would; at rest, its own idle and blinks. */
@@ -47,13 +48,18 @@ export interface SidebarChiefRowProps {
 function ChiefName({ title }: { readonly title: string }) {
   const { head, noun } = chiefNameParts(title);
   return (
-    <span className="menu-chief-name" data-waiting-line="">
+    <span
+      className="flex min-w-0 gap-x-1 text-emphasis leading-5.25 font-semibold whitespace-nowrap text-sidebar-foreground"
+      data-waiting-line=""
+    >
       {head === "" ? null : (
         <>
-          <span className="menu-chief-name-head">{head}</span>{" "}
+          <span className="min-w-0 truncate @max-[350px]/sidebar-header:in-data-[mobile=true]:hidden">
+            {head}
+          </span>{" "}
         </>
       )}
-      <span className="menu-chief-name-noun">{noun}</span>
+      <span className="flex-none">{noun}</span>
     </span>
   );
 }
@@ -73,7 +79,7 @@ export function SidebarChiefRow({
   const account = useSignedInAccount();
   const shown = line ?? null;
   return (
-    <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
+    <div className="contents *:row-start-1" data-zerops-surface="sidebar-chief">
       {/* A Mate row's measure in the bar: its mark on the faces' column, its name on the row's
           middle, its band from the list's inset to the divider's; as tall as a Mate's card under
           it (the owner, 2026-10-13: "it doesn't look good that this upper card is actually
@@ -81,7 +87,7 @@ export function SidebarChiefRow({
           from every project's row (the owner, 2026-10-12: "this should look different"). */}
       <Row
         aria-current={current ? "page" : undefined}
-        className="me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] mt-[calc(var(--sidebar-content-inset)+1px)] h-(--sidebar-chief-row-height) items-center"
+        className="group/chief me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] mt-[calc(var(--sidebar-content-inset)+1px)] h-(--sidebar-chief-row-height) items-center"
         columns
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
@@ -102,9 +108,16 @@ export function SidebarChiefRow({
         pressable="band"
         render={<button type="button" />}
       >
-        <span aria-hidden="true" className="menu-chief-lit" />
-        <span className="menu-chief-body">
-          <span className="menu-chief-mark" aria-hidden="true">
+        {/* Lit from the press, as a Mate's row is under its band: its own layer, grown into
+            place by opacity and scale, or carried from the band and back (`chiefLitTravel`) —
+            the compositor runs either while the page it opens is drawn. */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-1 scale-96 rounded-card bg-sidebar-row-active opacity-0 ease-out-strong will-change-[opacity,transform] group-data-current/chief:scale-100 group-data-current/chief:opacity-100 group-data-pressed/chief:scale-100 group-data-pressed/chief:opacity-100 motion-safe:not-data-travel:transition-[opacity,scale] motion-safe:not-data-travel:duration-260"
+          data-chief-lit=""
+        />
+        <span className="col-start-1 flex min-w-0 items-center gap-3 ps-2.5 pe-3 group-data-waits/chief:pe-11">
+          <span className="relative grid h-10 w-9 flex-none place-items-center" aria-hidden="true">
             <MateMark
               awake
               playful
@@ -112,10 +125,16 @@ export function SidebarChiefRow({
               {...(face === undefined ? {} : { state: face })}
             />
             {unseen ? (
-              <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
+              <MateDot
+                className="top-0.5 right-0.25 ring-(--row-ground)"
+                place="corner"
+                surface="sidebar-chief-unread"
+                tone="unread"
+              />
             ) : null}
             {account === null ? null : (
               <MateOwnerMark
+                className="top-auto -right-1 -bottom-0.5 left-auto ring-2 ring-(--row-ground)"
                 seat={{
                   kind: "person",
                   mark: ownerMark({
@@ -127,9 +146,15 @@ export function SidebarChiefRow({
               />
             )}
           </span>
-          <span className="menu-chief-words">
+          {/* The name alone stands in the row's middle; a line arriving under it lifts it as it
+              grows in. */}
+          <span className="grid min-w-0 flex-auto grid-rows-[auto_0fr] group-data-lined/chief:grid-rows-[auto_1fr] motion-safe:transition-[grid-template-rows] motion-safe:duration-200 motion-safe:ease-out-strong">
             <ChiefName title={chiefRowName(account)} />
-            {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
+            {shown === null ? null : (
+              <span className="flex min-h-0 min-w-0 overflow-hidden whitespace-nowrap *:min-w-0 *:truncate">
+                {shown}
+              </span>
+            )}
           </span>
         </span>
       </Row>
@@ -156,7 +181,7 @@ export function SidebarChiefTile({
   // Named as its row names it: one name on the rail and in the open menu.
   const name = chiefRowName(useSignedInAccount());
   return (
-    <div className="menu-rail-chief" data-zerops-surface="sidebar-chief">
+    <div className="relative grid" data-zerops-surface="sidebar-chief">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -164,13 +189,14 @@ export function SidebarChiefTile({
               aria-current={current ? "page" : undefined}
               aria-label={name}
               data-current={current ? "" : undefined}
+              className="group/rail"
               data-zerops-surface="sidebar-chief-row"
               onClick={onOpen}
               variant="bare"
             />
           }
         >
-          <span className="menu-rail-head">
+          <span className="grid size-12 place-items-center rounded-card text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-data-current/rail:bg-sidebar-row-active motion-reduce:transition-none">
             <span className="relative flex">
               <MateMark
                 awake
@@ -185,12 +211,7 @@ export function SidebarChiefTile({
           </span>
         </TooltipTrigger>
         <TooltipPopup side="right">
-          <span className="menu-rail-tip">
-            <span className="menu-rail-tip-name">{name}</span>
-            {line === undefined || line === null ? null : (
-              <span className="menu-rail-tip-line">{line}</span>
-            )}
-          </span>
+          <RailTip line={line} name={name} />
         </TooltipPopup>
       </Tooltip>
       {waiting === undefined || items.length === 0 ? null : (
@@ -213,10 +234,16 @@ export function SidebarChiefPlace({
 }) {
   const items = waiting?.items ?? [];
   return (
-    <div className="menu-top-chief" data-zerops-surface="sidebar-chief-place">
-      <Link aria-label="Overview" className="menu-chief-place" to="/zerops">
-        <span className="menu-chief-body">
-          <span aria-hidden="true" className="menu-chief-mark">
+    <div className="contents *:row-start-1" data-zerops-surface="sidebar-chief-place">
+      {/* The Chief's row's box, bare, the mark where the Chief's stands, so the bar keeps the
+          height the boot frame draws; the kit's focus, its outline off the box's edge. */}
+      <Link
+        aria-label="Overview"
+        className="col-span-full mt-[calc(var(--sidebar-content-inset)+1px)] me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] grid h-(--sidebar-chief-row-height) grid-cols-subgrid items-center rounded-card outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        to="/zerops"
+      >
+        <span className="col-start-1 flex min-w-0 items-center gap-3 ps-2.5 pe-3">
+          <span aria-hidden="true" className="relative grid h-10 w-9 flex-none place-items-center">
             <MateMark awake playful className="h-9 w-7.5" />
           </span>
         </span>
@@ -254,7 +281,7 @@ export function ChiefSetupRowLine({ state }: { readonly state: ChiefSetupRowStat
   return (
     <span
       className={cn(
-        "menu-line2 truncate",
+        "block truncate text-body leading-5.5",
         state === "running" ? "text-muted-foreground" : "text-status-attention-text",
       )}
       data-chief-setup={state}
