@@ -54,6 +54,11 @@ interface VaultAddCardProps {
   readonly onPasteEnv?: (scope: VaultScope, pasted: string) => void;
   /** Drawn in a popup, which is its frame: no card of its own. */
   readonly framed?: boolean;
+  /**
+   * Given from the message box, where the saved key goes into the message: the card says so, and a
+   * value starts hidden.
+   */
+  readonly forMessage?: boolean;
 }
 
 export function VaultAddCard(props: VaultAddCardProps) {
@@ -64,7 +69,8 @@ export function VaultAddCard(props: VaultAddCardProps) {
   /** The person's own say on the switch; until then the name decides. */
   const [chosen, setChosen] = useState<boolean | null>(null);
   const word = sensitiveWordIn(key);
-  const sensitive = chosen ?? word !== null;
+  const sensitive = chosen ?? (props.forMessage === true || word !== null);
+  const mate = props.mateName ?? "the Mate";
   const problem = keyProblem(key, scope);
   const error = problem ?? props.refusal;
   const canSave = key !== "" && problem === null && !props.busy;
@@ -81,7 +87,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
   const body = (
     <>
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
-        New value in
+        {props.forMessage === true ? `Give ${mate} a key or secret, kept in` : "New value in"}
         <Menu>
           <MenuTrigger
             render={
@@ -149,6 +155,11 @@ export function VaultAddCard(props: VaultAddCardProps) {
             <TooltipPopup>Generate a value · 32 random bytes</TooltipPopup>
           </Tooltip>
         </div>
+        {props.forMessage === true && error === null ? (
+          <Text render={<p />} variant="note" data-vault-add-message>
+            {`${mate} gets ${key === "" ? "its name" : key} in your message, never the value.`}
+          </Text>
+        ) : null}
         {error === null ? null : (
           <Text
             className="flex items-center gap-1.5"
@@ -184,7 +195,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </Button>
           <Button disabled={!canSave} onClick={save} size="sm">
             {props.busy ? <Spinner size="xs" /> : null}
-            Save
+            {props.forMessage === true ? "Add to message" : "Save"}
           </Button>
         </div>
         {props.onPasteEnv === undefined ? null : (
