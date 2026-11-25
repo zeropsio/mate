@@ -1,5 +1,6 @@
 import { CommandIcon } from "lucide-react";
 
+import { Button } from "~/components/ui/button";
 import { Kbd, KbdGroup } from "~/components/ui/kbd";
 
 import { defineKitSection } from "../kitSection";
@@ -21,6 +22,11 @@ function KbdSpecimens() {
           <Kbd>⌘</Kbd>
           <Kbd>K</Kbd>
         </KbdGroup>
+      </Specimen>
+      <Specimen label='<Kbd tone="ink"> on a press'>
+        <Button>
+          Merge <Kbd tone="ink">⌘↵</Kbd>
+        </Button>
       </Specimen>
       <Specimen label="inside a sentence">
         <span className="text-body">
