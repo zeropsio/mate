@@ -48,6 +48,7 @@ import {
 } from "../../settings/taskSourcesSettings.logic";
 import { tasksWaitingWords } from "../SidebarMateRow.logic";
 import { slackChannelForm } from "./projectAutomation.logic";
+import { Loading } from "~/components/ui/loading";
 
 type Controls<F extends AppSetting> = TaskSourceControls<F>;
 
@@ -126,7 +127,7 @@ export function AppIntakeView({
         </IntakeRoom>
       ) : !reposRead ? (
         <IntakeRoom choice>
-          <p className="text-caption text-muted-foreground">Reading its repositories…</p>
+          <Loading count={3} label="Its repositories" shape="rows" />
         </IntakeRoom>
       ) : chosen === null ? (
         <IntakeRoom choice>

@@ -127,12 +127,7 @@ function HomeAt({
                 onOpen={(entry) => navigate(atCommit(entryTarget(entry)))}
               />
             ) : (
-              <GitNotRead
-                view={top}
-                reading="Reading source…"
-                at={{ appId, repo }}
-                onAgain={again}
-              />
+              <GitNotRead view={top} subject="The source" at={{ appId, repo }} onAgain={again} />
             )}
           </div>
         </Card>

@@ -2,7 +2,6 @@
  * The file finder: every file at the page's commit, narrowed as a name is typed (`t` opens it).
  * HQ lists the paths once per commit; matching runs here.
  */
-import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import { PATHS_LIMIT } from "@t3tools/shared/hqGitBrowse/paths";
 import { useDeferredValue, useMemo, useState, type MouseEvent, type ReactNode } from "react";
 import { PierreEntryIcon } from "~/components/chat/PierreEntryIcon";
@@ -12,10 +11,10 @@ import { Input } from "~/components/ui/input";
 import { Row } from "~/components/ui/row";
 import { useTheme } from "~/hooks/useTheme";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
-import { useHeldFor } from "~/zerops/useHeldFor";
 import { GitReadStopped } from "./GitAtCommit";
 import type { GitBrowseSearch } from "./GitBrowseView";
 import { FINDER_PAGE, finderMatches } from "./GitFileFinder.logic";
+import { Loading } from "~/components/ui/loading";
 
 const plainClick = (event: MouseEvent) =>
   event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
@@ -98,8 +97,6 @@ export function GitFileFinder({
   const count = shown.of === query ? shown.count : FINDER_PAGE;
   const { view, again } = useGitBrowse({ appId, repo, read: "paths", params: { sha } }, true);
   const paths = view.state === "known" ? view.answer.paths : null;
-  // "Reading" only once a read outlasts the usual wait.
-  const slow = useHeldFor(view.state === "unread", STILL_READING_HOLD_MS);
   const found = useMemo(
     () => (paths === null ? null : finderMatches(paths, query, count)),
     [paths, query, count],
@@ -164,11 +161,7 @@ export function GitFileFinder({
           </ul>
         )
       ) : view.state === "unread" ? (
-        slow ? (
-          <p className="text-body text-muted-foreground" role="status">
-            Reading the files…
-          </p>
-        ) : null
+        <Loading count={5} label="The files" quiet shape="lines" />
       ) : view.state === "known" ? null : (
         <GitReadStopped view={view} at={{ appId, repo }} onAgain={again} />
       )}

@@ -61,6 +61,7 @@ import {
   type ProjectPerson,
 } from "./projectPeople.logic";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
+import { Loading } from "~/components/ui/loading";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -146,7 +147,7 @@ export function ProjectAccessChips({
     <section className={heading ? "ov-sec" : "ov-access"} aria-label={label}>
       {heading ? <h3 className="ov-sec-name">{label}</h3> : null}
       {view.kind === "reading" ? (
-        <p className="ov-sec-empty">Reading who has access…</p>
+        <Loading count={2} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
         <p className="ov-sec-empty">{view.line}</p>
       ) : (

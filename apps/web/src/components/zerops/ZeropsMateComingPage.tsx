@@ -196,6 +196,7 @@ import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBir
 import { chatViewReady } from "../ChatViewBoundary";
 import { mateDeletionLine } from "./SidebarMateRow.logic";
 import { MateDeletionWaitingWords } from "./SidebarMateDeletingLine";
+import { Loading } from "~/components/ui/loading";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -1699,7 +1700,9 @@ export function ComingBelow({
       {setupFailureDetails === undefined && copy.details === undefined ? null : (
         <MateStateDetails>
           <pre>{copy.details}</pre>
-          {setupFailureDetails?.status === "loading" ? <p>Reading the setup log…</p> : null}
+          {setupFailureDetails?.status === "loading" ? (
+            <Loading count={3} label="The setup log" shape="lines" />
+          ) : null}
           {setupFailureDetails?.status === "error" ? (
             <p>The setup log couldn't be read. Open the process in Zerops.</p>
           ) : null}

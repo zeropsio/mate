@@ -24,6 +24,7 @@ import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "./gitBrowser/GitB
 import { changeTitle } from "./projects/projectHistory.logic";
 import type { HistoryChange, HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
+import { Loading } from "~/components/ui/loading";
 
 const NOWHERE: ReadonlyMap<string, string> = new Map();
 const NO_TAGS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
@@ -62,7 +63,7 @@ export function ZeropsReleaseCarried({
         {what?.state === "failed" ? (
           <ZeropsReadFailure action="Compare again" reason={what.reason} again={what.again} />
         ) : what?.state === "reading" ? (
-          <p className={SENTENCE}>Reading commit messages…</p>
+          <Loading count={3} label="Commit messages" shape="lines" />
         ) : changed.length === 0 ? (
           <p className={SENTENCE}>No commits.</p>
         ) : (

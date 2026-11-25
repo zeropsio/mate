@@ -343,12 +343,7 @@ function BlameAt({
   }, []);
   if (file.view.state !== "known")
     return (
-      <GitNotRead
-        view={file.view}
-        reading="Reading source…"
-        at={{ appId, repo }}
-        onAgain={file.again}
-      />
+      <GitNotRead view={file.view} subject="The source" at={{ appId, repo }} onAgain={file.again} />
     );
   const { answer } = file.view;
   const onLines = (range: SelectedLineRange | null) =>
@@ -396,7 +391,7 @@ function BlameAt({
       ) : blame.view.state !== "known" ? (
         <GitNotRead
           view={blame.view}
-          reading="Reading blame…"
+          subject="The blame"
           at={{ appId, repo }}
           onAgain={blame.again}
         />

@@ -23,6 +23,7 @@ import {
 import { Row } from "../ui/row";
 import { connectLeadLine, repoState } from "./gitMirror.logic";
 import { GithubConnectPicker } from "./github/GithubConnectPicker";
+import { Loading } from "~/components/ui/loading";
 
 export function GitMirrorDialog({
   appId,
@@ -66,7 +67,7 @@ export function GitMirrorDialog({
           <DialogPanel>
             <div className="grid min-h-72 content-start gap-1">
               {code === undefined || (repo !== undefined && mirror.apps === null) ? (
-                <p className="text-body text-muted-foreground">Reading repositories…</p>
+                <Loading count={3} label="Repositories" shape="rows" />
               ) : code.length === 0 ? (
                 <p className="text-body text-muted-foreground">No code repository yet.</p>
               ) : (

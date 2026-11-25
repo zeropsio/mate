@@ -8,6 +8,7 @@ import { Input } from "~/components/ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { useRepoStorage } from "~/zerops/useRepoStorage";
 import { GitRepositoryStorage } from "./GitRepositoryStorage";
+import { Loading } from "~/components/ui/loading";
 
 /**
  * A repository's storage figure, from HQ's storage read once it answers (and a set's answer after),
@@ -84,16 +85,13 @@ function StorageLimit({
     >
       <PopoverTrigger render={<InlineButton />}>Change limit</PopoverTrigger>
       <PopoverPopup align="start" width="md">
-        {capGiB === null ? (
-          <p
-            className="text-body text-muted-foreground"
-            role={view.state === "unread" ? undefined : "alert"}
-          >
+        {capGiB === null && view.state === "unread" ? (
+          <Loading label="The storage limit" shape="line" />
+        ) : capGiB === null ? (
+          <p className="text-body text-muted-foreground" role="alert">
             {view.state === "refused" || view.state === "failed"
               ? view.words
-              : view.state === "withheld"
-                ? "You can't read this repository's storage limit."
-                : "Reading the storage limit…"}
+              : "You can't read this repository's storage limit."}
           </p>
         ) : (
           <form className="flex flex-col gap-2" noValidate onSubmit={submit}>

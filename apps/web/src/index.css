@@ -11531,12 +11531,6 @@ a.message-file:focus-visible {
   align-items: center;
   padding: 0 12px 0 38px;
 }
-.rv-file-skeleton span {
-  width: 40%;
-  height: 10px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
 
 .rv-diff {
   padding: 6px 0;

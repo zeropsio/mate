@@ -9,6 +9,7 @@ import { lazy, Suspense, useEffect, type ComponentType } from "react";
 import { isEditableFocused } from "~/lib/editableFocus";
 import type { GitSearch } from "~/routes/git";
 import type { GitBrowseRequest } from "~/zerops/useGitBrowse";
+import { Loading } from "~/components/ui/loading";
 
 export type GitView = NonNullable<GitSearch["view"]>;
 /** A link inside one repository: everything `/git` carries but which repository it is. */
@@ -109,7 +110,7 @@ export function GitBrowseView(
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate, rev]);
   return (
-    <Suspense fallback={<p className="text-body text-muted-foreground">Opening…</p>}>
+    <Suspense fallback={<Loading label="The page" shape="room" />}>
       <View {...props} hasView={hasView} />
     </Suspense>
   );

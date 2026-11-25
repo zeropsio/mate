@@ -13,6 +13,7 @@ import { Row } from "~/components/ui/row";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
+import { Loading } from "~/components/ui/loading";
 
 interface GitCommit {
   readonly sha: string;
@@ -99,7 +100,7 @@ export function GitCommitsFold({
         )}
       </Button>
       {!open ? null : commits === undefined ? (
-        <p className="py-1 ps-5 text-caption text-muted-foreground">Reading commits…</p>
+        <Loading className="my-1 ms-5" count={2} label="Commits" shape="lines" />
       ) : (
         <ul className="m-0 flex min-w-0 list-none flex-col p-0 ps-5">
           {commits.map((commit) => {

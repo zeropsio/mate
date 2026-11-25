@@ -77,6 +77,7 @@ import {
   tryItEverything,
   tryItWords,
 } from "./ZeropsReview.logic";
+import { Loading } from "~/components/ui/loading";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -931,10 +932,12 @@ export function ReviewFiles({
   }
   if (files === undefined) {
     return (
-      <div aria-busy="true" className="rv-files">
-        <div className="rv-file-skeleton">
-          <span />
-        </div>
+      <div className="rv-files">
+        <Loading label="The files">
+          <div className="rv-file-skeleton">
+            <Skeleton className="h-2.5 w-2/5" shape="pill" surface="card" />
+          </div>
+        </Loading>
       </div>
     );
   }
@@ -1046,7 +1049,9 @@ export function ReviewDiff({
   if (diff.kind === "reading") {
     return (
       <div className="rv-diff">
-        <p className="rv-diff-note">Reading the diff…</p>
+        <Loading label="The diff">
+          <ReviewSkeleton lines={3} />
+        </Loading>
         {opener}
       </div>
     );

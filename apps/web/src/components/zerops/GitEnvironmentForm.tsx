@@ -25,6 +25,7 @@ import {
   gitSetupRepositories,
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
+import { Loading } from "~/components/ui/loading";
 
 export interface GitEnvironmentFormProps {
   readonly groupName: string;
@@ -425,11 +426,14 @@ export function GitEnvironmentForm({
           </p>
         ) : null}
         {step === "branch" && name === undefined ? (
-          <p role="status" className="text-body text-muted-foreground">
-            {takenNames === undefined
-              ? "Reading this project's environment names…"
-              : "This project has used all generated names. Remove an unused environment before adding another."}
-          </p>
+          takenNames === undefined ? (
+            <Loading label="This project's environment names" shape="line" />
+          ) : (
+            <p role="status" className="text-body text-muted-foreground">
+              This project has used all generated names. Remove an unused environment before adding
+              another.
+            </p>
+          )
         ) : null}
         {notice ? (
           <p role="status" className="text-body text-muted-foreground">

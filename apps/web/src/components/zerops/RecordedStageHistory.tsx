@@ -5,6 +5,7 @@ import { Row } from "~/components/ui/row";
 import { GitBrowserLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 import type { HistoryChange } from "./ZeropsHistoryView";
 import { ChangeAge } from "./system/ChangeRow";
+import { Loading } from "~/components/ui/loading";
 
 export interface RecordedStageHistoryProps {
   readonly repo: GitRepoAt;
@@ -23,7 +24,7 @@ export function RecordedStageHistory({
   return (
     <div data-zerops-surface="recorded-stage-history">
       {changes === undefined ? (
-        <p className="py-2 text-body text-muted-foreground">Reading recorded changes…</p>
+        <Loading className="my-2" count={3} label="Recorded changes" shape="lines" />
       ) : (
         <ul>
           {changes.map((change) => (

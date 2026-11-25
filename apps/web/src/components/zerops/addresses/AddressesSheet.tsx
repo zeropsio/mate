@@ -29,6 +29,7 @@ import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import { AddressesDomains, type WebMode } from "./AddressesDomains";
 import { Confirm, CopyButton, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
 import { AddressesZerops } from "./AddressesZerops";
+import { Loading } from "~/components/ui/loading";
 
 /** The project's own IPv4 as billing offers it. */
 export type OwnIpv4Offer =
@@ -383,7 +384,7 @@ function IpSection({
           tone="default"
         >
           {ipv4.state === "reading" ? (
-            <p>Reading its price…</p>
+            <Loading label="Its price" shape="line" />
           ) : price === undefined ? (
             <p>
               Its price can't be read here. Check it in Zerops before you buy.{" "}
