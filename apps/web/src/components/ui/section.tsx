@@ -16,6 +16,11 @@ interface SectionHeaderProps extends Omit<
   /** The one thing the section lets the person do, at the end of the title's line. */
   readonly action?: ReactNode;
   /**
+   * On a phone the action takes a line of its own under the title, its parts 8 px apart: an
+   * action wider than a phone's title line leaves (a search beside its button).
+   */
+  readonly actionWraps?: boolean | undefined;
+  /**
    * What the section is for, under its title: muted body text that wraps, 2 px under it. The
    * action stays on the title's line.
    */
@@ -35,6 +40,7 @@ function SectionHeader({
   title,
   count,
   action,
+  actionWraps = false,
   line,
   level = 2,
   ...props
@@ -51,7 +57,14 @@ function SectionHeader({
         <span className="shrink-0 text-muted-foreground text-caption tabular-nums">{count}</span>
       )}
       {action === undefined || action === null ? null : (
-        <span className="ms-auto flex shrink-0 items-center gap-1">{action}</span>
+        <span
+          className={cn(
+            "ms-auto flex shrink-0 items-center gap-1",
+            actionWraps && "max-sm:basis-full max-sm:gap-2",
+          )}
+        >
+          {action}
+        </span>
       )}
     </>
   );
@@ -62,6 +75,7 @@ function SectionHeader({
       lined
         ? "flex min-w-0 flex-col gap-0.5"
         : "flex min-h-7 min-w-0 items-center gap-2 max-sm:flex-wrap max-sm:gap-y-1",
+      actionWraps && !lined && "max-sm:gap-y-3",
       className,
     ),
     "data-slot": "section-header",
@@ -85,6 +99,7 @@ interface SectionProps extends Omit<useRender.ComponentProps<"section">, "title"
   readonly title: ReactNode;
   readonly count?: ReactNode;
   readonly action?: ReactNode;
+  readonly actionWraps?: boolean | undefined;
   readonly line?: ReactNode;
   readonly level?: 2 | 3 | undefined;
 }
@@ -96,6 +111,7 @@ function Section({
   title,
   count,
   action,
+  actionWraps,
   line,
   level,
   children,
@@ -106,7 +122,14 @@ function Section({
     "data-slot": "section",
     children: (
       <>
-        <SectionHeader action={action} count={count} level={level} line={line} title={title} />
+        <SectionHeader
+          action={action}
+          actionWraps={actionWraps}
+          count={count}
+          level={level}
+          line={line}
+          title={title}
+        />
         {children}
       </>
     ),
