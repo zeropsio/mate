@@ -195,13 +195,14 @@ interface LedgerEntry {
 const WEB_CLIENT = "apps/web/";
 
 // Every ledger, read at build by every build: they ride in the kit's own chunk, never the app's.
-// `phases.json` is the data layer's migration record, not a guard's ledger.
-const ledgers: Readonly<Record<string, readonly LedgerEntry[]>> = import.meta.glob<
-  readonly LedgerEntry[]
->(["../../../../../oxlint-plugin-t3code/exceptions/*.json", "!**/phases.json"], {
-  eager: true,
-  import: "default",
-});
+// `phases.json` beside them is the data layer's migration record, not a guard's ledger: left out by
+// its name here, since the build's glob kept it despite a `!**/phases.json` pattern.
+const ledgers = Object.entries(
+  import.meta.glob<unknown>("../../../../../oxlint-plugin-t3code/exceptions/*.json", {
+    eager: true,
+    import: "default",
+  }),
+).filter((entry): entry is [string, readonly LedgerEntry[]] => !entry[0].endsWith("/phases.json"));
 
 /** A guard's ledger: the places still to fix, and those it keeps on purpose (`expires: "never"`). */
 export interface KitGuardCount {
@@ -211,7 +212,7 @@ export interface KitGuardCount {
 
 /** Each guard's ledger, by rule. */
 export const KIT_GUARD_COUNTS: ReadonlyMap<string, KitGuardCount> = new Map(
-  Object.entries(ledgers).map(([path, all]) => {
+  ledgers.map(([path, all]) => {
     const entries = all.filter((entry) => entry.path.startsWith(WEB_CLIENT));
     const kept = entries.filter((entry) => entry.expires === "never").length;
     return [
