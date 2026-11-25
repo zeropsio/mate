@@ -118,9 +118,9 @@ export function AskSecretField(props: AskSecretFieldProps) {
   }
   return (
     <div className="grid min-w-0 gap-1.5">
-      <label className="text-caption text-muted-foreground" htmlFor={id}>
+      <Text render={<label htmlFor={id} />} variant="label">
         {props.label}
-      </label>
+      </Text>
       {field}
       {hint}
       {keepHidden}

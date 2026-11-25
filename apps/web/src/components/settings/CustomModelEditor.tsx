@@ -25,6 +25,7 @@ import {
   validateDraft,
 } from "./customModelEditor.logic";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 const CUSTOM_ID_VALUE = "__custom__";
 const START_FROM_NONE = "__none__";
@@ -302,9 +303,9 @@ export function CustomModelEditor({
         }}
       >
         <div className="flex flex-col gap-1">
-          <label htmlFor={domId("name")} className="text-caption text-muted-foreground">
+          <Text render={<label htmlFor={domId("name")} />} variant="label">
             Display name
-          </label>
+          </Text>
           <Input
             id={domId("name")}
             size="sm"
@@ -319,9 +320,7 @@ export function CustomModelEditor({
 
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-caption text-muted-foreground">
-              Options shown in the composer
-            </span>
+            <Text variant="label">Options shown in the composer</Text>
             {startFromCandidates.length > 0 ? (
               <Select value={START_FROM_NONE} onValueChange={handleStartFrom}>
                 <SelectTrigger

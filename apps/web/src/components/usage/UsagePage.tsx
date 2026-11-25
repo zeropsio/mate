@@ -1029,7 +1029,7 @@ function Metric({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-caption text-muted-foreground">{label}</span>
+      <Text variant="label">{label}</Text>
       <span className="text-emphasis font-medium text-foreground tabular-nums">{value}</span>
       {detail === undefined ? null : (
         <Text truncate variant="meta">

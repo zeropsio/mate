@@ -125,7 +125,9 @@ export function CopyLine({
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 text-caption text-muted-foreground">{label}</span>
+      <Text className="w-24 shrink-0" variant="label">
+        {label}
+      </Text>
       <code className="min-w-0 flex-1 truncate font-mono text-caption text-foreground">
         {value}
       </code>

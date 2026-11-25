@@ -1,53 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/ask/AskSecret.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<label> className=\"text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
-    "path": "apps/web/src/components/settings/CustomModelEditor.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<label> className=\"text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
-    "path": "apps/web/src/components/settings/CustomModelEditor.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
-    "path": "apps/web/src/components/settings/automationParts.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"w-24 shrink-0 text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
-    "path": "apps/web/src/components/usage/UsageModelDialog.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
-    "path": "apps/web/src/components/usage/UsagePage.tsx",
-    "kind": "JSXOpeningElement",
-    "fingerprint": "<span> className=\"text-caption text-muted-foreground\"",
-    "owner": "text roles pass",
-    "reason": "a value's label (a field's, a stat's, a term's) set in the note's look; no Text variant names a label of a value yet",
-    "expires": "surface:text-roles"
-  },
-  {
     "path": "apps/web/src/components/zerops/AddAutomatedMatesForm.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<h3> className=\"flex items-center gap-1.5 text-caption leading-4 font-medium text-muted-foreground\"",
