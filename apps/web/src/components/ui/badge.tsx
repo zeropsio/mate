@@ -6,6 +6,7 @@ import { cva } from "class-variance-authority";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { Dot } from "./dot";
 
 /**
  * The one label: a short word or count beside the thing it describes. A pill on the status
@@ -13,15 +14,20 @@ import { cn } from "~/lib/utils";
  * meaning, never decoration: `neutral` for a fact, `info` for work under way, `success` for
  * done or running, `warning` for what needs the person, `danger` for what broke and for
  * Production. The neutral pill's ground is a step of the ink, so it shows on the page, a card
- * and a tinted tray alike.
+ * and a tinted tray alike. A number is the `count` form: a compact pill beside a title, a row or
+ * a menu's group (how many changes, how many working), or on a control's corner with `corner`,
+ * solid there since it stands over an icon, cut out of `--mark-ground` like a corner `Dot`. The dot form is a `Dot` before its words.
  */
 const badgeVariants = cva(
   "relative inline-flex min-w-0 shrink-0 items-center gap-1 whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [&_svg:not([class*='size-'])]:size-3 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
-    defaultVariants: { tone: "neutral", form: "pill" },
+    defaultVariants: { tone: "neutral", form: "pill", corner: false },
     variants: {
       form: {
         pill: "h-5 overflow-hidden rounded-full px-2 font-medium text-caption",
+        // A number: as tall as a dense line, never narrower than it is tall, its figures even.
+        count:
+          "h-4 min-w-4 justify-center overflow-hidden rounded-full px-1.5 font-semibold text-2xs tabular-nums",
         // The dot form takes the size and ink of the words around it, 8 px from them.
         dot: "gap-2",
       },
@@ -32,9 +38,61 @@ const badgeVariants = cva(
         warning: "",
         danger: "",
       },
+      // A count on a control's corner, cut out of the ground it sits on.
+      corner: {
+        false: "",
+        true: "absolute -end-1.5 -top-1.5 ring-2 ring-(--mark-ground,var(--color-background))",
+      },
     },
     compoundVariants: [
       { form: "pill", tone: "neutral", className: "bg-foreground/6 text-foreground" },
+      // A number is quieter than the title it counts for: the neutral count in the muted ink.
+      {
+        form: "count",
+        corner: false,
+        tone: "neutral",
+        className: "bg-foreground/6 text-muted-foreground",
+      },
+      {
+        form: "count",
+        corner: false,
+        tone: "info",
+        className: "bg-status-busy-surface text-status-busy-text",
+      },
+      {
+        form: "count",
+        corner: false,
+        tone: "success",
+        className: "bg-status-ok-surface text-status-ok-text",
+      },
+      {
+        form: "count",
+        corner: false,
+        tone: "warning",
+        className: "bg-status-attention-surface text-status-attention-text",
+      },
+      {
+        form: "count",
+        corner: false,
+        tone: "danger",
+        className: "bg-status-failed-surface text-status-failed-text",
+      },
+      // On a corner it stands over an icon, so it is solid: the tone's fill, white figures.
+      {
+        form: "count",
+        corner: true,
+        tone: "neutral",
+        className: "bg-muted-foreground text-background",
+      },
+      { form: "count", corner: true, tone: "info", className: "bg-status-busy text-fill-ink" },
+      { form: "count", corner: true, tone: "success", className: "bg-status-ok text-fill-ink" },
+      {
+        form: "count",
+        corner: true,
+        tone: "warning",
+        className: "bg-status-attention text-fill-ink",
+      },
+      { form: "count", corner: true, tone: "danger", className: "bg-status-failed text-fill-ink" },
       { form: "pill", tone: "info", className: "bg-status-busy-surface text-status-busy-text" },
       { form: "pill", tone: "success", className: "bg-status-ok-surface text-status-ok-text" },
       {
@@ -59,24 +117,7 @@ const badgeVariants = cva(
 const DOOR =
   "cursor-pointer transition-shadow duration-150 ease-out-strong hover:inset-ring-1 hover:inset-ring-current/30 data-popup-open:inset-ring-1 data-popup-open:inset-ring-current/30 [:hover>&]:inset-ring-1 [:hover>&]:inset-ring-current/30 [[data-popup-open]>&]:inset-ring-1 [[data-popup-open]>&]:inset-ring-current/30 motion-reduce:transition-none";
 
-const DOT_TONE = {
-  neutral: "bg-status-off",
-  info: "bg-status-busy",
-  success: "bg-status-ok",
-  warning: "bg-status-attention",
-  danger: "bg-status-failed",
-} as const;
-
-/** The hollow dot: the tone's ring only, for a place that holds nothing yet or rests on purpose. */
-const HOLLOW_TONE = {
-  neutral: "ring-status-off",
-  info: "ring-status-busy",
-  success: "ring-status-ok",
-  warning: "ring-status-attention",
-  danger: "ring-status-failed",
-} as const;
-
-type BadgeTone = keyof typeof DOT_TONE;
+type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
   readonly tone?: BadgeTone;
@@ -85,7 +126,22 @@ type BadgeProps = Omit<useRender.ComponentProps<"span">, "children"> & {
   /** A pill that opens what it names (`DOOR`). */
   readonly door?: boolean;
 } & (
-    | { readonly dot?: false; readonly pulse?: never; readonly children: ReactNode }
+    | {
+        readonly dot?: false;
+        readonly pulse?: never;
+        readonly count?: false;
+        readonly children: ReactNode;
+      }
+    | {
+        readonly dot?: false;
+        readonly pulse?: never;
+        readonly door?: never;
+        /** A number: the compact pill, its figures even. */
+        readonly count: true;
+        /** On its positioned parent's top-end corner, cut out of `--mark-ground`. */
+        readonly corner?: boolean;
+        readonly children: ReactNode;
+      }
     | {
         /** An 8 px status dot before its words; without words it needs an `aria-label`. */
         readonly dot: true;
@@ -121,13 +177,15 @@ function Badge({
 }: BadgeProps) {
   const wraps = "wrap" in props && props.wrap === true;
   const hollow = "hollow" in props && props.hollow === true;
-  const form = dot === true ? "dot" : "pill";
+  const counts = "count" in props && props.count === true;
+  const cornered = counts && "corner" in props && props.corner === true;
+  const form = dot === true ? "dot" : counts ? "count" : "pill";
   const breathes = dot === true && !hollow && (pulse ?? tone === "info");
-  const dotFill = hollow ? cn("ring-[1.5px] ring-inset", HOLLOW_TONE[tone]) : DOT_TONE[tone];
   const labelled = dot === true && props.children === undefined;
+  const mark = hollow ? <Dot hollow tone={tone} /> : <Dot pulse={breathes} tone={tone} />;
   const defaultProps = {
     className: cn(
-      badgeVariants({ form, tone }),
+      badgeVariants({ form, tone, corner: cornered }),
       wraps && "shrink items-start whitespace-normal",
       door && DOOR,
       className,
@@ -141,18 +199,10 @@ function Badge({
         <>
           {wraps ? (
             <span aria-hidden="true" className="flex h-lh shrink-0 items-center">
-              <span className={cn("inline-flex size-2 rounded-full", dotFill)} />
+              {mark}
             </span>
           ) : (
-            <span
-              aria-hidden="true"
-              data-pulse={breathes ? "" : undefined}
-              className={cn(
-                "inline-flex size-2 shrink-0 rounded-full",
-                dotFill,
-                breathes && "animate-status-pulse motion-reduce:animate-none",
-              )}
-            />
+            mark
           )}
           {props.children === undefined ? null : (
             <span className={wraps ? "min-w-0" : "min-w-0 truncate"}>{props.children}</span>
@@ -166,8 +216,15 @@ function Badge({
   const {
     wrap: _wrap,
     hollow: _hollow,
+    count: _count,
+    corner: _corner,
     ...rest
-  } = given as typeof given & { readonly wrap?: boolean; readonly hollow?: boolean };
+  } = given as typeof given & {
+    readonly wrap?: boolean;
+    readonly hollow?: boolean;
+    readonly count?: boolean;
+    readonly corner?: boolean;
+  };
 
   return useRender({
     defaultTagName: "span",
