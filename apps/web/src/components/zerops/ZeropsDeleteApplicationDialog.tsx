@@ -3,8 +3,9 @@
  * decides nothing. The last Mate of a project the person may delete whole offers the choice —
  * "Only {M}" (the default: its project, code, Stage and Production stay) or "{M} and the whole
  * project". The whole project lists what goes and what stays, asks each Stage slid and its name
- * typed before Delete opens, and sends one start: HQ deletes the Mate first, then each Stage, then
- * the code, as one operation the tab is never needed for. HQ's navigation shows that operation on
+ * typed before Delete opens; a Production Mate made goes only where its own name is typed and it
+ * is slid too, else it stays. It sends one start: HQ deletes the Mate first, then each Stage, then
+ * each Production slid, then the code, as one operation the tab is never needed for. HQ's navigation shows that operation on
  * every device: the part it deletes, the part it stopped at and whose Continue it waits for, or
  * what is gone and what is still here once it ended failed, with Delete again. A refusal of the
  * start stays under the field. It closes once HQ removed the project.
@@ -18,6 +19,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { cn, randomUUID } from "~/lib/utils";
 import { Failure, FailureDetails } from "~/components/ui/failure";
 import { Text } from "~/components/ui/text";
+import { Badge } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
 import { RadioCard, RadioGroup } from "~/components/ui/radio-group";
 import { SlideConfirm } from "~/components/ui/slide-confirm";
@@ -48,6 +50,7 @@ import {
   deletionStandingWords,
   deletionStart,
   lastChoiceWords,
+  productionDeletionWords,
   projectDeletionReady,
   projectDeletionWords,
   type ApplicationHoldings,
@@ -177,7 +180,8 @@ function NameField({
   );
 }
 
-/** The whole project's part of the form: what goes and stays, and a slide for each Stage. */
+/** The whole project's part of the form: what goes and stays, a slide for each Stage, and for
+ * each Production that may go its own block: what cannot be undone, its name typed, its slide. */
 function ProjectDeletionBody({
   plan,
   words,
@@ -191,10 +195,11 @@ function ProjectDeletionBody({
   readonly onSlid: (projectId: string, confirmed: boolean) => void;
   readonly pending: boolean;
 }) {
+  if (plan.refusal !== undefined) return <DeletionLists goes={words.goes} stays={words.stays} />;
   return (
     <div className="space-y-3">
       <DeletionLists goes={words.goes} stays={words.stays} />
-      {plan.refusal !== undefined || plan.stages.length === 0 ? null : (
+      {plan.stages.length === 0 ? null : (
         <div className="space-y-2" data-zerops-surface="delete-application-slides">
           {plan.stages.map((stage) => (
             <SlideConfirm
@@ -210,6 +215,67 @@ function ProjectDeletionBody({
           ))}
         </div>
       )}
+      {plan.productions.map((production) => (
+        <ProductionDeletion
+          confirmed={slid.has(production.projectId)}
+          key={production.projectId}
+          name={production.name}
+          onConfirmedChange={(confirmed) => {
+            onSlid(production.projectId, confirmed);
+          }}
+          pending={pending}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A Production's block: Stage's slide plus one step, its Zerops project's name typed, which makes
+ * the person look at which project it is. The slide stays locked until the name matches; the name
+ * changed after it was slid takes the slide back, so a Production never goes unconfirmed.
+ */
+function ProductionDeletion({
+  name,
+  confirmed,
+  onConfirmedChange,
+  pending,
+}: {
+  readonly name: string;
+  readonly confirmed: boolean;
+  readonly onConfirmedChange: (confirmed: boolean) => void;
+  readonly pending: boolean;
+}) {
+  const id = useId();
+  const [typed, setTyped] = useState("");
+  const words = productionDeletionWords(name);
+  const unlocked = deleteMateConfirmed(typed, name);
+  return (
+    <div className="space-y-2" data-zerops-surface="delete-application-production">
+      <Badge tone="danger">Production</Badge>
+      <p className="text-body text-pretty">{words.warning}</p>
+      <div className="space-y-1.5">
+        <Label htmlFor={`${id}-production`}>{words.label}</Label>
+        <Input
+          autoComplete="off"
+          id={`${id}-production`}
+          onChange={(event) => {
+            setTyped(event.target.value);
+            if (confirmed && !deleteMateConfirmed(event.target.value, name))
+              onConfirmedChange(false);
+          }}
+          readOnly={pending}
+          spellCheck={false}
+          value={typed}
+        />
+      </div>
+      <SlideConfirm
+        confirmed={confirmed}
+        confirmedLabel={words.slid}
+        label={words.slide}
+        locked={pending || !unlocked}
+        onConfirmedChange={onConfirmedChange}
+      />
     </div>
   );
 }
@@ -329,6 +395,9 @@ export function ZeropsDeletionForm({
                 role="alert"
                 size="line"
               />
+            ) : null}
+            {offer.deletion.kind === "waiting" && offer.deletion.yours ? (
+              <p className="text-body text-pretty">{offer.deletion.line}</p>
             ) : null}
             <DeletionParts parts={standing.parts} />
             <Text className="min-h-4" render={<p />} role="alert" variant="error">

@@ -11,7 +11,7 @@
  * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `last` —
  * Quinn is the last Mate of Acme Docs, so its Delete offers "Only Quinn" or the whole project;
  * `whole` — the whole project chosen; `stage-slid` — its Stage slid and its name typed, Delete
- * open; `running` — HQ deletes it, Quinn gone, its Stage going; `waiting` — it stopped for its
+ * open; `production` — a Production Mate made, its name typed and slid too; `running` — HQ deletes it, Quinn gone, its Stage going; `waiting` — it stopped for its
  * maker's Continue; `stopped` — Zerops refused its Stage, what is gone and what is still here;
  * `&services=0|1|3|unread` counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
  * in the app. Open it at 1786 × 1000. `window.__deleteHarness.answer()` answers a pending press on
@@ -125,7 +125,15 @@ const ADA = mate("Ada", ["web"]);
 const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
 
 /** Quinn alone in Acme Docs: its Delete offers the Mate alone or the whole project. */
-const PROJECT_STATES = ["last", "whole", "stage-slid", "running", "waiting", "stopped"];
+const PROJECT_STATES = [
+  "last",
+  "whole",
+  "stage-slid",
+  "production",
+  "running",
+  "waiting",
+  "stopped",
+];
 const LAST = PROJECT_STATES.includes(STATE);
 const ACME = "Acme Docs";
 const ACME_HOLDINGS = { repos: ["docs", RECIPE_REPO], openChanges: 2 };
@@ -200,7 +208,16 @@ const ACME_PROJECT: DeletionProject = {
       deletable: true,
       madeByMate: false,
     },
-    { tier: "production", kind: "git", branch: "release" },
+    STATE === "production"
+      ? {
+          tier: "production",
+          kind: "zerops",
+          projectId: "acme-docs-live",
+          name: "acme-docs-live",
+          deletable: true,
+          madeByMate: true,
+        }
+      : { tier: "production", kind: "git", branch: "release" },
   ],
   hidden: [],
   deletion: hqOperationOf(ACME_OPERATION, "app_deletion"),
@@ -392,10 +409,14 @@ declare global {
   }
 }
 
-/** Types the name into the dialog's field as a person would: React hears the input. */
+/** Types the name into the surface's last field as a person would: React hears the input. */
 function typeInto(form: string, value: string): void {
-  const input = document.querySelector<HTMLInputElement>(`[data-zerops-surface="${form}"] input`);
-  if (input === null) return;
+  const input = [
+    ...document.querySelectorAll<HTMLInputElement>(
+      `[data-zerops-surface="${form}"] input:not([type="range"])`,
+    ),
+  ].at(-1);
+  if (input === undefined) return;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -438,24 +459,35 @@ function Harness() {
   // button pressed, the platform's refusal arriving.
   // The whole project chosen, as a press on its card chooses it; its Stage slid as End slides it.
   useEffect(() => {
-    if (STATE !== "whole" && STATE !== "stage-slid") return;
+    if (STATE !== "whole" && STATE !== "stage-slid" && STATE !== "production") return;
     const choosing = window.setTimeout(() => {
       document.querySelectorAll<HTMLElement>('[data-slot="radio-card"]')[1]?.click();
     }, 200);
+    const slide = (surface: string) => {
+      const thumb = document.querySelector<HTMLElement>(
+        `[data-zerops-surface="${surface}"] [data-slot="slide-confirm-thumb"] input`,
+      );
+      thumb?.focus();
+      thumb?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+    };
     const sliding =
-      STATE === "stage-slid"
+      STATE === "stage-slid" || STATE === "production"
         ? window.setTimeout(() => {
-            const thumb = document.querySelector<HTMLElement>(
-              '[data-zerops-surface="delete-application-slides"] [role="slider"]',
-            );
-            thumb?.focus();
-            thumb?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+            slide("delete-application-slides");
+            if (STATE === "production") typeInto("delete-application-production", "acme-docs-live");
             typeInto("delete-application-form", ACME);
           }, 450)
+        : undefined;
+    const slidingProduction =
+      STATE === "production"
+        ? window.setTimeout(() => {
+            slide("delete-application-production");
+          }, 700)
         : undefined;
     return () => {
       window.clearTimeout(choosing);
       if (sliding !== undefined) window.clearTimeout(sliding);
+      if (slidingProduction !== undefined) window.clearTimeout(slidingProduction);
     };
   }, []);
 

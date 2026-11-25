@@ -375,6 +375,24 @@ export function projectDeletionWords(input: {
 }
 
 /**
+ * A Production's own block in the project's dialog: what cannot be undone, the field its Zerops
+ * project's name is typed in to unlock its slide, and the slide's words.
+ */
+export function productionDeletionWords(name: string): {
+  readonly warning: string;
+  readonly label: string;
+  readonly slide: string;
+  readonly slid: string;
+} {
+  return {
+    warning: `Deleting Production ${name} takes it offline at once. Its services and data go from Zerops; Zerops keeps its backups for 7 days and then destroys them. Nobody can bring it back after that.`,
+    label: `Type ${name} to unlock`,
+    slide: `Slide to delete Production ${name}`,
+    slid: `Production ${name} will be deleted`,
+  };
+}
+
+/**
  * Whether the project's Delete opens, and else what is missing: every Stage slid, then its name
  * typed as spelled (`confirmed`). A Production not slid is no hold: it stays.
  */
