@@ -359,7 +359,7 @@ function ReleaseFace({ count }: { readonly count: number }) {
     <>
       {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
       <RocketIcon aria-hidden="true" className="menu-tag-icon" />
-      <span className="menu-tag-word">Release</span>
+      <span>Release</span>
       <TagCount count={count > 1 ? count : undefined} />
     </>
   );
@@ -384,7 +384,7 @@ function ReviewFace({
       ) : (
         <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
       )}
-      <span className="menu-tag-word">{word}</span>
+      <span>{word}</span>
       <TagCount count={count} />
     </>
   );

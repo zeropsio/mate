@@ -617,12 +617,6 @@
     height: 13px;
   }
 
-  @container menu-row (max-width: 400px) {
-    .zerops-sites-tag .menu-tag-word {
-      display: none;
-    }
-  }
-
   /* A project with no Mate: its mark where a face would stand. */
   .menu-project-mark {
     display: grid;

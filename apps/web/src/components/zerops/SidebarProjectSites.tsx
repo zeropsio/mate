@@ -59,6 +59,7 @@ import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 import { usePutLiveStanding } from "~/zerops/putLive";
 import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty";
 import { Loading } from "../ui/loading";
@@ -89,6 +90,7 @@ import {
   type SitesMateFacts,
   type SitesService,
   type SitesStatus,
+  type SitesTone,
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
@@ -284,11 +286,14 @@ export function ProjectSites(
             />
           }
         >
-          <span className="zerops-sites-tag" data-tone={shown.tone}>
-            <EnvDot dot={shown.dot} label={shown.word} />
-            {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the rest. */}
-            <span className="menu-tag-word">{shown.word}</span>
-          </span>
+          <Badge door tone={SITES_TONE[shown.tone]}>
+            <span className="flex items-center gap-1.5">
+              <EnvDot dot={shown.dot} label={shown.word} />
+              {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the
+                  rest. */}
+              <span className="@max-[400px]/menu-row:hidden">{shown.word}</span>
+            </span>
+          </Badge>
         </TooltipTrigger>
         {open ? null : <TooltipPopup side="bottom">{shown.sentence}</TooltipPopup>}
       </Tooltip>
@@ -576,7 +581,11 @@ export function SitesPanel({
 
   const first = mates[0];
   return (
-    <div className="zerops-sites-body" onKeyDown={onKeyDown}>
+    // The popover's body: its title and filter held, its list scrolling under them past 560 px.
+    <div
+      className="flex max-h-[min(560px,70vh,var(--available-height))] min-h-0 flex-col text-body leading-4.5"
+      onKeyDown={onKeyDown}
+    >
       <div className="flex-none px-4 pt-3 pb-2">
         <SectionHeader
           count={total === 0 ? undefined : total === 1 ? "1 address" : `${String(total)} addresses`}
@@ -607,7 +616,11 @@ export function SitesPanel({
           </InputGroup>
         </div>
       )}
-      <div className="zerops-sites-scroll" ref={scroll}>
+      {/* More below than shows: the last rows fade out at the bottom edge rather than end cut off. */}
+      <div
+        className="relative min-h-0 flex-auto overflow-y-auto overscroll-contain px-1.5 pb-1.5 data-more-below:[mask-image:linear-gradient(to_bottom,currentColor_calc(100%-32px),transparent)]"
+        ref={scroll}
+      >
         {sections.length === 0 ? (
           <div
             className="flex flex-col gap-1 px-4 pt-1 pb-2"
@@ -639,7 +652,9 @@ export function SitesPanel({
           return (
             <section
               aria-label={section.title}
-              className="zerops-sites-section"
+              // A section: its head sticks while its rows pass under it; a hairline between two
+              // shown; lit for a moment as the popover opens on the one the tag spoke of.
+              className="flex flex-col rounded-control data-flash:animate-sites-flash [:not([hidden])~&:not([hidden])]:mt-1.5 [:not([hidden])~&:not([hidden])]:rounded-t-none [:not([hidden])~&:not([hidden])]:border-t [:not([hidden])~&:not([hidden])]:border-border [:not([hidden])~&:not([hidden])]:pt-1.5"
               data-flash={flash === section.key ? "" : undefined}
               data-sites-place={section.kind === "place" ? section.place : undefined}
               data-sites-section={section.key}
@@ -695,6 +710,24 @@ export function SitesPanel({
     </div>
   );
 }
+
+/**
+ * The environment tag's tone: red and amber on their status grounds, moving on the quiet ground a
+ * Review mark wears, landed on the ok ground.
+ */
+const SITES_TONE: Readonly<Record<SitesTone, "danger" | "warning" | "neutral" | "success">> = {
+  red: "danger",
+  amber: "warning",
+  busy: "neutral",
+  ok: "success",
+};
+
+/** A place's word under its name, in its tone's ink. */
+const WORD_TONE: Readonly<Record<ChipMenuStop["tone"], string>> = {
+  muted: "text-muted-foreground tabular-nums",
+  amber: "text-status-attention-text tabular-nums",
+  red: "text-status-failed-text tabular-nums",
+};
 
 /** Marks a scroll container that holds more below its fold (`data-more-below`). */
 function markMoreBelow(root: HTMLElement) {
@@ -773,14 +806,14 @@ function PlaceSection({
       <>
         {title}
         {stop?.version === undefined || running !== undefined ? null : (
-          <span className="zerops-envpop-version">{stop.version}</span>
+          <span className="real-name ms-1.5 text-muted-foreground">{stop.version}</span>
         )}
       </>
     ),
     // What it says, under its name: its word, what it runs now, and that run's clock.
     line:
       stop?.git !== undefined && running === undefined ? undefined : (
-        <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
+        <span className={WORD_TONE[stop?.tone ?? "muted"]}>
           {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
           {running === undefined ? null : (
             <span data-zerops-surface="sidebar-project-sites-running">
@@ -799,7 +832,7 @@ function PlaceSection({
   };
   return (
     <>
-      <div className="zerops-sites-sectionhead">
+      <div className="sticky top-0 z-1 flex items-center gap-0.5 bg-popover in-data-flash:animate-sites-flash">
         {opens === undefined ? (
           <Row
             {...head}
@@ -877,7 +910,10 @@ function PlaceBody({
     <>
       {filtering || projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       {filtering || stop?.note === undefined ? null : (
-        <p className="zerops-sites-note" data-zerops-surface="sidebar-project-sites-note">
+        <p
+          className="pr-2.5 pb-1.5 pl-7.5 text-caption leading-4.25 text-muted-foreground"
+          data-zerops-surface="sidebar-project-sites-note"
+        >
           {stop.note}
         </p>
       )}
@@ -990,7 +1026,7 @@ function PlaceAccess({
   }, [onRoutes, projectId, routes]);
   if (filtering) return null;
   return (
-    <div className="zerops-sites-access">
+    <div className="pr-2.5 pl-7.5 empty:hidden">
       <StopPublicAccessStatus access={access} />
     </div>
   );
@@ -1010,15 +1046,20 @@ function MateHead({
 }) {
   const mark = mate?.owner === undefined || mate.owner.isViewer ? undefined : ownerMark(mate.owner);
   return (
-    <div className="zerops-sites-sectionhead">
+    <div className="sticky top-0 z-1 flex items-center gap-0.5 bg-popover in-data-flash:animate-sites-flash">
       <Row
         className="flex-1"
         data-zerops-surface="sidebar-project-sites-mate"
         lead={
-          <span className="zerops-sites-face">
+          <span className="relative inline-flex size-4">
             <MateFace shape={mate?.shape} size={16} state="idle" tint={mate?.tint ?? "slate"} />
             {mark === undefined ? null : (
-              <MateOwnerMark className="zerops-sites-owner" seat={{ kind: "person", mark }} />
+              // A colleague's Mate wears its owner's mark on its face's corner, ringed in the
+              // popover's ground.
+              <MateOwnerMark
+                className="top-auto -right-1 -bottom-0.75 left-auto size-2.5 text-5xs ring-2 ring-popover"
+                seat={{ kind: "person", mark }}
+              />
             )}
           </span>
         }
@@ -1027,7 +1068,7 @@ function MateHead({
           <>
             {title}
             {owner === undefined ? null : (
-              <span className="zerops-sites-whose">{` · ${owner}'s`}</span>
+              <span className="text-muted-foreground">{` · ${owner}'s`}</span>
             )}
           </>
         }
@@ -1119,7 +1160,8 @@ function CopyButton({
   readonly onCopy: () => void;
 }) {
   return (
-    <span className="zerops-sites-copy">
+    // At the row's end, in room kept for it: its hover or focus shows it, a finger always sees it.
+    <span className="absolute top-1/2 right-2 inline-flex -translate-y-1/2 opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/link:opacity-100 group-hover/link:opacity-100 group-data-copied/link:opacity-100 pointer-coarse:opacity-100">
       <Button
         aria-label={`Copy ${host}`}
         data-zerops-surface="sidebar-project-sites-copy"
@@ -1157,11 +1199,10 @@ function SitesServices({
 }) {
   return services.map((row) => {
     const { url } = row;
-    const name = <span className="zerops-sites-service">{row.service}</span>;
     if (url === undefined)
       return (
         <div
-          className="zerops-sites-linkrow"
+          className="group/link relative"
           data-zerops-surface="sidebar-project-sites-service"
           key={row.key}
         >
@@ -1170,13 +1211,15 @@ function SitesServices({
             <TooltipTrigger
               render={
                 <Row
-                  data-sites-off=""
                   lead={<span aria-hidden="true" />}
                   size="xs"
                   title={
                     <>
-                      {name}
-                      <span className="zerops-sites-host" data-sites-why="">
+                      {/* Nothing to open: its hostname muted, why in its host's place. */}
+                      <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-muted-foreground">
+                        {row.service}
+                      </span>
+                      <span className="font-normal text-muted-foreground" data-sites-why="">
                         {row.why?.replace(/\.$/u, "")}
                       </span>
                     </>
@@ -1197,14 +1240,16 @@ function SitesServices({
       },
       title: (
         <>
-          {name}
-          <span className="zerops-sites-host">{host}</span>
+          <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
+            {row.service}
+          </span>
+          <span className="font-normal text-muted-foreground">{host}</span>
         </>
       ),
     };
     return (
       <div
-        className="zerops-sites-linkrow"
+        className="group/link relative"
         data-copied={done ? "" : undefined}
         data-zerops-surface="sidebar-project-sites-service"
         key={row.key}
@@ -1256,12 +1301,16 @@ function SitesLinks({
     );
   }
   if (links.length === 0) {
-    return sayNone ? <p className="zerops-sites-quiet">No public address yet</p> : null;
+    return sayNone ? (
+      <p className="pt-0.5 pr-2.5 pb-2 pl-7.5 text-caption text-muted-foreground">
+        No public address yet
+      </p>
+    ) : null;
   }
   return links.map((link) => {
     const done = copied === link.key;
     return (
-      <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined} key={link.key}>
+      <div className="group/link relative" data-copied={done ? "" : undefined} key={link.key}>
         <SitesLinkRow
           href={link.url}
           onCopyKey={() => {
@@ -1269,13 +1318,13 @@ function SitesLinks({
           }}
           title={
             <>
-              <span className="zerops-sites-service">
+              <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
                 {link.service}
                 {link.port === undefined ? null : (
-                  <span className="zerops-envpop-port">:{link.port}</span>
+                  <span className="font-normal text-muted-foreground">:{link.port}</span>
                 )}
               </span>
-              <span className="zerops-sites-host">{link.host}</span>
+              <span className="font-normal text-muted-foreground">{link.host}</span>
             </>
           }
         />

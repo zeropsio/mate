@@ -381,6 +381,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
   /* The full-screen composer's backdrop fading in over the conversation. */
   --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
+  /* The menu's (`motion-menu.css`): the fix's words rising in as their card opens; the section a
+     project's tag spoke of lit for a moment as its popover opens, longer than the scale so the
+     eye finds it. */
+  --animate-envpop-rise: envpop-rise var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-sites-flash: sites-flash 1200ms ease-out;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);

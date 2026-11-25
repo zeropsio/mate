@@ -113,7 +113,10 @@ export function AskToFix({
   if (mate === undefined) return null;
   const others = choice.filter((entry) => entry !== mate);
   return (
-    <div className="zerops-envpop-ask" data-zerops-surface="sidebar-production-ask">
+    <div
+      className="ms-8 me-1.5 mt-1 mb-2 flex flex-col gap-1.5"
+      data-zerops-surface="sidebar-production-ask"
+    >
       <div className="flex items-center gap-1">
         <Button
           aria-expanded={drafting}
@@ -148,7 +151,7 @@ export function AskToFix({
         )}
       </div>
       {choosing ? (
-        <div className="zerops-envpop-others" role="group" aria-label="Your other Mates">
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Your other Mates">
           {others.map((other) => (
             <Button
               key={other.mateProjectId}
@@ -172,15 +175,22 @@ export function AskToFix({
         </div>
       ) : null}
       {drafting ? (
-        <div className="zerops-envpop-draft">
+        // The words that go into the Mate's composer: long hosts and paths break anywhere rather
+        // than widen the popover, and the card rises in as it opens.
+        <div className="leading-4.75 wrap-anywhere motion-safe:animate-envpop-rise">
           <Card data-zerops-surface="sidebar-production-draft" size="sm">
-            <div className="zerops-envpop-draft-to">
+            <div className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
               <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
               {`Opens ${mate.name}'s conversation with this in the composer`}
             </div>
             {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
               part.kind === "code" ? (
-                <pre key={`code:${part.text}`}>{part.text}</pre>
+                <pre
+                  className="rounded-mark bg-card-foreground/7 px-2 py-1.5 font-mono text-caption whitespace-pre-wrap text-card-foreground/76"
+                  key={`code:${part.text}`}
+                >
+                  {part.text}
+                </pre>
               ) : (
                 <p key={`words:${part.text}`}>{part.text}</p>
               ),
