@@ -34,7 +34,7 @@ const PRINCIPLES = [
   ["A mark says its word", "A status mark carries its word, or an accessible name."],
   [
     "One scale",
-    "Twelve type steps in brand.ts, a 4 px grid, four radii, three durations; nothing between them.",
+    "Twelve type steps in brand.ts, a 4 px grid with half-steps, four radii, three durations; nothing between them.",
   ],
   ["Radii run parallel", "An outer radius is the inner one plus the space between them."],
   [
