@@ -57,7 +57,11 @@ function SectionHeader({
   );
   const defaultProps = {
     className: cn(
-      lined ? "flex min-w-0 flex-col gap-0.5" : "flex min-h-7 min-w-0 items-center gap-2",
+      // On a phone a heading reads whole: an action too wide to share its line goes under it, at
+      // its end.
+      lined
+        ? "flex min-w-0 flex-col gap-0.5"
+        : "flex min-h-7 min-w-0 items-center gap-2 max-sm:flex-wrap max-sm:gap-y-1",
       className,
     ),
     "data-slot": "section-header",
