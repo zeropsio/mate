@@ -1,10 +1,4 @@
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ExternalLinkIcon,
-  LayoutGridIcon,
-  SquareIcon,
-} from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, LayoutGridIcon, SquareIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
@@ -63,8 +57,8 @@ export function FlowPage({
 }: {
   flow: KitFlow;
   appearance: "light" | "dark" | "both";
-  /** The window's width the page lays out for, in px. */
-  viewport: number;
+  /** The window's width the page lays out for, in px; unset, the canvas's room at this zoom. */
+  viewport: number | undefined;
   /** The scale it is drawn at: 1 is a pixel for a pixel. */
   zoom: number;
   /** The state shown, by its id; unset is the page's default, its first. */
@@ -81,6 +75,10 @@ export function FlowPage({
   const [mode, setMode] = useState<FlowMode>("one");
   const [canvas, setCanvas] = useState<HTMLDivElement | null>(null);
   useHeldScroll(canvas);
+  const room = useRoom(canvas);
+  // Filling the canvas: the frame, zoomed, spans the canvas inside its inset, never past it.
+  const width =
+    viewport ?? Math.max(SHORTEST_FRAME, Math.floor((room.width - CANVAS_PADDING * 2) / zoom));
 
   const pick = (id: string) => onStateChange(id === states[0]?.id ? undefined : id);
   const step = (by: number) => {
@@ -109,18 +107,18 @@ export function FlowPage({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 border-b px-6 py-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="m-0 truncate font-medium text-title">{flow.title}</h2>
+      <header className="flex shrink-0 flex-wrap items-center gap-x-8 gap-y-3 border-b px-6 pt-5 pb-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-h-8 min-w-0 items-center gap-2">
+            <h1 className="m-0 truncate font-semibold text-foreground text-title">{flow.title}</h1>
             {flow.area === undefined ? null : <Badge tone="neutral">{flow.area}</Badge>}
           </div>
-          <p className="m-0 flex min-w-0 items-center gap-1.5 truncate text-caption text-muted-foreground">
+          <p className="m-0 flex min-w-0 items-center gap-2 truncate text-body text-muted-foreground">
             <span className="truncate">
               {mode === "grid"
                 ? `${states.length} ${states.length === 1 ? "state" : "states"}`
                 : `State ${index + 1} of ${states.length}`}
-              {` · ${viewport} px · ${Math.round(zoom * 100)}%`}
+              {` · ${width} px · ${Math.round(zoom * 100)}%`}
             </span>
             {states.length > 1 ? (
               <KbdGroup aria-label="Left and right arrows step through the states">
@@ -133,43 +131,25 @@ export function FlowPage({
         {mode === "one" && states.length > 1 ? (
           <StateSwitcher current={current} onPick={pick} onStep={step} states={states} />
         ) : null}
-        <div className="flex items-center gap-2">
-          <ToggleGroup
-            aria-label="View"
-            value={[mode]}
-            onValueChange={(next) => {
-              const chosen = (["one", "grid"] as const).find((candidate) =>
-                next.includes(candidate),
-              );
-              if (chosen !== undefined) setMode(chosen);
-            }}
-          >
-            <Toggle aria-label="One state" value="one">
-              <SquareIcon />
-              State
-            </Toggle>
-            <Toggle aria-label="Every state" value="grid">
-              <LayoutGridIcon />
-              Grid
-            </Toggle>
-          </ToggleGroup>
-          <Button
-            render={
-              <a
-                href={flowSrc(flow, current, appearance === "both" ? undefined : appearance)}
-                rel="noreferrer"
-                target="_blank"
-              />
-            }
-            size="sm"
-            variant="secondary"
-          >
-            <ExternalLinkIcon />
-            Open
-          </Button>
-        </div>
+        <ToggleGroup
+          aria-label="View"
+          value={[mode]}
+          onValueChange={(next) => {
+            const chosen = (["one", "grid"] as const).find((candidate) => next.includes(candidate));
+            if (chosen !== undefined) setMode(chosen);
+          }}
+        >
+          <Toggle aria-label="One state" value="one">
+            <SquareIcon />
+            State
+          </Toggle>
+          <Toggle aria-label="Every state" value="grid">
+            <LayoutGridIcon />
+            Grid
+          </Toggle>
+        </ToggleGroup>
       </header>
-      <div className="min-h-0 flex-1 overflow-auto bg-muted" ref={setCanvas}>
+      <div className="min-h-0 flex-1 overflow-auto bg-muted/40" ref={setCanvas}>
         {mode === "grid" ? (
           <FlowGrid
             flow={flow}
@@ -181,15 +161,15 @@ export function FlowPage({
             shown={current.id}
             states={states}
             themes={themes}
-            viewport={viewport}
+            viewport={width}
           />
-        ) : (
+        ) : room.height === 0 ? null : (
           <FlowCanvas
-            canvas={canvas}
             current={current}
             flow={flow}
+            room={room.height}
             themes={themes}
-            viewport={viewport}
+            viewport={width}
             zoom={zoom}
           />
         )}
@@ -198,38 +178,47 @@ export function FlowPage({
   );
 }
 
+/** The canvas's inner size as it resizes, inside its scrollbars; the observer reports it as it starts. */
+function useRoom(canvas: HTMLElement | null): { readonly width: number; readonly height: number } {
+  const [room, setRoom] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    if (canvas === null) return;
+    const observer = new ResizeObserver(() =>
+      setRoom((current) =>
+        current.width === canvas.clientWidth && current.height === canvas.clientHeight
+          ? current
+          : { width: canvas.clientWidth, height: canvas.clientHeight },
+      ),
+    );
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [canvas]);
+  return room;
+}
+
 /** The state's page, centred on the ground, a window tall: light above dark when both show. */
 function FlowCanvas({
-  canvas,
+  room,
   flow,
   current,
   themes,
   viewport,
   zoom,
 }: {
-  readonly canvas: HTMLElement | null;
+  /** The canvas's height, in px. */
+  readonly room: number;
   readonly flow: KitFlow;
   readonly current: KitFlowState;
   readonly themes: readonly FlowTheme[];
   readonly viewport: number;
   readonly zoom: number;
 }) {
-  const [room, setRoom] = useState(0);
-  // The observer reports the canvas's height as it starts, then on every resize.
-  useLayoutEffect(() => {
-    if (canvas === null) return;
-    const observer = new ResizeObserver(() => setRoom(canvas.clientHeight));
-    observer.observe(canvas);
-    return () => observer.disconnect();
-  }, [canvas]);
-
   const captioned = themes.length > 1;
   // Each frame is as tall as the canvas shows at this zoom: one page fills the view, like a window.
   const height = Math.max(
     SHORTEST_FRAME,
     Math.floor((room - CANVAS_PADDING * 2 - (captioned ? CAPTION_HEIGHT : 0)) / zoom),
   );
-  if (room === 0) return null;
 
   return (
     <div className="flex w-fit min-w-full flex-col items-center gap-6 p-6">
@@ -242,7 +231,7 @@ function FlowCanvas({
           ) : null}
           <FlowFrame
             height={height}
-            src={flowSrc(flow, current, theme)}
+            src={flowSrc(flow, current, theme, { framed: true })}
             title={`${flow.title}, ${current.label}, ${theme}`}
             width={viewport}
             zoom={zoom}
