@@ -13,7 +13,11 @@ export default definePlayground({
       options: ["default", "flat", "inset", "sheet", "slot"],
       note: "flat is the app's; sheet a card standing alone among its kind; slot a place not filled yet",
     },
-    size: { kind: "enum", options: ["none", "sm", "md"], note: "its padding" },
+    size: {
+      kind: "enum",
+      options: ["none", "sm", "md", "rows"],
+      note: "its padding; rows: around rows that light their own ground",
+    },
     tone: { kind: "enum", options: ["default", "failed"], note: "failed: a thing that broke" },
     action: { kind: "boolean", note: "a press at its end" },
   },

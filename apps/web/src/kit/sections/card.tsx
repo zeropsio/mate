@@ -2,6 +2,7 @@ import { MoreHorizontalIcon, PanelRightIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
 import { EmptyState } from "~/components/ui/empty";
+import { Row } from "~/components/ui/row";
 import {
   Card,
   CardAction,
@@ -81,6 +82,14 @@ function CardSpecimens() {
             <div className="w-full max-w-80">
               <Card size="md" variant="slot">
                 <EmptyState size="line">Nothing runs here yet.</EmptyState>
+              </Card>
+            </div>
+          </Specimen>
+          <Specimen label='size="rows"' note="Rows that light their own ground">
+            <div className="w-full max-w-80">
+              <Card size="rows">
+                <Row pressable render={<button type="button" />} size="sm" title="Shared values" />
+                <Row pressable render={<button type="button" />} size="sm" title="storefront" />
               </Card>
             </div>
           </Specimen>

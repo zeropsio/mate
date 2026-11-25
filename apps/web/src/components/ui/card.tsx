@@ -14,9 +14,10 @@ import { cn } from "~/lib/utils";
  * will stand before it is there (a service the setup declares and Zerops lacks, a section with
  * nothing yet): a dashed hairline and no ground of its own.
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
- * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
- * card one press. `tone="failed"` wears its hairline in the failed ink: a thing that broke, on its
- * own card (a tool call that failed).
+ * list or a conversation, `md` for a card that stands alone on a page; `rows` is a card of rows
+ * that light their own ground, 6 px around them so a lit row's corner sits inside the card's.
+ * `pressable` makes the whole card one press. `tone="failed"` wears its hairline in the failed
+ * ink: a thing that broke, on its own card (a tool call that failed).
  */
 const cardVariants = cva("", {
   defaultVariants: {
@@ -39,6 +40,7 @@ const cardVariants = cva("", {
       none: "",
       sm: "gap-2 px-3.5 py-3",
       md: "gap-3 p-4",
+      rows: "p-1.5",
     },
     tone: {
       default: "",
