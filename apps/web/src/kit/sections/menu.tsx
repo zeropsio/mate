@@ -1,4 +1,5 @@
 import { CopyIcon, MoreHorizontalIcon, PencilIcon, TrashIcon } from "lucide-react";
+import type * as React from "react";
 import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -20,6 +21,7 @@ import {
   MenuTrigger,
 } from "~/components/ui/menu";
 import { SelectButton } from "~/components/ui/select";
+import { Text } from "~/components/ui/text";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
@@ -96,6 +98,24 @@ function EveryItem() {
   );
 }
 
+/** A secondary press that opens a menu of the given width. */
+function WidthMenu({
+  width,
+  children,
+}: {
+  readonly width: NonNullable<React.ComponentProps<typeof MenuPopup>["width"]>;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <Menu>
+      <MenuTrigger render={<Button variant="secondary" />}>Open</MenuTrigger>
+      <MenuPopup align="start" width={width}>
+        {children}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
 function MenuSpecimens() {
   return (
     <Specimens>
@@ -134,6 +154,64 @@ function MenuSpecimens() {
               <MenuPopup side="right">
                 <MenuItem>Rename</MenuItem>
                 <MenuItem variant="destructive">Delete</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="A menu of verbs is as wide as its words; one that holds names keeps one width and cuts a long one at its edge."
+        title="Widths"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label="(default)" note="A few verbs, as wide as their words">
+            <WidthMenu width="auto">
+              <MenuItem>Rename</MenuItem>
+              <MenuItem>Copy link</MenuItem>
+            </WidthMenu>
+          </Specimen>
+          <Specimen label='width="fit"' note="Lines that run long wrap at 25rem">
+            <WidthMenu width="fit">
+              <MenuItem>Open this environment</MenuItem>
+              <MenuItem disabled>
+                Roll back to v1.4.2 — the release before is still building
+              </MenuItem>
+            </WidthMenu>
+          </Specimen>
+          <Specimen label='width="sm"' note="A list of names">
+            <WidthMenu width="sm">
+              <MenuItem>Fen</MenuItem>
+              <MenuItem>
+                <span className="min-w-0 truncate">a-mate-with-a-name-long-enough-to-cut</span>
+              </MenuItem>
+            </WidthMenu>
+          </Specimen>
+          <Specimen label='width="md"' note="Rows with a second word">
+            <WidthMenu width="md">
+              <MenuItem>Fix the flaky login test</MenuItem>
+              <MenuItem>
+                <span className="min-w-0 truncate">
+                  Build the game server and its tests for the load run
+                </span>
+              </MenuItem>
+            </WidthMenu>
+          </Specimen>
+          <Specimen label='width="lg"' note="Rows that say what they do">
+            <WidthMenu width="lg">
+              <MenuItem>
+                <span className="flex min-w-0 flex-col py-0.5">
+                  <span>Try its work</span>
+                  <Text variant="note">Opens its copy of the app.</Text>
+                </span>
+              </MenuItem>
+            </WidthMenu>
+          </Specimen>
+          <Specimen label='width="anchor"' note="As wide as the press that opens it">
+            <Menu>
+              <MenuTrigger render={<SelectButton className="w-56" />}>All projects</MenuTrigger>
+              <MenuPopup align="start" width="anchor">
+                <MenuItem>All projects</MenuItem>
+                <MenuItem>storefront</MenuItem>
               </MenuPopup>
             </Menu>
           </Specimen>

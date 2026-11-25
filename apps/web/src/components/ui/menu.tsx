@@ -20,9 +20,32 @@ function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Pr
   );
 }
 
+/**
+ * How wide a menu stands, never past the viewport:
+ * - `auto` (the default): as wide as its words, from 10rem: a short list of verbs;
+ * - `fit`: as wide as its words, from 14rem to 25rem, wrapping past it: a menu whose lines run
+ *   long or vary (a reason under a verb, an address, a version, a heading over the verbs);
+ * - `sm` 14rem, `md` 18rem, `lg` 364 px: one width whatever it holds, a long name cut at its edge:
+ *   `sm` a list of names (Mates, projects, what ends soon), `md` rows with a second word or line
+ *   (chats, sites, an account and its organizations), `lg` rows that say what they do in a line
+ *   each (the crew's verbs, as wide as a Crew tab);
+ * - `anchor`: the width of the press that opens it (a picker heading a column).
+ */
+type MenuWidth = "auto" | "fit" | "sm" | "md" | "lg" | "anchor";
+
+const MENU_WIDTH: Record<MenuWidth, string> = {
+  auto: "min-w-[min(10rem,calc(100vw-2rem))]",
+  fit: "min-w-[min(14rem,calc(100vw-2rem))] max-w-[min(25rem,calc(100vw-2rem))]",
+  sm: "w-56",
+  md: "w-72",
+  lg: "w-91",
+  anchor: "w-(--anchor-width)",
+};
+
 function MenuPopup({
   children,
   className,
+  width = "auto",
   sideOffset = 4,
   align = "center",
   alignOffset,
@@ -37,6 +60,7 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   keepMounted?: boolean;
+  width?: MenuWidth;
 }) {
   return (
     <MenuPortal keepMounted={keepMounted}>
@@ -56,8 +80,8 @@ function MenuPopup({
             // the Review panel header). Drag hit-testing ignores z-index, so
             // the topmost row would stay unhoverable without this opt-out.
             "[-webkit-app-region:no-drag]",
-            // Menus size to their content from one minimum, never past the viewport.
-            "min-w-[min(10rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
+            "max-w-[calc(100vw-2rem)]",
+            MENU_WIDTH[width],
             className,
           )}
           data-slot="menu-popup"
@@ -402,6 +426,7 @@ function MenuSubPopup({
   align?: MenuPrimitive.Positioner.Props["align"];
   sideOffset?: MenuPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
+  width?: MenuWidth;
 }) {
   const defaultAlignOffset = align !== "center" ? -5 : undefined;
 
