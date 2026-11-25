@@ -11,6 +11,7 @@ import { Row } from "~/components/ui/row";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { VaultOverview, VaultOverviewPart } from "../vault/vaultOverview.logic";
 import { VaultPartName } from "../vault/VaultPartName";
+import { EmptyState } from "~/components/ui/empty";
 
 const CARD = "flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5";
 /** A row that opens the drawer: it fills under the pointer and on focus, as the page's rows do. */
@@ -108,7 +109,7 @@ export function PlaceVaultCard({
         />
       ))}
       {overview.parts.length === 0 ? (
-        <p className={QUIET}>Nothing in the vault yet</p>
+        <EmptyState size="row">Nothing in the vault yet.</EmptyState>
       ) : (
         <>
           {forAll.map(rowOf)}
