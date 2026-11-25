@@ -41,6 +41,7 @@ import { newProjectNext } from "../whatHappensNext.logic";
 import { firstRunWords } from "./firstRun.logic";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { StepNumber } from "~/components/ui/step-number";
 
 /** Who waits with a person who may not start a project: nobody yet, in the slate face. */
 const NOBODY: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -145,7 +146,12 @@ export function FirstRunView({
       className="@container/first-run relative isolate flex min-h-0 min-w-0 flex-auto flex-col overflow-y-auto bg-background"
       data-first-run={waits ? "wait" : "start"}
       data-zerops-surface="first-run"
-      style={{ "--first-run-tint": `var(--zerops-mate-tint-${face.tint})` } as CSSProperties}
+      style={
+        {
+          "--first-run-tint": `var(--zerops-mate-tint-${face.tint})`,
+          "--step-tint": "var(--first-run-tint)",
+        } as CSSProperties
+      }
     >
       {/* The faint dotted ground, fading out from behind the words. */}
       {waits ? null : (
@@ -292,15 +298,10 @@ function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
       <ol className="flex flex-col gap-3.5">
         {next.steps.map((step, index) => (
           <li
-            className="relative grid grid-cols-[22px_minmax(0,1fr)] items-start gap-3 not-last:before:absolute not-last:before:top-6.5 not-last:before:-bottom-2.5 not-last:before:left-[10.5px] not-last:before:w-px not-last:before:bg-border"
+            className="relative grid grid-cols-[24px_minmax(0,1fr)] items-start gap-3 not-last:before:absolute not-last:before:top-7 not-last:before:-bottom-2.5 not-last:before:left-[11.5px] not-last:before:w-px not-last:before:bg-border"
             key={step.words}
           >
-            <span
-              aria-hidden
-              className="inline-flex size-5.5 items-center justify-center rounded-full bg-(--first-run-tint)/22 text-caption leading-none font-medium text-foreground tabular-nums"
-            >
-              {index + 1}
-            </span>
+            <StepNumber n={index + 1} tone="tint" />
             <span className="pt-px text-prose leading-5 text-pretty text-foreground">
               {step.phrase === undefined ? step.words : <SignInPhrase parts={step.phrase} />}
               {step.time === undefined ? null : (
@@ -313,7 +314,7 @@ function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
         ))}
       </ol>
       {/* A last caption under the steps, on the steps' words' edge. */}
-      <p className="mt-3.5 ps-8.5 text-caption leading-4.25 text-muted-foreground">{next.note}</p>
+      <p className="mt-3.5 ps-9 text-caption leading-4.25 text-muted-foreground">{next.note}</p>
     </section>
   );
 }

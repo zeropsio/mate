@@ -16,7 +16,6 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react";
 
 import type { ComposerImageAttachment } from "~/composerDraftStore";
@@ -37,6 +36,7 @@ import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import { Label } from "../ui/label";
 import { Popover, PopoverPopup } from "../ui/popover";
 import { Separator } from "../ui/separator";
+import { StepNumber } from "../ui/step-number";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
@@ -70,26 +70,6 @@ const CROP_HANDLE_CLASS_NAME: Record<CropHandle, string> = {
   e: "top-1/2 -right-1.5 -mt-4 h-8 w-4 cursor-ew-resize before:inset-y-0 before:right-1.25 before:w-1 before:rounded-full before:bg-stage-foreground",
 };
 
-/** A note's number in the notes' pink: by its pin, and beside its words in the sent message. */
-export function PictureNoteNumber({
-  className,
-  children,
-}: {
-  readonly className?: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-4.5 flex-none rounded-full bg-annotation text-center text-caption leading-4.5 font-medium tabular-nums text-stage-foreground",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
 /** Marks on screen never shrink under this radius, however small the picture. */
 const VIEW_MIN_RADIUS = 11;
 
@@ -751,7 +731,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                 width="sm"
               >
                 <Text className="mb-1.5 flex items-center gap-2" render={<div />} variant="label">
-                  <PictureNoteNumber>{shownNote + 1}</PictureNoteNumber>
+                  <StepNumber n={shownNote + 1} size="sm" tone="annotation" />
                   <span>Note</span>
                 </Text>
                 <Textarea

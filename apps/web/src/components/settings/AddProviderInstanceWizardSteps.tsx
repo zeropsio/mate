@@ -1,6 +1,5 @@
-import { CheckIcon } from "lucide-react";
-
 import { cn } from "../../lib/utils";
+import { StepNumber } from "../ui/step-number";
 import { Toggle } from "../ui/toggle";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
@@ -40,19 +39,10 @@ export function AddProviderInstanceWizardSteps({
               )
             }
           >
-            <span
-              className={cn(
-                "grid size-5 shrink-0 place-items-center rounded-full text-body font-medium ring-1",
-                index < currentStep
-                  ? "bg-primary text-primary-foreground ring-primary"
-                  : index === currentStep
-                    ? "bg-primary/10 text-primary ring-primary/30"
-                    : "bg-card text-muted-foreground ring-border",
-              )}
-              aria-hidden
-            >
-              {index < currentStep ? <CheckIcon className="size-4 shrink-0" /> : index + 1}
-            </span>
+            <StepNumber
+              n={index + 1}
+              state={index < currentStep ? "done" : index === currentStep ? "current" : "todo"}
+            />
             <span
               className={cn(
                 "min-w-0 truncate text-body font-medium max-sm:hidden",

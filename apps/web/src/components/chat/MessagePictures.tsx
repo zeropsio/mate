@@ -16,7 +16,7 @@ import { Fragment, type ReactNode, use } from "react";
 import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
 import { LocalPreviewRelease } from "../useAttachmentPreviewHandoff";
-import { formatPictureBytes, PictureNoteNumber } from "./ComposerPictureView";
+import { formatPictureBytes } from "./ComposerPictureView";
 import { MessageFile } from "./MessageFiles";
 import {
   GALLERY_PICTURE_MAX_HEIGHT,
@@ -28,6 +28,7 @@ import {
 } from "./messagePictures.logic";
 import { Button } from "~/components/ui/button";
 import { PictureFrame } from "~/components/ui/picture-frame";
+import { StepNumber } from "~/components/ui/step-number";
 
 /**
  * Each stored picture's size, read from its header by the server, so a picture
@@ -158,7 +159,7 @@ function MessagePicture(props: {
         >
           {segment.notes.map((note) => (
             <li key={note.number} className="flex items-start gap-2 text-body">
-              <PictureNoteNumber className="mt-px">{note.number}</PictureNoteNumber>
+              <StepNumber className="mt-px" n={note.number} size="sm" tone="annotation" />
               <span>{note.text}</span>
             </li>
           ))}

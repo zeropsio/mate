@@ -488,7 +488,7 @@ it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits
 });
 
 // witness: packages/shared/src/openCodeKeyProviders.ts | (provider.driver !== "opencode" || → (true ||
-it("SH+1: OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in", () => {
+it("SH11: OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in", () => {
   const ready = (driver: string, models: ReadonlyArray<string>) => ({
     instanceId: ProviderInstanceId.make(driver),
     driver: ProviderDriverKind.make(driver),

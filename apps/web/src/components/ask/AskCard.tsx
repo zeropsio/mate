@@ -8,12 +8,11 @@
  */
 import { Children, Fragment, type ReactNode, useState } from "react";
 
-import { cn } from "~/lib/utils";
-
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Spinner } from "../ui/spinner";
+import { StepNumber, type StepNumberState } from "../ui/step-number";
 import { useReportAskOnScreen } from "./askReveal";
 import {
   type AskState,
@@ -383,6 +382,12 @@ export interface AskStep {
   readonly end?: string | undefined;
 }
 
+/** An ask's step as its number draws it: the one the person is on now is `current`. */
+const ASK_STEP_STATE = { done: "done", now: "current", next: "todo" } as const satisfies Record<
+  AskStep["state"],
+  StepNumberState
+>;
+
 /** A composite ask's numbered steps, in the order that is real: add, then sign in. */
 export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) {
   return (
@@ -390,23 +395,14 @@ export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) 
       <List render={<ol />}>
         {steps.map((step, index) => (
           <li
-            className="grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
+            className="grid min-w-0 grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
             data-ask-step={step.state}
             // A picture ask draws these inside an answer's words (`chat-markdown-island`): the mark
             // is what the stylesheet's "item after an item" rules key on there (index.css).
             data-md-li=""
             key={step.id}
           >
-            <span
-              className={cn(
-                "grid size-5 place-items-center rounded-full font-medium text-caption",
-                step.state === "done" && "bg-status-ok-surface text-status-ok-text",
-                step.state === "now" && "bg-primary text-primary-foreground",
-                step.state === "next" && "bg-muted text-muted-foreground",
-              )}
-            >
-              {index + 1}
-            </span>
+            <StepNumber n={index + 1} state={ASK_STEP_STATE[step.state]} />
             <span className="min-w-0">
               {step.label}
               {step.detail === undefined ? null : (

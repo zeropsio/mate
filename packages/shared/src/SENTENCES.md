@@ -1,4 +1,4 @@
-next: SH11
+next: SH12
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -9,4 +9,4 @@ next: SH11
 - SH8 — Setting the automated Mates' key, stopping a task and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read
 - SH9 — Set up Mate on a held Mate is offered exactly to whom HQ's start admits: who may create projects and owns the project's attach, an owner or admin of the organization or an Admin grant on it; breaks: a Basic user presses it and HQ refuses, or an Admin has no way to set it up
 - SH10 — Among a Mate's conversations a change's own is the chat bound to a lease of its branch in its repository, the more primary of two; a lease of another repository at the same HQ, another branch or no branch is not it
-- SH+1 — OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in
+- SH11 — OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in
