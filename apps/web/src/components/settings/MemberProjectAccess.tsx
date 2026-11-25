@@ -206,7 +206,7 @@ function ProjectPicker({
               <li
                 className={cn(
                   "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-control px-2 py-1.5 max-sm:min-h-11 max-sm:py-0",
-                  level !== undefined && "bg-foreground/4",
+                  level !== undefined && "bg-item-picked",
                 )}
                 key={project.projectId}
               >

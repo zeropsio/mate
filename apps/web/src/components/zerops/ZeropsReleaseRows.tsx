@@ -281,7 +281,7 @@ function ReleaseRow({
         "group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border",
         // What is live is found without reading a pill: the one row with a surface at rest.
         live ? "border-status-ok/25 bg-status-ok-surface/50" : "border-transparent",
-        open && !live && "bg-accent/40",
+        open && !live && "bg-item-picked",
       )}
       data-zerops-environment-row="true"
       data-zerops-release={release.tag}
@@ -291,7 +291,7 @@ function ReleaseRow({
         className={cn(
           RELEASE_ROW_CLASS,
           // Only a row with something to press answers the pointer.
-          !live && (expandable || release.rollBack) && "group-hover/release:bg-accent/40",
+          !live && (expandable || release.rollBack) && "group-hover/release:bg-item-hover",
         )}
       >
         {expandable ? (
@@ -379,7 +379,7 @@ function ReleaseRow({
             )}
             data-zerops-surface="release-roll-back"
           >
-            <span className="flex h-full items-center rounded-e-control bg-accent/40 ps-3 pe-3.5">
+            <span className="flex h-full items-center rounded-e-control bg-item-hover ps-3 pe-3.5">
               <Button
                 disabled={rollingBack}
                 onClick={(event) => {

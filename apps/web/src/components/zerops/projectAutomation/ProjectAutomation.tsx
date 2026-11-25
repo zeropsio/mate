@@ -1569,7 +1569,7 @@ const ROWS = "m-0 grid min-w-0 list-none grid-cols-subgrid p-0";
  * while any of it is pointed at: its Stop and its Review stand over it.
  */
 const ROW =
-  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-foreground/5";
+  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-item-hover";
 const PRESS = "row-start-1 min-h-10 items-center";
 
 /** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */

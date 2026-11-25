@@ -205,7 +205,7 @@ export function AddMateCard({
         onClick={onAdd}
         variant="bare"
       >
-        <span className="relative flex min-w-0 flex-col rounded-card text-center outline-1 -outline-offset-1 outline-foreground/16 outline-dashed transition-colors duration-150 ease-out-strong group-enabled/add:group-hover/add:bg-foreground/4 max-sm:text-start">
+        <span className="relative flex min-w-0 flex-col rounded-card text-center outline-1 -outline-offset-1 outline-foreground/16 outline-dashed transition-colors duration-150 ease-out-strong group-enabled/add:group-hover/add:bg-item-hover max-sm:text-start">
           <span
             className={cn(
               "grid min-w-0 flex-1 content-center justify-items-center gap-1 rounded-card px-4 pt-6.5 pb-5.5",

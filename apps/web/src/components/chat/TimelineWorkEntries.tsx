@@ -396,7 +396,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         isExpandedToolGroupEntry ? "py-0" : "py-px",
         expanded && "mb-1",
         canExpand &&
-          "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+          "cursor-pointer hover:bg-item-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
       )}
       {...rowToggleProps}
     >

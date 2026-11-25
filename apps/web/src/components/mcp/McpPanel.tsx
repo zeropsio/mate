@@ -406,8 +406,8 @@ function RowHead(props: {
   return (
     <div
       className={cn(
-        "group/tool relative grid grid-cols-[32px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40",
-        props.open && "bg-accent/30",
+        "group/tool relative grid grid-cols-[32px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-item-hover",
+        props.open && "bg-item-picked",
       )}
     >
       <CollapsibleTrigger

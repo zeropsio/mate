@@ -151,7 +151,7 @@ interface VaultRowProps {
  * under the pointer and while open, flashed when it is found.
  */
 export const VAULT_ROW_CLASS =
-  "relative transition-colors duration-150 ease-out-strong not-data-open:hover:bg-foreground/4 data-open:bg-foreground/3 data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
+  "relative transition-colors duration-150 ease-out-strong not-data-open:hover:bg-item-hover data-open:bg-item-picked data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
 
 /** A group's rows, parted by a hairline. */
 export const VAULT_ROWS_CLASS = "divide-y divide-border/70";

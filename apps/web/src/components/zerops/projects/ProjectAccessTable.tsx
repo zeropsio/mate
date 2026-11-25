@@ -273,7 +273,7 @@ function AccessGrid({
     // it holds its own screen-reader words, which would otherwise widen the page. The column a
     // place's page linked to is lit.
     <div
-      className="relative -mx-2 mt-0.5 max-w-full [&_[data-focus]]:bg-primary/7 [&_thead_th[data-focus]]:text-foreground"
+      className="relative -mx-2 mt-0.5 max-w-full [&_[data-focus]]:bg-item-picked [&_thead_th[data-focus]]:text-foreground"
       ref={scroller}
     >
       <Table aria-label={label} size="md">

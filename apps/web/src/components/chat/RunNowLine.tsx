@@ -416,7 +416,7 @@ export function NowLine({
           <span className="sr-only">{toggle.open ? "Hide work" : "Show work"}</span>
           <span
             aria-hidden="true"
-            className="absolute inset-0 rounded-control transition-colors duration-150 ease-out-strong group-hover/fold:bg-foreground/4"
+            className="absolute inset-0 rounded-control transition-colors duration-150 ease-out-strong group-hover/fold:bg-item-hover"
           />
         </Button>
       )}

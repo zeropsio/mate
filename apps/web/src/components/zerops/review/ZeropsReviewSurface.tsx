@@ -1158,7 +1158,7 @@ function FileRow({
   return (
     // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
     <Collapsible onOpenChange={onToggle} open={expanded}>
-      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-foreground/4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-item-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <span className={STATUS[letter ?? ""] ?? STATUS[""]}>{letter}</span>
         <span className="truncate">
           <span className="text-muted-foreground">{dir}</span>

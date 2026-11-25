@@ -301,7 +301,7 @@ export function ChangeRow(props: ChangeRowProps) {
       className={cn(
         "col-span-full grid min-w-0 grid-cols-subgrid items-center [--change-gap:10px] [--row-pad-x:8px] [--row-pad-y:6px]",
         // The row of the change whose bead on the line is pointed at (`data-marked`).
-        "[&[data-marked]>[data-slot=row]]:bg-foreground/5",
+        "[&[data-marked]>[data-slot=row]]:bg-item-hover",
         (look === "ruled" || look === "record") && "[--row-pad-x:10px] [--row-pad-y:10px]",
         look === "ruled" && "border-t border-border/60 first:border-t-0",
         look === "record" && "border-t border-border/60",
