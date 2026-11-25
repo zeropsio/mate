@@ -292,12 +292,9 @@ function VaultShown({ show }: { readonly show: VaultShow }) {
           {placeParts(show.parts).map(({ part, at }) =>
             part.ref ? (
               // A `${name}` inside a value: a quiet chip in the line.
-              <span
-                className="mx-px inline-block rounded-mark bg-foreground/7 px-1.25 align-[1px] font-mono text-2xs leading-4.25"
-                key={at}
-              >
+              <Text chip className="mx-px inline-block align-[1px]" key={at} variant="code">
                 {part.text}
-              </span>
+              </Text>
             ) : (
               <span key={at}>{part.text}</span>
             ),
