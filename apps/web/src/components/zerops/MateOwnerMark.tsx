@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from "react";
 
 import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { PERSON_DISC } from "./primitives/PersonAvatar";
+import { NobodyRing, PERSON_DISC } from "./primitives/PersonAvatar";
 import type { BadgeSeat } from "./SidebarMateRow.logic";
 
 /**
@@ -41,28 +41,14 @@ export function MateOwnerMark({
         <TooltipTrigger
           render={
             <span
-              // An empty seat: a dashed ring in the muted ink, no fill and no hairline, so it never
-              // reads as a person without a picture.
+              // Nobody's seat (`NobodyRing`), in the menu's muted ink.
               className={cn(SEAT, "text-sidebar-muted-foreground/75", className)}
               data-zerops-avatar="nobody"
               data-zerops-surface="sidebar-mate-owner"
             />
           }
         >
-          {/* Twelve even dashes: `pathLength` makes the ring's length 24, so
-              the pattern closes on itself with no short dash at the seam. */}
-          <svg aria-hidden="true" className="size-full" viewBox="0 0 16 16">
-            <circle
-              cx="8"
-              cy="8"
-              fill="none"
-              pathLength="24"
-              r="7.25"
-              stroke="currentColor"
-              strokeDasharray="1.25 0.75"
-              strokeWidth="1.25"
-            />
-          </svg>
+          <NobodyRing />
           <span className="sr-only">{seat.label}</span>
         </TooltipTrigger>
         <TooltipPopup side="right">{seat.label}</TooltipPopup>
