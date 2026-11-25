@@ -36,6 +36,7 @@ import {
 } from "../ui/menu";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Popover, PopoverPopup } from "../ui/popover";
 import { MenuItemWithWhy } from "./MenuItemWithWhy";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -459,15 +460,22 @@ export function MateRenameField({
         spellCheck={false}
         value={value}
       />
-      {tried && error !== undefined ? (
-        <span
-          className="absolute start-0 top-full z-10 mt-1 max-w-full rounded-control border border-border bg-popover px-2 py-1 text-caption text-destructive-foreground shadow-md"
+      {/* Under the field, over the rows below it, never pushing them: the kit's one-line popup,
+          anchored to the field and taking no focus from it. */}
+      <Popover open={tried && error !== undefined}>
+        <PopoverPopup
+          align="start"
+          anchor={input}
           data-zerops-surface="sidebar-mate-rename-error"
-          role="alert"
+          finalFocus={false}
+          initialFocus={false}
+          variant="tooltip"
         >
-          {error}
-        </span>
-      ) : null}
+          <span className="text-destructive-foreground" role="alert">
+            {error}
+          </span>
+        </PopoverPopup>
+      </Popover>
     </span>
   );
 }
