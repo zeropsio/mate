@@ -1054,3 +1054,11 @@
 }
 
 /* ==== end of the menu's rows ==== */
+
+/* What waits on the person arrives with a small rise, once. */
+@keyframes chat-review-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
+  }
+}
