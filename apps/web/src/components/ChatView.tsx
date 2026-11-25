@@ -7513,7 +7513,17 @@ function ConversationView(props: ChatViewProps) {
                 className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
                 <ConversationOpeningArrival onArrive={scheduleComposerFocus} />
-                <div className="pointer-events-auto relative z-10" data-footer-parts="">
+                <div
+                  className={cn(
+                    "relative z-10",
+                    // A held composer keeps its room unseen; that room lets presses through to
+                    // what stands under it (a sign-in's last cards), its other parts still reached.
+                    zeropsArrivalHoldsComposer
+                      ? "pointer-events-none *:pointer-events-auto"
+                      : "pointer-events-auto",
+                  )}
+                  data-footer-parts=""
+                >
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div

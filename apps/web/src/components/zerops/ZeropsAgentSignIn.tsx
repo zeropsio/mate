@@ -5,8 +5,8 @@
  * dialog (`ZeropsAgentSignInDialog`), opened on the agent that was asked for.
  *
  * A card per agent, with its own logo, says whose account it needs, the project's usual one
- * first, one under another (the owner's design, 2026-11-23): the first two, then *Show N more
- * options* for the rest. The chosen card opens in place in the list — from its own box (a clip
+ * first, every one shown: two to a line where the slot has room, else one under another. The
+ * chosen card opens in place in the list — from its own box (a clip
  * reveal, 260 ms) — into its numbered steps, the other cards dimmed; one card is open at a time,
  * and its login starts that moment so the provider's page is ready by the time it is asked for. *Open
  * Claude* opens it in a new tab at once — a tab opened before the page's address is printed is
@@ -31,7 +31,6 @@ import {
   ArrowRightIcon,
   ArrowUpRightIcon,
   CheckIcon,
-  ChevronDownIcon,
   CopyIcon,
   RotateCcwIcon,
 } from "lucide-react";
@@ -114,8 +113,6 @@ type CardOrigin = "fade" | null;
 /** How long a card takes to open into its steps, or fold back. */
 const OPEN_GLIDE_MS = 320;
 const COPIED_MS = 2_000;
-/** The options shown before *Show N more options*. */
-const FIRST_OPTIONS = 2;
 
 /** An agent as a sign-in shows it: its row, and what a login beyond the defaults calls it. */
 export type SignInAgent = Pick<ZeropsAgentAuth, "agentId" | "login"> &
@@ -179,7 +176,6 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   const openAgent = agents.find((agent) => agent.agentId === open);
   const origin = useRef<CardOrigin>(null);
   const [keysOpen, setKeysOpen] = useState(false);
-  const [more, setMore] = useState(false);
 
   // Folds the open card: a login it started stops, so another can start.
   const fold = () => {
@@ -218,10 +214,6 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     ...(props.openCode === undefined ? [] : [OPENCODE]),
   ];
   const opened = keysOpen && props.openCode !== undefined ? OPENCODE : open;
-  // The open card stays in sight: one past the first two shows every option.
-  const all =
-    fixed || more || (options.indexOf(opened ?? OPENCODE) >= FIRST_OPTIONS && opened !== null);
-  const hidden = options.length - FIRST_OPTIONS;
   const dimmed = opened !== null && !fixed;
   // One option in the list: its card, or the card standing open, in a slot gliding between them.
   const slot = (option: ZeropsAgentId | typeof OPENCODE) => (
@@ -306,48 +298,16 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     <div
       // A card of its own in the stage's slot: its words start on their line, never the stage's
       // centred text (the owner, 2026-10-13: "once again misaligned").
-      className="@container relative mx-auto flex w-full max-w-88 flex-col items-center text-start data-arrives:animate-zerops-appear"
+      className="@container relative mx-auto flex w-full max-w-178 flex-col items-center text-start data-arrives:animate-zerops-appear"
       inert={props.available === false}
       aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
       data-open={opened ?? undefined}
       data-zerops-surface="agent-sign-in"
     >
-      <div className="flex w-full flex-col gap-2">
-        {options.slice(0, FIRST_OPTIONS).map(slot)}
-        {hidden <= 0 ? null : (
-          // The rest unfold under the first two in 260 ms and fold back into them, each card's
-          // ring still drawn past the clip.
-          <div
-            className="-mt-2 grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,margin-top,opacity] duration-260 ease-out-strong data-open:mt-0 data-open:grid-rows-[1fr] data-open:opacity-100 motion-reduce:transition-none"
-            data-open={all ? "" : undefined}
-            inert={!all}
-          >
-            <div className="flex min-h-0 flex-col gap-2 overflow-clip [overflow-clip-margin:2px]">
-              {options.slice(FIRST_OPTIONS).map(slot)}
-            </div>
-          </div>
-        )}
-      </div>
-      {fixed || hidden <= 0 || (all && !more) ? null : (
-        <Button
-          aria-expanded={more}
-          className="mt-4"
-          data-sign-in-more
-          onClick={() => setMore(!more)}
-          shape="round"
-          variant="ghost-muted"
-        >
-          {more ? "Show fewer options" : `Show ${String(hidden)} more options`}
-          <ChevronDownIcon
-            aria-hidden="true"
-            className={cn(
-              "transition-transform duration-200 ease-out-strong",
-              more ? "rotate-180" : undefined,
-            )}
-          />
-        </Button>
-      )}
+      {/* Two to a line where the slot has room for two cards of their one-column width; an open
+          card keeps its cell, its neighbour its own height. */}
+      <div className="grid w-full items-start gap-2 @[40rem]:grid-cols-2">{options.map(slot)}</div>
     </div>
   );
 }
