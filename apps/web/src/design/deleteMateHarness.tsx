@@ -30,6 +30,7 @@ import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateDeletionOf, operationFailureDetails } from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -127,7 +128,7 @@ const ACME_WORDS = deleteApplicationWords(
     stages: [{ projectId: "acme-docs-stage", name: "acme-docs-stage" }],
     productions: [{ branch: "release" }],
   },
-  { repos: ["docs", "zerops-recipe"], openChanges: 2 },
+  { repos: ["docs", RECIPE_REPO], openChanges: 2 },
   { name: "Quinn", services: deleteMateServiceCount(QUINN) },
 );
 
