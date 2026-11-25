@@ -6,6 +6,7 @@ import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { submitHqAppWrite } from "~/zerops/hqAppWrite";
 import { Button } from "../ui/button";
+import { Card } from "~/components/ui/card";
 
 const NO_QUESTIONS = Atom.make<ReadonlyArray<KeptGitQuestionView>>([]);
 
@@ -70,65 +71,64 @@ function KeptGitQuestion({
     }
   };
   return (
-    <div
-      className="flex flex-col gap-2 rounded-card border border-border bg-card p-3 text-body"
-      data-zerops-surface="kept-git-question"
-    >
-      <p className="font-medium">{view.question.appName}</p>
-      <p className="text-muted-foreground">
-        {view.question.projectName ?? view.question.appName} was removed. Keep its Git?
-      </p>
-      <p className="text-muted-foreground">
-        Its Git stays kept and billed as storage until you delete it.
-      </p>
-      {confirmDelete ? (
-        <>
-          <p>
-            Delete {view.question.appName} and its Git? This permanently deletes its repositories.
-          </p>
+    <Card data-zerops-surface="kept-git-question">
+      <div className="flex flex-col gap-2 p-3 text-body">
+        <p className="font-medium">{view.question.appName}</p>
+        <p className="text-muted-foreground">
+          {view.question.projectName ?? view.question.appName} was removed. Keep its Git?
+        </p>
+        <p className="text-muted-foreground">
+          Its Git stays kept and billed as storage until you delete it.
+        </p>
+        {confirmDelete ? (
+          <>
+            <p>
+              Delete {view.question.appName} and its Git? This permanently deletes its repositories.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setConfirmDelete(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy || answer === undefined}
+                onClick={() => void send("delete")}
+              >
+                Delete Git
+              </Button>
+            </div>
+          </>
+        ) : (
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setConfirmDelete(false)}
+              disabled={busy || answer === undefined}
+              onClick={() => void send("keep")}
             >
-              Cancel
+              Keep Git
             </Button>
             <Button
               size="sm"
-              variant="destructive"
+              variant="secondary"
               disabled={busy || answer === undefined}
-              onClick={() => void send("delete")}
+              onClick={() => setConfirmDelete(true)}
             >
-              Delete Git
+              Delete Git…
             </Button>
           </div>
-        </>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            disabled={busy || answer === undefined}
-            onClick={() => void send("keep")}
-          >
-            Keep Git
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy || answer === undefined}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete Git…
-          </Button>
-        </div>
-      )}
-      {(error ?? view.message) ? (
-        <p role="status" className="text-muted-foreground">
-          {error ?? view.message}
-        </p>
-      ) : null}
-    </div>
+        )}
+        {(error ?? view.message) ? (
+          <p role="status" className="text-muted-foreground">
+            {error ?? view.message}
+          </p>
+        ) : null}
+      </div>
+    </Card>
   );
 }

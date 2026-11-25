@@ -51,6 +51,7 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/ta
 import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
 import { Spinner } from "~/components/ui/spinner";
+import { Card } from "~/components/ui/card";
 
 /** How far below the last row the next page starts loading. */
 
@@ -235,22 +236,21 @@ export function ZeropsDataTable({
       {belowToolbar}
 
       {columnsOpen && onToggleColumn !== undefined ? (
-        <div
-          className="flex shrink-0 flex-wrap gap-2 rounded-card border border-border p-2"
-          data-zerops-data-table-column-picker
-        >
-          {model.columns.map((column) => (
-            <label className="flex items-center gap-1 text-caption" key={column.name}>
-              <Checkbox
-                checked={column.pk || !hiddenColumns.has(column.name)}
-                data-zerops-data-table-column-toggle={column.name}
-                disabled={column.pk}
-                onCheckedChange={() => onToggleColumn(column.name)}
-              />
-              {column.name}
-            </label>
-          ))}
-        </div>
+        <Card className="shrink-0" data-zerops-data-table-column-picker>
+          <div className="flex flex-wrap gap-2 p-2">
+            {model.columns.map((column) => (
+              <label className="flex items-center gap-1 text-caption" key={column.name}>
+                <Checkbox
+                  checked={column.pk || !hiddenColumns.has(column.name)}
+                  data-zerops-data-table-column-toggle={column.name}
+                  disabled={column.pk}
+                  onCheckedChange={() => onToggleColumn(column.name)}
+                />
+                {column.name}
+              </label>
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       <div

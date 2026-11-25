@@ -59,6 +59,8 @@ import { placeServiceRows } from "./place/place.logic";
 import { SectionLabel } from "./system/SectionLabel";
 import { ServiceList, ServiceMeters, ServiceRow } from "./system/ServiceRow";
 import { Badge } from "~/components/ui/badge";
+import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -973,13 +975,12 @@ export function ZeropsServiceMap({
           {servicesLabel}
         </SectionLabel>
         {view.isEmpty || services.length === 0 ? (
-          <p
-            className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
-            data-zerops-map-empty
-          >
-            No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something
-            and it appears.
-          </p>
+          <Card data-zerops-map-empty render={<p />} size="md" variant="slot">
+            <EmptyState size="line">
+              No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something
+              and it appears.
+            </EmptyState>
+          </Card>
         ) : (
           <ServiceList label={servicesLabel}>
             {services.map((service) => (

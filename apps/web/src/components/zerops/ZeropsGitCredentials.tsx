@@ -8,6 +8,7 @@ import { Loading } from "~/components/ui/loading";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
 import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
+import { Card } from "~/components/ui/card";
 
 export function ZeropsGitCredentialsView({
   state,
@@ -29,9 +30,11 @@ export function ZeropsGitCredentialsView({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 items-start gap-3">
-        <pre className="min-w-0 flex-1 overflow-auto rounded-control border border-border bg-card p-3 font-mono text-caption text-foreground">
-          <code>git clone {cloneUrl}</code>
-        </pre>
+        <Card className="min-w-0 flex-1">
+          <pre className="min-w-0 overflow-auto p-3 font-mono text-caption text-foreground">
+            <code>git clone {cloneUrl}</code>
+          </pre>
+        </Card>
         <Button
           variant="secondary"
           size="sm"

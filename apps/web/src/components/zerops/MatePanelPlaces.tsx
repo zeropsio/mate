@@ -15,6 +15,7 @@ import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
 import { NextRelease, type NextReleaseInput } from "./system/NextRelease";
 import { PlaceLine } from "./system/PlaceLine";
 import { SectionAction } from "./system/SectionLabel";
+import { Card } from "~/components/ui/card";
 
 /**
  * The column a Mate's Zerops and Code pages stand in, from the page's top: its gutters, its width
@@ -92,10 +93,11 @@ export function MateProjectCard({
   const notLive =
     project.places.length > 0 && (production === undefined || production.nothingDeployed === true);
   return (
-    <section
+    <Card
       aria-label={`${project.name}, ${mateName === undefined ? "this Mate" : possessive(mateName, "project")}`}
-      className="flex min-w-0 flex-col overflow-hidden rounded-card border border-border/70 bg-card"
+      className="min-w-0 overflow-hidden"
       data-zerops-surface="panel-project"
+      render={<section />}
     >
       <div className="flex min-w-0 items-center justify-between gap-3 px-4 pt-3.5 pb-1.5">
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -131,6 +133,6 @@ export function MateProjectCard({
           <NextRelease density="line" {...project.next} />
         </div>
       )}
-    </section>
+    </Card>
   );
 }
