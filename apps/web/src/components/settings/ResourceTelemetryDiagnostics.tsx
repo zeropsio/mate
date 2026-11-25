@@ -291,9 +291,9 @@ function AggregateCard({
         <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/75">
           {label}
         </div>
-        <div className="rounded-control bg-muted/55 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground/70">
+        <Badge>
           {aggregate.processCount} {aggregate.processCount === 1 ? "process" : "processes"}
-        </div>
+        </Badge>
       </div>
       <div className="mt-3.5 grid grid-cols-2 gap-x-4 gap-y-2.5">
         <MetricPair label="CPU" value={`${aggregate.currentCpuPercent.toFixed(1)}%`} />

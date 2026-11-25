@@ -66,6 +66,7 @@ import {
   type NewProjectScriptInput,
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
@@ -693,11 +694,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       <code className="min-w-0 flex-1 truncate font-mono font-normal text-muted-foreground">
                         {script.command}
                       </code>
-                      {script.runOnWorktreeCreate ? (
-                        <span className="shrink-0 rounded-mark border border-border/60 px-1.5 py-px text-caption font-normal text-muted-foreground">
-                          setup
-                        </span>
-                      ) : null}
+                      {script.runOnWorktreeCreate ? <Badge>setup</Badge> : null}
                     </span>
                   }
                   control={
