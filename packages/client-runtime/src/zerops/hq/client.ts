@@ -386,6 +386,7 @@ export const HqOperation = Schema.Struct({
       Schema.Struct({
         part: Schema.String,
         projectId: Schema.optionalKey(Schema.String),
+        name: Schema.optionalKey(Schema.String),
         state: Schema.String,
       }),
     ),
@@ -2067,7 +2068,7 @@ export function makeHqApi(input: {
         signIn: "Sign in with your Zerops account to delete this project.",
         inFlight: "This project is already being deleted.",
         heldChanged:
-          "Its stages changed since you reviewed them. Close this and press Delete again to see what goes now.",
+          "Its Stages changed since you reviewed them. Review what goes now, then press Delete.",
       }),
     startEnvironment: (appId, start) =>
       startOperation(`/api/apps/${encodeURIComponent(appId)}/environments`, start, {

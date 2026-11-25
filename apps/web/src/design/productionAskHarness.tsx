@@ -87,7 +87,7 @@ const CREATES: ReadonlyArray<{
   { name: "waiting", plan: planOf(DB) },
   { name: "waiting-two", proposal: CREATE_TWO, plan: planOf(DB, CACHE) },
   { name: "reading", plan: { kind: "reading" } },
-  { name: "working", plan: planOf(DB), decision: APPROVED, effect: { kind: "going" } },
+  { name: "working", plan: planOf(DB), decision: APPROVED, effect: { kind: "going", id: "op" } },
   {
     name: "paused",
     plan: planOf(DB),

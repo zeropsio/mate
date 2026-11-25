@@ -111,6 +111,7 @@ it("PJ131: An application's environment, deploy-key, rename and Put it live oper
     expect(said.kind, label).toBe(standing);
     if (said.kind === "waiting") expect(said.yours, label).toBe(yours);
     if (said.kind === "needs") expect(said.needs, label).toBe("release_review");
+    if (said.kind === "going" || said.kind === "failed") expect(said.id, label).toBe(operation?.id);
     if (said.kind === "failed") expect(said.failure, label).toBe(operation?.failure);
   }
 });
