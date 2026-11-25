@@ -11,21 +11,31 @@ import { Spinner } from "./spinner";
  * change live): its number — or `icon`, a step that is a place rather than a turn — in a 24 px disc
  * on the muted ground. `busy` turns it into a spinner while the step runs, `done` into a check on
  * the success tint, `attention` and `failed` into a mark on the attention and failed tints. A
- * step's progress that the person does not drive, as a log of it, is ProcessSteps.
+ * step's progress that the person does not drive, as a log of it, is ProcessSteps. `size="sm"`
+ * is an 18 px disc for steps said in a sentence's line rather than as a list's lead (what happens
+ * next, a domain's records named in order).
  */
 const stepNumberVariants = cva(
-  "inline-flex size-6 shrink-0 select-none items-center justify-center rounded-full font-medium text-caption tabular-nums leading-none [&_svg]:size-3",
+  "inline-flex shrink-0 select-none items-center justify-center rounded-full font-medium tabular-nums leading-none",
   {
-    defaultVariants: { state: "todo" },
+    defaultVariants: { state: "todo", size: "md" },
     variants: {
+      size: {
+        sm: "size-4.5 text-2xs [&_svg]:size-2.5",
+        md: "size-6 text-caption [&_svg]:size-3",
+      },
       state: {
         todo: "bg-muted text-foreground ring-1 ring-border ring-inset",
-        busy: "text-status-busy-text [&_svg]:size-4.5",
+        busy: "text-status-busy-text",
         done: "bg-status-ok/24 text-status-ok-text",
         attention: "bg-status-attention/20 text-status-attention-text",
         failed: "bg-status-failed/20 text-status-failed-text",
       },
     },
+    compoundVariants: [
+      { state: "busy", size: "sm", className: "[&_svg]:size-3.5" },
+      { state: "busy", size: "md", className: "[&_svg]:size-4.5" },
+    ],
   },
 );
 
@@ -35,6 +45,7 @@ function StepNumber({
   n,
   icon,
   state = "todo",
+  size = "md",
   className,
   ...props
 }: Omit<React.ComponentProps<"span">, "children"> & {
@@ -43,11 +54,13 @@ function StepNumber({
   /** Drawn in the number's place while the step is to do. */
   readonly icon?: ReactNode;
   readonly state?: StepNumberState;
+  /** `sm`: 18 px, for steps said in a line of words. */
+  readonly size?: "sm" | "md";
 }) {
   return (
     <span
       aria-hidden="true"
-      className={cn(stepNumberVariants({ state }), className)}
+      className={cn(stepNumberVariants({ state, size }), className)}
       data-slot="step-number"
       data-state={state}
       {...props}

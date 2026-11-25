@@ -22,17 +22,26 @@ export default definePlayground({
       options: STATES,
       note: "busy spins, done is a check, attention and failed a mark",
     },
+    size: { kind: "enum", options: ["md", "sm"], note: "sm: 18 px, in a line of words" },
     words: { kind: "text", note: "the step's words beside it" },
   },
-  initial: { n: "1", state: "todo", words: "In Terminal, connect it to this project's VPN." },
-  render: ({ n, state, words }) => (
+  initial: {
+    n: "1",
+    state: "todo",
+    size: "md",
+    words: "In Terminal, connect it to this project's VPN.",
+  },
+  render: ({ n, state, size, words }) => (
     <span className="grid max-w-80 grid-cols-[24px_minmax(0,1fr)] items-start gap-3 text-body">
-      <StepNumber n={Number(n)} state={state} />
+      <StepNumber n={Number(n)} size={size} state={state} />
       <span className="pt-0.5">{words}</span>
     </span>
   ),
-  jsx: ({ n, state }) =>
-    jsxElement("StepNumber", { n: Number(n), state }, undefined, { state: "todo" }),
+  jsx: ({ n, state, size }) =>
+    jsxElement("StepNumber", { n: Number(n), state, size }, undefined, {
+      state: "todo",
+      size: "md",
+    }),
   usage: {
     do: [
       "Number the steps the person takes, in order, each before its words.",

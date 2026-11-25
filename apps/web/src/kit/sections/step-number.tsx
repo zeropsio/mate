@@ -28,6 +28,14 @@ function StepNumberSpecimens() {
       </SpecimenBlock>
       <SpecimenBlock title="Icons and steps">
         <SpecimenGrid size="md">
+          <Specimen label='size="sm"' note="Steps said in a line of words">
+            <span className="flex items-center gap-2 text-line">
+              <StepNumber n={1} size="sm" />
+              Add the record
+              <StepNumber n={2} size="sm" />
+              Wait for it to answer
+            </span>
+          </Specimen>
           <Specimen label="icon={<GlobeIcon />}" note="A place instead of a number">
             <StepNumber icon={<GlobeIcon />} n={2} />
           </Specimen>
