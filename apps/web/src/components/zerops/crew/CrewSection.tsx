@@ -46,6 +46,7 @@ import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 import { LockIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
+import { EmptyState } from "../../ui/empty";
 import { Failure } from "../../ui/failure";
 import { MateFace } from "../primitives";
 import { CrewHead, type CrewHeadMenuItem } from "./CrewHead";
@@ -77,55 +78,66 @@ export function CrewSectionEmpty({
   readonly onSignIn: (lock: CrewLoginLock) => void;
 }) {
   return (
-    <div className="flex flex-col items-center px-12 pt-49 text-center" data-crew-section="none">
-      <div className="flex items-center gap-2.5">
-        <MateFace shape={mate.shape} size={32} state="idle" tint={mate.tint} />
-        <span className="flex items-center gap-1.5" aria-hidden="true">
-          <span className="crew-seat" />
-          <span className="crew-seat" />
-          <span className="crew-seat" />
-        </span>
-      </div>
-      <h2 className="mt-5 font-semibold text-emphasis">{crewGiveCrewTitle(mate.name)}</h2>
-      <p className="mt-1.5 max-w-100 text-muted-foreground text-body leading-5.5">
+    // The state hangs 196 px from the panel's top, 48 px in from its sides.
+    <div className="px-2 pt-39" data-crew-section="none">
+      <EmptyState
+        action={
+          <>
+            {error === null ? null : <Failure cause={error} role="alert" size="line" />}
+            {lock === null ? (
+              <>
+                {draft ? (
+                  <p className="text-line leading-4.5 text-muted-foreground" data-crew-draft-kept>
+                    {crewDraftKeptLine(mate.name)}
+                  </p>
+                ) : null}
+                <CrewPress
+                  label={draft ? CREW_SETUP_CONTINUE_WORD : CREW_SET_UP_WORD}
+                  line={draft ? null : CREW_SET_UP_LINE}
+                  onPress={onSetUp}
+                  size="md"
+                />
+              </>
+            ) : (
+              // Not the viewer's to set up: why, as the state's own line, and the one way out as
+              // its press — none for a colleague reading along.
+              <>
+                <p
+                  className="max-w-100 text-balance text-line leading-4.5 text-foreground/85"
+                  data-crew-locked={lock.ownership}
+                >
+                  <LockIcon
+                    aria-hidden="true"
+                    className="me-1.5 inline size-3.5 -translate-y-px text-warning"
+                  />
+                  {crewLockWords(lock.ownership)}
+                </p>
+                {lock.ownership === "reads-along" ? null : (
+                  <CrewPress
+                    variant="secondary"
+                    label={CREW_LOCK_ACTION}
+                    onPress={() => onSignIn(lock)}
+                    size="md"
+                  />
+                )}
+              </>
+            )}
+          </>
+        }
+        mark={
+          <span className="flex items-center gap-2.5">
+            <MateFace shape={mate.shape} size={32} state="idle" tint={mate.tint} />
+            <span className="flex items-center gap-1.5" aria-hidden="true">
+              <span className="crew-seat" />
+              <span className="crew-seat" />
+              <span className="crew-seat" />
+            </span>
+          </span>
+        }
+        title={crewGiveCrewTitle(mate.name)}
+      >
         {crewGiveCrewLine(mate.name)}
-      </p>
-      {error === null ? null : <Failure cause={error} role="alert" size="line" />}
-      {lock === null ? (
-        <div className="mt-5 flex flex-col items-center gap-3">
-          {draft ? (
-            <p className="text-line leading-4.5 text-muted-foreground" data-crew-draft-kept>
-              {crewDraftKeptLine(mate.name)}
-            </p>
-          ) : null}
-          <CrewPress
-            label={draft ? CREW_SETUP_CONTINUE_WORD : CREW_SET_UP_WORD}
-            line={draft ? null : CREW_SET_UP_LINE}
-            onPress={onSetUp}
-            size="md"
-          />
-        </div>
-      ) : (
-        // Not the viewer's to set up: why, as the state's own line, and the one way out as its press —
-        // none for a colleague reading along.
-        <div className="mt-5 flex flex-col items-center gap-3" data-crew-locked={lock.ownership}>
-          <p className="max-w-100 text-balance text-line leading-4.5 text-foreground/85">
-            <LockIcon
-              aria-hidden="true"
-              className="me-1.5 inline size-3.5 -translate-y-px text-warning"
-            />
-            {crewLockWords(lock.ownership)}
-          </p>
-          {lock.ownership === "reads-along" ? null : (
-            <CrewPress
-              variant="secondary"
-              label={CREW_LOCK_ACTION}
-              onPress={() => onSignIn(lock)}
-              size="md"
-            />
-          )}
-        </div>
-      )}
+      </EmptyState>
     </div>
   );
 }
