@@ -161,13 +161,13 @@ export function ProjectReviewTags({
       {tags}
       <span aria-hidden="true" className="menu-tags invisible" inert>
         <span data-menu-tag="">
-          <span className="menu-tag menu-tag-review">
+          <span className="menu-tag">
             <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
           </span>
         </span>
         {offer.shown === undefined ? null : (
           <span data-menu-tag="">
-            <span className="menu-tag menu-tag-release">
+            <span className="menu-tag">
               <ReleaseFace count={releaseCount(offer.shown).count} />
             </span>
           </span>
@@ -344,7 +344,7 @@ function ReleaseTag({
           />
         }
       >
-        <span className="menu-tag menu-tag-release">
+        <span className="menu-tag">
           <ReleaseFace count={count} />
         </span>
       </TooltipTrigger>
@@ -446,7 +446,7 @@ function ReviewTag({
             />
           }
         >
-          <span className="menu-tag menu-tag-review">
+          <span className="menu-tag">
             <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
           </span>
         </TooltipTrigger>

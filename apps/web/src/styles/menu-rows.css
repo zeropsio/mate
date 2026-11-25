@@ -13,30 +13,23 @@
     line-height: 22px;
   }
 
-  /* ==== a project's Review and Release tags, and its changes popover ==== */
+  /* ==== a project's Review and Release doors, and its changes popover ==== */
 
-  /* A project's Review and Release tags: 22 px, 12/16 · 500, a control's corner, 6 px apart; the
-     conversation header's door (`.chat-header-review`) joins them into one pill. */
+  /* A project's Review and Release doors (`ProjectReviewTags`), which the conversation header joins
+     into one pill (`.chat-header-review`): each tag is a half of it. */
   .menu-tags {
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 6px;
   }
 
   .menu-tag {
     display: inline-flex;
     flex: none;
     align-items: center;
-    height: 22px;
-    padding: 0 8px;
-    border-radius: var(--radius-control);
-    font-size: var(--text-caption);
-    font-weight: 500;
     line-height: 16px;
     white-space: nowrap;
     transition:
-      box-shadow 150ms var(--ease-out-strong),
       background-color 150ms var(--ease-out-strong),
       scale 150ms var(--ease-out-strong);
   }
@@ -46,52 +39,6 @@
   [data-menu-tag] {
     display: flex;
     flex: none;
-  }
-
-  /* Review: quiet, the card's ground in a hairline that firms under the pointer and while its
-     popover is open. */
-  .menu-tag-review {
-    background-color: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--sidebar-foreground);
-  }
-
-  [data-popup-open] > .menu-tag-review {
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-  }
-
-  /* Every change in it waits on the people who merge (`reviewTagOf`): it asks the person nothing,
-     and says so in the quiet ink its mark wears while a Mate still works. */
-  [data-quiet] > .menu-tag-review {
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* A release that is somebody else's to make (`releaseWaitsOnViewer`): a door still, on the
-     Review tag's quiet ground, never the row's one loud word. */
-  [data-quiet] > .menu-tag-release {
-    background-color: var(--card);
-    box-shadow: inset 0 0 0 1px var(--border);
-    color: var(--sidebar-muted-foreground);
-  }
-
-  /* Release: the solid primary — what waits for production is the row's one loud word. */
-  .menu-tag-release {
-    background-color: var(--primary);
-    color: var(--primary-foreground);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    :hover > .menu-tag-review {
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-    }
-
-    :not([data-quiet]):hover > .menu-tag-release {
-      background-image: linear-gradient(var(--zerops-press-shade) 0 0);
-    }
-
-    [data-quiet]:hover > .menu-tag-release {
-      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
-    }
   }
 
   [data-menu-tag][data-phase="exit"] {
@@ -179,10 +126,6 @@
     gap: 6px;
     height: 100%;
     padding: 0 10px 0 11px;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    color: inherit;
     font-size: var(--text-body);
     font-weight: 600;
   }
@@ -238,7 +181,6 @@
   @media (hover: hover) and (pointer: fine) {
     .chat-header-review [data-menu-tag]:hover > .menu-tag {
       background: var(--zerops-press-shade);
-      box-shadow: none;
     }
   }
 
