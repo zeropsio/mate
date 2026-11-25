@@ -26,6 +26,7 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { Loading } from "~/components/ui/loading";
+import { Tab } from "~/components/ui/tab-strip";
 import { Text } from "~/components/ui/text";
 
 /** How long a first read may keep the page to its one line before it shows what it has. */
@@ -135,18 +136,20 @@ export function ZeropsGitOverview({
               ["all", "All repositories"],
             ] as const
           ).map(([value, label]) => (
-            <Button
-              key={value}
-              variant={view === value ? "secondary" : "ghost"}
-              size="sm"
+            <Tab
+              active={view === value}
               aria-pressed={view === value}
+              key={value}
               onClick={() => {
                 setView(value);
                 setHeld(undefined);
               }}
+              render={<button type="button" />}
+              size="md"
+              tabId={value}
             >
               {label}
-            </Button>
+            </Tab>
           ))}
         </div>
         <Text variant="note">Project, then repository A–Z</Text>
