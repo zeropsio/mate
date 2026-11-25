@@ -155,6 +155,10 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   and the pill press (a quiet choice under a name, like Shuffle). A word that acts inside a sentence
   is `InlineButton`; a name that opens what it names is its `plain` tone. A list's row is `Row`,
   `xs` for a tree or a dense list.
+- A hairline that parts things inside one surface is drawn in one ink, the rule (`--color-rule`),
+  quieter than the surface's own edge. Like things in one column are parted by their `List`, which
+  draws the rules (full, or inset to the words); two different parts, or groups on one line, by a
+  `Separator`; a break in a sequence (a day, an "or") by a `Separator` with its words.
 - Words are named by what they are, with `Text`: a `headline`, a `heading`, a `label`, a
   `description`, a `remark`, a `note`, a `meta` fact, an `error`, a `code` literal. The variant
   fixes the step, the ink and the weight; a kit piece that draws its own words (a row, a section
