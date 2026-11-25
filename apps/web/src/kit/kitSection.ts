@@ -9,7 +9,6 @@ export type KitGroup = (typeof KIT_GROUPS)[number];
 
 /** What a component is for; the index lists sections by it inside each group. */
 export const KIT_KINDS = [
-  "Foundations",
   "Actions",
   "Labels",
   "Identity",

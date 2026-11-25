@@ -28,9 +28,6 @@ export type KitPageRef =
   | { readonly kind: "flow"; readonly flow: KitShellFlow }
   | { readonly kind: "missing"; readonly page: string };
 
-/** A component is a section the system offers; the tokens' section is a foundation. */
-export const isComponentSection = (section: KitSection) => section.kind !== "Foundations";
-
 export function resolveKitPage(
   page: string | undefined,
   sections: readonly KitSection[],
@@ -48,9 +45,7 @@ export function resolveKitPage(
     return flow === undefined ? { kind: "missing", page } : { kind: "flow", flow };
   }
   const section = sections.find(({ id }) => id === page);
-  if (section === undefined) return { kind: "missing", page };
-  if (section.kind === "Foundations") return { kind: "foundation", foundation: FOUNDATIONS[0] };
-  return { kind: "component", section };
+  return section === undefined ? { kind: "missing", page } : { kind: "component", section };
 }
 
 /** The page as the shell keys what it renders. */
@@ -104,9 +99,8 @@ export function kitNavEntries(
       depth: 0,
     });
   }
-  const components = sections.filter(isComponentSection);
   for (const kind of KIT_KINDS) {
-    for (const section of components.filter((candidate) => candidate.kind === kind)) {
+    for (const section of sections.filter((candidate) => candidate.kind === kind)) {
       entries.push({
         key: section.id,
         group: "Components",

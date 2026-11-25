@@ -16,7 +16,7 @@ import { Section } from "~/components/ui/section";
 import type { KitSection } from "../kitSection";
 import { KIT_OMISSIONS } from "../omissions";
 import { KIT_GUARD_COUNTS, KIT_GUARDS, useKitSourceCounts } from "../shell/kitCounts";
-import { isComponentSection, type KitShellFlow } from "../shell/kitPages";
+import type { KitShellFlow } from "../shell/kitPages";
 import { KitDocument } from "./KitDocument";
 
 /** A link inside the kit: a real address, opened in place on a plain click. */
@@ -80,7 +80,6 @@ export function OverviewPage({
   readonly linkTo: (page: string) => KitLink;
 }) {
   const counts = useKitSourceCounts();
-  const components = sections.filter(isComponentSection).length;
   const states = flows.reduce((total, flow) => total + (flow.states?.length ?? 0), 0);
   const toFix = [...KIT_GUARD_COUNTS.values()].reduce((total, count) => total + count.toFix, 0);
 
@@ -106,7 +105,7 @@ export function OverviewPage({
       title="Mate kit"
     >
       <dl className="m-0 flex flex-wrap gap-x-16 gap-y-6 border-y py-6">
-        <Figure label="Components" value={components} />
+        <Figure label="Components" value={sections.length} />
         <Figure label="Specimens" value={counts?.specimens} />
         {flows.length === 0 ? null : (
           <>
