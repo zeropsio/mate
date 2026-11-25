@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import { View } from "react-native";
 
 import { AppText as Text } from "./AppText";
-import { ZeropsMark } from "./ZeropsMark";
+import { MateMark } from "./MateMark";
 
 const appVariant = Constants.expoConfig?.extra?.appVariant;
 const DEFAULT_STAGE_LABEL =
@@ -19,7 +19,7 @@ export function BrandMark(props: { readonly compact?: boolean; readonly stageLab
         className="items-center justify-center bg-subtle"
         style={{ width: iconSize, height: iconSize, borderRadius: compact ? 10 : 14 }}
       >
-        <ZeropsMark height={compact ? 22 : 30} />
+        <MateMark height={compact ? 22 : 30} />
       </View>
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
