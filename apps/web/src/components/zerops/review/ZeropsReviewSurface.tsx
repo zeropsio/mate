@@ -48,6 +48,7 @@ import {
 
 import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
+import { Kbd } from "~/components/ui/kbd";
 import { Row } from "~/components/ui/row";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { Failure } from "~/components/ui/failure";
@@ -616,9 +617,9 @@ function ReviewPrimary({
       {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
       {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
       {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-        <kbd aria-hidden="true" className="rv-keys">
+        <Kbd aria-hidden="true" tone="ink">
           {PRESS_KEYS}
-        </kbd>
+        </Kbd>
       ) : null}
     </Button>
   );

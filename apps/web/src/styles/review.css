@@ -1462,14 +1462,4 @@
   bottom: 0;
   max-height: none;
 }
-/* The primary's keys: a chip in the button's own ink, enabled or waiting. */
-.rv-keys {
-  padding: 2px 4px;
-  border-radius: var(--radius-mark);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  font-weight: 500;
-  line-height: 16px;
-  background: color-mix(in oklab, currentColor 18%, transparent);
-}
 /* ==== end of review ==== */
