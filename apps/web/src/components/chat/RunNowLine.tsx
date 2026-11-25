@@ -19,6 +19,7 @@ import { TypingDots } from "./RunTypingDots";
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { type BrokeOff, type OutcomeModel } from "./conversation.logic";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
@@ -433,7 +434,8 @@ export function NowLine({
           : worked.facts.map((fact) => (
               <Fragment key={fact}>
                 <span className="sr-only">{" · "}</span>
-                <span className="run-now-fact">{fact}</span>
+                {/* 8 px after the time; a phone's wrapped row spaces them itself. */}
+                <Badge className="ms-2 max-sm:ms-0">{fact}</Badge>
               </Fragment>
             ))}
         {restWords === null ? null : (

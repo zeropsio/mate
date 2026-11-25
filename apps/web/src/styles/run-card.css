@@ -257,24 +257,6 @@
 .run-now[data-run-now="worked"] .run-now-head {
   white-space: normal;
 }
-/* A fact of what the run came to, beside its time: a quiet chip, two at most, on the working row's
-   ground (`--run-now`). Not a neutral Badge: that pill's ground is the tray's own colour, so on the
-   tray it shows no edge at all. */
-.run-now-fact {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0 8px;
-  border-radius: var(--radius-control);
-  background: var(--run-now);
-  font-size: var(--text-line);
-  line-height: 22px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-muted-foreground);
-}
-.run-now-fact:first-of-type {
-  margin-left: 12px;
-}
 /* On a phone the facts rarely fit beside the time, and wrapped one by one each stood on a line of
    its own, hung 8 px in by its margin. There the line wraps as a row of things 8 px apart: the
    facts take the second line together, on the words' own edge. */
@@ -284,9 +266,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
-  }
-  .run-now[data-run-now="worked"] .run-now-fact {
-    margin-left: 0;
   }
 }
 .run-now-clock {
@@ -529,25 +508,12 @@
   align-items: center;
   justify-content: center;
 }
-/* Quick calls folded into one row: its count in ink between its words; while
-   its burst goes on, in a chip that turns — of one width, so the words beside
-   it never shift as it ticks. */
-.run-quick-count {
+/* A folded burst's count, in figures of one width; while it ticks, of at least two, so the pill
+   around it (a Badge) keeps its width. */
+.run-quick-number {
   font-variant-numeric: tabular-nums;
 }
-.run-quick-count[data-ticking] {
-  display: inline-flex;
-  height: 20px;
-  align-items: center;
-  gap: 4px;
-  margin-inline: 2px;
-  padding: 0 6px;
-  border-radius: var(--radius-control);
-  background: var(--run-now);
-  vertical-align: top;
-  font-weight: 500;
-}
-.run-quick-count[data-ticking] > .run-quick-number {
+.run-quick-number[data-ticking] {
   min-width: 2ch;
   text-align: center;
 }

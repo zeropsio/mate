@@ -25,6 +25,7 @@ import { stepWriteCalls } from "./fileWrites.logic";
 import { useAssetUrlState } from "../../assets/assetUrls";
 import { formatWorkDuration } from "./conversation.logic";
 import { quickCallsSpanMs, quickCallsWords } from "./quickCalls.logic";
+import { Badge } from "../ui/badge";
 import { Spinner } from "../ui/spinner";
 import { useRunsPast } from "./useRunsPast";
 import { opensOnto, stepOutput } from "./opens.logic";
@@ -380,12 +381,20 @@ export function QuickCallsBubble({
           time={span !== null && span >= 1000 ? formatWorkDuration(span) : null}
         >
           {verb}{" "}
-          <span className="run-quick-count" data-quick-count data-ticking={ticks ? "" : undefined}>
-            {ticks ? (
+          {/* While its burst goes on, the count turns in a pill of one width, so the words beside
+              it never shift as it ticks; then it is a number in the line's ink. */}
+          {ticks ? (
+            <Badge className="mx-0.5 align-top" data-quick-count="">
               <Spinner aria-hidden="true" role="presentation" size="xs" tone="muted" />
-            ) : null}
-            <span className="run-quick-number">{count}</span>
-          </span>{" "}
+              <span className="run-quick-number" data-ticking="">
+                {count}
+              </span>
+            </Badge>
+          ) : (
+            <span className="run-quick-number" data-quick-count="">
+              {count}
+            </span>
+          )}{" "}
           {noun}
         </Headline>
       </DisclosureButton>
