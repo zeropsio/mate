@@ -38,6 +38,7 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
+import { ChartPlot, ChartReadout, ChartReadoutRow } from "../ui/chart";
 import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -531,6 +532,10 @@ function ResourceHistoryProcessNameCell({
   );
 }
 
+/** A bucket's CPU: its average in the foreground's ink, its peak a faint column behind it. */
+const CPU_AVERAGE = "color-mix(in oklab, var(--color-foreground) 60%, transparent)";
+const CPU_PEAK = "color-mix(in oklab, var(--color-foreground) 15%, transparent)";
+
 function ProcessResourceHistoryChart({
   buckets,
 }: {
@@ -546,7 +551,7 @@ function ProcessResourceHistoryChart({
     <>
       <Separator />
       <div className="px-4 py-3 sm:px-5">
-        <div className="flex h-28 items-end gap-1 overflow-hidden rounded-control bg-muted/10 p-2">
+        <ChartPlot className="h-28">
           {buckets.map((bucket) => {
             const peakHeight = Math.max(2, (bucket.maxCpuPercent / maxCpuPercent) * 100);
             const averageHeight = Math.max(2, (bucket.avgCpuPercent / maxCpuPercent) * 100);
@@ -560,24 +565,35 @@ function ProcessResourceHistoryChart({
                         aria-label={`Average CPU ${bucket.avgCpuPercent.toFixed(1)}%, peak CPU ${bucket.maxCpuPercent.toFixed(1)}%`}
                       >
                         <div
-                          className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/15 transition-colors"
-                          style={{ height: `${peakHeight}%` }}
+                          className="absolute inset-x-0 bottom-0 rounded-t-mark transition-colors"
+                          style={{ height: `${peakHeight}%`, backgroundColor: CPU_PEAK }}
                         />
                         <div
-                          className="absolute inset-x-0 bottom-0 rounded-t-mark bg-foreground/60 transition-colors"
-                          style={{ height: `${averageHeight}%` }}
+                          className="absolute inset-x-0 bottom-0 rounded-t-mark transition-colors"
+                          style={{ height: `${averageHeight}%`, backgroundColor: CPU_AVERAGE }}
                         />
                       </div>
                     </div>
                   }
                 />
                 <TooltipPopup side="top">
-                  Avg {bucket.avgCpuPercent.toFixed(1)}%, peak {bucket.maxCpuPercent.toFixed(1)}%
+                  <ChartReadout>
+                    <ChartReadoutRow
+                      color={CPU_AVERAGE}
+                      label="CPU average"
+                      value={`${bucket.avgCpuPercent.toFixed(1)}%`}
+                    />
+                    <ChartReadoutRow
+                      color={CPU_PEAK}
+                      label="CPU peak"
+                      value={`${bucket.maxCpuPercent.toFixed(1)}%`}
+                    />
+                  </ChartReadout>
                 </TooltipPopup>
               </Tooltip>
             );
           })}
-        </div>
+        </ChartPlot>
       </div>
     </>
   );

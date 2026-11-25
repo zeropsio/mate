@@ -50,6 +50,7 @@ import { formatRelativeTime } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
+import { ChartPlot, ChartReadout, ChartReadoutRow, Legend, LegendItem } from "../ui/chart";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -403,6 +404,13 @@ function HistoryWindowSelector({
   );
 }
 
+/** The history's three series: CPU in the foreground's ink, reads and writes in the first slots. */
+const HISTORY_SERIES = {
+  cpu: "color-mix(in oklab, var(--color-foreground) 65%, transparent)",
+  read: "var(--color-series-1)",
+  write: "var(--color-series-2)",
+} as const;
+
 function ResourceHistoryChart({
   buckets,
 }: {
@@ -415,18 +423,12 @@ function ResourceHistoryChart({
     <>
       <Separator />
       <div className="px-4 py-4 sm:px-5">
-        <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-3xs text-muted-foreground/65">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-3 rounded-full bg-foreground/70" /> CPU average
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-3 rounded-full bg-info/70" /> I/O reads
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-3 rounded-full bg-warning/80" /> I/O writes
-          </span>
-        </div>
-        <div className="flex h-32 items-end gap-1 overflow-hidden rounded-control border border-border/40 bg-muted/8 px-2 pt-3 pb-2">
+        <Legend className="mb-3">
+          <LegendItem color={HISTORY_SERIES.cpu} label="CPU average" />
+          <LegendItem color={HISTORY_SERIES.read} label="I/O reads" />
+          <LegendItem color={HISTORY_SERIES.write} label="I/O writes" />
+        </Legend>
+        <ChartPlot className="h-32">
           {buckets.map((bucket) => {
             const cpuHeight = resourceHistoryBarHeight({
               value: bucket.avgCpuPercent,
@@ -449,32 +451,47 @@ function ResourceHistoryChart({
                   render={
                     <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
                       <span
-                        className="block rounded-t-mark bg-foreground/65"
-                        style={{ height: `${cpuHeight}%` }}
+                        className="block rounded-t-mark"
+                        style={{ height: `${cpuHeight}%`, backgroundColor: HISTORY_SERIES.cpu }}
                       />
                       <span
-                        className="block rounded-t-mark bg-info/70"
-                        style={{ height: `${readHeight}%` }}
+                        className="block rounded-t-mark"
+                        style={{ height: `${readHeight}%`, backgroundColor: HISTORY_SERIES.read }}
                       />
                       <span
-                        className="block rounded-t-mark bg-warning/80"
-                        style={{ height: `${writeHeight}%` }}
+                        className="block rounded-t-mark"
+                        style={{ height: `${writeHeight}%`, backgroundColor: HISTORY_SERIES.write }}
                       />
                     </div>
                   }
                 />
                 <TooltipPopup side="top">
-                  <div className="space-y-0.5">
-                    <div>CPU avg {bucket.avgCpuPercent.toFixed(1)}%</div>
-                    <div>CPU peak {bucket.maxCpuPercent.toFixed(1)}%</div>
-                    <div>Read {formatBytes(bucket.ioReadBytes)}</div>
-                    <div>Write {formatBytes(bucket.ioWriteBytes)}</div>
-                  </div>
+                  <ChartReadout>
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.cpu}
+                      label="CPU average"
+                      value={`${bucket.avgCpuPercent.toFixed(1)}%`}
+                    />
+                    <ChartReadoutRow
+                      label="CPU peak"
+                      value={`${bucket.maxCpuPercent.toFixed(1)}%`}
+                    />
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.read}
+                      label="I/O reads"
+                      value={formatBytes(bucket.ioReadBytes)}
+                    />
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.write}
+                      label="I/O writes"
+                      value={formatBytes(bucket.ioWriteBytes)}
+                    />
+                  </ChartReadout>
                 </TooltipPopup>
               </Tooltip>
             );
           })}
-        </div>
+        </ChartPlot>
       </div>
     </>
   );
