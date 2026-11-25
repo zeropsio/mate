@@ -505,7 +505,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-failed-text: var(--zerops-status-failed-text);
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
-  --color-mint-panel: var(--zerops-mint-panel);
   --color-stage: var(--zerops-stage);
   --color-stage-foreground: var(--zerops-stage-foreground);
   --color-annotation: var(--zerops-annotation);

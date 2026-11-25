@@ -1,6 +1,5 @@
 export { LivenessLine } from "./LivenessLine";
 export { MicroLabel } from "./MicroLabel";
-export { MintPanel } from "./MintPanel";
 export { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 export type { ProcessStep, ProcessStepState } from "./ProcessSteps";
 export { PersonAvatar, PersonAvatarStack } from "./PersonAvatar";

@@ -34,6 +34,7 @@ import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ProjectLineFull, type ProjectLineFullActs } from "./ProjectLineFull";
+import { Card } from "~/components/ui/card";
 import {
   Caption,
   LineNode,
@@ -124,11 +125,11 @@ export function ProjectLine({
       view={view}
     />
   );
-  return (
+  const line = (
     <div
       aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className={band ? LINE : `${LINE} rounded-card border border-border/70 bg-card`}
+      className={LINE}
       data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"
       role="group"
@@ -220,6 +221,8 @@ export function ProjectLine({
       )}
     </div>
   );
+  // On a page it is a card of its own; in a band it is the band's.
+  return band ? line : <Card variant="flat">{line}</Card>;
 }
 
 /**

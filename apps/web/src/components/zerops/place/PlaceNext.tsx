@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { REVIEW_RELEASE_LABEL } from "~/zerops/review";
 import type { CardReady } from "../projects/projectCard.logic";
 import { nextReleaseTitle, nextReleaseView } from "../system";
@@ -92,10 +93,8 @@ export function PlaceNextCard({
 }) {
   const line = facts.filter((fact) => fact !== undefined && fact !== "").join(" · ");
   return (
-    <div
-      className="flex min-w-0 flex-col overflow-hidden rounded-card border border-primary/20 bg-primary/[0.06]"
-      data-zerops-next-block=""
-    >
+    // The one next step on the place: the kit's wash card, in the primary's tint.
+    <Card className="min-w-0 overflow-hidden" data-zerops-next-block="" variant="wash">
       <div
         className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 py-4"
         data-zerops-next-release={state}
@@ -114,6 +113,6 @@ export function PlaceNextCard({
       {children === undefined || children === null ? null : (
         <div className="border-t border-primary/15 px-5 pt-3 pb-2">{children}</div>
       )}
-    </div>
+    </Card>
   );
 }

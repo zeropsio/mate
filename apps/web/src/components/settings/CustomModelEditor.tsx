@@ -198,98 +198,97 @@ export function CustomModelEditor({
   );
 
   const renderDescriptor = (descriptor: EditorDescriptor, index: number) => (
-    <div
-      key={descriptor.key}
-      className="flex flex-col gap-2 rounded-control border border-border/60 bg-background/40 p-2.5"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="w-14 shrink-0 text-2xs text-muted-foreground">Option {index + 1}</span>
-        {presets.length > 0 ? (
-          <Select
-            value={idSelectValue(descriptor)}
-            onValueChange={(value) => applyPresetId(descriptor, value)}
-          >
-            <SelectTrigger size="compact" className="w-40" aria-label="Option id">
-              <SelectValue>
-                {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? "Custom…" : descriptor.id}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectPopup align="start" alignItemWithTrigger={false}>
-              {presets.map((preset) => (
-                <SelectItem key={preset.id} value={preset.id}>
-                  <span className="flex items-baseline gap-2">
-                    <code className="font-mono text-caption">{preset.id}</code>
-                    <span className="text-muted-foreground">{preset.label}</span>
-                  </span>
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM_ID_VALUE}>Custom…</SelectItem>
-            </SelectPopup>
-          </Select>
-        ) : null}
-        {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? (
+    <Card key={descriptor.key} variant="flat">
+      <div className="flex flex-col gap-2 p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-14 shrink-0 text-2xs text-muted-foreground">Option {index + 1}</span>
+          {presets.length > 0 ? (
+            <Select
+              value={idSelectValue(descriptor)}
+              onValueChange={(value) => applyPresetId(descriptor, value)}
+            >
+              <SelectTrigger size="compact" className="w-40" aria-label="Option id">
+                <SelectValue>
+                  {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? "Custom…" : descriptor.id}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="start" alignItemWithTrigger={false}>
+                {presets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    <span className="flex items-baseline gap-2">
+                      <code className="font-mono text-caption">{preset.id}</code>
+                      <span className="text-muted-foreground">{preset.label}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_ID_VALUE}>Custom…</SelectItem>
+              </SelectPopup>
+            </Select>
+          ) : null}
+          {idSelectValue(descriptor) === CUSTOM_ID_VALUE ? (
+            <Input
+              size="compact"
+              value={descriptor.id}
+              onChange={(event) => updateDescriptor(descriptor.key, { id: event.target.value })}
+              placeholder="optionId"
+              font="mono"
+              className="w-36"
+              spellCheck={false}
+              aria-label="Option id"
+            />
+          ) : null}
           <Input
             size="compact"
-            value={descriptor.id}
-            onChange={(event) => updateDescriptor(descriptor.key, { id: event.target.value })}
-            placeholder="optionId"
-            font="mono"
-            className="w-36"
-            spellCheck={false}
-            aria-label="Option id"
+            value={descriptor.label}
+            onChange={(event) => updateDescriptor(descriptor.key, { label: event.target.value })}
+            placeholder="Label"
+            className="min-w-0 flex-1"
+            aria-label="Option label"
           />
-        ) : null}
-        <Input
-          size="compact"
-          value={descriptor.label}
-          onChange={(event) => updateDescriptor(descriptor.key, { label: event.target.value })}
-          placeholder="Label"
-          className="min-w-0 flex-1"
-          aria-label="Option label"
-        />
-        <Select
-          value={descriptor.type}
-          onValueChange={(value) =>
-            updateDescriptor(descriptor.key, { type: value === "boolean" ? "boolean" : "select" })
-          }
-        >
-          <SelectTrigger size="compact" className="w-24" aria-label="Option type">
-            <SelectValue>{descriptor.type === "boolean" ? "Toggle" : "Choices"}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            <SelectItem value="select">Choices</SelectItem>
-            <SelectItem value="boolean">Toggle</SelectItem>
-          </SelectPopup>
-        </Select>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label={`Remove option ${index + 1}`}
-          onClick={() => removeDescriptor(descriptor.key)}
-        >
-          <XIcon />
-        </Button>
-      </div>
-      {descriptor.type === "select" ? (
-        <div className="flex flex-col gap-1.5 pl-16">
-          {descriptor.choices.map((choice) => renderChoice(descriptor, choice))}
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="-ml-2 self-start"
-            onClick={() =>
-              updateDescriptor(descriptor.key, {
-                choices: [...descriptor.choices, emptyEditorChoice()],
-              })
+          <Select
+            value={descriptor.type}
+            onValueChange={(value) =>
+              updateDescriptor(descriptor.key, { type: value === "boolean" ? "boolean" : "select" })
             }
           >
-            <PlusIcon />
-            Add choice
+            <SelectTrigger size="compact" className="w-24" aria-label="Option type">
+              <SelectValue>{descriptor.type === "boolean" ? "Toggle" : "Choices"}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              <SelectItem value="select">Choices</SelectItem>
+              <SelectItem value="boolean">Toggle</SelectItem>
+            </SelectPopup>
+          </Select>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`Remove option ${index + 1}`}
+            onClick={() => removeDescriptor(descriptor.key)}
+          >
+            <XIcon />
           </Button>
         </div>
-      ) : null}
-    </div>
+        {descriptor.type === "select" ? (
+          <div className="flex flex-col gap-1.5 pl-16">
+            {descriptor.choices.map((choice) => renderChoice(descriptor, choice))}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="-ml-2 self-start"
+              onClick={() =>
+                updateDescriptor(descriptor.key, {
+                  choices: [...descriptor.choices, emptyEditorChoice()],
+                })
+              }
+            >
+              <PlusIcon />
+              Add choice
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 
   return (
