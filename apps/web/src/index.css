@@ -617,7 +617,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   box-shadow: var(--zerops-shadow-dialog);
 
   @variant dark {
-    border-color: color-mix(in srgb, var(--color-white) 8%, transparent);
+    border-color: color-mix(in srgb, var(--foreground) 8%, transparent);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -939,7 +939,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     /* The next notice's edge peeking above the front one. */
     width: 96%;
     border-color: var(--chat-composer-attached-outline);
-    box-shadow: 0 6px 18px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+    box-shadow: var(--zerops-shadow-card);
 
     @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
       background: var(--chat-composer-attached-surface);
@@ -964,7 +964,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     @variant dark {
       --chat-composer-attached-surface: var(
         --chat-composer-glass-surface,
-        color-mix(in srgb, var(--background) 96%, var(--color-white))
+        color-mix(in srgb, var(--background) 96%, var(--foreground))
       );
     }
   }
@@ -1356,7 +1356,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     border: 2px solid var(--primary);
     border-radius: 9999px;
     background: var(--background);
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 12%, transparent);
+    box-shadow: var(--zerops-shadow-edge);
     transition:
       transform 120ms ease,
       box-shadow 120ms ease;
@@ -1368,7 +1368,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     border: 2px solid var(--primary);
     border-radius: 9999px;
     background: var(--background);
-    box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 12%, transparent);
+    box-shadow: var(--zerops-shadow-edge);
     transition:
       transform 120ms ease,
       box-shadow 120ms ease;
@@ -1376,12 +1376,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   .settings-slider:hover::-webkit-slider-thumb {
     transform: scale(1.08);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--contrast-foreground) 20%, transparent);
   }
 
   .settings-slider:hover::-moz-range-thumb {
     transform: scale(1.08);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--contrast-foreground) 20%, transparent);
   }
 
   .settings-slider:active::-webkit-slider-thumb {
@@ -1528,11 +1526,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-segment-hover: color-mix(in oklab, var(--color-background) 55%, transparent);
   /* A skeleton's sweeping highlight: bright on light grey, a breath on dark. */
   --zerops-shimmer: rgb(255 255 255 / 64%);
-  /* A lift's shadow: a drawer or strip hanging under the composer, a tab standing on it, a
-     dialog. */
+  /* A lift's shadow: a surface held off the page (a drawer or strip hanging under the composer,
+     the crew's composer, a floating bar or card), a tab standing on the composer, a dialog; and a
+     card at rest on the page, a contact shade and a soft fall. */
   --zerops-shadow-drawer: 0 12px 28px -18px rgb(0 0 0 / 40%);
   --zerops-shadow-tab: 0 -8px 24px -18px rgb(0 0 0 / 45%);
   --zerops-shadow-dialog: 0 24px 64px -24px rgb(0 0 0 / 65%);
+  --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 4%), 0 8px 24px -12px rgb(0 0 0 / 8%);
+  /* A dim behind a dialog that leaves the page readable under it. */
+  --zerops-scrim: rgb(0 0 0 / 8%);
+  /* A press's shade over a solid fill (the blue Release tag, the review door): darker ink, alike
+     in both appearances, since what lies under it is the fill itself. */
+  --zerops-press-shade: rgb(0 0 0 / 14%);
   /* The composer's attachments in dark: a shade just past the seam where they meet it, and a faint
      lift of their glass; light draws neither. */
   --zerops-seam-shade: transparent;
@@ -1602,6 +1607,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --zerops-shadow-drawer: 0 14px 32px -18px rgb(0 0 0 / 75%);
     --zerops-shadow-tab: 0 -10px 28px -18px rgb(0 0 0 / 80%);
     --zerops-shadow-dialog: inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%);
+    --zerops-shadow-card: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px -12px rgb(0 0 0 / 40%);
+    --zerops-scrim: rgb(0 0 0 / 30%);
     --zerops-seam-shade: rgb(0 0 0 / 18%);
     --zerops-attachment-lift: rgb(255 255 255 / 2%);
     /* The context strip's own hairline in dark; light draws it in the composer's outline. */
@@ -3328,7 +3335,7 @@ code {
     }
 
     :not([data-quiet]):hover > .menu-tag-release {
-      background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+      background-image: linear-gradient(var(--zerops-press-shade) 0 0);
     }
 
     [data-quiet]:hover > .menu-tag-release {
@@ -3787,7 +3794,7 @@ code {
   }
 
   .chat-header-review [data-popup-open] > .menu-tag {
-    background: color-mix(in oklab, var(--color-black) 14%, transparent);
+    background: var(--zerops-press-shade);
   }
 
   /* Only changes that wait on the people who merge stand behind it: the door asks nothing, so it
@@ -3804,7 +3811,7 @@ code {
 
   @media (hover: hover) and (pointer: fine) {
     .chat-header-review [data-menu-tag]:hover > .menu-tag {
-      background: color-mix(in oklab, var(--color-black) 14%, transparent);
+      background: var(--zerops-press-shade);
       box-shadow: none;
     }
   }
@@ -3841,9 +3848,7 @@ code {
     border-radius: var(--radius-card);
     background-color: var(--card);
     color: var(--card-foreground);
-    box-shadow:
-      0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
-      0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+    box-shadow: var(--zerops-shadow-popup);
     outline: none;
     transform-origin: var(--transform-origin);
     transition:
@@ -3858,12 +3863,6 @@ code {
 
   .menu-tagpop[data-ending-style] {
     transition-duration: 120ms;
-  }
-
-  .dark .menu-tagpop {
-    box-shadow:
-      0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
   }
 
   .menu-tagpop-list {
@@ -5015,9 +5014,7 @@ code {
   border-radius: var(--radius-card);
   background-color: var(--card);
   color: var(--card-foreground);
-  box-shadow:
-    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
-    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+  box-shadow: var(--zerops-shadow-popup);
   font-size: var(--text-body);
   line-height: 18px;
   outline: none;
@@ -5034,12 +5031,6 @@ code {
 
 .zerops-sites[data-ending-style] {
   transition-duration: 120ms;
-}
-
-.dark .zerops-sites {
-  box-shadow:
-    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6280,8 +6271,7 @@ code {
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
-    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+    var(--zerops-shadow-card);
   scroll-snap-align: start;
 }
 
@@ -6433,7 +6423,7 @@ a.ov-card-site:hover {
   padding: 8px;
   border-radius: var(--radius-control);
   background: var(--ov-ground);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+  box-shadow: var(--zerops-shadow-edge);
 }
 
 .ov-wait-face {
@@ -6512,9 +6502,7 @@ a.ov-card-site:hover {
 
 .ov-mate[data-lift] {
   background: var(--ov-lift);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
-    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+  box-shadow: var(--zerops-shadow-edge);
 }
 
 .ov-mate-face {
@@ -10896,11 +10884,8 @@ a.message-file:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: color-mix(in oklab, var(--color-black) 8%, transparent);
+  background: var(--zerops-scrim);
   transition: opacity 200ms var(--ease-out-strong);
-}
-.dark .rv-backdrop {
-  background: color-mix(in oklab, var(--color-black) 30%, transparent);
 }
 .rv-backdrop[data-starting-style],
 .rv-backdrop[data-ending-style] {
@@ -10930,7 +10915,7 @@ a.message-file:focus-visible {
   color: var(--foreground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-    0 24px 64px -16px color-mix(in oklab, var(--color-black) 22%, transparent);
+    var(--zerops-shadow-dialog);
   outline: none;
   transform-origin: var(--rv-origin-x, 100%) var(--rv-origin-y, 50%);
   transition:
@@ -11215,7 +11200,7 @@ a.message-file:focus-visible {
   background: var(--card);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-    0 16px 40px -20px color-mix(in oklab, var(--color-black) 40%, transparent);
+    var(--zerops-shadow-drawer);
 }
 .rv-add {
   color: var(--diff-addition-foreground);
@@ -11418,7 +11403,7 @@ a.message-file:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: color-mix(in oklab, var(--color-black) 78%, transparent);
+  @apply dialog-media-backdrop;
   transition: opacity 180ms var(--ease-out-strong);
 }
 .rv-viewer {
@@ -12824,11 +12809,9 @@ a.message-file:focus-visible {
    lifts off the ground on one; both deeper in dark. */
 :root {
   --first-run-shadow: rgb(0 0 0 / 16%);
-  --first-run-card-shadow: rgb(0 0 0 / 7%);
 
   @variant dark {
     --first-run-shadow: rgb(0 0 0 / 50%);
-    --first-run-card-shadow: rgb(0 0 0 / 36%);
   }
 }
 
@@ -13111,7 +13094,7 @@ a.message-file:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-sheet);
   background: var(--card);
-  box-shadow: 0 16px 40px -16px var(--first-run-card-shadow);
+  box-shadow: var(--zerops-shadow-card);
   grid-area: form;
 }
 
@@ -13924,7 +13907,7 @@ a.message-file:focus-visible {
   .arrival-card:hover {
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--foreground) 16%, transparent),
-      0 2px 6px color-mix(in oklab, var(--foreground) 7%, transparent);
+      var(--zerops-shadow-card);
   }
 }
 
@@ -14319,21 +14302,13 @@ a.message-file:focus-visible {
     background: var(--card);
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
-      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
-  }
-
-  .dark .crew-composer {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-      0 12px 30px -18px color-mix(in oklab, var(--color-black) 85%, transparent);
+      var(--zerops-shadow-drawer);
   }
 
   .crew-composer:focus-within {
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--ring) 55%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
-      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+      var(--zerops-shadow-drawer);
   }
 
   /* Who a message to the crew goes to: the lead's face and name, a 24 px chip. */
@@ -14393,8 +14368,7 @@ a.message-file:focus-visible {
     background: var(--card);
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 5%, transparent),
-      0 10px 28px -16px color-mix(in oklab, var(--color-black) 26%, transparent);
+      var(--zerops-shadow-drawer);
   }
 
   /* The lead's plan: one line per task in a quiet tray. */
@@ -14644,7 +14618,7 @@ a.message-file:focus-visible {
 .vault-card {
   box-shadow:
     0 0 0 1px var(--border),
-    0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
+    var(--zerops-shadow-drawer);
 }
 
 /* Rows */
