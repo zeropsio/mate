@@ -2,9 +2,17 @@ import * as React from "react";
 
 import { cn } from "~/lib/utils";
 
+/**
+ * A table scrolls sideways in its own box when it is wider than its place. One whose header sticks
+ * (`<TableHeader sticky>`) gives that box up and scrolls with the box it sits in, both ways, so the
+ * header can hold that box's top.
+ */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      data-slot="table-container"
+      className="relative w-full overflow-x-auto has-[>table>[data-sticky]]:contents"
+    >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-caption", className)}
@@ -26,6 +34,7 @@ function TableHeader({
   return (
     <thead
       data-slot="table-header"
+      data-sticky={sticky || undefined}
       className={cn("[&_tr]:border-b", sticky && "sticky top-0 z-10 bg-card", className)}
       {...props}
     />

@@ -32,12 +32,22 @@ export default definePlayground({
     state: { kind: "boolean", note: "a State column of Badges" },
     longName: { kind: "boolean", note: "the first name long enough to wrap" },
     selected: { kind: "enum", options: SELECTED, note: 'a row with data-state="selected"' },
+    sticky: {
+      kind: "boolean",
+      note: "the header holds the top of the scrolling box the table sits in",
+    },
   },
-  initial: { rows: "3", state: true, longName: false, selected: "none" },
-  render: ({ rows, state, longName, selected }) => (
-    <div className="w-[40rem] max-w-full">
+  initial: { rows: "3", state: true, longName: false, selected: "none", sticky: false },
+  render: ({ rows, state, longName, selected, sticky }) => (
+    <div
+      className={
+        sticky
+          ? "h-36 w-[40rem] max-w-full overflow-auto rounded-card border"
+          : "w-[40rem] max-w-full"
+      }
+    >
       <Table>
-        <TableHeader>
+        <TableHeader sticky={sticky}>
           <TableRow>
             <TableHead>Service</TableHead>
             <TableHead>Runtime</TableHead>
@@ -63,7 +73,7 @@ export default definePlayground({
       </Table>
     </div>
   ),
-  jsx: ({ rows, state, longName, selected }) => {
+  jsx: ({ rows, state, longName, selected, sticky }) => {
     const head = [
       "<TableHead>Service</TableHead>",
       "<TableHead>Runtime</TableHead>",
@@ -90,7 +100,7 @@ export default definePlayground({
       "Table",
       {},
       [
-        jsxElement("TableHeader", {}, jsxElement("TableRow", {}, head)),
+        jsxElement("TableHeader", { sticky }, jsxElement("TableRow", {}, head), { sticky: false }),
         jsxElement("TableBody", {}, body),
       ].join("\n"),
     );
@@ -100,6 +110,7 @@ export default definePlayground({
       "Compare like things across the same columns: services by runtime and state, usage by day.",
       "Name a column by what it holds, in one or two words.",
       "Say a state in a Badge in its cell.",
+      "Stick the header when the table scrolls in a box of its own height.",
     ],
     dont: [
       "Lay out a list of one kind of thing as a table: those are Rows.",

@@ -58,7 +58,7 @@ export default defineKitSection({
       </Specimen>
       <Specimen label='<TableHeader sticky> · <TableRow data-state="selected">, in a scrolling box'>
         <div className="h-36 w-[40rem] max-w-full overflow-auto rounded-card border">
-          <table className="w-full caption-bottom text-caption" data-slot="table">
+          <Table>
             <TableHeader sticky>
               <TableRow>
                 <TableHead>Service</TableHead>
@@ -76,7 +76,7 @@ export default defineKitSection({
                 </TableRow>
               ))}
             </TableBody>
-          </table>
+          </Table>
         </div>
       </Specimen>
     </SpecimenGrid>
