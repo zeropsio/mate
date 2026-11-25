@@ -523,6 +523,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-invalid: var(--zerops-field-invalid);
   --color-well: var(--zerops-well);
   --color-well-edge: var(--zerops-well-edge);
+  --color-rule: var(--zerops-rule);
   --color-field-hover: var(--zerops-field-hover);
   --color-field-pressed: var(--zerops-field-pressed);
   --color-segment: var(--zerops-segment);

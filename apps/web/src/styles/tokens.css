@@ -49,6 +49,9 @@
      the ground alone sets it apart. */
   --zerops-well: var(--color-secondary);
   --zerops-well-edge: color-mix(in oklab, var(--color-border) 70%, transparent);
+  /* A hairline that parts things inside one surface: a list's items, a card's sections, a
+     toolbar's groups. Quieter than the surface's own edge, in both appearances. */
+  --zerops-rule: color-mix(in oklab, var(--color-border) 60%, transparent);
   /* A field-like press (an outline toggle) under the pointer and pressed: the hover's accent and a
      step of input in light; in dark, input over its translucent ground, then input itself. */
   --zerops-field-hover: var(--color-accent);
