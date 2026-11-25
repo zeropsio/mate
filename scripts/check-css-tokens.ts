@@ -324,7 +324,7 @@ export const countOffScaleDeclarations = (
  * ends a review step's leaving animation.
  */
 export const OFF_SCALE_BUDGET: Readonly<Record<ScaleProperty, number>> = {
-  "font-size": 8,
+  "font-size": 0,
   "border-radius": 3,
   duration: 10,
 };
