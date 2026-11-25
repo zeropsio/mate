@@ -14,6 +14,7 @@ import { formatTimestamp } from "../../timestampFormat";
 import { MicroLabel, ProcessSteps, STATUS_BADGE_TONE } from "./primitives";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Badge } from "~/components/ui/badge";
+import { Card } from "~/components/ui/card";
 
 type ReadResultOf<K extends ZeropsReadResult["kind"]> = Extract<ZeropsReadResult, { kind: K }>;
 
@@ -54,33 +55,35 @@ function LogsBody({ readResult }: { readonly readResult: ReadResultOf<"logs"> })
           <span className="min-w-0 text-muted-foreground">{readResult.filter}</span>
         </div>
       ) : null}
-      <ol
-        aria-label={`Log of ${readResult.service}`}
-        className="max-h-40 space-y-0.5 overflow-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed"
-        data-zerops-read-lines
-      >
-        {readResult.pending
-          ? placeholderKeys(PLACEHOLDER_ROWS).map((key, index) => (
-              <li key={key}>
-                <Placeholder className={index === PLACEHOLDER_ROWS - 1 ? "w-1/2" : "w-5/6"} />
-              </li>
-            ))
-          : readResult.lines.map((line) => {
-              const time = clockTime(line.at);
-              return (
-                <li
-                  className="whitespace-pre-wrap break-words"
-                  data-zerops-log-severity={line.severity}
-                  key={line.id}
-                >
-                  {time !== undefined ? (
-                    <span className="mr-2 text-muted-foreground tabular-nums">{time}</span>
-                  ) : null}
-                  <span className={LOG_SEVERITY_CLASS[line.severity]}>{line.text}</span>
+      <Card variant="inset">
+        <ol
+          aria-label={`Log of ${readResult.service}`}
+          className="max-h-40 space-y-0.5 overflow-auto px-2 py-1.5 font-mono text-caption leading-relaxed"
+          data-zerops-read-lines
+        >
+          {readResult.pending
+            ? placeholderKeys(PLACEHOLDER_ROWS).map((key, index) => (
+                <li key={key}>
+                  <Placeholder className={index === PLACEHOLDER_ROWS - 1 ? "w-1/2" : "w-5/6"} />
                 </li>
-              );
-            })}
-      </ol>
+              ))
+            : readResult.lines.map((line) => {
+                const time = clockTime(line.at);
+                return (
+                  <li
+                    className="whitespace-pre-wrap break-words"
+                    data-zerops-log-severity={line.severity}
+                    key={line.id}
+                  >
+                    {time !== undefined ? (
+                      <span className="mr-2 text-muted-foreground tabular-nums">{time}</span>
+                    ) : null}
+                    <span className={LOG_SEVERITY_CLASS[line.severity]}>{line.text}</span>
+                  </li>
+                );
+              })}
+        </ol>
+      </Card>
       {readResult.pending ? (
         <Placeholder className="w-1/3" />
       ) : readResult.counts !== undefined || readResult.note !== undefined ? (
@@ -136,29 +139,37 @@ function DiscoverBody({ readResult }: { readonly readResult: ReadResultOf<"disco
     >
       {readResult.pending
         ? placeholderKeys(2).map((key) => (
-            <li className="space-y-1.5 rounded-control bg-muted/60 px-2 py-1.5" key={key}>
-              <Placeholder className="w-1/2" />
-              <Placeholder className="w-1/3" />
-            </li>
+            <Card key={key} render={<li />} variant="inset">
+              <div className="space-y-1.5 px-2 py-1.5">
+                <Placeholder className="w-1/2" />
+                <Placeholder className="w-1/3" />
+              </div>
+            </Card>
           ))
         : readResult.rows.map((row) => (
-            <li
-              className="min-w-0 space-y-0.5 rounded-control bg-muted/60 px-2 py-1.5"
+            <Card
+              className="min-w-0"
               data-zerops-read-cell
               key={row.hostname}
+              render={<li />}
+              variant="inset"
             >
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="min-w-0 truncate font-medium text-foreground">{row.hostname}</span>
-                <Badge className="shrink-0" dot tone={STATUS_BADGE_TONE[row.status.tone]}>
-                  {row.status.word}
-                </Badge>
+              <div className="min-w-0 space-y-0.5 px-2 py-1.5">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {row.hostname}
+                  </span>
+                  <Badge className="shrink-0" dot tone={STATUS_BADGE_TONE[row.status.tone]}>
+                    {row.status.word}
+                  </Badge>
+                </div>
+                {row.type !== undefined || row.note !== undefined ? (
+                  <p className="truncate text-muted-foreground">
+                    {[row.type, row.note].filter((part) => part !== undefined).join(" · ")}
+                  </p>
+                ) : null}
               </div>
-              {row.type !== undefined || row.note !== undefined ? (
-                <p className="truncate text-muted-foreground">
-                  {[row.type, row.note].filter((part) => part !== undefined).join(" · ")}
-                </p>
-              ) : null}
-            </li>
+            </Card>
           ))}
     </ul>
   );

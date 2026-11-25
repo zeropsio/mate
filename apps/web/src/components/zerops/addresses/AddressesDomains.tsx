@@ -61,6 +61,7 @@ import {
 } from "./AddressesSheetBits";
 import { DnsRecords } from "./DnsRecords";
 import { RealName } from "~/components/ui/real-name";
+import { StepNumber } from "~/components/ui/step-number";
 
 export type WebMode =
   | { readonly kind: "list" }
@@ -761,9 +762,7 @@ function AddDomainForm({
                 {index === 0 ? null : (
                   <ChevronRightIcon aria-hidden="true" className="size-3 opacity-60" />
                 )}
-                <span className="flex size-4 items-center justify-center rounded-full bg-foreground/8 font-medium text-2xs text-foreground tabular-nums">
-                  {index + 1}
-                </span>
+                <StepNumber n={index + 1} size="sm" />
                 {words}
               </li>
             ))}

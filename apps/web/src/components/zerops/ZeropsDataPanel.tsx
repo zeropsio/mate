@@ -684,13 +684,11 @@ export function ZeropsDataPanel({
 
   const errorLine =
     errorText !== undefined ? (
-      <p
-        className="rounded-control bg-muted/35 px-2 py-1 text-foreground text-caption"
-        data-zerops-data-error
-        role="alert"
-      >
-        {errorText}
-      </p>
+      <Card variant="inset">
+        <p className="px-2 py-1 text-foreground text-caption" data-zerops-data-error role="alert">
+          {errorText}
+        </p>
+      </Card>
     ) : null;
 
   const sessionLine =

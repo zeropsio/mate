@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { Loading } from "~/components/ui/loading";
+import { Card } from "~/components/ui/card";
 
 export interface ZeropsBuildLogLine {
   readonly id: string;
@@ -163,31 +164,33 @@ export function BuildLogLines({
     return () => observer.disconnect();
   }, []);
   return (
-    <ol
-      ref={scrollerRef}
-      aria-label="Build log"
-      aria-live={live ? "polite" : undefined}
-      className="h-120 overflow-y-auto rounded-control bg-muted/60 px-3 py-2 font-mono text-caption leading-5"
-      data-zerops-build-log-body
-      onScroll={(event) => {
-        const scroller = event.currentTarget;
-        followingRef.current =
-          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 4;
-      }}
-    >
-      {lines.map((line) => (
-        <li
-          className={cn(
-            "whitespace-pre-wrap break-words",
-            line.severity <= FAILED_SEVERITY_MAX && "text-destructive-foreground",
-          )}
-          data-zerops-build-log-line
-          data-zerops-build-log-severity={line.severity}
-          key={line.id}
-        >
-          {line.text}
-        </li>
-      ))}
-    </ol>
+    <Card className="overflow-hidden" variant="inset">
+      <ol
+        ref={scrollerRef}
+        aria-label="Build log"
+        aria-live={live ? "polite" : undefined}
+        className="h-120 overflow-y-auto px-3 py-2 font-mono text-caption leading-5"
+        data-zerops-build-log-body
+        onScroll={(event) => {
+          const scroller = event.currentTarget;
+          followingRef.current =
+            scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 4;
+        }}
+      >
+        {lines.map((line) => (
+          <li
+            className={cn(
+              "whitespace-pre-wrap break-words",
+              line.severity <= FAILED_SEVERITY_MAX && "text-destructive-foreground",
+            )}
+            data-zerops-build-log-line
+            data-zerops-build-log-severity={line.severity}
+            key={line.id}
+          >
+            {line.text}
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
