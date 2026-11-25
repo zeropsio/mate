@@ -22,14 +22,15 @@ import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { ZeropsLandingShell } from "./landing/ZeropsLandingShell";
+import { Text } from "~/components/ui/text";
 
 /** While the organization chosen last is read back: in the app's frame, a line. */
 export function ZeropsOrganizationWait() {
   return (
-    <div className="flex items-center gap-2 text-body text-muted-foreground">
+    <Text className="flex items-center gap-2" render={<div />} variant="description">
       <Spinner size="md" />
       Restoring your Zerops organization…
-    </div>
+    </Text>
   );
 }
 
@@ -89,9 +90,9 @@ export function ZeropsOrganizationChoice({
         title="No organization yet"
       >
         <div className="space-y-4 text-center">
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             Ask an organization's owner to invite {email ?? "this account"}, then reload this page.
-          </p>
+          </Text>
           <Button onClick={() => window.location.reload()} variant="secondary">
             Reload
           </Button>
@@ -162,9 +163,9 @@ export function ZeropsOrganizationSwitcher({
         <SelectValue>
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="truncate">{activeOrganization.name}</span>
-            <span className="hidden shrink-0 text-caption text-muted-foreground sm:inline">
+            <Text className="hidden shrink-0 sm:inline" variant="meta">
               {zeropsOrganizationRoleLabel(activeOrganization)}
-            </span>
+            </Text>
           </span>
         </SelectValue>
       </SelectTrigger>
@@ -173,9 +174,9 @@ export function ZeropsOrganizationSwitcher({
           <SelectItem key={organization.membershipId} value={organization.membershipId}>
             <span className="flex min-w-0 items-baseline justify-between gap-4">
               <span className="truncate">{organization.name}</span>
-              <span className="shrink-0 text-caption text-muted-foreground">
+              <Text className="shrink-0" variant="meta">
                 {zeropsOrganizationRoleLabel(organization)}
-              </span>
+              </Text>
             </span>
           </SelectItem>
         ))}

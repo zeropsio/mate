@@ -26,6 +26,7 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** How long a first read may keep the page to its one line before it shows what it has. */
 const FIRST_READ_PATIENCE_MS = 1_500;
@@ -148,21 +149,23 @@ export function ZeropsGitOverview({
             </Button>
           ))}
         </div>
-        <span className="text-caption text-muted-foreground">Project, then repository A–Z</span>
+        <Text variant="note">Project, then repository A–Z</Text>
       </div>
       <ReadTrouble failure={state.failure} onAgain={onAgain} />
       {state.reading ? <Reading /> : null}
       {state.failure !== null && presentation.rows.some((row) => row.coverage !== "unread") ? (
-        <p className="text-caption text-muted-foreground">Showing the last read changes.</p>
+        <Text render={<p />} variant="note">
+          Showing the last read changes.
+        </Text>
       ) : null}
       {state.refusals?.map(({ appId, name, reason }) => (
-        <p key={appId} className="text-body text-muted-foreground" role="status">
+        <Text render={<p />} variant="description" key={appId} role="status">
           {name}: {reason}
-        </p>
+        </Text>
       ))}
       {presentation.changed ? (
         <div className="flex items-center gap-3" role="status">
-          <span className="text-body text-muted-foreground">The repository list has changed.</span>
+          <Text variant="description">The repository list has changed.</Text>
           <Button variant="secondary" size="sm" onClick={() => setHeld(undefined)}>
             Update list
           </Button>
@@ -219,22 +222,20 @@ export function ZeropsGitOverview({
                           {repository.name}
                         </InlineButton>
                       )}
-                      {repository.name === "group" ? (
-                        <span className="text-caption text-muted-foreground">Setup</span>
-                      ) : null}
+                      {repository.name === "group" ? <Text variant="label">Setup</Text> : null}
                     </div>
                     {repository.coverage === "unread" ? (
-                      <p className="mt-2 text-caption text-muted-foreground">
+                      <Text className="mt-2" render={<p />} variant="note">
                         Changes not read yet.
-                      </p>
+                      </Text>
                     ) : null}
                     {changeRows.length > 1 ? (
                       <details>
-                        <summary className="mt-2 cursor-pointer text-caption text-muted-foreground">
+                        <Text className="mt-2 cursor-pointer" render={<summary />} variant="note">
                           {repository.changes.some(({ pull }) => pull.merged)
                             ? `${changeRows.length} changes`
                             : gitRepositoryLine(changeRows.length)}
-                        </summary>
+                        </Text>
                         {changeRows}
                       </details>
                     ) : changeRows.length === 1 ? (
@@ -247,7 +248,7 @@ export function ZeropsGitOverview({
               })}
             </div>
           </Card>
-          <p className="mt-3 text-caption text-muted-foreground">
+          <Text className="mt-3" render={<p />} variant="note">
             {view === "all" ? (
               <>
                 {presentation.rows.length}{" "}
@@ -264,13 +265,13 @@ export function ZeropsGitOverview({
                 {presentation.rows.length === 1 ? "repository" : "repositories"}
               </>
             ) : null}
-          </p>
+          </Text>
         </section>
       ) : incomplete ? null : state.apps.every((app) => app.repositories.length === 0) ? (
         <div className="flex flex-col gap-2" data-zerops-surface="git-empty">
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             No repositories yet. Repositories appear here after a project is set up.
-          </p>
+          </Text>
           <Button
             className="-ms-2.5 self-start"
             render={<a href={`${appBasePath()}/zerops`} />}
@@ -369,9 +370,9 @@ export function ZeropsGitPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
             <h1 className="text-title font-medium text-foreground">Git</h1>
-            <p className="text-body text-muted-foreground">
+            <Text render={<p />} variant="description">
               Repositories and open changes across your projects.
-            </p>
+            </Text>
           </div>
           <Button variant="ghost" size="sm" onClick={readAgain}>
             Read again

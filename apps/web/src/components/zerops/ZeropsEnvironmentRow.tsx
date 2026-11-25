@@ -21,6 +21,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { Text } from "~/components/ui/text";
 
 /**
  * A neutral Badge: the environment's role, as the tag reads — dev, stage,
@@ -129,19 +130,19 @@ export function ZeropsEnvironmentRow({
         )}
         {tag === null ? null : <ZeropsRoleTag label={tag} />}
       </span>
-      <span
-        className="col-span-2 min-w-0 truncate text-caption text-muted-foreground sm:col-span-1"
+      <Text
+        className="col-span-2 min-w-0 sm:col-span-1"
+        truncate
+        variant="note"
         data-zerops-surface="environment-summary"
       >
         {summary}
-      </span>
+      </Text>
       <span className="col-start-2 row-start-1 flex shrink-0 items-center justify-end gap-3 sm:col-start-3">
         {/* The status word's hand is the row's, not each caller's: a
             `sentence` StatusDot has no size of its own and would inherit the
             page's 16px here, next to a 14px name. */}
-        {status === undefined ? null : (
-          <span className="text-caption text-muted-foreground">{status}</span>
-        )}
+        {status === undefined ? null : <Text variant="meta">{status}</Text>}
         {/* The menu before the verb: hidden, it still takes its width, and
             the verb keeps the content edge every other verb on the page ends on. */}
         {menu === undefined || menu === null ? null : (

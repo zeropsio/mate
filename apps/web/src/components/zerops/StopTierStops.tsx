@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 export function StopTierStops({
   projectId,
@@ -54,9 +55,9 @@ export function StopTierStops({
         {rows.map((row) => (
           <li className={rowClassName} data-zerops-tier-stop={row.hostname} key={row.hostname}>
             <span className="flex min-w-0 flex-col">
-              <span className="min-w-0 truncate text-body text-muted-foreground">
+              <Text className="min-w-0" truncate variant="description">
                 {row.hostname} · {row.line}
-              </span>
+              </Text>
               {trouble?.hostname === row.hostname ? (
                 <span className="text-caption text-status-failed-text">{trouble.text}</span>
               ) : null}

@@ -14,6 +14,7 @@ import { useEnvironment } from "~/state/environments";
 import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
 import { LogoTile } from "~/components/ui/logo-tile";
+import { Text } from "~/components/ui/text";
 
 /**
  * OpenCode's row among the Mate's coding agents: Mate signs nobody in to it,
@@ -38,7 +39,7 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
         <OpenCodeIcon />
       </LogoTile>
       <div className="grid min-w-0 flex-1 gap-1">
-        <span className="text-body leading-5 font-medium text-foreground">OpenCode</span>
+        <Text variant="heading">OpenCode</Text>
         <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
       </div>
     </div>
@@ -77,10 +78,12 @@ export function OpenCodeAgentLine({
         <LogoTile size="sm">
           <OpenCodeIcon />
         </LogoTile>
-        <span className="shrink-0 text-body font-medium text-foreground">OpenCode</span>
-        <span className="min-w-0 truncate text-body text-muted-foreground">
+        <Text className="shrink-0" variant="heading">
+          OpenCode
+        </Text>
+        <Text className="min-w-0" truncate variant="description">
           {keyed ? "a model key is set" : free ? "runs on free models" : "needs a model key"}
-        </span>
+        </Text>
       </span>
       <Button onClick={onManage} size="sm" variant={keyed || free ? "ghost" : "link"}>
         {keyed || free ? "Manage" : "Add key"}

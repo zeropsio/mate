@@ -19,6 +19,7 @@ import { Button } from "../ui/button";
 import { GitBrowserLink, gitCommitLink } from "./gitBrowser/GitBrowserLink";
 import { commitChangesState, type CommitChangesState } from "./ZeropsGitCommitChanges.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { Text } from "~/components/ui/text";
 
 const ZeropsGitCommitCode = lazy(appChunk(() => import("./ZeropsGitCommitCode")));
 
@@ -112,7 +113,11 @@ export function ZeropsGitCommitView({
           />
         </Suspense>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-caption text-muted-foreground">
+        <Text
+          className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
+          render={<div />}
+          variant="note"
+        >
           {state.kind === "empty" ? (
             <p>This commit changed no files.</p>
           ) : state.kind === "absent" ? (
@@ -139,7 +144,7 @@ export function ZeropsGitCommitView({
               </Button>
             </>
           )}
-        </div>
+        </Text>
       )}
     </section>
   );

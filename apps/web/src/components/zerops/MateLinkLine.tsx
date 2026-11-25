@@ -21,6 +21,7 @@ import { cn } from "~/lib/utils";
 
 import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
+import { Text } from "~/components/ui/text";
 
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
 
@@ -218,9 +219,9 @@ export function MateOpeningLine({
       data-zerops-surface="mate-opening"
     >
       {phrase.text === null ? null : (
-        <p className="text-body text-muted-foreground" role="status">
+        <Text render={<p />} variant="description" role="status">
           {phrase.text}
-        </p>
+        </Text>
       )}
       {askAgain !== null ||
       openInZerops ||

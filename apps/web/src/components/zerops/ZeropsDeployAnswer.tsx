@@ -12,6 +12,7 @@ import {
 } from "~/zerops/activity/useDeployAnswerFollowing";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { GitBrowserLink, type GitLink } from "./gitBrowser/GitBrowserLink";
+import { Text } from "~/components/ui/text";
 
 /** A service's planned deploy, in words, and the code it goes live with where that is known. */
 export interface DeployWhereRow {
@@ -72,9 +73,9 @@ function PlatformDeployAnswer({
                   <span data-zerops-job-state={job.state}>
                     <span>{job.standing}</span>
                     {job.sourceArchive === undefined ? null : (
-                      <span className="block text-caption text-muted-foreground">
+                      <Text className="block" variant="note">
                         {job.sourceArchive}
-                      </span>
+                      </Text>
                     )}
                   </span>
                   {log === undefined ? (
@@ -117,9 +118,9 @@ function PlatformDeployAnswer({
               {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
               {job.text}
               {job.sourceArchive === undefined ? null : (
-                <span className="block text-caption text-muted-foreground">
+                <Text className="block" variant="note">
                   {job.sourceArchive}
-                </span>
+                </Text>
               )}
             </p>
           )),

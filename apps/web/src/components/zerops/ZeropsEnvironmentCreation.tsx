@@ -18,6 +18,7 @@ import { Progress } from "../ui/progress";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 /** The steps an `environment` operation goes through, as a person names them. */
 const STEPS = [
@@ -120,9 +121,9 @@ export function ZeropsEnvironmentCreation({
         }
       />
       {standing.kind === "waiting" ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           {standing.yours ? standing.line : waitingFor}
-        </p>
+        </Text>
       ) : null}
       <div className="flex justify-end gap-2">
         {standing.kind === "waiting" && onContinue !== undefined ? (

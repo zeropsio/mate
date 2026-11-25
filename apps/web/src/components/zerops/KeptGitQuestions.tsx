@@ -7,6 +7,7 @@ import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { submitHqAppWrite } from "~/zerops/hqAppWrite";
 import { Button } from "../ui/button";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 const NO_QUESTIONS = Atom.make<ReadonlyArray<KeptGitQuestionView>>([]);
 
@@ -18,7 +19,9 @@ export function KeptGitQuestions() {
   if (orgId === null || questions.length === 0) return null;
   return (
     <section aria-label="Kept Git of a removed project" className="flex flex-col gap-3 px-4 py-3">
-      <h2 className="text-caption text-muted-foreground">Kept Git of a removed project</h2>
+      <Text render={<h2 />} variant="label">
+        Kept Git of a removed project
+      </Text>
       {questions.map((view) => (
         <KeptGitQuestion
           key={`${view.question.appId}:${view.question.askedAt}`}

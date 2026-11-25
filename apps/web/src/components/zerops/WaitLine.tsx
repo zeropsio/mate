@@ -5,6 +5,7 @@
  * line that already has its size and ink (a settings row's status line), at that line's height.
  */
 import { Spinner } from "../ui/spinner";
+import { Text } from "~/components/ui/text";
 
 export function WaitLine({
   text,
@@ -21,9 +22,14 @@ export function WaitLine({
       </span>
     );
   return (
-    <p className="flex items-center gap-2 text-body text-muted-foreground" data-zerops-wait-line="">
+    <Text
+      className="flex items-center gap-2"
+      render={<p />}
+      variant="description"
+      data-zerops-wait-line=""
+    >
       <Spinner size="sm" aria-hidden="true" role="presentation" />
       <span>{text}</span>
-    </p>
+    </Text>
   );
 }

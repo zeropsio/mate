@@ -2,6 +2,7 @@ import { changeKindTag, type GitOverviewChange } from "@t3tools/client-runtime/z
 import { Button } from "../ui/button";
 import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 /** The same projected change and review action in the overview and repository detail. */
 export function ZeropsGitChangeRow({
@@ -25,7 +26,11 @@ export function ZeropsGitChangeRow({
         >
           {pull.title}
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+        <Text
+          className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
+          render={<div />}
+          variant="note"
+        >
           <span>{line}</span>
           <span>{changeKindTag(pull)}</span>
           {status === undefined ? null : (
@@ -33,7 +38,7 @@ export function ZeropsGitChangeRow({
               {status.word}
             </Badge>
           )}
-        </div>
+        </Text>
       </div>
       <Button
         variant="secondary"

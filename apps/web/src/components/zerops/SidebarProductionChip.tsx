@@ -21,6 +21,7 @@ import { Row } from "../ui/row";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { draftParts, type ChipDot } from "./SidebarProductionChip.logic";
+import { Text } from "~/components/ui/text";
 
 /** One of the project's Mates, as the fix may be offered to it (S6, `fixMatesOf`). */
 export interface ChipMate {
@@ -179,10 +180,10 @@ export function AskToFix({
         // than widen the popover, and the card rises in as it opens.
         <div className="leading-4.75 wrap-anywhere motion-safe:animate-envpop-rise">
           <Card data-zerops-surface="sidebar-production-draft" size="sm">
-            <div className="flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
+            <Text className="flex items-center gap-1.5" render={<div />} variant="label">
               <MateFace shape={mate.shape} size={16} state="idle" tint={mate.tint} />
               {`Opens ${mate.name}'s conversation with this in the composer`}
-            </div>
+            </Text>
             {draftParts(fixRequestPrompt(problem)).map((part): ReactNode =>
               part.kind === "code" ? (
                 <pre

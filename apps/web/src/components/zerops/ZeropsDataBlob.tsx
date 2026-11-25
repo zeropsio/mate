@@ -16,6 +16,7 @@ import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsDataBlobProps {
   readonly blob: ZeropsDataConsoleBlob;
@@ -25,33 +26,33 @@ interface ZeropsDataBlobProps {
 
 function TruncatedBanner({ size }: { readonly size: number }) {
   return (
-    <p className="text-muted-foreground text-caption" data-zerops-data-blob-truncated>
+    <Text render={<p />} variant="note" data-zerops-data-blob-truncated>
       Preview truncated — the full value is {size.toLocaleString()} bytes.
-    </p>
+    </Text>
   );
 }
 
 function MetaLine({ text }: { readonly text: string }) {
   return (
-    <p className="text-muted-foreground text-caption" data-zerops-data-blob-meta>
+    <Text render={<p />} variant="note" data-zerops-data-blob-meta>
       {text}
-    </p>
+    </Text>
   );
 }
 
 function MoreBytes({ count }: { readonly count: number }) {
   return (
-    <p className="text-muted-foreground text-caption" data-zerops-data-blob-more>
+    <Text render={<p />} variant="note" data-zerops-data-blob-more>
       … {count.toLocaleString()} more bytes
-    </p>
+    </Text>
   );
 }
 
 function Note({ text }: { readonly text: string }) {
   return (
-    <p className="text-muted-foreground text-caption" data-zerops-data-blob-note>
+    <Text render={<p />} variant="note" data-zerops-data-blob-note>
       {text}
-    </p>
+    </Text>
   );
 }
 
@@ -140,7 +141,9 @@ export function ZeropsDataBlob({ blob, name }: ZeropsDataBlobProps) {
           Download preview
         </Button>
       ) : (
-        <p className="text-caption text-muted-foreground">Preview limited · download unavailable</p>
+        <Text render={<p />} variant="note">
+          Preview limited · download unavailable
+        </Text>
       )}
 
       {preview.truncated ? <TruncatedBanner size={preview.size} /> : null}

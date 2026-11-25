@@ -6,6 +6,7 @@ import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { NO_LONGER_ALLOWED } from "./gitBrowser/GitAtCommit";
 import { GitBrowseView, gitView, pageRead, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
+import { Text } from "~/components/ui/text";
 
 /**
  * A repository in the Git browser: its frame and the page its link names, read only while the
@@ -75,7 +76,7 @@ export function ZeropsRepositoryBrowser({
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         <GitRepoHeading project={project} repo={repo} onBack={onBack} />
-        <p className="text-body text-muted-foreground" role="alert">
+        <Text render={<p />} variant="description" role="alert">
           {allowed === true
             ? // HQ said no after the offers said yes.
               NO_LONGER_ALLOWED
@@ -83,7 +84,7 @@ export function ZeropsRepositoryBrowser({
               (allowed === undefined
                 ? "Your access to this repository has not been verified."
                 : "You do not have access to this repository."))}
-        </p>
+        </Text>
       </section>
     );
   }

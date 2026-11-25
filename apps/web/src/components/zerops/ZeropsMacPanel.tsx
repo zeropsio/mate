@@ -33,6 +33,7 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collaps
 import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
 import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
 
 /** How long a copy button says so. */
 const COPIED_MS = 2_000;
@@ -329,12 +330,16 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
           "remove",
           "under-press",
         )}
-        <p className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-body text-muted-foreground">
+        <Text
+          className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5"
+          render={<p />}
+          variant="description"
+        >
           Mac gone, or not answering?
           <Button onClick={forget} size="sm" variant="destructive">
             Forget it here
           </Button>
-        </p>
+        </Text>
       </CollapsiblePanel>
     </Collapsible>
   );
@@ -449,9 +454,9 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         >
           {macGlyph(wait.kind)}
           <h3 className="text-emphasis leading-5.5 font-semibold text-foreground">{wait.title}</h3>
-          <p className="mt-1 text-body text-pretty text-muted-foreground" data-zerops-mac-line>
+          <Text className="mt-1" render={<p />} variant="description" data-zerops-mac-line>
             {wait.line}
-          </p>
+          </Text>
           {steps}
           {view === "unavailable" ? (
             <div className="mt-5">
@@ -463,9 +468,9 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         </div>
       )}
       {line !== null ? (
-        <p className="px-1 text-muted-foreground text-caption" data-zerops-mac-line>
+        <Text className="px-1" render={<p />} variant="note" data-zerops-mac-line>
           {line}
-        </p>
+        </Text>
       ) : null}
       {frame !== undefined ? (
         <LiveFrameViewer

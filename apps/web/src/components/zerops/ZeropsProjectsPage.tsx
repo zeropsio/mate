@@ -249,6 +249,7 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 /**
  * A stage or a production this screen asked HQ for: from the press until HQ answers its start,
@@ -531,7 +532,11 @@ export function creationCovers(
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
-  return <p className="text-body text-muted-foreground">{message}</p>;
+  return (
+    <Text render={<p />} variant="description">
+      {message}
+    </Text>
+  );
 }
 
 /**
@@ -2389,16 +2394,16 @@ export function ZeropsProjectsContent({
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (
-        <p className="py-16 text-center text-body text-muted-foreground" role="status">
+        <Text className="py-16 text-center" render={<p />} variant="description" role="status">
           {troubleView.empty}
-        </p>
+        </Text>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
       {withheldProjectNotices(inventory).map((notice) => (
-        <p className="text-caption text-muted-foreground" key={notice} role="status">
+        <Text render={<p />} variant="note" key={notice} role="status">
           {notice}
-        </p>
+        </Text>
       ))}
       {project === undefined && activeOrganization !== null ? (
         <ArrivalWelcome

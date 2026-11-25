@@ -31,6 +31,7 @@ import {
   type MoveChoices,
   type MoveMembership,
 } from "./ZeropsMoveToGroupDialog.logic";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsMoveToGroupForm({
   name,
@@ -227,10 +228,10 @@ export function ZeropsMoveToGroupForm({
               ) : null}
             </div>
           ) : null}
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             Moves across HQs, organizations or physical environments are not supported. Move changes
             placement within this HQ; it cannot migrate files or credentials.
-          </p>
+          </Text>
           {error !== null ? <p role="alert">{error}</p> : null}
         </div>
       </DialogPanel>

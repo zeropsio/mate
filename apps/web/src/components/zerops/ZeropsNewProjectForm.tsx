@@ -51,6 +51,7 @@ import {
   offeredBotName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newProjectButton, regionPlace } from "./ZeropsNewProjectForm.logic";
+import { Text } from "~/components/ui/text";
 
 /** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
 export interface NewProjectChoice {
@@ -548,7 +549,9 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     return (
       <NewProjectPageFrame>
         <h1 className={HEADING_CLASS}>What do you want to build?</h1>
-        <p className="m-0 text-center text-body text-muted-foreground">{closed}</p>
+        <Text className="m-0 text-center" render={<p />} variant="description">
+          {closed}
+        </Text>
       </NewProjectPageFrame>
     );
   if (step === "mate")

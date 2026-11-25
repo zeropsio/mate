@@ -51,6 +51,7 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZEROPS_PRICING_URL } from "./whatHappensNext.logic";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 /** One automated Mate the form hands over: its name and its face. */
 export interface AutomatedMateChoice {
@@ -273,13 +274,15 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             })}
           </ul>
           <section className="flex flex-col gap-1" aria-labelledby={`${id}-what`}>
-            <h3
-              className="flex items-center gap-1.5 text-caption leading-4 font-medium text-muted-foreground"
+            <Text
+              className="flex items-center gap-1.5"
+              render={<h3 />}
+              variant="label"
               id={`${id}-what`}
             >
               <BotIcon aria-hidden className="size-3.5" />
               What they do
-            </h3>
+            </Text>
             {/* A key note learned after the first frame lands in room held for it, and the
                 sources in a line's height held for them: nothing under it moves. */}
             <div className="grid min-h-10 text-body text-pretty">
@@ -316,25 +319,24 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             variant="inset"
           >
             <div className="flex flex-col gap-1 px-3.5 pt-2.5 pb-3">
-              <h3
-                className="text-caption leading-4 font-medium text-muted-foreground"
-                id={`${id}-next`}
-              >
+              <Text render={<h3 />} variant="label" id={`${id}-next`}>
                 What happens next
-              </h3>
+              </Text>
               <p className="text-line leading-5" data-zerops-automated-next="">
                 {automatedNext(count, recipe === "none" ? "none" : "recipe")}
               </p>
-              <p className="text-line leading-5 text-muted-foreground">{TAB_MAY_CLOSE_LINE}</p>
+              <Text render={<p />} variant="remark">
+                {TAB_MAY_CLOSE_LINE}
+              </Text>
             </div>
           </Card>
           {props.forecast}
-          <p className="text-body text-muted-foreground" data-zerops-mate-cost="">
+          <Text render={<p />} variant="description" data-zerops-mate-cost="">
             {automatedCost(names)}{" "}
             <InlineButton render={<a href={ZEROPS_PRICING_URL} rel="noreferrer" target="_blank" />}>
               Zerops pricing
             </InlineButton>
-          </p>
+          </Text>
         </div>
       </DialogPanel>
       <DialogFooter>
