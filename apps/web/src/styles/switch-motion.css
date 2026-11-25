@@ -46,6 +46,7 @@
   );
 }
 
+/* The stage's face while the conversation opens. */
 [data-opening-face] {
   /* The decorative portal lets the header button own pointer events after landing. */
   pointer-events: none;
@@ -66,6 +67,7 @@
   animation: conversation-eye-open var(--duration-conversation-wake) var(--ease-out-strong) both;
 }
 
+/* The hand-off from the stage to the conversation. */
 [data-conversation-opening="hand-off"] {
   animation: conversation-handoff var(--duration-conversation-handoff) linear;
 }

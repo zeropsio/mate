@@ -10,6 +10,7 @@
   display: grid;
 }
 
+/* Both layers share one cell; the one leaving lies over the place it held, out of the pointer's way. */
 .arrival-swap > [data-swap-layer] {
   grid-area: 1 / 1;
   min-width: 0;
@@ -117,6 +118,7 @@
   container: first-run / inline-size;
 }
 
+/* The faint dotted ground, fading out from behind the words. */
 .first-run-ground {
   position: absolute;
   inset: 0;
@@ -134,6 +136,7 @@
   display: none;
 }
 
+/* Along the top: Mate's mark and the account. */
 .first-run-bar {
   display: flex;
   height: 64px;
@@ -149,6 +152,7 @@
   min-width: 0;
 }
 
+/* The words, the card and the steps after Create: one column, two where it is wide. */
 .first-run-stage {
   display: grid;
   width: 100%;
@@ -189,6 +193,7 @@
   text-align: center;
 }
 
+/* The words: the face, the welcome, the heading, the body and its note. */
 .first-run-intro {
   display: flex;
   min-width: 0;
@@ -201,6 +206,7 @@
   align-items: center;
 }
 
+/* The first Mate, large, in its glow. */
 .first-run-hero {
   position: relative;
   display: grid;
@@ -261,6 +267,7 @@
   height: 64px;
 }
 
+/* The words around the face, from the welcome down to the note. */
 .first-run-welcome {
   margin-top: 20px;
   color: var(--muted-foreground);
@@ -365,6 +372,7 @@
   white-space: nowrap;
 }
 
+/* A last caption under the steps, on the steps' words' edge. */
 .first-run-leave {
   margin-top: 14px;
   padding-inline-start: 34px;
@@ -387,6 +395,7 @@
   grid-area: form;
 }
 
+/* The form's press and what it says under it. */
 .first-run-create {
   display: grid;
   gap: 8px;
@@ -442,6 +451,7 @@
   scrollbar-gutter: stable both-edges;
 }
 
+/* The column the steps stand in, the question in the window's middle. */
 .new-project-stage {
   display: flex;
   width: 100%;
@@ -489,6 +499,7 @@
   }
 }
 
+/* The step's form: 28 rem at most, centred; on the project's step it fills the column. */
 .new-project-form {
   display: flex;
   width: 100%;
@@ -517,6 +528,7 @@
   width: 320px;
 }
 
+/* *Project access & region setup*: 20 px under the press, as wide as the column. */
 .new-project-advanced {
   align-self: stretch;
   padding-top: 20px;
@@ -548,24 +560,22 @@
   margin-top: -10px;
 }
 
+/* A missing name, in red under the press; it says nothing until then, and then takes no room. */
 .new-project-unnamed {
   min-height: 1rem;
   margin: 0;
-}
-
-/* Says nothing until the name is missing, and then stands under the press. */
-.new-project-unnamed:empty {
-  min-height: 0;
-  margin-top: -16px;
-}
-
-.new-project-unnamed {
   color: var(--color-status-failed-text);
   font-size: var(--text-line);
   line-height: 1rem;
   text-align: center;
 }
 
+.new-project-unnamed:empty {
+  min-height: 0;
+  margin-top: -16px;
+}
+
+/* The region and the people, 40 px apart, opening under it. */
 .new-project-advanced-fields {
   display: flex;
   flex-direction: column;
@@ -615,6 +625,7 @@
   }
 }
 
+/* The face ring, the name and its two presses, centred. */
 .new-mate-creator {
   display: flex;
   flex-direction: column;
@@ -647,6 +658,7 @@
   height: 26px;
 }
 
+/* The Mate's name, at the headline's size, cut to one line. */
 .new-mate-name {
   max-width: 100%;
   margin: 0;
@@ -659,6 +671,7 @@
   white-space: nowrap;
 }
 
+/* Shuffle and Edit style, 16 px under the name. */
 .new-mate-acts {
   display: flex;
   justify-content: center;
@@ -692,6 +705,7 @@
   padding-top: 20px;
 }
 
+/* The dialog's foot: the line saying what Add does over the press, a rule above while the options show. */
 .new-mate-foot {
   display: flex;
   flex-direction: column;
@@ -713,6 +727,7 @@
   display: none;
 }
 
+/* The options' press turns its chevron while they show. */
 .new-mate-chevron {
   transition: rotate 200ms var(--ease-out-strong);
 }
@@ -729,6 +744,7 @@
   gap: 12px;
 }
 
+/* The press (or the Add people card) over the people, 24 px apart. */
 .np-access-body {
   display: flex;
   flex-direction: column;
@@ -739,6 +755,7 @@
   padding-bottom: 0;
 }
 
+/* The project's people (`ProjectAccessChips rows`): one per 38 px row, lit under the pointer. */
 .ov-chips[data-rows] {
   display: flex;
   flex-direction: column;
@@ -780,6 +797,7 @@
   margin: 0;
 }
 
+/* What Read and Full give, in caption, the word first. */
 .np-add-hints {
   display: flex;
   flex-direction: column;
@@ -802,12 +820,14 @@
   color: var(--muted-foreground);
 }
 
+/* Cancel and Add, at the card's end. */
 .np-add-foot {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 
+/* Why no project can be made here, under the question. */
 .new-project-closed {
   margin: 0;
   color: var(--muted-foreground);
@@ -851,6 +871,7 @@
   gap: 12px;
 }
 
+/* A stop's reason, read whole, muted and centred. */
 .arrival-acts-note {
   color: var(--muted-foreground);
   font-size: var(--text-body);
@@ -922,6 +943,7 @@
   scrollbar-gutter: stable both-edges;
 }
 
+/* Asking for a sign-in: the face at 120 px, the headline 20 px and the cards 36 px under it. */
 [data-arrival^="sign-in"] .arrival-face > * {
   width: 120px;
   height: 120px;
@@ -967,6 +989,7 @@
   animation: arrival-fade-in 200ms var(--ease-out-strong) backwards;
 }
 
+/* The cards, 8 px apart. */
 .arrival-cards {
   display: flex;
   width: 100%;
@@ -1051,6 +1074,7 @@
   scale: 0.985;
 }
 
+/* An agent's logo, in a 40 px seat at the card's start. */
 .arrival-logo {
   display: flex;
   flex: none;
@@ -1065,6 +1089,7 @@
   overflow: hidden;
 }
 
+/* An open card: its logo and title over a rule, its steps, its foot. */
 .arrival-open-head {
   display: flex;
   align-items: center;
@@ -1170,6 +1195,7 @@
   white-space: nowrap;
 }
 
+/* The code being checked, in mono. */
 .arrival-field-value {
   color: var(--foreground);
   font-family: var(--font-mono);
@@ -1211,6 +1237,7 @@
   overflow: hidden;
 }
 
+/* The login's own output in the theme's terminal colours, 128 px tall. */
 .arrival-terminal {
   --terminal-background: var(--muted);
   --terminal-foreground: var(--foreground);
@@ -1225,6 +1252,7 @@
   color: var(--foreground);
 }
 
+/* The open card's foot over a rule: whose account it runs on, and *Show what's happening*. */
 .arrival-open-foot {
   display: flex;
   align-items: center;

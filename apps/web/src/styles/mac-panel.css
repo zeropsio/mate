@@ -14,6 +14,7 @@
     text-align: center;
   }
 
+  /* The Mac's glyph in a 56 px tile, why it waits on a badge at its corner. */
   .mac-wait-glyph {
     position: relative;
     display: grid;
@@ -55,6 +56,7 @@
     height: 13px;
   }
 
+  /* The headline and its one plain line. */
   .mac-wait-title {
     font-size: var(--text-emphasis);
     font-weight: 600;
@@ -79,6 +81,7 @@
     text-align: left;
   }
 
+  /* A step: its StepNumber, its words, and under them its command or more. */
   .mac-wait-step {
     display: grid;
     grid-template-columns: 24px minmax(0, 1fr);
@@ -106,6 +109,7 @@
     border-radius: var(--radius-card);
   }
 
+  /* A command for the Mac's Terminal: mono words to select whole, its copy press inside the field. */
   .mac-command {
     display: flex;
     align-items: center;
@@ -137,6 +141,7 @@
     padding: 12px 14px;
   }
 
+  /* Each thing the Mac needs: its name, how to get it, its command. */
   .mac-ready-item {
     display: flex;
     flex-direction: column;
@@ -183,6 +188,7 @@
     text-align: left;
   }
 
+  /* The way to update a Mate whose version has no Mac view. */
   .mac-wait-update {
     margin-top: 20px;
   }
@@ -195,6 +201,7 @@
     padding-inline: 16px;
   }
 
+  /* For a Mac gone or not answering: forgetting it here. */
   .mac-remove-forget {
     display: flex;
     flex-wrap: wrap;
