@@ -17,8 +17,12 @@ export const KIT_GUARDS = [
 
 /** A ledger entry as far as the kit reads it: when it is due. */
 interface LedgerEntry {
+  readonly path: string;
   readonly expires?: string;
 }
+
+/** The kit is the web client's: a ledger's entries for other clients are not its to count. */
+const WEB_CLIENT = "apps/web/";
 
 // The ledgers are read at build, and only where the build carries the design harness: production's
 // kit counts none and bundles none.
@@ -38,7 +42,8 @@ export interface KitGuardCount {
 
 /** Each guard's ledger, by rule; absent when this build does not carry the ledgers. */
 export const KIT_GUARD_COUNTS: ReadonlyMap<string, KitGuardCount> = new Map(
-  Object.entries(ledgers).map(([path, entries]) => {
+  Object.entries(ledgers).map(([path, all]) => {
+    const entries = all.filter((entry) => entry.path.startsWith(WEB_CLIENT));
     const kept = entries.filter((entry) => entry.expires === "never").length;
     return [
       path.slice(path.lastIndexOf("/") + 1, -".json".length),
