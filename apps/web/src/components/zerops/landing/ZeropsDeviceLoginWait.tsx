@@ -8,6 +8,7 @@ import type { DeviceLoginProgress } from "@zerops/session/session.device-login";
 
 import { Spinner } from "../../ui/spinner";
 import { Button, InlineButton } from "../../ui/button";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsDeviceLoginWait({
   progress,
@@ -26,7 +27,9 @@ export function ZeropsDeviceLoginWait({
     >
       {closed ? (
         <>
-          <p className="text-body text-muted-foreground">The Zerops window isn't open.</p>
+          <Text render={<p />} variant="description">
+            The Zerops window isn't open.
+          </Text>
           <Button
             className="w-full"
             render={<a href={progress.consentUrl} rel="noopener" target="_blank" />}
@@ -37,16 +40,18 @@ export function ZeropsDeviceLoginWait({
       ) : (
         <>
           <Spinner size="lg" className="mx-auto" />
-          <p className="text-body text-muted-foreground">Finish in the Zerops window.</p>
+          <Text render={<p />} variant="description">
+            Finish in the Zerops window.
+          </Text>
         </>
       )}
-      <p className="text-caption text-muted-foreground" aria-live="polite">
+      <Text render={<p />} variant="note" aria-live="polite">
         If Zerops shows a code, it's{" "}
         <span className="block pt-1 font-mono text-display font-medium tracking-widest text-foreground">
           {progress.userCode}
         </span>
-      </p>
-      <p className="space-x-3 text-caption text-muted-foreground">
+      </Text>
+      <Text className="space-x-3" render={<p />} variant="note">
         {closed ? null : (
           <InlineButton tone="muted" onClick={onReopen}>
             Reopen the Zerops window
@@ -55,7 +60,7 @@ export function ZeropsDeviceLoginWait({
         <InlineButton tone="muted" onClick={onCancel}>
           Cancel sign-in
         </InlineButton>
-      </p>
+      </Text>
     </div>
   );
 }

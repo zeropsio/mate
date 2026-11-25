@@ -30,6 +30,7 @@ import {
   type VaultText,
   type VaultTextSection,
 } from "./vaultText.logic";
+import { Text } from "~/components/ui/text";
 
 interface VaultAddCardProps {
   /**
@@ -146,17 +147,23 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </Tooltip>
         </div>
         {error === null ? null : (
-          <p
-            className="flex items-center gap-1.5 text-caption leading-4 text-destructive-foreground"
+          <Text
+            className="flex items-center gap-1.5"
+            render={<p />}
+            variant="error"
             data-vault-add-error
             role="alert"
           >
             <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
             {error}
-          </p>
+          </Text>
         )}
         <div className="flex items-center gap-2">
-          <label className="flex h-7 cursor-pointer items-center gap-2 text-caption text-muted-foreground">
+          <Text
+            className="flex h-7 cursor-pointer items-center gap-2"
+            render={<label />}
+            variant="note"
+          >
             <Switch
               aria-label="Hidden"
               checked={sensitive}
@@ -164,10 +171,10 @@ export function VaultAddCard(props: VaultAddCardProps) {
             />
             <LockIcon aria-hidden="true" className="size-3" />
             <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
-          </label>
-          <span className="truncate text-caption text-muted-foreground" data-vault-add-auto>
+          </Text>
+          <Text truncate variant="note" data-vault-add-auto>
             {sensitive ? "nobody reads it back once saved" : ""}
-          </span>
+          </Text>
           <span className="grow" />
           <Button onClick={props.onCancel} size="sm" variant="ghost">
             Cancel
@@ -177,9 +184,9 @@ export function VaultAddCard(props: VaultAddCardProps) {
             Save
           </Button>
         </div>
-        <p className="text-caption leading-4 text-muted-foreground">
+        <Text render={<p />} variant="note">
           Paste a whole .env into the name to add many at once.
-        </p>
+        </Text>
       </div>
     </div>
   );
@@ -254,7 +261,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
     <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
         <span className="font-medium text-line">{vaultName(props.scope, props.mateName)}</span>
-        <span className="text-caption text-muted-foreground">as text</span>
+        <Text variant="note">as text</Text>
         <span className="grow" />
         <Button onClick={props.onCancel} size="sm" variant="ghost">
           Cancel
@@ -272,20 +279,22 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
       {diff.problems.length === 0 ? null : (
         <ul className="grid gap-1" data-vault-text-problems>
           {diff.problems.map((problem) => (
-            <li
-              className="flex items-center gap-1.5 text-caption text-destructive-foreground"
+            <Text
+              className="flex items-center gap-1.5"
+              render={<li />}
+              variant="error"
               key={`${problem.section}:${problem.line}`}
             >
               <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
               {problem.message}
-            </li>
+            </Text>
           ))}
         </ul>
       )}
-      <p className="text-caption leading-4 text-muted-foreground">
+      <Text render={<p />} variant="note">
         {VAULT_MASK} keeps the stored value. Type over it to replace it; delete the line to remove
         it.
-      </p>
+      </Text>
     </section>
   );
 }
@@ -318,9 +327,7 @@ export function VaultReview(props: VaultReviewProps) {
     <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
-        <span className="text-caption text-muted-foreground">
-          {vaultName(props.scope, props.mateName)}
-        </span>
+        <Text variant="note">{vaultName(props.scope, props.mateName)}</Text>
       </div>
       {lines.map(({ write, line }) => (
         <div
@@ -383,11 +390,11 @@ export function VaultReview(props: VaultReviewProps) {
         <Button onClick={props.onBack} size="sm" variant="ghost">
           Back to text
         </Button>
-        <span className="ml-auto truncate text-caption text-muted-foreground">
+        <Text className="ml-auto" truncate variant="note">
           {props.mateName === null
             ? "Each one shows what it needs once applied"
             : `${props.mateName} hears about them with your next message`}
-        </span>
+        </Text>
       </div>
     </section>
   );

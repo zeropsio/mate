@@ -25,6 +25,7 @@ import {
   vaultAskLabel,
   vaultAskWrite,
 } from "./vaultRequest.logic";
+import { Text } from "~/components/ui/text";
 
 interface VaultAskProps {
   /** The engine's request: the ask's identity in both homes. */
@@ -84,18 +85,22 @@ export function VaultAsk(props: VaultAskProps) {
   const note = field === null ? undefined : view.note;
   const warning =
     view.warning === null || field === null ? null : (
-      <p
-        className="flex items-center gap-1.5 text-caption text-destructive-foreground"
+      <Text
+        className="flex items-center gap-1.5"
+        render={<p />}
+        variant="error"
         data-vault-ask-warning
       >
         <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
         {view.warning}
-      </p>
+      </Text>
     );
   const body =
     field !== null && made !== null ? (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-vault-ask-made>
-        <p className="text-body text-muted-foreground">{made.words}</p>
+        <Text render={<p />} variant="description">
+          {made.words}
+        </Text>
         <Button
           disabled={working}
           onClick={() => setOwnValue(true)}
@@ -129,9 +134,9 @@ export function VaultAsk(props: VaultAskProps) {
         {warning}
       </>
     ) : view.body.kind === "given" ? (
-      <p className="text-body text-muted-foreground" data-vault-ask-given>
+      <Text render={<p />} variant="description" data-vault-ask-given>
         {view.body.words}
-      </p>
+      </Text>
     ) : undefined;
 
   return (

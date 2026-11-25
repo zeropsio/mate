@@ -72,6 +72,7 @@ import {
   type VaultRowActivity,
 } from "./VaultRow";
 import { diffVaultText, pasteIntoText, vaultToText, type VaultText } from "./vaultText.logic";
+import { Text } from "~/components/ui/text";
 
 /** What the account knows of one row's write: in flight, or refused with the platform's code. */
 export type VaultPending =
@@ -446,7 +447,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const failure =
     view.status === "failed" ? (
       <div className="flex min-h-7 items-center gap-3 px-1" data-vault-failed role="alert">
-        <p className="text-line text-muted-foreground">Couldn't read the vault</p>
+        <Text render={<p />} variant="remark">
+          Couldn't read the vault
+        </Text>
         {props.onRetry === undefined ? null : (
           <Button onClick={props.onRetry} size="sm" variant="secondary">
             Try again
@@ -613,14 +616,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           />
         ) : null}
         {notice === null ? null : (
-          <p
-            className="flex items-center gap-1.5 px-1 text-caption text-muted-foreground"
+          <Text
+            className="flex items-center gap-1.5 px-1"
+            render={<p />}
+            variant="note"
             data-vault-notice
             role="status"
           >
             {notice.held ? <Spinner size="xs" /> : null}
             {notice.line}
-          </p>
+          </Text>
         )}
         {q === "" && mode.kind === "list" ? (
           <VaultLines
@@ -649,7 +654,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           // Each app's own stand apart from what every app gets: over twice the room two of them
           // keep, a hairline between, and the group's label hugging its first heading.
           <div className="mt-2 grid gap-1 border-t border-border/70 pt-5" data-vault-own>
-            <p className="m-0 text-caption font-medium text-muted-foreground">{OWN_VAULTS_LABEL}</p>
+            <Text className="m-0" render={<p />} variant="label">
+              {OWN_VAULTS_LABEL}
+            </Text>
             <div className="grid gap-6">{own.map(sectionOf)}</div>
           </div>
         )}
@@ -682,11 +689,11 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                         <span className="truncate text-muted-foreground">{words}</span>
                       )}
                       <span className="grow" />
-                      <span className="shrink-0 text-caption text-muted-foreground">
+                      <Text className="shrink-0" variant="meta">
                         {scope.values.length === 1
                           ? "1 value set by Zerops"
                           : `${scope.values.length} values set by Zerops`}
-                      </span>
+                      </Text>
                       <ChevronDownIcon aria-hidden="true" className={VAULT_CHEVRON_CLASS} />
                     </CollapsibleTrigger>
                     <div

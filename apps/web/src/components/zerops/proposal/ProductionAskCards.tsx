@@ -25,6 +25,7 @@ import {
 } from "./productionAsk.logic";
 import { Attachment } from "./ProposalCard";
 import { CREATE_IN_PRODUCTION } from "./proposal.logic";
+import { Text } from "~/components/ui/text";
 
 const PRODUCTION = { scope: "production", detail: null } as const;
 
@@ -36,9 +37,9 @@ const whyOf = (proposal: ZeropsProposal, mateName: string) =>
 /** Why the person's last decision was not kept. A plain element or nothing: no body, no gap. */
 const refusalOf = (words: string | undefined) =>
   words === undefined ? null : (
-    <p className="text-caption text-destructive-foreground" role="alert">
+    <Text render={<p />} variant="error" role="alert">
       {words}
-    </p>
+    </Text>
   );
 
 interface ServiceCreateAskCardProps {
@@ -180,14 +181,14 @@ export function ReleaseOfferAskCard(props: ReleaseOfferAskCardProps) {
         why={view.collapsed || known ? null : whyOf(proposal, props.mateName)}
       >
         {view.collapsed || summary === null ? null : (
-          <p className="text-body text-muted-foreground" data-release-summary>
+          <Text render={<p />} variant="description" data-release-summary>
             {summary}
-          </p>
+          </Text>
         )}
         {view.collapsed || view.moved === undefined ? null : (
-          <p className="text-caption text-muted-foreground" data-release-moved>
+          <Text render={<p />} variant="note" data-release-moved>
             {view.moved}
-          </p>
+          </Text>
         )}
         {view.collapsed || props.changes.length === 0 ? null : (
           <ul className="grid min-w-0 gap-1.5" data-release-changes>
@@ -200,7 +201,9 @@ export function ReleaseOfferAskCard(props: ReleaseOfferAskCardProps) {
               </li>
             ))}
             {props.more === 0 ? null : (
-              <li className="ps-6 text-caption text-muted-foreground">and {props.more} more</li>
+              <Text className="ps-6" render={<li />} variant="note">
+                and {props.more} more
+              </Text>
             )}
           </ul>
         )}

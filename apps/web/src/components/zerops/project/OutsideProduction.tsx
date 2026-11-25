@@ -33,6 +33,7 @@ import {
 } from "./outsideProduction.logic";
 import { cn } from "~/lib/utils";
 import { HERO, HERO_ICON, HERO_TEXT, HERO_TITLE, HERO_WHY } from "./pageLayout";
+import { Text } from "~/components/ui/text";
 
 /** The press as the page hands it: who may, how it stands, and the one write. */
 export type OutsideControl = Pick<AppOutsideProduction, "editable" | "press" | "save" | "reset">;
@@ -128,7 +129,7 @@ export function OutsideProductionForm({
                   value={typed}
                 />
                 {/* One line's room, held: what is said here never moves the buttons under it. */}
-                <p className="min-h-5 text-body text-muted-foreground">
+                <Text className="min-h-5" render={<p />} variant="description">
                   {press.kind === "refused" ? (
                     <span className="text-destructive-foreground" role="alert">
                       {press.words}
@@ -138,7 +139,7 @@ export function OutsideProductionForm({
                   ) : (
                     "Where people open it. Leave it empty if there is none to give."
                   )}
-                </p>
+                </Text>
               </div>
             </DialogPanel>
             <DialogFooter>

@@ -22,6 +22,7 @@ import {
   type ProcessStepState,
   type StepGlyphState,
 } from "../primitives";
+import { Text } from "~/components/ui/text";
 
 /** A segment's mark is every step list's: `StepGlyph`. */
 const SEGMENT_GLYPH: Record<ProcessStepState, StepGlyphState> = {
@@ -111,7 +112,7 @@ export function PipelineSegments({
               {step.label}
             </span>
             {footnote !== undefined ? (
-              <span className="text-muted-foreground text-caption tabular-nums">{footnote}</span>
+              <Text variant="meta">{footnote}</Text>
             ) : (
               <span className="sr-only">{step.stateLabel}</span>
             )}

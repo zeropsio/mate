@@ -11,6 +11,7 @@ import { EmptyState } from "~/components/ui/empty";
 import type { columnPeople } from "../projects/accessTable.logic";
 import { PersonAvatar } from "../primitives";
 import { ACCESS_FACES, accessBreakdown } from "./place.logic";
+import { Text } from "~/components/ui/text";
 
 export function PlaceAccessCard({
   summary,
@@ -52,7 +53,9 @@ export function PlaceAccessCard({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-body text-foreground">{words.count}</span>
               {words.split === "" ? null : (
-                <span className="truncate text-caption text-muted-foreground">{words.split}</span>
+                <Text truncate variant="note">
+                  {words.split}
+                </Text>
               )}
             </span>
           </>

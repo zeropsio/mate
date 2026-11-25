@@ -19,6 +19,7 @@ import { PlaceLine } from "../system/PlaceLine";
 import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import { Text } from "~/components/ui/text";
 
 /** One project without a Mate: its name, then production's line, its menu on its end. */
 function OtherProject<T>({
@@ -73,7 +74,9 @@ export function OtherProjects<T>({
       className="mt-10 grid justify-items-start"
       data-zerops-surface="other-projects"
     >
-      <h2 className="mb-1 text-caption font-medium text-muted-foreground">Other projects</h2>
+      <Text className="mb-1" render={<h2 />} variant="label">
+        Other projects
+      </Text>
       <ul className="grid w-[min(100%,560px)]">
         {groups.map((entry) => (
           <OtherProject entry={entry} key={entry.group.groupId} props={props} />
@@ -129,9 +132,9 @@ export function OtherContainers<T>({
             </span>
           </CollapsibleTrigger>
           {/* A narrow container has room for a cut "Not in a…" only: the summary waits for width. */}
-          <span className="hidden min-w-0 flex-1 truncate text-caption text-muted-foreground @2xl/flow:block">
+          <Text className="hidden min-w-0 flex-1 @2xl/flow:block" truncate variant="note">
             {summary.line}
-          </span>
+          </Text>
           {summary.retry > 0 ? (
             <Button
               className="ms-auto"

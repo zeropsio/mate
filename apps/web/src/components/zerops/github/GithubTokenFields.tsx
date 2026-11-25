@@ -8,6 +8,7 @@ import { useId } from "react";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { OutLink } from "../../settings/automationParts";
+import { Text } from "~/components/ui/text";
 
 /** GitHub's page for a new fine-grained token, before the address names its owner. */
 const GITHUB_NEW_TOKEN = "https://github.com/settings/personal-access-tokens/new";
@@ -59,7 +60,7 @@ export function GithubTokenFields({
           type="password"
           value={token}
         />
-        <p className="text-caption text-muted-foreground" id={`${tokenId}-guide`}>
+        <Text render={<p />} variant="note" id={`${tokenId}-guide`}>
           {guide.kind === "guide" ? (
             <>
               <OutLink href={guide.tokenUrl}>Create a token on {guide.hostLabel}</OutLink> ·{" "}
@@ -74,7 +75,7 @@ export function GithubTokenFields({
               repository · Contents, Issues and Webhooks: Read and write.
             </>
           )}
-        </p>
+        </Text>
       </div>
     </div>
   );

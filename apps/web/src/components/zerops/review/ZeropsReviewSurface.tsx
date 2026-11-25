@@ -81,6 +81,7 @@ import {
   tryItWords,
 } from "./ZeropsReview.logic";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -947,7 +948,9 @@ export function ReviewTry({
         })}
       </div>
       {everything ? (
-        <p className="mt-1.5 text-body text-muted-foreground">{tryItEverything(mateName)}</p>
+        <Text className="mt-1.5" render={<p />} variant="description">
+          {tryItEverything(mateName)}
+        </Text>
       ) : null}
     </ReviewSection>
   );

@@ -109,6 +109,7 @@ import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
 import { PersonAvatar } from "../primitives";
 import { SectionAction } from "../system";
+import { Text } from "~/components/ui/text";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
@@ -680,7 +681,7 @@ export function ProjectPeopleRowView({
     >
       <div className="flex min-h-7 min-w-0 items-center gap-3.5">
         {view.kind === "unreadable" ? (
-          <span className="text-line text-muted-foreground">{view.line}</span>
+          <Text variant="remark">{view.line}</Text>
         ) : summary === null ? (
           <Skeleton className="h-5 w-48" />
         ) : (
