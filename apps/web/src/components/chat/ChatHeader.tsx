@@ -822,7 +822,7 @@ export const ChatHeader = memo(function ChatHeader({
           ref={headerActionsRef}
           data-chat-header-actions
           // Every action here arrives with the conversation at the opening's hand-off, never a
-          // step ahead of it (`[data-opening-waits]`, index.css).
+          // step ahead of it (`ConversationOpeningWaits`).
           className={cn(
             "flex shrink-0 items-center justify-end",
             // A Mate's header is a row of borderless buttons, 4 px apart like

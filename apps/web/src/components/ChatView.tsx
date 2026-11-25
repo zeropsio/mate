@@ -7498,11 +7498,15 @@ function ConversationView(props: ChatViewProps) {
               data-conversation-footer=""
               data-chat-composer-overlay="true"
               data-chat-composer-hero={isDraftHeroState ? "true" : undefined}
-              className={
+              className={cn(
                 isDraftHeroState
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 sm:pt-7"
-              }
+                  : // Docked at the column's foot, a full-screen composer's overlay takes the whole
+                    // column and keeps the composer at its foot.
+                    "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 has-data-composer-full:top-0 has-data-composer-full:flex has-data-composer-full:flex-col has-data-composer-full:justify-end sm:pt-7",
+                // Full screen, the conversation stands behind a backdrop that fades in and out.
+                "has-data-composer-full:before:pointer-events-auto has-data-composer-full:before:absolute has-data-composer-full:before:inset-0 has-data-composer-full:before:z-0 has-data-composer-full:before:animate-backdrop-in has-data-composer-full:before:bg-background has-data-composer-full:before:transition-opacity has-data-composer-full:before:duration-200 has-data-composer-full:before:ease-out-strong has-data-[composer-full=leaving]:before:pointer-events-none has-data-[composer-full=leaving]:before:opacity-0 motion-reduce:before:animate-none motion-reduce:before:transition-none",
+              )}
             >
               <div
                 ref={attachDraftHeroTransitionGroupRef}

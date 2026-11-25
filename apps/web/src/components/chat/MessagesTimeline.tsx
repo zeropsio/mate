@@ -1030,8 +1030,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
                 data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
                 data-timeline-placing={listPlaced ? undefined : ""}
-                // Placement proves readiness; the opening stage owns the conversation's entrance.
-                data-timeline-arrives="at-once"
                 // Its own draft's frame showed these rows: they show again in place, not eased in.
                 data-timeline-from-draft={keepsDraftMessage ? "" : undefined}
                 data-timeline-thread={routeThreadKey}
@@ -1133,7 +1131,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <ConversationOpeningWaits
         as="div"
         whole
-        className="h-full min-h-0"
+        // The list is out of sight until it has placed itself (`data-timeline-placing`), then
+        // shows at once: placement proves readiness, and the opening stage owns the
+        // conversation's entrance.
+        className="h-full min-h-0 *:data-timeline-placing:opacity-0"
         data-conversation-content=""
       >
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>

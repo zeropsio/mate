@@ -2695,6 +2695,9 @@ function ComposerPromptEditorInner({
                     // The scroll box clips at its edge: it reaches 4 px left of the words, so a
                     // picture at the start of a line keeps its ring and rounded corners whole.
                     "-ms-1 block max-h-50 min-h-17.5 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent ps-1 leading-relaxed text-foreground focus:outline-none",
+                    // In the composer: room for the full-screen toggle in its corner, and its
+                    // measured full-screen height (`--composer-full-height`), eased both ways.
+                    "in-data-chat-composer-form:transition-[min-height,max-height] in-data-chat-composer-form:duration-260 in-data-chat-composer-form:ease-out-strong in-data-chat-composer-form:sm:pe-7 in-data-[composer-full=on]:max-h-(--composer-full-height) in-data-[composer-full=on]:min-h-(--composer-full-height) motion-reduce:transition-none",
                     className,
                   )}
                   data-testid="composer-editor"

@@ -371,6 +371,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-crew-dot-in: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
   --animate-vault-flash: vault-flash 1.5s var(--ease-out-strong);
   --animate-vault-settled: vault-settled 1.4s var(--ease-out-strong) both;
+  /* A conversation opening (`ConversationOpeningStage`): the stage's eyes blink open, the stage
+     fades where it stands, and the conversation comes in under it, each 150 ms; the hand-off's
+     1 ms is what is left of the rise once the eyes are open, and only its end is read. */
+  --animate-conversation-eye-open: conversation-eye-open var(--duration-quick)
+    var(--ease-out-strong) both;
+  --animate-conversation-handoff: conversation-handoff 1ms linear;
+  --animate-stage-exit: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
+  --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
+  /* The full-screen composer's backdrop fading in over the conversation. */
+  --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);

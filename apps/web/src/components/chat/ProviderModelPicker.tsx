@@ -349,11 +349,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         </PopoverTrigger>
         <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
           {/* The note and the menu share the room the popup has: the list scrolls inside it. */}
-          <div className="composer-model-popup">
+          <div className="flex max-h-[var(--available-height,100vh)] flex-col">
             {availability === null ? null : (
               <AvailabilityNote availability={availability} onOpenSetup={null} />
             )}
-            <div className="composer-model-menu">
+            {/* The models, and beside them the model's effort, its other choices and the access:
+                both columns share one height, capped by the room above the composer, and the
+                choices scroll on their own. A narrow screen stacks them. */}
+            <div className="flex h-[min(28rem,var(--available-height,100vh))] min-h-0 flex-initial *:data-model-picker-content:h-full *:data-model-picker-content:max-h-none max-sm:h-auto max-sm:max-h-[var(--available-height,100vh)] max-sm:flex-col max-sm:overflow-y-auto max-sm:*:data-model-picker-content:h-86.5 max-sm:*:data-model-picker-content:flex-none">
               {content}
               {props.composer.choices}
             </div>

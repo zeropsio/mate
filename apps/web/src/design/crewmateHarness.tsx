@@ -511,7 +511,7 @@ function ComposerSlot({ current }: { readonly current: HarnessState }) {
               />
             ) : (
               <div
-                className="relative z-10 flex h-28 flex-col justify-between px-4 pt-3.5 pb-3"
+                className="relative z-10 flex h-28 flex-col justify-between rounded-sheet px-4 pt-3.5 pb-3"
                 data-chat-composer-main-surface="true"
               >
                 <span className="text-placeholder text-body">

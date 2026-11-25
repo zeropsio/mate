@@ -100,9 +100,16 @@
   --zerops-update-role: #0f8f83;
   --zerops-process-step-column: 30px;
   --zerops-process-step-glyph-size: 17px;
+  /* The composer's corners (base.css draws its shell with them): the conversation's other box, a
+     run's card, wears them too, in every state. */
+  --composer-radius: var(--radius-sheet);
+  /* The composer's lift: a soft, low shadow in light; in dark a longer, deeper one, since a light
+     ring alone would not lift a surface off a dark canvas. */
+  --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
 
   @variant dark {
     color-scheme: dark;
+    --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
     --info: #58a6ff;
     --info-foreground: var(--color-blue-400);
     --success: #56d364;
