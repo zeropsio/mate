@@ -1,8 +1,9 @@
 import type { ComponentProps } from "react";
-import { CircleAlertIcon, InfoIcon } from "lucide-react";
+import { CircleAlertIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
+import { FailureDetails } from "~/components/ui/failure";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
@@ -18,7 +19,7 @@ const VARIANTS = variantsOf<AlertVariant>({
   success: true,
   warning: true,
 });
-const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true });
+const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true, tint: true });
 
 function AlertSpecimens() {
   return (
@@ -71,6 +72,35 @@ function AlertSpecimens() {
                 <AlertAction>
                   <Button size="sm" variant="secondary">
                     Show log
+                  </Button>
+                </AlertAction>
+              </Alert>
+            </div>
+          </Specimen>
+          <Specimen label='surface="tint" variant="warning": what HQ found, Details folded'>
+            <div className="w-96">
+              <Alert controlAlignment="first-line" surface="tint" variant="warning">
+                <TriangleAlertIcon />
+                <AlertTitle>zerops.yaml names a build base that does not exist.</AlertTitle>
+                <AlertDescription>
+                  <p className="m-0">Next, for Nova: pick nodejs@22 and push again.</p>
+                  <FailureDetails
+                    fields={[
+                      { label: "Where", value: "api · zerops.yaml" },
+                      { label: "Rule", value: "/zerops/0/build/base" },
+                    ]}
+                  />
+                </AlertDescription>
+              </Alert>
+            </div>
+          </Specimen>
+          <Specimen label='surface="tint" variant="error", its fix the action'>
+            <div className="w-96">
+              <Alert controlAlignment="first-line" surface="tint" variant="error">
+                <AlertTitle>It no longer merges cleanly</AlertTitle>
+                <AlertAction>
+                  <Button size="sm" variant="link">
+                    Ask Nova to resolve it
                   </Button>
                 </AlertAction>
               </Alert>

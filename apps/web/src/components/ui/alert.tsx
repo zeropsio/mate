@@ -8,10 +8,29 @@ import { cn } from "~/lib/utils";
  * A notice. `surface`: `default` is its own card, `glass` floats it over content (alert-glass tints
  * from data-variant), `bare` draws no card at all (no edge, fill, padding or type size of its own)
  * for a notice set inside a surface its parent draws, such as the composer's notice drawer; the
- * variant still tints its icon.
+ * variant still tints its icon. `tint` is a callout set into a surface (a review's reason, what HQ
+ * found, what waits on you): no edge of its own, its ground the variant's status colour laid
+ * thinly over whatever ground it stands on (neutral for `default`), its words in the foreground.
+ * It keeps the card's inset, so a tinted notice and a plain one hold their words in one place.
  */
 const alertVariants = cva("relative text-card-foreground", {
-  compoundVariants: [{ surface: "bare", className: "bg-transparent" }],
+  compoundVariants: [
+    { surface: "bare", className: "bg-transparent" },
+    { surface: "tint", className: "border-transparent" },
+    { surface: "tint", variant: "default", className: "bg-foreground/5" },
+    { surface: "tint", variant: "info", className: "bg-status-busy/10" },
+    { surface: "tint", variant: "success", className: "bg-status-ok/13" },
+    {
+      surface: "tint",
+      variant: "warning",
+      className: "bg-status-attention/13 [&_svg]:text-status-attention",
+    },
+    {
+      surface: "tint",
+      variant: "error",
+      className: "bg-status-failed/10 [&_svg]:text-status-failed",
+    },
+  ],
   defaultVariants: {
     surface: "default",
     variant: "default",
@@ -21,6 +40,7 @@ const alertVariants = cva("relative text-card-foreground", {
       default: "rounded-card border px-3.5 py-3 text-body",
       glass: "alert-glass rounded-card border px-3.5 py-3 text-body",
       bare: "",
+      tint: "rounded-card border px-3.5 py-3 text-body text-foreground",
     },
     variant: {
       default: "border-border bg-muted/35 [&_svg]:text-muted-foreground",
@@ -93,7 +113,8 @@ function Alert({
     >
       <div
         className={cn(
-          "flex gap-2",
+          // A tinted callout keeps the air a callout had before it: 10 to its mark, 4 under its title.
+          surface === "tint" ? "flex gap-2.5" : "flex gap-2",
           layout === "centered" &&
             "flex-col items-center gap-3 text-center [&_[data-slot=alert-action]]:flex-wrap [&_[data-slot=alert-action]]:justify-center",
           layout === "row" && (controlAlignment === "first-line" ? "items-start" : "items-center"),
@@ -116,7 +137,11 @@ function Alert({
           </div>
         )}
         {content.length > 0 && (
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">{content}</div>
+          <div
+            className={cn("flex min-w-0 flex-1 flex-col", surface === "tint" ? "gap-1" : "gap-0.5")}
+          >
+            {content}
+          </div>
         )}
         {action.length > 0 && (
           <div
