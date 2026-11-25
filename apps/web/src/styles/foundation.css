@@ -392,6 +392,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-arrive: zerops-appear var(--duration-quick) var(--ease-out-strong) backwards;
   /* A run's result arriving while the person watched: row by row, up 6 px into place, once. */
   --animate-result-rise: run-result-rise var(--duration-base) var(--ease-out-strong) backwards;
+  /* The run's card: a step ending rises 6 px into its place; a step done shows its kind's mark
+     where its face stood; the line's words cross-fade in place, the old rising 3 px out as the
+     new rise 3 px in; a batch row's old words fade where they stood. */
+  --animate-run-rise: run-rise var(--duration-slow) var(--ease-out-strong) backwards;
+  --animate-run-mark-done: run-mark-done var(--duration-base) var(--ease-out-strong) both;
+  --animate-run-now-in: run-now-in var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-run-now-out: run-now-out var(--duration-quick) var(--ease-out-strong) both;
+  --animate-swap-out: batch-swap-out var(--duration-quick) var(--ease-out-strong);
   /* The full-screen composer's backdrop fading in over the conversation. */
   --animate-backdrop-in: zerops-appear var(--duration-base) var(--ease-out-strong);
   /* The menu's (`motion-menu.css`): the fix's words rising in as their card opens; the section a
@@ -494,6 +502,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-stage: var(--zerops-stage);
   --color-stage-foreground: var(--zerops-stage-foreground);
   --color-annotation: var(--zerops-annotation);
+  --color-run-tray: var(--run-tray);
   /* What a table's sticky header and first column stand on: the card's, or the ground of the
      surface it sits in, which sets --table-ground. */
   --color-table-ground: var(--table-ground, var(--color-card));

@@ -1,3 +1,4 @@
+import { RUN_BAND } from "./runTray";
 import { use, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { takePanelStand, panelLeftRecently, usePanelStand } from "./timelinePanelStand";
 import { TurnReport } from "./TurnReport";
@@ -72,7 +73,7 @@ function holdCardRoom(
 ): HTMLElement | null {
   const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
   const line = list?.querySelector<HTMLElement>(
-    `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > .run-tray`,
+    `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > [data-run-tray]`,
   );
   if (line === null || line === undefined) return null;
   if (room === null || room < 0.5) {
@@ -150,7 +151,7 @@ export function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
     // The result stands under the worked line, inside the tray (T5): a
     // hairline, then its rows in the card's grid; nothing at all when the run
     // left none.
-    <div ref={markerRef} className="run-band">
+    <div ref={markerRef} className={RUN_BAND}>
       <TurnReport onOpenImage={ctx.onImageExpand} outcome={row.outcome} settling={settling} />
     </div>
   );

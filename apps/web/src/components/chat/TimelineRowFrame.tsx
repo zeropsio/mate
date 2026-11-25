@@ -1,3 +1,4 @@
+import { RUN_TRAY_GHOST, RUN_TRAY_SLICE, RUN_TRAY_SLICE_WHOLE } from "./runTray";
 import { NO_MATE_LIMIT } from "@t3tools/client-runtime/data";
 import { memo, use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { wordsJustStood } from "./wordsLanding";
@@ -84,7 +85,7 @@ function rowInset(row: TimelineRow): string {
   }
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return "run-tray-ghost";
+  if (row.kind === "work-line") return RUN_TRAY_GHOST;
   // The composer's text edge: 13 px inside its frame on a phone, 17 from sm up.
   return "px-3.25 sm:px-4.25";
 }
@@ -95,11 +96,9 @@ function rowInset(row: TimelineRow): string {
  * a band of the card with its room inside; a row of its own is the bottom
  * edge. One frame, one surface, one inner edge — the composer's.
  */
-const CARD_SLICE: Record<CardSlice, string> = {
-  top: "run-tray run-tray-top",
-  middle: "run-tray run-tray-middle",
-  bottom: "run-tray run-tray-bottom",
-};
+function sliceClassName(card: CardSlice, whole: boolean): string {
+  return whole ? RUN_TRAY_SLICE_WHOLE[card] : RUN_TRAY_SLICE[card];
+}
 // Where two slices meet, each row's clip snapped away from the joint and the
 // page showed through as a hairline (2026-09-29): a slice with another under
 // it lays its ground across the joint (`[data-card-slice]` in index.css).
@@ -218,7 +217,16 @@ export const TimelineRowContent = memo(function TimelineRowContent({ row }: { ro
       {card === undefined ? (
         content
       ) : (
-        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
+        <div
+          className={cn(
+            sliceClassName(card, row.cardWhole === true),
+            // A card drawn whole holds no room in its panel.
+            card === "middle" && row.cardWhole !== true ? gap : null,
+          )}
+          data-run-tray={card}
+        >
+          {content}
+        </div>
       )}
     </div>
   );

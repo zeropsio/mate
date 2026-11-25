@@ -29,3 +29,44 @@
     translate: 0 6px;
   }
 }
+
+/* Reduced motion's arrival: a fade only (`animate-run-fade`). */
+@keyframes run-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes run-rise {
+  from {
+    translate: 0 6px;
+  }
+}
+
+@keyframes run-mark-done {
+  from {
+    opacity: 0;
+    scale: 0.7;
+  }
+}
+
+@keyframes run-now-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+}
+
+@keyframes run-now-out {
+  to {
+    opacity: 0;
+    translate: 0 -3px;
+  }
+}
+
+/* Its element stands at opacity 0: it fades from where it stood. */
+@keyframes batch-swap-out {
+  from {
+    opacity: 1;
+  }
+}

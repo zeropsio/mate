@@ -396,13 +396,13 @@ function OperationLine({
         <div
           className={cn(
             "pt-2",
-            // In the log its times end where the line's own does, the chevron's seat held.
-            !inSlot && "run-line-detail",
             // Only an open the person made moves; a carried or a landing one is simply there.
             rises(disclosure.made),
           )}
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
+          // In the log its times end where the line's own does, the chevron's seat held.
+          data-run-line-detail={inSlot ? undefined : ""}
         >
           {lines !== 0 ? (
             <OperationDetail

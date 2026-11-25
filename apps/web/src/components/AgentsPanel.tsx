@@ -28,15 +28,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { Bot, Braces, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
-import {
-  createContext,
-  use,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { createContext, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { MateMark } from "~/components/MateMark";
@@ -177,12 +169,19 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
   return (
     <li
       ref={rowRef}
-      className="helper-row"
+      // A helper a helper started hangs 20 px in a step, on a hairline from its parent.
+      className="relative min-w-0"
       data-helper-row={agent.id}
-      data-nested={depth > 0 ? "" : undefined}
       data-open={open ? "" : undefined}
-      style={{ "--helper-depth": depth } as CSSProperties}
+      style={{ paddingInlineStart: depth * 20 }}
     >
+      {depth > 0 ? (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 w-px bg-foreground/7"
+          style={{ insetInlineStart: depth * 20 - 8 }}
+        />
+      ) : null}
       <div className={cn("rounded-control", open && "bg-foreground/4")}>
         <Row
           size="sm"
@@ -230,7 +229,7 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
         />
       </div>
       {open && threadRef !== null ? (
-        <div className="helper-row-card">
+        <div className="pt-2 pe-2 pb-4 ps-8">
           <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
         </div>
       ) : null}
@@ -425,7 +424,7 @@ function PhaseSection({
         ) : null}
       </CollapsibleTrigger>
       {open ? (
-        <ul className="helper-map">
+        <ul className="grid gap-0.5">
           {phase.members.map((member) => (
             <HelperRow key={member.id} agent={member} />
           ))}
@@ -497,7 +496,7 @@ function ExpandedWorkflowSection({
       ))}
       {group.unphasedMembers.length > 0 ||
       (group.phases.length === 0 && group.unphasedMembers.length === 0) ? (
-        <ul className="helper-map">
+        <ul className="grid gap-0.5">
           {group.unphasedMembers.map((member) => (
             <HelperRow key={member.id} agent={member} />
           ))}
@@ -610,7 +609,7 @@ function MateRoot({
     model.stoppedCount > 0 ? `${model.stoppedCount} stopped` : null,
   ].filter((part): part is string => part !== null);
   return (
-    <div className="helper-map-root">
+    <div className="flex items-center gap-2 px-2 text-line">
       {mate === undefined ? (
         <MateMark className="size-4 shrink-0" />
       ) : (
@@ -699,7 +698,7 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
           {`${earlier.length} earlier, done`}
         </Button>
       ) : null}
-      <ul className="helper-map">
+      <ul className="grid gap-0.5">
         {rows.map((row) =>
           hidden.has(row.helper.id) ? null : (
             <HelperRow key={row.helper.id} agent={row.helper} depth={row.depth} />
@@ -777,7 +776,7 @@ export function AgentsPanel({
     <MapCtx value={map}>
       <div className="flex h-full min-h-0 flex-col">
         <ScrollArea className="min-h-0 flex-1">
-          <div ref={scrollRef} className="helper-panel">
+          <div ref={scrollRef} className="grid gap-3 px-4 pt-3.5 pb-6">
             <MateRoot environmentId={environmentId} model={model} />
             {model.workflows.map((group) => (
               <WorkflowSection

@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { RUN_BAND, RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * The run's card in the states pass 16's plan draws it, on the plan's own run
@@ -341,21 +343,21 @@ function Turn({
       </p>
       <div>
         <div data-card-slice="top" data-card-whole={result ? undefined : ""}>
-          <div className="run-tray run-tray-top">
+          <div className={RUN_TRAY_SLICE.top}>
             <RunChat row={row} />
           </div>
         </div>
         {result ? (
           <div data-card-slice="middle">
-            <div className="run-tray run-tray-middle pt-1">
-              <div className="run-band">
+            <div className={cn(RUN_TRAY_SLICE.middle, "pt-1")} data-run-tray="middle">
+              <div className={RUN_BAND}>
                 <TurnReport facts={FACTS} onOpenImage={() => undefined} outcome={OUTCOME} />
               </div>
             </div>
           </div>
         ) : null}
         <div data-card-slice="bottom" data-card-whole={result ? undefined : ""}>
-          <div className="run-tray run-tray-bottom" />
+          <div className={RUN_TRAY_SLICE.bottom} />
         </div>
       </div>
       {answer === null ? null : <p className="px-4 text-foreground text-prose">{answer}</p>}

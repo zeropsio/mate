@@ -32,7 +32,7 @@ export function StepMark({
       <MateFace shape={ctx.speaker.shape} size={20} state="working" tint={ctx.speaker.tint} />
     );
   return (
-    <span className={ran ? "run-mark-done" : "contents"}>
+    <span className={ran ? "flex animate-run-mark-done motion-reduce:animate-none" : "contents"}>
       <DidMark icon={icon} />
     </span>
   );

@@ -6,6 +6,7 @@
  * A driver that forwards no helper's calls leaves it no steps: its card is
  * its task, what it does now as its driver says it, and its report.
  */
+import { RUN_TRAY_WHOLE } from "./runTray";
 import type { OrchestrationThreadActivity, ScopedThreadRef } from "@t3tools/contracts";
 import {
   emptyAgentPanelModel,
@@ -53,7 +54,7 @@ function HelperTask({ prompt }: { readonly prompt: string }) {
   }, []);
   return (
     <section className="grid gap-1">
-      <h4 className="helper-card-heading">Its task</h4>
+      <h4 className="text-2xs font-medium text-muted-foreground">Its task</h4>
       <p
         ref={open ? undefined : watch}
         className={cn(
@@ -147,17 +148,17 @@ export function HelperCard({
   const leftOut = useMemo(() => helperCallsLeftOut(helper, activities), [helper, activities]);
   const report = helper.status === "failed" ? (helper.error ?? helper.result) : helper.result;
   return (
-    <div className="helper-card grid gap-4" data-helper-card={helper.id}>
+    <div className="grid min-w-0 gap-4" data-helper-card={helper.id}>
       {helper.prompt ? <HelperTask prompt={helper.prompt} /> : null}
       {record !== null && leftOut > 0 ? (
-        <p className="helper-card-heading">
+        <p className="text-2xs font-medium text-muted-foreground">
           {`Its first ${leftOut} ${leftOut === 1 ? "call is" : "calls are"} not loaded here`}
         </p>
       ) : null}
       {record !== null ? (
         <TimelineRowCtx value={shared}>
           <TimelineRowActivityCtx value={activity}>
-            <div className="run-tray run-tray-whole helper-card-run">
+            <div className={cn(RUN_TRAY_WHOLE, "min-w-0")}>
               <RunChat row={record} />
             </div>
           </TimelineRowActivityCtx>
@@ -168,7 +169,7 @@ export function HelperCard({
       ) : null}
       {!live && report ? (
         <section className="grid gap-1">
-          <h4 className="helper-card-heading">
+          <h4 className="text-2xs font-medium text-muted-foreground">
             {helper.status === "failed" ? "Why it failed" : "Its report"}
           </h4>
           <ChatMarkdown

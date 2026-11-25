@@ -720,7 +720,12 @@ export function RunScroll({
           <div
             ref={scrollRef}
             aria-label={label}
-            className="run-scroll"
+            // The run's one scroll: everything the run said and did, the newest at its foot, as tall
+            // as a run's usual stretch before it scrolls; it keeps the 2 px its lines' outlines
+            // paint into and its bar's room (run-card.css), and scrolls up and down only. A fade
+            // at an edge says there is more past it, over the lines only: the bar's 16 px gutter
+            // stays whole. Focused by keyboard it wears the kit's outline.
+            className="-m-0.5 max-h-[min(560px,60svh)] overflow-x-hidden overflow-y-auto p-0.5 [overflow-anchor:none] [scrollbar-gutter:stable] focus-visible:rounded-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-more-above:[mask-image:linear-gradient(to_bottom,transparent,currentColor_24px),linear-gradient(currentColor,currentColor)] data-more-below:[mask-image:linear-gradient(to_top,transparent,currentColor_24px),linear-gradient(currentColor,currentColor)] [&[data-more-above][data-more-below]]:[mask-image:linear-gradient(to_bottom,transparent,currentColor_24px,currentColor_calc(100%-24px),transparent),linear-gradient(currentColor,currentColor)] [&:is([data-more-above],[data-more-below])]:[mask-position:left_top,right_top] [&:is([data-more-above],[data-more-below])]:[mask-repeat:no-repeat] [&:is([data-more-above],[data-more-below])]:[mask-size:calc(100%-16px)_100%,16px_100%]"
             data-run-scroll=""
             onScroll={(event) => {
               // One read of where it stands serves the whole event, and every

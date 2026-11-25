@@ -15,6 +15,14 @@
  * the conversation's bottom, with the Mate's face and a way to stop it,
  * until the work ends.
  */
+import {
+  RUN_BAND,
+  RUN_NOW_HEAD,
+  RUN_NOW_LINE,
+  RUN_NOW_VERB,
+  RUN_NOW_WORDS,
+  RUN_TRAY_WHOLE,
+} from "./runTray";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { isGitPushOnly, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -488,7 +496,7 @@ const ROOM_CLOSE_MS = 360;
 
 /** The panel's room: in a card, its slice of the card; alone, its own. */
 function roomOf(panel: HTMLElement): HTMLElement {
-  return panel.closest<HTMLElement>(".run-tray-middle") ?? panel;
+  return panel.closest<HTMLElement>('[data-run-tray="middle"]') ?? panel;
 }
 
 /**
@@ -692,7 +700,7 @@ function Instruments({
     });
   };
   return (
-    <ul className="run-band grid" data-working-instruments>
+    <ul className={cn(RUN_BAND, "grid")} data-working-instruments>
       {operations.map((operation) => {
         const detail = (
           <OperationDetail
@@ -913,13 +921,22 @@ export function ConversationAfterWork({
     <section
       ref={roomRef}
       aria-label={`${speaker.name} at work in the background`}
-      className="run-tray run-tray-whole @container/panel animate-panel-in text-card-foreground motion-reduce:animate-none"
+      className={cn(
+        RUN_TRAY_WHOLE,
+        "@container/panel animate-panel-in text-card-foreground motion-reduce:animate-none",
+      )}
       data-conversation-after-work={state}
     >
-      <div className="run-now">
-        <MateFace shape={speaker.shape} size={24} state="working" tint={speaker.tint} />
-        <span className="run-now-words run-now-head">
-          <span className="run-now-verb">
+      <div className={RUN_NOW_LINE}>
+        <MateFace
+          className="justify-self-center"
+          shape={speaker.shape}
+          size={24}
+          state="working"
+          tint={speaker.tint}
+        />
+        <span className={cn(RUN_NOW_WORDS, RUN_NOW_HEAD)}>
+          <span className={RUN_NOW_VERB}>
             {stopping
               ? STOPPING_WORDS
               : watching
@@ -937,7 +954,7 @@ export function ConversationAfterWork({
           threadRef={threadRef}
         />
       ) : (
-        <ul className="run-band grid" data-after-work-lines>
+        <ul className={cn(RUN_BAND, "grid")} data-after-work-lines>
           {lines.map((line) =>
             line.more === true ? (
               // How many more run, under the rows: no mark, as it names none of them.

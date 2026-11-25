@@ -1,3 +1,4 @@
+import { RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
@@ -1014,7 +1015,7 @@ function Conversation() {
         >
           <StandUpAskLine at={ago(9)} timestampFormat="24-hour" words={SHARED.standUpAsk ?? ""} />
           <div>
-            <div className="run-tray run-tray-top">
+            <div className={RUN_TRAY_SLICE.top}>
               <RunLine
                 status={{
                   live: true,
@@ -1027,7 +1028,7 @@ function Conversation() {
                 }}
               />
             </div>
-            <div className="run-tray run-tray-bottom" />
+            <div className={RUN_TRAY_SLICE.bottom} />
           </div>
         </div>
       </TimelineRowActivityCtx>

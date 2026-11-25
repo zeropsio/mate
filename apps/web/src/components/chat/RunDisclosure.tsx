@@ -171,7 +171,15 @@ export function OpensWhole({
             onClick={() => disclosure.set(true)}
             variant="bare"
           >
-            <span aria-hidden="true" className={cn(META, "run-item-more")}>
+            {/* One quiet word over the cut line's faded last words, brighter under the pointer
+                or the focus; its fade into the ground under it (`--run-item-ground`). */}
+            <span
+              aria-hidden="true"
+              className={cn(
+                META,
+                "absolute right-0 bottom-0 bg-linear-to-r from-transparent to-(--run-item-ground) to-55% ps-13 not-italic text-foreground/80 transition-colors duration-150 ease-out-strong in-[[data-chat-disclose]:focus-visible]:text-foreground in-[[data-chat-disclose]:hover]:text-foreground",
+              )}
+            >
               more
             </span>
           </Button>

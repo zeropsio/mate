@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { RUN_BAND, RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * A run's card in every state it reaches: its heading, its chat in one
@@ -823,13 +825,13 @@ function Card({
 }) {
   return (
     <div>
-      <div className="run-tray run-tray-top">{children}</div>
+      <div className={RUN_TRAY_SLICE.top}>{children}</div>
       {result === null ? null : (
-        <div className="run-tray run-tray-middle pt-1">
-          <div className="run-band">{result}</div>
+        <div className={cn(RUN_TRAY_SLICE.middle, "pt-1")} data-run-tray="middle">
+          <div className={RUN_BAND}>{result}</div>
         </div>
       )}
-      <div className="run-tray run-tray-bottom" />
+      <div className={RUN_TRAY_SLICE.bottom} />
     </div>
   );
 }

@@ -9,7 +9,7 @@ import { RIDE_MS, type Travel } from "./runTravel";
  */
 export function stopGliding(element: HTMLElement): void {
   if (typeof element.getAnimations !== "function") return;
-  // Only its own: a row's rise in (`run-rise`) moves it by a translate too.
+  // Only its own: a row's rise in (`animate-run-rise`) moves it by a translate too.
   for (const animation of element.getAnimations()) {
     if (animation.id === GLIDE_ID) animation.cancel();
   }

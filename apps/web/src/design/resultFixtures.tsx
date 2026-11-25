@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { RUN_BAND, RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * The run's result in the states pass 16's plan draws it: one result over
@@ -704,11 +706,11 @@ export function ResultStates() {
             <p className="text-muted-foreground text-caption">{state.note}</p>
           </div>
           <div>
-            <div className="run-tray run-tray-top">
+            <div className={RUN_TRAY_SLICE.top}>
               <RunChat row={record(`result-${index}`, state)} />
             </div>
-            <div className="run-tray run-tray-middle pt-1">
-              <div className="run-band">
+            <div className={cn(RUN_TRAY_SLICE.middle, "pt-1")} data-run-tray="middle">
+              <div className={RUN_BAND}>
                 <TurnReport
                   facts={state.facts}
                   onOpenImage={setPreview}
@@ -722,7 +724,7 @@ export function ResultStates() {
                 />
               </div>
             </div>
-            <div className="run-tray run-tray-bottom" />
+            <div className={RUN_TRAY_SLICE.bottom} />
           </div>
         </section>
       ))}

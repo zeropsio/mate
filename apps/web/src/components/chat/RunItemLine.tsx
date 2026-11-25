@@ -210,7 +210,11 @@ export function ChatRow({
       )}
       {/* Only what arrives while the person watches rises in. */}
       <div
-        className={cn("flex min-w-0 flex-1", theirs && "justify-end", rises && "run-rise")}
+        className={cn(
+          "flex min-w-0 flex-1",
+          theirs && "justify-end",
+          rises && "animate-run-rise motion-reduce:animate-none",
+        )}
         data-run-rises={rises ? "" : undefined}
       >
         {children}

@@ -15,6 +15,7 @@ import { cn } from "~/lib/utils";
 import { HelperFace } from "./RunMarks";
 import { keyedByOccurrence } from "./keyedByOccurrence";
 import { RunShimmer } from "./RunShimmer";
+import { NOW_DOTS, RUN_NOW_HEAD, RUN_NOW_LINE, RUN_NOW_VERB, RUN_NOW_WORDS } from "./runTray";
 import { TypingDots } from "./RunTypingDots";
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
@@ -84,7 +85,11 @@ function RunTicker({ status }: { readonly status: RunStatus }) {
     return () => clearTimeout(timer);
   }, [startedAt, waitingSince, waitedMs, ran?.ms, ran?.since, ran?.personMs]);
   return (
-    <span ref={ref} className="run-now-clock" data-work-line-clock>
+    <span
+      ref={ref}
+      className="text-body leading-5 tabular-nums text-foreground in-data-run-now-meta:text-inherit"
+      data-work-line-clock
+    >
       {read()}
     </span>
   );
@@ -108,19 +113,23 @@ function StepNowWords({
 }) {
   if (step.kind === "command" && step.words === null) {
     return (
-      <RunShimmer className="run-now-verb run-now-mono" inline sweeps={sweeps}>
+      <RunShimmer
+        className="font-medium font-mono text-line leading-none text-foreground"
+        inline
+        sweeps={sweeps}
+      >
         {step.code}
       </RunShimmer>
     );
   }
   if (step.kind !== "command" && step.phrase !== null) {
     return (
-      <RunShimmer className="run-now-verb" inline sweeps={sweeps}>
+      <RunShimmer className={RUN_NOW_VERB} inline sweeps={sweeps}>
         {step.phrase.verb}
         {keyedByOccurrence(step.phrase.targets).map(({ key, value }, index, all) => (
           <Fragment key={key}>
             {index === 0 ? " " : index === all.length - 1 ? " and " : ", "}
-            <span className="run-now-mono">{value}</span>
+            <span className="font-mono text-line leading-none">{value}</span>
           </Fragment>
         ))}
         {step.phrase.more > 0 ? ` and ${step.phrase.more} more` : null}
@@ -129,11 +138,13 @@ function StepNowWords({
   }
   return (
     <>
-      <RunShimmer className="run-now-verb" inline sweeps={sweeps}>
+      <RunShimmer className={RUN_NOW_VERB} inline sweeps={sweeps}>
         {stepNowWords(step)}
       </RunShimmer>
       {codeAfter && step.kind === "command" && step.code !== null ? (
-        <span className="run-now-code">{step.code}</span>
+        <span className="ms-2 font-mono text-line leading-none text-muted-foreground">
+          {step.code}
+        </span>
       ) : null}
     </>
   );
@@ -145,8 +156,10 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "thinking":
       return (
         <>
-          <span className="run-now-verb">Thinking</span>
-          {line.thought === null ? null : <span className="run-now-thought">{line.thought}</span>}
+          <span className={RUN_NOW_VERB}>Thinking</span>
+          {line.thought === null ? null : (
+            <span className="ms-1.5 italic text-muted-foreground">{line.thought}</span>
+          )}
         </>
       );
     case "step":
@@ -154,49 +167,49 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "operation":
       return (
         <>
-          <RunShimmer className="run-now-verb" inline sweeps>
+          <RunShimmer className={RUN_NOW_VERB} inline sweeps>
             {operationNowWords(line.operation)}
           </RunShimmer>
         </>
       );
     case "several":
-      return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
+      return <span className={RUN_NOW_VERB}>{severalCallsWords(line.calls)}</span>;
     case "waiting":
     case "stopping":
-      return <span className="run-now-verb">{nowLineWords(line)}</span>;
+      return <span className={RUN_NOW_VERB}>{nowLineWords(line)}</span>;
     // Out of reach: what the notice says, held, never a sign of work going on.
     case "away":
-      return <span className="run-now-verb">{line.words}</span>;
+      return <span className={RUN_NOW_VERB}>{line.words}</span>;
     // Waiting for the usage limit to reset: whose limit; the head's meta says when it goes on.
     case "paused":
-      return <span className="run-now-verb">{nowLineWords(line)}</span>;
+      return <span className={RUN_NOW_VERB}>{nowLineWords(line)}</span>;
     case "after":
     case "starting":
       return (
         <>
-          <span className="run-now-verb">{nowLineWords(line)}</span>
-          <TypingDots className="run-now-dots" />
+          <span className={RUN_NOW_VERB}>{nowLineWords(line)}</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
     case "writing":
       return (
         <>
-          <span className="run-now-verb">Writing</span>
-          <TypingDots className="run-now-dots" />
+          <span className={RUN_NOW_VERB}>Writing</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
     case "condensing":
       return (
         <>
-          <span className="run-now-verb">Condensing the context</span>
-          <TypingDots className="run-now-dots" />
+          <span className={RUN_NOW_VERB}>Condensing the context</span>
+          <TypingDots className={NOW_DOTS} />
         </>
       );
     case "working":
-      return <span className="run-now-verb">Working</span>;
+      return <span className={RUN_NOW_VERB}>Working</span>;
     // What it came to stands beside it, in its facts (`NowLine`).
     case "worked":
-      return <span className="run-now-worked">{line.words}</span>;
+      return <span className="text-foreground/76">{line.words}</span>;
   }
 }
 
@@ -205,7 +218,7 @@ const LINE_LEAVES_MS = MOTION.duration.quick + 16;
 
 /**
  * The words the now line just left, as it last drew them, while they fade
- * where they stood (`.run-now-leaving`); null once gone, and on a first paint.
+ * where they stood; null once gone, and on a first paint.
  */
 function useLeavingLine(
   line: NowLineModel,
@@ -334,10 +347,17 @@ export function NowLine({
     !prefersReducedMotion() &&
     (typeof document === "undefined" || document.visibilityState !== "hidden");
   const headWords = (
+    // A change of the words cross-fades in place, paced to once a second (`nowLineCalm.logic`); a
+    // first paint is simply there. Over, the line says what the run came to whole: narrow, it
+    // wraps rather than cut.
     <span
       key={words}
-      className="run-now-head"
-      data-run-now-change={(wordsChanged || risesIn) && moves ? "" : undefined}
+      className={cn(
+        RUN_NOW_HEAD,
+        head !== undefined && "inline",
+        line.kind === "worked" && "whitespace-normal",
+        (wordsChanged || risesIn) && moves && "animate-run-now-in",
+      )}
     >
       <NowWords line={line} />
     </span>
@@ -366,7 +386,13 @@ export function NowLine({
   const restWords = rest.length === 0 ? null : rest.join(" · ");
   return (
     <div
-      className="run-now"
+      className={cn(
+        RUN_NOW_LINE,
+        // A title over the run's line, or a line under it: the head hangs from its first line.
+        (head?.title !== undefined || sub !== null || restWords !== null) && "items-start",
+        // The whole head is the work's toggle: its words stand over the press.
+        head !== undefined && "relative *:not-data-run-now-fold:pointer-events-none",
+      )}
       data-run-now={line.kind}
       data-run-sub={sub === null && restWords === null ? undefined : ""}
       data-run-head={head === undefined ? undefined : ""}
@@ -379,19 +405,26 @@ export function NowLine({
       {toggle === null ? null : (
         <Button
           aria-expanded={toggle.open}
+          className="group/fold absolute inset-y-0 -inset-x-1.5"
           data-run-now-fold=""
           onClick={toggle.onToggle}
           onFocus={toggle.onIntent}
           onPointerEnter={toggle.onIntent}
           variant="bare"
         >
-          {toggle.open ? "Hide work" : "Show work"}
+          <span className="sr-only">{toggle.open ? "Hide work" : "Show work"}</span>
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 rounded-control transition-colors duration-150 ease-out-strong group-hover/fold:bg-foreground/4"
+          />
         </Button>
       )}
       {ctx.speaker.helper ? (
         <HelperFace />
       ) : (
         <MateFace
+          // In the middle of the column, over the chat's glyphs and the result's marks.
+          className={toggle === null ? "justify-self-center" : undefined}
           gaze={face.gaze}
           greets
           known={ctx.arrivedAfter !== null && !ctx.syncing}
@@ -401,16 +434,38 @@ export function NowLine({
           tint={ctx.speaker.tint}
         />
       )}
-      <div className="run-now-words" data-work-line={status.face}>
-        {head?.title === undefined ? null : <span className="run-now-title">{head.title}</span>}
+      <div
+        className={cn(
+          RUN_NOW_WORDS,
+          // On a phone the facts take the second line together, on the words' own edge.
+          line.kind === "worked" &&
+            "max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-2 max-sm:gap-y-1",
+          // Waiting for the limit to reset, its head stays one line however narrow.
+          head !== undefined && line.kind === "paused" && "truncate",
+        )}
+        data-work-line={status.face}
+      >
+        {head?.title === undefined ? null : (
+          <span className="block min-w-0 truncate text-foreground">{head.title}</span>
+        )}
         {leaving === null ? null : (
-          <span aria-hidden="true" className="run-now-head run-now-leaving" key={leaving.words}>
+          // The old words leave where they stood, on the run's line under a title; under reduced
+          // motion a change is a cut.
+          <span
+            aria-hidden="true"
+            className={cn(
+              RUN_NOW_HEAD,
+              "pointer-events-none absolute inset-x-0 animate-run-now-out motion-reduce:hidden",
+              head?.title === undefined ? "top-0" : "top-5",
+            )}
+            key={leaving.words}
+          >
             <NowWords line={leaving.line} />
           </span>
         )}
         {headWords}
         {head !== undefined && status.live ? (
-          <span className="run-now-meta">
+          <span className="text-body tabular-nums text-muted-foreground" data-run-now-meta="">
             {" · "}
             {/* Waiting for the reset, it says when it goes on where its clock stood (B5). */}
             {status.paused === undefined ? (
@@ -439,12 +494,18 @@ export function NowLine({
               </Fragment>
             ))}
         {restWords === null ? null : (
-          <span className="run-now-sub" data-run-now-rest>
+          <span
+            className="mt-0.5 block min-w-0 truncate text-line leading-4.5 text-muted-foreground"
+            data-run-now-rest
+          >
             {restWords}
           </span>
         )}
         {sub === null ? null : (
-          <span className="run-now-sub" data-run-now-sub>
+          <span
+            className="mt-0.5 block min-w-0 truncate text-line leading-4.5 text-muted-foreground"
+            data-run-now-sub
+          >
             {sub}
           </span>
         )}
@@ -459,7 +520,13 @@ export function NowLine({
       {head !== undefined ? (
         // The head's right edge: what it does when pressed, its chevron turning over; a run that
         // waits on a Continue offers that too.
-        <span className="run-now-end">
+        <span
+          className={cn(
+            "flex items-center gap-3 *:not-aria-hidden:pointer-events-auto",
+            (sub !== null || restWords !== null) && "h-5",
+            toggle !== null && line.kind === "worked" && "gap-2",
+          )}
+        >
           {status.paused !== undefined ? (
             <LimitContinue
               pause={status.paused}
@@ -488,21 +555,24 @@ export function NowLine({
           ) : null}
           {/* Over, its press is named in sight too; its button says it to a screen reader. */}
           {toggle === null || line.kind !== "worked" ? null : (
-            <span aria-hidden="true" className="run-head-toggle-words">
+            <span
+              aria-hidden="true"
+              className="whitespace-nowrap text-line leading-5 text-muted-foreground"
+            >
               {toggle.open ? "Hide work" : "Show work"}
             </span>
           )}
           {toggle === null ? null : (
             <ChevronDownIcon
               aria-hidden="true"
-              className="run-head-chevron"
+              className="size-4 text-muted-foreground transition-[rotate] duration-150 ease-out-strong data-open:rotate-180 motion-reduce:transition-none"
               data-open={toggle.open ? "" : undefined}
             />
           )}
         </span>
       ) : status.live ? (
         (end ?? (
-          <span className="run-now-end">
+          <span className="flex items-center gap-3">
             <RunTicker status={status} />
           </span>
         ))

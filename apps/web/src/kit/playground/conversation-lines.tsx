@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { RUN_TRAY_SLICE } from "~/components/chat/runTray";
 import { useState } from "react";
 
 import type { WorkLineFace } from "~/components/chat/conversation.logic";
@@ -42,7 +44,7 @@ function Run({
   return (
     <TimelineRowCtx value={ROW_SHARED}>
       <TimelineRowActivityCtx value={ROW_WORKING}>
-        <div className="run-tray run-tray-top w-[560px]">
+        <div className={cn(RUN_TRAY_SLICE.top, "w-[560px]")}>
           <RunLine
             status={{
               live,
