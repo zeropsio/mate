@@ -114,10 +114,10 @@ function Failure({
       className={className}
       controlAlignment="first-line"
       data-slot="failure"
+      icon={<CircleAlertIcon aria-hidden="true" />}
       variant="error"
       {...props}
     >
-      <CircleAlertIcon aria-hidden="true" />
       <AlertTitle>{cause}</AlertTitle>
       {children === undefined && folded === null ? null : (
         <AlertDescription>

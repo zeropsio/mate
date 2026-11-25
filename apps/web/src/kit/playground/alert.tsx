@@ -4,7 +4,7 @@ import { CircleAlertIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon } from "l
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 
-import { definePlayground, jsxElement } from "../kitPlayground";
+import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 type AlertVariant = NonNullable<ComponentProps<typeof Alert>["variant"]>;
@@ -17,7 +17,13 @@ const VARIANTS = variantsOf<AlertVariant>({
   warning: true,
   error: true,
 });
-const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true, tint: true });
+const SURFACES = variantsOf<AlertSurface>({
+  default: true,
+  glass: true,
+  bare: true,
+  tint: true,
+  band: true,
+});
 // `controlAlignment` only reads in a row, so the two props are one choice here.
 const LAYOUTS = ["row", "first-line", "centered"] as const;
 
@@ -45,7 +51,7 @@ export default definePlayground({
     surface: {
       kind: "enum",
       options: SURFACES,
-      note: "glass over content, bare inside a parent's surface, tint a callout set into one",
+      note: "glass over content, bare inside a parent's surface, tint a callout set into one, band across the top of what it is about",
     },
     layout: {
       kind: "enum",
@@ -70,8 +76,12 @@ export default definePlayground({
     const { Icon } = ICON[variant];
     return (
       <div className="w-96">
-        <Alert {...layoutProps(layout)} surface={surface} variant={variant}>
-          {icon ? <Icon /> : null}
+        <Alert
+          {...layoutProps(layout)}
+          icon={icon ? <Icon /> : undefined}
+          surface={surface}
+          variant={variant}
+        >
           {title === "" ? null : <AlertTitle>{title}</AlertTitle>}
           {description === "" ? null : <AlertDescription>{description}</AlertDescription>}
           {action ? (
@@ -88,9 +98,13 @@ export default definePlayground({
   jsx: ({ variant, surface, layout, icon, title, description, action }) =>
     jsxElement(
       "Alert",
-      { variant, surface, ...layoutProps(layout) },
+      {
+        variant,
+        surface,
+        ...layoutProps(layout),
+        icon: icon ? jsxCode(`<${ICON[variant].name} />`) : undefined,
+      },
       [
-        icon ? `<${ICON[variant].name} />` : "",
         title === "" ? "" : `<AlertTitle>${title}</AlertTitle>`,
         description === "" ? "" : `<AlertDescription>${description}</AlertDescription>`,
         action
@@ -108,6 +122,8 @@ export default definePlayground({
       "Use error only for something that failed; a Failure says it with Details folded under.",
       "Set it bare inside a surface that already draws a card, such as the composer's drawer.",
       "Tint it where trouble stands inside a surface: a review's reason, what HQ found, what waits on you.",
+      "Lay it as a band across the top of the popup, panel or card it is about; at a card's foot, edge bottom.",
+      "Give it its mark through icon; its children are its words and its one AlertAction.",
     ],
     dont: [
       "Announce something that just happened and is over: that is a Toast.",

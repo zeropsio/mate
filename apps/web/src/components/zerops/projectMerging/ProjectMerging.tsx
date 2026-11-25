@@ -274,8 +274,12 @@ export function ProjectMergingView({
  */
 function OpenMainNote({ main }: { readonly main: OpenMain }) {
   return (
-    <Alert controlAlignment="first-line" data-zerops-merging-open-main="" variant="warning">
-      <TriangleAlertIcon aria-hidden="true" />
+    <Alert
+      controlAlignment="first-line"
+      data-zerops-merging-open-main=""
+      icon={<TriangleAlertIcon aria-hidden="true" />}
+      variant="warning"
+    >
       <AlertTitle>GitHub's main is still open</AlertTitle>
       <AlertDescription>
         <p>

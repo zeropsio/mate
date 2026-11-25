@@ -23,8 +23,13 @@ export function HqProblems({
           const said = problemSaid(problem);
           return (
             <li key={index}>
-              <Alert controlAlignment="first-line" role="group" surface="tint" variant="warning">
-                <TriangleAlertIcon aria-hidden="true" />
+              <Alert
+                controlAlignment="first-line"
+                icon={<TriangleAlertIcon aria-hidden="true" />}
+                role="group"
+                surface="tint"
+                variant="warning"
+              >
                 <AlertTitle>{said.what}</AlertTitle>
                 <AlertDescription>
                   <p className="m-0">

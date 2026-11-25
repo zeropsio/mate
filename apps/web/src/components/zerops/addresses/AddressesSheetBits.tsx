@@ -399,8 +399,7 @@ export function Confirm({
   const revealed = useRevealed<HTMLDivElement>();
   return (
     <div ref={revealed}>
-      <Alert controlAlignment="first-line" variant={tone}>
-        {icon ?? <TriangleAlertIcon />}
+      <Alert controlAlignment="first-line" icon={icon ?? <TriangleAlertIcon />} variant={tone}>
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           {children}
