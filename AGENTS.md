@@ -151,6 +151,9 @@ To answer a question, go to the home:
 ## Where code lives
 
 - `apps/server` — for Effect, read `.repos/effect-smol/LLMS.md` (see `.repos/` below when missing).
+- `apps/web/src/styles/` — the web client's own stylesheets, one file per surface after `foundation.css`
+  (variants, theme, utilities) and `tokens.css` (palette and motion, generated); `index.css` imports
+  them in cascade order.
 - `packages/contracts` — schemas only, no heavy runtime logic.
 - `packages/shared` — subpath exports, no barrel.
 - `.repos/` — read-only reference repos (Effect, Alchemy), gitignored and absent in a fresh checkout:
@@ -178,7 +181,7 @@ Accounts, APIs, credentials, infrastructure, tools: classify the failure per
 
 ## Context and pull requests
 
-- Hot files (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
+- Hot files (`ChatView.tsx`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
   and reference files run up to ~15k lines: grep the symbol, read the range.
 - Output: failures only (`… 2>&1 | tail -40`). Screenshots: crop to surface, one per question.
 - PRs only when asked: one concern; body problem and fix, ending with model/harness used. UI changes

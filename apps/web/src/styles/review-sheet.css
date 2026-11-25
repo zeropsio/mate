@@ -1,0 +1,134 @@
+/* ==== Pass 41 · the review sheet ==== */
+/* The sheet's own pieces; its frame, line and foot are the review's ("Pass 16 · review"). */
+.rv-dot {
+  color: var(--muted-foreground);
+}
+/* What it does: its words in a soft box. */
+.rv-what {
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  line-height: 20px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+/* A description read for that does not exist: its lines fold shut and take the gap under them
+   along, so the sections below glide up. The fold's height is its two lines and their label. */
+.rv-what-leaves {
+  overflow: hidden;
+  animation: rv-what-leaves 200ms var(--ease-out-strong) forwards;
+}
+/* A grid's gap cannot close with its row: the section after it takes the gap back instead. */
+.rv-what-leaves + * {
+  animation: rv-what-gap 200ms var(--ease-out-strong) forwards;
+}
+@keyframes rv-what-leaves {
+  from {
+    height: 90px;
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+@keyframes rv-what-gap {
+  to {
+    margin-top: -24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-what-leaves {
+    animation-duration: 1ms;
+  }
+  .rv-what-leaves + * {
+    animation-duration: 1ms;
+  }
+}
+.rv-try-part {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* What the pills open, where it is more than this change: quiet, under them. */
+.rv-try-note {
+  margin: 6px 0 0;
+  font-size: var(--text-body);
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+/* One pill per part: whose preview, then the part. */
+.rv-tries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rv-try-service {
+  flex: none;
+  font-weight: 500;
+}
+.rv-fold-aside {
+  font-size: var(--text-body);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.rv-fold-chev {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  transition: rotate 200ms var(--ease-out-strong);
+}
+[aria-expanded="true"] > .rv-fold-chev {
+  rotate: 180deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-fold-chev {
+    transition: none;
+  }
+}
+/* A quiet sentence under a section's rows. */
+.rv-note {
+  margin: 6px 0 0;
+  font-size: var(--text-body);
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-note[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+/* Above the plan while the release runs: what else production is doing, where that explains a
+   wait. One calm sentence; its clock ticks. */
+.rv-busy {
+  margin: 0 0 10px;
+  font-size: var(--text-body);
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-busy > b {
+  font-weight: 500;
+  color: var(--foreground);
+}
+.rv-version {
+  display: grid;
+  gap: 6px;
+}
+.rv-version .rv-note {
+  margin: 0;
+}
+.rv-version-use {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rv-check-list {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-body);
+  line-height: 18px;
+}
+/* ==== end of the review sheet ==== */

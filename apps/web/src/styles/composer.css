@@ -1,0 +1,182 @@
+/* ==== Pass 16 · the composer ==== */
+
+/* S5: the composer's lift. A soft, low shadow in light; in dark a longer,
+   deeper one, since a light ring alone would not lift a surface off a dark
+   canvas. */
+:root {
+  --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
+  /* The composer's corners: the conversation's other box, a run's card,
+     wears them too, in every state. */
+  --composer-radius: var(--radius-sheet);
+
+  @variant dark {
+    --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
+  }
+}
+
+/* One radius for the composer's surface wherever it paints — itself, or its
+   read-only stand-in — and the one a pixel inside it for what it holds. */
+[data-chat-composer-main-surface="true"] {
+  border-radius: var(--composer-radius);
+}
+
+[data-chat-composer-surface="true"] {
+  border-radius: calc(var(--composer-radius) - 1px);
+}
+
+/* C3: the one blue button on the composer's top — Review, Approve, Save to
+   vault — blue is for what can be clicked (S3), and the ask around it stays
+   neutral. */
+/*
+ * Full screen (`fullComposer.logic.ts`): the composer's text grows over the
+ * conversation to a measured height, the conversation behind a backdrop, and
+ * goes back the same way. Its toggle sits in the text's top corner, shown
+ * with the composer's hover or focus.
+ */
+.composer-full-toggle {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+[data-chat-composer-surface]:hover .composer-full-toggle,
+[data-chat-composer-surface]:focus-within .composer-full-toggle,
+[data-composer-full="on"] .composer-full-toggle,
+.composer-full-toggle:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .composer-full-toggle {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 40rem) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    padding-inline-end: 28px;
+  }
+}
+
+[data-chat-composer-form] [data-testid="composer-editor"] {
+  transition:
+    min-height var(--duration-slow) var(--ease-out-strong),
+    max-height var(--duration-slow) var(--ease-out-strong);
+}
+
+[data-chat-composer-form][data-composer-full="on"] [data-testid="composer-editor"] {
+  min-height: var(--composer-full-height, 4.375rem);
+  max-height: var(--composer-full-height, 12.5rem);
+}
+
+/* Docked at the column's foot, the overlay takes the whole column and keeps the composer at its foot. */
+[data-chat-composer-overlay]:not([data-chat-composer-hero]):has([data-composer-full]) {
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+[data-chat-composer-overlay]:has([data-composer-full])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--background);
+  pointer-events: auto;
+  animation: composer-full-backdrop var(--duration-base) var(--ease-out-strong);
+  transition: opacity var(--duration-base) var(--ease-out-strong);
+}
+
+[data-chat-composer-overlay]:has([data-composer-full="leaving"])::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes composer-full-backdrop {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-composer-form] [data-testid="composer-editor"] {
+    transition: none;
+  }
+
+  [data-chat-composer-overlay]:has([data-composer-full])::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Under a finger the round Send and Stop take a 44 px press around their 32 to 36, as the kit's
+   buttons do. */
+@media (pointer: coarse) {
+  [data-chat-composer-form] [data-composer-primary] {
+    position: relative;
+  }
+
+  [data-chat-composer-form] [data-composer-primary]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    translate: -50% -50%;
+  }
+}
+
+/* C4: the one control's menu — the models, and beside them the model's
+   effort, its other choices and the access. Both columns share one height,
+   capped by the room above the composer; the choices scroll on their own
+   when a model has more of them (Opus 5.5's seven efforts, two context
+   windows and fast mode with the four accesses run 642px in the 448px menu);
+   a narrow screen stacks them. */
+/* The agent's note over the menu: both share the popup's room, the menu giving way. */
+.composer-model-popup {
+  display: flex;
+  flex-direction: column;
+  max-height: var(--available-height, 100vh);
+}
+
+.composer-model-menu {
+  display: flex;
+  flex: 0 1 auto;
+  min-height: 0;
+  height: min(28rem, var(--available-height, 100vh));
+}
+
+.composer-model-menu > [data-model-picker-content] {
+  height: 100%;
+  max-height: none;
+}
+
+@media (max-width: 39.999rem) {
+  .composer-model-menu {
+    flex-direction: column;
+    height: auto;
+    max-height: var(--available-height, 100vh);
+    overflow-y: auto;
+  }
+
+  .composer-model-menu > [data-model-picker-content] {
+    flex: none;
+    height: 21.625rem;
+  }
+
+  /* 16 px in the search, so a phone does not zoom the page on its focus. */
+  .composer-model-menu [data-model-picker-content] input {
+    font-size: var(--text-typed);
+  }
+}
+
+/* ==== end of the composer ==== */

@@ -1,0 +1,444 @@
+/* ==== Pass 16 · the menu's projects and production ==== */
+
+/* A version is a real thing's name: the mono face, on the x-height of the title beside it. */
+.zerops-envpop-version {
+  margin-inline-start: 6px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.966em;
+}
+
+.zerops-envpop-word {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-envpop-word[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-envpop-word[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-envpop-port {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+/* "Ask <your Mate> to fix it" (S6): a button with the Mate's face in it,
+   and under it — once pressed — what goes into the Mate's composer. */
+.zerops-envpop-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 6px 8px 32px;
+}
+
+.zerops-envpop-others {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.zerops-envpop-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--card-foreground) 12%, transparent);
+  color: var(--card-foreground);
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+
+.zerops-envpop-draft-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-envpop-draft pre {
+  padding: 6px 8px;
+  border-radius: var(--radius-mark);
+  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+  color: color-mix(in oklab, var(--card-foreground) 76%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-envpop-draft {
+    animation: zerops-envpop-rise var(--duration-base) var(--ease-out-strong) backwards;
+  }
+}
+
+@keyframes zerops-envpop-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+/* ==== Project sites (the menu by project): the globe, the environment tag, their popover ==== */
+
+/* A row whose places' tag stands before its time (`.menu-row-tags`): its verbs come in before the
+   tag under the pointer, never over it, and the time stays beside it. Unlayered, over the
+   utilities that swap the time for the verbs on a row without one. */
+[data-tags] [data-menu-time-box] {
+  opacity: 1;
+}
+
+[data-tags]
+  > :is(
+    [data-zerops-surface="sidebar-project-actions"],
+    [data-zerops-surface="sidebar-mate-actions"]
+  ) {
+  inset-inline-end: calc(10px + var(--menu-time-w, 0px) + var(--menu-tags-w, 0px) + 4px);
+}
+
+/* While they stand there, the name gives them its room: it ends before them, never under them. */
+@media (hover: hover) and (pointer: fine) {
+  [data-tags]:is(:hover, :has(:focus-visible), :has([data-popup-open])) [data-slot="row-meta"] {
+    min-width: calc(var(--menu-time-w, 0px) + var(--menu-tags-w, 0px) + 4px + var(--spacing) * 16);
+  }
+}
+
+/* Under a finger nothing hovers, so a row's verbs stand at rest: only its ···, at the end of the
+   line under the name, where the time above it keeps its place. The project's page and its
+   addresses are in that menu ("Open project", "Addresses"), so their own doors step aside, and
+   the line stops short of the ···. */
+@media (pointer: coarse) {
+  .menu-row-box:has(> .menu-row-verbs) .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 32px;
+  }
+
+  /* While it works its ■ stands before the ···: the line stops short of both. */
+  .menu-row-box:has(> .menu-row-verbs > [data-zerops-surface="sidebar-mate-stop"])
+    .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 60px;
+  }
+
+  /* Beside a places' tag the verbs come in before the tag on the name's line; on the line under
+     it there is no tag to clear, and they keep the row's end. */
+  [data-tags] > .menu-row-verbs {
+    inset-inline-end: 8px;
+  }
+  /* A row of one line has no line under its name: there the ··· stands where its time would, as
+     it did before a finger's rows kept their time. */
+  .menu-row-box:not(:has(.menu-line2)):has(> .menu-row-verbs) [data-menu-time-box] {
+    opacity: 0;
+  }
+}
+
+/* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, a control's corner), its dot before
+   its word. Red and amber on their status grounds; moving on the quiet card ground the Review
+   tag wears; landed on the ok ground. */
+.zerops-sites-tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-tag[data-tone="red"] {
+  background-color: var(--zerops-status-failed-surface);
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-sites-tag[data-tone="amber"] {
+  background-color: var(--zerops-status-attention-surface);
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-sites-tag[data-tone="busy"] {
+  background-color: var(--card);
+  color: var(--sidebar-foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.zerops-sites-tag[data-tone="ok"] {
+  background-color: var(--zerops-status-ok-surface);
+  color: var(--zerops-status-ok-text);
+}
+
+/* Its press is the kit's bare Button around it: the hairline firms under the pointer and while
+   the popover is open. */
+:is(:hover, [data-popup-open]) > .zerops-sites-tag {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
+}
+
+/* The popover: 360 px, its own scroll under its title, grown from the door's side. */
+.zerops-sites {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(560px, 70vh, var(--available-height));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--card);
+  color: var(--card-foreground);
+  box-shadow: var(--zerops-shadow-popup);
+  font-size: var(--text-body);
+  line-height: 18px;
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity var(--duration-base) var(--ease-out-strong),
+    scale var(--duration-base) var(--ease-out-strong);
+}
+
+.zerops-sites:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.98;
+}
+
+.zerops-sites[data-ending-style] {
+  transition-duration: var(--duration-quick);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-sites {
+    transition: opacity var(--duration-quick) var(--ease-out-strong);
+  }
+
+  .zerops-sites:is([data-starting-style], [data-ending-style]) {
+    scale: 1;
+  }
+}
+
+.zerops-sites-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.zerops-sites-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 8px;
+}
+
+.zerops-sites-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-count {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-sites-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 6px 6px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 14%, transparent) transparent;
+}
+
+/* More below than shows: the last rows fade out at the bottom edge rather than end cut off. */
+.zerops-sites-scroll[data-more-below] {
+  mask-image: linear-gradient(to bottom, currentColor calc(100% - 32px), transparent);
+}
+
+/* A section: its head sticks while its rows pass under it; a hairline between two shown. */
+.zerops-sites-section {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-control);
+}
+
+.zerops-sites-section:not([hidden]) ~ .zerops-sites-section:not([hidden]) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
+}
+
+.zerops-sites-sectionhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--card);
+}
+
+.zerops-sites-face {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+/* A colleague's Mate wears its owner's initial on its face's corner, cut from the card. */
+.zerops-sites-owner {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: oklch(var(--person-l) var(--person-c) var(--person-hue));
+  box-shadow: 0 0 0 1.5px var(--card);
+  color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
+  font-size: var(--text-5xs);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.zerops-sites-whose {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-note {
+  padding: 0 10px 6px 30px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 17px;
+}
+
+.zerops-sites-access {
+  padding: 0 10px 0 30px;
+}
+
+.zerops-sites-access:empty {
+  display: none;
+}
+
+.zerops-sites-quiet {
+  padding: 2px 10px 8px 30px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+/* An address: ↗, its service (and its role), its host cut short — and, at its end, in room kept
+   for it, the copy its hover or focus shows. */
+.zerops-sites-linkrow {
+  position: relative;
+}
+
+/* A service is named by its hostname, a real thing's own name: in the mono face (`.real-name`'s
+   rule), never the label face its section's title wears. */
+.zerops-sites-service {
+  display: inline-block;
+  max-width: 45%;
+  margin-inline-end: 8px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.966em;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+/* A Mate's service with nothing to open: its hostname, muted, with why in its host's place and no
+   ↗; its tooltip says the whole reason where the popover cuts it. */
+[data-sites-off] .zerops-sites-service {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-host {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.zerops-sites-copy {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: inline-flex;
+  opacity: 0;
+  translate: 0 -50%;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+.zerops-sites-linkrow:is(:hover, :focus-within) > .zerops-sites-copy,
+.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .zerops-sites-copy {
+    opacity: 1;
+  }
+}
+
+.zerops-sites-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 16px 14px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-align: center;
+}
+
+.zerops-sites-empty > p:first-child {
+  color: var(--card-foreground);
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+
+.zerops-sites-empty > [data-slot="row"] {
+  margin-top: 8px;
+}
+
+/* The section the tag spoke of, lit for a moment as the popover opens on it. */
+.zerops-sites-section[data-flash],
+.zerops-sites-section[data-flash] > .zerops-sites-sectionhead {
+  animation: zerops-sites-flash 1200ms ease-out;
+}
+
+@keyframes zerops-sites-flash {
+  0%,
+  40% {
+    background-color: color-mix(in oklab, var(--info-foreground) 12%, var(--card));
+  }
+}
+
+/* ==== end of project sites ==== */
+
+/* ==== end of the menu's projects and production ==== */

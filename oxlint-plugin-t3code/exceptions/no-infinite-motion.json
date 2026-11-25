@@ -24,7 +24,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/chat-markdown.css",
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-chroma{animation:ultrathink-chroma-shift 10s linear infinite}",
     "owner": "karel",
@@ -32,7 +32,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/chat-markdown.css",
     "kind": "css-declaration",
     "fingerprint": ".ultrathink-frame::before{animation:ultrathink-rainbow 10s linear infinite}",
     "owner": "karel",
@@ -40,7 +40,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/foundation.css",
     "kind": "css-declaration",
     "fingerprint": "@theme inline{--animate-skeleton:skeleton 2s infinite linear}",
     "owner": "karel",
@@ -48,7 +48,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/foundation.css",
     "kind": "css-declaration",
     "fingerprint": "@theme inline{--animate-typing-first:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite}",
     "owner": "ales",
@@ -56,7 +56,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/foundation.css",
     "kind": "css-declaration",
     "fingerprint": "@theme inline{--animate-typing-second:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite}",
     "owner": "ales",
@@ -64,7 +64,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/foundation.css",
     "kind": "css-declaration",
     "fingerprint": "@theme inline{--animate-typing-third:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite}",
     "owner": "ales",
@@ -72,7 +72,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/mate-face.css",
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-body]{animation:mate-face-turn 2.4s infinite}",
     "owner": "ales",
@@ -80,7 +80,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/mate-face.css",
     "kind": "css-declaration",
     "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-glance]{animation:mate-face-glance 5.6s infinite}",
     "owner": "ales",
@@ -88,7 +88,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/mate-face.css",
     "kind": "css-declaration",
     "fingerprint": "[data-zerops-primitive=\"mate-face\"][data-mate-face-state=\"waking\"]{animation:mate-face-breathe 3s ease-in-out infinite}",
     "owner": "ales",
@@ -112,7 +112,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/run-shimmer.css",
     "kind": "css-declaration",
     "fingerprint": "[data-sweep-band]{animation:run-shimmer 2s linear infinite}",
     "owner": "ales",
@@ -120,7 +120,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/index.css",
+    "path": "apps/web/src/styles/run-shimmer.css",
     "kind": "css-declaration",
     "fingerprint": "[data-sweep-copy]{animation:run-shimmer-hold 2s linear infinite}",
     "owner": "ales",

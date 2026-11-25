@@ -1,0 +1,322 @@
+/* ==== Pass 16 · the run's result ==== */
+
+/* What a finished run left, as rows in the card's grid (K5): the mark in the
+   card's 28 px column, the words one column in, the actions on its right
+   edge. One type scale (S1): 14/20 the row, 13/18 the line under it. */
+.run-result {
+  display: flex;
+  flex-direction: column;
+}
+.run-result-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding-right: 14px;
+  font-size: var(--text-body);
+  line-height: 20px;
+}
+/* A row with a line under it hangs from its first line. */
+.run-result-row[data-tall] {
+  align-items: start;
+  padding-block: 7px;
+}
+.run-result-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-muted-foreground);
+}
+.run-result-row[data-tall] .run-result-mark {
+  height: 20px;
+}
+/* One meaning per colour (S3): green runs, amber waits on the person, red is
+   still broken; a thing's glyph stays muted. */
+.run-result-mark[data-tone="ok"] {
+  color: var(--color-status-ok);
+}
+.run-result-mark[data-tone="attention"] {
+  color: var(--color-status-attention);
+}
+.run-result-mark[data-tone="failed"] {
+  color: var(--color-status-failed);
+}
+.run-result-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.run-result-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+}
+/* Nothing is cut off (D4): a long name or reason wraps. */
+.run-result-main > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.run-result-title {
+  font-weight: 500;
+  color: var(--color-foreground);
+}
+.run-result-title[data-broken] {
+  color: var(--color-status-failed-text);
+}
+.run-result-words {
+  color: var(--color-muted-foreground);
+}
+/* The hash keeps to the row's 20 px: set on the sans baseline at its own
+   height, a mono line would stand a row with a version a pixel taller. */
+.run-result-version {
+  font-family: var(--font-mono);
+  font-size: var(--text-line);
+  line-height: 1;
+  color: var(--color-muted-foreground);
+}
+.run-result-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--text-body);
+  line-height: 18px;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.run-result-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Blue is something to click (S3): a text action, never a filled button. */
+.run-result-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-control);
+  color: var(--color-muted-foreground);
+  transition:
+    background-color var(--duration-quick) var(--ease-out-strong),
+    color var(--duration-quick) var(--ease-out-strong);
+}
+.run-result-open:hover {
+  background: var(--color-accent);
+  color: var(--color-foreground);
+}
+/* Under a finger the arrow takes 40 px around its 24: the rows stand 28 to 40 px apart, so two
+   arrows' presses never reach each other's glyph. */
+@media (pointer: coarse) {
+  .run-result-open {
+    position: relative;
+  }
+  .run-result-open::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}
+.run-result-open:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: 1px;
+}
+
+/* The run's pictures, one strip under its rows (the owner, 2026-09-29: "if
+   anything it should show the screenshots"): on the card's words edge, the
+   28 px column left to the marks, and on its one right edge. They are the
+   run's, not its last row's: 20 px under the rows, where the rows stand 14
+   apart; alone, 14 px under the hairline, where a first row's words stand.
+   Six tiles at most, 8 px apart, wrapping into rows as the column needs.
+   Their corners run parallel with the tray's (S4): 30 px = 12 + the 18 px
+   between a tile and the tray's edge — 6 px here, the tray's 12 under it. */
+/* p26/runcard */
+/* What a service's checks found stays on its one line, never a line of its
+   own that leads with a "·" or a "/": it keeps the line while 12 characters
+   of room are left, gives way at its end past its room, and never runs out
+   of its column — nor shrinks to nothing when what stands before it is long. The pictures its checks took stand
+   under its row, the open card's thumbnails' 80 px. */
+.run-result-checked {
+  flex: 1 1 12ch;
+  min-width: min(12ch, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-result-row-pictures {
+  margin-top: 8px;
+}
+.run-result-row-pictures .run-result-tile {
+  height: 80px;
+}
+
+.run-result-pictures {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  column-gap: 8px;
+  padding: 7px 14px 6px 0;
+}
+.run-result-row + .run-result-pictures {
+  padding-top: 13px;
+}
+.run-result-strip {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* One height for every tile, each as wide as its picture's own shape makes
+   it (the owner, 2026-09-29: "why these has different ration than the
+   result?"): a phone's screenshot whole and narrow, a desktop's whole and
+   wide — the shape set on the tile from its first frame (`tileRatio`). While
+   its file is read, the tile is quiet and already its height: nothing under
+   the strip moves when the picture comes, or when it never does. */
+.run-result-tile {
+  position: relative;
+  display: block;
+  flex: none;
+  height: 96px;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background-color: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  /* Its fill comes with its picture, on the picture's own fade (`.asset-image-frame > img`). */
+  transition: background-color var(--duration-quick) var(--ease-out-strong);
+}
+/* Its edge is the card's hairline, drawn over the picture: a white page on
+   the tray keeps its edge. */
+.run-result-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  pointer-events: none;
+  transition: box-shadow var(--duration-quick) var(--ease-out-strong);
+}
+/* Failed bytes and failed signing hold the picture's reserved room. */
+/* Fetching and decoding hold the picture's room and paint nothing in it: a filled box with no
+   picture read as an empty one (Milo's stress run 4). The picture fades in once decoded. */
+.asset-image-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: var(--radius-card);
+}
+/* Laid over the picture it stands in for, it never takes the pointer: a press reaches the
+   picture (and a zoomed viewer's pan) even after the underlay has faded out. */
+.asset-image-underlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.asset-image-frame > img {
+  transition: opacity var(--duration-base) var(--ease-out-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-image-frame > img {
+    transition: none;
+  }
+}
+
+.asset-image-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 40px;
+  padding: 6px;
+  color: var(--color-muted-foreground);
+  background: var(--color-muted);
+  font-size: var(--text-2xs);
+  line-height: 1.3;
+  text-align: center;
+}
+/* A tile whose picture has no pixels yet holds its room unpainted: no fill, no edge. */
+.run-result-tile[data-result-picture="loading"],
+.run-result-tile:has([data-image-pending]) {
+  background-color: transparent;
+}
+.run-result-tile[data-result-picture="loading"]::after,
+.run-result-tile:has([data-image-pending])::after {
+  box-shadow: none;
+}
+.run-result-tile .asset-image-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.run-result-tile .asset-image-unavailable {
+  width: 100%;
+  height: 100%;
+}
+.run-result-tile[data-result-picture="unavailable"] .run-result-more {
+  inset: auto 4px 4px auto;
+  border-radius: var(--radius-mark);
+  padding: 0 4px;
+}
+.run-result-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+button:hover > .run-result-tile::after {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-foreground) 20%, transparent);
+}
+/* A page whose check stayed failed is broken (S3): its edge in red. */
+.run-result-tile[data-failed]::after {
+  box-shadow: inset 0 0 0 1px var(--color-status-failed);
+}
+/* The last tile of a run with more: how many more, over its picture sunk
+   into the tray. */
+.run-result-more {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--run-tray) 72%, transparent);
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+/* T5: the result arriving while the person watched is the moment worth
+   seeing — row by row, 40 ms apart, once; reduced motion fades only. */
+@keyframes run-result-rise {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes run-result-fade {
+  from {
+    opacity: 0;
+  }
+}
+/* The pictures' strip does not fade in as a row: a strip rising before its pictures had pixels
+   drew a pale box for 0.4 s (Milo's stress run 5). Each picture fades in as its pixels come. */
+.run-result-row[data-rising] {
+  animation: run-result-rise var(--duration-base) var(--ease-out-strong) backwards;
+  animation-delay: calc(var(--row-index, 0) * 40ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .run-result-row[data-rising] {
+    animation-name: run-result-fade;
+  }
+}
+
+/* ==== end of the run's result ==== */

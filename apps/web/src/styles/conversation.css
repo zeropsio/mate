@@ -1,0 +1,80 @@
+/* ==== Pass 16 · the conversation ==== */
+
+/* The conversation's header has one button style: borderless 28 px ghosts, a
+   muted glyph, the app's row hover and the ink under the pointer. The
+   workspace header fills every button it holds; these step out of it. */
+[data-chat-header] [data-chat-header-ghost] {
+  --control-icon-color: currentColor;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--contrast-muted-foreground);
+}
+
+[data-chat-header] [data-chat-header-ghost]:hover,
+[data-chat-header] [data-chat-header-ghost][data-pressed],
+[data-chat-header] [data-chat-header-ghost][data-popup-open] {
+  background-color: var(--sidebar-row-hover);
+  color: var(--contrast-foreground);
+}
+
+/* The conversation's line (the owner, 2026-09-29): the Mate leads it, on the
+   menu's selected band while its own chat is open — 32 px tall, a
+   control's corners — and with a crew, the crewmate whose chat is on screen stands on
+   the same band as a 28 px pill. The band is one surface of its own that
+   travels between them (`.conversation-band`, pass 18). The band coming and
+   going changes no width: the Mate's pill keeps its padding with or without
+   it. */
+.conversation-mate {
+  border-radius: var(--radius-control);
+}
+
+/* A colleague's Mate on the line wears its owner's mark as its row in the menu does: 12 px, on
+   the 24 px face's corner, cut out of the face with a 2 px gap all round (`.menu-face-cut`). */
+.conversation-face-cut {
+  -webkit-mask-image: radial-gradient(circle 8px at 20px 20px, transparent 7.5px, currentColor 8px);
+  mask-image: radial-gradient(circle 8px at 20px 20px, transparent 7.5px, currentColor 8px);
+}
+
+.menu-owner.conversation-owner {
+  top: 14px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  font-size: var(--text-5xs);
+}
+
+@media (hover: hover) {
+  .conversation-mate[data-opens]:hover {
+    background-color: var(--sidebar-row-hover);
+  }
+}
+
+/* A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle. Sites
+   stands on it only while the Mate's name is alone there: a Review, a task's state or a crew
+   takes its room, and the menu's row and the panel's Browser still lead to every address. */
+@media (max-width: 39.999rem) {
+  [data-chat-header]:has(
+      [data-conversation-strip]
+        :is(
+          .chat-header-review,
+          [data-zerops-surface="mate-task-session"],
+          [data-conversation-crew]
+        )
+    )
+    [data-header-sites] {
+    display: none;
+  }
+}
+
+/* The crewmate's pill is its menu's trigger, which the header fills like any
+   other; it is clear instead, pressed or not: the band under it is its
+   ground. A face's press wears `data-conversation-crewmate` too; only the
+   pill's is current. */
+[data-conversation-crewmate][data-current],
+[data-chat-header] [data-conversation-crewmate][data-current],
+[data-chat-header] [data-conversation-crewmate][data-current]:hover,
+[data-chat-header] [data-conversation-crewmate][data-current][data-popup-open] {
+  background-color: transparent;
+}
+
+/* ==== end of the conversation ==== */

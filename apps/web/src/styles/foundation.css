@@ -1,0 +1,806 @@
+@custom-variant dark (&:is(.dark, .dark *));
+@custom-variant light (&:not(.dark, .dark *));
+/* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
+@custom-variant wco (&:is(.wco, .wco *));
+
+/* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
+@custom-variant any-hover {
+  @media (any-hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/* The overview, a project's page and a place's page are one place at three depths: going among
+   them (`pageTransitions.ts`, the router's `pages` transition) cross-fades the page's content and
+   nothing else. The window itself is left out of the transition, so the left menu and the frame
+   are drawn live throughout and not a pixel of them changes; the page's ground stays under the
+   fade, so nothing shows through it. The trail above a page's title is one element across the
+   pages while it is in view (`pages-trail`): the steps two pages share hold still while the last
+   one changes. Left scrolled away, it belongs to its page and comes with it. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(pages) {
+    view-transition-name: none;
+  }
+
+  html:active-view-transition-type(pages) [data-slot="sidebar-inset"] {
+    view-transition-name: zerops-page;
+  }
+
+  html:active-view-transition-type(pages-trail) .page-crumbs {
+    view-transition-name: zerops-page-crumbs;
+  }
+
+  /* The menu stays pressable while the page fades. */
+  html:active-view-transition-type(pages)::view-transition {
+    pointer-events: none;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page) {
+    background: var(--background);
+    animation-duration: 200ms;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
+    animation: zerops-page-out var(--duration-quick) var(--ease-out-strong) both;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
+    animation: zerops-page-in var(--duration-base) var(--ease-out-strong) both;
+  }
+
+  /* The trail's two drawings fade over the same 200 ms, so what both hold never dims; each keeps
+     its own size at the row's start, so a longer trail is never a stretched one. */
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
+    animation-duration: 200ms;
+    animation-timing-function: var(--ease-out-strong);
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page-crumbs),
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page-crumbs) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+}
+
+@keyframes zerops-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zerops-page-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A first Mate's face is one element as Create lands on its page (`mate-birth`, the router's): from
+   the New project page, or from an account's first run, where it is the screen's hero, to the
+   page's seat. The rest of the window cross-fades under it, the menu arriving with the page. A
+   dialog over the first run holds the face that goes. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(mate-birth) [role="dialog"] .mate-face-preview,
+  html:active-view-transition-type(mate-birth):not(:has([role="dialog"] .mate-face-preview))
+    .first-run-hero
+    .mate-face-preview,
+  html:active-view-transition-type(mate-birth) [data-mate-stage-face] {
+    view-transition-name: first-mate-face;
+  }
+
+  html:active-view-transition-type(mate-birth)::view-transition-group(first-mate-face) {
+    animation-duration: var(--duration-slow);
+    animation-timing-function: var(--ease-out-strong);
+  }
+
+  html:active-view-transition-type(mate-birth)::view-transition-old(root),
+  html:active-view-transition-type(mate-birth)::view-transition-new(root) {
+    animation-duration: var(--duration-base);
+  }
+}
+
+/* On mobile, morph the expanded hero composer into the compact docked
+   composer while it moves; the rest of the app remains visually stationary. */
+html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
+html[data-mobile-composer-route-transition="true"]::view-transition-new(root) {
+  animation: none;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-group(t3-mobile-composer) {
+  animation-duration: var(--duration-slow);
+  animation-timing-function: var(--ease-in-out-strong);
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-image-pair(t3-mobile-composer) {
+  isolation: isolate;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobile-composer) {
+  animation: t3-mobile-composer-old var(--duration-slow) var(--ease-in-out-strong) both;
+  mix-blend-mode: normal;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-new(t3-mobile-composer) {
+  animation: t3-mobile-composer-new var(--duration-slow) var(--ease-in-out-strong) both;
+  mix-blend-mode: normal;
+}
+
+/* The expanded and compact composers have different internal layouts. Use a
+   brief crossfade while their shared wrapper moves so the layout change does
+   not read as a single-frame cut. */
+@keyframes t3-mobile-composer-old {
+  0%,
+  35% {
+    opacity: 1;
+  }
+  65%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes t3-mobile-composer-new {
+  0%,
+  35% {
+    opacity: 0;
+  }
+  65%,
+  100% {
+    opacity: 1;
+  }
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-group(t3-mobile-draft-headline) {
+  animation-duration: var(--duration-quick);
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobile-draft-headline) {
+  animation: t3-mobile-draft-headline-exit var(--duration-quick) var(--ease-out-strong) both;
+  mix-blend-mode: normal;
+}
+
+@keyframes t3-mobile-draft-headline-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+:root {
+  --app-scrollbar-width: 6px;
+  --appearance-contrast-base: 100%;
+  --appearance-contrast-boost: 0%;
+  --appearance-contrast-border-boost: 0%;
+  --appearance-contrast-target: black;
+  --app-scrollbar-thumb: rgb(217 217 217);
+  --app-scrollbar-thumb-hover: rgb(191 191 191);
+  /*
+   * Compact UI geometry. Keep these values semantic so sidebar, palette,
+   * tooltip, and toolbar controls cannot quietly drift apart.
+   */
+  --sidebar-control-gap: 0.5rem;
+  --sidebar-icon-color: color-mix(
+    in srgb,
+    var(--contrast-sidebar-muted-foreground) 60%,
+    var(--sidebar)
+  );
+  --sidebar-row-content-inset: 0.625rem;
+  --command-shell-inset: 0.5rem;
+  --command-content-inset: 1rem;
+  --floating-content-inset: 0.75rem;
+  --glass-blur: 12px;
+  --glass-opacity: 80%;
+  --glass-saturation: 1.14;
+  /* What glass does to what is behind it; none when the glass is opaque
+     (`GlassAppearanceSync`), where it shows nothing and still cost a
+     backdrop pass behind every glass surface. */
+  --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  --desktop-window-right-resize-inset: 0px;
+  /* The top bar: every page's header and the menu's logo row beside it, one
+     height, so the logo, the header's content and their bottom edges stand
+     on one line. Where the menu stands beside the page (md up) it is 65 px,
+     the menu's 40 px mark centred in it on the Mates' faces' column (the
+     owner, 2026-10-11: "cant you really see the logo is off?"). On a phone
+     the menu is a sheet over the page, and the bar keeps 52. A desktop
+     window's bar is its title bar's (`.electron`, `.wco`). */
+  --workspace-topbar-height: 52px;
+  --workspace-controls-top: 0px;
+  --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
+  --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
+  --workspace-native-controls-inset: 0px;
+  --workspace-titlebar-control-size: 1.75rem;
+  --workspace-titlebar-control-gap: 0.75rem;
+  /* Horizontal gutter shared by the page header and the chat column, clear of
+     the device's safe area. */
+  --workspace-gutter: 0.75rem;
+  --workspace-gutter-start: calc(env(safe-area-inset-left) + var(--workspace-gutter));
+  --workspace-gutter-end: calc(env(safe-area-inset-right) + var(--workspace-gutter));
+
+  @variant sm {
+    --workspace-gutter: 1.25rem;
+  }
+
+  @variant md {
+    --workspace-topbar-height: 4.0625rem;
+  }
+
+  @variant dark {
+    --appearance-contrast-target: white;
+    --app-scrollbar-thumb: rgb(255 255 255 / 8%);
+    --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
+    --glass-blur: 16px;
+    --glass-saturation: 1.08;
+    --glass-backdrop: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+  }
+}
+
+/* In a desktop window the top bar is the title bar, at every width: 52 px,
+   the height the desktop centres macOS's traffic lights on
+   (`MACOS_WORKSPACE_TOPBAR_HEIGHT` in apps/desktop's DesktopWindow.ts), or
+   the overlay's own where Windows draws one (`.wco`). */
+.electron {
+  --workspace-topbar-height: 52px;
+}
+
+.wco {
+  --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
+  --workspace-controls-top: env(titlebar-area-y, 0px);
+  --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
+  --workspace-controls-right: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+  --workspace-native-controls-inset: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+}
+
+/* The font tokens are declared outside the inline theme so utilities reference
+   the variables and Settings -> Appearance can override them at runtime. The
+   default stacks are mirrored in `appearanceFonts.ts`. */
+@theme {
+  --font-sans: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Where a whole-page status (StatusPage, the sign-in) hangs its column from: a fixed height,
+     never centred on its own, so what arrives below grows it downward. index.html's splash
+     places its mark at the same height. */
+  --spacing-status-page: 22vh;
+  /* Where HQ's sign-in in the landing's card hangs from: as high as centres HQ's login (its card
+     about 744px, the byline under it) on the screen, never above 24px, and fixed like the above. */
+  --spacing-status-frame: max(1.5rem, calc(50dvh - 25rem));
+}
+
+@theme inline {
+  /* The system's scale (packages/shared/src/brand.ts): the type steps, four
+     nested radii, two easings. The text and radius namespaces start empty, so the
+     scale's steps are the only sizes and radii a class can name (rounded-full and
+     rounded-none stay). */
+  --text-*: initial;
+  --radius-*: initial;
+  /* generated:scale-tokens start */
+  --text-5xs: 0.4375rem;
+  --text-5xs--line-height: calc(7 / 7);
+  --text-4xs: 0.5rem;
+  --text-4xs--line-height: calc(8 / 8);
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: calc(14 / 10);
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(16 / 11);
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-line: 0.8125rem;
+  --text-line--line-height: calc(20 / 13);
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-prose: 0.875rem;
+  --text-prose--line-height: calc(22.75 / 14);
+  --text-emphasis: 0.9375rem;
+  --text-emphasis--line-height: 1.5rem;
+  --text-typed: 1rem;
+  --text-typed--line-height: 1.5rem;
+  --text-title: 1.25rem;
+  --text-title--line-height: 1.75rem;
+  --text-display: 1.75rem;
+  --text-display--line-height: 2.25rem;
+  --radius-mark: 0.25rem;
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+  --radius-sheet: 1rem;
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.65, 0, 0.35, 1);
+  /* generated:scale-tokens end */
+  --color-zinc-25: oklch(99.2% 0 0);
+  --animate-skeleton: skeleton 2s infinite linear;
+  /* Duty-cycled indicator animations: long holds with stepped ramps, so the
+     compositor updates discrete frames instead of every vsync. */
+  --animate-status-pulse: status-pulse 2s infinite;
+  --animate-ghost-pulse: ghost-pulse 2.4s infinite;
+  /* A verb arriving in a row: it fades into the place a skeleton held, once. */
+  --animate-zerops-appear: zerops-appear var(--duration-base) var(--ease-out-strong) backwards;
+  /* The Mate at work. Its panel after the turn rises in once; a status bar
+     arriving opens its room; the result settles where the bars were. All
+     once, and the one motion longer than the scale's steps: a measured
+     choreography the run's height steps follow in JS (`stepHeight`'s
+     `drawerEase`), on a curve gentler at the start than ease-out-strong so a
+     room opening never leaps on its first frame. */
+  --animate-panel-in: panel-in 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  --animate-room-in: room-in 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* Reduced motion's arrival: a fade only (`run-fade`). */
+  --animate-run-fade: run-fade var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-report-in: report-in 480ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  /* The run's chat. A bubble that arrives while the person watches rises in
+     from the spine, once — quick, since one arrives every few seconds; what
+     a bar or a bubble holds opens its room at the pace of a click. */
+  --animate-bubble-in: bubble-in var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-room-open: room-in var(--duration-base) var(--ease-out-strong) both;
+  /* The Mate composing: three dots rising and brightening in turn, a wave
+     rather than a blink — the one continuous motion on the card while it
+     writes, and the thing a person watches while they wait. The later dots
+     start into the wave (a delay below zero is the same beat), so none of
+     them stands lit at full before its turn when the line appears. */
+  --animate-typing-first: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  --animate-typing-second: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite;
+  --animate-typing-third: typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite;
+  /* A status line's new words: in from just below, out of a blur, once. */
+  --animate-words-in: words-in var(--duration-slow) var(--ease-out-strong) backwards;
+  /* The Mate's answer arriving while the person watches: up from just
+     below, once. */
+  --animate-rise-in: rise-in var(--duration-slow) var(--ease-out-strong) backwards;
+  /* What a call returned, opened: down out of its header, once. The room it
+     takes opens at once, so the chat can still bring its end into sight. */
+  --animate-detail-in: detail-in var(--duration-base) var(--ease-out-strong) backwards;
+  /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
+     palette check): Zerops compute, and model tokens on the organization's key. */
+  --color-spend-compute: var(--primary);
+  --color-spend-tokens: var(--zerops-mate-tint-coral);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-error-foreground: var(--error-foreground);
+  --color-error: var(--error);
+  --color-error-surface: var(--error-surface);
+  --color-update-foreground: var(--update-foreground);
+  --color-update: var(--update);
+  --color-update-surface: var(--update-surface);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-diff-addition: var(--diff-addition);
+  --color-diff-deletion: var(--diff-deletion);
+  --color-diff-addition-foreground: var(--diff-addition-foreground);
+  --color-diff-deletion-foreground: var(--diff-deletion-foreground);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-input: var(--contrast-input);
+  --color-border: var(--contrast-border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--contrast-accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--contrast-muted-foreground);
+  --color-muted: var(--muted);
+  --color-placeholder: var(--contrast-placeholder);
+  --color-secondary-label: var(--contrast-secondary-label);
+  --color-icon-muted: var(--contrast-icon-muted);
+  --color-secondary-foreground: var(--contrast-secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--contrast-popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--contrast-card-foreground);
+  --color-card: var(--card);
+  --color-code: var(--code-background);
+  --color-code-foreground: var(--code-foreground);
+  --color-foreground: var(--contrast-foreground);
+  --color-background: var(--background);
+  --color-surface-raised: var(--surface-raised);
+  --color-message: var(--message-surface);
+  --color-message-foreground: var(--contrast-message-foreground);
+  --color-message-action: var(--message-action);
+  --color-message-action-foreground: var(--message-action-foreground);
+  --color-message-action-hover: var(--message-action-hover);
+  /* The status grammar's tones as utilities: the conversation's faces, lines,
+     strips and outcome rows speak in the same five tones as StatusDot. */
+  --color-status-ok: var(--zerops-status-ok);
+  --color-status-ok-surface: var(--zerops-status-ok-surface);
+  --color-status-ok-text: var(--zerops-status-ok-text);
+  --color-status-busy: var(--zerops-status-busy);
+  --color-status-busy-surface: var(--zerops-status-busy-surface);
+  --color-status-busy-text: var(--zerops-status-busy-text);
+  --color-status-attention: var(--zerops-status-attention);
+  --color-status-attention-surface: var(--zerops-status-attention-surface);
+  --color-status-attention-text: var(--zerops-status-attention-text);
+  --color-status-failed: var(--zerops-status-failed);
+  --color-status-failed-surface: var(--zerops-status-failed-surface);
+  --color-status-failed-text: var(--zerops-status-failed-text);
+  --color-status-off: var(--zerops-status-off);
+  --color-status-off-surface: var(--zerops-status-off-surface);
+  --color-mint-panel: var(--zerops-mint-panel);
+  --shadow-popup: var(--zerops-shadow-popup);
+  --shadow-edge: var(--zerops-shadow-edge);
+  /* A handle dragged over a colour plane: a white ring with a dark hairline, alike in both
+     appearances, since what lies under it is the colour itself. */
+  --shadow-handle: inset 0 0 0 2px #fff, 0 0 0 1px rgb(0 0 0 / 35%);
+  --color-field: var(--zerops-field);
+  --color-field-autofill: var(--zerops-field-autofill);
+  --color-field-invalid: var(--zerops-field-invalid);
+  --color-well: var(--zerops-well);
+  --color-well-edge: var(--zerops-well-edge);
+  --color-field-hover: var(--zerops-field-hover);
+  --color-field-pressed: var(--zerops-field-pressed);
+  --color-segment: var(--zerops-segment);
+  --color-segment-hover: var(--zerops-segment-hover);
+  --color-shimmer: var(--zerops-shimmer);
+  /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
+     draws its eyes and mouth in. */
+  --color-update-role: var(--zerops-update-role);
+  --color-rail: var(--zerops-rail);
+  --color-mate-face-ink: var(--zerops-mate-face-ink);
+  --color-fill-ink: var(--zerops-fill-ink);
+  --color-skill-edge: var(--zerops-skill-edge);
+  --color-skill-surface: var(--zerops-skill-surface);
+  --color-skill-text: var(--zerops-skill-text);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--contrast-sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
+  --color-sidebar-control-surface: var(--sidebar-control-surface);
+  --color-sidebar-row-hover: var(--sidebar-row-hover);
+  --color-sidebar-row-active: var(--sidebar-row-active);
+  --color-sidebar-row-selected: var(--sidebar-row-selected);
+  --color-sidebar-border: var(--contrast-sidebar-border);
+  @keyframes skeleton {
+    /* Transform-only so the highlight sweep stays on the compositor, then a
+       long hold with the band parked off-screen instead of a constant shimmer. */
+    0% {
+      transform: translateX(-100%);
+    }
+    60%,
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes ghost-pulse {
+    /* The loading ghosts' breath. Stepped like the status indicators, so however many bars a
+       ghost holds, the compositor draws a handful of discrete frames per cycle rather than one
+       per vsync — which on a 120Hz display is the difference between ~14 and ~288 updates. */
+    0%,
+    42% {
+      opacity: 1;
+      animation-timing-function: steps(4);
+    }
+    50%,
+    92% {
+      opacity: 0.55;
+      animation-timing-function: steps(4);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes status-pulse {
+    0%,
+    40% {
+      opacity: 1;
+      animation-timing-function: steps(6);
+    }
+    50%,
+    90% {
+      opacity: 0.5;
+      animation-timing-function: steps(6);
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes zerops-appear {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+  }
+  @keyframes room-in {
+    from {
+      grid-template-rows: 0fr;
+    }
+    to {
+      grid-template-rows: 1fr;
+    }
+  }
+  @keyframes report-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+  }
+  @keyframes bubble-in {
+    from {
+      transform: translateY(6px) scale(0.97);
+    }
+  }
+  @keyframes typing-wave {
+    0%,
+    56%,
+    100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+    28% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+  @keyframes rise-in {
+    from {
+      transform: translateY(8px);
+    }
+  }
+  @keyframes detail-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @keyframes words-in {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+      filter: blur(2px);
+    }
+  }
+}
+
+/* A raised surface's ground against its border (`--zerops-ground-clip`). */
+@utility bg-clip-ground {
+  background-clip: var(--zerops-ground-clip);
+}
+
+@utility surface-glass {
+  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--background) !important;
+  }
+}
+
+@utility alert-glass {
+  --alert-glass-tint: transparent;
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--alert-glass-tint) 4%, transparent),
+      color-mix(in srgb, var(--alert-glass-tint) 4%, transparent)
+    ),
+    color-mix(in srgb, var(--background) var(--glass-opacity), transparent) !important;
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
+
+  &[data-variant="info"] {
+    --alert-glass-tint: var(--info);
+  }
+
+  &[data-variant="success"] {
+    --alert-glass-tint: var(--success);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--background) !important;
+  }
+}
+
+@utility dialog-glass {
+  background: color-mix(in srgb, var(--background) var(--glass-opacity), transparent);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
+  border-color: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+  box-shadow: var(--zerops-shadow-dialog);
+
+  @variant dark {
+    border-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--popover) !important;
+  }
+}
+
+@utility dialog-backdrop {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+
+  @variant dark {
+    background: color-mix(in srgb, var(--background) 64%, transparent);
+  }
+}
+
+/* The same tint as `dialog-backdrop`, the app behind left sharp. */
+@utility dialog-backdrop-plain {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+
+  @variant dark {
+    background: color-mix(in srgb, var(--background) 64%, transparent);
+  }
+}
+
+/* Behind a picture or a video shown as large as the window lets it be: near black in both themes. */
+@utility dialog-media-backdrop {
+  background: color-mix(in srgb, var(--color-black) 75%, transparent);
+}
+
+@utility dropdown-glass {
+  background: color-mix(
+    in srgb,
+    var(--popover) 18%,
+    color-mix(in srgb, var(--popover) var(--glass-opacity), transparent)
+  );
+  -webkit-backdrop-filter: var(--glass-backdrop);
+  backdrop-filter: var(--glass-backdrop);
+  border: 1px solid color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background: var(--popover) !important;
+  }
+}
+
+/* What scrolls under a top bar is gone before it reaches it: the band's first
+   third is clear, so no half-read line sits under the title, and the rest
+   eases in to full. The scrollbar's lane stays whole. */
+@utility topbar-scroll-fade {
+  --topbar-scroll-fade-height: 2.5rem;
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  -webkit-mask-position: top, bottom, right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height)),
+    var(--app-scrollbar-width) 100%;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  mask-position: top, bottom, right;
+  mask-repeat: no-repeat;
+  mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height)),
+    var(--app-scrollbar-width) 100%;
+
+  @variant sm {
+    --topbar-scroll-fade-height: 3rem;
+  }
+}
+
+/* The conversation's list under a floating composer (the owner, 2026-10-12: "it should be a
+   floating element … fade on sides, so the content has fade in height of the composer"): faded
+   under the top bar as `topbar-scroll-fade`, and at its foot over the composer's height
+   (`--composer-fade`, ChatView), so what passes beside the composer thins out to nothing at the
+   window's edge. No layer stands behind the composer, and the scrollbar's lane stays whole. */
+@utility conversation-scroll-fade {
+  --topbar-scroll-fade-height: 2.5rem;
+  --conversation-foot-fade: var(--composer-fade, 10rem);
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(
+      to top,
+      transparent 0,
+      transparent var(--composer-foot, 1.25rem),
+      color-mix(in oklab, currentColor 20%, transparent) calc(var(--composer-foot, 1.25rem) + 25%),
+      color-mix(in oklab, currentColor 60%, transparent) calc(var(--composer-foot, 1.25rem) + 50%),
+      color-mix(in oklab, currentColor 90%, transparent) calc(var(--composer-foot, 1.25rem) + 72%),
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor);
+  -webkit-mask-position:
+    top,
+    0 var(--topbar-scroll-fade-height),
+    bottom,
+    right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height) - var(--conversation-foot-fade) + 1px),
+    100% calc(var(--conversation-foot-fade) + 1px),
+    var(--app-scrollbar-width) 100%;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(
+      to top,
+      transparent 0,
+      transparent var(--composer-foot, 1.25rem),
+      color-mix(in oklab, currentColor 20%, transparent) calc(var(--composer-foot, 1.25rem) + 25%),
+      color-mix(in oklab, currentColor 60%, transparent) calc(var(--composer-foot, 1.25rem) + 50%),
+      color-mix(in oklab, currentColor 90%, transparent) calc(var(--composer-foot, 1.25rem) + 72%),
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor);
+  mask-position:
+    top,
+    0 var(--topbar-scroll-fade-height),
+    bottom,
+    right;
+  mask-repeat: no-repeat;
+  mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height) - var(--conversation-foot-fade) + 1px),
+    100% calc(var(--conversation-foot-fade) + 1px),
+    var(--app-scrollbar-width) 100%;
+
+  @variant sm {
+    --topbar-scroll-fade-height: 3rem;
+  }
+}
+
+/* Virtualizers own their native scroll element, so they cannot use ScrollArea's
+   viewport fade. Keep the scrollbar lane opaque while sharing the same fade
+   contract across those lists. */
+@utility virtualized-scroll-fade {
+  -webkit-mask-image: var(--virtualized-scroll-fade-mask), linear-gradient(black, black);
+  mask-image: var(--virtualized-scroll-fade-mask), linear-gradient(black, black);
+  -webkit-mask-position: left, right;
+  mask-position: left, right;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+  mask-size:
+    calc(100% - var(--app-scrollbar-width)) 100%,
+    var(--app-scrollbar-width) 100%;
+}
+
+/* A skeleton's sweep runs only while it is in view (`ui/skeleton.tsx` marks it `data-seen`): a
+   stand-in out of sight keeps its box and moves nothing. Until then it has no band at all — with
+   the sweep merely stopped, the band stood across its middle for the first frame — and the sweep
+   starts with the band, from its edge. Outside the layers, so it outranks the utility that draws
+   the band. */
+[data-slot="skeleton"]:not([data-seen])::after {
+  content: none;
+}

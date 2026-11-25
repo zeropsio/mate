@@ -1,0 +1,203 @@
+/* A Mate's face in motion (MateFace.tsx). Every pose is one drawing, so a
+   change of state morphs — the eyes narrow into work, the "o" opens when it
+   needs you — instead of one picture replacing another. What moves on its own
+   belongs to the state: at work the shape turns a notch at a time (its own
+   symmetry, so it never looks like somebody else) and the eyes glance about;
+   as it starts to need you, it hops; done after work while you watch, it pops
+   once. Idle and asleep it is still: a menu of faces must not fidget; waking,
+   on its way up, it breathes, slow and low. Its own motion is transform and
+   opacity (the morph eases the eyes' and the mouth's geometry), each Mate on
+   its own beat (`--mate-face-phase`) so a menu of them never ticks in unison.
+
+   What moves is an HTML box, never an SVG element: Chrome composites no
+   animation on SVG, so a face turning there cost a style recalc and a repaint
+   every frame (~60 a second for one face, measured 2026-10-03). Each part that
+   moves on its own — the hop, the body's turn, the look, the glance — is a box
+   laid over the whole face holding its own drawing in the same 100-box, so a
+   unit of the drawing is a percent of its box: the turn's pivot, the hop's
+   feet and every step of the eyes are written in percent. The boxes hold the
+   face's box exactly, whatever an icon rule around it does to an svg. */
+:root {
+  /* A spring: 8 % past the mark and back, settled by two thirds of its time. */
+  --ease-spring: linear(
+    0,
+    0.088,
+    0.285,
+    0.51,
+    0.716,
+    0.877,
+    0.988,
+    1.052,
+    1.08,
+    1.082,
+    1.071,
+    1.053,
+    1.034,
+    1.018,
+    1.006,
+    0.999,
+    0.994,
+    0.993,
+    0.993,
+    0.995,
+    0.996,
+    0.998,
+    0.999,
+    1
+  );
+}
+
+[data-zerops-primitive="mate-face"]
+  :is(
+    [data-mate-face-hop],
+    [data-mate-face-body],
+    [data-mate-face-look],
+    [data-mate-face-glance],
+    [data-mate-face-layer]
+  ) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: visible;
+}
+
+[data-mate-face-body] {
+  transform-origin: var(--mate-face-origin, 50% 50%);
+}
+
+/* It hops from its feet. */
+[data-mate-face-hop] {
+  transform-origin: 50% 96%;
+}
+
+/* A face stands where an icon would: a menu item does to a face what it does
+   to its icons (`[&>svg]` in ui/menu.tsx) — 2 px into its padding, at 80 %,
+   out of the pointer's way. */
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"] {
+  margin-inline: calc(var(--spacing) * -0.5);
+  pointer-events: none;
+}
+
+[data-slot="menu-item"] > [data-zerops-primitive="mate-face"]:not([class*="opacity-"]) {
+  opacity: 0.8;
+}
+
+[data-mate-face-eye] {
+  transition:
+    x var(--duration-slow) var(--ease-out-strong),
+    y var(--duration-slow) var(--ease-out-strong),
+    width var(--duration-slow) var(--ease-out-strong),
+    height var(--duration-slow) var(--ease-out-strong),
+    rx var(--duration-slow) var(--ease-out-strong),
+    opacity var(--duration-slow) var(--ease-out-strong);
+}
+
+[data-mate-face-shut],
+[data-mate-face-arc],
+[data-mate-face-mouth="smile"] {
+  transition: opacity var(--duration-base) var(--ease-out-strong);
+}
+
+[data-mate-face-mouth="o"] {
+  transition:
+    r var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+[data-mate-face-look] {
+  transition: translate var(--duration-slow) var(--ease-out-strong);
+}
+
+/* Thinking, it looks up and aside; writing, down along its line. */
+[data-mate-face-gaze="up"] [data-mate-face-look] {
+  translate: 5% -5%;
+}
+
+[data-mate-face-gaze="down"] [data-mate-face-look] {
+  translate: 0 4%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Each Mate's beat is an offset inside the loop's rest (the turn rests
+     for its first 1.32 s, the glance for its first 1.68 s), so a Mate that
+     starts work starts still, never mid-turn. */
+  [data-mate-face-state="working"] [data-mate-face-body] {
+    animation: mate-face-turn 2.4s infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.18s);
+  }
+
+  [data-mate-face-state="working"] [data-mate-face-glance] {
+    animation: mate-face-glance 5.6s infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.2s);
+  }
+
+  /* A Mate's row under the pointer: its face looks up at you. Pressed, the
+     face gives a little under the finger and springs back as it lets go. */
+  [data-zerops-surface="sidebar-mate"]:hover [data-mate-face-look] {
+    translate: 0 -5%;
+  }
+
+  /* Waking — on its way up, until its first sign-in — it breathes: asleep's closed eyes, the whole
+     face swelling from its feet once every three seconds, on the face's own box. With reduced
+     motion it stands still, and its words say it is coming up. */
+  [data-zerops-primitive="mate-face"][data-mate-face-state="waking"] {
+    transform-origin: 50% 96%;
+    animation: mate-face-breathe 3s ease-in-out infinite;
+    animation-delay: calc(var(--mate-face-phase, 0) * -0.37s);
+  }
+
+  [data-zerops-surface="sidebar-mate"] [data-mate-face-hop] {
+    transition: scale var(--duration-base) var(--ease-spring);
+  }
+
+  [data-zerops-surface="sidebar-mate"]:active [data-mate-face-hop] {
+    scale: 0.92;
+    transition-duration: var(--duration-quick);
+  }
+}
+
+@keyframes mate-face-turn {
+  0%,
+  55% {
+    rotate: 0deg;
+    animation-timing-function: var(--ease-spring);
+  }
+  100% {
+    rotate: var(--mate-face-step, 0deg);
+  }
+}
+
+@keyframes mate-face-glance {
+  0%,
+  30% {
+    translate: 0 0;
+    animation-timing-function: var(--ease-in-out-strong);
+  }
+  36%,
+  54% {
+    translate: -5% 0;
+    animation-timing-function: var(--ease-in-out-strong);
+  }
+  62%,
+  80% {
+    translate: 5% 0;
+    animation-timing-function: var(--ease-in-out-strong);
+  }
+  86%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+@keyframes mate-face-breathe {
+  0%,
+  100% {
+    scale: 1;
+  }
+  50% {
+    scale: 1.05;
+  }
+}

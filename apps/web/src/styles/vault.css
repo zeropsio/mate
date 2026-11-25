@@ -1,0 +1,176 @@
+/* ==== the Vault tab ==== */
+/* The vault: one list in groups, one-line rows that open in place; what is not live yet in one
+   quiet warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
+   and an item travel with the content under them; reduced motion keeps only the end states. */
+.vault-panel {
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
+  --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
+  --vault-row-bg: var(--card);
+  --vault-hairline: color-mix(in oklab, var(--border) 70%, transparent);
+  --vault-edge: color-mix(in oklab, var(--border) 80%, transparent);
+  container-type: inline-size;
+}
+
+.dark .vault-panel {
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+}
+
+/* The page under the cards is the right panel's own surface, as under Files and Data. */
+.vault-canvas {
+  background: transparent;
+}
+
+/* A card as the right panel draws its own (the launcher's): card surface, a light edge. */
+.vault-box {
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--vault-edge);
+}
+
+.dark .vault-box {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.vault-rows > :where(:not(:first-child)) {
+  border-top: 1px solid var(--vault-hairline);
+}
+
+/* A service Zerops runs, unfolded: its values under its line. */
+.vault-made-rows {
+  border-top: 1px solid var(--vault-hairline);
+}
+
+/* A `${name}` inside a value: a quiet chip in the line. */
+.vault-ref {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: var(--radius-mark);
+  background: var(--vault-mark);
+  font-size: var(--text-2xs);
+  line-height: 17px;
+  vertical-align: 1px;
+  margin-inline: 1px;
+  font-family: var(--font-mono);
+}
+
+.vault-dots {
+  font-size: var(--text-4xs);
+  line-height: 1;
+  letter-spacing: 2px;
+  vertical-align: 1px;
+}
+
+.vault-row[data-open] .vault-row-value {
+  visibility: hidden;
+}
+
+.vault-chevron {
+  transition: transform 0.2s var(--ease-out-strong);
+}
+
+.vault-row[data-open] .vault-chevron {
+  transform: rotate(180deg);
+}
+
+.vault-card {
+  box-shadow:
+    0 0 0 1px var(--border),
+    var(--zerops-shadow-drawer);
+}
+
+/* Rows */
+.vault-row {
+  --vault-row-bg: var(--card);
+  position: relative;
+  background: var(--vault-row-bg);
+  transition: background-color var(--duration-quick) var(--ease-out-strong);
+}
+
+.vault-row:not([data-static]):not([data-open]):hover {
+  --vault-row-bg: var(--vault-row-hover);
+}
+
+.vault-row[data-open] {
+  --vault-row-bg: var(--vault-row-open);
+}
+
+.vault-row[data-flash] {
+  animation: vault-flash 1.5s var(--ease-out-strong) 1;
+}
+
+.vault-row-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-slow) var(--ease-out-strong);
+}
+
+.vault-row[data-open] > .vault-row-body {
+  grid-template-rows: 1fr;
+}
+
+.vault-row-body > div {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--duration-quick) var(--ease-out-strong);
+}
+
+.vault-row[data-open] > .vault-row-body > div {
+  opacity: 1;
+  transition: opacity var(--duration-base) var(--ease-out-strong) 0.06s;
+}
+
+.vault-settled {
+  animation: vault-settled 1.4s var(--ease-out-strong) both;
+}
+
+.vault-gutter > span {
+  display: block;
+  height: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-chevron,
+  .vault-row,
+  .vault-row-body,
+  .vault-row-body > div,
+  .vault-row[data-open] > .vault-row-body > div {
+    transition: none;
+  }
+
+  .vault-row[data-flash],
+  .vault-settled {
+    animation: none;
+  }
+}
+
+@keyframes vault-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@keyframes vault-settled {
+  0% {
+    opacity: 0;
+    scale: 0.6;
+  }
+  14%,
+  72% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+/* ==== end of the Vault tab ==== */
