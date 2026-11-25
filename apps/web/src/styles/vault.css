@@ -8,7 +8,6 @@
   --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
   --vault-row-bg: var(--card);
   --vault-hairline: color-mix(in oklab, var(--border) 70%, transparent);
-  --vault-edge: color-mix(in oklab, var(--border) 80%, transparent);
   container-type: inline-size;
 }
 
@@ -17,23 +16,7 @@
   --vault-row-open: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
 }
 
-/* The page under the cards is the right panel's own surface, as under Files and Data. */
-.vault-canvas {
-  background: transparent;
-}
-
-/* A card as the right panel draws its own (the launcher's): card surface, a light edge. */
-.vault-box {
-  overflow: hidden;
-  border-radius: var(--radius-card);
-  background: var(--card);
-  box-shadow: 0 0 0 1px var(--vault-edge);
-}
-
-.dark .vault-box {
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
-}
-
+/* A group's rows (in the kit's Card) part by a hairline. */
 .vault-rows > :where(:not(:first-child)) {
   border-top: 1px solid var(--vault-hairline);
 }
@@ -56,6 +39,7 @@
   font-family: var(--font-mono);
 }
 
+/* A hidden value's dots: small and spaced, on the value's line. */
 .vault-dots {
   font-size: var(--text-4xs);
   line-height: 1;
@@ -63,10 +47,12 @@
   vertical-align: 1px;
 }
 
+/* Open, a row's value is said in its body instead: its place on the line stays. */
 .vault-row[data-open] .vault-row-value {
   visibility: hidden;
 }
 
+/* The chevron a row and a folded service wear turns as it opens. */
 .vault-chevron {
   transition: transform 0.2s var(--ease-out-strong);
 }
@@ -75,13 +61,14 @@
   transform: rotate(180deg);
 }
 
+/* The New value editor: a card raised over the list it adds to. */
 .vault-card {
   box-shadow:
     0 0 0 1px var(--border),
     var(--zerops-shadow-drawer);
 }
 
-/* Rows */
+/* A row's ground: the card's, lit under the pointer and while open, flashed when it is found. */
 .vault-row {
   --vault-row-bg: var(--card);
   position: relative;
@@ -101,6 +88,7 @@
   animation: vault-flash 1.5s var(--ease-out-strong) 1;
 }
 
+/* A row's body opens by its grid row, so what is under it travels with it; its words fade after. */
 .vault-row-body {
   display: grid;
   grid-template-rows: 0fr;
@@ -123,10 +111,12 @@
   transition: opacity var(--duration-base) var(--ease-out-strong) 0.06s;
 }
 
+/* The saved check comes in and leaves by itself. */
 .vault-settled {
   animation: vault-settled 1.4s var(--ease-out-strong) both;
 }
 
+/* The text editor's gutter: one mark per line, at the line's height. */
 .vault-gutter > span {
   display: block;
   height: 20px;

@@ -26,6 +26,7 @@ import { ChevronDownIcon, EllipsisIcon, PlusIcon, SearchIcon, TextIcon, XIcon } 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-group";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
@@ -450,7 +451,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         data-vault-panel={failed ? "failed" : "unread"}
       >
         {header}
-        <div className="vault-canvas min-h-0 flex-1 border-t border-transparent">
+        <div className="min-h-0 flex-1 border-t border-transparent">
           {failed ? (
             <div className="grid gap-6 px-3 pt-1 pb-12" data-vault-list>
               {failure}
@@ -569,9 +570,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         level={3}
         title={<VaultPartName mateName={mateName} scope={section.scope} />}
       >
-        <div className="vault-box">
+        <Card className="overflow-hidden">
           <div className="vault-rows">{section.entries.map(rowOf)}</div>
-        </div>
+        </Card>
       </Section>
     );
     const needs = vaultNeeds(vaultGroups(view, { kind: "everything" }, ""));
@@ -642,7 +643,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           </div>
         )}
         {made.length > 0 ? (
-          <div className="vault-box" data-vault-made>
+          <Card className="overflow-hidden" data-vault-made>
             <div className="vault-rows">
               {made.map((scope) => {
                 const open = openMade.has(scope.id);
@@ -693,7 +694,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                 );
               })}
             </div>
-          </div>
+          </Card>
         ) : null}
         {mates.length === 0 || forAll.length + own.length + made.length === 0 ? (
           mates.map(sectionOf)
@@ -723,8 +724,8 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       <div
         className={
           scrolled
-            ? "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
-            : "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-transparent [scrollbar-width:thin]"
+            ? "min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
+            : "min-h-0 flex-1 overflow-y-auto border-t border-transparent [scrollbar-width:thin]"
         }
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         ref={scroller}
@@ -770,9 +771,9 @@ function HeldSection({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex min-h-7 items-center">{label}</div>
-      <div className="vault-box">
+      <Card className="overflow-hidden">
         <div className="vault-rows">{children}</div>
-      </div>
+      </Card>
     </div>
   );
 }
