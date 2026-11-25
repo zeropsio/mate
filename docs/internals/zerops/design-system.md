@@ -283,6 +283,13 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/prefer-code-block` (a `<pre>` in the web client outside `components/ui`,
     the kit and the design harness); its ledger only shrinks
 
+- **R19** — What floats is the kit's: a popup tied to a press or a point is `Popover`, `Tooltip` or
+  `Menu` (a point is a virtual `anchor`), a layer over a surface is `Overlay`, a press over
+  scrolling content is `FloatingAction`
+  - _Enforced by:_ `t3code/no-hand-popup` (a plain element that is `fixed` or `absolute`, stacked
+    with `z-*`, on a popup's ground: `bg-popover`, `dropdown-glass` or `shadow-popup`); its ledger
+    only shrinks
+
 ## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;

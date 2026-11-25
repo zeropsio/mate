@@ -184,6 +184,7 @@ export default defineConfig({
       "t3code/prefer-item-grounds": "error",
       "t3code/prefer-failure": "error",
       "t3code/prefer-code-block": "error",
+      "t3code/no-hand-popup": "error",
       "t3code/prefer-text": "error",
       "t3code/no-sized-slot-icon": "error",
       "t3code/no-test-in-loop": "error",

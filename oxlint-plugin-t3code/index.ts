@@ -28,6 +28,7 @@ import noRawControls from "./rules/no-raw-controls.ts";
 import preferItemGrounds from "./rules/prefer-item-grounds.ts";
 import preferFailure from "./rules/prefer-failure.ts";
 import preferCodeBlock from "./rules/prefer-code-block.ts";
+import noHandPopup from "./rules/no-hand-popup.ts";
 import preferText from "./rules/prefer-text.ts";
 import noSizedSlotIcon from "./rules/no-sized-slot-icon.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
@@ -83,6 +84,7 @@ export default definePlugin({
     "prefer-item-grounds": preferItemGrounds,
     "prefer-failure": preferFailure,
     "prefer-code-block": preferCodeBlock,
+    "no-hand-popup": noHandPopup,
     "prefer-text": preferText,
     "no-sized-slot-icon": noSizedSlotIcon,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,

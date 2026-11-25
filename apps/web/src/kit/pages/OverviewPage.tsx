@@ -53,6 +53,7 @@ const GUARD_NAME: Readonly<Record<(typeof KIT_GUARDS)[number]["rule"], string>> 
   "no-theme-escape-hatches": "Colours around the theme",
   "no-unknown-classes": "Unknown classes",
   "prefer-text": "Hand-styled words",
+  "no-hand-popup": "Hand-floated popups",
 };
 
 /** One figure of the kit's size: the number large, what it counts under it. */

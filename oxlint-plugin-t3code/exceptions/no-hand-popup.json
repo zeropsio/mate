@@ -1,0 +1,10 @@
+[
+  {
+    "path": "apps/web/src/components/zerops/SidebarProjectReorder.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<span> className=\"pointer-events-none fixed z-50 rounded-control border border-border bg-popover px-3 py-1 text-emphasis font-semibold tracking-tight whitespace-nowrap text-popover-foreground shadow-lg\"",
+    "owner": "floating unification",
+    "reason": "the dragged project's name riding with the pointer while the menu is reordered: a drag ghost placed at the pointer every frame, not a popup tied to a press or a point",
+    "expires": "never"
+  }
+]
