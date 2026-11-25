@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import { repositoryPage } from "./ZeropsRepositoryBrowser.logic";
 
 // witness: apps/web/src/components/zerops/ZeropsRepositoryBrowser.logic.ts | if (input.allowed === undefined) return { kind: "reading" }; → if (input.allowed === undefined) return { kind: "gone" };
-it("MN+1: A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone", () => {
+it("MN81: A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone", () => {
   const base = {
     appsKnown: true,
     appListed: true,

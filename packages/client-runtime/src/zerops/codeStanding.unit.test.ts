@@ -3,8 +3,26 @@ import {
   codeStanding,
   codeStandingLine,
   codeStandingOffers,
+  codeStandingSentence,
   type CodeStanding,
 } from "./codeStanding.ts";
+
+// witness: packages/client-runtime/src/zerops/codeStanding.ts | return standing.holds === "code" → return standing.holds !== "code"
+it("ZV187: A kept, asked or deleting project's code is said in one sentence that names the project and what is kept, and a project in use has none; breaks: the banner of a project that holds only its setup says its code is billed", () => {
+  const rows: ReadonlyArray<readonly [CodeStanding, string | undefined]> = [
+    [
+      { kind: "kept", holds: "code" },
+      "Archive has no Mate. Its code is kept and billed as storage.",
+    ],
+    [{ kind: "kept", holds: "setup" }, "Archive has no Mate. Only its setup is kept."],
+    [{ kind: "asked" }, "Archive has no Mate. HQ asks whether to keep its code."],
+    [{ kind: "deleting", placed: false, phase: "going" }, "Archive is being deleted."],
+    [{ kind: "in-use", mate: true, leaving: false }, undefined],
+    [{ kind: "unread" }, undefined],
+  ];
+  for (const [standing, sentence] of rows)
+    expect(codeStandingSentence("Archive", standing)).toBe(sentence);
+});
 
 const code = { empty: false, deletingProjectIds: [] } as const;
 const setup = { empty: true, deletingProjectIds: [] } as const;

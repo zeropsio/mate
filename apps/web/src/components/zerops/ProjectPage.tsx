@@ -491,11 +491,9 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
       {repos !== undefined && repos.length > 0 ? (
         <Button
           onClick={() => {
-            // The Git page opens one repository by app and name; with several, its overview.
-            const only = repos.length === 1 ? repos[0] : undefined;
             void navigate({
               to: "/git",
-              search: only === undefined ? {} : { appId: groupId, repo: only.name },
+              search: { appId: groupId },
             });
           }}
           size="sm"

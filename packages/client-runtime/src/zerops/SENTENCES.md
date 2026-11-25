@@ -1,4 +1,4 @@
-next: ZV187
+next: ZV188
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -155,3 +155,4 @@ next: ZV187
 - ZV184 — A repository's open changes are said as their count and each status with how many hold it, and nothing where none is open; breaks: a repository with a conflicting change reads the same as one ready to merge
 - ZV185 — A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is
 - ZV186 — Every open kept-code question has a group on the Git overview, the listed project's own or one made from the question when the project is not listed; breaks: an Owner cannot answer a question about a project whose changes HQ does not offer them
+- ZV187 — A kept, asked or deleting project's code is said in one sentence that names the project and what is kept, and a project in use has none; breaks: the banner of a project that holds only its setup says its code is billed

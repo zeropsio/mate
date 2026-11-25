@@ -1,5 +1,5 @@
 import { defaultStringifySearch } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import { appBasePath } from "~/basePath";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
@@ -23,6 +23,23 @@ export function RepositoryGone({ onBack }: { readonly onBack: () => void }) {
   );
 }
 
+/** The non-open answers use the same loading, gone and refusal pieces on every entry. */
+export function RepositoryPageEnd({
+  state,
+  onBack,
+}: {
+  readonly state: Exclude<ReturnType<typeof repositoryPage>, { readonly kind: "open" }>;
+  readonly onBack: () => void;
+}) {
+  if (state.kind === "reading") return <Loading label="The repository" shape="lines" />;
+  if (state.kind === "gone") return <RepositoryGone onBack={onBack} />;
+  return (
+    <Text render={<p />} variant="description" role="alert">
+      {state.reason}
+    </Text>
+  );
+}
+
 /**
  * A repository in the Git browser: its frame and the page its link names, read only while the
  * person's access to the application is verified.
@@ -36,6 +53,7 @@ export function ZeropsRepositoryBrowser({
   onOpenChange,
   allowed,
   accessReason,
+  banner,
   appsKnown,
   appListed,
   repositories,
@@ -52,6 +70,7 @@ export function ZeropsRepositoryBrowser({
   readonly onOpenChange?: ((number: number) => void) | undefined;
   readonly allowed: boolean | undefined;
   readonly accessReason?: string | undefined;
+  readonly banner?: ReactNode;
   readonly appsKnown: boolean;
   readonly appListed: boolean;
   readonly repositories: ReadonlyArray<string> | undefined;
@@ -104,16 +123,8 @@ export function ZeropsRepositoryBrowser({
   if (state.kind !== "open") {
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
-        <GitRepoHeading project={project} repo={repo} onBack={onBack} />
-        {state.kind === "reading" ? (
-          <Loading label="The repository" shape="lines" />
-        ) : state.kind === "gone" ? (
-          <RepositoryGone onBack={onBack} />
-        ) : (
-          <Text render={<p />} variant="description" role="alert">
-            {state.reason}
-          </Text>
-        )}
+        <GitRepoHeading appId={appId} project={project} repo={repo} />
+        <RepositoryPageEnd state={state} onBack={onBack} />
       </section>
     );
   }
@@ -136,7 +147,7 @@ export function ZeropsRepositoryBrowser({
             ? undefined
             : repository.changes.filter(({ pull }) => pull.state === "open").length
         }
-        onBack={onBack}
+        banner={banner}
         onPick={(next) => onNavigate({ rev: next })}
         onTab={(next) => onNavigate({ ...(rev === undefined ? {} : { rev }), view: next })}
       />
