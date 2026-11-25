@@ -785,7 +785,7 @@ export function makeHqExecutor(ports: {
           return {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqKeptGit", id: intent.appId }],
-            outcome: { kind: "succeeded", evidence: "HQ answered the kept Git question." },
+            outcome: { kind: "succeeded", evidence: "HQ answered the kept code question." },
           };
         }
         if (intent.kind === "save-persona-template" || intent.kind === "delete-persona-template") {

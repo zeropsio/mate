@@ -1,4 +1,4 @@
-next: MN80
+next: MN81
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -79,3 +79,4 @@ next: MN80
 - MN76 — A new Mate whose hello HQ refused stops its arrival's row on the step that waited for that hello, failed, and nowhere else; breaks: the failed page still spins on Starting under its failed headline
 - MN78 — A change that waits on the person reads "Ready for your review" on the project's line and under "Waiting on you" only where nothing stops it: one whose GitHub checks failed, or that anything else stops, keeps that word.
 - MN79 — A repository's row says where its code also lives from its remote on any host, else what it follows, else that it is only in Mate; breaks: a repository on another host than GitHub reads as only in Mate
+- MN80 — The menu says how many kept-code questions are open in one line and none when there is none; breaks: the menu offers the answer in a second place, or says nothing while a question waits

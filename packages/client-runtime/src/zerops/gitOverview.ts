@@ -126,14 +126,31 @@ export function gitOverviewGroups(
   apps: ReadonlyArray<GitOverviewApp>,
   standingOf: (appId: string) => CodeStanding,
   openOnly: boolean,
+  questions: ReadonlyArray<{ readonly appId: string; readonly appName: string }> = [],
 ) {
-  const groups = [...apps]
+  const listed = new Set(apps.map((app) => app.appId));
+  const asked = new Set(questions.map((question) => question.appId));
+  const groups = [
+    ...apps.map((app) => ({ ...app, listed: true })),
+    ...questions
+      .filter((question) => !listed.has(question.appId))
+      .map((question) => ({
+        appId: question.appId,
+        name: question.appName,
+        repositories: [],
+        listed: false,
+      })),
+  ]
     .sort((a, b) => byName(a.name, b.name))
     .map((app) => {
-      const standing = standingOf(app.appId);
+      const standing: CodeStanding = asked.has(app.appId)
+        ? { kind: "asked" }
+        : standingOf(app.appId);
       const setup = app.repositories.find((repository) => repository.name === "group");
       const repositories = app.repositories.filter((repository) => repository.name !== "group");
-      const size = codeSize(app.repositories.map((repository) => repository.facts ?? {}));
+      const size = app.listed
+        ? codeSize(app.repositories.map((repository) => repository.facts ?? {}))
+        : { bytes: 0, complete: false };
       return { ...app, standing, setup, repositories, repositoryCount: repositories.length, size };
     });
   const shown = groups.flatMap((group) => {
@@ -141,7 +158,9 @@ export function gitOverviewGroups(
       ? group.repositories.filter((repository) => repository.open)
       : group.repositories;
     const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
-    return openOnly && repositories.length === 0 && !setupOpen ? [] : [{ ...group, repositories }];
+    return openOnly && repositories.length === 0 && !setupOpen && group.standing.kind !== "asked"
+      ? []
+      : [{ ...group, repositories }];
   });
   const isKept = ({ standing }: (typeof groups)[number]) =>
     standing.kind === "kept" ||
@@ -150,7 +169,7 @@ export function gitOverviewGroups(
   return {
     used: shown.filter((group) => !isKept(group)),
     kept: shown.filter(isKept),
-    projects: groups.length,
+    projects: apps.length,
     repositories: groups.reduce((count, group) => count + group.repositories.length, 0),
     openChanges: apps.reduce(
       (count, app) =>

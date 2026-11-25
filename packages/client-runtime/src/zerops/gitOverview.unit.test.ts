@@ -32,7 +32,7 @@ const standingOf = (id: string): CodeStanding =>
     : { kind: "kept", holds: id === "b" ? "code" : "setup" };
 
 // witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.usedBytes !== undefined → true
-it("ZV+1: A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is", () => {
+it("ZV185: A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is", () => {
   expect(codeSize([{ usedBytes: 1024 }, { usedBytes: 2048 }])).toEqual({
     bytes: 3072,
     complete: true,
@@ -58,6 +58,40 @@ it("ZV+1: A project's code size is the sum of its repositories' sizes, its setup
     bytes: 3584,
     complete: true,
   });
+});
+
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | !listed.has(question.appId) → listed.has(question.appId)
+it("ZV186: Every open kept-code question has a group on the Git overview, the listed project's own or one made from the question when the project is not listed; breaks: an Owner cannot answer a question about a project whose changes HQ does not offer them", () => {
+  const apps = gitOverview({
+    mateName: () => undefined,
+    apps: [
+      { appId: "a", name: "A", repositories: [repo("one")], changes: [] },
+      { appId: "b", name: "B", repositories: [repo("two")], changes: [] },
+    ],
+  });
+  const standing = (id: string): CodeStanding =>
+    id === "b" ? { kind: "asked" } : { kind: "in-use", mate: true, leaving: false };
+  const questions = [
+    { appId: "b", appName: "B" },
+    { appId: "c", appName: "gamma" },
+  ];
+  const groups = gitOverviewGroups(apps, standing, false, questions);
+  expect(groups.used.map(({ name }) => name)).toEqual(["A"]);
+  expect(
+    groups.kept.map(({ name, standing, repositories }) => [
+      name,
+      standing.kind,
+      repositories.length,
+    ]),
+  ).toEqual([
+    ["B", "asked", 1],
+    ["gamma", "asked", 0],
+  ]);
+  expect(gitOverviewGroups(apps, standing, false, []).kept.map(({ name }) => name)).toEqual(["B"]);
+  expect(gitOverviewGroups(apps, standing, true, questions).kept.map(({ name }) => name)).toEqual([
+    "B",
+    "gamma",
+  ]);
 });
 
 // witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.name !== "group" → repository.name !== ""

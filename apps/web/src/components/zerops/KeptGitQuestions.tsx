@@ -1,137 +1,65 @@
-import { useState } from "react";
 import { Atom } from "effect/reactivity";
+import { useNavigate } from "@tanstack/react-router";
 import { hqKeptGitQuestions, type KeptGitQuestionView } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "~/zerops/accountData";
-import { useAccountOperationsOptional } from "~/zerops/accountOperations";
-import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { submitHqAppWrite } from "~/zerops/hqAppWrite";
+import { appBasePath } from "~/basePath";
 import { Button } from "../ui/button";
-import { Card } from "~/components/ui/card";
-import { Text } from "~/components/ui/text";
+import { keptCodeLine } from "./KeptGitQuestions.logic";
 
 const NO_QUESTIONS = Atom.make<ReadonlyArray<KeptGitQuestionView>>([]);
+
+export function KeptCodeLine({
+  count,
+  href,
+  onNavigate,
+}: {
+  readonly count: number;
+  readonly href: string;
+  readonly onNavigate?: (() => void) | undefined;
+}) {
+  const line = keptCodeLine(count);
+  if (line === undefined) return null;
+  return (
+    <div className="px-4 py-1">
+      <Button
+        size="sm"
+        variant="sidebar"
+        render={<a href={href} />}
+        onClick={(event) => {
+          if (
+            onNavigate === undefined ||
+            event.button !== 0 ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            event.shiftKey
+          )
+            return;
+          event.preventDefault();
+          onNavigate();
+        }}
+      >
+        {line}
+      </Button>
+    </div>
+  );
+}
 
 /** Navigation only shows questions HQ admits to this reader. */
 export function KeptGitQuestions() {
   const orgId = useAccountOrgId();
   const questions = useProjection(hqKeptGitQuestions, orgId, NO_QUESTIONS);
-  const operations = useAccountOperationsOptional();
+  const navigate = useNavigate();
   if (orgId === null || questions.length === 0) return null;
+  const appId = questions.length === 1 ? questions[0]?.question.appId : undefined;
+  const href = `${appBasePath()}/git${appId === undefined ? "" : `?${new URLSearchParams({ appId })}`}`;
   return (
-    <section aria-label="Kept Git of a removed project" className="flex flex-col gap-3 px-4 py-3">
-      <Text render={<h2 />} variant="label">
-        Kept Git of a removed project
-      </Text>
-      {questions.map((view) => (
-        <KeptGitQuestion
-          key={`${view.question.appId}:${view.question.askedAt}`}
-          view={view}
-          answer={
-            operations === null
-              ? undefined
-              : (answer) =>
-                  submitHqAppWrite(
-                    operations,
-                    {
-                      kind: "answer-kept-git",
-                      orgId,
-                      appId: view.question.appId,
-                      answer,
-                    },
-                    view.requestId,
-                  )
-          }
-        />
-      ))}
-    </section>
-  );
-}
-
-function KeptGitQuestion({
-  view,
-  answer,
-}: {
-  readonly view: KeptGitQuestionView;
-  readonly answer?: ((answer: "keep" | "delete") => Promise<void>) | undefined;
-}) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const busy = sending || view.pending;
-  const send = async (choice: "keep" | "delete") => {
-    if (busy || answer === undefined) return;
-    const current = captureAccountLifetime();
-    setSending(true);
-    setError(null);
-    try {
-      await answer(choice);
-      if (current()) setConfirmDelete(false);
-    } catch (cause) {
-      if (current())
-        setError(cause instanceof Error ? cause.message : "HQ could not take your answer.");
-    } finally {
-      if (current()) setSending(false);
-    }
-  };
-  return (
-    <Card data-zerops-surface="kept-git-question">
-      <div className="flex flex-col gap-2 p-3 text-body">
-        <p className="font-medium">{view.question.appName}</p>
-        <p className="text-muted-foreground">
-          {view.question.projectName ?? view.question.appName} was removed. Keep its Git?
-        </p>
-        <p className="text-muted-foreground">
-          Its Git stays kept and billed as storage until you delete it.
-        </p>
-        {confirmDelete ? (
-          <>
-            <p>
-              Delete {view.question.appName} and its Git? This permanently deletes its repositories.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => setConfirmDelete(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={busy || answer === undefined}
-                onClick={() => void send("delete")}
-              >
-                Delete Git
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={busy || answer === undefined}
-              onClick={() => void send("keep")}
-            >
-              Keep Git
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={busy || answer === undefined}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete Git…
-            </Button>
-          </div>
-        )}
-        {(error ?? view.message) ? (
-          <p role="status" className="text-muted-foreground">
-            {error ?? view.message}
-          </p>
-        ) : null}
-      </div>
-    </Card>
+    <KeptCodeLine
+      count={questions.length}
+      href={href}
+      onNavigate={() => {
+        void navigate({ to: "/git", search: appId === undefined ? {} : { appId } });
+      }}
+    />
   );
 }

@@ -1,4 +1,4 @@
-next: ZV185
+next: ZV187
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -153,4 +153,5 @@ next: ZV185
 - ZV182 — A project's standing has one set of words, and says which of them stand over a row's own content; breaks: a kept project reads No Mate yet
 - ZV183 — The Git overview lists each project once with its code repositories as rows and its setup repository as the group's link, puts kept, asked and placeless deleting projects in their own section, and showing only open changes hides a repository without one but never one whose changes are not read, while the counts stay those of the whole list; breaks: a project's setup repository is counted as code, or a repository with unread changes disappears under the filter
 - ZV184 — A repository's open changes are said as their count and each status with how many hold it, and nothing where none is open; breaks: a repository with a conflicting change reads the same as one ready to merge
-- ZV+1 — A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is
+- ZV185 — A project's code size is the sum of its repositories' sizes, its setup repository included, and is said only when HQ gave a size for every one of them; breaks: a project with a repository HQ has not sized reads smaller than it is
+- ZV186 — Every open kept-code question has a group on the Git overview, the listed project's own or one made from the question when the project is not listed; breaks: an Owner cannot answer a question about a project whose changes HQ does not offer them

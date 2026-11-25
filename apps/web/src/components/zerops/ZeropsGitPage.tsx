@@ -5,7 +5,9 @@ import {
   codeStandingLine,
 } from "@t3tools/client-runtime/zerops";
 import { formatStorageBytes } from "@t3tools/client-runtime/zerops/gitBrowse/home";
+import { hqKeptGitQuestions, type KeptGitQuestionView } from "@t3tools/client-runtime/data";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Atom } from "effect/reactivity";
 import { useContext, useMemo, useState } from "react";
 import { Button, InlineButton } from "../ui/button";
 import { Card } from "../ui/card";
@@ -33,6 +35,10 @@ import { gitPageState, repositoryWhere, type GitPageState } from "./ZeropsGitPag
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { lastMateDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
+import { useAccountOrgId, useProjection } from "~/zerops/accountData";
+import { KeptCodeQuestion, useKeptCodeAnswer } from "./KeptCodeQuestion";
+
+const NO_QUESTIONS = Atom.make<ReadonlyArray<KeptGitQuestionView>>([]);
 
 function Reading() {
   return (
@@ -73,6 +79,10 @@ type GitGroup = ReturnType<typeof gitOverviewGroups>["used"][number];
 type OverviewProps = {
   readonly state: GitPageState;
   readonly standingOf: (appId: string) => CodeStandingView;
+  readonly questions?: ReadonlyArray<KeptGitQuestionView>;
+  readonly answer?:
+    | ((view: KeptGitQuestionView, answer: "keep" | "delete") => Promise<void>)
+    | undefined;
   readonly visible?: boolean;
   readonly onAgain?: (() => void) | undefined;
   readonly onAddMate?: ((appId: string) => void) | undefined;
@@ -85,13 +95,17 @@ type OverviewProps = {
 function ProjectGroup({
   group,
   standingOf,
+  questions,
+  answer,
   onAddMate,
   onDelete,
   onReview,
   repositoryHref,
   onOpenRepository,
 }: Omit<OverviewProps, "state"> & { readonly group: GitGroup }) {
-  const { standing, offers, addMateWhy } = standingOf(group.appId);
+  const { offers, addMateWhy } = standingOf(group.appId);
+  const { standing } = group;
+  const question = questions?.find(({ question }) => question.appId === group.appId);
   const line = codeStandingLine(standing);
   const setupOpen = group.setup?.changes.filter(({ pull }) => pull.state === "open").length ?? 0;
   const link = (repo: string, label: React.ReactNode) =>
@@ -132,49 +146,62 @@ function ProjectGroup({
                 {link("group", <>Setup{setupOpen > 0 ? ` · ${String(setupOpen)} open` : ""}</>)}
               </Text>
             )}
-            <Text variant="note">
-              {group.repositoryCount} {group.repositoryCount === 1 ? "repository" : "repositories"}
-              {group.size.complete ? ` · ${formatStorageBytes(group.size.bytes)}` : ""}
-            </Text>
+            {group.listed ? (
+              <Text variant="note">
+                {group.repositoryCount}{" "}
+                {group.repositoryCount === 1 ? "repository" : "repositories"}
+                {group.size.complete ? ` · ${formatStorageBytes(group.size.bytes)}` : ""}
+              </Text>
+            ) : null}
           </div>
-          {line !== undefined && (line.notice || standing.kind === "unread") ? (
+          {question === undefined &&
+          line !== undefined &&
+          (line.notice || standing.kind === "unread") ? (
             <Text variant="description">{line.words}</Text>
           ) : null}
-          {offers.answer ? <Text variant="note">Answer it at the top of the menu.</Text> : null}
-          {offers.addMate === "off" && addMateWhy !== undefined ? (
+          {question === undefined ? null : (
+            <KeptCodeQuestion
+              key={`${question.question.appId}:${question.question.askedAt}`}
+              view={question}
+              answer={answer === undefined ? undefined : (choice) => answer(question, choice)}
+            />
+          )}
+          {question === undefined && offers.addMate === "off" && addMateWhy !== undefined ? (
             <Text variant="note">{addMateWhy}</Text>
           ) : null}
-          {offers.delete === "owner" ? (
+          {question === undefined && offers.delete === "owner" ? (
             <Text variant="note">An Owner or Admin can delete it.</Text>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {offers.addMate === "none" ? null : (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={offers.addMate === "off"}
-              onClick={() => onAddMate?.(group.appId)}
-            >
-              Add a Mate
-            </Button>
-          )}
-          {offers.delete === "offered" || offers.delete === "waits" ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={offers.delete === "waits"}
-              onClick={() => onDelete?.(group.appId)}
-            >
-              {deleteLabel}
-            </Button>
-          ) : null}
-          {offers.review ? (
-            <Button variant="secondary" size="sm" onClick={() => onReview?.(group.appId)}>
-              Review deletion
-            </Button>
-          ) : null}
-        </div>
+        {question === undefined ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {offers.addMate === "none" ? null : (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={offers.addMate === "off"}
+                onClick={() => onAddMate?.(group.appId)}
+              >
+                Add a Mate
+              </Button>
+            )}
+            {offers.delete === "offered" || offers.delete === "waits" ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={offers.delete === "waits"}
+                onClick={() => onDelete?.(group.appId)}
+              >
+                {deleteLabel}
+              </Button>
+            ) : null}
+            {offers.review ? (
+              <Button variant="secondary" size="sm" onClick={() => onReview?.(group.appId)}>
+                Review deletion
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {group.repositories.length > 0 ? (
         <>
@@ -211,7 +238,7 @@ function ProjectGroup({
             })}
           </List>
         </>
-      ) : group.repositoryCount === 0 ? (
+      ) : group.listed && group.repositoryCount === 0 ? (
         <>
           <Separator />
           <div className="px-4 py-3">
@@ -224,28 +251,20 @@ function ProjectGroup({
 }
 
 export function ZeropsGitOverview(props: OverviewProps) {
-  const { state, visible = true, onAgain, standingOf } = props;
+  const { state, visible = true, onAgain, standingOf, questions = [] } = props;
   const [openOnly, setOpenOnly] = useState(false);
   if (!visible) return null;
-  if (state.kind === "refused")
-    return (
-      <p className="text-body text-status-failed" role="alert" data-zerops-surface="git-refused">
-        {state.reason}
-      </p>
-    );
-  if (state.kind === "unread")
-    return state.failure === null ? (
-      <Reading />
-    ) : (
-      <ReadTrouble failure={state.failure} onAgain={onAgain} />
-    );
-  const all = gitOverviewGroups(state.apps, (id) => standingOf(id).standing, false);
+  const apps = state.kind === "read" ? state.apps : [];
+  const openQuestions = questions.map(({ question }) => question);
+  const all = gitOverviewGroups(apps, (id) => standingOf(id).standing, false, openQuestions);
   const filtering = openOnly && all.openChanges > 0;
   const groups = filtering
-    ? gitOverviewGroups(state.apps, (id) => standingOf(id).standing, true)
+    ? gitOverviewGroups(apps, (id) => standingOf(id).standing, true, openQuestions)
     : all;
   const groupProps = {
     standingOf,
+    questions,
+    answer: props.answer,
     onAddMate: props.onAddMate,
     onDelete: props.onDelete,
     onReview: props.onReview,
@@ -254,54 +273,67 @@ export function ZeropsGitOverview(props: OverviewProps) {
   };
   return (
     <div className="flex flex-col gap-5" data-zerops-surface="git-overview">
-      <ReadTrouble failure={state.failure} onAgain={onAgain} />
-      {state.failure !== null &&
+      {state.kind === "refused" ? (
+        <p className="text-body text-status-failed" role="alert" data-zerops-surface="git-refused">
+          {state.reason}
+        </p>
+      ) : (
+        <ReadTrouble failure={state.failure} onAgain={onAgain} />
+      )}
+      {state.kind === "read" &&
+      state.failure !== null &&
       state.apps.some((app) => app.repositories.some((repo) => repo.coverage !== "unread")) ? (
         <Text render={<p />} variant="note">
           Showing the last read changes.
         </Text>
       ) : null}
-      {state.refusals?.map(({ appId, name, reason }) => (
-        <Text render={<p />} variant="description" key={appId} role="status">
-          {name}: {reason}
-        </Text>
-      ))}
+      {state.kind === "read" &&
+        state.refusals?.map(({ appId, name, reason }) => (
+          <Text render={<p />} variant="description" key={appId} role="status">
+            {name}: {reason}
+          </Text>
+        ))}
       {all.projects > 0 ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <Text variant="description">
-              {all.projects} {all.projects === 1 ? "project" : "projects"} · {all.repositories}{" "}
-              {all.repositories === 1 ? "repository" : "repositories"} · {all.openChanges} open{" "}
-              {all.openChanges === 1 ? "change" : "changes"}
-            </Text>
-            {all.openChanges > 0 ? (
-              <InlineButton aria-pressed={filtering} onClick={() => setOpenOnly(!filtering)}>
-                {filtering ? "show all" : "show only these"}
-              </InlineButton>
-            ) : null}
-          </div>
-          <section aria-label="Projects" className="flex flex-col gap-3">
-            {groups.used.map((group) => (
-              <ProjectGroup key={group.appId} group={group} {...groupProps} />
-            ))}
-          </section>
-          {groups.kept.length > 0 ? (
-            <section className="flex flex-col gap-3" aria-label="Kept code">
-              <div className="flex flex-col gap-1">
-                <Text render={<h2 />} variant="label">
-                  Kept code
-                </Text>
-                <Text variant="description">
-                  Nobody works on these projects. Their code is billed as storage.
-                </Text>
-              </div>
-              {groups.kept.map((group) => (
-                <ProjectGroup key={group.appId} group={group} {...groupProps} />
-              ))}
-            </section>
+        <div className="flex flex-wrap items-center gap-2">
+          <Text variant="description">
+            {all.projects} {all.projects === 1 ? "project" : "projects"} · {all.repositories}{" "}
+            {all.repositories === 1 ? "repository" : "repositories"} · {all.openChanges} open{" "}
+            {all.openChanges === 1 ? "change" : "changes"}
+          </Text>
+          {all.openChanges > 0 ? (
+            <InlineButton aria-pressed={filtering} onClick={() => setOpenOnly(!filtering)}>
+              {filtering ? "show all" : "show only these"}
+            </InlineButton>
           ) : null}
-        </>
-      ) : state.reading || state.failure !== null ? null : (
+        </div>
+      ) : null}
+      {groups.used.length > 0 ? (
+        <section aria-label="Projects" className="flex flex-col gap-3">
+          {groups.used.map((group) => (
+            <ProjectGroup key={group.appId} group={group} {...groupProps} />
+          ))}
+        </section>
+      ) : null}
+      {groups.kept.length > 0 ? (
+        <section className="flex flex-col gap-3" aria-label="Kept code">
+          <div className="flex flex-col gap-1">
+            <Text render={<h2 />} variant="label">
+              Kept code
+            </Text>
+            <Text variant="description">
+              Nobody works on these projects. Their code is billed as storage.
+            </Text>
+          </div>
+          {groups.kept.map((group) => (
+            <ProjectGroup key={group.appId} group={group} {...groupProps} />
+          ))}
+        </section>
+      ) : null}
+      {state.kind === "read" &&
+      all.projects === 0 &&
+      groups.kept.length === 0 &&
+      !state.reading &&
+      state.failure === null ? (
         <div className="flex flex-col gap-2" data-zerops-surface="git-empty">
           <Text render={<p />} variant="description">
             No code yet. A project's repositories appear here once its first Mate is set up.
@@ -312,8 +344,11 @@ export function ZeropsGitOverview(props: OverviewProps) {
             </Button>
           </div>
         </div>
-      )}
-      {state.reading ? <Reading /> : null}
+      ) : null}
+      {(state.kind === "unread" && state.failure === null) ||
+      (state.kind === "read" && state.reading) ? (
+        <Reading />
+      ) : null}
     </div>
   );
 }
@@ -327,6 +362,9 @@ export function ZeropsGitPage() {
   const registry = useZeropsRegistry();
   const offersOf = useChangeOffers();
   const standingOf = useCodeStandings();
+  const orgId = useAccountOrgId();
+  const questions = useProjection(hqKeptGitQuestions, orgId, NO_QUESTIONS);
+  const answer = useKeptCodeAnswer();
   const structure = useHqStructure();
   const addMate = useAddMate();
   const inventory = useContext(InventoryContext);
@@ -451,6 +489,8 @@ export function ZeropsGitPage() {
             visible={!detailOpen}
             onAgain={readAgain}
             standingOf={standingOf}
+            questions={questions}
+            answer={answer}
             onAddMate={addMate}
             onDelete={deleteGroup}
             onReview={deleteGroup}
