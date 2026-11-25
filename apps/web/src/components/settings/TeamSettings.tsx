@@ -4,9 +4,10 @@
  * guest's projects under it, an invitation not joined yet saying it waits for them to join — by
  * the name its inviter typed where Zerops knows only the address. A card opens that person's own
  * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
- * admin, *Invite* — and on each invitation they may change, *Send again*. A person with an access
- * change the viewer started at HQ shows it on their card (`AccessOperationRow`); one whose person
- * the team does not list stands above the cards.
+ * admin, *Invite* — and on each invitation they may change, *Send again*, which has the viewer
+ * confirm it's them in Zerops where their session needs it, as an invitation does. A person with an
+ * access change the viewer started at HQ shows it on their card (`AccessOperationRow`); one whose
+ * person the team does not list stands above the cards.
  */
 import { Link, useRouter } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
@@ -36,6 +37,7 @@ import {
   type TeamView,
 } from "./teamSettings.logic";
 import { Loading } from "../ui/loading";
+import { INVITE_UNCONFIRMED } from "./teamMember.logic";
 import { useTeam } from "./useTeam";
 import { Failure } from "../ui/failure";
 import { cn } from "~/lib/utils";
@@ -49,8 +51,14 @@ const typedNames = (person: TeamPerson) => {
 
 /** Settings → Team. */
 export function TeamSettings() {
-  const { view, startAccessChange, operations, continueAccessChange, deleteAccessChange } =
-    useTeam();
+  const {
+    view,
+    startAccessChange,
+    sudoAhead,
+    operations,
+    continueAccessChange,
+    deleteAccessChange,
+  } = useTeam();
   // Each Send again while HQ answers its start, and HQ's refusal of it, by membership id.
   const [presses, setPresses] = useState<Readonly<Record<string, TeamSendAgain>>>({});
   const sendAgain = (person: TeamPerson) => {
@@ -60,19 +68,26 @@ export function TeamSettings() {
       setPresses(({ [person.key]: _left, ...rest }) =>
         press === null ? rest : { ...rest, [person.key]: press },
       );
+    const userId = person.userId;
     held({ state: "sending" });
-    startAccessChange({
-      kind: "resend",
-      userId: person.userId,
-      ...(names === undefined ? {} : { names }),
-    }).then(
-      () => held(null),
-      (cause: unknown) =>
-        held({
-          state: "refused",
-          trouble: cause instanceof Error ? cause.message : "HQ didn't take it.",
-        }),
-    );
+    // Zerops' confirmation first, from the press, as an invitation needs it.
+    sudoAhead()
+      .then((answer) => {
+        if (answer === "cancelled") throw new Error(INVITE_UNCONFIRMED);
+        return startAccessChange({
+          kind: "resend",
+          userId,
+          ...(names === undefined ? {} : { names }),
+        });
+      })
+      .then(
+        () => held(null),
+        (cause: unknown) =>
+          held({
+            state: "refused",
+            trouble: cause instanceof Error ? cause.message : "HQ didn't take it.",
+          }),
+      );
   };
   // Taken once on arrival: the visit keeps it, nothing after it sees it again.
   const [sent] = useState(invitationSentTo);

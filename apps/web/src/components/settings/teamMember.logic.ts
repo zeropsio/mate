@@ -415,6 +415,9 @@ export function addressProblem(value: string): string | null {
   return ADDRESS.test(address) ? null : "That isn't an e-mail address.";
 }
 
+/** Why an invitation was not sent when the person closed Zerops' confirmation that it's them. */
+export const INVITE_UNCONFIRMED = "Zerops sends an invitation only once you confirm it's you.";
+
 /** A new account needs both names: Zerops makes it with them. */
 export function nameProblem(first: string, last: string): string | null {
   return first.trim() === "" || last.trim() === "" ? "Enter their first and last name." : null;

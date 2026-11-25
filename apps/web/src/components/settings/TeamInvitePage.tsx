@@ -3,10 +3,11 @@
  * so the page never tells whether an address has a Zerops account (Zerops makes one, with the name,
  * where it has none); their role, each card saying what it can do; the projects they get — the one
  * the invitation was opened from, or the organization's only one, already picked — at Full or Read,
- * asked only once a project is picked; then *Invite*. A press asks Zerops who the address is and
- * starts the invitation at HQ, which sends it whatever becomes of this tab, saying a refusal beside
- * it; once HQ took it the page goes back to the team, where a toast says it is on its way and their
- * row grows in — the name typed kept for that row until they join.
+ * asked only once a project is picked; then *Invite*. A press has the person confirm it's them in
+ * Zerops where their session needs it, asks Zerops who the address is and starts the invitation at
+ * HQ, which sends it whatever becomes of this tab, saying a refusal beside it; once HQ took it the
+ * page goes back to the team, where a toast says it is on its way and their row grows in — the name
+ * typed kept for that row until they join.
  */
 import { useRouter, useSearch } from "@tanstack/react-router";
 import type { InviteeCheck } from "@t3tools/client-runtime/data";
@@ -30,6 +31,7 @@ import { SettingsPageContainer } from "./settingsLayout";
 import { TeamRoleEditor } from "./TeamRoleEditor";
 import {
   addressProblem,
+  INVITE_UNCONFIRMED,
   inviteGrants,
   inviteLevels,
   invitePreselect,
@@ -45,6 +47,8 @@ import { SectionHeader } from "../ui/section";
 
 /** What the invitation asks Zerops and HQ; each rejects with what to tell the person. */
 export interface TeamInviteActions {
+  /** Zerops' confirmation that it's them, which an invitation needs; run first, from the press. */
+  readonly confirm: () => Promise<"confirmed" | "cancelled">;
   readonly check: (email: string) => Promise<InviteeCheck>;
   readonly send: (input: {
     readonly email: string;
@@ -124,6 +128,11 @@ export function TeamInviteView({
     const address = email.trim();
     setSending(true);
     try {
+      // First, while the press still lets a device login open its window.
+      if ((await actions.confirm()) === "cancelled") {
+        setTrouble(INVITE_UNCONFIRMED);
+        return;
+      }
       // Who the address is decides only how Zerops is asked; the page says nothing of it.
       const known = await actions.check(address);
       const step = teamInviteStep(address, known, organizationName);
@@ -307,12 +316,13 @@ export function TeamInvitePage() {
   const router = useRouter();
   const { project: from } = useSearch({ from: "/settings/team_/invite" });
   const team = useTeam();
-  const { clientId, startAccessChange, check } = team;
+  const { clientId, startAccessChange, sudoAhead, check } = team;
   // The team is where this page leads back to: its code is fetched ahead, so it paints at once.
   useEffect(() => {
     void router.preloadRoute({ to: "/settings/team" }).catch(() => undefined);
   }, [router]);
   const actions: TeamInviteActions = {
+    confirm: sudoAhead,
     check,
     send: async ({ email, name, names, membership, grants }) => {
       if (clientId === null) throw new Error("Zerops isn't reachable from here.");
