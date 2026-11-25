@@ -22,7 +22,7 @@ import {
 import { SelectButton } from "~/components/ui/select";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 /** Every item kind the kit's menu has, in one popup. */
 function EveryItem() {
@@ -98,36 +98,48 @@ function EveryItem() {
 
 function MenuSpecimens() {
   return (
-    <SpecimenGrid>
-      <Specimen label="<MenuTrigger render={<Button />}> · every item kind">
-        <Menu>
-          <MenuTrigger render={<Button aria-label="Project menu" size="icon-md" variant="ghost" />}>
-            <MoreHorizontalIcon />
-          </MenuTrigger>
-          <MenuPopup>
-            <EveryItem />
-          </MenuPopup>
-        </Menu>
-      </Specimen>
-      <Specimen label="<MenuTrigger render={<SelectButton />}>">
-        <Menu>
-          <MenuTrigger render={<SelectButton />}>Sort by name</MenuTrigger>
-          <MenuPopup align="start">
-            <MenuItem>Name</MenuItem>
-            <MenuItem>Creation date</MenuItem>
-          </MenuPopup>
-        </Menu>
-      </Specimen>
-      <Specimen label='<MenuPopup side="right">'>
-        <Menu>
-          <MenuTrigger render={<Button variant="secondary" />}>Open to the right</MenuTrigger>
-          <MenuPopup side="right">
-            <MenuItem>Rename</MenuItem>
-            <MenuItem variant="destructive">Delete</MenuItem>
-          </MenuPopup>
-        </Menu>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="Each press opens its menu." title="Triggers and sides">
+        <SpecimenGrid size="md">
+          <Specimen
+            label='<MenuTrigger render={<Button size="icon-md" variant="ghost" />}>'
+            note="Every item kind in one menu"
+          >
+            <Menu>
+              <MenuTrigger
+                render={<Button aria-label="Project menu" size="icon-md" variant="ghost" />}
+              >
+                <MoreHorizontalIcon />
+              </MenuTrigger>
+              <MenuPopup>
+                <EveryItem />
+              </MenuPopup>
+            </Menu>
+          </Specimen>
+          <Specimen
+            label="<MenuTrigger render={<SelectButton />}>"
+            note="A field's look, opening a menu"
+          >
+            <Menu>
+              <MenuTrigger render={<SelectButton />}>Sort by name</MenuTrigger>
+              <MenuPopup align="start">
+                <MenuItem>Name</MenuItem>
+                <MenuItem>Creation date</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Specimen>
+          <Specimen label='<MenuPopup side="right">' note="Opening to the right">
+            <Menu>
+              <MenuTrigger render={<Button variant="secondary" />}>Open to the right</MenuTrigger>
+              <MenuPopup side="right">
+                <MenuItem>Rename</MenuItem>
+                <MenuItem variant="destructive">Delete</MenuItem>
+              </MenuPopup>
+            </Menu>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   );
 }
 

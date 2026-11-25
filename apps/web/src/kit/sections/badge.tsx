@@ -3,7 +3,7 @@ import { CircleCheckIcon } from "lucide-react";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { variantsOf } from "../specimenLabel";
 
 const TONES = variantsOf<BadgeTone>({
@@ -24,13 +24,16 @@ const WORDS: Readonly<Record<BadgeTone, string>> = {
 
 function BadgeSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Tones × forms: a pill label, a dot before its words">
+    <Specimens>
+      <SpecimenBlock note="A pill label, or a dot before its words." title="Tones and forms">
         <SpecimenMatrix
           rowProp="tone"
           rows={TONES}
           columnProp="form"
           columns={["pill", "dot", "dot in a sentence"] as const}
+          columnLabel={(form) =>
+            form === "pill" ? "(pill)" : form === "dot" ? "dot" : "dot, in a sentence"
+          }
           render={(tone, form) =>
             form === "pill" ? (
               <Badge tone={tone}>{WORDS[tone]}</Badge>
@@ -50,41 +53,52 @@ function BadgeSpecimens() {
           }
         />
       </SpecimenBlock>
-      <SpecimenBlock title="A dot alone, an icon, a count, long words, a link">
-        <SpecimenGrid>
-          <Specimen label='dot aria-label="Running" (a row too narrow for words)'>
+      <SpecimenBlock title="Marks, counts and long words">
+        <SpecimenGrid size="md">
+          <Specimen
+            label='dot aria-label="Running"'
+            note="A dot alone, in a row too narrow for words"
+          >
             <Badge aria-label="Running" dot tone="success" />
           </Specimen>
-          <Specimen label="dot hollow (nothing there yet, or stopped on purpose)">
+          <Specimen label="dot hollow" note="Nothing there yet, or stopped on purpose">
             <Badge dot hollow>
               Stopped
             </Badge>
           </Specimen>
-          <Specimen label="door (opens what it names; hover it)">
+          <Specimen label='door tone="warning"' note="Opens what it names; hover it">
             <Badge door tone="warning">
               Release · 2
             </Badge>
           </Specimen>
-          <Specimen label='tone="success" + icon'>
+          <Specimen
+            label='tone="success" · <CircleCheckIcon /> first'
+            note="An icon before its words"
+          >
             <Badge tone="success">
               <CircleCheckIcon />
               Running
             </Badge>
           </Specimen>
-          <Specimen label="a count">
+          <Specimen label="(defaults)" note="A count">
             <Badge>12</Badge>
           </Specimen>
-          <Specimen label="in a 128px box">
+          <Specimen
+            label='className="max-w-full" · <span className="truncate">'
+            note="A long name in a 128 px box, cut the way its caller cuts it"
+          >
             <div className="flex w-32">
-              <Badge>storefront-preview-eu-central-2</Badge>
+              <Badge className="max-w-full">
+                <span className="truncate">storefront-preview-eu-central-2</span>
+              </Badge>
             </div>
           </Specimen>
-          <Specimen label='render={<a href="#badge" />}'>
+          <Specimen label='render={<a href="#badge" />}' note="A badge that is a link">
             <Badge render={<a href="#badge" />}>storefront</Badge>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

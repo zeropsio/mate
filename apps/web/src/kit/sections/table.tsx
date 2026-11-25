@@ -9,7 +9,7 @@ import {
 } from "~/components/ui/table";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 const ROWS = [
   { name: "storefront", runtime: "Node.js 22", state: "Running", tone: "success" as const },
@@ -37,82 +37,106 @@ export default defineKitSection({
   kind: "Data",
   source: "apps/web/src/components/ui/table.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label="<Table> · <TableHeader> · <TableBody> · <TableRow> · <TableHead> · <TableCell>">
-        <div className="w-[40rem] max-w-full">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Service</TableHead>
-                <TableHead>Runtime</TableHead>
-                <TableHead>State</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ROWS.map((row) => (
-                <TableRow key={row.name}>
-                  <TableCell>{row.name}</TableCell>
-                  <TableCell>{row.runtime}</TableCell>
-                  <TableCell>
-                    <Badge tone={row.tone}>{row.state}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Specimen>
-      <Specimen label='<TableHeader sticky> · <TableRow data-state="selected">, in a scrolling box'>
-        <div className="h-36 w-[40rem] max-w-full overflow-auto rounded-card border">
-          <Table>
-            <TableHeader sticky>
-              <TableRow>
-                <TableHead>Service</TableHead>
-                <TableHead>Runtime</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {[...ROWS, ...ROWS].map((row, index) => (
-                <TableRow
-                  data-state={index === 1 ? "selected" : undefined}
-                  key={`${row.name}-${index}`}
-                >
-                  <TableCell>{row.name}</TableCell>
-                  <TableCell>{row.runtime}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Specimen>
-      <Specimen label='<Table size="md"> · <TableHead scope="row" sticky> · its first column on the ground, scrolled'>
-        <div className="w-80 max-w-full rounded-card border bg-card">
-          <Table size="md">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-36" sticky>
-                  <span className="sr-only">Person</span>
-                </TableHead>
-                <TableHead className="min-w-28">Production</TableHead>
-                <TableHead className="min-w-28">Stage</TableHead>
-                <TableHead className="min-w-28">Preview</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {PEOPLE.map((person) => (
-                <TableRow key={person.name}>
-                  <TableHead className="min-w-36" scope="row" sticky>
-                    {person.name}
-                  </TableHead>
-                  {person.levels.map((level, index) => (
-                    <TableCell key={index}>{level}</TableCell>
+    <Specimens>
+      <SpecimenBlock
+        note="Like things across the same columns, a long name among them."
+        title="A table"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen
+            align="start"
+            label="<Table> · <TableHeader> · <TableBody> · <TableRow> · <TableHead> · <TableCell>"
+            span="row"
+          >
+            <div className="w-full max-w-[40rem]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Runtime</TableHead>
+                    <TableHead>State</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ROWS.map((row) => (
+                    <TableRow key={row.name}>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell>{row.runtime}</TableCell>
+                      <TableCell>
+                        <Badge tone={row.tone}>{row.state}</Badge>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="Headers that stay put while the body scrolls under or beside them."
+        title="Sticky headers"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen
+            label='<TableHeader sticky> · <TableRow data-state="selected">'
+            note="A header row over a scrolling body, one row selected"
+          >
+            <div className="h-36 w-full max-w-[40rem] overflow-auto rounded-card border">
+              <Table>
+                <TableHeader sticky>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Runtime</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...ROWS, ...ROWS].map((row, index) => (
+                    <TableRow
+                      data-state={index === 1 ? "selected" : undefined}
+                      key={`${row.name}-${index}`}
+                    >
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell>{row.runtime}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+          <Specimen
+            label='<Table size="md"> · <TableHead scope="row" sticky>'
+            note="A first column that stays on its ground, scrolled sideways"
+          >
+            <div className="w-full max-w-80 rounded-card border bg-card">
+              <Table size="md">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-36" sticky>
+                      <span className="sr-only">Person</span>
+                    </TableHead>
+                    <TableHead className="min-w-28">Production</TableHead>
+                    <TableHead className="min-w-28">Stage</TableHead>
+                    <TableHead className="min-w-28">Preview</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {PEOPLE.map((person) => (
+                    <TableRow key={person.name}>
+                      <TableHead className="min-w-36" scope="row" sticky>
+                        {person.name}
+                      </TableHead>
+                      {person.levels.map((level, index) => (
+                        <TableCell key={index}>{level}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });
