@@ -195,8 +195,10 @@
     outline: none;
   }
 
+  /* The kit's focus: its outline, off the box's edge. */
   .menu-chief-place:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 
   /* The seat of the Chief's Waiting count (`SidebarWaitingCount`): over the Chief's row, whose lit
@@ -375,19 +377,16 @@
     }
   }
 
+  /* The account's ···, drawn in its press (the kit's sidebar Button): a glyph in a 32 px box, in
+     the press's ink once it is lit. */
   .menu-foot-button {
     display: grid;
     flex: none;
     place-items: center;
     width: 32px;
     height: 32px;
-    border-radius: var(--radius-control);
     color: var(--sidebar-muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong);
+    transition: color 150ms var(--ease-out-strong);
   }
 }
 

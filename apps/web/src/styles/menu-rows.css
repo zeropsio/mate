@@ -984,21 +984,6 @@
 
   /* ==== end of the menu by project ==== */
 
-  /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
-     column, "Draft" and its words in the second line's 14/20 — never a tinted pill (the owner,
-     2026-10-12: "ugly nonfitting"). */
-  .menu-draft {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: center;
-    height: 36px;
-    padding: 0 8px;
-    border-radius: var(--radius-control);
-    font-size: var(--text-body);
-    line-height: 20px;
-  }
-
   /* The words' second ink: what the person asked, and the crew's one fact.
      The name is the ink itself and the answer muted, so the three lines of a
      row stay apart with no gap between them. */

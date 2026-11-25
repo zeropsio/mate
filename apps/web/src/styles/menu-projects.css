@@ -242,24 +242,17 @@
   height: 16px;
 }
 
-/* A colleague's Mate wears its owner's initial on its face's corner, cut from the card. */
-.zerops-sites-owner {
-  position: absolute;
+/* A colleague's Mate wears its owner's mark (`MateOwnerMark`) on its 16 px face's corner, ringed
+   in the popover's ground. */
+.menu-owner.zerops-sites-owner {
+  top: auto;
+  left: auto;
   right: -4px;
   bottom: -3px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 10px;
   height: 10px;
-  border-radius: 9999px;
-  background: oklch(var(--person-l) var(--person-c) var(--person-hue));
-  box-shadow: 0 0 0 1.5px var(--popover);
-  color: oklch(var(--person-ink-l) var(--person-ink-c) var(--person-hue));
   font-size: var(--text-5xs);
-  font-weight: 700;
-  line-height: 1;
-  user-select: none;
+  box-shadow: 0 0 0 1.5px var(--popover);
 }
 
 .zerops-sites-whose {

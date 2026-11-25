@@ -42,7 +42,6 @@ import {
   useRef,
   useState,
   type ComponentProps,
-  type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
@@ -71,6 +70,7 @@ import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { useHeadingLine } from "./SidebarHeadingLine";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
+import { MateOwnerMark } from "./MateOwnerMark";
 import { ownerMark } from "./SidebarMateRow.logic";
 import { AskToFix, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProductionChip";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
@@ -1014,13 +1014,7 @@ function MateHead({
           <span className="zerops-sites-face">
             <MateFace shape={mate?.shape} size={16} state="idle" tint={mate?.tint ?? "slate"} />
             {mark === undefined ? null : (
-              <span
-                aria-hidden="true"
-                className="zerops-sites-owner"
-                style={{ "--person-hue": mark.hue } as CSSProperties}
-              >
-                {mark.initial}
-              </span>
+              <MateOwnerMark className="zerops-sites-owner" seat={{ kind: "person", mark }} />
             )}
           </span>
         }

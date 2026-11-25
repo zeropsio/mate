@@ -21,6 +21,7 @@ import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
 import { stripInlinePicturePlaceholders } from "../lib/composerPictures";
 import { cn } from "~/lib/utils";
 import { Button } from "./ui/button";
+import { Row } from "./ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 // One unsent draft session the user has invested content in. Two lines,
@@ -74,30 +75,19 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
     [draftId, onDiscard],
   );
   return (
-    <li className="list-none">
-      <div
-        role="button"
-        tabIndex={0}
+    // The menu's one-line row; its ground is the menu's, as a Mate's unit's is.
+    <li
+      className={cn(
+        "list-none rounded-card transition-colors duration-150 ease-out-strong",
+        props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
+      )}
+    >
+      <Row
         data-testid="sidebar-draft-row"
-        className={cn(
-          "group/sidebar-row menu-draft relative w-full cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-        )}
-        onClick={handleActivate}
-        onKeyDown={handleKeyDown}
-      >
-        <span className="flex justify-center">
-          <SquarePenIcon aria-hidden className="size-4 text-muted-foreground" />
-        </span>
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">Draft</span>
-            <span className="text-muted-foreground">
-              {` · ${props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}`}
-            </span>
-          </span>
-          {/* The discard press shows while the row is under the pointer or the press has focus. */}
-          <span className="pointer-events-none ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100">
+        lead={<SquarePenIcon aria-hidden className="size-4 text-muted-foreground" />}
+        meta={
+          // The discard press shows while the row is under the pointer or the press has focus.
+          <span className="pointer-events-none flex h-5 min-w-5 items-center justify-end opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100">
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -114,8 +104,22 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
               <TooltipPopup side="top">Discard draft</TooltipPopup>
             </Tooltip>
           </span>
-        </div>
-      </div>
+        }
+        onClick={handleActivate}
+        onKeyDown={handleKeyDown}
+        pressable="band"
+        role="button"
+        size="lg-line"
+        tabIndex={0}
+        title={
+          <>
+            Draft
+            <span className="font-normal text-muted-foreground">
+              {` · ${props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}`}
+            </span>
+          </>
+        }
+      />
     </li>
   );
 });
