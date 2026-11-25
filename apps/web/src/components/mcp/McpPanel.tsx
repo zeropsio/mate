@@ -31,6 +31,7 @@ import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
+import { LogoTile } from "../ui/logo-tile";
 import { ScrollArea } from "../ui/scroll-area";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
@@ -353,14 +354,7 @@ export function McpPanelBody(props: {
 
 /** The neutral tile: colour belongs to state, never to what a tool is. */
 function Tile({ letters }: { readonly letters: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-control border border-border bg-muted font-medium text-muted-foreground text-caption"
-    >
-      {letters}
-    </span>
-  );
+  return <LogoTile>{letters}</LogoTile>;
 }
 
 /** Each installed agent as its own icon with a dot for its state; the words in its tooltip. */
@@ -412,7 +406,7 @@ function RowHead(props: {
   return (
     <div
       className={cn(
-        "group/tool relative grid grid-cols-[28px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40",
+        "group/tool relative grid grid-cols-[32px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40",
         props.open && "bg-accent/30",
       )}
     >

@@ -18,6 +18,7 @@ import { Button } from "../ui/button";
 import { PictureFrame } from "~/components/ui/picture-frame";
 import { Card } from "../ui/card";
 import { Failure } from "../ui/failure";
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
 import type { ExpressHistoryEntry } from "./expressHistory.logic";
 import { ExpressMark } from "./ExpressMark";
@@ -413,11 +414,7 @@ function ExpressTile(props: {
     <Card>
       <Row
         className="@lg:flex-col"
-        lead={
-          <span className="flex size-8 items-center justify-center rounded-control bg-muted text-foreground [&_svg]:size-4">
-            {props.icon}
-          </span>
-        }
+        lead={<LogoTile>{props.icon}</LogoTile>}
         line={props.line}
         lineWraps
         onClick={props.onClick}
