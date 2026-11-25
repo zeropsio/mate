@@ -13,7 +13,7 @@
  */
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
-import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
@@ -51,14 +51,7 @@ import { RealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
 import { List } from "~/components/ui/list";
 
-/** What a row's presses do, from the account's operations; absent ones are not offered. */
-interface RepoRowActions {
-  /** Sends a disconnect under `requestId`; the row follows it through its operation's record. */
-  readonly sendDisconnect?: (repo: string, requestId: string) => Promise<unknown>;
-  readonly replaceToken?: (repo: string, token: string) => Promise<HqRemoteProbe>;
-  readonly unfollow?: (repo: string) => Promise<void>;
-  readonly deleteRepository?: (repo: string) => Promise<void>;
-}
+import { repositoryUpkeep, type RepoRowActions } from "./repoUpkeep.logic";
 
 /** The section as the project page holds it: reads, presses and the connect dialog. */
 export function ProjectRepositories({
@@ -258,15 +251,23 @@ function RepoRow({
         ? null
         : { words: answer, dismiss: () => setAnswer(null) };
 
-  const tokenRemote = remote != null && remote.via !== "app";
+  const offered = repositoryUpkeep({
+    remote,
+    follows: entry.follows,
+    canDelete: entry.canDelete,
+    destination: state.destination,
+    writes,
+    press,
+    actions,
+    limit: false,
+  });
   const items = {
     open: state.destination,
-    change: writes && press === null && (remote != null || entry.follows !== undefined),
-    token: writes && press === null && tokenRemote && actions.replaceToken !== undefined,
-    disconnect: writes && press === null && remote != null && actions.sendDisconnect !== undefined,
-    unfollow:
-      writes && remote == null && entry.follows !== undefined && actions.unfollow !== undefined,
-    delete: entry.canDelete?.allow === true && actions.deleteRepository !== undefined,
+    change: offered.includes("change"),
+    token: offered.includes("token"),
+    disconnect: offered.includes("disconnect"),
+    unfollow: offered.includes("unfollow"),
+    delete: offered.includes("delete"),
   };
   const menu = Object.values(items).some((item) => item !== null && item !== false);
   return (
