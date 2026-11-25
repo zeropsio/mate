@@ -5099,6 +5099,29 @@ code {
   inset-inline-end: calc(10px + var(--menu-time-w, 0px) + var(--menu-tags-w, 0px) + 4px);
 }
 
+/* A row's verbs stand on the row's own ground (`--menu-ground`: at rest, hovered, or the band's),
+   so the words under them are covered, and fade in from it on their left: the name and its line
+   run out under a soft edge instead of being cut. */
+@media (hover: hover) and (pointer: fine) {
+  .menu-row-verbs {
+    background-color: var(--menu-ground, var(--sidebar));
+  }
+
+  .menu-row-verbs::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 100%;
+    width: 24px;
+    background: linear-gradient(to left, var(--menu-ground, var(--sidebar)), transparent);
+    pointer-events: none;
+  }
+
+  [dir="rtl"] .menu-row-verbs::before {
+    background: linear-gradient(to right, var(--menu-ground, var(--sidebar)), transparent);
+  }
+}
+
 /* While they stand there, the name gives them its room: it ends before them, never under them. */
 @media (hover: hover) and (pointer: fine) {
   [data-tags]:is(:hover, :has(:focus-visible), :has([data-popup-open])) [data-slot="row-meta"] {
@@ -5460,8 +5483,8 @@ code {
 
 @layer components {
   /* The menu's headline (`SidebarOverviewLink`): Overview centred on the Mates' faces' column.
-     It lights only under the pointer, never while its page is open; `!important` over the
-     button's current-page ground. */
+     It lights only under the pointer, never while its page is open: at rest it keeps the squares'
+     muted ink and no ground; `!important` over the button's current-page ground and ink. */
   .menu-overview {
     display: flex;
     margin-inline-start: calc(var(--sidebar-content-inset) + 1px + 12px);
@@ -5469,6 +5492,7 @@ code {
 
   .menu-overview > [aria-current="page"]:not(:hover, [data-popup-open]) {
     background-color: transparent !important;
+    color: var(--muted-foreground) !important;
   }
 
   /* What waits on the person, counted beside Overview: the error's red, so it reads from across
