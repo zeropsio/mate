@@ -186,9 +186,12 @@ export function VaultAddCard(props: VaultAddCardProps) {
             <LockIcon aria-hidden="true" className="size-3" />
             <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
           </Text>
-          <Text className="min-w-0" data-vault-add-auto truncate variant="note">
-            {sensitive ? "nobody reads it back once saved" : ""}
-          </Text>
+          {/* Given for a message, the line above says where the value goes and who reads it. */}
+          {props.forMessage === true ? null : (
+            <Text className="min-w-0" data-vault-add-auto truncate variant="note">
+              {sensitive ? "nobody reads it back once saved" : ""}
+            </Text>
+          )}
           <span className="grow" />
           <Button onClick={props.onCancel} size="sm" variant="ghost">
             Cancel
