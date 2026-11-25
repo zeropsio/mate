@@ -1,7 +1,7 @@
 import { Text, type TextVariant } from "~/components/ui/text";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
 const VARIANTS = variantsOf<TextVariant>({
@@ -31,12 +31,15 @@ const SAID: Record<TextVariant, string> = {
 
 function TextSpecimens() {
   return (
-    <div className="flex min-w-0 flex-col gap-10">
-      <SpecimenBlock title="Variants">
-        <SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Each names what the words are; its step, ink and weight follow."
+        title="Variants"
+      >
+        <SpecimenGrid size="md">
           {VARIANTS.map((variant) => (
             <Specimen key={variant} label={specimenLabel({ variant })}>
-              <div className="w-72">
+              <div className="w-full">
                 {variant === "code" ? (
                   <Text variant="description">
                     Changed <Text variant="code">{SAID.code}</Text>
@@ -52,9 +55,9 @@ function TextSpecimens() {
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock title="Together">
-        <SpecimenGrid>
-          <Specimen label="a block: heading, description, note">
-            <div className="flex w-80 flex-col gap-1">
+        <SpecimenGrid size="md">
+          <Specimen label="heading · description · note" note="A block of settings">
+            <div className="flex w-full flex-col gap-1">
               <Text render={<h3 />} variant="heading">
                 Automated Mates
               </Text>
@@ -66,8 +69,8 @@ function TextSpecimens() {
               </Text>
             </div>
           </Specimen>
-          <Specimen label="a name with its meta and its error">
-            <div className="flex w-80 flex-col gap-0.5">
+          <Specimen label="heading · meta · error" note="A name with its fact and what is wrong">
+            <div className="flex w-full flex-col gap-0.5">
               <div className="flex items-baseline justify-between gap-3">
                 <Text truncate variant="heading">
                   api.tea-shop.example
@@ -81,8 +84,8 @@ function TextSpecimens() {
               </Text>
             </div>
           </Specimen>
-          <Specimen label="truncate">
-            <div className="w-56">
+          <Specimen label='variant="note" truncate' note="Too long for its place">
+            <div className="w-full">
               <Text render={<p />} truncate variant="note">
                 A note too long for its place is cut to one line with an ellipsis.
               </Text>
@@ -90,7 +93,7 @@ function TextSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 
