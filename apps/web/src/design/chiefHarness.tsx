@@ -140,9 +140,7 @@ function Harness() {
           brand={<SidebarOverviewLink current={false} />}
           actions={
             <>
-              {WAITING ? (
-                <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} />
-              ) : null}
+              {WAITING ? <SidebarWaitingCount items={ITEMS} seat="head" verbs={VERBS} /> : null}
               <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
               <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />
