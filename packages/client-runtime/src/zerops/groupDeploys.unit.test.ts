@@ -5,7 +5,7 @@ import { expect, it } from "vite-plus/test";
 import { canonicalEnvironmentRowInputsOf } from "./groupDeploys.ts";
 
 // witness: packages/client-runtime/src/zerops/groupDeploys.ts | job.state === "refused" ? { refused: true } : {} → job.state === "failed" ? { refused: true } : {}
-it("ZV+1: A release's creation HQ refused is told apart from one Zerops failed or left unresolved, by HQ's job state alone; breaks: a person is told Zerops could not create a service HQ never asked Zerops for.", () => {
+it("ZV188: A release's creation HQ refused is told apart from one Zerops failed or left unresolved, by HQ's job state alone; breaks: a person is told Zerops could not create a service HQ never asked Zerops for.", () => {
   const job: HqNavigationJob = {
     id: "job-1",
     kind: "delta",

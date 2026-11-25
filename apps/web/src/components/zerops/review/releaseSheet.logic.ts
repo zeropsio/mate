@@ -308,13 +308,23 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       creates: undefined,
       action: undefined,
     });
-    const failed = (words: string | undefined, after: string | undefined): ReleaseSheetStep => ({
+    const failed = (
+      words: string | undefined,
+      after: string | undefined,
+      refused = false,
+    ): ReleaseSheetStep => ({
       ...base,
       mark: "failed",
-      title: ["Zerops could not create ", code(service)],
+      title: refused
+        ? ["HQ refused to create ", code(service)]
+        : ["Zerops could not create ", code(service)],
       line: [
         [
-          words === undefined ? "Zerops gave no reason" : said(words),
+          words === undefined
+            ? refused
+              ? "HQ gave no reason"
+              : "Zerops gave no reason"
+            : said(words),
           ...(after === undefined ? [] : [`after ${after}`]),
         ].join(" · "),
       ],
@@ -368,7 +378,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
     if (trouble !== undefined) {
       steps.push(keyStep(base, trouble));
     } else if (creation?.state === "failed") {
-      steps.push(failed(creation.reason, took(creation)));
+      steps.push(failed(creation.reason, took(creation), creation.refused === true));
     } else if (creation?.state === "created") {
       // Created is HQ's own word for its creation, or the release being live: a deploy job proves
       // nothing — one seen running may be an older release's, sent again — and a step once said
