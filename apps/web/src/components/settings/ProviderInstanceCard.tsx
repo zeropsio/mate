@@ -30,6 +30,7 @@ import {
 import { cn } from "../../lib/utils";
 import { CopyLine } from "../ui/copy-line";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import { PanelBar } from "../ui/panel-bar";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -788,7 +789,7 @@ export function ProviderInstanceCard({
         </div>
       </div>
 
-      <div className="flex h-11 shrink-0 items-center border-b border-border/70 px-2">
+      <PanelBar size="lg">
         <TabStrip
           activeId={visibleTab}
           items={[
@@ -820,7 +821,7 @@ export function ProviderInstanceCard({
             Configuration
           </Tab>
         </TabStrip>
-      </div>
+      </PanelBar>
 
       <div
         inert={readOnly}

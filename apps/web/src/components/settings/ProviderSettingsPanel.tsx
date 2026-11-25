@@ -61,6 +61,7 @@ import {
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { PanelBar } from "../ui/panel-bar";
 import { Spinner } from "../ui/spinner";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -278,11 +279,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
   const deviceTabs =
     !onlyPrimaryDevice && options.length > 0 ? (
       <>
-        <div
-          aria-label="Devices"
-          className="flex h-11 min-w-0 items-center border-b border-border/70 px-3 sm:px-4"
-          role="group"
-        >
+        <PanelBar aria-label="Devices" role="group" size="lg">
           <TabStrip
             activeId={effectiveEnvironmentId}
             items={options.map((environment) => ({
@@ -329,7 +326,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
               );
             })}
           </TabStrip>
-        </div>
+        </PanelBar>
         <Text className="px-3 pt-2 sm:px-4" render={<p />} variant="note">
           Only Mates the app is connected to.
         </Text>
@@ -994,12 +991,7 @@ export function EnvironmentProviderSettings({
               <List className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {rows.map((row) => renderProviderInstance(row, "list"))}
               </List>
-              <div
-                className={cn(
-                  "flex min-h-10 shrink-0 items-center justify-between px-3",
-                  rows.length > 0 && "border-t border-border/60",
-                )}
-              >
+              <PanelBar className="justify-between" edge={rows.length > 0 ? "top" : "none"}>
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
                 {!readOnly ? (
                   <Tooltip>
@@ -1023,7 +1015,7 @@ export function EnvironmentProviderSettings({
                     <TooltipPopup side="top">Refresh provider status</TooltipPopup>
                   </Tooltip>
                 ) : null}
-              </div>
+              </PanelBar>
             </div>
 
             <div className="min-w-0 lg:min-h-0">

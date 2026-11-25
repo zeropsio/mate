@@ -8,6 +8,7 @@ import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { RotateCw } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
+import { PanelBar } from "~/components/ui/panel-bar";
 import { Spinner } from "~/components/ui/spinner";
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
@@ -352,10 +353,7 @@ export default function FileBrowserPanel({
       className="flex min-h-0 flex-1 flex-col bg-background"
       data-file-browser-panel={`${environmentId}:${cwd}`}
     >
-      <div
-        className="flex h-10 min-h-10 shrink-0 items-center gap-1 border-b border-border/60 bg-background px-2 in-data-[preview-panel-mode=inline]:mb-1 in-data-[preview-panel-mode=inline]:h-9 in-data-[preview-panel-mode=inline]:min-h-9 in-data-[preview-panel-mode=inline]:border-b-transparent"
-        data-surface-subheader
-      >
+      <PanelBar data-surface-subheader>
         {/* The search leads, its words on the panel's gutter; the refresh is the row's end. */}
         <FileSearchField
           name="project-files-search"
@@ -365,7 +363,7 @@ export default function FileBrowserPanel({
           onClose={search.close}
         />
         <RefreshFilesButton isPending={entriesQuery.isPending} onRefresh={handleRefresh} />
-      </div>
+      </PanelBar>
       <FileBrowserPanelState
         hasData={entriesQuery.data !== null}
         error={entriesQuery.error}

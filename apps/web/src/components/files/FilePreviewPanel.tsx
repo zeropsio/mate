@@ -35,6 +35,7 @@ import { toastManager } from "~/lib/toasts";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { PanelBar } from "../ui/panel-bar";
 import { Failure } from "../ui/failure";
 import { Spinner } from "~/components/ui/spinner";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -690,10 +691,7 @@ function WorkspaceFilePreviewPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {relativePath ? (
-        <div
-          className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
-          data-surface-subheader
-        >
+        <PanelBar data-surface-subheader>
           <ScrollArea
             radius="none"
             ref={breadcrumbRef}
@@ -823,7 +821,7 @@ function WorkspaceFilePreviewPanel({
               </TooltipPopup>
             </Tooltip>
           ) : null}
-        </div>
+        </PanelBar>
       ) : null}
       {previewPath && file.data?.truncated ? (
         <Alert className="shrink-0" surface="band" variant="warning">
