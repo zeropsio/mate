@@ -24,6 +24,7 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } fro
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { browserSiteGroups } from "../zerops/browserSites.logic";
 import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresses";
+import { Text } from "~/components/ui/text";
 
 /** The Sites button, the same whichever panel it opens. */
 const sitesButton = (
@@ -127,9 +128,9 @@ export function ChatHeaderLinks({
                 >
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-foreground">{name}</span>
-                    <span className="truncate text-muted-foreground text-caption">
+                    <Text truncate variant="note">
                       {address.host}
-                    </span>
+                    </Text>
                   </span>
                   <MateAddressExternalLink address={address} />
                 </MenuItem>

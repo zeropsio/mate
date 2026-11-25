@@ -3,6 +3,7 @@ import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/con
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { Minimize2Icon } from "lucide-react";
+import { Text } from "~/components/ui/text";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -68,9 +69,9 @@ export function ContextWindowMeter(props: {
             {/* Before the pie: as its number grows it reaches into the room on its left, so the
                 pie and Send never move. */}
             {label === null ? null : (
-              <span aria-hidden="true" className="text-muted-foreground text-caption tabular-nums">
+              <Text variant="meta" aria-hidden="true">
                 {label}
-              </span>
+              </Text>
             )}
             <span className="relative flex size-5 items-center justify-center">
               <svg
@@ -104,7 +105,9 @@ export function ContextWindowMeter(props: {
       <PopoverPopup side="top" align="end" padding="none" width="sm">
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
-            <div className="font-medium text-muted-foreground text-caption">Context Window</div>
+            <Text render={<div />} variant="label">
+              Context Window
+            </Text>
             {usage.meterWindow !== null && usedPercentage ? (
               <div className="text-secondary-label text-caption tabular-nums">
                 <span>{usedPercentage}</span>

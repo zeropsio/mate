@@ -252,6 +252,7 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { Text } from "~/components/ui/text";
 
 /** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -3385,12 +3386,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               providerInputSubmissionError !== null ||
               composerSubmissionError !== null ||
               isComposerCollapsedMobile ? null : (
-                <p
-                  className="px-3 pb-2 text-caption text-muted-foreground sm:px-4"
+                <Text
+                  className="px-3 pb-2 sm:px-4"
+                  render={<p />}
+                  variant="note"
                   data-chat-composer-blocked=""
                 >
                   {providerSendBlockReason}
-                </p>
+                </Text>
               )}
 
               {/* Bottom toolbar */}
@@ -3441,15 +3444,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       </Button>
                     ) : automatedMate ? (
                       // An automated Mate runs on the organization's key: nothing to pick.
-                      <span
-                        className="min-w-0 truncate text-line text-muted-foreground"
+                      <Text
+                        className="min-w-0"
+                        truncate
+                        variant="remark"
                         data-chat-composer-runs-on="true"
                       >
                         {automatedRunsOnLine(
                           activeThreadModelSelection?.model ??
                             selectedModelForPickerWithCustomFallback,
                         )}
-                      </span>
+                      </Text>
                     ) : (
                       <ProviderModelPicker
                         composer={{

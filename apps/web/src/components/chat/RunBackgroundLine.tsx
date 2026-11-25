@@ -9,6 +9,7 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useHoldReading } from "./runCardContext";
+import { Text } from "~/components/ui/text";
 
 // ---------------------------------------------------------------------------
 // Background work, outside any card
@@ -51,7 +52,9 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
         {words}
       </span>
       {where === null ? null : (
-        <span className="ms-2.5 shrink-0 text-line text-muted-foreground">{where}</span>
+        <Text className="ms-2.5 shrink-0" variant="remark">
+          {where}
+        </Text>
       )}
       {opens ? (
         <ChevronDownIcon

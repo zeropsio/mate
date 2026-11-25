@@ -51,6 +51,7 @@ import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
 import { followScrollTo } from "~/lib/followScroll";
 import { Button } from "~/components/ui/button";
+import { Text } from "~/components/ui/text";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
   desktop: "Desktop",
@@ -328,9 +329,12 @@ export function BrowserStrip({
         ) : stageSrc ? (
           <TakeThumbnail aspect={TAKE_ASPECT[device]} src={stageSrc} />
         ) : (
-          <span className="flex size-full items-center justify-center px-3 text-center text-line text-muted-foreground">
+          <Text
+            className="flex size-full items-center justify-center px-3 text-center"
+            variant="remark"
+          >
             Opening the page…
-          </span>
+          </Text>
         )}
       </span>
       {running && onStage === latest ? (
@@ -414,7 +418,9 @@ export function BrowserStrip({
           >
             {heading}
           </p>
-          <p className="truncate text-line text-muted-foreground">{facts}</p>
+          <Text render={<p />} truncate variant="remark">
+            {facts}
+          </Text>
           {failedOnStage ? (
             <p className="line-clamp-1 text-line text-status-failed-text @xl/strip:line-clamp-2">
               {browserCheckFailure(onStage)}

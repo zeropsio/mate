@@ -39,6 +39,7 @@ import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
+import { Text } from "~/components/ui/text";
 
 type Mode = "mark" | "crop";
 type CropHandle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w";
@@ -763,7 +764,11 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     }
                   }}
                 />
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-caption font-medium text-muted-foreground">
+                <Text
+                  className="mt-1.5 flex items-center justify-between gap-2"
+                  render={<div />}
+                  variant="label"
+                >
                   <span>↵ to save, empty is fine</span>
                   {editable ? (
                     <Button
@@ -776,7 +781,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                       Remove
                     </Button>
                   ) : null}
-                </div>
+                </Text>
               </div>
             ) : null}
           </div>

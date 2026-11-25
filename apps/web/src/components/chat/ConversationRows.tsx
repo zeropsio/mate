@@ -44,6 +44,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 import { waitedWords } from "./runCard.logic";
+import { Text } from "~/components/ui/text";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -169,12 +170,14 @@ const unconfirmedWords = (name: string) => `${name} hasn't confirmed this messag
  */
 export function UnconfirmedMessageLine({ speakerName }: { readonly speakerName: string }) {
   return (
-    <p
-      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-caption"
+    <Text
+      className="mt-1 flex items-center justify-end pe-1.5"
+      render={<p />}
+      variant="note"
       data-unconfirmed-message-line=""
     >
       {unconfirmedWords(speakerName)}
-    </p>
+    </Text>
   );
 }
 
@@ -194,8 +197,10 @@ export function HeldMessageLine({
   readonly onWithdraw: (() => void) | null;
 }) {
   return (
-    <p
-      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-caption"
+    <Text
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5"
+      render={<p />}
+      variant="note"
       data-held-message-line=""
     >
       <span>
@@ -204,7 +209,7 @@ export function HeldMessageLine({
           : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
       </span>
       {onWithdraw === null ? null : <InlineButton onClick={onWithdraw}>Don't send</InlineButton>}
-    </p>
+    </Text>
   );
 }
 
@@ -287,8 +292,10 @@ function EventShell({
   readonly timestampFormat: TimestampFormat;
 }) {
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+    <Text
+      className="flex min-h-7 min-w-0 items-center"
+      render={<div />}
+      variant="remark"
       data-conversation-event
     >
       <LineMark>{icon}</LineMark>
@@ -296,7 +303,7 @@ function EventShell({
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
       </Tooltip>
-    </div>
+    </Text>
   );
 }
 
@@ -314,10 +321,12 @@ function ReleaseEndedLine({
   readonly at: string;
   readonly timestampFormat: TimestampFormat;
 }) {
-  const tag = (name: string) => <span className="font-mono">{name}</span>;
+  const tag = (name: string) => <Text variant="code">{name}</Text>;
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center gap-3 text-caption text-muted-foreground"
+    <Text
+      className="flex min-h-7 min-w-0 items-center gap-3"
+      render={<div />}
+      variant="note"
       data-conversation-event="release"
       data-release-outcome={event.outcome}
     >
@@ -337,7 +346,7 @@ function ReleaseEndedLine({
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
       </Tooltip>
       <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
-    </div>
+    </Text>
   );
 }
 
@@ -848,9 +857,9 @@ export function PauseBlock({
   const actions = !resumed ? (
     <div className="flex flex-col items-center gap-4">
       {blockedByAnswer ? (
-        <p className="text-line text-muted-foreground">
+        <Text render={<p />} variant="remark">
           Respond to {speaker.name}'s pending request before continuing.
-        </p>
+        </Text>
       ) : null}
       {onContinue === null && !blockedByAnswer ? null : (
         <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
@@ -912,9 +921,7 @@ export function PauseBlock({
         </span>
         {row.held > 0 ? (
           <Tooltip>
-            <TooltipTrigger
-              render={<span className="shrink-0 text-muted-foreground text-caption tabular-nums" />}
-            >
+            <TooltipTrigger render={<Text className="shrink-0" variant="meta" />}>
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>
             <TooltipPopup>
@@ -924,9 +931,9 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      <p className="text-line text-muted-foreground" data-pause-detail>
+      <Text render={<p />} variant="remark" data-pause-detail>
         {detail}
-      </p>
+      </Text>
       {actions}
     </div>
   );

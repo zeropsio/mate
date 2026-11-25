@@ -12,6 +12,7 @@ import { useMemo } from "react";
 
 import { cn } from "~/lib/utils";
 import { pageBlocks, textBlocks, type PageBlock } from "./pageStructure.logic";
+import { Text } from "~/components/ui/text";
 
 type Page = NonNullable<ZeropsBrowserRead["page"]>;
 
@@ -129,7 +130,9 @@ function Answers({ answers }: { readonly answers: ZeropsBrowserRead["answers"] }
           <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
             {answer.asked}
           </code>
-          <span className="shrink-0 font-medium text-foreground text-body">{answer.answer}</span>
+          <Text className="shrink-0" variant="heading">
+            {answer.answer}
+          </Text>
         </span>
       ))}
     </span>
@@ -154,9 +157,9 @@ export function CheckRead({
     return size === "stage" ? (
       <Answers answers={read.answers} />
     ) : (
-      <span className="truncate px-1 text-muted-foreground text-caption" data-check-answers>
+      <Text className="px-1" truncate variant="note" data-check-answers>
         {read.answers[0]!.answer}
-      </span>
+      </Text>
     );
   }
   if (size !== "stage") return null;
@@ -174,7 +177,7 @@ export function CheckRead({
         {failure ??
           (findings === null ? "Checked" : findings.charAt(0).toUpperCase() + findings.slice(1))}
       </span>
-      <span className="text-line text-muted-foreground">Read its errors, console and requests</span>
+      <Text variant="remark">Read its errors, console and requests</Text>
     </span>
   );
 }

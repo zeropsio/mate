@@ -30,6 +30,7 @@ import { Row } from "../ui/row";
 import { Select, SelectItem, SelectPopup, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useTraitsControls } from "./TraitsPicker";
+import { Text } from "~/components/ui/text";
 
 /** What the traits are read from and written to: the model, the prompt, the draft. */
 export type ComposerTraitsInput = Parameters<typeof useTraitsControls>[0];
@@ -89,9 +90,13 @@ function ChoiceGroup(props: {
 }) {
   return (
     <div className="flex flex-col" role="radiogroup" aria-label={props.label}>
-      <p className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-caption">{props.label}</p>
+      <Text className="px-2 pt-2 pb-1" render={<p />} variant="label">
+        {props.label}
+      </Text>
       {props.note === undefined ? null : (
-        <p className="px-2 pb-1 text-muted-foreground text-caption">{props.note}</p>
+        <Text className="px-2 pb-1" render={<p />} variant="note">
+          {props.note}
+        </Text>
       )}
       {props.children}
     </div>
@@ -165,7 +170,7 @@ function TraitsChoices({ traits }: { readonly traits: ComposerTraitsInput }) {
       if (!value) return null;
       return (
         <div className="flex flex-col px-2 py-1" key={descriptor.id}>
-          <span className="font-medium text-muted-foreground text-caption">{descriptor.label}</span>
+          <Text variant="label">{descriptor.label}</Text>
           <span className="text-foreground text-line">{value}</span>
         </div>
       );
@@ -248,9 +253,9 @@ export const ComposerModelChoices = memo(function ComposerModelChoices(props: {
             {COMPOSER_ACCESS[mode].label}
           </Choice>
         ))}
-        <p className="px-2 pt-1 pb-1.5 text-pretty text-muted-foreground text-caption">
+        <Text className="px-2 pt-1 pb-1.5" render={<p />} variant="note">
           {COMPOSER_ACCESS[props.runtimeMode].description}
-        </p>
+        </Text>
       </ChoiceGroup>
     </div>
   );
@@ -302,9 +307,7 @@ export const ComposerAccessControl = memo(function ComposerAccessControl(props: 
                       <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       {option.label}
                     </span>
-                    <span className="text-muted-foreground text-caption leading-4">
-                      {option.description}
-                    </span>
+                    <Text variant="note">{option.description}</Text>
                   </div>
                 </div>
               </SelectItem>

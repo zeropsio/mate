@@ -38,6 +38,7 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { TimelineRowCtx } from "./timelineContext";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { Text } from "~/components/ui/text";
 
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 
@@ -489,7 +490,9 @@ function QuestionAnswerHistory({
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-body text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <Text render={<p />} variant="description">
+              {answer.questionTextById[questionId]}
+            </Text>
           ) : null}
           <p className="whitespace-pre-wrap text-body">
             {[answer.answers[questionId]]

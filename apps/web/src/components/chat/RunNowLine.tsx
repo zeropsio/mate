@@ -46,6 +46,7 @@ import { TimelineRowActivityCtx, TimelineRowCtx } from "./timelineContext";
 import { operationNowWords, stepNowWords } from "~/zerops/runSteps/nowWords";
 import { type WorkStep } from "~/zerops/runSteps/steps";
 import { mateFailureWords } from "../../zerops/noticeWords";
+import { Text } from "~/components/ui/text";
 
 // ---------------------------------------------------------------------------
 // The now line
@@ -555,12 +556,9 @@ export function NowLine({
           ) : null}
           {/* Over, its press is named in sight too; its button says it to a screen reader. */}
           {toggle === null || line.kind !== "worked" ? null : (
-            <span
-              aria-hidden="true"
-              className="whitespace-nowrap text-line leading-5 text-muted-foreground"
-            >
+            <Text className="whitespace-nowrap" variant="remark" aria-hidden="true">
               {toggle.open ? "Hide work" : "Show work"}
-            </span>
+            </Text>
           )}
           {toggle === null ? null : (
             <ChevronDownIcon

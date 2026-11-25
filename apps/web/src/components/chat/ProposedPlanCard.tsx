@@ -32,6 +32,7 @@ import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { projectEnvironment } from "~/state/projects";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { Text } from "~/components/ui/text";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -152,7 +153,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <Badge tone="neutral">Plan</Badge>
           {/* Same heading level as the message author headings in the timeline,
               so a plan's own headings nest beneath it in the outline. */}
-          <h3 className="truncate text-body font-medium text-foreground">{title}</h3>
+          <Text render={<h3 />} truncate variant="heading">
+            {title}
+          </Text>
         </div>
         <Menu>
           <MenuTrigger

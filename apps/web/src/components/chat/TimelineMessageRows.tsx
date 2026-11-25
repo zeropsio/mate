@@ -35,6 +35,7 @@ import { TimelineRowCtx } from "./timelineContext";
 import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
+import { Text } from "~/components/ui/text";
 
 /** A picture sent with a message: its frame over the bubble. */
 const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
@@ -345,9 +346,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
         <div className="flex shrink-0 items-center pb-1 text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
           <div className="flex shrink-0 items-center gap-2">
             <Tooltip>
-              <TooltipTrigger
-                render={<p className="text-muted-foreground text-caption tabular-nums" />}
-              >
+              <TooltipTrigger render={<Text render={<p />} variant="meta" />}>
                 {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
               </TooltipTrigger>
               <TooltipPopup>
@@ -487,9 +486,7 @@ function MateProse({
         >
           {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
           <Tooltip>
-            <TooltipTrigger
-              render={<p className="text-muted-foreground text-caption tabular-nums" />}
-            >
+            <TooltipTrigger render={<Text render={<p />} variant="meta" />}>
               {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
             </TooltipTrigger>
             <TooltipPopup>

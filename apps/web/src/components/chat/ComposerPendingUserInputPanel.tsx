@@ -14,6 +14,7 @@ import { Row } from "../ui/row";
 import { NOT_NOW } from "../ask/ask.logic";
 import { AskDock } from "../ask/AskCard";
 import { ComposerAskMark } from "./ComposerAsk";
+import { Text } from "~/components/ui/text";
 
 /**
  * What a keystroke means for the option list, or undefined when the card should
@@ -307,9 +308,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <AskDock
         actions={
           answer === null ? (
-            <span className="text-line text-muted-foreground" data-pending-user-input-waiting>
+            <Text variant="remark" data-pending-user-input-waiting>
               {waitingLabel}
-            </span>
+            </Text>
           ) : prompt.dismissible ? (
             // Not now closes an async question without sending a reply.
             <Button

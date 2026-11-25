@@ -11,6 +11,7 @@ import {
   resolveTimelineMinimapTopPercent,
 } from "./MessagesTimeline.logic";
 import { resolveTimelineMinimapPreview, type TimelineMinimapItem } from "./timelineMinimapItems";
+import { Text } from "~/components/ui/text";
 
 function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
   return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
@@ -232,8 +233,9 @@ export function TimelineMinimap({
                     {activeItem.userText ?? "User message"}
                   </span>
                   {(activeItem.assistantText ?? activeItem.note) ? (
-                    <span
-                      className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-body leading-5"
+                    <Text
+                      className="mt-1 max-h-[3.75rem] overflow-hidden"
+                      variant="description"
                       style={{
                         display: "-webkit-box",
                         WebkitBoxOrient: "vertical",
@@ -241,7 +243,7 @@ export function TimelineMinimap({
                       }}
                     >
                       {activeItem.assistantText ?? activeItem.note}
-                    </span>
+                    </Text>
                   ) : null}
                 </span>
               </span>

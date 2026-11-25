@@ -3,6 +3,7 @@ import { createContext, lazy, Suspense, use, useMemo, useState, type ReactNode }
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { Button } from "../ui/button";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
+import { Text } from "~/components/ui/text";
 
 const loadDiffRenderer = () => import("./ReviewCommentDiffRenderer");
 
@@ -13,9 +14,9 @@ function DiffFailure() {
   if (!failure) return null;
   return (
     <div className="space-y-2">
-      <div role="alert" className="text-caption text-muted-foreground">
+      <Text render={<div />} variant="note" role="alert">
         Could not load diff.
-      </div>
+      </Text>
       {failure.rawPatch}
       <Button variant="secondary" size="sm" onClick={failure.retry}>
         Retry diff

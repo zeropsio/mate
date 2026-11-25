@@ -31,6 +31,7 @@ import {
   themeMessage,
   type PageTheme,
 } from "@t3tools/client-runtime/zerops/publishedPage";
+import { Text } from "~/components/ui/text";
 
 /** The conversation's colours as the app's own tokens hold them now. */
 function readTheme(scheme: PageTheme["scheme"]): PageTheme {
@@ -322,7 +323,11 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           }
         />
       ) : left ? (
-        <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-caption text-muted-foreground">
+        <Text
+          className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center"
+          render={<div />}
+          variant="note"
+        >
           <p>The page tried to open something else, so it was closed.</p>
           <Button
             type="button"
@@ -335,7 +340,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           >
             Show the page again
           </Button>
-        </div>
+        </Text>
       ) : failed ? (
         <div className="p-3">
           <Failure cause="The page could not be read from the Mate." />
@@ -401,7 +406,11 @@ export function PublishedPage(props: {
   const failed = bytes.read.kind === "failed" || (bytes.read.kind === "ready" && !bytes.read.blob);
   return (
     <figure className="group/page grid min-w-0 gap-1.5" aria-label={page.title}>
-      <figcaption className="flex min-w-0 items-center justify-between gap-2 text-caption text-muted-foreground">
+      <Text
+        className="flex min-w-0 items-center justify-between gap-2"
+        render={<figcaption />}
+        variant="note"
+      >
         <span className="min-w-0 truncate">{page.title}</span>
         {/* Open full shows where the pointer is on the page, or a key reaches it; always on touch. */}
         <span className="flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/page:opacity-100 group-focus-within/page:opacity-100 pointer-coarse:opacity-100">
@@ -416,7 +425,7 @@ export function PublishedPage(props: {
             <Maximize2Icon />
           </Button>
         </span>
-      </figcaption>
+      </Text>
       <PublishedPageFrame
         title={page.title}
         html={html}
