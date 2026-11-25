@@ -446,7 +446,7 @@ export function ProviderModelsSection({
             spellCheck={false}
           />
           <Button className="shrink-0" variant="secondary" onClick={handleAdd}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Add
           </Button>
         </div>

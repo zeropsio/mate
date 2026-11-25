@@ -69,7 +69,7 @@ export function DiffCommentAnnotation({
         {onDelete ? (
           <span className="-my-1 -mr-1 flex shrink-0 opacity-0 transition-opacity group-hover/comment:opacity-100 focus-within:opacity-100 max-sm:opacity-100">
             <Button variant="ghost" size="icon-sm" aria-label="Delete comment" onClick={onDelete}>
-              <Trash2 className="size-3" />
+              <Trash2 />
             </Button>
           </span>
         ) : null}

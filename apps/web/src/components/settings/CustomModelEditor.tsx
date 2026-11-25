@@ -191,7 +191,7 @@ export function CustomModelEditor({
           })
         }
       >
-        <XIcon className="size-3" />
+        <XIcon />
       </Button>
     </div>
   );
@@ -266,7 +266,7 @@ export function CustomModelEditor({
           aria-label={`Remove option ${index + 1}`}
           onClick={() => removeDescriptor(descriptor.key)}
         >
-          <XIcon className="size-3" />
+          <XIcon />
         </Button>
       </div>
       {descriptor.type === "select" ? (
@@ -283,7 +283,7 @@ export function CustomModelEditor({
               })
             }
           >
-            <PlusIcon className="size-3" />
+            <PlusIcon />
             Add choice
           </Button>
         </div>
@@ -360,7 +360,7 @@ export function CustomModelEditor({
                   className={cn("-ml-2 first:ml-0")}
                   onClick={() => addDescriptor(descriptorFromPreset(preset))}
                 >
-                  <PlusIcon className="size-3" />
+                  <PlusIcon />
                   {preset.label}
                 </Button>
               ))}
@@ -370,7 +370,7 @@ export function CustomModelEditor({
               variant="ghost"
               onClick={() => addDescriptor(emptyEditorDescriptor())}
             >
-              <PlusIcon className="size-3" />
+              <PlusIcon />
               Custom option
             </Button>
           </div>

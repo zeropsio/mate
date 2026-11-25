@@ -97,7 +97,7 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
                     size="icon-2xs"
                     variant="ghost-muted"
                   >
-                    <XIcon className="size-3" />
+                    <XIcon />
                   </Button>
                 }
               />

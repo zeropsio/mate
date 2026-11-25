@@ -331,7 +331,7 @@ export function ProviderAccentColorPicker(props: {
             aria-hidden={!normalized}
             tabIndex={normalized ? 0 : -1}
           >
-            <XIcon className="size-3.5" aria-hidden />
+            <XIcon aria-hidden />
           </Button>
         </span>
       </div>

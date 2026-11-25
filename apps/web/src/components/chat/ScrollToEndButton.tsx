@@ -41,7 +41,7 @@ export function ScrollToEndButton({
           size="icon-md"
           variant="secondary"
         >
-          <ArrowDownIcon aria-hidden="true" className="size-4" />
+          <ArrowDownIcon aria-hidden="true" />
         </Button>
       </span>
     </div>

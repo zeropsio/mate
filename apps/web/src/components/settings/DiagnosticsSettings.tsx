@@ -280,7 +280,7 @@ function TraceIdCell({ traceId }: { traceId: string }) {
               aria-label={copied ? "Copied trace ID" : "Copy trace ID"}
               onClick={() => copyToClipboard(traceId)}
             >
-              <CopyIcon className="size-3" />
+              <CopyIcon />
             </Button>
           }
         />
@@ -1096,7 +1096,7 @@ export function DiagnosticsSettingsPanel() {
                     onClick={openLogsDirectory}
                     aria-label="Open logs folder"
                   >
-                    <FolderOpenIcon className="size-3" />
+                    <FolderOpenIcon />
                   </Button>
                 }
               />

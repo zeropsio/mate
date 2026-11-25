@@ -339,7 +339,7 @@ function WorkflowScriptView({
           aria-label="Close script"
           className="ml-auto"
         >
-          <X aria-hidden className="size-3" />
+          <X aria-hidden />
         </Button>
       </div>
       <div className="max-h-72 overflow-auto p-2">
@@ -483,7 +483,7 @@ function ExpandedWorkflowSection({
           {settled}/{members.length} settled
         </span>
         <Button size="icon-sm" variant="ghost" onClick={onCollapse} aria-label="Collapse workflow">
-          <ChevronDown aria-hidden className="size-3" />
+          <ChevronDown aria-hidden />
         </Button>
       </div>
       <PhaseRail group={group} />

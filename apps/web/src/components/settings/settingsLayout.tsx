@@ -92,7 +92,7 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
         delay={200}
         render={
           <Button size="icon-sm" variant="ghost" aria-label="Background policy details">
-            <InfoIcon className="size-3.5" />
+            <InfoIcon />
           </Button>
         }
       />
@@ -227,7 +227,7 @@ export function SettingResetButton({
               onClick();
             }}
           >
-            <Undo2Icon className="size-3" />
+            <Undo2Icon />
           </Button>
         }
       />

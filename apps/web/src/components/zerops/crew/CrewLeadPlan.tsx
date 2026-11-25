@@ -227,7 +227,7 @@ function LeaveOut({
           size="icon-2xs"
           variant="ghost-muted"
         >
-          <XIcon aria-hidden="true" className="size-3.5" />
+          <XIcon aria-hidden="true" />
         </Button>
       </CrewTip>
     </span>

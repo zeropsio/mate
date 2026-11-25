@@ -264,7 +264,7 @@ function CardRow({
           tabIndex={-1}
           variant="secondary"
         >
-          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          <ChevronLeftIcon aria-hidden="true" />
         </Button>
       </span>
       <span
@@ -281,7 +281,7 @@ function CardRow({
           tabIndex={-1}
           variant="secondary"
         >
-          <ChevronRightIcon aria-hidden="true" className="size-4" />
+          <ChevronRightIcon aria-hidden="true" />
         </Button>
       </span>
     </div>

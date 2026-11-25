@@ -35,7 +35,7 @@ export function CrewView({
           size="sm"
           variant="ghost-muted"
         >
-          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          <ChevronLeftIcon aria-hidden="true" />
           {CREW_VIEW_WORDS.back}
         </Button>
       )}

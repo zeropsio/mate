@@ -144,7 +144,7 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
           </EmptyDescription>
           <div className="mt-5 flex justify-center">
             <Button size="sm" onClick={onRetry}>
-              <RotateCcwIcon className="size-4" />
+              <RotateCcwIcon />
               Try again
             </Button>
           </div>

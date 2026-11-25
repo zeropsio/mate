@@ -613,7 +613,7 @@ function AnswerBox(
           type="submit"
           variant={ready ? "primary" : "secondary"}
         >
-          <ArrowUpIcon aria-hidden="true" className="size-3.5" strokeWidth={2.4} />
+          <ArrowUpIcon aria-hidden="true" strokeWidth={2.4} />
         </Button>
       </CrewTip>
     </form>

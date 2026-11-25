@@ -271,7 +271,7 @@ export function CrewSetup(props: CrewSetupProps) {
           size="icon-sm"
           variant="ghost-muted"
         >
-          <XIcon aria-hidden="true" className="size-4" />
+          <XIcon aria-hidden="true" />
         </Button>
       </div>
       <p className="mt-0.5 text-line leading-4.5 text-muted-foreground">{CREW_SETUP_WORDS.line}</p>

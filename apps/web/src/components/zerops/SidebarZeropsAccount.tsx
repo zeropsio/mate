@@ -460,7 +460,7 @@ export function SidebarZeropsAccountMenu({
       >
         <Building2Icon />
         <span className="min-w-0 flex-1 truncate">Zerops HQ</span>
-        <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
+        <ArrowUpRightIcon className="text-muted-foreground" />
       </MenuItem>
 
       <MenuSeparator />

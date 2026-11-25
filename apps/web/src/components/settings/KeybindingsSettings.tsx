@@ -134,7 +134,7 @@ function ExpandableHeaderSearch({
                 onClick={() => onOpenChange(true)}
                 aria-label="Search keybindings"
               >
-                <SearchIcon className="size-3" />
+                <SearchIcon />
               </Button>
             }
           />
@@ -378,7 +378,7 @@ function WhenExpressionNodeEditor({
             aria-label="Remove condition"
             onClick={onRemove}
           >
-            <MinusIcon className="size-3.5" />
+            <MinusIcon />
           </Button>
         ) : null}
       </div>
@@ -413,7 +413,7 @@ function WhenExpressionNodeEditor({
               aria-label="Remove negated group"
               onClick={onRemove}
             >
-              <MinusIcon className="size-3.5" />
+              <MinusIcon />
             </Button>
           ) : null}
         </div>
@@ -511,11 +511,11 @@ function WhenExpressionNodeEditor({
           </SelectContent>
         </Select>
         <Button type="button" variant="secondary" size="sm" onClick={addCondition}>
-          <PlusIcon className="size-3.5" />
+          <PlusIcon />
           Condition
         </Button>
         <Button type="button" variant="secondary" size="sm" onClick={addGroup}>
-          <PlusIcon className="size-3.5" />
+          <PlusIcon />
           Group
         </Button>
         {onRemove ? (
@@ -527,7 +527,7 @@ function WhenExpressionNodeEditor({
             aria-label="Remove group"
             onClick={onRemove}
           >
-            <MinusIcon className="size-3.5" />
+            <MinusIcon />
           </Button>
         ) : null}
       </div>
@@ -621,11 +621,11 @@ function WhenExpressionBuilder({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={addRootCondition}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Condition
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Group
           </Button>
         </div>
@@ -669,11 +669,11 @@ function WhenExpressionBuilder({
             <div className="p-3">
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" onClick={addRootCondition}>
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon />
                   Condition
                 </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={addRootGroup}>
-                  <PlusIcon className="size-3.5" />
+                  <PlusIcon />
                   Group
                 </Button>
               </div>
@@ -1214,7 +1214,7 @@ export function KeybindingsSettingsPanel() {
                     onClick={() => setIsAddingBinding(true)}
                     aria-label="Add keybinding"
                   >
-                    <PlusIcon className="size-3" />
+                    <PlusIcon />
                   </Button>
                 }
               />
@@ -1231,7 +1231,7 @@ export function KeybindingsSettingsPanel() {
                     onClick={openKeybindingsFile}
                     aria-label="Open keybindings.json"
                   >
-                    <FileJsonIcon className="size-3" />
+                    <FileJsonIcon />
                   </Button>
                 }
               />

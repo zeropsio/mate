@@ -383,7 +383,7 @@ export function ZeropsReviewSurface({
             size="icon-sm"
             variant="ghost-muted"
           >
-            <XIcon aria-hidden="true" className="size-4" />
+            <XIcon aria-hidden="true" />
           </Button>
         </div>
       )}
@@ -1502,7 +1502,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+        <ChevronLeftIcon aria-hidden="true" />
       </Button>
       <span aria-live="polite" className="px-1 text-line text-muted-foreground tabular-nums">
         {queue.words}
@@ -1515,7 +1515,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
+        <ChevronRightIcon aria-hidden="true" />
       </Button>
     </>
   );
