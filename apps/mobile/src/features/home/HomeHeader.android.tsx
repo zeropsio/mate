@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ControlPillMenu } from "../../components/ControlPill";
 import { SymbolView } from "../../components/AppSymbol";
-import { ZeropsMark } from "../../components/ZeropsMark";
+import { MateMark } from "../../components/MateMark";
 import { HOME_HORIZONTAL_INSET } from "../../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../../lib/mobileBranding";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
@@ -125,8 +125,8 @@ export function HomeHeader(props: HomeHeaderProps) {
               onPress={props.onOpenEnvironments}
               brand={
                 <View className="flex-row items-center gap-2">
-                  {/* Mirrors the desktop SidebarBrand: Zerops mark + muted "Code". */}
-                  <ZeropsMark height={17} />
+                  {/* Mirrors the web SidebarBrand: Mate's face + muted "Code". */}
+                  <MateMark height={17} />
                   <RNText className="-ml-0.5 text-[21px] font-t3-medium tracking-[-0.5px] text-foreground-muted">
                     Code
                   </RNText>
