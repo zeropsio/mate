@@ -14,7 +14,7 @@
  * change's code, on the line it names: the review has no checkout to open it in.
  */
 import { useNearViewport } from "../../../hooks/useNearViewport";
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, XIcon } from "lucide-react";
+import { ImageIcon } from "lucide-react";
 import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import ChatMarkdown, {
@@ -25,7 +25,12 @@ import ChatMarkdown, {
 } from "~/components/ChatMarkdown";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
-import { Dialog, DialogClose, DialogMediaPopup } from "~/components/ui/dialog";
+import {
+  Dialog,
+  DialogMediaClose,
+  DialogMediaPopup,
+  DialogMediaStep,
+} from "~/components/ui/dialog";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
@@ -405,38 +410,23 @@ function PictureViewer({
               </p>
             ) : null}
           </div>
-          <DialogClose
-            aria-label="Close"
-            render={<Button className="fixed end-4 top-4 size-10" size="icon-md" variant="scrim" />}
-          >
-            <XIcon aria-hidden="true" className="size-5" />
-          </DialogClose>
+          <DialogMediaClose />
           {count > 1 ? (
             <>
-              <Button
-                aria-label="The picture before"
-                className="fixed start-4 top-1/2 size-10 -translate-y-1/2"
-                data-side="before"
+              <DialogMediaStep
+                label="The picture before"
                 onClick={() => {
                   step(-1);
                 }}
-                size="icon-md"
-                variant="scrim"
-              >
-                <ChevronLeftIcon aria-hidden="true" className="size-5" />
-              </Button>
-              <Button
-                aria-label="The picture after"
-                className="fixed end-4 top-1/2 size-10 -translate-y-1/2"
-                data-side="after"
+                side="before"
+              />
+              <DialogMediaStep
+                label="The picture after"
                 onClick={() => {
                   step(1);
                 }}
-                size="icon-md"
-                variant="scrim"
-              >
-                <ChevronRightIcon aria-hidden="true" className="size-5" />
-              </Button>
+                side="after"
+              />
             </>
           ) : null}
         </div>
