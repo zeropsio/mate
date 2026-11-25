@@ -68,6 +68,7 @@ import {
 } from "./ConversationStrip.logic";
 import { LineMotion } from "./ConversationStripMotion";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** Between two faces of the crew (`gap-0.5`). */
 const CREW_GAP_PX = 2;
@@ -679,10 +680,11 @@ export function ConversationStripView({
       />
       {crew === null ? null : (
         <>
-          <span
+          <Separator
             aria-hidden="true"
-            className="h-4 w-px shrink-0 bg-border"
+            className="h-4 shrink-0"
             data-conversation-divider
+            orientation="vertical"
           />
           <div
             aria-label="Crew"
