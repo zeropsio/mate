@@ -1045,7 +1045,7 @@ function Harness() {
         {/* The app's own top bar (`WorkspacePageHeader`), so the conversation
             under it stands where ChatView's does. */}
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-body"
+          className="relative bg-toolbar font-medium text-body text-toolbar-foreground"
           data-chat-header
         >
           {LINE ? <LineHeader current={current} onOpen={setCurrent} /> : thread.name}

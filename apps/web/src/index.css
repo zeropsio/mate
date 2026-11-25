@@ -10,7 +10,7 @@
 @import "./styles/foundation.css";
 @import "./styles/base.css";
 @import "./styles/tokens.css";
-@import "./styles/chrome.css";
+@import "./styles/document.css";
 @import "./styles/chat-markdown.css";
 @import "./styles/run-shimmer.css";
 @import "./styles/mate-face.css";

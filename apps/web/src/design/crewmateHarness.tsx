@@ -719,7 +719,10 @@ function Harness() {
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         {/* The app's own top bar, so the conversation under it stands where ChatView's does. */}
-        <WorkspacePageHeader className="relative bg-background" data-chat-header>
+        <WorkspacePageHeader
+          className="relative bg-toolbar text-toolbar-foreground"
+          data-chat-header
+        >
           <LineHeader current={current.seat} />
         </WorkspacePageHeader>
         <Pane current={current} onChangeJob={setJob} />

@@ -14,6 +14,7 @@
  * from the sidebar context, so the same page needs no prop to say which.
  */
 
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
@@ -114,7 +115,7 @@ export function ZeropsHostedFrame({
         ) : isElectron ? (
           <div
             aria-hidden="true"
-            className="drag-region h-[var(--workspace-topbar-height)] shrink-0"
+            className={cn(DRAG_REGION_CLASS_NAME, "h-[var(--workspace-topbar-height)] shrink-0")}
           />
         ) : null}
 

@@ -1,3 +1,4 @@
+import { COMPOSER_ATTACHED_OUTLINE } from "./composerAttached";
 import type { useQuestionAttachments } from "./useQuestionAttachments";
 import type {
   ApprovalRequestId,
@@ -3170,7 +3171,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       >
         {showComposerTopDrawer ? (
           <div
-            className="chat-composer-top-drawer"
+            className={cn("chat-composer-top-drawer", COMPOSER_ATTACHED_OUTLINE)}
             data-chat-composer-top-drawer="true"
             data-variant="info"
           >

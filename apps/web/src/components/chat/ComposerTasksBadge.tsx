@@ -1,3 +1,4 @@
+import { COMPOSER_ATTACHED_OUTLINE } from "./composerAttached";
 import { CheckIcon, CircleDotIcon, CircleIcon, ListTodoIcon, XIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -181,7 +182,10 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
   readonly steps: readonly ComposerTaskStep[];
 }) {
   return (
-    <div className="chat-composer-top-drawer" data-chat-composer-tasks-drawer="true">
+    <div
+      className={cn("chat-composer-top-drawer", COMPOSER_ATTACHED_OUTLINE)}
+      data-chat-composer-tasks-drawer="true"
+    >
       <div className="flex items-center gap-1 px-3 py-1.5 sm:px-4">
         <Button
           variant="ghost-muted"

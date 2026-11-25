@@ -1,3 +1,4 @@
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -441,10 +442,11 @@ function Sidebar({
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
             // Adjust the padding for floating and inset variants; the plain menu draws its edge
-            // line toward the page in the menu's own border ink, as its phone sheet does.
+            // line toward the page in its text at 10 % (`sidebar-edge`), as index.html's boot
+            // frame does.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-              : "border-sidebar-border group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              : "border-sidebar-edge group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
           data-slot="sidebar-container"
@@ -725,7 +727,7 @@ function SidebarHeader({
         variant === "bar"
           ? "relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2"
           : "flex flex-col gap-2 p-2",
-        dragRegion && "drag-region",
+        dragRegion && DRAG_REGION_CLASS_NAME,
         className,
       )}
       data-sidebar="header"

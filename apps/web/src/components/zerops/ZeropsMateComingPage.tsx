@@ -1359,7 +1359,10 @@ export function MateComingFrame({
           className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
           data-zerops-surface="mate-coming-page"
         >
-          <WorkspacePageHeader className="relative bg-background" data-chat-header>
+          <WorkspacePageHeader
+            className="relative bg-toolbar text-toolbar-foreground"
+            data-chat-header
+          >
             {header}
           </WorkspacePageHeader>
           <div className="relative flex min-h-0 flex-1 flex-col">

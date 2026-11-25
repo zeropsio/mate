@@ -46,7 +46,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               pressed={terminalOpen}
               onPressedChange={onToggleTerminal}
               aria-label="Toggle terminal drawer"
-              variant="ghost"
+              variant="toolbar"
               size="sm"
               disabled={!terminalAvailable}
             >
@@ -71,7 +71,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
                 ? `Toggle right panel, ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
                 : "Toggle right panel"
             }
-            variant="ghost"
+            variant="toolbar"
             size="sm"
             disabled={!rightPanelAvailable}
           >
@@ -117,7 +117,7 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
             pressed={maximized}
             onPressedChange={onToggle}
             aria-label={label}
-            variant="ghost"
+            variant="toolbar"
             size="sm"
           >
             {maximized ? (

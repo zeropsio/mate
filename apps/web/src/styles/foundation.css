@@ -248,6 +248,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-topbar-height: 52px;
 }
 
+/* A Windows desktop window keeps its right edge free for its resize handle. */
+.electron-windows {
+  --desktop-window-right-resize-inset: 6px;
+}
+
 .wco {
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
   --workspace-controls-top: env(titlebar-area-y, 0px);
@@ -538,6 +543,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
+  --color-sidebar-edge: var(--zerops-sidebar-edge);
   /* The top bar's ground and ink: the conversation's header and its panel toggles. */
   --color-toolbar: var(--toolbar-background);
   --color-toolbar-foreground: var(--contrast-toolbar-foreground);

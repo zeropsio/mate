@@ -1,3 +1,4 @@
+import { COMPOSER_ATTACHED_OUTLINE, COMPOSER_ATTACHED_RAISED } from "./composerAttached";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { XIcon } from "lucide-react";
 
@@ -96,7 +97,13 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
                   onClick={() => setExpanded(true)}
                   variant="bare"
                 >
-                  <span className="chat-composer-banner-stack-cap mx-auto block h-full rounded-t-card border border-b-0" />
+                  <span
+                    className={cn(
+                      "chat-composer-banner-stack-cap mx-auto block h-full rounded-t-card border border-b-0",
+                      COMPOSER_ATTACHED_RAISED,
+                      COMPOSER_ATTACHED_OUTLINE,
+                    )}
+                  />
                 </Button>
               ) : null}
               <ComposerBannerStackAlert
@@ -198,7 +205,11 @@ function ComposerBannerStackAlert({
   // data-variant; the expanded ones float as glass.
   return attached ? (
     <div
-      className="chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 text-caption sm:px-4"
+      className={cn(
+        "chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 text-caption sm:px-4",
+        COMPOSER_ATTACHED_RAISED,
+        COMPOSER_ATTACHED_OUTLINE,
+      )}
       data-variant={item.variant}
     >
       {alert}

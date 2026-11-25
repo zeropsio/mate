@@ -1877,7 +1877,7 @@ function ConversationPane({ open }: { readonly open: string }) {
     candidate === undefined ? undefined : readZeropsMembership(candidate.project).groupId;
   return (
     <main className="flex min-w-0 flex-1 flex-col">
-      <WorkspacePageHeader className="relative bg-background" data-chat-header>
+      <WorkspacePageHeader className="relative bg-toolbar text-toolbar-foreground" data-chat-header>
         <div
           className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1"
           data-workspace-titlebar-controls

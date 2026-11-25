@@ -7325,7 +7325,7 @@ function ConversationView(props: ChatViewProps) {
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
-          className="relative bg-background"
+          className="relative bg-toolbar text-toolbar-foreground"
         >
           {/* A phone's sheet covers the whole header, so the header stays as it is under it: its
               toggle and its actions stand where they stood as the sheet comes and goes. */}

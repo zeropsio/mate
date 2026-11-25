@@ -116,7 +116,10 @@ function Harness() {
           data-phase={phase}
           data-chat-workspace-drop-target=""
         >
-          <header className="flex h-14 items-center px-6" data-chat-header="">
+          <header
+            className="flex h-14 items-center bg-toolbar px-6 text-toolbar-foreground"
+            data-chat-header=""
+          >
             <ConversationStripView
               mate={{
                 name: "Fen",

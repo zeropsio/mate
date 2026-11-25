@@ -1,5 +1,6 @@
 "use client";
 
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -145,7 +146,7 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
     <TabStripCompactContext.Provider value={compact}>
       <div className="flex min-w-0 flex-1 items-center gap-1" data-slot="tab-strip" ref={rootRef}>
         <ScrollArea
-          className={cn("w-auto min-w-0", dragRegion && "drag-region")}
+          className={cn("w-auto min-w-0", dragRegion && DRAG_REGION_CLASS_NAME)}
           data-slot="tab-strip-list"
           hideScrollbars
           radius="none"
@@ -155,7 +156,10 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
           <div className="flex h-full w-max min-w-full items-center gap-1">{children}</div>
         </ScrollArea>
         <div
-          className={cn("flex flex-auto shrink-0 items-center gap-1", dragRegion && "drag-region")}
+          className={cn(
+            "flex flex-auto shrink-0 items-center gap-1",
+            dragRegion && DRAG_REGION_CLASS_NAME,
+          )}
           data-slot="tab-strip-end"
         >
           {action === undefined || action === null ? null : (
