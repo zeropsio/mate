@@ -166,7 +166,11 @@ import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConv
 import { getProviderModelCapabilities } from "../../providerModels";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { shouldUseCompactComposerPrimaryActions } from "../composerFooterLayout";
-import type { ComposerEditorSnapshot, ComposerPromptEditorHandle } from "../ComposerPromptEditor";
+import {
+  ComposerVaultKeysContext,
+  type ComposerEditorSnapshot,
+  type ComposerPromptEditorHandle,
+} from "../ComposerPromptEditor";
 import {
   type ComposerEditorWords,
   ComposerEditorOnWords,
@@ -201,7 +205,7 @@ import { getComposerPromptInjectionState, getComposerProviderState } from "./com
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
 import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
-import { ComposerVaultAddButton } from "../zerops/vault/ComposerVaultAdd";
+import { ComposerVaultAddButton, useComposerVaultKeys } from "../zerops/vault/ComposerVaultAdd";
 import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
@@ -1906,6 +1910,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [composerCaret, composerFiles, composerImages, composerTerminalContexts, promptRef]);
 
+  // A key the key button put in the vault: its `$NAME` at the caret, which the editor draws as the
+  // key (`ComposerVaultKeysContext`) and the Mate reads with the vault's note on it.
+  const vaultKeys = useComposerVaultKeys(environmentId);
+  const insertVaultKey = useCallback(
+    (key: string) => {
+      const { value, expandedCursor } = readComposerSnapshot();
+      const before = value[expandedCursor - 1];
+      const lead = before === undefined || /\s/.test(before) ? "" : " ";
+      return applyPromptReplacement(expandedCursor, expandedCursor, `${lead}$${key} `);
+    },
+    [applyPromptReplacement, readComposerSnapshot],
+  );
+
   /**
    * Attaches a context at the caret: the same inline-placeholder insertion the
    * Data panel and the terminal selection both go through, so the chip lands
@@ -3316,44 +3333,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
 
                 <div className="relative">
-                  <ComposerEditorOnWords
-                    ariaLabel="Message"
-                    suggestionListId={composerSuggestionListId}
-                    activeSuggestionId={
-                      composerSuggestionsVisible &&
-                      composerMenuItems.length > 0 &&
-                      activeComposerMenuItem
-                        ? composerSuggestionOptionId(
-                            composerSuggestionListId,
-                            activeComposerMenuItem.id,
-                          )
-                        : undefined
-                    }
-                    editorRef={composerEditorRef}
-                    words={editorWords}
-                    terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
-                    skills={selectedProviderSkills}
-                    crewmates={editorMentionChips}
-                    pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
-                    onOpenPicture={composerPictures.open}
-                    onRemovePicture={composerPictures.remove}
-                    onRetryPicture={composerPictures.retry}
-                    onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
-                    files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
-                    onRemoveFile={composerFileList.remove}
-                    onRetryFile={composerFileList.retry}
-                    {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
-                    onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                    onChange={onPromptChange}
-                    onCommandKeyDown={onComposerCommandKey}
-                    onPaste={onComposerPaste}
-                    placeholder={promptFieldWords}
-                    disabled={composerInputClosed("editor", {
-                      connecting: isConnecting,
-                      projectMissing: projectSelectionRequired,
-                      waits: composerWaits,
-                    })}
-                  />
+                  <ComposerVaultKeysContext value={vaultKeys}>
+                    <ComposerEditorOnWords
+                      ariaLabel="Message"
+                      suggestionListId={composerSuggestionListId}
+                      activeSuggestionId={
+                        composerSuggestionsVisible &&
+                        composerMenuItems.length > 0 &&
+                        activeComposerMenuItem
+                          ? composerSuggestionOptionId(
+                              composerSuggestionListId,
+                              activeComposerMenuItem.id,
+                            )
+                          : undefined
+                      }
+                      editorRef={composerEditorRef}
+                      words={editorWords}
+                      terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
+                      skills={selectedProviderSkills}
+                      crewmates={editorMentionChips}
+                      pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
+                      onOpenPicture={composerPictures.open}
+                      onRemovePicture={composerPictures.remove}
+                      onRetryPicture={composerPictures.retry}
+                      onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
+                      files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
+                      onRemoveFile={composerFileList.remove}
+                      onRetryFile={composerFileList.retry}
+                      {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                      onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                      onChange={onPromptChange}
+                      onCommandKeyDown={onComposerCommandKey}
+                      onPaste={onComposerPaste}
+                      placeholder={promptFieldWords}
+                      disabled={composerInputClosed("editor", {
+                        connecting: isConnecting,
+                        projectMissing: projectSelectionRequired,
+                        waits: composerWaits,
+                      })}
+                    />
+                  </ComposerVaultKeysContext>
                   {isMobileViewport || isComposerApprovalState ? null : (
                     <ComposerFullScreenToggle
                       fullComposer={fullComposer}
@@ -3536,7 +3555,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
-                    <ComposerVaultAddButton environmentId={environmentId} />
+                    <ComposerVaultAddButton
+                      environmentId={environmentId}
+                      onAdded={insertVaultKey}
+                    />
                     <ComposerAttachFilesButton
                       disabled={composerInputClosed("paperclip", {
                         connecting: isConnecting,

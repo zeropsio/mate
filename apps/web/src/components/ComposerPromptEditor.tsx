@@ -112,6 +112,7 @@ import { FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { formatProviderSkillDisplayName } from "@t3tools/client-runtime/providerSkills";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { KeyRoundIcon } from "lucide-react";
 import { registerComposerInlineTokenPaste } from "./composerInlineTokenPaste";
 import { MateFace } from "./zerops/primitives";
 import { mateTintStyle } from "./zerops/mateTint";
@@ -454,7 +455,40 @@ function skillMetadataByName(
   );
 }
 
-function ComposerSkillDecorator(props: { skillLabel: string; skillDescription: string | null }) {
+/**
+ * The keys the Mate's vault holds, each with the vault it is in ("Fia's vault"): a `$NAME` among
+ * them is drawn as that key (the composer's key button writes one), every other `$name` as a skill.
+ */
+export const ComposerVaultKeysContext = createContext<ReadonlyMap<string, string>>(new Map());
+
+function ComposerVaultKeyChip(props: { name: string; vault: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+            contentEditable={false}
+            spellCheck={false}
+            data-composer-vault-key-chip={props.name}
+          />
+        }
+      >
+        <KeyRoundIcon aria-hidden="true" className={COMPOSER_INLINE_CHIP_ICON_CLASS_NAME} />
+        <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.name}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{`In ${props.vault}: the message carries its name, never its value`}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function ComposerSkillDecorator(props: {
+  skillName: string;
+  skillLabel: string;
+  skillDescription: string | null;
+}) {
+  const vault = use(ComposerVaultKeysContext).get(props.skillName);
+  if (vault !== undefined) return <ComposerVaultKeyChip name={props.skillName} vault={vault} />;
   const chip = (
     <span
       className={COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME}
@@ -554,6 +588,7 @@ class ComposerSkillNode extends DecoratorNode<React.ReactElement> {
   override decorate(): React.ReactElement {
     return (
       <ComposerSkillDecorator
+        skillName={this.__skillName}
         skillLabel={this.__skillLabel}
         skillDescription={this.__skillDescription}
       />
