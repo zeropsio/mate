@@ -1,12 +1,14 @@
-import { useState } from "react";
-
 import { Button } from "~/components/ui/button";
 import {
   Sheet,
+  SheetClose,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
+  SheetPanel,
   SheetPopup,
   SheetTitle,
+  SheetTrigger,
 } from "~/components/ui/sheet";
 
 import { defineKitSection } from "../kitSection";
@@ -23,22 +25,25 @@ function Opener({
   readonly side: (typeof SIDES)[number];
   readonly variant: (typeof VARIANTS)[number];
 }) {
-  const [open, setOpen] = useState(false);
   return (
     <Specimen label={specimenLabel({ side, variant })}>
-      <Button onClick={() => setOpen(true)} variant="secondary">
-        Open {side}
-      </Button>
-      <Sheet onOpenChange={setOpen} open={open}>
+      <Sheet>
+        <SheetTrigger render={<Button variant="secondary" />}>Open {side}</SheetTrigger>
         <SheetPopup side={side} variant={variant}>
           <SheetHeader>
             <SheetTitle>Addresses</SheetTitle>
             <SheetDescription>Where people reach the project.</SheetDescription>
           </SheetHeader>
-          <div className="flex flex-col gap-2 px-6 pb-6 text-body">
-            <span>shop.example.com</span>
-            <span>storefront-1a2b.prg1.zerops.app</span>
-          </div>
+          <SheetPanel>
+            <div className="flex flex-col gap-2 text-body">
+              <span>shop.example.com</span>
+              <span>storefront-1a2b.prg1.zerops.app</span>
+            </div>
+          </SheetPanel>
+          <SheetFooter>
+            <SheetClose render={<Button variant="ghost" />}>Close</SheetClose>
+            <Button>Add an address</Button>
+          </SheetFooter>
         </SheetPopup>
       </Sheet>
     </Specimen>

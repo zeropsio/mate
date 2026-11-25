@@ -4,6 +4,8 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
+import { DIALOG_MOBILE_FOOTER_CLASS } from "~/components/ui/dialog-styles";
+import { ScrollArea } from "~/components/ui/scroll-area";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { ControlledOpenContext, renderRetainedPopup } from "~/components/ui/retainedPopup";
 
@@ -16,6 +18,14 @@ function Sheet<Payload>(props: SheetPrimitive.Root.Props<Payload>) {
 }
 
 const SheetPortal = gatedPortal(SheetPrimitive.Portal);
+
+function SheetTrigger(props: SheetPrimitive.Trigger.Props) {
+  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />;
+}
+
+function SheetClose(props: SheetPrimitive.Close.Props) {
+  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
+}
 
 function SheetBackdrop({ className, ...props }: SheetPrimitive.Backdrop.Props) {
   return (
@@ -142,4 +152,57 @@ function SheetDescription({ className, ...props }: SheetPrimitive.Description.Pr
   );
 }
 
-export { Sheet, SheetPopup, SheetHeader, SheetTitle, SheetDescription };
+/** The sheet's body: it scrolls between the header and the footer, padded as the header is. */
+function SheetPanel({
+  className,
+  scrollFade = true,
+  ...props
+}: React.ComponentProps<"div"> & { scrollFade?: boolean }) {
+  return (
+    <ScrollArea scrollFade={scrollFade}>
+      <div
+        className={cn(
+          "space-y-4 p-6 in-[[data-slot=sheet-popup]:has([data-slot=sheet-header])]:pt-1 in-[[data-slot=sheet-popup]:has([data-slot=sheet-footer]:not(.border-t))]:pb-1",
+          className,
+        )}
+        data-slot="sheet-panel"
+        {...props}
+      />
+    </ScrollArea>
+  );
+}
+
+/** Its actions at the foot: `default` on a muted ground under a rule, `bare` on the sheet's own. */
+function SheetFooter({
+  className,
+  variant = "default",
+  ...props
+}: React.ComponentProps<"div"> & {
+  variant?: "default" | "bare";
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end",
+        variant === "default" && "border-t bg-muted/72 py-4",
+        variant === "bare" && "py-4",
+        DIALOG_MOBILE_FOOTER_CLASS,
+        className,
+      )}
+      data-slot="sheet-footer"
+      {...props}
+    />
+  );
+}
+
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetPopup,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+  SheetPanel,
+};
