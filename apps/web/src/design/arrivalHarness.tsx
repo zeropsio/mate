@@ -41,10 +41,10 @@ import {
 import * as DateTime from "effect/DateTime";
 import { ArrowUpIcon, ChevronDownIcon } from "lucide-react";
 import {
+  type ReactNode,
   StrictMode,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,12 +54,9 @@ import { createRoot } from "react-dom/client";
 import { StandUpAskLine } from "~/components/chat/ConversationRows";
 import { ComposerAccessControl } from "~/components/chat/ComposerModelControl";
 import { ClaudeAI } from "~/components/Icons";
-import {
-  type PersonaChoice,
-  PersonaControl,
-  PersonaSuggestions,
-  travelInto,
-} from "~/components/persona/PersonaAtComposer";
+import { type PersonaChoice, PersonaAsk } from "~/components/persona/PersonaAsk";
+import type { AskState } from "~/components/ask/ask.logic";
+import { NOT_NOW } from "~/components/ask/ask.logic";
 import { personaIcon } from "~/components/persona/personaIcon";
 import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
 import { RunLine } from "~/components/chat/RunChat";
@@ -70,6 +67,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 import { Dialog, DialogTrigger } from "~/components/ui/dialog";
 import { Textarea } from "~/components/ui/textarea";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
@@ -255,10 +253,10 @@ interface HarnessState {
   readonly setupAddedBy?: string | null;
   readonly watching?: boolean;
   /**
-   * The persona at the composer (`PersonaAtComposer`): suggested while the Mate holds none, picked
-   * (its control at the composer's foot names it), or its control's menu open.
+   * The Mate's first message asking how to work with its person (`PersonaAsk`): asked, one picked,
+   * answered, or put off. A new project's (no `conversation`) answered is its usual empty start.
    */
-  readonly persona?: "suggested" | "picked" | "menu";
+  readonly persona?: "asked" | "picked" | "answered" | "notNow";
 }
 
 // Every source-backed recovery/refusal copy branch joins the same production composition.
@@ -611,41 +609,48 @@ const STATES: ReadonlyArray<HarnessState> = [
   },
   {
     id: "persona-new",
-    label: "5 Persona · suggested under a new project's composer",
+    label: "5 Persona · a new project: its first message asks",
     mate: WREN,
     phase: null,
-    persona: "suggested",
+    persona: "asked",
   },
   {
     id: "persona-new-picked",
-    label: "5 Persona · picked: it lives at the composer's foot",
+    label: "5 Persona · a new project: one picked",
     mate: WREN,
     phase: null,
     persona: "picked",
+  },
+  {
+    id: "persona-new-answered",
+    label: "5 Persona · a new project: answered, its usual start",
+    mate: WREN,
+    phase: null,
+    persona: "answered",
   },
   {
     id: "persona-standup",
-    label: "5 Persona · suggested under the setup's ask",
+    label: "5 Persona · asked while it sets up",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "suggested",
+    persona: "asked",
   },
   {
-    id: "persona-standup-picked",
-    label: "5 Persona · picked while it sets up",
+    id: "persona-standup-answered",
+    label: "5 Persona · answered while it sets up",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "picked",
+    persona: "answered",
   },
   {
-    id: "persona-menu",
-    label: "5 Persona · changed from the composer's foot",
+    id: "persona-standup-not-now",
+    label: "5 Persona · not now",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "menu",
+    persona: "notNow",
   },
   {
     id: "not-created",
@@ -1069,7 +1074,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   };
 }
 
-function Conversation() {
+/** The conversation under the setup's ask; `ask` is the Mate's first message, asked under it. */
+function Conversation({ ask }: { readonly ask?: ReactNode }) {
   const startedAt = useMemo(() => ago(8), []);
   return (
     <TimelineRowCtx value={SHARED}>
@@ -1079,6 +1085,7 @@ function Conversation() {
           data-harness-conversation
         >
           <StandUpAskLine at={ago(9)} timestampFormat="24-hour" words={SHARED.standUpAsk ?? ""} />
+          {ask}
           <div>
             <div className={RUN_TRAY_SLICE.top}>
               <RunLine
@@ -1124,7 +1131,7 @@ function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
   }));
 }
 
-/** The templates about the person, as the composer suggests them (an organization's would lead). */
+/** The templates about the person, as the Mate offers them (an organization's would lead). */
 const PERSONA_CHOICES: readonly PersonaChoice[] = PREMADE_PERSONA_TEMPLATES.filter(
   (template) => template.about === "you",
 ).map((template) => ({
@@ -1134,70 +1141,55 @@ const PERSONA_CHOICES: readonly PersonaChoice[] = PREMADE_PERSONA_TEMPLATES.filt
   icon: personaIcon({ source: "premade", id: template.id, revision: template.revision }),
 }));
 
-const personaChoice = (key: string | null) =>
-  PERSONA_CHOICES.find((choice) => choice.key === key) ?? null;
+/** What a state that opens with one picked has picked. */
+const PICKED = "teacher";
+/** How long the fixture's save takes. */
+const SAVE_MS = 600;
+/** How long a new project holds the answer's line before the ask folds away. */
+const HOLD_MS = 900;
+/** How long the ask takes to fold into the headline (`--duration-slow`). */
+const FOLD_MS = 260;
 
-/** How long the suggestions take to fold away once one is picked (`--duration-base`). */
-const SUGGESTIONS_FOLD_MS = 200;
+const answered = (key: string | null, mateName: string): AskState => ({
+  kind: "done",
+  words: `${mateName} works as ${PERSONA_CHOICES.find((choice) => choice.key === key)?.name}`,
+  told: null,
+});
 
-/**
- * The composer as a Mate's conversation draws it, its persona at the foot beside the model and the
- * access, answering as the product would: a suggestion picked travels into the control and the
- * suggestions fold away; the control's menu changes it or takes it off. A pick is the Mate's
- * persona at once, for its next reply; a message sent writes nothing about it.
- */
-function PersonaComposer({ state }: { readonly state: HarnessState }) {
-  const draft = state.conversation !== true;
-  const [value, setValue] = useState<string | null>(() =>
-    state.persona === "suggested" ? null : PERSONA_CHOICES[0]!.key,
+/** The ask as the product would answer it: a pick, a save that takes a moment, Not now. */
+function usePersonaAsk(state: HarnessState) {
+  const [picked, setPicked] = useState<string | null>(() =>
+    state.persona === "asked" ? null : PICKED,
   );
-  const [suggesting, setSuggesting] = useState(state.persona === "suggested");
-  const [folding, setFolding] = useState(false);
-  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("full-access");
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const travelFrom = useRef<HTMLElement | null>(null);
-  // The control names the pick in this commit: start its label where the press was.
-  useLayoutEffect(() => {
-    if (travelFrom.current === null) return;
-    travelInto(travelFrom.current, labelRef.current);
-    travelFrom.current = null;
-  }, [value]);
-  const pick = (key: string, from: HTMLElement) => {
-    travelFrom.current = from;
-    setValue(key);
-    setFolding(true);
-    window.setTimeout(() => setSuggesting(false), SUGGESTIONS_FOLD_MS);
+  const [ask, setAsk] = useState<AskState>(() =>
+    state.persona === "answered"
+      ? answered(PICKED, state.mate.name)
+      : state.persona === "notNow"
+        ? { kind: "notNow", words: NOT_NOW }
+        : { kind: "waiting" },
+  );
+  const choose = (then?: () => void) => {
+    setAsk({ kind: "working", words: "Saving…", pressed: "main" });
+    window.setTimeout(() => {
+      setAsk(answered(picked, state.mate.name));
+      then?.();
+    }, SAVE_MS);
   };
-  const suggestions = suggesting ? (
-    <PersonaSuggestions
-      choices={PERSONA_CHOICES}
-      folding={folding}
-      layout={draft ? "hero" : "docked"}
-      mateName={state.mate.name}
-      onPick={pick}
-    />
-  ) : null;
-  const composer = (
+  return { picked, setPicked, ask, setAsk, choose };
+}
+
+/** The composer as a Mate's conversation draws it: its words, the model, the access, Send. */
+function ComposerStandIn({ mateName }: { readonly mateName: string }) {
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("full-access");
+  return (
     <div
       className="w-full rounded-sheet border border-border bg-card"
       data-chat-composer-main-surface="true"
     >
       <p className="px-5 pt-4 pb-2 text-muted-foreground text-prose">
-        Ask {state.mate.name} to do something…
+        Ask {mateName} to do something…
       </p>
       <div className="flex items-center gap-2 pt-1.5 pe-3 pb-3 ps-3.5">
-        <PersonaControl
-          choices={PERSONA_CHOICES}
-          defaultOpen={state.persona === "menu"}
-          labelRef={labelRef}
-          mateName={state.mate.name}
-          onChange={(key) => {
-            setValue(key);
-            setSuggesting(false);
-          }}
-          onEdit={() => undefined}
-          value={personaChoice(value)}
-        />
         {/* The model's picker as it reads at rest (`ProviderModelPicker`). */}
         <Button className="min-w-0 shrink" size="sm" variant="ghost-muted">
           <ClaudeAI aria-hidden="true" />
@@ -1212,35 +1204,90 @@ function PersonaComposer({ state }: { readonly state: HarnessState }) {
       </div>
     </div>
   );
-  if (draft) {
-    // A new project's Mate before its first message: the conversation is a draft, so the app draws
-    // its hero — the composer in the column's middle, the Mate's face and question just above it
-    // (`ChatView`'s draft hero, `DraftHeroHeadline`), the suggestions just under it, so neither
-    // their coming nor their going moves the composer.
-    return (
-      <div className="absolute inset-0 flex items-center px-6" data-harness-composer="hero">
-        <div className="relative mx-auto w-full max-w-3xl">
-          <div className="absolute inset-x-0 bottom-full pb-4">
-            <div className="flex flex-col items-center gap-5">
-              <MateFace shape={state.mate.shape} size={64} state="idle" tint={state.mate.tint} />
-              <h1 className="mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display">
-                What should {state.mate.name} do on {state.mate.project}?
-              </h1>
+}
+
+/**
+ * A new project's Mate before its person's first message: its face, and its first message asking
+ * how to work with them where the empty conversation's headline stands, over the composer. Once
+ * answered, the line says so a beat, then the ask folds away as the usual headline unfolds in its
+ * place (`DraftHeroHeadline`), its face back at rest; Not now folds it at once.
+ */
+function NewProjectPersona({ state }: { readonly state: HarnessState }) {
+  const { picked, setPicked, ask, setAsk, choose } = usePersonaAsk(state);
+  const [asking, setAsking] = useState(state.persona !== "answered");
+  const fold = () => setAsking(false);
+  const settled = !asking;
+  const folds = (open: boolean) =>
+    cn(
+      "grid w-full transition-[grid-template-rows,opacity] duration-260 ease-in-out-strong motion-reduce:transition-none",
+      open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+    );
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto px-6 py-8"
+      data-harness-composer="hero"
+    >
+      <div className="flex w-full max-w-3xl flex-col items-center">
+        <MateFace
+          shape={state.mate.shape}
+          size={64}
+          state={settled ? "idle" : ask.kind === "done" ? "done" : "needs"}
+          tint={state.mate.tint}
+        />
+        <div className={folds(asking)} inert={settled}>
+          <div className={cn("min-h-0", settled && "overflow-hidden")}>
+            <div className="pt-5">
+              <PersonaAsk
+                choices={PERSONA_CHOICES}
+                mateName={state.mate.name}
+                moment="start"
+                onAskAgain={() => setAsk({ kind: "waiting" })}
+                onChoose={() => choose(() => window.setTimeout(fold, HOLD_MS))}
+                onNotNow={() => {
+                  setAsk({ kind: "notNow", words: NOT_NOW });
+                  fold();
+                }}
+                onOpenPersonaPage={() => undefined}
+                onPick={setPicked}
+                picked={picked}
+                project={state.mate.project ?? ""}
+                state={ask}
+              />
             </div>
           </div>
-          {composer}
-          <div className="absolute inset-x-0 top-full">{suggestions}</div>
+        </div>
+        <div className={folds(settled)}>
+          <div className="min-h-0 overflow-hidden">
+            <h1 className="pt-5 text-center font-normal text-title text-foreground tracking-tight sm:text-display">
+              What should {state.mate.name} do on {state.mate.project}?
+            </h1>
+          </div>
+        </div>
+        <div className="w-full pt-4">
+          <ComposerStandIn mateName={state.mate.name} />
         </div>
       </div>
-    );
-  }
-  return (
-    <div className="shrink-0 px-6 pb-5" data-harness-composer>
-      <div className="mx-auto max-w-3xl">
-        {suggestions}
-        {composer}
-      </div>
     </div>
+  );
+}
+
+/** The Mate's first message under the setup's ask: it stays where it was asked, answered or not. */
+function SetupPersonaAsk({ state }: { readonly state: HarnessState }) {
+  const { picked, setPicked, ask, setAsk, choose } = usePersonaAsk(state);
+  return (
+    <PersonaAsk
+      choices={PERSONA_CHOICES}
+      mateName={state.mate.name}
+      moment="setup"
+      onAskAgain={() => setAsk({ kind: "waiting" })}
+      onChoose={() => choose()}
+      onNotNow={() => setAsk({ kind: "notNow", words: NOT_NOW })}
+      onOpenPersonaPage={() => undefined}
+      onPick={setPicked}
+      picked={picked}
+      project={state.mate.project ?? ""}
+      state={ask}
+    />
   );
 }
 
@@ -1324,9 +1371,15 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
             />
           </div>
         ) : state.conversation === true ? (
-          <Conversation />
+          <Conversation
+            ask={
+              state.persona === undefined ? undefined : (
+                <SetupPersonaAsk key={state.id} state={state} />
+              )
+            }
+          />
         ) : state.persona !== undefined ? (
-          <PersonaComposer key={state.id} state={state} />
+          <NewProjectPersona key={state.id} state={state} />
         ) : (
           stage
         )}
@@ -1338,7 +1391,11 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
           </div>
         </div>
       ) : state.persona !== undefined && state.conversation === true ? (
-        <PersonaComposer key={state.id} state={state} />
+        <div className="shrink-0 px-6 pb-5" data-harness-composer>
+          <div className="mx-auto max-w-3xl">
+            <ComposerStandIn mateName={state.mate.name} />
+          </div>
+        </div>
       ) : null}
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
