@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useTheme } from "~/hooks/useTheme";
 import { watchCrossings } from "~/lib/restingIntersections";
-import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useProjectContentSearch } from "~/state/queries";
 
@@ -274,36 +273,30 @@ function OpenContentSearchDialog(props: {
                     <Badge className="ml-auto">{group.matches.length}</Badge>
                   </div>
                   {group.matches.map((match) => (
-                    <div
+                    <Row
                       key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
-                      className={cn(
-                        "rounded-control",
-                        match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <Row
-                        size="xs"
-                        pressable="band"
-                        data-content-search-result={match.resultIndex}
-                        onMouseEnter={() => setSelectedIndex(match.resultIndex)}
-                        onClick={() => openMatch(match)}
-                        render={<button type="button" disabled={!canOpenMatches} />}
-                        title={
-                          <Text className="flex min-w-0 gap-3" variant="code">
-                            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
-                              {match.lineNumber}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
-                              <HighlightedSearchLine
-                                match={match}
-                                path={group.path}
-                                theme={resolvedTheme}
-                              />
-                            </span>
-                          </Text>
-                        }
-                      />
-                    </div>
+                      size="xs"
+                      pressable
+                      data-content-search-result={match.resultIndex}
+                      data-highlighted={match.resultIndex === selectedIndex ? "" : undefined}
+                      onMouseEnter={() => setSelectedIndex(match.resultIndex)}
+                      onClick={() => openMatch(match)}
+                      render={<button type="button" disabled={!canOpenMatches} />}
+                      title={
+                        <Text className="flex min-w-0 gap-3" variant="code">
+                          <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
+                            {match.lineNumber}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
+                            <HighlightedSearchLine
+                              match={match}
+                              path={group.path}
+                              theme={resolvedTheme}
+                            />
+                          </span>
+                        </Text>
+                      }
+                    />
                   ))}
                 </section>
               );

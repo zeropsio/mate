@@ -184,52 +184,49 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
           style={{ insetInlineStart: depth * 20 - 8 }}
         />
       ) : null}
-      <div className={cn("rounded-control", open && "bg-foreground/4")}>
-        <Row
-          size="sm"
-          pressable
-          render={
-            <button
-              aria-expanded={threadRef === null ? undefined : open}
-              aria-disabled={threadRef === null || undefined}
-              disabled={threadRef === null}
-              onClick={() => onToggle(agent.id)}
-              type="button"
-            />
-          }
-          lead={<HelperMark status={agent.status} />}
-          title={
+      <Row
+        size="sm"
+        pressable
+        picked={open}
+        render={
+          <button
+            aria-expanded={threadRef === null ? undefined : open}
+            aria-disabled={threadRef === null || undefined}
+            disabled={threadRef === null}
+            onClick={() => onToggle(agent.id)}
+            type="button"
+          />
+        }
+        lead={<HelperMark status={agent.status} />}
+        title={
+          <>
+            {agent.title}
+            <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+          </>
+        }
+        meta={open ? undefined : <HelperClock helper={agent} />}
+        lineWraps
+        line={
+          (open || line === null) && cost === null ? undefined : (
             <>
-              {agent.title}
-              <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+              {open || line === null ? null : (
+                <span
+                  className={cn(
+                    "line-clamp-2",
+                    agent.status === "failed" && "text-status-failed-text",
+                    agent.status === "waiting" && "text-status-attention-text",
+                  )}
+                >
+                  {line}
+                </span>
+              )}
+              {cost === null ? null : (
+                <span className="block text-2xs text-muted-foreground/75 tabular-nums">{cost}</span>
+              )}
             </>
-          }
-          meta={open ? undefined : <HelperClock helper={agent} />}
-          lineWraps
-          line={
-            (open || line === null) && cost === null ? undefined : (
-              <>
-                {open || line === null ? null : (
-                  <span
-                    className={cn(
-                      "line-clamp-2",
-                      agent.status === "failed" && "text-status-failed-text",
-                      agent.status === "waiting" && "text-status-attention-text",
-                    )}
-                  >
-                    {line}
-                  </span>
-                )}
-                {cost === null ? null : (
-                  <span className="block text-2xs text-muted-foreground/75 tabular-nums">
-                    {cost}
-                  </span>
-                )}
-              </>
-            )
-          }
-        />
-      </div>
+          )
+        }
+      />
       {open && threadRef !== null ? (
         <div className="pt-2 pe-2 pb-4 ps-8">
           <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
@@ -397,7 +394,7 @@ function PhaseSection({
     >
       <CollapsibleTrigger
         className={cn(
-          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-accent/40",
+          "mt-2 flex w-full items-center gap-1.5 rounded-control px-1.5 text-left text-3xs font-medium uppercase tracking-wider hover:bg-item-hover",
           phase.state === "done"
             ? "text-success-foreground"
             : phase.state === "running"

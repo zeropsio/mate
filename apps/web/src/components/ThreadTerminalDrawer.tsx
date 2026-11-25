@@ -1905,22 +1905,16 @@ export default function ThreadTerminalDrawer({
                   return (
                     <div key={terminalGroup.id} className="pb-0.5">
                       {showGroupHeaders && (
-                        <div
-                          className={cn(
-                            "rounded-control",
-                            isGroupActive ? "bg-accent/50" : "hover:bg-accent/40",
-                          )}
-                        >
-                          <Row
-                            size="xs"
-                            pressable="band"
-                            render={<button type="button" />}
-                            onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
-                            lead={<GroupIcon />}
-                            title={groupLabel}
-                            meta={terminalCount}
-                          />
-                        </div>
+                        <Row
+                          size="xs"
+                          pressable
+                          picked={isGroupActive}
+                          render={<button type="button" />}
+                          onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                          lead={<GroupIcon />}
+                          title={groupLabel}
+                          meta={terminalCount}
+                        />
                       )}
 
                       <div className="flex flex-col gap-0.5">
