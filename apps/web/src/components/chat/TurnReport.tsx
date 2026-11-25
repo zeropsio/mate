@@ -54,11 +54,20 @@ import { useRunResultFacts } from "./runResultFacts";
 import { publishStripFiles } from "./resultStripFiles";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { Button } from "~/components/ui/button";
+import { Badge, type BadgeTone } from "~/components/ui/badge";
 
 const NOTHING_RISING: ReadonlySet<string> = new Set();
 
 /** The strip's key among what rises: the rows' are theirs. */
 const PICTURES = "pictures";
+
+/** A row's dot in the status tone its state means: running, waiting on the person, broken, at rest. */
+const DOT_TONE: Record<ResultRow["tone"], { readonly tone: BadgeTone; readonly label: string }> = {
+  ok: { tone: "success", label: "Running" },
+  attention: { tone: "warning", label: "Waits on you" },
+  failed: { tone: "danger", label: "Broken" },
+  muted: { tone: "neutral", label: "At rest" },
+};
 
 function RowMark({ row }: { readonly row: ResultRow }) {
   return (
@@ -69,7 +78,7 @@ function RowMark({ row }: { readonly row: ResultRow }) {
       data-tone={row.tone}
     >
       {row.mark === "dot" ? (
-        <span className="run-result-dot" />
+        <Badge aria-label={DOT_TONE[row.tone].label} dot tone={DOT_TONE[row.tone].tone} />
       ) : row.mark === "alert" ? (
         <TriangleAlertIcon className="size-4" />
       ) : row.mark === "change" ? (
@@ -120,16 +129,16 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
         </Button>
       )}
       {url === null ? null : (
-        <ServiceBrowserLink
+        <Button
           aria-label={`Open ${row.title}`}
-          className="run-result-open"
-          href={url}
-          rel="noreferrer"
-          showIndicator={false}
-          target="_blank"
+          render={
+            <ServiceBrowserLink href={url} rel="noreferrer" showIndicator={false} target="_blank" />
+          }
+          size="icon-xs"
+          variant="ghost-muted"
         >
-          <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
-        </ServiceBrowserLink>
+          <ArrowUpRightIcon aria-hidden="true" />
+        </Button>
       )}
     </span>
   );
