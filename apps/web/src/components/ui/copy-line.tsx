@@ -16,6 +16,9 @@ import { CopyButton } from "./copy-button";
  * (an address made on the next step) is `placeholder`: its words in the line's room, on a dashed
  * edge with no ground and no Copy, so nothing reads as copyable.
  *
+ * `size="lg"` is a code the person types by hand on another page (a device sign-in's code): its
+ * figures at the title step and spaced, to be read across a desk, the line as wide as the code.
+ *
  * Its name, where it has one, stands beside or over it as the place's own label. Several lines of
  * text are a `CodeBlock`; a literal inside a sentence is `Text variant="code"`.
  */
@@ -24,6 +27,7 @@ function CopyLine({
   label,
   placeholder,
   wrap = false,
+  size = "md",
   className,
   ...props
 }: Omit<ComponentProps<"div">, "children"> & {
@@ -34,6 +38,8 @@ function CopyLine({
   readonly placeholder?: string;
   /** Wrap anywhere instead of cutting with an ellipsis. */
   readonly wrap?: boolean;
+  /** `lg`: a code typed by hand elsewhere, at the title step. */
+  readonly size?: "md" | "lg";
 }) {
   if (value === null && placeholder !== undefined) {
     return (
@@ -54,6 +60,7 @@ function CopyLine({
     <div
       className={cn(
         "flex min-h-9 min-w-0 items-center gap-1 rounded-control border border-border/60 bg-code ps-3 pe-1 text-code-foreground",
+        size === "lg" && "w-fit",
         className,
       )}
       data-slot="copy-line"
@@ -61,7 +68,10 @@ function CopyLine({
     >
       <code
         className={cn(
-          "min-w-0 flex-1 py-2 font-mono text-caption leading-5",
+          "min-w-0 flex-1 py-2 font-mono",
+          size === "lg"
+            ? "text-title leading-5 font-medium tracking-wider select-all"
+            : "text-caption leading-5",
           wrap ? "wrap-anywhere" : "truncate",
         )}
         data-slot="copy-line-value"
