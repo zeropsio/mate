@@ -1,4 +1,4 @@
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
+import { EmptyState } from "./ui/empty";
 import { SidebarInset } from "./ui/sidebar";
 import { isElectron } from "../env";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
@@ -19,16 +19,9 @@ export function NoActiveThreadState() {
           )}
         </WorkspacePageHeader>
 
-        <Empty className="flex-1">
-          <div className="w-full max-w-lg px-8 py-12">
-            <EmptyHeader className="max-w-none">
-              <EmptyTitle>Pick a thread to continue</EmptyTitle>
-              <EmptyDescription>
-                Select an existing thread or create a new one to get started.
-              </EmptyDescription>
-            </EmptyHeader>
-          </div>
-        </Empty>
+        <EmptyState size="page" title="Pick a thread to continue">
+          Select an existing thread or create a new one to get started.
+        </EmptyState>
       </div>
     </SidebarInset>
   );
