@@ -9,6 +9,7 @@ import type { JSX } from "react";
 
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
+import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { isErrorLogLine } from "./explanation";
 
@@ -29,23 +30,25 @@ const VISIBLE_TAIL_LINES = 6;
 
 function LogLines({ lines }: { readonly lines: ReadonlyArray<{ key: string; line: string }> }) {
   return (
-    <ol className="space-y-0.5 overflow-x-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed">
-      {lines.map(({ key, line }) => {
-        const error = isErrorLogLine(line);
-        return (
-          <li
-            className={cn(
-              "whitespace-pre-wrap break-words",
-              error ? "text-destructive-foreground" : "text-muted-foreground",
-            )}
-            data-zerops-explanation-line={error ? "error" : "plain"}
-            key={key}
-          >
-            {line}
-          </li>
-        );
-      })}
-    </ol>
+    <Card variant="inset">
+      <ol className="space-y-0.5 overflow-x-auto px-2 py-1.5 font-mono text-caption leading-relaxed">
+        {lines.map(({ key, line }) => {
+          const error = isErrorLogLine(line);
+          return (
+            <li
+              className={cn(
+                "whitespace-pre-wrap break-words",
+                error ? "text-destructive-foreground" : "text-muted-foreground",
+              )}
+              data-zerops-explanation-line={error ? "error" : "plain"}
+              key={key}
+            >
+              {line}
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
   );
 }
 

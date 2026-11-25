@@ -17,6 +17,7 @@ import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import type { PipelineLog, PipelineLogKind } from "~/zerops/activity/usePipeline";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Toggle, ToggleGroup } from "../../ui/toggle-group";
 import { emptyLogWords } from "../ZeropsBuildLog";
 import { Loading } from "~/components/ui/loading";
@@ -126,18 +127,22 @@ function LogPane({
         <CopyLines lines={lines} />
       </div>
       {lines.length === 0 && emptyLogWords(status) === null ? (
-        <div className="h-96 rounded-card border p-4 md:h-140">
-          <Loading count={8} label="The log" shape="lines" />
-        </div>
+        <Card className="h-96 md:h-140">
+          <div className="p-4">
+            <Loading count={8} label="The log" shape="lines" />
+          </div>
+        </Card>
       ) : lines.length === 0 ? (
-        <p
-          className="flex h-96 items-center justify-center rounded-card bg-muted/60 text-muted-foreground text-body md:h-140"
-          data-zerops-pipeline-log-empty
-        >
-          {kind === "service" && status === "ended"
-            ? "The service wrote nothing around the failure."
-            : emptyLogWords(status)}
-        </p>
+        <Card variant="inset">
+          <p
+            className="flex h-96 items-center justify-center text-muted-foreground text-body md:h-140"
+            data-zerops-pipeline-log-empty
+          >
+            {kind === "service" && status === "ended"
+              ? "The service wrote nothing around the failure."
+              : emptyLogWords(status)}
+          </p>
+        </Card>
       ) : (
         <LogLines format={timestampFormat} lines={lines} live={live} times={times} />
       )}
@@ -177,39 +182,42 @@ function LogLines({
     };
   }, []);
   return (
-    <ol
-      aria-label="Log"
-      aria-live={live ? "polite" : undefined}
-      className="h-96 overflow-y-auto rounded-card bg-muted/60 py-2 font-mono text-caption leading-5 md:h-140"
-      data-zerops-pipeline-log
-      onScroll={(event) => {
-        const scroller = event.currentTarget;
-        followingRef.current =
-          scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 4;
-      }}
-      ref={scrollerRef}
-    >
-      {lines.map((line) => (
-        <li
-          className={cn(
-            "flex gap-3 px-3",
-            line.severity <= FAILED_SEVERITY_MAX && "bg-destructive/8 text-destructive-foreground",
-          )}
-          data-zerops-pipeline-log-severity={line.severity}
-          key={line.id}
-        >
-          {times ? (
-            <time
-              className="shrink-0 select-none text-muted-foreground tabular-nums"
-              dateTime={line.at}
-            >
-              {formatTimestamp(line.at, format)}
-            </time>
-          ) : null}
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{line.text}</span>
-        </li>
-      ))}
-    </ol>
+    <Card className="overflow-hidden" variant="inset">
+      <ol
+        aria-label="Log"
+        aria-live={live ? "polite" : undefined}
+        className="h-96 overflow-y-auto py-2 font-mono text-caption leading-5 md:h-140"
+        data-zerops-pipeline-log
+        onScroll={(event) => {
+          const scroller = event.currentTarget;
+          followingRef.current =
+            scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 4;
+        }}
+        ref={scrollerRef}
+      >
+        {lines.map((line) => (
+          <li
+            className={cn(
+              "flex gap-3 px-3",
+              line.severity <= FAILED_SEVERITY_MAX &&
+                "bg-destructive/8 text-destructive-foreground",
+            )}
+            data-zerops-pipeline-log-severity={line.severity}
+            key={line.id}
+          >
+            {times ? (
+              <time
+                className="shrink-0 select-none text-muted-foreground tabular-nums"
+                dateTime={line.at}
+              >
+                {formatTimestamp(line.at, format)}
+              </time>
+            ) : null}
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">{line.text}</span>
+          </li>
+        ))}
+      </ol>
+    </Card>
   );
 }
 
@@ -272,12 +280,14 @@ function ConfigPane({
           {copied ? <CheckIcon /> : <CopyIcon />}
         </Button>
       </div>
-      <pre
-        className="h-96 overflow-auto rounded-card bg-muted/60 px-3 py-2 font-mono text-caption leading-5 md:h-140"
-        data-zerops-pipeline-config
-      >
-        {config}
-      </pre>
+      <Card variant="inset">
+        <pre
+          className="h-96 overflow-auto px-3 py-2 font-mono text-caption leading-5 md:h-140"
+          data-zerops-pipeline-config
+        >
+          {config}
+        </pre>
+      </Card>
     </div>
   );
 }
