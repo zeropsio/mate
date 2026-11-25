@@ -242,7 +242,8 @@ export function CrewRows(props: CrewRowsProps) {
 }
 
 const TONE_CLASS: Readonly<Record<CrewRowLine["tone"], string>> = {
-  "ink-2": "crew-ink-2",
+  // The words' second ink, what a crewmate is on, as the menu's rows have it.
+  "ink-2": "text-foreground/76",
   muted: "text-muted-foreground",
   ink: "text-foreground",
   failed: "text-status-failed-text",
@@ -279,6 +280,13 @@ function RowLine({
   );
 }
 
+/**
+ * The right edge of a row's first line: its time, or — on hover, with a keyboard's focus, or
+ * while open — its ···, in the same 20 px.
+ */
+const ROW_TIME_CLASS =
+  "flex-none text-body tabular-nums group-[:hover]/crewrow:hidden group-has-[[data-crew-row-open]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden";
+
 /** The row's right edge: its working clock in ink, ticking once a second, or when it last did something. */
 function RowTime({ slot }: { readonly slot: CrewRowSlot }) {
   const nowMs = useSecondsNowMs(slot.kind === "clock");
@@ -287,19 +295,14 @@ function RowTime({ slot }: { readonly slot: CrewRowSlot }) {
       return null;
     case "clock":
       return (
-        <span
-          className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden"
-          data-working=""
-        >
+        <span className={cn(ROW_TIME_CLASS, "text-foreground")}>
           {formatWorkingTime(nowMs - Date.parse(slot.since))}
         </span>
       );
     case "age": {
       const when = compactSidebarTimeLabel(formatRelativeTimeLabel(slot.at));
       return when === "" ? null : (
-        <span className="crew-row-time group-has-[[data-crew-row-menu]:focus-visible]/crewrow:hidden group-has-[[data-crew-row-menu][data-popup-open]]/crewrow:hidden">
-          {when}
-        </span>
+        <span className={cn(ROW_TIME_CLASS, "text-muted-foreground")}>{when}</span>
       );
     }
   }
@@ -340,9 +343,12 @@ function CrewRow(
   const open = model.threadId;
   return (
     <div
-      className="crew-row group/crewrow"
+      // A crewmate's row: a 28 px face column, words 12 px on, the menu's corners.
+      className={cn(
+        "group/crewrow relative mx-2 grid grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 rounded-card px-2 pt-2.5 transition-colors duration-150 ease-out-strong hover:bg-sidebar-row-hover has-data-popup-open:bg-sidebar-row-hover",
+        model.needsYou || model.plan ? "pb-3" : "pb-2.5",
+      )}
       data-crew-row={model.handle}
-      data-needs={model.needsYou || model.plan ? "" : undefined}
     >
       <MateFace greets size={24} state={model.pose} tint={model.tint} />
       <div className="flex min-w-0 flex-col">
@@ -368,7 +374,11 @@ function CrewRow(
           )}
           <span className="grow" />
           {model.needsYou ? (
-            <span className="crew-dot flex" data-arrived={needed ? "" : undefined}>
+            // What needs you scales in before the time.
+            <span
+              className="flex data-arrived:motion-safe:animate-crew-dot-in data-arrived:motion-reduce:animate-zerops-appear"
+              data-arrived={needed ? "" : undefined}
+            >
               <Badge aria-label={CREW_MINI_NEEDS_WORD} dot tone="warning" />
             </span>
           ) : null}
@@ -404,7 +414,10 @@ function CrewRow(
         {model.line2 === null ? null : <RowLine className="mt-0.5" line={model.line2} />}
         {model.line3 === null ? null : <RowLine line={model.line3} />}
         {model.plan ? (
-          <div className="crew-reveal" data-arrived={needed ? "" : undefined}>
+          <div
+            className="data-arrived:motion-safe:animate-crew-reveal data-arrived:motion-reduce:animate-zerops-appear"
+            data-arrived={needed ? "" : undefined}
+          >
             {props.renderPlan(props.leadWords)}
           </div>
         ) : null}
@@ -433,7 +446,7 @@ function CrewRow(
         )}
         {model.next === null ? null : (
           <p className="mt-1.5 truncate text-line leading-4.5 text-muted-foreground">
-            <span className="crew-ink-2 me-1.5 font-medium">{CREW_NEXT_WORD}</span>
+            <span className="me-1.5 font-medium text-foreground/76">{CREW_NEXT_WORD}</span>
             {model.next}
           </p>
         )}
@@ -461,7 +474,10 @@ function CrewNeed(
   const [answering, setAnswering] = useState(false);
   return (
     <div
-      className={cn("crew-reveal", !props.first && "mt-2.5")}
+      className={cn(
+        "data-arrived:motion-safe:animate-crew-reveal data-arrived:motion-reduce:animate-zerops-appear",
+        !props.first && "mt-2.5",
+      )}
       data-arrived={props.arrived ? "" : undefined}
     >
       <RowLine line={need.line} wraps />
@@ -568,7 +584,8 @@ function AnswerBox(
   };
   return (
     <form
-      className="crew-answer crew-row-above crew-reveal mt-2.5"
+      // An answer, right in the row that asked, over the row's whole-row press.
+      className="relative z-1 mt-2.5 flex h-10 items-center gap-2 rounded-full bg-card ps-3.5 pe-1.5 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/8 data-arrived:motion-safe:animate-crew-reveal data-arrived:motion-reduce:animate-zerops-appear"
       data-arrived=""
       onSubmit={(event) => {
         event.preventDefault();

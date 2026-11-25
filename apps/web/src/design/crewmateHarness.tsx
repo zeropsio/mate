@@ -657,7 +657,7 @@ function Panel({
       ) : (
         // What _Change its job_ opens, as the conversation's press does in the Crew tab.
         <CrewPanelFrame status="applied">
-          <div className="crew-view flex flex-1 flex-col">
+          <div className="flex flex-1 flex-col">
             <CrewmateJob
               applied={new Set(SEATS.map((seat) => seat.handle))}
               crewApplied

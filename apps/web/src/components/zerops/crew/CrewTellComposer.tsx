@@ -50,6 +50,10 @@ import {
 /** Reading only the trigger under the caret, before any search. */
 const NO_SEARCH = { environmentId: null, cwd: null, query: null };
 
+/** Who a message to the crew goes to: the lead's face and name, or the faces to pick, a 24 px chip. */
+const CHIP_CLASS =
+  "my-1 inline-flex h-6 flex-none items-center gap-1.5 rounded-full bg-foreground/5.5 ps-1 pe-2.25 text-caption leading-4 font-medium whitespace-nowrap text-muted-foreground";
+
 interface CrewComposerLead {
   readonly name: string;
   readonly tint: Crewmate["tint"];
@@ -158,7 +162,8 @@ export function CrewTellComposer({
   const placeholder = planWaits ? CREW_COMPOSER_PLAN_PLACEHOLDER : CREW_COMPOSER_PLACEHOLDER;
   return (
     <div className="relative mx-4 mt-4 @max-md:mt-3.5" data-crew-composer>
-      <div className="crew-composer">
+      {/* The composer: 48 px tall on a sheet's corners, the tab's only white surface. */}
+      <div className="flex min-h-12 items-end gap-2 rounded-sheet bg-card py-2 ps-4.5 pe-2 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/8 focus-within:ring-ring/55">
         <Textarea
           aria-label={placeholder}
           className="flex-1"
@@ -176,7 +181,7 @@ export function CrewTellComposer({
         />
         {lead === null ? (
           <CrewTip tip={CREW_TO_PICK_LINE}>
-            <span className="crew-chip" data-crew-composer-to="">
+            <span className={CHIP_CLASS} data-crew-composer-to="">
               {CREW_TO_WORD}
               <span className="flex items-center gap-0.5">
                 {crewmates.map((mate) => (
@@ -206,7 +211,7 @@ export function CrewTellComposer({
           </CrewTip>
         ) : (
           <CrewTip tip={CREW_TO_LEAD_LINE}>
-            <span className="crew-chip" data-crew-composer-to="lead">
+            <span className={CHIP_CLASS} data-crew-composer-to="lead">
               <MateFace size={16} state={lead.face} tint={lead.tint} />
               {crewToWord(lead.name)}
             </span>
@@ -266,9 +271,17 @@ export function CrewTellLocked({
   readonly className?: string;
 }) {
   return (
-    <div className={cn("crew-locked", className)} data-crew-locked={lock.ownership}>
+    <div
+      className={cn(
+        "flex min-h-12 items-center gap-2.5 rounded-sheet bg-foreground/4 py-1.5 ps-4 pe-2 ring-1 ring-foreground/7",
+        className,
+      )}
+      data-crew-locked={lock.ownership}
+    >
       <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
-      <p className="crew-locked-words">{crewLockWords(lock.ownership)}</p>
+      <p className="min-w-0 flex-auto text-body leading-4.5 text-pretty text-foreground/85">
+        {crewLockWords(lock.ownership)}
+      </p>
       {lock.ownership === "reads-along" ? null : (
         <CrewPress variant="secondary" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
       )}

@@ -132,7 +132,8 @@ export function CrewHead({
       </div>
       <div className="flex h-5 items-center gap-2 text-line">
         <span
-          className="crew-mode min-w-0 truncate text-line tabular-nums text-muted-foreground"
+          // Its words change in place: its height never moves.
+          className="min-w-0 truncate data-arrived:animate-zerops-appear text-line tabular-nums text-muted-foreground"
           data-arrived={arrived ? "" : undefined}
           data-crew-mode
           key={mode.words}

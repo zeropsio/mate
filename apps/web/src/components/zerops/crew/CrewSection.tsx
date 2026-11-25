@@ -128,9 +128,9 @@ export function CrewSectionEmpty({
           <span className="flex items-center gap-2.5">
             <MateFace shape={mate.shape} size={32} state="idle" tint={mate.tint} />
             <span className="flex items-center gap-1.5" aria-hidden="true">
-              <span className="crew-seat" />
-              <span className="crew-seat" />
-              <span className="crew-seat" />
+              <CrewSeat />
+              <CrewSeat />
+              <CrewSeat />
             </span>
           </span>
         }
@@ -274,5 +274,22 @@ export function CrewSection(props: CrewSectionProps) {
         tasks={snapshot.board.tasks}
       />
     </section>
+  );
+}
+
+/** A seat waiting for a crewmate: a dashed ring the size of a face. */
+function CrewSeat() {
+  return (
+    <svg className="size-6.5 text-muted-foreground opacity-55" viewBox="0 0 26 26">
+      <circle
+        cx="13"
+        cy="13"
+        fill="none"
+        r="12.25"
+        stroke="currentColor"
+        strokeDasharray="4.5 3"
+        strokeWidth="1.5"
+      />
+    </svg>
   );
 }

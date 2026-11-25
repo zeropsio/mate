@@ -361,6 +361,14 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-face-in: face-in var(--duration-base) var(--ease-out-strong);
   /* A vault row found flashes its ring; a value saved shows its check, which leaves by itself
      (`motion-panels.css`). */
+  /* The Crew tab's moves, only for a change the tab watched: a need unfolding, a view sliding in
+     from the side it comes from, the amber dot scaling in (`motion-panels.css`); reduced motion
+     fades them (`animate-zerops-appear`). */
+  --animate-crew-reveal: crew-reveal var(--duration-base) var(--ease-out-strong) both;
+  --animate-crew-view-forward: crew-view-forward var(--duration-base) var(--ease-out-strong)
+    backwards;
+  --animate-crew-view-back: crew-view-back var(--duration-base) var(--ease-out-strong) backwards;
+  --animate-crew-dot-in: crew-dot-in var(--duration-base) var(--ease-out-strong) backwards;
   --animate-vault-flash: vault-flash 1.5s var(--ease-out-strong);
   --animate-vault-settled: vault-settled 1.4s var(--ease-out-strong) both;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz

@@ -2,6 +2,43 @@
 /* The choreographies of the Crew and Vault tabs, applied by their `animate-*` tokens
    (`foundation.css`). */
 
+/* A crew's need arriving: its words and presses unfold from the top. Its fill holds: the reveal
+   ends clipped to its own box (inset(0)), and the box's ring, shadow and its presses' focus
+   rings have always been cut there. */
+@keyframes crew-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0);
+    opacity: 1;
+  }
+}
+
+/* A crew view slides 24 px in from the right; back, the column from the left. */
+@keyframes crew-view-forward {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes crew-view-back {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+/* What needs you (the kit's amber dot) scales in before the time. */
+@keyframes crew-dot-in {
+  from {
+    scale: 0;
+    opacity: 0;
+  }
+}
+
 /* A vault row found: its ring flashes in the primary's colour and fades. */
 @keyframes vault-flash {
   0%,

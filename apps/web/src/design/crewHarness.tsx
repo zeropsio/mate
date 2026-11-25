@@ -751,7 +751,7 @@ function Tab() {
   if (STATE === "goal") {
     return (
       <CrewPanelFrame status="applied">
-        <div className="crew-view flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col">
           <CrewGoal applied commands={FILES} onClose={noop} />
         </div>
       </CrewPanelFrame>
@@ -760,7 +760,7 @@ function Tab() {
   if (STATE === "job") {
     return (
       <CrewPanelFrame status="applied">
-        <div className="crew-view flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col">
           <CrewmateJob
             applied={new Set(SEATS.map((seat) => seat.handle))}
             crewApplied={!pooled}
@@ -782,7 +782,7 @@ function Tab() {
   if (STATE === "setup-start" || STATE === "setup-draft") {
     return (
       <CrewPanelFrame status="none">
-        <div className="crew-view flex flex-1 flex-col">
+        <div className="flex flex-1 flex-col">
           <CrewSetup
             applied={false}
             commands={FILES}

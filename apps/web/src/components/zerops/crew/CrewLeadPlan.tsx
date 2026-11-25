@@ -43,6 +43,8 @@ import {
   crewPlanStart,
   type CrewPlanCard,
 } from "./CrewLeadPlan.logic";
+import { cn } from "~/lib/utils";
+
 import { CrewPress, CrewTextButton, CrewTip } from "./CrewParts";
 import { CREW_ORIGIN } from "./CrewRows.logic";
 import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
@@ -135,11 +137,17 @@ export function CrewLeadPlanBlock({
   return (
     <div className="flex flex-col" data-crew-plan>
       {words === null ? null : <p className="text-line leading-4.5 text-foreground">{words}</p>}
-      <div className="crew-tray crew-row-above mt-2.5">
+      {/* The lead's plan: one line per task in a quiet tray, over the row's whole-row press. */}
+      <div className="relative z-1 mt-2.5 flex flex-col rounded-card bg-well px-3 py-1 ring-1 ring-foreground/8">
         {plan.rows.map((row) => (
           <div
-            className="crew-tray-row"
-            data-after={row.after === null ? undefined : ""}
+            // Its face, its owner, what it is, its ×; a hairline between lines.
+            className={cn(
+              "group/tray-row relative grid grid-cols-[16px_132px_minmax(0,1fr)_20px] gap-x-2 not-first:border-t not-first:border-foreground/8",
+              row.after === null
+                ? "min-h-8 items-center not-first:min-h-8.25"
+                : "items-start py-1.75",
+            )}
             key={row.taskId}
           >
             <span className={row.after === null ? "flex" : "flex pt-px"}>
@@ -149,7 +157,7 @@ export function CrewLeadPlanBlock({
             </span>
             <span className="truncate font-medium text-line leading-4.5">{row.owner.name}</span>
             <span className="flex min-w-0 flex-col">
-              <span className="crew-ink-2 text-line leading-4.5">{row.title}</span>
+              <span className="text-line leading-4.5 text-foreground/76">{row.title}</span>
               {row.after === null ? null : (
                 <span className="text-line leading-4.5 text-muted-foreground">{row.after}</span>
               )}
@@ -210,7 +218,7 @@ function LeaveOut({
   if (onPress === null) return <span aria-hidden="true" />;
   return (
     // Shown under the pointer and for the keyboard once it reaches the line.
-    <span className="crew-tray-out">
+    <span className="flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/tray-row:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
       <CrewTip tip={CREW_PLAN_VERBS.leaveOut}>
         <Button
           aria-label={`${CREW_PLAN_VERBS.leaveOut}: ${title}`}
