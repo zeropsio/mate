@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { LogoTile } from "../ui/logo-tile";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { EmptyState } from "../ui/empty";
@@ -113,13 +114,9 @@ export function MemberProjectAccess({
               key={chip.projectId}
             >
               <span className={ACCESS_CHIP_WHO}>
-                {/* A project's face: a folder on a muted 32 px disc. */}
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"
-                >
-                  <FolderIcon className="size-4" />
-                </span>
+                <LogoTile>
+                  <FolderIcon />
+                </LogoTile>
                 <span className={ACCESS_CHIP_TEXT}>
                   <span className={ACCESS_CHIP_NAME} data-part="name">
                     {chip.label}
