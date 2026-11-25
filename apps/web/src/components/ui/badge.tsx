@@ -22,8 +22,8 @@ const badgeVariants = cva(
     variants: {
       form: {
         pill: "h-5 overflow-hidden rounded-full px-2 font-medium text-caption",
-        // The dot form takes the size and ink of the words around it.
-        dot: "gap-1.5",
+        // The dot form takes the size and ink of the words around it, 8 px from them.
+        dot: "gap-2",
       },
       tone: {
         neutral: "",
