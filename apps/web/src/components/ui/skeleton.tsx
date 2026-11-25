@@ -20,8 +20,15 @@ const skeletonVariants = cva(
         page: "",
         card: "bg-foreground/7",
       },
+      // A stand-in that holds a place without saying it is on its way: no sweep. For a slot whose
+      // value may never come (a card's target before its input names it) or a held line that
+      // must not move while the rest of its surface waits.
+      still: {
+        true: "after:content-none",
+        false: "",
+      },
     },
-    defaultVariants: { shape: "block", surface: "page" },
+    defaultVariants: { shape: "block", surface: "page", still: false },
   },
 );
 
@@ -49,13 +56,14 @@ function Skeleton({
   className,
   shape,
   surface,
+  still,
   ...props
 }: Omit<React.ComponentProps<"span">, "ref"> & VariantProps<typeof skeletonVariants>) {
   return (
     <span
-      className={cn(skeletonVariants({ shape, surface }), className)}
+      className={cn(skeletonVariants({ shape, still, surface }), className)}
       data-slot="skeleton"
-      ref={sweepWhileSeen}
+      ref={still === true ? undefined : sweepWhileSeen}
       {...props}
     />
   );

@@ -1,3 +1,4 @@
+import { Skeleton } from "~/components/ui/skeleton";
 import type { OperationSubject } from "./subject";
 
 /**
@@ -38,10 +39,11 @@ export function OperationSubjectLine({
           ) : null}
         </>
       ) : running ? (
-        <span
+        <Skeleton
           aria-hidden="true"
-          className="inline-block h-3 w-28 rounded-mark bg-muted align-middle"
+          className="inline-block h-3 w-28 align-middle"
           data-zerops-subject-placeholder
+          still
         />
       ) : (
         <span className="text-muted-foreground">{subject.text}</span>
