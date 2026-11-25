@@ -172,10 +172,17 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   the row it leads. An icon in a kit slot (a `Row`'s lead, a `Button`, a `Badge`, a menu item) takes
   the slot's size, and in a row's lead the muted ink unless its ink means something; it names no
   size of its own.
-- A box is the kit's: a `Card` form (`flat` on a page, `inset` set into another surface, `wash`
-  for the one thing that stands out by what it is, `slot` for a place not yet filled, `sheet`
-  alone among its kind), its `tone` the state of what it holds; a message in a conversation is a
-  `MessageBubble` in its speaker's form; a picture or a page shown is in a `PictureFrame`.
+- A box is the kit's: a `Card` form (`flat` on a page, `inset` set into another surface, `well`
+  for the working area set into a tray or a page, `wash` for the one thing that stands out by what
+  it is, `slot` for a place not yet filled, `sheet` alone among its kind), its `tone` the state of
+  what it holds; a message in a conversation is a `MessageBubble` in its speaker's form; a picture
+  or a page shown is in a `PictureFrame`; machine text another renderer draws stands in a
+  `CodeFrame`; presses standing over what they act on sit on a `Toolbar`; a label beside its value
+  is a `Fact` in `Facts`. A row's lit or picked ground is drawn by its state (`data-*`), never by a
+  class branch.
+- A message is written in a `ComposerFrame`: the composer's ground, edge and lift, `sheet` at a
+  page's foot, `card` inside a panel, `locked` where nothing can be written now. The conversation's
+  composer is drawn in the same look by its shell, which joins it to its drawers and strip.
 
 - A page stands in `Page`: its width by what it holds (`column`, `page`, `wide`, `full`), the
   frame's gutter and top, its blocks 48 px apart. `PageHeader` heads it, its trail above the title;
@@ -312,9 +319,10 @@ numbered steps of these. Every ask is the same card, in two densities.
     with `z-*`, on a popup's ground: `bg-popover`, `dropdown-glass` or `shadow-popup`); its ledger
     only shrinks
 
-- **R20** — A box is a kit piece
+- **R20** — A box is a kit piece: a `Card` form, a `ComposerFrame`, a `PictureFrame`, a
+  `CodeFrame`, a `Toolbar`, a `MessageBubble`
   - _Enforced by:_ `t3code/no-hand-drawn-box` (a plain element whose class string holds, at rest, a
-    box's radius and a ground); its ledger only shrinks
+    box's radius and a ground); its ledger holds only drawings of their own, and only shrinks
 
 - **R21** — A dot is a `Dot`, a count is a `Badge` count
   - _Enforced by:_ `t3code/prefer-marks` (a plain element that always draws `rounded-full` with a

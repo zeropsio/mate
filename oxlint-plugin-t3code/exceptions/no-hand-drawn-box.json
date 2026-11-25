@@ -4,55 +4,55 @@
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"line-clamp-2 cursor-pointer whitespace-normal rounded-control bg-popover px-2.25 py-1.25 text-left text-body text-popover-foreground shadow-popup ring-1 ring-border group-hover/chip:ring-2 group-hover/chip:ring-annotation group-data-selected/chip:ring-2 group-data-selected/chip:ring-annotation\"",
     "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
+    "reason": "a note pinned on a picture at its point, drawn by the picture editor: its ground lifts the words off the picture and its ring takes the annotation ink while the note is picked; not a popup (no anchor, no dismissal) and no other place draws one",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/chat/RunLiveSlot.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className={cn( \"relative mt-2.5 rounded-card bg-foreground/5 p-4 [[data-run-above]:not([hidden])+&]:mt-3.5\", burst !== null && \"py-3\", )}",
     "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
+    "reason": "the run card's working row, drawn by its spec (runTray.ts, RunLiveSlot): a step of ink at the card's corner (Card well's look), with 16 px around it and 12 px over a burst's one line; the card's slot geometry and motion read its own padding and its siblings, so it cannot move its room into a child",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/SidebarProjectReorder.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"pointer-events-none fixed z-50 rounded-control border border-border bg-popover px-3 py-1 text-emphasis font-semibold tracking-tight whitespace-nowrap text-popover-foreground shadow-lg\"",
     "owner": "unify pass",
-    "reason": "a hand-placed popup or overlay; it moves onto the floating family's kit piece",
-    "expires": "surface:floating"
+    "reason": "a dragged project's name following the pointer every frame while its row is reordered: a drag ghost, not a popup (no anchor, no focus, no dismissal), the menu's one",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/SidebarSelectedBand.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"absolute inset-0 overflow-clip rounded-card will-change-transform bg-sidebar-row-active\"",
     "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
+    "reason": "the menu's one selected band, an owner-approved drawing: a compositor-driven layer that slides between rows, its nested clips the slide's own",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<span> className=\"pointer-events-none absolute inset-0 -z-1 scale-96 rounded-card bg-sidebar-row-active opacity-0 ease-out-strong will-change-[opacity,transform] group-data-current/chief:scale-100 group-data-current/chief:opacity-100 group-data-pressed/chief:scale-100 group-data-pressed/chief:opacity-100 motion-safe:not-data-travel:transition-[opacity,scale] motion-safe:not-data-travel:duration-260\"",
     "owner": "unify pass",
-    "reason": "a picked or lit ground on a row or a choice; it moves onto the choices family's kit piece",
-    "expires": "surface:choices"
+    "reason": "the Chief row's lit layer, the selected band carried into it and back (chiefLitTravel), an owner-approved menu drawing that grows by opacity and scale on the compositor",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/projects/ProjectCards.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className=\"grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-control bg-card p-2 shadow-edge @max-[17rem]/waits:grid-cols-[24px_minmax(0,1fr)] @max-[17rem]/waits:items-start @max-[17rem]/waits:gap-y-1.5\"",
     "owner": "unify pass",
-    "reason": "a box with no Card form yet (a run card's well, a tray, a settings group); it moves onto a Card form",
-    "expires": "surface:containers"
+    "reason": "the overview project card's waiting rows, approved by the owner as drawn: a raised row on the card's ground with its own hairline lift, inside the 16 px sheet card",
+    "expires": "never"
   },
   {
     "path": "apps/web/src/components/zerops/system/FaceCard.tsx",
     "kind": "JSXOpeningElement",
     "fingerprint": "<div> className={cn( // A person or a Mate lifted off the page; its ground lit under the pointer adds to the // lift. The lift's own accent, a step under it, is what a quiet press lights on it. \"relative flex min-w-0 flex-col rounded-card bg-muted text-center transition-[background-color,box-shadow] duration-150 ease-out-strong [--accent:color-mix(in_oklab,var(--foreground)_6%,var(--muted))]\", \"has-[>[data-face-card-press]:hover]:bg-foreground/9 has-[>[data-face-card-press]:hover]:inset-ring has-[>[data-face-card-press]:hover]:inset-ring-border\", \"has-[>[data-face-card-press]:focus-visible]:ring-2 has-[>[data-face-card-press]:focus-visible]:ring-ring has-[>[data-face-card-press]:focus-visible]:ring-offset-2 has-[>[data-face-card-press]:focus-visible]:ring-offset-background\", phone === \"rows\" && \"max-sm:bg-transparent max-sm:text-left\", phone === \"lying\" && \"max-sm:text-start\", )}",
     "owner": "unify pass",
-    "reason": "an icon or a face on a tile of its own; it moves onto the identity family's tile",
-    "expires": "surface:identity"
+    "reason": "FaceCard is itself the kit's face card (kit page face-card), the one drawing of a person's or a Mate's card: a lift on the muted ground, lit and ringed through its body's press, laid down as rows on a phone",
+    "expires": "never"
   }
 ]
