@@ -182,6 +182,7 @@ export default defineConfig({
       "t3code/no-native-title-tooltip": "error",
       "t3code/no-raw-controls": "error",
       "t3code/prefer-text": "error",
+      "t3code/no-sized-slot-icon": "error",
       "t3code/no-test-in-loop": "error",
       "t3code/no-platform-globals": "error",
       "t3code/no-remote-data-in-browser-storage": "error",

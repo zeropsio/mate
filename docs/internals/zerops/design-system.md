@@ -163,6 +163,12 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   `description`, a `remark`, a `note`, a `meta` fact, an `error`, a `code` literal. The variant
   fixes the step, the ink and the weight; a kit piece that draws its own words (a row, a section
   label, a page header, an empty place, a field, a failure) keeps them.
+- Who or what a thing is stands before its name: a person is a `PersonAvatar` (`nobody` for the
+  seat no person holds, `PersonAvatarStack` for who has access), a Mate its `MateFace`, anything
+  else a `LogoTile` (a logo, an organization's letter, a kind of thing's icon), each at the size of
+  the row it leads. An icon in a kit slot (a `Row`'s lead, a `Button`, a `Badge`, a menu item) takes
+  the slot's size, and in a row's lead the muted ink unless its ink means something; it names no
+  size of its own.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
   `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
   `dot` form, with its words or an accessible name.
@@ -254,6 +260,10 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R14** — Words in a `Text` variant's look are `Text`
   - _Enforced by:_ `t3code/prefer-text` (a plain element whose class string is exactly one variant's
     step, ink and weight, beside only what `Text` takes in `className`); its ledger only shrinks
+
+- **R15** — An icon in a kit slot takes the slot's size
+  - _Enforced by:_ `t3code/no-sized-slot-icon` (a lucide icon with a `size-*` class as a `Row`'s
+    `lead` or directly inside a `Button`, `Badge` or menu item); its ledger only shrinks
 
 ## 6. Exceptions
 
