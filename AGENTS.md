@@ -134,7 +134,8 @@ To answer a question, go to the home:
 - Terminal renderers → `docs/architecture/terminal-renderers.md`.
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
-- UI principles, copy glossary, tokens, guards, exception policy → `docs/internals/zerops/design-system.md`.
+- UI principles, copy glossary, tokens, guards, exception policy, and how to build and look at UI
+  with the kit (`/kit`, flows) → `docs/internals/zerops/design-system.md`; UI work starts at its §7.
 - Platform editing rules → `docs/internals/zerops/platform-data-architecture.md`.
 - Instrumentation rules → `docs/operations/observability.md`.
 - Runbooks → `docs/operations/`.

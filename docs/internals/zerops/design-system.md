@@ -283,3 +283,30 @@ numbered steps of these. Every ask is the same card, in two densities.
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
 remove a dead or expired exception. A permanent exception needs a reason why the finding is correct.
 The machine ledgers own the entries and fingerprints; do not copy their counts into documentation.
+
+## 7. Building with the kit
+
+The kit is the web client's component library (`apps/web/src/components/ui`) and its workbench at
+`/kit`, served by every dev server, preview and production build.
+
+- Before drawing anything, find the piece that does the job. `/kit` groups the components by what
+  they are for, and each page shows its forms, a playground and its import line. Read the
+  component's doc comment before deciding nothing fits.
+- A surface composes kit pieces and lays them out with utilities. A look belongs to the kit, never
+  to the surface: never restyle a piece from outside, and never draw a look by hand that a piece
+  already draws.
+- If nothing fits, extend the kit, not the surface. Add a variant or size when the job is the
+  same, and a new component when it differs. Either one lands in its own commit, before the
+  surface uses it, with:
+  - its doc comment;
+  - its kit section (`apps/web/src/kit/sections/<id>.tsx`, on `kit/Specimen.tsx`'s tiles);
+  - its playground (`apps/web/src/kit/playground/<id>.tsx`).
+
+  A job others would otherwise draw by hand also gets a guard (§5).
+
+- To see a surface in a state, use its flow, never a throwaway page. Each `apps/web/design-*.html`
+  page draws one surface over fixtures (`apps/web/src/design/`) and needs no account, project or
+  Mate. Its states are listed in its `kit-states` meta, and it appears in `/kit` under Flows, with
+  a link per state in light, dark or both. A missing state is added to the surface's flow as a
+  fixture and a `kit-states` entry. A surface without a flow gets one.
+- A look is checked in `/kit` in both appearances and on the canvas's grounds before it lands.
