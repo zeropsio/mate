@@ -6,14 +6,18 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useKnownMate } from "~/zerops/useZeropsMates";
 
+import { Badge } from "../ui/badge";
 import { MateFace } from "../zerops/primitives";
 
 /** A plain agent's mark where no Mate lives: the amber of who is next. */
 export function ComposerAskMark() {
   return (
-    <span
+    <Badge
       aria-hidden="true"
-      className="size-2.5 justify-self-center rounded-full bg-status-attention"
+      aria-label="Waits on you"
+      className="justify-self-center"
+      dot
+      tone="warning"
     />
   );
 }
