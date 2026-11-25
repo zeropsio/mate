@@ -376,16 +376,16 @@ export function NowLine({
     >
       {/* The whole line is the work's toggle: its words say what it opens. */}
       {toggle === null ? null : (
-        <button
+        <Button
           aria-expanded={toggle.open}
-          className="run-now-fold"
+          data-run-now-fold=""
           onClick={toggle.onToggle}
           onFocus={toggle.onIntent}
           onPointerEnter={toggle.onIntent}
-          type="button"
+          variant="bare"
         >
           {toggle.open ? "Hide work" : "Show work"}
-        </button>
+        </Button>
       )}
       {ctx.speaker.helper ? (
         <HelperFace />

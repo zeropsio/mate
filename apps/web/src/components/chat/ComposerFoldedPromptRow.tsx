@@ -29,23 +29,27 @@ export function ComposerFoldedPromptRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-2 px-3 py-2">
-      <button
-        type="button"
-        // The editor's own type (16 px under a finger): opening it changes no letter's
-        // size. It reaches the pill's top, bottom and left edge, so a finger anywhere
-        // on the words' side opens it.
-        className={cn(
-          "-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none",
-          COMPOSER_PROMPT_TYPE_CLASS_NAME,
-          words ? "text-foreground" : "text-placeholder",
-        )}
+      {/* It reaches the pill's top, bottom and left edge, so a finger anywhere on the words'
+          side opens it. */}
+      <Button
+        variant="bare"
+        className="-my-2 -ms-3 min-w-0 flex-1 self-stretch"
         onPointerDown={(event) => event.preventDefault()}
         onClick={onExpand}
         aria-label={availabilityName("Expand composer", availability)}
       >
-        {availability === null ? null : <AvailabilityDot availability={availability} />}
-        {words || placeholder}
-      </button>
+        {/* The editor's own type (16 px under a finger): opening it changes no letter's size. */}
+        <span
+          className={cn(
+            "block truncate py-2 ps-3 text-left",
+            COMPOSER_PROMPT_TYPE_CLASS_NAME,
+            words ? "text-foreground" : "text-placeholder",
+          )}
+        >
+          {availability === null ? null : <AvailabilityDot availability={availability} />}
+          {words || placeholder}
+        </span>
+      </Button>
       {tasksBadge}
       {stashBadge}
       <Button

@@ -75,8 +75,8 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
     >
       <DialogMediaPopup aria-label="Expanded image preview">
         <div className="flex size-full items-center justify-center px-4 py-6 [--media-height:min(86vh,calc(100vh-160px))] [--media-width:92vw] sm:[--media-width:calc(92vw-96px)]">
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className="absolute inset-0 z-0 cursor-zoom-out"
             aria-label="Close image preview"
             onClick={onClose}

@@ -201,8 +201,10 @@
   content: "";
 }
 
+/* A bead that opens its change is drawn inside its press, which takes the focus and the mark. */
 .ln-bead:hover,
-.ln-bead:focus-visible {
+.ln-bead:focus-visible,
+:focus-visible > .ln-bead {
   transform: scale(1.25);
 }
 
@@ -213,7 +215,7 @@
 
 /* The bead of the change whose row in the list is pointed at: a ring in the ink, outside its
    mark's, that takes no room. */
-.ln-bead[data-marked] {
+[data-marked] > .ln-bead {
   outline: 1.5px solid var(--foreground);
   outline-offset: 4px;
 }
@@ -235,7 +237,7 @@
   background: color-mix(in oklab, var(--foreground) 5%, var(--ln-ground));
 }
 
-span.ln-bead {
+.ln-bead[role="img"] {
   cursor: default;
 }
 

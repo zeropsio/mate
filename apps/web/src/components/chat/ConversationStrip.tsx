@@ -243,14 +243,10 @@ function MatePill({
     </span>
   );
   const press = (
-    <button
+    <Button
       aria-current={mate.open ? "page" : undefined}
       aria-label={mate.open ? mate.name : (mate.tooltip ?? mate.name)}
-      className={cn(
-        "conversation-mate-press flex h-8 shrink-0 items-center gap-2.5 ps-2 outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        chats === null ? "pe-3" : "pe-1",
-        opens ? "cursor-pointer" : "cursor-default",
-      )}
+      className="flex h-8 shrink-0"
       data-conversation-mate-press
       onClick={() => {
         if (opens && mate.threadId !== null) onOpen(mate.threadId);
@@ -260,23 +256,31 @@ function MatePill({
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         onRename();
       }}
-      type="button"
+      variant="bare"
     >
-      {owner == null ? (
-        <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
-      ) : (
-        // The badge stands beside the face's slot, never in it: the opening stage moves its own
-        // face into the slot, and the cut holds for whichever face stands there.
-        <span className="relative flex shrink-0">
-          <span className="conversation-face-cut flex">
-            <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+      <span
+        className={cn(
+          "flex items-center gap-2.5 ps-2",
+          chats === null ? "pe-3" : "pe-1",
+          !opens && "cursor-default",
+        )}
+      >
+        {owner == null ? (
+          <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+        ) : (
+          // The badge stands beside the face's slot, never in it: the opening stage moves its own
+          // face into the slot, and the cut holds for whichever face stands there.
+          <span className="relative flex shrink-0">
+            <span className="conversation-face-cut flex">
+              <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+            </span>
+            <MateOwnerMark className="conversation-owner" seat={owner} />
           </span>
-          <MateOwnerMark className="conversation-owner" seat={owner} />
-        </span>
-      )}
-      {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
-      <ConversationOpeningYields>{name}</ConversationOpeningYields>
-    </button>
+        )}
+        {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
+        <ConversationOpeningYields>{name}</ConversationOpeningYields>
+      </span>
+    </Button>
   );
   const nameHover = mate.tooltip;
   return (

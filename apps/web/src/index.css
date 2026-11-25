@@ -8816,7 +8816,7 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-now[data-run-head] {
   position: relative;
 }
-.run-now[data-run-head] > .run-now-fold {
+.run-now[data-run-head] > [data-run-now-fold] {
   position: absolute;
   inset: 0 -6px;
   margin: 0;
@@ -8827,10 +8827,10 @@ label.tm-advanced-row:not([data-disabled]) {
   color: transparent;
   background: transparent;
 }
-.run-now[data-run-head] > .run-now-fold:hover {
+.run-now[data-run-head] > [data-run-now-fold]:hover {
   background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
 }
-.run-now[data-run-head] > :not(.run-now-fold) {
+.run-now[data-run-head] > :not([data-run-now-fold]) {
   pointer-events: none;
 }
 .run-now[data-run-head] .run-now-end > :not(.run-head-chevron, .run-head-toggle-words) {
@@ -9411,7 +9411,7 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 /* Its 24 px of ground stand in the line's 20, so the words keep their
    centre. */
-.run-now-fold {
+[data-run-now-fold] {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -9427,13 +9427,9 @@ label.tm-advanced-row:not([data-disabled]) {
     color var(--duration-quick) var(--ease-out-strong),
     background-color var(--duration-quick) var(--ease-out-strong);
 }
-.run-now-fold:hover {
+[data-run-now-fold]:hover {
   color: var(--color-foreground);
   background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
-}
-.run-now-fold:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
-  outline-offset: 1px;
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into
@@ -9828,8 +9824,7 @@ button:hover > .run-result-tile::after {
    travels between them (`.conversation-band`, pass 18). The band coming and
    going changes no width: the Mate's pill keeps its padding with or without
    it. */
-.conversation-mate,
-.conversation-mate-press {
+.conversation-mate {
   border-radius: var(--radius-control);
 }
 
@@ -10273,7 +10268,7 @@ button:hover > .run-result-tile::after {
   height: 100%;
 }
 
-.picture-chip {
+[data-picture-chip] {
   position: absolute;
   display: -webkit-box;
   max-width: 220px;
@@ -10294,16 +10289,11 @@ button:hover > .run-result-tile::after {
   -webkit-line-clamp: 2;
 }
 
-.picture-chip:hover,
-.picture-chip[data-selected] {
+[data-picture-chip]:hover,
+[data-picture-chip][data-selected] {
   box-shadow:
     var(--picture-chip-shadow),
     0 0 0 2px var(--picture-note);
-}
-
-.picture-chip:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 2px;
 }
 
 .picture-crop {
@@ -11224,12 +11214,12 @@ a.message-file:focus-visible {
   content: "";
   pointer-events: none;
 }
-.rv-pic-open {
+[data-rv-pic-open] {
   display: block;
   cursor: zoom-in;
 }
-.rv-pic-open:focus-visible {
-  outline: 2px solid var(--ring);
+/* The frame clips what stands outside the picture, so its focus ring is drawn inside. */
+[data-rv-pic-open]:focus-visible {
   outline-offset: -2px;
 }
 .rv-pic img {
@@ -11252,7 +11242,7 @@ a.message-file:focus-visible {
 /* A picture its description sizes holds that box from the first paint (`reviewPictureBox` sets
    its shape and width): its line fills it while it is read or when it cannot be, and the picture
    fills it once read, so nothing moves either way. */
-.rv-pic[data-box] > .rv-pic-open,
+.rv-pic[data-box] > [data-rv-pic-open],
 .rv-pic[data-box] img {
   width: 100%;
   height: 100%;
