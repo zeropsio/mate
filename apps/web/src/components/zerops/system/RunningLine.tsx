@@ -11,6 +11,7 @@ import { CheckIcon } from "lucide-react";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
 import { GrowsInPlace } from "./GrowsInPlace";
 import { SectionLabel } from "./SectionLabel";
 
@@ -58,11 +59,7 @@ function RunningTrail({ trail }: { readonly trail: NonNullable<Line["trail"]> })
           ) : part.state === "busy" ? (
             <Badge aria-label="Under way" dot tone="info" />
           ) : (
-            <span
-              aria-label="To come"
-              className="size-2 shrink-0 rounded-full border border-muted-foreground/60"
-              role="img"
-            />
+            <Badge aria-label="To come" dot hollow />
           )}
           <span className="truncate">{part.label}</span>
         </span>
@@ -134,13 +131,15 @@ export function RunningNow({ lines }: { readonly lines: ReadonlyArray<Line> }) {
         // As far from the group under it as the column's groups stand from each other.
         <section className="mb-8 min-w-0" data-zerops-surface="running-now">
           <SectionLabel>Running now</SectionLabel>
-          <ul className="m-0 flex list-none flex-col gap-1.5 rounded-card border border-border bg-card px-3 py-2.5">
-            {lines.map((line) => (
-              <li className="min-w-0" key={line.id}>
-                <RunningLine line={line} />
-              </li>
-            ))}
-          </ul>
+          <Card>
+            <ul className="m-0 flex list-none flex-col gap-1.5 px-3 py-2.5">
+              {lines.map((line) => (
+                <li className="min-w-0" key={line.id}>
+                  <RunningLine line={line} />
+                </li>
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
     </GrowsInPlace>

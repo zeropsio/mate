@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
@@ -68,40 +69,45 @@ export function ServiceRow({
     : row.type;
   const under = panel ? facts : (facts ?? row.under);
   return (
-    <li
-      className={cn(
-        "flex min-w-0 flex-col rounded-card border border-border/70 bg-card",
-        panel ? "gap-3 px-3.5 pt-3 pb-3.5" : "gap-3.5 px-4 pt-3.5 pb-4",
-      )}
-      data-zerops-service-row={density}
+    <Card
+      className="min-w-0"
       data-zerops-place-service={row.hostname}
+      data-zerops-service-row={density}
+      render={<li />}
     >
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            {/* Its hostname, a real thing's own name: the mono face (`RealName`). */}
-            <span className="min-w-0 truncate text-body font-medium text-foreground">
-              <RealName>{row.hostname}</RealName>
-            </span>
-            {kind === undefined || kind === "" ? null : (
-              <span className="min-w-0 truncate text-caption text-muted-foreground">{kind}</span>
+      <div
+        className={cn(
+          "flex min-w-0 flex-col",
+          panel ? "gap-3 px-3.5 pt-3 pb-3.5" : "gap-3.5 px-4 pt-3.5 pb-4",
+        )}
+      >
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+              {/* Its hostname, a real thing's own name: the mono face (`RealName`). */}
+              <span className="min-w-0 truncate text-body font-medium text-foreground">
+                <RealName>{row.hostname}</RealName>
+              </span>
+              {kind === undefined || kind === "" ? null : (
+                <span className="min-w-0 truncate text-caption text-muted-foreground">{kind}</span>
+              )}
+              {said}
+            </div>
+            {under === undefined || under === null ? null : (
+              <div className="min-w-0 truncate text-caption text-muted-foreground/80">{under}</div>
             )}
-            {said}
           </div>
-          {under === undefined || under === null ? null : (
-            <div className="min-w-0 truncate text-caption text-muted-foreground/80">{under}</div>
-          )}
+          <span className="-me-1.5 -mt-0.5 flex shrink-0 items-center gap-0.5">
+            {actions}
+            <ServiceMenu menuItems={menuItems} row={row} />
+          </span>
         </div>
-        <span className="-me-1.5 -mt-0.5 flex shrink-0 items-center gap-0.5">
-          {actions}
-          <ServiceMenu menuItems={menuItems} row={row} />
-        </span>
+        {row.compute && row.platform !== undefined ? (
+          <ServiceMeters row={row.platform} usageRead={usageRead} />
+        ) : null}
+        {children}
       </div>
-      {row.compute && row.platform !== undefined ? (
-        <ServiceMeters row={row.platform} usageRead={usageRead} />
-      ) : null}
-      {children}
-    </li>
+    </Card>
   );
 }
 
