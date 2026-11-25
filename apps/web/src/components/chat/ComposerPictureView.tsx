@@ -33,6 +33,8 @@ import { drawPictureMarks, pictureMarkMetrics } from "~/lib/pictureDrawing";
 import { randomUUID } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
+import { Label } from "../ui/label";
+import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "~/lib/toasts";
@@ -733,7 +735,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     <CropIcon aria-hidden="true" />
                     Crop
                   </Button>
-                  <span className="picture-tools-rule" />
+                  <Separator className="mx-1 h-5" orientation="vertical" />
                 </>
               ) : null}
               {cropping ? (
@@ -754,7 +756,7 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                     : "Its marks and crop stay as they were before the reload"}
                 </span>
               )}
-              <span className="picture-tools-rule" />
+              <Separator className="mx-1 h-5" orientation="vertical" />
               <span className="picture-tools-out" aria-live="polite">
                 Sends <b>{pictureDims(sends.width, sends.height)}</b>
                 {tail}
@@ -766,17 +768,19 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
                 ) : null}
               </span>
               {props.canKeepOriginal && source ? (
-                <label className="picture-tool picture-keep">
-                  <Switch
-                    checked={picture.keepOriginal}
-                    onCheckedChange={(checked) => change({ keepOriginal: checked })}
-                    aria-describedby="picture-keep-why"
-                  />
-                  <span>Keep original</span>
-                  <span id="picture-keep-why" className="sr-only">
-                    {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
-                  </span>
-                </label>
+                <span className="flex h-8 items-center whitespace-nowrap px-2">
+                  <Label>
+                    <Switch
+                      checked={picture.keepOriginal}
+                      onCheckedChange={(checked) => change({ keepOriginal: checked })}
+                      aria-describedby="picture-keep-why"
+                    />
+                    <span>Keep original</span>
+                    <span id="picture-keep-why" className="sr-only">
+                      {`${props.mateName} still looks at the fitted copy. The untouched file is saved next to it for ${props.mateName} to use.`}
+                    </span>
+                  </Label>
+                </span>
               ) : null}
               <Button ref={doneRef} onClick={close}>
                 Done

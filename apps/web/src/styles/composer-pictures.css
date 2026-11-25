@@ -409,43 +409,6 @@
   box-shadow: var(--picture-pop-shadow);
 }
 
-.picture-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: none;
-  color: inherit;
-  font: 500 13px/1 var(--font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.picture-tool svg {
-  width: 15px;
-  height: 15px;
-}
-
-.picture-tool:hover {
-  background: var(--color-accent);
-}
-
-.picture-keep {
-  gap: 8px;
-  padding: 0 8px;
-}
-
-.picture-tools-rule {
-  flex: none;
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background: var(--color-border);
-}
-
 .picture-tools-hint,
 .picture-tools-info,
 .picture-tools-out {
