@@ -14,9 +14,39 @@ type TextareaProps = React.ComponentProps<"textarea"> & {
    */
   size?: "sm" | "default" | "lg" | "line" | "code" | number;
   unstyled?: boolean;
+  /**
+   * With `code`: a mark per line in a 26 px column at its start, on the text's 20 px rhythm (a
+   * line's change, `+` or `~`), and the field's own frame around both, its edge firming while the
+   * caret is in it: a text whose lines carry marks (a vault's values as text). One child per line.
+   */
+  gutter?: React.ReactNode;
 };
 
-function Textarea({ className, size = "default", unstyled = false, ...props }: TextareaProps) {
+function Textarea({ gutter, ...props }: TextareaProps) {
+  if (gutter === undefined) return <TextareaControl {...props} />;
+  return (
+    <span
+      className="relative grid w-full min-w-0 grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control border border-input bg-field bg-clip-ground ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"
+      data-slot="textarea-frame"
+    >
+      <span
+        aria-hidden="true"
+        className="py-2 text-center font-mono text-caption leading-5 font-medium text-muted-foreground select-none *:block *:h-5"
+        data-slot="textarea-gutter"
+      >
+        {gutter}
+      </span>
+      <TextareaControl {...props} />
+    </span>
+  );
+}
+
+function TextareaControl({
+  className,
+  size = "default",
+  unstyled = false,
+  ...props
+}: Omit<TextareaProps, "gutter">) {
   const frameless = unstyled || size === "line" || size === "code";
   return (
     <span

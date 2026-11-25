@@ -43,20 +43,19 @@ export default defineKitSection({
               />
             </div>
           </Specimen>
-          <Specimen label='size="code"' note="Values as text, beside their change marks">
-            <div className="grid w-full max-w-80 grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
-              <div
-                aria-hidden="true"
-                className="py-2 text-center font-medium font-mono text-caption text-muted-foreground leading-5"
-              >
-                <span className="block">+</span>
-                <span className="block">~</span>
-                <span className="block">&nbsp;</span>
-              </div>
+          <Specimen label='size="code" gutter' note="Values as text, beside their change marks">
+            <div className="w-full max-w-80">
               <Textarea
                 aria-label="Values as text"
                 defaultValue={
                   "API_URL=https://api.acme.dev\nLOG_LEVEL=debug\nFEATURE_FLAGS=cart-vat,new-search,a-very-long-flag-that-never-wraps"
+                }
+                gutter={
+                  <>
+                    <span>+</span>
+                    <span>~</span>
+                    <span />
+                  </>
                 }
                 size="code"
                 spellCheck={false}
