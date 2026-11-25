@@ -11,6 +11,7 @@ import {
   isZeropsAgentId,
   type CrewMemberKind,
   type ServerProvider,
+  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { CrewAskSeat } from "@t3tools/shared/crewTemplates";
 
@@ -19,7 +20,7 @@ import {
   crewLoginOptions,
   crewModelOptions,
 } from "../zerops/crew/CrewEditors.logic";
-import { askKeyOf } from "./ask.logic";
+import { askKeyOf, namesWords } from "./ask.logic";
 
 /** The roles a fence names, as the crew's kinds: a builder changes files, a reviewer reads. */
 const ROLES: Readonly<Record<string, CrewMemberKind>> = {
@@ -130,6 +131,15 @@ function agentName(agent: string): string {
   return agent === "opencode" ? "OpenCode" : agent;
 }
 
+/** An agent the Mate named that this Mate isn't signed in to. */
+export interface CrewAskMissingAgent {
+  readonly name: string;
+  /** Its driver, for its mark. */
+  readonly driver: string;
+  /** The agent Mate signs people in to; `undefined` for one it signs nobody in to (OpenCode). */
+  readonly agentId: ZeropsAgentId | undefined;
+}
+
 /**
  * What a crewmate runs on among this Mate's sign-ins: the login of the agent the Mate named, the
  * model it named there (by id or name), and the effort that model offers (by id or name). An agent
@@ -137,33 +147,42 @@ function agentName(agent: string): string {
  * `missing` names that agent; `login` is `null` only where no login may.
  */
 export interface CrewAskRunsOn {
-  readonly login: { readonly id: string; readonly label: string } | null;
+  readonly login: {
+    readonly id: string;
+    readonly label: string;
+    /** Its driver, for its mark. */
+    readonly driver: string | undefined;
+  } | null;
   readonly model: { readonly slug: string; readonly name: string } | null;
   readonly effort: { readonly id: string; readonly label: string } | null;
-  /** The agent the Mate named that this Mate isn't signed in to. */
-  readonly missing: string | null;
+  readonly missing: CrewAskMissingAgent | null;
 }
 
 export function crewAskRunsOn(
   crewmate: CrewAskCrewmate,
   providers: ReadonlyArray<ServerProvider>,
 ): CrewAskRunsOn {
+  const driverOfLogin = (id: string) =>
+    providers.find((provider) => provider.instanceId === id)?.driver;
   const logins = crewLoginOptions(providers, crewmate.kind === "lead");
   const driver = crewmate.agent === undefined ? undefined : driverOf(crewmate.agent);
   const named =
-    driver === undefined
-      ? undefined
-      : logins.find(
-          (login) =>
-            providers.find((provider) => provider.instanceId === login.id)?.driver === driver,
-        );
+    driver === undefined ? undefined : logins.find((login) => driverOfLogin(login.id) === driver);
   const login = named ?? logins[0];
+  const loginOf = (id: string, label: string) => ({ id, label, driver: driverOfLogin(id) });
   if (login === undefined || named === undefined) {
     return {
-      login: login === undefined ? null : { id: login.id, label: login.label },
+      login: login === undefined ? null : loginOf(login.id, login.label),
       model: null,
       effort: null,
-      missing: crewmate.agent === undefined ? null : agentName(crewmate.agent),
+      missing:
+        crewmate.agent === undefined || driver === undefined
+          ? null
+          : {
+              name: agentName(crewmate.agent),
+              driver,
+              agentId: agentIdForDriverKind(driver),
+            },
     };
   }
   const wanted = crewmate.model?.toLowerCase();
@@ -182,7 +201,7 @@ export function crewAskRunsOn(
             option.label.toLowerCase() === crewmate.effort,
         );
   return {
-    login: { id: login.id, label: login.label },
+    login: loginOf(login.id, login.label),
     model: model ?? null,
     effort: effort ?? null,
     missing: null,
@@ -207,10 +226,51 @@ export function crewAskSeats(
   });
 }
 
-/** "Claude Code · Opus 5.5 · High": the login, then the model and effort it sets. */
+/** "Claude Opus 5.5 · High": the model and effort it sets, else its login's name. */
 export function crewAskRunsOnWords(runsOn: CrewAskRunsOn): string | null {
   if (runsOn.login === null) return null;
-  return [runsOn.login.label, runsOn.model?.name, runsOn.effort?.label]
+  return [runsOn.model?.name ?? runsOn.login.label, runsOn.effort?.label]
     .filter((part): part is string => part !== undefined)
     .join(" · ");
+}
+
+/**
+ * Each agent the Mate named that this Mate isn't signed in to, once, with the crewmates who
+ * wanted it and the login they start on instead.
+ */
+export function crewAskMissing(
+  rows: ReadonlyArray<{ readonly crewmate: CrewAskCrewmate; readonly runsOn: CrewAskRunsOn }>,
+): ReadonlyArray<{
+  readonly agent: CrewAskMissingAgent;
+  readonly crewmates: ReadonlyArray<string>;
+  readonly instead: string | null;
+}> {
+  const byAgent = new Map<
+    string,
+    { agent: CrewAskMissingAgent; crewmates: string[]; instead: string | null }
+  >();
+  for (const { crewmate, runsOn } of rows) {
+    if (runsOn.missing === null) continue;
+    const entry = byAgent.get(runsOn.missing.driver) ?? {
+      agent: runsOn.missing,
+      crewmates: [],
+      instead: runsOn.login?.label ?? null,
+    };
+    entry.crewmates.push(crewmate.name);
+    byAgent.set(runsOn.missing.driver, entry);
+  }
+  return [...byAgent.values()];
+}
+
+/** "Sign in to Codex first, or Sol and Ivo start on Claude Code." */
+export function crewAskMissingWords(
+  missing: ReturnType<typeof crewAskMissing>[number],
+  mate: string,
+): string {
+  const who = namesWords(missing.crewmates);
+  const start = missing.crewmates.length === 1 ? "starts" : "start";
+  if (missing.instead === null) return `${mate} isn't signed in to ${missing.agent.name}.`;
+  return missing.agent.agentId === undefined
+    ? `${mate} has no ${missing.agent.name}, so ${who} ${start} on ${missing.instead}.`
+    : `Sign in to ${missing.agent.name} first, or ${who} ${start} on ${missing.instead}.`;
 }

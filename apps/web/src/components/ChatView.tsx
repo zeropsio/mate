@@ -211,6 +211,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
 import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
+import { CrewAskSignInContext } from "./ask/CrewAsk";
 import { PictureAskContext, usePictureAsks } from "./ask/PictureAsk";
 import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
@@ -7983,7 +7984,9 @@ function ConversationView(props: ChatViewProps) {
   return (
     <ExpressHistoryContext value={expressHistory}>
       <PictureAskContext value={pictureAskScope}>
-        <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+        <CrewAskSignInContext value={zeropsSignInDialog.openFor}>
+          <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+        </CrewAskSignInContext>
       </PictureAskContext>
     </ExpressHistoryContext>
   );

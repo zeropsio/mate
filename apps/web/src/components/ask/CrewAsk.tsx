@@ -1,19 +1,33 @@
 /**
- * A Mate's crew ask (`crew-ask` fence) as its card: the goal it set up and who is on the crew, each
- * crewmate on what it runs on among this Mate's sign-ins, and one press that opens the Crew tab's
- * setup filled in with it, to change and start there. Once the Mate's crew stands, it says so and
- * opens the crew instead.
+ * A Mate's crew ask (`crew-ask` fence) as its card, read as the setup it opens reads: the goal,
+ * then who's on it, each crewmate with its part and, at the row's end, the agent's mark and the
+ * model it runs on among this Mate's sign-ins. An agent the Mate isn't signed in to is a warning on
+ * its row, a line saying what its crewmates start on instead and a press to sign in, after which
+ * the rows follow. The main press opens the Crew tab's setup filled in with the crew, to change
+ * and start there. Once the Mate's crew stands, it says so and opens the crew instead.
  */
-import { crewJobLine, crewRoleTag } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewStatus, ScopedThreadRef, ServerProvider } from "@t3tools/contracts";
+import {
+  CREW_SETUP_WORDS,
+  crewJobLine,
+  crewRoleTag,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
+import type {
+  CrewStatus,
+  ProviderDriverKind,
+  ScopedThreadRef,
+  ServerProvider,
+  ZeropsAgentId,
+} from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { type CrewAskSeat, crewFromAsk } from "@t3tools/shared/crewTemplates";
-import { type ReactNode, useMemo } from "react";
+import { createContext, type ReactNode, use, useMemo } from "react";
 
 import { useServerConfigs } from "~/state/entities";
 import { openCrewTab, openCrewView } from "~/zerops/crew/crewTab";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { PROVIDER_ICON_BY_PROVIDER } from "../chat/providerIconUtils";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { List } from "../ui/list";
@@ -24,14 +38,20 @@ import { AskCard, AskFooter } from "./AskCard";
 import type { AskState } from "./ask.logic";
 import {
   type CrewAsk,
+  type CrewAskRunsOn,
+  crewAskGoalLead,
+  crewAskMissing,
+  crewAskMissingWords,
   crewAskRunsOn,
   crewAskRunsOnWords,
-  crewAskGoalLead,
   crewAskSeats,
   parseCrewAsk,
 } from "./crewAsk.logic";
 
 const NO_PROVIDERS: ReadonlyArray<ServerProvider> = [];
+
+/** The conversation's sign-in dialog, opened on an agent; `null` where the conversation has none. */
+export const CrewAskSignInContext = createContext<((agentId: ZeropsAgentId) => void) | null>(null);
 
 /** A fence's card once its words are whole; words that set up no crew stay the code they are. */
 export function CrewAskFence({
@@ -68,11 +88,13 @@ function CrewAskCard({
   const whoLivesHere = useZeropsMate(environmentId);
   const providers = useServerConfigs().get(environmentId)?.providers ?? NO_PROVIDERS;
   const status = useCrew(environmentId).status;
+  const signIn = use(CrewAskSignInContext);
   return (
     <CrewAskCardView
       ask={ask}
       mate={whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined}
       onOpenCrew={() => openCrewTab(threadRef, { setUp: false })}
+      onSignIn={signIn}
       onSetUp={(seats) =>
         openCrewView(threadRef, {
           kind: "setup",
@@ -96,6 +118,7 @@ export function CrewAskCardView({
   status,
   onSetUp,
   onOpenCrew,
+  onSignIn,
 }: {
   readonly ask: CrewAsk;
   readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
@@ -104,6 +127,8 @@ export function CrewAskCardView({
   /** Opens the setup filled in with the crew, each crewmate on what it runs on here. */
   readonly onSetUp: (seats: ReadonlyArray<CrewAskSeat>) => void;
   readonly onOpenCrew: () => void;
+  /** Opens the sign-in to an agent; `null` where none can be opened here. */
+  readonly onSignIn: ((agentId: ZeropsAgentId) => void) | null;
 }) {
   const name = mate?.name ?? "this Mate";
   // The crew as the setup would draw it: each crewmate's tint, stepping past the Mate's own.
@@ -117,6 +142,19 @@ export function CrewAskCardView({
       }).members.map((member) => member.tint),
     [ask, mate],
   );
+
+  const rows = useMemo(
+    () => ask.crew.map((crewmate) => ({ crewmate, runsOn: crewAskRunsOn(crewmate, providers) })),
+    [ask, providers],
+  );
+  const missing = crewAskMissing(rows);
+  // One press per agent this viewer can sign this Mate in to here; the rows follow the sign-in.
+  const signIns =
+    onSignIn === null
+      ? []
+      : missing.flatMap(({ agent }) =>
+          agent.agentId === undefined ? [] : [{ agentId: agent.agentId, name: agent.name }],
+        );
 
   const state: AskState =
     status === "applied"
@@ -139,6 +177,20 @@ export function CrewAskCardView({
               </Button>
             ) : undefined
           }
+          also={
+            signIns.length === 0
+              ? undefined
+              : signIns.map((agent) => (
+                  <Button
+                    key={agent.agentId}
+                    onClick={() => onSignIn?.(agent.agentId)}
+                    size="md"
+                    variant="secondary"
+                  >
+                    {`Sign in to ${agent.name}…`}
+                  </Button>
+                ))
+          }
           density="full"
           main={
             live
@@ -149,7 +201,9 @@ export function CrewAskCardView({
                 }
               : null
           }
-          note={live ? "You can change anyone before it starts." : undefined}
+          note={
+            live && signIns.length === 0 ? "You can change anyone before it starts." : undefined
+          }
           state={state}
         />
       }
@@ -161,56 +215,81 @@ export function CrewAskCardView({
     >
       {live ? (
         <>
-          <figure className="grid min-w-0 gap-1">
-            <Text render={<figcaption />} variant="note">
-              Goal
+          <section className="grid min-w-0 gap-1">
+            <Text render={<h3 />} variant="label">
+              {CREW_SETUP_WORDS.goal}
             </Text>
-            <div className="line-clamp-3 whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
+            <p className="line-clamp-3 whitespace-pre-line text-body text-foreground">
               {crewAskGoalLead(ask.goal)}
-            </div>
-          </figure>
-          <Card variant="inset">
-            <List render={<ul />}>
-              {ask.crew.map((crewmate, index) => {
-                const runsOn = crewAskRunsOn(crewmate, providers);
-                const runsOnWords = crewAskRunsOnWords(runsOn);
-                const sentence = crewJobLine(crewmate.part, crewmate.name);
-                const tag = crewRoleTag(crewmate.kind, crewmate.name, sentence);
-                return (
-                  // A crew ask draws these inside an answer's words (`chat-markdown-island`), as a
-                  // picture ask's steps (`AskSteps`).
-                  <li data-crew-ask-crewmate={crewmate.kind} data-md-li="" key={index}>
-                    <Row
-                      lead={<MateFace size={24} state="idle" tint={tints[index] ?? "slate"} />}
-                      line={
-                        <>
-                          <span className="block">{sentence}</span>
-                          {runsOnWords === null ? null : (
-                            <Text className="block" variant="note">
-                              {runsOn.missing === null
-                                ? `On ${runsOnWords}`
-                                : `On ${runsOnWords}: ${name} isn't signed in to ${runsOn.missing}`}
-                            </Text>
-                          )}
-                        </>
-                      }
-                      lineWraps
-                      title={
-                        <>
-                          {crewmate.name}
-                          {tag === null ? null : (
-                            <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>
-                          )}
-                        </>
-                      }
-                    />
-                  </li>
-                );
-              })}
-            </List>
-          </Card>
+            </p>
+          </section>
+          <section className="grid min-w-0 gap-1.5">
+            <Text render={<h3 />} variant="label">
+              {CREW_SETUP_WORDS.whosOnIt}
+            </Text>
+            <Card variant="inset">
+              <List render={<ul />}>
+                {rows.map(({ crewmate, runsOn }, index) => {
+                  const sentence = crewJobLine(crewmate.part, crewmate.name);
+                  const tag = crewRoleTag(crewmate.kind, crewmate.name, sentence);
+                  return (
+                    // A crew ask draws these inside an answer's words (`chat-markdown-island`), as
+                    // a picture ask's steps (`AskSteps`).
+                    <li data-crew-ask-crewmate={crewmate.kind} data-md-li="" key={index}>
+                      <Row
+                        lead={<MateFace size={24} state="idle" tint={tints[index] ?? "slate"} />}
+                        line={sentence}
+                        lineWraps
+                        meta={<RunsOn runsOn={runsOn} />}
+                        title={
+                          <>
+                            {crewmate.name}
+                            {tag === null ? null : (
+                              <span className="font-normal text-muted-foreground">{` · ${tag}`}</span>
+                            )}
+                          </>
+                        }
+                      />
+                    </li>
+                  );
+                })}
+              </List>
+            </Card>
+            {missing.map((agent) => (
+              <Text data-crew-ask-missing="" key={agent.agent.driver} render={<p />} variant="note">
+                {crewAskMissingWords(agent, name)}
+              </Text>
+            ))}
+          </section>
         </>
       ) : null}
     </AskCard>
+  );
+}
+
+/**
+ * What a crewmate runs on, at its row's end: the agent's mark and the model and effort it sets
+ * there, or, for an agent this Mate isn't signed in to, that agent's mark in a warning.
+ */
+function RunsOn({ runsOn }: { readonly runsOn: CrewAskRunsOn }) {
+  if (runsOn.missing !== null) {
+    const Mark = PROVIDER_ICON_BY_PROVIDER[runsOn.missing.driver as ProviderDriverKind];
+    return (
+      <Badge tone="warning">
+        {Mark === undefined ? null : <Mark />}
+        {runsOn.missing.agentId === undefined ? "Not available" : "Not signed in"}
+      </Badge>
+    );
+  }
+  const words = crewAskRunsOnWords(runsOn);
+  if (words === null) return null;
+  const driver = runsOn.login?.driver;
+  const Mark =
+    driver === undefined ? undefined : PROVIDER_ICON_BY_PROVIDER[driver as ProviderDriverKind];
+  return (
+    <span className="flex items-center gap-1.5">
+      {Mark === undefined ? null : <Mark aria-hidden="true" className="size-3.5" />}
+      {words}
+    </span>
   );
 }

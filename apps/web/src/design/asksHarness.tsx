@@ -1243,6 +1243,7 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
         mate={{ name: MATE, tint: "sky" }}
         onOpenCrew={() => undefined}
         onSetUp={() => undefined}
+        onSignIn={() => undefined}
         providers={state === "signIn" ? [CLAUDE_LOGIN] : [CLAUDE_LOGIN, CODEX_LOGIN]}
         status={status}
       />
