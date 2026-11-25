@@ -22,7 +22,7 @@ import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
-import { lastMateGoes } from "./ZeropsDeleteMateDialog.logic";
+import { deleteMateConfirmed, lastMateGoes } from "./ZeropsDeleteMateDialog.logic";
 
 /** A Stage or a Production of the project, as its deletion weighs it. */
 export type DeletionEnvironment =
@@ -47,7 +47,7 @@ export interface DeletionProject {
   readonly placements: ReadonlyArray<{
     readonly projectId: string;
     readonly kind: string;
-    readonly name: string;
+    readonly name: string | undefined;
   }>;
   /** The projects of the births on their way into it (`null`: one that has none yet). */
   readonly births: ReadonlyArray<string | null>;
@@ -62,14 +62,16 @@ export interface DeletionProject {
   readonly steps?: HqOperation["steps"];
 }
 
-export interface DeletionFacts {
-  /** The Mate whose Delete was pressed; absent: the project's own Delete. */
-  readonly mate?: { readonly projectId: string; readonly name: string } | undefined;
-  /** The project the Mate stands in, or the project deleted; absent: the Mate stands in none. */
-  readonly project?: DeletionProject | undefined;
-  /** Delete again was pressed over a deletion HQ shows ended failed. */
-  readonly again?: boolean;
-}
+export type DeletionFacts = { readonly past?: string | undefined } & (
+  | {
+      readonly mate: { readonly projectId: string; readonly name: string };
+      readonly project?: DeletionProject | undefined;
+    }
+  | {
+      readonly mate?: { readonly projectId: string; readonly name: string } | undefined;
+      readonly project: DeletionProject;
+    }
+);
 
 /** What deleting the whole project takes, before anything is slid. */
 export interface ProjectDeletionPlan {
@@ -86,13 +88,18 @@ export interface ProjectDeletionPlan {
 /** Which dialog a Delete opens (design §2), the one answer both dialogs and both menus render. */
 export type DeletionOffer =
   /** A Mate that is not its project's last (`stays`: what stays), or one in no project. */
-  | { readonly kind: "mate"; readonly stays: string | undefined }
+  | { readonly kind: "mate"; readonly projectId: string; readonly stays: string | undefined }
   /** The last Mate, the project not the person's to delete: only the Mate goes, keeping its code. */
-  | { readonly kind: "last-mate-only"; readonly stays: string }
+  | { readonly kind: "last-mate-only"; readonly projectId: string; readonly stays: string }
   /** The last Mate of a project the person may delete whole: they choose. */
-  | { readonly kind: "last-choice"; readonly plan: ProjectDeletionPlan }
+  | {
+      readonly kind: "last-choice";
+      readonly projectId: string;
+      readonly appId: string;
+      readonly plan: ProjectDeletionPlan;
+    }
   /** A project without a Mate, from its own Delete or Delete again. */
-  | { readonly kind: "project"; readonly plan: ProjectDeletionPlan }
+  | { readonly kind: "project"; readonly appId: string; readonly plan: ProjectDeletionPlan }
   /** HQ's deletion of the project runs, waits or ended failed: its state, no form. */
   | {
       readonly kind: "standing";
@@ -102,6 +109,16 @@ export type DeletionOffer =
 /** HQ's kinds of a project that keep a Mate from being its project's last (`app_has_mate`). */
 const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]);
 const MATE_KINDS: ReadonlySet<string> = new Set(["mate", "devstage"]);
+
+/** Placements and births HQ says hold the project, except the Mate being deleted. */
+function otherHolders(project: DeletionProject, projectId: string | undefined) {
+  return {
+    placements: project.placements.filter(
+      (placement) => HOLDING_KINDS.has(placement.kind) && placement.projectId !== projectId,
+    ),
+    births: project.births.filter((birth) => birth !== projectId),
+  };
+}
 
 function listed(names: ReadonlyArray<string>): string {
   return names.length <= 1
@@ -134,18 +151,21 @@ export function projectDeletionPlan(
   const goes = (environment: (typeof zerops)[number]) =>
     environment.deletable && environment.madeByMate && environment.name !== undefined;
   const notTheirs = stages.find((stage) => !stage.deletable || stage.name === undefined);
-  const otherMate = project.placements.some(
-    (placement) => HOLDING_KINDS.has(placement.kind) && placement.projectId !== mate?.projectId,
-  );
+  const holders = otherHolders(project, mate?.projectId);
+  const otherMate =
+    holders.births.length > 0 ||
+    holders.placements.some((placement) => MATE_KINDS.has(placement.kind));
   const refusal = otherMate
     ? "A Mate still works on this project. Delete it first."
-    : notTheirs !== undefined
-      ? notTheirs.name === undefined
-        ? "Deleting it would delete a Stage you have no access to."
-        : `Deleting it would delete Stage ${notTheirs.name}, and you are not an Admin of it.`
-      : project.hidden.includes("stage")
-        ? "Deleting it would delete a Stage you have no access to."
-        : undefined;
+    : holders.placements.length > 0
+      ? "A plain project still belongs to this project. Remove it first."
+      : notTheirs !== undefined
+        ? notTheirs.name === undefined
+          ? "Deleting it would delete a Stage you have no access to."
+          : `Deleting it would delete Stage ${notTheirs.name}, and you are not an Admin of it.`
+        : project.hidden.includes("stage")
+          ? "Deleting it would delete a Stage you have no access to."
+          : undefined;
   return {
     stages: stages.map((stage) => ({ projectId: stage.projectId, name: stage.name ?? "" })),
     productions: productions.flatMap((production) =>
@@ -184,28 +204,37 @@ export function productionStaysWords(name: string | undefined): string {
  * A project HQ deletes, waits on or failed to delete shows that, until Delete again.
  */
 export function deletionOffer(facts: DeletionFacts): DeletionOffer {
-  const { mate, project } = facts;
+  const { project } = facts;
+  const mate =
+    facts.mate !== undefined &&
+    (project === undefined ||
+      project.placements.some(
+        (placement) =>
+          MATE_KINDS.has(placement.kind) && placement.projectId === facts.mate?.projectId,
+      ) ||
+      project.births.includes(facts.mate.projectId))
+      ? facts.mate
+      : undefined;
   if (project !== undefined) {
     const deletion = project.deletion;
     if (
       deletion.kind === "going" ||
       deletion.kind === "waiting" ||
-      (deletion.kind === "failed" && facts.again !== true)
+      (deletion.kind === "failed" && deletion.id !== facts.past)
     )
       return { kind: "standing", deletion };
   }
-  if (project === undefined) return { kind: "mate", stays: undefined };
+  if (project === undefined)
+    return { kind: "mate", projectId: facts.mate!.projectId, stays: undefined };
   const plan = projectDeletionPlan(project, mate);
-  if (mate === undefined) return { kind: "project", plan };
-  const others = project.placements.filter(
-    (placement) => HOLDING_KINDS.has(placement.kind) && placement.projectId !== mate.projectId,
-  );
-  const births = project.births.filter((projectId) => projectId !== mate.projectId);
+  if (mate === undefined) return { kind: "project", appId: project.appId, plan };
+  const { placements: others, births } = otherHolders(project, mate.projectId);
   if (others.length > 0 || births.length > 0) {
     const otherMates =
       births.length > 0 || others.some((placement) => MATE_KINDS.has(placement.kind));
     return {
       kind: "mate",
+      projectId: mate.projectId,
       stays: `${project.name} stays, with its code${otherMates ? " and its other Mates" : ""}.`,
     };
   }
@@ -213,14 +242,16 @@ export function deletionOffer(facts: DeletionFacts): DeletionOffer {
   if (!project.deleteApp)
     return {
       kind: "last-mate-only",
+      projectId: mate.projectId,
       stays: `${last} ${project.name} stays, with ${keptWith(project)}: only an Owner or an Admin can delete a project.`,
     };
   if (plan.refusal !== undefined)
     return {
       kind: "last-mate-only",
+      projectId: mate.projectId,
       stays: `${last} ${project.name} stays: ${plan.refusal.charAt(0).toLowerCase()}${plan.refusal.slice(1)}`,
     };
-  return { kind: "last-choice", plan };
+  return { kind: "last-choice", projectId: mate.projectId, appId: project.appId, plan };
 }
 
 /** The last Mate's choice, in words: its description and what each of its two choices takes. */
@@ -311,8 +342,8 @@ export function applicationHoldings(detail: {
 export interface DeletionConfirmation {
   /** The Stages and Productions slid, by project id. */
   readonly slid: ReadonlySet<string>;
-  /** The project's name as typed. */
-  readonly typed: string;
+  /** Each Production's name as typed, by project id. */
+  readonly productionTyped: Readonly<Record<string, string>>;
 }
 
 export interface ProjectDeletionWords {
@@ -398,38 +429,49 @@ export function productionDeletionWords(name: string): {
   };
 }
 
-/**
- * Whether the project's Delete opens, and else what is missing: every Stage slid, then its name
- * typed as spelled (`confirmed`). A Production not slid is no hold: it stays.
- */
-export function projectDeletionReady(
-  plan: ProjectDeletionPlan,
-  slid: ReadonlySet<string>,
-  confirmed: boolean,
-): { readonly ready: boolean; readonly missing: string | null } {
-  if (plan.refusal !== undefined) return { ready: false, missing: plan.refusal };
-  if (plan.stages.some((stage) => !slid.has(stage.projectId)))
-    return { ready: false, missing: "Slide each Stage to confirm." };
-  return { ready: confirmed, missing: null };
+/** A Production goes only while its own typed name and slide both confirm it. */
+export function productionConfirmed(typed: string, name: string, slid: boolean): boolean {
+  return slid && deleteMateConfirmed(typed, name);
 }
 
-/**
- * The one start a confirmed Delete sends: the Mate alone, keeping its project's code where it was
- * the last (`keep`, so HQ asks nobody), or the whole project with its last Mate first, its Stages
- * and the Productions slid.
- */
+/** Whether every Stage is slid and the project's name is confirmed; also the parts confirmed. */
+export function projectDeletionReady(
+  plan: ProjectDeletionPlan,
+  confirmation: DeletionConfirmation,
+  confirmed: boolean,
+): {
+  readonly ready: boolean;
+  readonly missing: string | null;
+  readonly slid: ReadonlySet<string>;
+} {
+  const slid = new Set([
+    ...plan.stages
+      .filter((stage) => confirmation.slid.has(stage.projectId))
+      .map((stage) => stage.projectId),
+    ...plan.productions
+      .filter((production) =>
+        productionConfirmed(
+          confirmation.productionTyped[production.projectId] ?? "",
+          production.name,
+          confirmation.slid.has(production.projectId),
+        ),
+      )
+      .map((production) => production.projectId),
+  ]);
+  if (plan.refusal !== undefined) return { ready: false, missing: plan.refusal, slid };
+  if (plan.stages.some((stage) => !slid.has(stage.projectId)))
+    return { ready: false, missing: "Slide each Stage to confirm.", slid };
+  return { ready: confirmed, missing: null, slid };
+}
+
+/** One start, entirely from the offer rendered at the press and the person's choice. */
 export function deletionStart(input: {
   readonly orgId: string;
   readonly id: string;
-  readonly mate?: { readonly projectId: string } | undefined;
+  readonly offer: DeletionOffer;
   readonly choice:
-    | { readonly kind: "mate"; readonly last: boolean }
-    | {
-        readonly kind: "project";
-        readonly appId: string;
-        readonly plan: ProjectDeletionPlan;
-        readonly slid: ReadonlySet<string>;
-      };
+    | { readonly kind: "mate" }
+    | ({ readonly kind: "project" } & DeletionConfirmation);
 }):
   | {
       readonly kind: "start-mate-deletion";
@@ -448,29 +490,61 @@ export function deletionStart(input: {
       readonly productions?: ReadonlyArray<string>;
     }
   | undefined {
-  const { orgId, id, mate, choice } = input;
-  if (choice.kind === "mate")
-    return mate === undefined
-      ? undefined
-      : {
-          kind: "start-mate-deletion",
-          orgId,
-          projectId: mate.projectId,
-          id,
-          ...(choice.last ? { keptGit: "keep" as const } : {}),
-        };
-  const productions = choice.plan.productions.flatMap((production) =>
-    choice.slid.has(production.projectId) ? [production.projectId] : [],
+  const { orgId, id, offer, choice } = input;
+  if (offer.kind === "standing") return undefined;
+  if (
+    offer.kind === "mate" ||
+    offer.kind === "last-mate-only" ||
+    (offer.kind === "last-choice" && choice.kind === "mate")
+  ) {
+    return {
+      kind: "start-mate-deletion",
+      orgId,
+      id,
+      projectId: offer.projectId,
+      ...(offer.kind === "mate" ? {} : { keptGit: "keep" as const }),
+    };
+  }
+  const confirmation =
+    choice.kind === "project"
+      ? choice
+      : { slid: new Set<string>(), productionTyped: {} as Readonly<Record<string, string>> };
+  const productions = offer.plan.productions.flatMap((production) =>
+    productionConfirmed(
+      confirmation.productionTyped[production.projectId] ?? "",
+      production.name,
+      confirmation.slid.has(production.projectId),
+    )
+      ? [production.projectId]
+      : [],
   );
   return {
     kind: "start-app-deletion",
     orgId,
-    appId: choice.appId,
+    appId: offer.appId,
     id,
-    stages: choice.plan.stages.map((stage) => stage.projectId),
-    ...(mate === undefined ? {} : { mate: mate.projectId }),
+    stages: offer.plan.stages.map((stage) => stage.projectId),
+    ...(offer.kind === "last-choice" ? { mate: offer.projectId } : {}),
     ...(productions.length === 0 ? {} : { productions }),
   };
+}
+
+/** HQ permits reuse of an id only for the same start body. */
+export function sameDeletionStart(
+  left: NonNullable<ReturnType<typeof deletionStart>>,
+  right: NonNullable<ReturnType<typeof deletionStart>>,
+): boolean {
+  if (left.kind !== right.kind || left.orgId !== right.orgId) return false;
+  if (left.kind === "start-mate-deletion" && right.kind === "start-mate-deletion")
+    return left.projectId === right.projectId && left.keptGit === right.keptGit;
+  if (left.kind === "start-app-deletion" && right.kind === "start-app-deletion")
+    return (
+      left.appId === right.appId &&
+      left.mate === right.mate &&
+      JSON.stringify(left.stages) === JSON.stringify(right.stages) &&
+      JSON.stringify(left.productions ?? []) === JSON.stringify(right.productions ?? [])
+    );
+  return false;
 }
 
 /** One part of HQ's deletion of the project, as its dialog lists it. */
@@ -488,20 +562,11 @@ export interface DeletionPart {
 const PART_STATES: ReadonlySet<string> = new Set(["gone", "deleting", "pending"]);
 
 /**
- * HQ's parts of the deletion, named by what the person knows of them; one unknown is passed by.
+ * HQ's parts of the deletion, named by its plan; an unknown part is passed by.
  * While it waits, the part it was deleting is stopped there; once it ended failed, a part not
  * gone is still here, whatever step it stopped at.
  */
 export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionPart> {
-  const name = (projectId: string | undefined) =>
-    projectId === undefined
-      ? undefined
-      : (project.placements.find((placement) => placement.projectId === projectId)?.name ??
-        project.environments.flatMap((environment) =>
-          environment.kind === "zerops" && environment.projectId === projectId
-            ? [environment.name]
-            : [],
-        )[0]);
   return (project.steps ?? []).flatMap((step): ReadonlyArray<DeletionPart> => {
     if (!PART_STATES.has(step.state)) return [];
     const state: DeletionPart["state"] =
@@ -510,7 +575,7 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
         : project.deletion.kind === "waiting" && step.state === "deleting"
           ? "stopped"
           : (step.state as DeletionPart["state"]);
-    const named = name(step.projectId);
+    const named = step.name;
     switch (step.part) {
       case "mate":
         return [{ part: "mate", label: named ?? "Its Mate", state }];

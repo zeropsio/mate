@@ -51,12 +51,15 @@ import {
   deletionStart,
   lastChoiceWords,
   productionDeletionWords,
+  productionConfirmed,
+  sameDeletionStart,
   projectDeletionReady,
   projectDeletionWords,
   type ApplicationHoldings,
   type DeletionOffer,
   type DeletionPart,
   type DeletionProject,
+  type DeletionConfirmation,
   type ProjectDeletionPlan,
 } from "./deletion.logic";
 import {
@@ -70,7 +73,7 @@ import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 /** What the person chose to delete, confirmed: the Mate alone, or the whole project as slid. */
 export type DeletionChoice =
   | { readonly kind: "mate" }
-  | { readonly kind: "project"; readonly slid: ReadonlySet<string> };
+  | ({ readonly kind: "project" } & DeletionConfirmation);
 
 /** The Mate the dialog is about, as its words name it. */
 type DeletionMate = Pick<DeleteApplicationMate, "name" | "services" | "owner">;
@@ -188,13 +191,17 @@ function ProjectDeletionBody({
   plan,
   words,
   slid,
+  confirmation,
   onSlid,
+  onProductionTyped,
   pending,
 }: {
   readonly plan: ProjectDeletionPlan;
   readonly words: ReturnType<typeof projectDeletionWords>;
   readonly slid: ReadonlySet<string>;
+  readonly confirmation: DeletionConfirmation;
   readonly onSlid: (projectId: string, confirmed: boolean) => void;
+  readonly onProductionTyped: (projectId: string, name: string, typed: string) => void;
   readonly pending: boolean;
 }) {
   if (plan.refusal !== undefined) return <DeletionLists goes={words.goes} stays={words.stays} />;
@@ -219,9 +226,15 @@ function ProjectDeletionBody({
       )}
       {plan.productions.map((production) => (
         <ProductionDeletion
-          confirmed={slid.has(production.projectId)}
+          confirmed={productionConfirmed(
+            confirmation.productionTyped[production.projectId] ?? "",
+            production.name,
+            confirmation.slid.has(production.projectId),
+          )}
           key={production.projectId}
           name={production.name}
+          typed={confirmation.productionTyped[production.projectId] ?? ""}
+          onTyped={(typed) => onProductionTyped(production.projectId, production.name, typed)}
           onConfirmedChange={(confirmed) => {
             onSlid(production.projectId, confirmed);
           }}
@@ -241,17 +254,20 @@ function ProductionDeletion({
   name,
   confirmed,
   onConfirmedChange,
+  typed,
+  onTyped,
   pending,
 }: {
   readonly name: string;
   readonly confirmed: boolean;
   readonly onConfirmedChange: (confirmed: boolean) => void;
+  readonly typed: string;
+  readonly onTyped: (typed: string) => void;
   readonly pending: boolean;
 }) {
   const id = useId();
-  const [typed, setTyped] = useState("");
   const words = productionDeletionWords(name);
-  const unlocked = deleteMateConfirmed(typed, name);
+  const unlocked = productionConfirmed(typed, name, true);
   return (
     <div className="space-y-2" data-zerops-surface="delete-application-production">
       <Badge tone="danger">Production</Badge>
@@ -262,9 +278,7 @@ function ProductionDeletion({
           autoComplete="off"
           id={`${id}-production`}
           onChange={(event) => {
-            setTyped(event.target.value);
-            if (confirmed && !deleteMateConfirmed(event.target.value, name))
-              onConfirmedChange(false);
+            onTyped(event.target.value);
           }}
           readOnly={pending}
           spellCheck={false}
@@ -360,13 +374,23 @@ export function ZeropsDeletionForm({
   const [choice, setChoice] = useState<"mate" | "project">("mate");
   const [typedMate, setTypedMate] = useState("");
   const [typedProject, setTypedProject] = useState("");
-  const [slid, setSlid] = useState<ReadonlySet<string>>(() => new Set());
+  const [confirmation, setConfirmation] = useState<DeletionConfirmation>(() => ({
+    slid: new Set(),
+    productionTyped: {},
+  }));
   const onSlid = (projectId: string, confirmed: boolean) => {
-    setSlid((held) => {
-      const next = new Set(held);
-      if (confirmed) next.add(projectId);
-      else next.delete(projectId);
-      return next;
+    setConfirmation((held) => {
+      const slid = new Set(held.slid);
+      if (confirmed) slid.add(projectId);
+      else slid.delete(projectId);
+      return { ...held, slid };
+    });
+  };
+  const onProductionTyped = (projectId: string, name: string, typed: string) => {
+    setConfirmation((held) => {
+      const slid = new Set(held.slid);
+      if (!productionConfirmed(typed, name, slid.has(projectId))) slid.delete(projectId);
+      return { slid, productionTyped: { ...held.productionTyped, [projectId]: typed } };
     });
   };
 
@@ -441,7 +465,13 @@ export function ZeropsDeletionForm({
 
   const plan = offer.kind === "last-choice" || offer.kind === "project" ? offer.plan : undefined;
   const whole = offer.kind === "project" || (offer.kind === "last-choice" && choice === "project");
-  const mateName = mate?.name ?? "";
+  const presentMate = offer.kind === "project" ? undefined : mate;
+  const mateName = presentMate?.name ?? "";
+  const projectReady =
+    plan === undefined
+      ? undefined
+      : projectDeletionReady(plan, confirmation, deleteMateConfirmed(typedProject, project.name));
+  const slid = projectReady?.slid ?? confirmation.slid;
   const mateWords = deleteMateWords({
     name: mateName,
     environment: mateName,
@@ -456,16 +486,15 @@ export function ZeropsDeletionForm({
           name: project.name,
           plan,
           holdings,
-          mate: mate === undefined ? undefined : { name: mate.name, services: mate.services },
+          mate:
+            presentMate === undefined
+              ? undefined
+              : { name: presentMate.name, services: presentMate.services },
           slid,
         });
   const ready =
     whole && plan !== undefined
-      ? projectDeletionReady(
-          plan,
-          slid,
-          words?.goes !== undefined && deleteMateConfirmed(typedProject, project.name),
-        )
+      ? { ...projectReady!, ready: projectReady!.ready && words?.goes !== undefined }
       : { ready: deleteMateConfirmed(typedMate, mateName), missing: null };
   const reason = error ?? ready.missing;
   const failed = error !== null || plan?.refusal !== undefined;
@@ -477,7 +506,7 @@ export function ZeropsDeletionForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!ready.ready || pending) return;
-        onConfirm(whole ? { kind: "project", slid } : { kind: "mate" });
+        onConfirm(whole ? { kind: "project", ...confirmation } : { kind: "mate" });
       }}
     >
       <DialogHeader>
@@ -522,6 +551,8 @@ export function ZeropsDeletionForm({
           ) : null}
           {whole && plan !== undefined && words !== undefined ? (
             <ProjectDeletionBody
+              confirmation={confirmation}
+              onProductionTyped={onProductionTyped}
               onSlid={onSlid}
               pending={pending}
               plan={plan}
@@ -596,23 +627,22 @@ function ZeropsDeleteApplicationDialog({
   const structure = useHqStructure();
   const deletion = hqOperationOf(useAtomValue(applicationOperationAtom(appId)), "app_deletion");
   const project = deletionProjectOf(structure, appId, deletion);
-  const [again, setAgain] = useState(false);
+  const [past, setPast] = useState<string>();
   const offer =
     project === undefined
       ? undefined
       : deletionOffer({
           mate: mate === undefined ? undefined : { projectId: mate.projectId, name: mate.name },
           project,
-          again,
+          past,
         });
   const holdings = applicationHoldings(useHqAppDetail(appId));
   const gone = useAtomValue(applicationGoneAtom(appId));
   // One id per start this dialog makes, sent again with the same body (HQ answers it again) until
   // HQ shows that deletion running; a Delete again over its failure starts anew.
-  const startId = useRef<string | null>(null);
+  const startId = useRef<NonNullable<ReturnType<typeof deletionStart>> | null>(null);
   const active = useRef(true);
   const [pressing, setPressing] = useState(false);
-  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     active.current = true;
@@ -620,12 +650,6 @@ function ZeropsDeleteApplicationDialog({
       active.current = false;
     };
   }, []);
-  // HQ shows the deletion it took: its standing says the rest, and a later failure is shown again.
-  useEffect(() => {
-    if (deletion.kind !== "going") return;
-    setAgain(false);
-    setStarted(false);
-  }, [deletion.kind]);
   // HQ removed the project: nothing is left to delete or to say.
   useEffect(() => {
     if (gone) onClose();
@@ -653,25 +677,17 @@ function ZeropsDeleteApplicationDialog({
   };
   const confirm = (choice: DeletionChoice) => {
     if (orgId === undefined || project === undefined || offer === undefined) return;
-    startId.current ??= randomUUID();
-    const plan = offer.kind === "last-choice" || offer.kind === "project" ? offer.plan : undefined;
-    const start = deletionStart({
-      orgId,
-      id: startId.current,
-      mate,
-      choice:
-        choice.kind === "mate" || plan === undefined
-          ? { kind: "mate", last: offer.kind !== "mate" }
-          : { kind: "project", appId, plan, slid: choice.slid },
-    });
+    const previous = startId.current;
+    let start = deletionStart({ orgId, id: previous?.id ?? randomUUID(), offer, choice });
     if (start === undefined) return;
+    if (previous !== null && !sameDeletionStart(previous, start))
+      start = { ...start, id: randomUUID() };
+    startId.current = start;
     settle(submit(start), () => {
       if (start.kind === "start-mate-deletion") {
         mate?.leave();
         onClose();
-        return;
       }
-      setStarted(true);
     });
   };
   const end = endOperationIntent(deletion, orgId, appId);
@@ -718,11 +734,11 @@ function ZeropsDeleteApplicationDialog({
             onAgain={() => {
               startId.current = null;
               setError(null);
-              setAgain(true);
+              if (deletion.kind === "failed") setPast(deletion.id);
             }}
             onCancel={onClose}
             onConfirm={confirm}
-            pending={pressing || (started && offer.kind !== "standing")}
+            pending={pressing}
             project={project}
             waiting={waiting}
           />

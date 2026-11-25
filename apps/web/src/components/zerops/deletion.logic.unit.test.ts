@@ -1,12 +1,13 @@
 import { hqOperationOf } from "@t3tools/client-runtime/data";
-import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { expect, it } from "vite-plus/test";
 
 import {
   deletionOffer,
+  deletionProjectOf,
   deletionParts,
   deletionStart,
-  productionStaysWords,
+  sameDeletionStart,
   projectDeletionPlan,
   projectDeletionReady,
   projectDeletionWords,
@@ -136,10 +137,35 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
       "standing",
     ],
     [
+      "the opened Mate was released",
+      {
+        mate: MATE,
+        project: bakery({ placements: [], deletion: deletion({ failure: zeropsRefusal }) }),
+        past: "op-1",
+      },
+      "project",
+      ["Z_STAGE"],
+    ],
+    [
+      "a different failure is shown",
+      {
+        mate: MATE,
+        project: bakery({ deletion: deletion({ id: "op-2", failure: zeropsRefusal }) }),
+        past: "op-1",
+      },
+      "standing",
+    ],
+    [
+      "the Mate is an open birth",
+      { mate: MATE, project: bakery({ placements: [], births: [MATE.projectId] }) },
+      "last-choice",
+      ["Z_STAGE"],
+    ],
+    [
       "Delete again over its failure",
       {
         project: bakery({ placements: [], deletion: deletion({ failure: zeropsRefusal }) }),
-        again: true,
+        past: "op-1",
       },
       "project",
       ["Z_STAGE"],
@@ -158,6 +184,12 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
       stages,
     });
   }
+  expect(projectDeletionPlan(bakery({ placements: [plain] }), undefined).refusal).toBe(
+    "A plain project still belongs to this project. Remove it first.",
+  );
+  expect(projectDeletionPlan(bakery({ placements: [], births: [null] }), undefined).refusal).toBe(
+    "A Mate still works on this project. Delete it first.",
+  );
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | environment.deletable && environment.madeByMate && environment.name !== undefined; → environment.deletable && environment.name !== undefined;
@@ -200,50 +232,66 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and a production
   ]);
 });
 
-// witness: apps/web/src/components/zerops/deletion.logic.ts | ? "Its Production stays in Zerops and keeps running. Mate lets go of it." → ? `Production ${String(name)} stays in Zerops and keeps running. Mate lets go of it.`
-it("MN38: A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown", () => {
-  expect(productionStaysWords("bakery-live")).toBe(
-    "Production bakery-live stays in Zerops and keeps running. Mate lets go of it.",
-  );
-  expect(productionStaysWords(undefined)).toBe(
-    "Its Production stays in Zerops and keeps running. Mate lets go of it.",
-  );
-  expect(productionStaysWords("")).toBe(
-    "Its Production stays in Zerops and keeps running. Mate lets go of it.",
-  );
-});
-
-// witness: apps/web/src/components/zerops/deletion.logic.ts | choice.slid.has(production.projectId) ? [production.projectId] : [], → [production.projectId],
+// witness: apps/web/src/components/zerops/deletion.logic.ts | return slid && deleteMateConfirmed(typed, name); → return slid;
 it("MN84: The whole project's Delete sends one project deletion naming its last Mate, every Stage and only the Productions slid, and no Mate deletion; the last Mate's Delete alone sends one Mate deletion that keeps its project's code; breaks: a Production not slid is deleted, or the Mate and the project are deleted by two starts", () => {
   const plan = projectDeletionPlan(
     bakery({ environments: [stage("Z_STAGE"), production("Z_LIVE"), production("Z_SHOP")] }),
     MATE,
   );
-  expect(
-    deletionStart({
-      orgId: "org-1",
-      id: "op-1",
-      mate: MATE,
-      choice: { kind: "project", appId: "app-bakery", plan, slid: new Set(["Z_STAGE", "Z_SHOP"]) },
-    }),
-  ).toEqual({
+  const mate = { kind: "mate", projectId: MATE.projectId, stays: undefined } as const;
+  const only = { kind: "last-mate-only", projectId: MATE.projectId, stays: "" } as const;
+  const choice = { kind: "last-choice", projectId: MATE.projectId, appId: "app", plan } as const;
+  const project = { kind: "project", appId: "app", plan } as const;
+  const standing = { kind: "standing", deletion: { kind: "going", id: "other" } } as const;
+  const confirmed = {
+    kind: "project",
+    slid: new Set(["Z_STAGE", "Z_SHOP", "Z_LIVE"]),
+    productionTyped: { Z_SHOP: "z_shop", Z_LIVE: "old-name" },
+  } as const;
+  const mateChoice = { kind: "mate" } as const;
+  const base = { orgId: "org", id: "op" };
+  const mateStart = {
+    kind: "start-mate-deletion",
+    orgId: "org",
+    id: "op",
+    projectId: MATE.projectId,
+  } as const;
+  const appStart = {
     kind: "start-app-deletion",
-    orgId: "org-1",
-    appId: "app-bakery",
-    id: "op-1",
-    mate: "Z_RYE",
+    orgId: "org",
+    id: "op",
+    appId: "app",
     stages: ["Z_STAGE"],
     productions: ["Z_SHOP"],
-  });
-  expect(
-    deletionStart({ orgId: "org-1", id: "op-2", mate: MATE, choice: { kind: "mate", last: true } }),
-  ).toEqual({
-    kind: "start-mate-deletion",
-    orgId: "org-1",
-    projectId: "Z_RYE",
-    id: "op-2",
-    keptGit: "keep",
-  });
+  } as const;
+  for (const [offer, selected, expected] of [
+    [mate, mateChoice, mateStart],
+    [mate, confirmed, mateStart],
+    [only, mateChoice, { ...mateStart, keptGit: "keep" }],
+    [only, confirmed, { ...mateStart, keptGit: "keep" }],
+    [choice, mateChoice, { ...mateStart, keptGit: "keep" }],
+    [choice, confirmed, { ...appStart, mate: MATE.projectId }],
+    [
+      project,
+      mateChoice,
+      { kind: "start-app-deletion", orgId: "org", id: "op", appId: "app", stages: ["Z_STAGE"] },
+    ],
+    [project, confirmed, appStart],
+    [standing, mateChoice, undefined],
+    [standing, confirmed, undefined],
+  ] as const) {
+    expect(deletionStart({ ...base, offer, choice: selected })).toEqual(expected);
+  }
+  const ready = projectDeletionReady(plan, confirmed, true);
+  expect([...ready.slid]).toEqual(["Z_STAGE", "Z_SHOP"]);
+  const first = deletionStart({ ...base, offer: project, choice: confirmed })!;
+  const next = deletionStart({
+    ...base,
+    offer: project,
+    choice: { ...confirmed, slid: new Set(["Z_STAGE"]) },
+  })!;
+  expect(sameDeletionStart(first, { ...first, id: "another" })).toBe(true);
+  expect(sameDeletionStart(first, next)).toBe(false);
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (plan.stages.some((stage) => !slid.has(stage.projectId))) → if (plan.stages.every((stage) => !slid.has(stage.projectId)))
@@ -253,7 +301,7 @@ it("MN85: A project's Delete opens only once every Stage is slid and its name is
     MATE,
   );
   const ready = (slid: ReadonlyArray<string>, typed: boolean) =>
-    projectDeletionReady(plan, new Set(slid), typed).ready;
+    projectDeletionReady(plan, { slid: new Set(slid), productionTyped: {} }, typed).ready;
   expect(ready([], true)).toBe(false);
   expect(ready(["Z_STAGE"], true)).toBe(false);
   expect(ready(["Z_STAGE", "Z_REVIEW"], false)).toBe(false);
@@ -278,4 +326,95 @@ it("MN86: A project's deletion lists a part as deleting only while it runs: wait
     }),
   ).toEqual(["gone", "stopped", "pending"]);
   expect(states({ failure: zeropsRefusal })).toEqual(["gone", "here", "here"]);
+  const named = deletionParts(
+    bakery({
+      steps: [
+        { part: "mate", projectId: "gone", name: "member", state: "gone" },
+        { part: "stage", projectId: "missing", name: "stage-name", state: "gone" },
+        { part: "production", projectId: "missing", name: "production-name", state: "deleting" },
+        { part: "stage", projectId: "Z_STAGE", state: "pending" },
+      ],
+    }),
+  );
+  expect(named.map((part) => part.label)).toEqual([
+    "member",
+    "Stage stage-name",
+    "Production production-name",
+    "A Stage",
+  ]);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | madeByMate: environment.deleteProjectOnRemoval === true, → madeByMate: false,
+it("MN+1: What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.", () => {
+  const can = { delete_project: { allow: true } };
+  const structure = {
+    can: { delete_app: { allow: true } },
+    apps: [
+      {
+        id: "app",
+        name: "project",
+        projects: [
+          { projectId: "stage", kind: "stage", name: "stage-name" },
+          { projectId: "made", kind: "production", name: "production-name" },
+          { projectId: "attached", kind: "production" },
+        ],
+        environments: [
+          { tier: "stage", target: { kind: "zerops", projectId: "stage" }, can },
+          {
+            tier: "production",
+            target: { kind: "zerops", projectId: "made" },
+            can,
+            deleteProjectOnRemoval: true,
+          },
+          {
+            tier: "production",
+            target: { kind: "zerops", projectId: "attached" },
+            can,
+            deleteProjectOnRemoval: false,
+          },
+        ],
+        hiddenEnvironments: [{ tier: "production" }],
+      },
+    ],
+  } as unknown as Pick<HqStructure, "can" | "apps">;
+  const project = deletionProjectOf(structure, "app", { kind: "none" })!;
+  expect(project.deleteApp).toBe(true);
+  expect(project.hidden).toEqual(["production"]);
+  expect(project.environments).toEqual([
+    {
+      tier: "stage",
+      kind: "zerops",
+      projectId: "stage",
+      name: "stage-name",
+      deletable: true,
+      madeByMate: false,
+    },
+    {
+      tier: "production",
+      kind: "zerops",
+      projectId: "made",
+      name: "production-name",
+      deletable: true,
+      madeByMate: true,
+    },
+    {
+      tier: "production",
+      kind: "zerops",
+      projectId: "attached",
+      name: undefined,
+      deletable: true,
+      madeByMate: false,
+    },
+  ]);
+  expect(project.placements[2]?.name).toBeUndefined();
+  expect(projectDeletionPlan(project, undefined).productions).toEqual([
+    { projectId: "made", name: "production-name" },
+  ]);
+  expect(
+    deletionProjectOf(
+      { ...structure, can: { delete_app: { allow: false, reason: "denied" } } },
+      "app",
+      { kind: "none" },
+    )?.deleteApp,
+  ).toBe(false);
 });

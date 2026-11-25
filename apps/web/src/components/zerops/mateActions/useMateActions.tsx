@@ -89,7 +89,12 @@ import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
 import { CHANGE_FACE_VERB, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../ZeropsDeleteMateDialog";
 import { mateDeletionLine } from "../SidebarMateRow.logic";
-import { deletionOffer, deletionProjectOf, deletionStart } from "../deletion.logic";
+import {
+  deletionOffer,
+  deletionProjectOf,
+  deletionStart,
+  sameDeletionStart,
+} from "../deletion.logic";
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import {
   adoptedBirthDeleteBody,
@@ -326,7 +331,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const writing = useRef(new Set<string>());
   // A move's start id by its project and body, until HQ answered it.
   const moveAttempts = useRef(new Map<string, MoveAttempt>());
-  const deletionRequests = useRef(new Map<string, string>());
+  const deletionRequests = useRef(new Map<string, NonNullable<ReturnType<typeof deletionStart>>>());
   const choiceRead = useRef({ orgId: activeOrganization?.id, attempt: 0 });
   useEffect(() => {
     if (choiceRead.current.orgId === activeOrganization?.id) return;
@@ -785,7 +790,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
    * nothing more runs in this tab.
    */
   const deleteMate = useCallback(
-    (candidate: ZeropsCandidatePresentation, last: boolean) => {
+    (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
       const projectId = candidate.project.id;
       const key = candidate.key;
@@ -793,23 +798,22 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
       if (!isCurrent()) return;
-      writing.current.add(key);
-      setBusyKey(key);
       const orgId = activeOrganization.id;
-      setPress({ pending: true, error: null });
-      // One id per start this tab makes: sent again only until HQ took it. A deletion HQ shows
-      // failed ended whatever start it took, so a Delete after it starts anew.
-      const ended = mateDeletionOfProject(candidate.project).kind === "failed";
-      const id = (ended ? undefined : deletionRequests.current.get(projectId)) ?? randomUUID();
-      deletionRequests.current.set(projectId, id);
-      // The last Mate of its project keeps the project's code: HQ asks nobody about it.
-      const start = deletionStart({
+      const previous = deletionRequests.current.get(projectId);
+      const shownId = candidate.project.hq?.operation?.id;
+      let start = deletionStart({
         orgId,
-        id,
-        mate: { projectId },
-        choice: { kind: "mate", last },
+        id: previous !== undefined && previous.id !== shownId ? previous.id : randomUUID(),
+        offer: deletionOfferFor(candidate).offer,
+        choice: { kind: "mate" },
       });
       if (start === undefined) return;
+      if (previous !== undefined && !sameDeletionStart(previous, start))
+        start = { ...start, id: randomUUID() };
+      deletionRequests.current.set(projectId, start);
+      writing.current.add(key);
+      setBusyKey(key);
+      setPress({ pending: true, error: null });
       void (async () => {
         const { progress, evidence } = await operations.submit(start);
         const trouble = writeTrouble(progress, evidence);
@@ -825,7 +829,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             if (!isCurrent()) return;
             setPress(UNPRESSED);
             replyToDialog(null);
-            leaveDeleted(candidate);
+            if (start.kind === "start-mate-deletion") leaveDeleted(candidate);
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -833,7 +837,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           },
         );
     },
-    [activeOrganization, operations, leaveDeleted, captureDialogReply],
+    [activeOrganization, operations, leaveDeleted, captureDialogReply, deletionOfferFor],
   );
 
   /**
@@ -1523,7 +1527,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
           onConfirm={() => {
-            deleteMate(dialog.candidate, mateOffer?.kind === "last-mate-only");
+            deleteMate(dialog.candidate);
           }}
           onOpenChange={(open) => {
             if (!open) close();
