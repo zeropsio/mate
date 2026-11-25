@@ -54,6 +54,7 @@ import {
 } from "./vaultGroups.logic";
 import { VaultStepUp } from "./VaultStepUp";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** What one row is doing now, as the panel knows it. */
 export type VaultRowActivity =
@@ -154,9 +155,6 @@ interface VaultRowProps {
  */
 export const VAULT_ROW_CLASS =
   "relative transition-colors duration-150 ease-out-strong hover:bg-item-hover data-open:bg-item-hover data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
-
-/** A group's rows, parted by a hairline. */
-export const VAULT_ROWS_CLASS = "divide-y divide-border/70";
 
 /**
  * A row's body opens by its grid row, so what is under it travels with it; its words fade in
@@ -481,7 +479,8 @@ function RowBody(props: VaultRowProps) {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-0.5 border-t border-border/60 pt-2">
+      <Separator />
+      <div className="flex flex-wrap items-center gap-0.5">
         {reference === null ? null : <CopyReference label={reference.own} text={reference.own} />}
         <span className="grow" />
         {!masked ? null : (

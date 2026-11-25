@@ -16,6 +16,7 @@ import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
 import { RealName as KitRealName } from "~/components/ui/real-name";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** What every part of the sheet reads: whose place, what is under way, and how to write. */
 export interface SheetContext {
@@ -93,7 +94,7 @@ export function SheetSection({
         </div>
       ) : (
         <Card variant="flat">
-          <div className="divide-y divide-border/60">{groups}</div>
+          <List>{groups}</List>
         </Card>
       )}
       {after}

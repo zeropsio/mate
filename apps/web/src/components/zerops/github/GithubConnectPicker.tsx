@@ -95,6 +95,7 @@ import {
   useRepoPress,
 } from "./repoPress";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
@@ -1107,6 +1108,7 @@ function RepositoryList({
         }}
         value={picked ?? ""}
       >
+        <List className="flex flex-col">
         {created === null ? null : (
           <NewRepositoryRow
             account={account.account}
@@ -1126,11 +1128,11 @@ function RepositoryList({
             .join(" · ");
           return (
             <div
-              className={cn(
-                "border-t first:border-t-0",
-                row.fresh &&
-                  "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
-              )}
+              className={
+                row.fresh
+                  ? "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none"
+                  : undefined
+              }
               key={name}
             >
               <RadioRow
@@ -1149,6 +1151,7 @@ function RepositoryList({
             </div>
           );
         })}
+        </List>
       </RadioGroup>
     </Card>
   );

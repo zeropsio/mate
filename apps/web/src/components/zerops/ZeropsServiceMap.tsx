@@ -62,6 +62,7 @@ import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -600,14 +601,14 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
       )}
       {row.metrics.length === 0 ? null : (
-        <div
-          className="mt-3 flex flex-col gap-2 border-t border-border/60 pt-3"
-          data-zerops-service-metrics
-        >
-          {row.metrics.map((metric) => (
-            <MetricRow key={metric.id} metric={metric} />
-          ))}
-        </div>
+        <>
+          <Separator className="mt-3" />
+          <div className="mt-3 flex flex-col gap-2" data-zerops-service-metrics>
+            {row.metrics.map((metric) => (
+              <MetricRow key={metric.id} metric={metric} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -648,20 +649,23 @@ function StageLine({
   usageRead: boolean;
 }) {
   return (
-    <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
-      <ServiceHeader
-        aside={undefined}
-        portLabel={portLabel}
-        folded={folded}
-        routes={routes}
-        service={stage}
-        statusLabel={label}
-        statusNeedsWord={needsWord}
-        title={title}
-        tone={tone}
-      />
-      <Meters row={meters} usageRead={usageRead} />
-    </div>
+    <>
+      <Separator className="mt-2" />
+      <div className="mt-2" data-zerops-service-stage>
+        <ServiceHeader
+          aside={undefined}
+          portLabel={portLabel}
+          folded={folded}
+          routes={routes}
+          service={stage}
+          statusLabel={label}
+          statusNeedsWord={needsWord}
+          title={title}
+          tone={tone}
+        />
+        <Meters row={meters} usageRead={usageRead} />
+      </div>
+    </>
   );
 }
 

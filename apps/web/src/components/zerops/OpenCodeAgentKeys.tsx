@@ -15,6 +15,7 @@ import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
 import { LogoTile } from "~/components/ui/logo-tile";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * OpenCode's row among the Mate's coding agents: Mate signs nobody in to it,
@@ -31,18 +32,18 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
   );
   if (installed !== true) return null;
   return (
-    <div
-      className="flex items-start gap-3 border-t border-border/60 px-4 py-2.5"
-      data-zerops-opencode-keys
-    >
-      <LogoTile>
-        <OpenCodeIcon />
-      </LogoTile>
-      <div className="grid min-w-0 flex-1 gap-1">
-        <Text variant="heading">OpenCode</Text>
-        <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
+    <>
+      <Separator />
+      <div className="flex items-start gap-3 px-4 py-2.5" data-zerops-opencode-keys>
+        <LogoTile>
+          <OpenCodeIcon />
+        </LogoTile>
+        <div className="grid min-w-0 flex-1 gap-1">
+          <Text variant="heading">OpenCode</Text>
+          <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

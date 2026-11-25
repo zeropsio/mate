@@ -37,6 +37,7 @@ import {
   type ProjectChipAction,
 } from "./teamMember.logic";
 import { SectionHeader } from "../ui/section";
+import { Separator } from "~/components/ui/separator";
 
 const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
   read: "Read",
@@ -234,6 +235,7 @@ function ProjectPicker({
           })}
         </ul>
       )}
+      <Separator />
       <div className={PICK_FOOT}>
         <Button disabled={count === 0} onClick={() => onAdd(picks)} size="sm">
           {count > 1 ? `Add ${count} projects` : "Add projects"}

@@ -9,6 +9,7 @@ import { useHqAppReleases } from "~/zerops/useHqAppDetail";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { CopyLine } from "~/components/ui/copy-line";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 export function ZeropsGitCredentialsView({
   state,
@@ -100,7 +101,7 @@ export function ZeropsGitCredentialsView({
           {state.credentials.records.length === 0 ? (
             <EmptyState size="line">No Git password yet.</EmptyState>
           ) : (
-            <ul className="divide-y divide-border">
+            <List render={<ul />}>
               {state.credentials.records.map((record) => (
                 <li key={record.id} className="flex items-center justify-between gap-3 py-2">
                   <Text variant="meta">
@@ -123,7 +124,7 @@ export function ZeropsGitCredentialsView({
                   </Button>
                 </li>
               ))}
-            </ul>
+            </List>
           )}
         </>
       ) : state.credentials.state === "withheld" ? (

@@ -23,6 +23,7 @@ import { MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { hqCardView, hqNavigationTrouble, type HqCardView } from "./ZeropsHqCard.logic";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * How many of the Mates the viewer observes in `organizationId` are online, as HQ last said: a
@@ -141,13 +142,16 @@ export function ZeropsHqCardView({
         </ul>
       )}
       {open && view.opens ? (
-        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-caption">
-          {view.core === null ? null : (
-            <DetailRow label="Version">
-              <span>{view.core}</span>
-            </DetailRow>
-          )}
-        </div>
+        <>
+          <Separator />
+          <div className="flex flex-col gap-1.5 pt-2 pb-1 text-caption">
+            {view.core === null ? null : (
+              <DetailRow label="Version">
+                <span>{view.core}</span>
+              </DetailRow>
+            )}
+          </div>
+        </>
       ) : null}
     </div>
   );

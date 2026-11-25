@@ -15,6 +15,7 @@ import { dnsZone, namesWords, recordHost, recordKey } from "./addresses.logic";
 import { CopyButton } from "~/components/ui/copy-button";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 const NONE_FOUND: ReadonlySet<string> = new Set();
 const NO_CNAMES: ReadonlyArray<DnsRecord & { readonly ipv4: boolean }> = [];
@@ -179,7 +180,7 @@ function RecordTable({
       <div className="px-3 text-foreground text-body" data-dns-table="" role="table">
         {/* A phone hides the header's line, not its names: each cell still has its column's. */}
         <div
-          className={`${COLUMNS} h-8 border-b border-border/70 text-muted-foreground text-caption max-sm:sr-only`}
+          className={`${COLUMNS} h-8 border-b border-rule text-muted-foreground text-caption max-sm:sr-only`}
           role="row"
         >
           <span role="columnheader">Type</span>
@@ -189,7 +190,7 @@ function RecordTable({
             Copy
           </span>
         </div>
-        <div className="divide-y divide-border/70" role="rowgroup">
+        <List role="rowgroup">
           {records.map((record) => {
             const there = found.has(recordKey(record));
             return (
@@ -228,7 +229,7 @@ function RecordTable({
               </div>
             );
           })}
-        </div>
+        </List>
       </div>
     </Card>
   );

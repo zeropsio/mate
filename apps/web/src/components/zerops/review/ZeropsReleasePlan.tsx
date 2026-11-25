@@ -32,6 +32,7 @@ import {
 } from "./releaseSheet.logic";
 import { Text } from "~/components/ui/text";
 import { CodeBlock } from "~/components/ui/code-block";
+import { List } from "~/components/ui/list";
 
 /** Words drawn, the names in them in code type. */
 export function WordsOf({ words }: { readonly words: Words }) {
@@ -56,9 +57,9 @@ export function WordsOf({ words }: { readonly words: Words }) {
  * each, joined down their marks; the hairline between two steps starts at their words. Before
  * the press they are the plan; after it they tick in place.
  */
-const PLAN = "grid py-1.5";
+const PLAN = "py-1.5";
 const STEP =
-  "relative grid min-h-16 grid-cols-[24px_minmax(0,1fr)_auto] content-start items-start gap-x-3.75 pt-3.25 ps-4.25 pe-4 pb-3.75 not-first:before:absolute not-first:before:top-0 not-first:before:right-4 not-first:before:left-14 not-first:before:h-px not-first:before:bg-border not-last:after:absolute not-last:after:top-11.5 not-last:after:-bottom-4.5 not-last:after:left-7 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
+  "relative grid min-h-16 grid-cols-[24px_minmax(0,1fr)_auto] content-start items-start gap-x-3.75 pt-3.25 ps-4.25 pe-4 pb-3.75 not-last:after:absolute not-last:after:top-11.5 not-last:after:-bottom-4.5 not-last:after:left-7 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
 /** A step's mark, beside both its lines. */
 const MARK = "col-start-1 row-span-2 row-start-1 mt-2";
 const TITLE = "col-start-2 row-start-1 truncate text-body font-medium";
@@ -208,51 +209,56 @@ export function ReleasePlan({
   }, [keys]);
   return (
     <Card variant="inset">
-      <ol
-        aria-busy={unread === "reading" ? true : undefined}
-        className={PLAN}
-        data-zerops-surface="release-plan"
-        ref={list}
-      >
-        {items.map((item, index) => {
-          if (item.kind === "room") return <ValueStepRoom key="value-room" />;
-          if (item.kind === "value")
+      <div className={PLAN}>
+        <List
+          aria-busy={unread === "reading" ? true : undefined}
+          className="grid"
+          data-zerops-surface="release-plan"
+          render={<ol ref={list} />}
+          rule="inset"
+        >
+          {items.map((item, index) => {
+            if (item.kind === "room") return <ValueStepRoom key="value-room" />;
+            if (item.kind === "value")
+              return (
+                <ValueStep
+                  index={index}
+                  key={item.value.id}
+                  onSave={values?.onSave}
+                  step={item.value}
+                  titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
+                />
+              );
+            const { step } = item;
             return (
-              <ValueStep
+              <PlanStep
+                createWords={creations > 1 ? "Create them now" : "Create it now"}
                 index={index}
-                key={item.value.id}
-                onSave={values?.onSave}
-                step={item.value}
-                titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
+                key={step.key}
+                // What a deploy does to its service is the plan's to say; the rest is known without it.
+                unread={step.kind === "deploy" ? unread : undefined}
+                live={step.kind === "live" && step.mark === "done" ? live : undefined}
+                log={
+                  step.kind === "deploy" && step.service !== undefined
+                    ? logOf?.(step.service)
+                    : undefined
+                }
+                onCreate={onCreate}
+                onRenew={onRenew}
+                renewing={renewing}
+                renewWord={renewWord}
+                // A deploy under way says where its build stands; a creation's title and clock say all.
+                running={
+                  step.kind === "deploy" && step.mark === "busy"
+                    ? running?.get(step.key)
+                    : undefined
+                }
+                step={step}
               />
             );
-          const { step } = item;
-          return (
-            <PlanStep
-              createWords={creations > 1 ? "Create them now" : "Create it now"}
-              index={index}
-              key={step.key}
-              // What a deploy does to its service is the plan's to say; the rest is known without it.
-              unread={step.kind === "deploy" ? unread : undefined}
-              live={step.kind === "live" && step.mark === "done" ? live : undefined}
-              log={
-                step.kind === "deploy" && step.service !== undefined
-                  ? logOf?.(step.service)
-                  : undefined
-              }
-              onCreate={onCreate}
-              onRenew={onRenew}
-              renewing={renewing}
-              renewWord={renewWord}
-              // A deploy under way says where its build stands; a creation's title and clock say all.
-              running={
-                step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
-              }
-              step={step}
-            />
-          );
-        })}
-      </ol>
+          })}
+        </List>
+      </div>
     </Card>
   );
 }
@@ -566,36 +572,44 @@ function PlanStepLine({
 export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
   return (
     <Card variant="inset">
-      <ol aria-busy="true" className={PLAN} data-zerops-surface="release-plan">
-        {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
-          // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
-          <li className={STEP} key={at}>
-            <MarkRoom />
-            <span aria-hidden="true" className={TITLE}>
-              <Skeleton
-                className={
-                  index === 0
-                    ? "my-1.25 h-2.5 w-36"
-                    : index === 1
-                      ? "my-1.25 h-2.5 w-44"
-                      : "my-1.25 h-2.5 w-52"
-                }
-                shape="pill"
-                surface="card"
-              />
-            </span>
-            <span aria-hidden="true" className={LINE}>
-              <Skeleton
-                className={
-                  index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"
-                }
-                shape="pill"
-                surface="card"
-              />
-            </span>
-          </li>
-        ))}
-      </ol>
+      <div className={PLAN}>
+        <List
+          aria-busy="true"
+          className="grid"
+          data-zerops-surface="release-plan"
+          render={<ol />}
+          rule="inset"
+        >
+          {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
+            // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
+            <li className={STEP} key={at}>
+              <MarkRoom />
+              <span aria-hidden="true" className={TITLE}>
+                <Skeleton
+                  className={
+                    index === 0
+                      ? "my-1.25 h-2.5 w-36"
+                      : index === 1
+                        ? "my-1.25 h-2.5 w-44"
+                        : "my-1.25 h-2.5 w-52"
+                  }
+                  shape="pill"
+                  surface="card"
+                />
+              </span>
+              <span aria-hidden="true" className={LINE}>
+                <Skeleton
+                  className={
+                    index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"
+                  }
+                  shape="pill"
+                  surface="card"
+                />
+              </span>
+            </li>
+          ))}
+        </List>
+      </div>
     </Card>
   );
 }

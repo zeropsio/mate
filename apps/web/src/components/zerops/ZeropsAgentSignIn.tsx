@@ -92,6 +92,7 @@ import {
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
 import { AGENT_SIGN_IN_CARDS } from "@t3tools/client-runtime/zerops/agentSignIn";
+import { Separator } from "~/components/ui/separator";
 
 const TerminalViewport = lazy(
   appChunk(() =>
@@ -213,6 +214,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
             <OpenCodeLogoTile />
             <span className={OPEN_TITLE_CLASS}>{OPENCODE_CARD.connect}</span>
           </div>
+          <Separator />
           <div className={OPEN_BODY_CLASS}>{props.openCode}</div>
         </div>
       );
@@ -316,7 +318,7 @@ const CARD_CLASS = `${CARD_GROUND_CLASS} transition-[box-shadow,scale] duration-
 
 /** An open card: its logo and title over a rule, its steps, its foot. */
 const OPEN_CLASS = `${CARD_GROUND_CLASS} overflow-hidden`;
-const OPEN_HEAD_CLASS = "flex items-center gap-3 border-b border-border py-2.5 ps-2.5 pe-3";
+const OPEN_HEAD_CLASS = "flex items-center gap-3 py-2.5 ps-2.5 pe-3";
 const OPEN_TITLE_CLASS = "min-w-0 flex-1 text-emphasis leading-5 font-semibold text-foreground";
 const OPEN_BODY_CLASS = "flex flex-col gap-3.5 px-4 pt-4 pb-4.5";
 
@@ -476,6 +478,7 @@ function OpenCard({
         <AgentLogoTile agentId={agentId} />
         <span className={OPEN_TITLE_CLASS}>{title ?? words.connect}</span>
       </div>
+      <Separator />
       <div aria-live="polite" className={OPEN_BODY_CLASS} ref={body}>
         {replace === null ? (
           <OpenCardSteps
@@ -527,7 +530,8 @@ function OpenCard({
         </div>
       </div>
       {/* The open card's foot over a rule: whose account it runs on, and *Show what's happening*. */}
-      <div className="flex items-center justify-between gap-3 border-t border-border px-3.5 py-2.5 text-body leading-4.5 text-muted-foreground">
+      <Separator />
+      <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-body leading-4.5 text-muted-foreground">
         <span>{signInFoot(mateName)}</span>
         {attempt === undefined ||
         (steps.kind === "steps" && steps.second.kind === "terminal") ? null : (

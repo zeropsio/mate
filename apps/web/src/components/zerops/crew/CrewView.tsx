@@ -50,7 +50,7 @@ export function CrewViewFoot({ children }: { readonly children: ReactNode }) {
     <>
       <span className="min-h-6 grow" />
       {/* Its presses on the panel's ground, in reach while it scrolls. */}
-      <div className="sticky bottom-0 -mx-4 flex flex-col gap-3 border-t border-foreground/8 bg-background px-4 pt-3.5 pb-5">
+      <div className="sticky bottom-0 -mx-4 flex flex-col gap-3 border-t border-rule bg-background px-4 pt-3.5 pb-5">
         {children}
       </div>
     </>

@@ -31,6 +31,8 @@ import {
   type VaultTextSection,
 } from "./vaultText.logic";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 interface VaultAddCardProps {
   /**
@@ -340,54 +342,57 @@ export function VaultReview(props: VaultReviewProps) {
         <span className="font-medium text-line">Review changes</span>
         <Text variant="note">{vaultName(props.scope, props.mateName)}</Text>
       </div>
-      {lines.map(({ write, line }) => (
-        <div
-          className={
-            line.guarded && !forced.has(write.key)
-              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
-              : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5"
-          }
-          data-vault-review-line={write.key}
-          key={`${write.kind}:${write.key}`}
-        >
-          <span
-            className={`text-center font-mono font-medium text-line leading-5 ${REVIEW_MARK_CLASS[line.mark]}`}
+      <List>
+        {lines.map(({ write, line }) => (
+          <div
+            className={
+              line.guarded && !forced.has(write.key)
+                ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
+                : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 pt-2.25 pb-2.5"
+            }
+            data-vault-review-line={write.key}
+            key={`${write.kind}:${write.key}`}
           >
-            {line.mark}
-          </span>
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className="shrink-0 font-mono font-medium text-caption leading-5 text-foreground">
-                {line.key}
-              </span>
-              <span className="min-w-0 truncate font-mono text-caption leading-5 text-muted-foreground">
-                {write.kind === "remove"
-                  ? ""
-                  : write.sensitive
-                    ? write.kind === "add"
-                      ? "hidden"
-                      : "new value"
-                    : write.value}
-              </span>
-            </div>
-            <div className="text-caption leading-4.5 text-muted-foreground">
-              {forced.has(write.key) ? `${line.consequence} · removing anyway` : line.consequence}
-            </div>
-            {line.guarded && !forced.has(write.key) ? (
-              <div className="mt-2 flex gap-1.5">
-                <Button
-                  onClick={() => setForced((current) => new Set(current).add(write.key))}
-                  size="sm"
-                  variant="destructive"
-                >
-                  Remove anyway
-                </Button>
+            <span
+              className={`text-center font-mono font-medium text-line leading-5 ${REVIEW_MARK_CLASS[line.mark]}`}
+            >
+              {line.mark}
+            </span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-baseline gap-2">
+                <span className="shrink-0 font-mono font-medium text-caption leading-5 text-foreground">
+                  {line.key}
+                </span>
+                <span className="min-w-0 truncate font-mono text-caption leading-5 text-muted-foreground">
+                  {write.kind === "remove"
+                    ? ""
+                    : write.sensitive
+                      ? write.kind === "add"
+                        ? "hidden"
+                        : "new value"
+                      : write.value}
+                </span>
               </div>
-            ) : null}
+              <div className="text-caption leading-4.5 text-muted-foreground">
+                {forced.has(write.key) ? `${line.consequence} · removing anyway` : line.consequence}
+              </div>
+              {line.guarded && !forced.has(write.key) ? (
+                <div className="mt-2 flex gap-1.5">
+                  <Button
+                    onClick={() => setForced((current) => new Set(current).add(write.key))}
+                    size="sm"
+                    variant="destructive"
+                  >
+                    Remove anyway
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
-      ))}
-      <div className="flex items-center gap-2 border-t border-border/60 pt-3 pb-1">
+        ))}
+      </List>
+      <Separator />
+      <div className="flex items-center gap-2 pt-3 pb-1">
         <Button
           disabled={applied.length === 0 || props.applying}
           onClick={() => props.onApply(applied.map(({ write }) => write))}

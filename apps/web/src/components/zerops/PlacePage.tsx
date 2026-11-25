@@ -1779,7 +1779,7 @@ export function ZeropsStopPane({
               {projectId === undefined || tierStops.length === 0 ? null : (
                 <StopTierStops
                   projectId={projectId}
-                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2"
                   rows={tierStops}
                 />
               )}

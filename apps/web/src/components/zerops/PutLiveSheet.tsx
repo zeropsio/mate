@@ -29,13 +29,14 @@ import {
 } from "../ui/dialog";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 /**
  * The route: what goes live, then where, on the release plan's card and marks; its rows wrap, a
  * change's title being the person's words. From one stop's mark a line runs to the next one's.
  */
 const STOP =
-  "relative grid grid-cols-[24px_minmax(0,1fr)] gap-x-3.5 px-4 py-3.5 not-first:before:absolute not-first:before:top-0 not-first:before:right-4 not-first:before:left-13.5 not-first:before:h-px not-first:before:bg-border not-last:after:absolute not-last:after:top-10.25 not-last:after:-bottom-1.75 not-last:after:left-6.75 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
+  "relative grid grid-cols-[24px_minmax(0,1fr)] gap-x-4 px-4 py-3.5 not-last:after:absolute not-last:after:top-10.25 not-last:after:-bottom-1.75 not-last:after:left-6.75 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
 const STOP_TITLE = "text-body font-medium text-foreground text-pretty";
 const STOP_LINE = "text-body leading-4.5 text-muted-foreground text-pretty";
 /** Who production is for, asked in its stop: its question over the kit's RadioCards. */
@@ -85,89 +86,96 @@ export function PutLiveSheet({
       </DialogHeader>
       <DialogPanel>
         <Card variant="inset">
-          <ol className="grid py-0.5">
-            <li aria-label="What goes live" className={STOP}>
-              <StepNumber className="-mt-px" icon={<GitMergeIcon />} n={1} />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                {what === undefined ? (
-                  // What is merged, still read: its title's room held, no words it takes back.
-                  <p aria-hidden="true" className={STOP_TITLE}>
-                    <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
-                  </p>
-                ) : (
-                  <>
-                    <p className={`${STOP_TITLE} line-clamp-2`}>{what.title}</p>
-                    {what.lines.length === 0 ? null : (
-                      <p className={`${STOP_LINE} line-clamp-2`}>{what.lines.join(" · ")}</p>
-                    )}
-                  </>
-                )}
-                {onSeeCode === undefined ? null : (
-                  <Button className="-ms-2 self-start" onClick={onSeeCode} size="xs" variant="link">
-                    See the code
-                  </Button>
-                )}
-              </div>
-            </li>
-            <li aria-label="Where" className={STOP}>
-              <StepNumber className="-mt-px" icon={<GlobeIcon />} n={2} />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <div className="flex items-start justify-between gap-3">
-                  <p className={STOP_TITLE}>{where.name}</p>
-                  {onSetUpYourself === undefined ? null : (
+          <div className="py-0.5">
+            <List className="grid" render={<ol />} rule="inset">
+              <li aria-label="What goes live" className={STOP}>
+                <StepNumber className="-mt-px" icon={<GitMergeIcon />} n={1} />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  {what === undefined ? (
+                    // What is merged, still read: its title's room held, no words it takes back.
+                    <p aria-hidden="true" className={STOP_TITLE}>
+                      <Skeleton className="my-0.75 h-3 w-48" shape="pill" />
+                    </p>
+                  ) : (
+                    <>
+                      <p className={`${STOP_TITLE} line-clamp-2`}>{what.title}</p>
+                      {what.lines.length === 0 ? null : (
+                        <p className={`${STOP_LINE} line-clamp-2`}>{what.lines.join(" · ")}</p>
+                      )}
+                    </>
+                  )}
+                  {onSeeCode === undefined ? null : (
                     <Button
-                      aria-label="Set up production yourself…"
-                      className="-me-2 shrink-0"
-                      onClick={onSetUpYourself}
+                      className="-ms-2 self-start"
+                      onClick={onSeeCode}
                       size="xs"
                       variant="link"
                     >
-                      Set up yourself…
+                      See the code
                     </Button>
                   )}
                 </div>
-                <p className={STOP_LINE}>{where.line}</p>
-                {where.creates === undefined ? (
-                  // The setup files, still read: the line's room held.
-                  <p aria-hidden="true" className={STOP_LINE}>
-                    <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
-                  </p>
-                ) : where.creates.length === 0 ? null : (
-                  <p className={STOP_LINE}>{createsLine(where.creates)}</p>
-                )}
-                {where.shapes === undefined ? (
-                  // Who it is for, still read: both answers' room held.
-                  <div aria-hidden="true" className={ASK}>
-                    <p className={ASK_TITLE}>Who is it for?</p>
-                    <Skeleton className="h-23.5" shape="card" />
-                    <Skeleton className="mt-0.5 h-32.5" shape="card" />
+              </li>
+              <li aria-label="Where" className={STOP}>
+                <StepNumber className="-mt-px" icon={<GlobeIcon />} n={2} />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className={STOP_TITLE}>{where.name}</p>
+                    {onSetUpYourself === undefined ? null : (
+                      <Button
+                        aria-label="Set up production yourself…"
+                        className="-me-2 shrink-0"
+                        onClick={onSetUpYourself}
+                        size="xs"
+                        variant="link"
+                      >
+                        Set up yourself…
+                      </Button>
+                    )}
                   </div>
-                ) : where.shapes.length === 0 ? null : (
-                  <div className={ASK}>
-                    <p className={ASK_TITLE} id={asked}>
-                      Who is it for?
+                  <p className={STOP_LINE}>{where.line}</p>
+                  {where.creates === undefined ? (
+                    // The setup files, still read: the line's room held.
+                    <p aria-hidden="true" className={STOP_LINE}>
+                      <Skeleton className="my-0.75 h-3 w-56" shape="pill" />
                     </p>
-                    <RadioGroup
-                      aria-labelledby={asked}
-                      disabled={model.busy === true}
-                      onValueChange={(value) => {
-                        const chosen = where.shapes?.find((choice) => choice.shape === value);
-                        if (chosen !== undefined) onShape(chosen.shape);
-                      }}
-                      value={where.shape ?? null}
-                    >
-                      {where.shapes.map((choice) => (
-                        <RadioCard key={choice.shape} title={choice.title} value={choice.shape}>
-                          <span>{choice.line}</span>
-                          <span className="mt-0.5 tabular-nums">{choice.meta}</span>
-                        </RadioCard>
-                      ))}
-                    </RadioGroup>
-                  </div>
-                )}
-              </div>
-            </li>
-          </ol>
+                  ) : where.creates.length === 0 ? null : (
+                    <p className={STOP_LINE}>{createsLine(where.creates)}</p>
+                  )}
+                  {where.shapes === undefined ? (
+                    // Who it is for, still read: both answers' room held.
+                    <div aria-hidden="true" className={ASK}>
+                      <p className={ASK_TITLE}>Who is it for?</p>
+                      <Skeleton className="h-23.5" shape="card" />
+                      <Skeleton className="mt-0.5 h-32.5" shape="card" />
+                    </div>
+                  ) : where.shapes.length === 0 ? null : (
+                    <div className={ASK}>
+                      <p className={ASK_TITLE} id={asked}>
+                        Who is it for?
+                      </p>
+                      <RadioGroup
+                        aria-labelledby={asked}
+                        disabled={model.busy === true}
+                        onValueChange={(value) => {
+                          const chosen = where.shapes?.find((choice) => choice.shape === value);
+                          if (chosen !== undefined) onShape(chosen.shape);
+                        }}
+                        value={where.shape ?? null}
+                      >
+                        {where.shapes.map((choice) => (
+                          <RadioCard key={choice.shape} title={choice.title} value={choice.shape}>
+                            <span>{choice.line}</span>
+                            <span className="mt-0.5 tabular-nums">{choice.meta}</span>
+                          </RadioCard>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  )}
+                </div>
+              </li>
+            </List>
+          </div>
         </Card>
         {model.later === undefined ? null : (
           <Text render={<p />} variant="note">

@@ -67,6 +67,7 @@ import { SectionLabel } from "../system/SectionLabel";
 import { Failure } from "~/components/ui/failure";
 import { cn } from "~/lib/utils";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -195,7 +196,7 @@ export function ProjectAccessChips({
  * dialog (`data-sections="bare"`), it stands there with no rule, named by the dialog's title.
  */
 export const CARD_SECTION =
-  "mt-4 grid gap-1 border-t border-border/60 px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-zerops-section-label]]:hidden";
+  "mt-4 grid gap-1 border-t border-rule px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-zerops-section-label]]:hidden";
 
 /**
  * Who reaches a project, as people chips: as many columns of at least 168 px as fit (232 px for
@@ -226,10 +227,10 @@ export const ACCESS_CHIP_NAME =
 /** A line of a chip's hover card. */
 const HOVER_LINE = "text-caption leading-4 text-muted-foreground";
 
-/** An access picker's parts, in its popover: the search, the list, the foot under a hairline. */
+/** An access picker's parts, in its popover: the search, the list, the foot (under a Separator). */
 export const PICK_SEARCH = "px-3 pt-3 pb-2";
 export const PICK_LIST = "grid max-h-72 overflow-y-auto px-1.5 pb-1.5";
-export const PICK_FOOT = "grid border-t border-border px-3 pt-2.5 pb-3";
+export const PICK_FOOT = "grid px-3 pt-2.5 pb-3";
 
 /** The level a chip holds, as a small badge: an icon and a word. */
 const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
@@ -634,6 +635,7 @@ export function AddAccessPicker({
           </div>
         ))}
       </Text>
+      <Separator />
       <div className={PICK_FOOT}>
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}

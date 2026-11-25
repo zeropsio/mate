@@ -65,6 +65,8 @@ import { Badge } from "~/components/ui/badge";
 import { LogoTile } from "~/components/ui/logo-tile";
 import { Text } from "~/components/ui/text";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 export function ZeropsAgentAuthCard({
   snapshot,
@@ -154,7 +156,7 @@ export function ZeropsAgentAuthCard({
     );
   return (
     <Card className="@container overflow-hidden" data-zerops-agent-auth-card variant="flat">
-      <header className="border-b border-border/60 px-4 py-2.5">
+      <header className="px-4 py-2.5">
         <h3 className="text-body font-semibold text-foreground">
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
         </h3>
@@ -165,6 +167,7 @@ export function ZeropsAgentAuthCard({
             : "Sign in inside this Zerops Control Plane. Access is shared by this project."}
         </Text>
       </header>
+      <Separator />
       {rows}
       {otherAgents}
     </Card>
@@ -245,11 +248,12 @@ function CompactAgents({
     );
   const manage = () => setManaging(true);
   return (
-    <ul
+    <List
       aria-label="The coding agents it works through"
-      className="m-0 flex min-w-0 list-none flex-col divide-y divide-border/60 p-0"
+      className="flex min-w-0 flex-col"
       data-zerops-agent-auth-card
       data-density="compact"
+      render={<ul />}
     >
       {snapshot.agents.map((agent) => {
         const login = classifyAgentRowLogin(agent);
@@ -314,7 +318,7 @@ function CompactAgents({
       {openCodeEnvironmentId === undefined ? null : (
         <OpenCodeAgentLine environmentId={openCodeEnvironmentId} onManage={manage} />
       )}
-    </ul>
+    </List>
   );
 }
 
@@ -401,7 +405,7 @@ function ZeropsAgentAuthRows({
     !logins.some((login) => login.agent === agent.agentId && !login.default);
   const offers = snapshot.agents.filter(offerOnly);
   return (
-    <div className="divide-y divide-border/60" data-zerops-agent-auth-rows>
+    <List data-zerops-agent-auth-rows>
       {snapshot.agents
         .filter((agent) => !offerOnly(agent))
         .map((agent) => (
@@ -455,7 +459,7 @@ function ZeropsAgentAuthRows({
           </Button>
         </Text>
       ))}
-    </div>
+    </List>
   );
 }
 

@@ -70,6 +70,7 @@ import { SectionLabel } from "../system/SectionLabel";
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -168,18 +169,20 @@ export function ProjectAccessTable({
         <Failure cause={view.line} size="line" />
       ) : phone ? (
         // A phone's table: each person a row that opens to their places.
-        <ul aria-label={label} className="-mx-1.5 mt-0.5 grid text-body leading-4.5">
-          {rows.map((row) => (
-            <StackedRow
-              columns={columns}
-              handlers={handlers}
-              key={row.key}
-              linked={personPage?.(row.key) === true}
-              row={row}
-              saving={saving}
-            />
-          ))}
-        </ul>
+        <div className="-mx-1.5 mt-0.5 text-body leading-4.5">
+          <List aria-label={label} className="grid" render={<ul />}>
+            {rows.map((row) => (
+              <StackedRow
+                columns={columns}
+                handlers={handlers}
+                key={row.key}
+                linked={personPage?.(row.key) === true}
+                row={row}
+                saving={saving}
+              />
+            ))}
+          </List>
+        </div>
       ) : (
         <AccessGrid
           columns={columns}
@@ -596,12 +599,7 @@ function StackedRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Collapsible
-      className="border-t border-border/60 first:border-t-0"
-      onOpenChange={setOpen}
-      open={open}
-      render={<li />}
-    >
+    <Collapsible onOpenChange={setOpen} open={open} render={<li />}>
       <span className="flex min-h-13 min-w-0 items-center justify-between gap-2 px-1.5">
         <CollapsibleTrigger className="grid min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_14px] items-center gap-x-2.5 py-1.5 text-start">
           <PersonAvatar

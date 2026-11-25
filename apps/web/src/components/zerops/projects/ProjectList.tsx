@@ -20,6 +20,7 @@ import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** One project without a Mate: its name, then production's line, its menu on its end. */
 function OtherProject<T>({
@@ -161,13 +162,13 @@ export function OtherContainers<T>({
               </div>
             ) : null}
             {others.length > 0 ? (
-              <ul className="flex flex-col divide-y divide-border/50">
+              <List className="flex flex-col" render={<ul />}>
                 {others.map(({ item }) => (
                   <Fragment key={props.getKey(item)}>
                     {props.renderEnvironment(item, undefined)}
                   </Fragment>
                 ))}
-              </ul>
+              </List>
             ) : null}
           </div>
         ) : null}

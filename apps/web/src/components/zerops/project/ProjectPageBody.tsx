@@ -124,6 +124,7 @@ import {
   PAGE_WORDS,
 } from "./pageLayout";
 import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -862,26 +863,31 @@ function GoingLive({
         {drawn(run) ? <div className="px-5 pb-4 empty:hidden max-sm:px-4">{run}</div> : null}
         {stage === undefined ? null : (
           // A stage, optional, under it.
-          <div
-            className="flex min-w-0 items-center justify-between gap-4 border-t border-border/60 px-5 py-3 text-line leading-5 text-muted-foreground max-sm:px-4"
-            data-zerops-place="stage"
-          >
-            <span>
-              <strong className="font-medium text-foreground">{stage.name}</strong> · optional ·{" "}
-              {STAGE_IS_FOR.toLocaleLowerCase()}
-            </span>
-            {stage.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("stage");
-                }}
-                size="sm"
-                variant="secondary"
-              >
-                {environmentDoorLabel("stage", stage.name)}
-              </Button>
-            ) : null}
-          </div>
+          <>
+            <Separator />
+            <Text
+              className="flex min-w-0 items-center justify-between gap-4 px-5 py-3 max-sm:px-4"
+              data-zerops-place="stage"
+              render={<div />}
+              variant="remark"
+            >
+              <span>
+                <strong className="font-medium text-foreground">{stage.name}</strong> · optional ·{" "}
+                {STAGE_IS_FOR.toLocaleLowerCase()}
+              </span>
+              {stage.add ? (
+                <Button
+                  onClick={() => {
+                    onAdd("stage");
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {environmentDoorLabel("stage", stage.name)}
+                </Button>
+              ) : null}
+            </Text>
+          </>
         )}
       </Card>
     </section>
@@ -1309,11 +1315,9 @@ function ProjectChanges<T>({
           }}
           view={picture}
         />
+        <Separator />
         <div
-          className={cn(
-            "grid min-w-0 gap-0.5 border-t border-border/60",
-            historyShown ? "p-2" : "px-2 py-1.5",
-          )}
+          className={cn("grid min-w-0 gap-0.5", historyShown ? "p-2" : "px-2 py-1.5")}
           ref={list}
         >
           {historyShown ? (

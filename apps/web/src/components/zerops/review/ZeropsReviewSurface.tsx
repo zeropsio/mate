@@ -83,6 +83,7 @@ import {
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
 import { DiffStat } from "~/components/ui/diff-stat";
+import { List } from "~/components/ui/list";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -1087,34 +1088,36 @@ export function ReviewFiles({
   }
   return (
     <div className={FILES}>
-      {files.map((file) => {
-        const expanded = open.has(file.path);
-        const { dir, name } = changeFileParts(file.path);
-        const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
-        return (
-          <FileRow
-            diff={expanded ? diffOf(file.path) : undefined}
-            dir={dir}
-            expanded={expanded}
-            file={file}
-            key={file.path}
-            letter={letter}
-            name={name}
-            onRetry={onRetry}
-            // A file the change deletes is in none of its commits any more.
-            open={letter === "D" ? undefined : fileAt?.(file.path)}
-            onToggle={() => {
-              if (!expanded) onOpen?.(file.path);
-              setOpen((current) => {
-                const next = new Set(current);
-                if (next.has(file.path)) next.delete(file.path);
-                else next.add(file.path);
-                return next;
-              });
-            }}
-          />
-        );
-      })}
+      <List>
+        {files.map((file) => {
+          const expanded = open.has(file.path);
+          const { dir, name } = changeFileParts(file.path);
+          const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
+          return (
+            <FileRow
+              diff={expanded ? diffOf(file.path) : undefined}
+              dir={dir}
+              expanded={expanded}
+              file={file}
+              key={file.path}
+              letter={letter}
+              name={name}
+              onRetry={onRetry}
+              // A file the change deletes is in none of its commits any more.
+              open={letter === "D" ? undefined : fileAt?.(file.path)}
+              onToggle={() => {
+                if (!expanded) onOpen?.(file.path);
+                setOpen((current) => {
+                  const next = new Set(current);
+                  if (next.has(file.path)) next.delete(file.path);
+                  else next.add(file.path);
+                  return next;
+                });
+              }}
+            />
+          );
+        })}
+      </List>
     </div>
   );
 }
@@ -1142,7 +1145,7 @@ function FileRow({
 }) {
   return (
     // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
-    <Collapsible onOpenChange={onToggle} open={expanded}>
+    <Collapsible onOpenChange={onToggle} open={expanded} render={<List />}>
       <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-item-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <span className={STATUS[letter ?? ""] ?? STATUS[""]}>{letter}</span>
         <span className="truncate">
@@ -1281,8 +1284,7 @@ export function ReviewDiff({
 }
 
 /** The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
-const FILES =
-  "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12 *:not-first:border-t *:not-first:border-foreground/12 *:*:not-first:border-t *:*:not-first:border-foreground/12";
+const FILES = "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12";
 /** A file's status letter: added green, deleted red, the rest quiet. */
 const STATUS: Record<string, string> = {
   "": "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-muted-foreground inset-ring-1 inset-ring-foreground/12",
