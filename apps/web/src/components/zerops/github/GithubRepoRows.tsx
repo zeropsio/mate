@@ -47,6 +47,7 @@ import {
 import { GithubTokenFields } from "./GithubTokenFields";
 import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress";
 import { Loading } from "~/components/ui/loading";
+import { RealName } from "~/components/ui/real-name";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
 interface RepoRowActions {
@@ -268,15 +269,17 @@ function RepoRow({
     // Wide, the name stands in its own column as the board's rows do, on line one's baseline;
     // narrow, it leads the line.
     <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 text-body/5 first:border-transparent @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
-      <span className="real-name hidden self-start truncate text-foreground @lg:block">
-        {entry.name}
+      <span className="hidden self-start truncate text-foreground @lg:block">
+        <RealName>{entry.name}</RealName>
       </span>
       <div className="grid min-w-0 gap-0.5">
         {/* Line one keeps its height where the name stands in its own column and no code goes out.
             A phone's row says the code's name over its repository: beside each other the
             repository was cut to "zeropsio/app…". */}
         <p className="flex min-h-5 min-w-0 items-baseline gap-1.5 max-sm:flex-col max-sm:items-start max-sm:gap-0">
-          <span className="real-name shrink-0 text-foreground @lg:hidden">{entry.name}</span>
+          <span className="shrink-0 text-foreground @lg:hidden">
+            <RealName>{entry.name}</RealName>
+          </span>
           {state.destination === null ? null : (
             <InlineButton
               // In a phone's column it is as wide as its words unless held to the row.
@@ -290,7 +293,9 @@ function RepoRow({
               ) : (
                 <GitBranchIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
               )}
-              <span className="real-name truncate font-normal">{state.destination.label}</span>
+              <span className="truncate font-normal">
+                <RealName>{state.destination.label}</RealName>
+              </span>
             </InlineButton>
           )}
         </p>

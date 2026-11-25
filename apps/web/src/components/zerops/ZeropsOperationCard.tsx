@@ -1,6 +1,7 @@
 import { Button } from "~/components/ui/button";
 import { restartReadout } from "@t3tools/client-runtime/data";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
+import { RealName } from "~/components/ui/real-name";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
  * (bootstrap · deploy · import · mount · verify · subdomain · delete · scale
@@ -446,7 +447,7 @@ function AddressRows({
             rel="noreferrer"
             target="_blank"
           >
-            <span className={isAddress(link.label) ? "real-name" : undefined}>{link.label}</span>
+            {isAddress(link.label) ? <RealName>{link.label}</RealName> : <span>{link.label}</span>}
           </ServiceBrowserLink>
         </li>
       ))}

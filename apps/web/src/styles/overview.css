@@ -1145,13 +1145,4 @@
     transition: opacity var(--duration-quick) var(--ease-out-strong);
   }
 }
-/* A real thing's own name wherever it is printed in a line of words — a service's hostname, a
-   repository's slug, a version: the mono face, its x-height matched to the label face beside it
-   (Roboto's x-height is 0.966 of the mono face's at one size), so it never looks the larger. In
-   the ink of what it names: the class sets no colour. */
-.real-name {
-  font-family: var(--font-mono);
-  font-size: 0.966em;
-}
-
 /* ==== end of the overview's cards ==== */

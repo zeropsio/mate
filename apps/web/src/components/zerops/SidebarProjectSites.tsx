@@ -94,6 +94,7 @@ import {
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
+import { RealName } from "~/components/ui/real-name";
 
 /** One of the project's Mates, as its section and the fix list it. */
 export interface SitesMate extends ChipMate {
@@ -806,7 +807,9 @@ function PlaceSection({
       <>
         {title}
         {stop?.version === undefined || running !== undefined ? null : (
-          <span className="real-name ms-1.5 text-muted-foreground">{stop.version}</span>
+          <span className="ms-1.5 text-muted-foreground">
+            <RealName>{stop.version}</RealName>
+          </span>
         )}
       </>
     ),
@@ -1216,8 +1219,8 @@ function SitesServices({
                   title={
                     <>
                       {/* Nothing to open: its hostname muted, why in its host's place. */}
-                      <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-muted-foreground">
-                        {row.service}
+                      <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-muted-foreground">
+                        <RealName>{row.service}</RealName>
                       </span>
                       <span className="font-normal text-muted-foreground" data-sites-why="">
                         {row.why?.replace(/\.$/u, "")}
@@ -1240,8 +1243,8 @@ function SitesServices({
       },
       title: (
         <>
-          <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
-            {row.service}
+          <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
+            <RealName>{row.service}</RealName>
           </span>
           <span className="font-normal text-muted-foreground">{host}</span>
         </>
@@ -1318,11 +1321,13 @@ function SitesLinks({
           }}
           title={
             <>
-              <span className="real-name me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
-                {link.service}
-                {link.port === undefined ? null : (
-                  <span className="font-normal text-muted-foreground">:{link.port}</span>
-                )}
+              <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
+                <RealName>
+                  {link.service}
+                  {link.port === undefined ? null : (
+                    <span className="font-normal text-muted-foreground">:{link.port}</span>
+                  )}
+                </RealName>
               </span>
               <span className="font-normal text-muted-foreground">{link.host}</span>
             </>

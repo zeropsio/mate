@@ -16,6 +16,7 @@ import { Row } from "../../ui/row";
 import { Section } from "../../ui/section";
 import { Spinner } from "../../ui/spinner";
 import type { AddressWrite, FaceTone } from "./addresses.logic";
+import { RealName as KitRealName } from "~/components/ui/real-name";
 
 /** What every part of the sheet reads: whose place, what is under way, and how to write. */
 export interface SheetContext {
@@ -161,7 +162,11 @@ export function RowMeta({ children }: { readonly children: ReactNode }) {
 
 /** A real thing's own name (a hostname, an address) in the mono face, in the ink around it. */
 export function RealName({ children }: { readonly children: ReactNode }) {
-  return <span className="real-name min-w-0 truncate">{children}</span>;
+  return (
+    <span className="min-w-0 truncate">
+      <KitRealName>{children}</KitRealName>
+    </span>
+  );
 }
 
 /** Where a stage of a journey stands: behind, the person's move, Zerops's move, refused, ahead. */
