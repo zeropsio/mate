@@ -17,7 +17,9 @@ import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useMateStates } from "./mateActions/useMateStates";
 import { Button } from "../ui/button";
 import { Failure } from "../ui/failure";
-import { MateStateDetails } from "./MateStateDetails";
+import { cn } from "~/lib/utils";
+
+import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
 
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
@@ -225,7 +227,7 @@ export function MateOpeningLine({
       toProjects ||
       enable !== undefined ||
       pressContainer !== undefined ? (
-        <div className="arrival-acts">
+        <div className={ARRIVAL_ACTS_CLASS}>
           {enable === undefined ? null : (
             <Button disabled={enabling} onClick={enable} size="md" variant="primary">
               {enabling ? "Enabling…" : "Enable Zerops Mate"}
@@ -259,7 +261,7 @@ export function MateOpeningLine({
       ) : null}
       {details ? (
         <MateStateDetails>
-          <p className="mt-3 whitespace-pre-wrap break-words text-left">{details}</p>
+          <p className={cn(DETAILS_TEXT_CLASS, "mt-3")}>{details}</p>
         </MateStateDetails>
       ) : null}
     </div>

@@ -114,9 +114,11 @@ export function ZeropsDeleteMateForm({
           </div>
         ) : null}
         {failed === undefined ? null : (
-          <div className="mb-4 min-w-0 [&_.arrival-failure-details]:text-left!">
+          <div className="mb-4 min-w-0">
             <p className="text-caption text-status-failed-text">{failed.line}</p>
-            {failed.details === null ? null : <ZeropsAnswerDetails text={failed.details} />}
+            {failed.details === null ? null : (
+              <ZeropsAnswerDetails align="start" text={failed.details} />
+            )}
           </div>
         )}
         <div className="space-y-1.5">

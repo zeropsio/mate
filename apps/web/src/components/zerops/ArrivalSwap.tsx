@@ -27,6 +27,25 @@ const FOLLOW_MS = 240;
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
 
+/** Both layers share one cell; the one leaving lies over the place it held, out of the pointer's way. */
+const LAYER_CLASS = "col-start-1 row-start-1 min-w-0";
+const LEAVING_CLASS = `${LAYER_CLASS} pointer-events-none absolute inset-x-0 top-0`;
+
+/**
+ * How each kind hands over: words travel 6 px up as they fade, out and in, the one coming 40 ms
+ * late; a slot only fades, the one coming 60 ms late. Reduced motion keeps the fades.
+ */
+const MOTION = {
+  words: {
+    leaving: "motion-safe:animate-arrival-words-out motion-reduce:animate-arrival-fade-out",
+    entering: "motion-safe:animate-arrival-words-in motion-reduce:animate-arrival-words-fade-in",
+  },
+  slot: {
+    leaving: "animate-arrival-fade-out",
+    entering: "animate-arrival-slot-in",
+  },
+} as const;
+
 interface Layer {
   readonly id: string;
   readonly node: ReactNode;
@@ -115,19 +134,26 @@ export function ArrivalSwap({
   return (
     <div
       aria-live={live}
-      className={cn("arrival-swap", className)}
-      data-arrival-swap={kind}
+      className={cn("relative grid", className)}
       id={domId}
       ref={box}
       style={style}
       {...data}
     >
       {shown.leaving.map((layer) => (
-        <div aria-hidden="true" data-swap-layer="leaving" inert key={layer.id}>
+        <div
+          aria-hidden="true"
+          className={cn(LEAVING_CLASS, MOTION[kind].leaving)}
+          inert
+          key={layer.id}
+        >
           {layer.node}
         </div>
       ))}
-      <div data-swap-layer={shown.swapped ? "entering" : "shown"} key={id}>
+      <div
+        className={shown.swapped ? cn(LAYER_CLASS, MOTION[kind].entering) : LAYER_CLASS}
+        key={id}
+      >
         {children}
       </div>
     </div>

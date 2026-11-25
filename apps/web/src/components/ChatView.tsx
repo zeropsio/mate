@@ -7568,7 +7568,6 @@ function ConversationView(props: ChatViewProps) {
                     aria-hidden={zeropsArrivalHoldsComposer ? true : undefined}
                     className="relative"
                     data-footer-composer=""
-                    data-standup-holds-composer={zeropsArrivalHoldsComposer ? "" : undefined}
                     inert={zeropsArrivalHoldsComposer}
                     style={
                       forceExpandedMobileComposer
@@ -7580,7 +7579,11 @@ function ConversationView(props: ChatViewProps) {
                       data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
                       className={cn(
-                        "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
+                        // Unseen while the stand-up holds it, back in 200 ms once it has gone,
+                        // nothing around it moving; unseen and shown in the frame the answer
+                        // comes while who writes here is not known (`ComposerRoomHeld`).
+                        "chat-composer-glass-shell relative mx-auto w-full max-w-3xl transition-opacity duration-200 ease-out-strong data-room-held:invisible",
+                        zeropsArrivalHoldsComposer && "opacity-0",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
                         showComposerContextStrip &&
                           zeropsFooter !== "read-only" &&

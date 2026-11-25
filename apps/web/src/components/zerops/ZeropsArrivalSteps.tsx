@@ -6,6 +6,8 @@
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Fragment, useState } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Badge, type BadgeTone } from "../ui/badge";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 
@@ -40,15 +42,25 @@ const SERVICE_STATE_WORDS: Readonly<Record<ArrivalService["state"], string>> = {
 /** A project's services, one name and one dot each, quieter than the steps above them. */
 export function ArrivalServices({
   services,
+  className,
 }: {
   readonly services: ReadonlyArray<ArrivalService>;
+  /** Its place on its line. */
+  readonly className?: string;
 }) {
   return (
-    <ul className="arrival-services" data-zerops-surface="arrival-services">
+    <ul
+      className={cn(
+        "flex flex-wrap gap-x-3 gap-y-1 text-caption leading-4 text-muted-foreground",
+        className,
+      )}
+      data-zerops-surface="arrival-services"
+    >
       {services.map((service) => (
+        // A service that stays empty reads quieter still.
         <li
           aria-label={`${service.name}: ${SERVICE_STATE_WORDS[service.state]}`}
-          className="arrival-service"
+          className="inline-flex data-[state=empty]:text-muted-foreground/70"
           data-state={service.state}
           key={service.name}
         >
@@ -92,11 +104,13 @@ export function ArrivalRuntimesLine({
   return (
     <div
       aria-hidden={line === "settled" ? true : undefined}
-      className="arrival-runtimes"
+      // Quiet and centred; once all are up its words fade and its place stays: the page is
+      // centred, and a line that went would move everything above it.
+      className="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-caption leading-4 text-muted-foreground transition-opacity duration-200 ease-out-strong data-[state=settled]:opacity-0 motion-reduce:transition-none"
       data-state={line}
       data-zerops-surface="arrival-runtimes"
     >
-      <ArrivalServices services={services} />
+      <ArrivalServices className="justify-center" services={services} />
       <span>coming up</span>
     </div>
   );

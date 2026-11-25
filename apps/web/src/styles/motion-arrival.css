@@ -15,4 +15,26 @@
   }
 }
 
+/* A place handing over (`ArrivalSwap`): words leave 6 px up as they fade, and arrive from 6 px
+   under; what leaves fades where it stood. */
+@keyframes arrival-words-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+
+@keyframes arrival-words-out {
+  to {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+@keyframes arrival-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
 /* ==== end of the arrival's keyframes ==== */
