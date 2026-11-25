@@ -42,6 +42,14 @@ import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { createRoot } from "react-dom/client";
 
 import { StandUpAskLine } from "~/components/chat/ConversationRows";
+import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
+import {
+  PersonaChosenStrip,
+  PersonaOfferStrip,
+  type PersonaOfferChoice,
+} from "~/components/persona/PersonaOffer";
+import { personaIcon } from "~/components/persona/personaIcon";
+import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
 import { RunLine } from "~/components/chat/RunChat";
 import {
   TimelineRowActivityCtx,
@@ -234,6 +242,8 @@ interface HarnessState {
   /** A colleague's view of it: who added the Mate, null where unnamed; absent for its person. */
   readonly setupAddedBy?: string | null;
   readonly watching?: boolean;
+  /** The composer's persona offer (`PersonaOfferStrip`): shown, answered, or put off. */
+  readonly persona?: "offer" | "chosen" | "dismissed";
 }
 
 // Every source-backed recovery/refusal copy branch joins the same production composition.
@@ -583,6 +593,44 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: WREN,
     phase: null,
     conversation: true,
+  },
+  {
+    id: "persona-new",
+    label: "5 Persona · a new project's first message",
+    mate: WREN,
+    phase: null,
+    persona: "offer",
+  },
+  {
+    id: "persona-new-chosen",
+    label: "5 Persona · chosen before the first message",
+    mate: WREN,
+    phase: null,
+    persona: "chosen",
+  },
+  {
+    id: "persona-standup",
+    label: "5 Persona · under the setup's ask",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "offer",
+  },
+  {
+    id: "persona-chosen",
+    label: "5 Persona · chosen while it sets up",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "chosen",
+  },
+  {
+    id: "persona-dismissed",
+    label: "5 Persona · not now, its name keeps the way in",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "dismissed",
   },
   {
     id: "not-created",
@@ -1061,7 +1109,85 @@ function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
   }));
 }
 
-function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
+/** The templates about the person, as the offer shows them (an organization's would come first). */
+const PERSONA_CHOICES: readonly PersonaOfferChoice[] = PREMADE_PERSONA_TEMPLATES.filter(
+  (template) => template.about === "you",
+).map((template) => ({
+  key: template.id,
+  name: template.name,
+  description: template.description,
+  icon: personaIcon({ source: "premade", id: template.id, revision: template.revision }),
+}));
+
+const personaChoice = (key: string) =>
+  PERSONA_CHOICES.find((choice) => choice.key === key) ?? PERSONA_CHOICES[0]!;
+
+/**
+ * The composer with its persona offer on top, answering as the product would: a template chooses
+ * and the strip confirms it, *Undo* offers again, the cross puts it off. Before the Mate has
+ * answered (a new project's) the choice shapes its first reply; under a setup, its next.
+ */
+function PersonaComposer({
+  state,
+  go,
+  chosen,
+  onChoose,
+}: {
+  readonly state: HarnessState;
+  readonly go: (id: string) => void;
+  readonly chosen: string;
+  readonly onChoose: (key: string) => void;
+}) {
+  const firstReply = state.conversation !== true;
+  const top =
+    state.persona === "offer" ? (
+      <PersonaOfferStrip
+        choices={PERSONA_CHOICES}
+        firstReply={firstReply}
+        mate={state.mate}
+        onChoose={(key) => {
+          onChoose(key);
+          go(firstReply ? "persona-new-chosen" : "persona-chosen");
+        }}
+        onDismiss={() => go("persona-dismissed")}
+        onMore={() => undefined}
+      />
+    ) : state.persona === "chosen" ? (
+      <PersonaChosenStrip
+        choice={personaChoice(chosen)}
+        firstReply={firstReply}
+        mate={state.mate}
+        onUndo={() => go(firstReply ? "persona-new" : "persona-standup")}
+      />
+    ) : null;
+  return (
+    <div className="shrink-0 px-6 pb-5" data-harness-composer>
+      <div
+        className="mx-auto max-w-3xl overflow-hidden rounded-sheet border border-border bg-card"
+        data-chat-composer-main-surface="true"
+      >
+        <div data-chat-composer-surface="true">
+          {top}
+          <div className="px-4 pt-3 pb-12 text-placeholder text-body">
+            Ask {state.mate.name} to do something…
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Pane({
+  state,
+  go,
+  chosen,
+  onChoose,
+}: {
+  readonly state: HarnessState;
+  readonly go: (id: string) => void;
+  readonly chosen: string;
+  readonly onChoose: (key: string) => void;
+}) {
   const [openedAt] = useState(() => Date.now());
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -1152,6 +1278,8 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
             <Textarea aria-label="Message Wren" placeholder="Ask Wren to do something…" />
           </div>
         </div>
+      ) : state.persona !== undefined ? (
+        <PersonaComposer chosen={chosen} go={go} onChoose={onChoose} state={state} />
       ) : null}
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
@@ -1173,7 +1301,15 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
   );
 }
 
-function Header({ state }: { readonly state: HarnessState }) {
+function Header({ state, chosen }: { readonly state: HarnessState; readonly chosen: string }) {
+  // The persona after the Mate's name: the one chosen, or "No persona" once the offer was put off,
+  // so its way in stays where the offer said it would.
+  const persona =
+    state.persona === "chosen"
+      ? personaChoice(chosen).name
+      : state.persona === "dismissed"
+        ? "No persona"
+        : null;
   return (
     <WorkspacePageHeader className="relative bg-background">
       {/* The stage under it names the Mate until its conversation takes over (the product's header). */}
@@ -1186,6 +1322,13 @@ function Header({ state }: { readonly state: HarnessState }) {
             tint={state.mate.tint}
           />
           <span className="font-semibold text-emphasis">{state.mate.name}</span>
+          {persona === null ? null : (
+            <MatePersonaPress
+              mateName={state.mate.name}
+              onOpen={() => undefined}
+              persona={persona}
+            />
+          )}
         </span>
       ) : null}
       {state.crew === true ? (
@@ -1209,6 +1352,7 @@ function Harness() {
     };
   }, []);
   const state = STATES.find((candidate) => candidate.id === current) ?? STATES[0]!;
+  const [chosen, setChosen] = useState(PERSONA_CHOICES[0]!.key);
   const play = () => {
     setCurrent("coming");
     window.setTimeout(() => setCurrent("signin"), 2300);
@@ -1244,8 +1388,8 @@ function Harness() {
         </aside>
       )}
       <main className="flex min-w-0 flex-1 flex-col">
-        <Header state={state} />
-        <Pane go={setCurrent} state={state} />
+        <Header chosen={chosen} state={state} />
+        <Pane chosen={chosen} go={setCurrent} onChoose={setChosen} state={state} />
       </main>
     </div>
   );
