@@ -84,13 +84,16 @@ const PICTURE_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(
   </svg>`,
 )}`;
 
-/** A picture over everything (`DialogMediaPopup`), as a conversation's picture opens. */
+/**
+ * A picture over everything (`DialogMediaPopup`), as a conversation's picture opens, with its close
+ * (`DialogMediaClose`) and its steps through the pictures (`DialogMediaStep`).
+ */
 function MediaOpener() {
   const [open, setOpen] = useState(false);
   return (
     <Specimen
       label="<DialogMediaPopup>"
-      note="A conversation's picture, opened"
+      note="A conversation's two pictures, opened: its close and its steps"
       source="apps/web/src/components/chat/ExpandedImageDialog.tsx"
     >
       <Button onClick={() => setOpen(true)} variant="secondary">
@@ -99,7 +102,13 @@ function MediaOpener() {
       {open ? (
         <ExpandedImageDialog
           onClose={() => setOpen(false)}
-          preview={{ images: [{ src: PICTURE_SRC, name: "Checkout page" }], index: 0 }}
+          preview={{
+            images: [
+              { src: PICTURE_SRC, name: "Checkout page" },
+              { src: PICTURE_SRC, name: "Checkout page, again" },
+            ],
+            index: 0,
+          }}
         />
       ) : null}
     </Specimen>

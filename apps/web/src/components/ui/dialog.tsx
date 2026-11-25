@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { XIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "~/lib/utils";
@@ -176,6 +176,54 @@ function DialogMediaPopup({ children, ...props }: DialogPrimitive.Popup.Props) {
   );
 }
 
+/**
+ * The media dialog's close: a round-cornered press on the dark stage, in the window's top end
+ * corner, 16 px in, clear of the picture whatever its size.
+ */
+function DialogMediaClose({ label = "Close" }: { readonly label?: string }) {
+  return (
+    <DialogPrimitive.Close
+      aria-label={label}
+      data-slot="dialog-media-close"
+      render={<Button className="fixed end-4 top-4 size-10" size="icon-md" variant="scrim" />}
+    >
+      <XIcon aria-hidden="true" className="size-5" />
+    </DialogPrimitive.Close>
+  );
+}
+
+/**
+ * A step through the media dialog's pictures: on the stage at the window's start or end edge,
+ * 16 px in and halfway down, so it never covers the picture. Its owner moves the picture; the
+ * arrow keys should do the same.
+ */
+function DialogMediaStep({
+  side,
+  label,
+  ...props
+}: Omit<React.ComponentProps<typeof Button>, "className" | "children" | "size" | "variant"> & {
+  readonly side: "before" | "after";
+  readonly label: string;
+}) {
+  const Icon = side === "before" ? ChevronLeftIcon : ChevronRightIcon;
+  return (
+    <Button
+      aria-label={label}
+      className={cn(
+        "fixed top-1/2 size-10 -translate-y-1/2",
+        side === "before" ? "start-4" : "end-4",
+      )}
+      data-side={side}
+      data-slot="dialog-media-step"
+      size="icon-md"
+      variant="scrim"
+      {...props}
+    >
+      <Icon aria-hidden="true" className="size-5" />
+    </Button>
+  );
+}
+
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   const size = React.use(DialogSizeContext);
   return (
@@ -272,4 +320,6 @@ export {
   DialogDescription,
   DialogPanel,
   DialogMediaPopup,
+  DialogMediaClose,
+  DialogMediaStep,
 };
