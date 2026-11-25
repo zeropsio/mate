@@ -587,51 +587,23 @@
     text-align: end;
   }
 
-  /* A popover of what is to review: 340 px under its tag, aligned to its end, its own scroll past
-     480 px, the heading held at its top. */
-  .menu-tagpop {
-    width: min(340px, calc(100vw - 16px));
-    max-height: min(480px, 70vh, var(--available-height));
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 0 6px 6px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-card);
-    background-color: var(--card);
-    color: var(--card-foreground);
-    box-shadow: var(--zerops-shadow-popup);
-    outline: none;
-    transform-origin: var(--transform-origin);
-    transition:
-      opacity var(--duration-base) var(--ease-out-strong),
-      scale var(--duration-base) var(--ease-out-strong);
-  }
-
-  .menu-tagpop:is([data-starting-style], [data-ending-style]) {
-    opacity: 0;
-    scale: 0.98;
-  }
-
-  .menu-tagpop[data-ending-style] {
-    transition-duration: var(--duration-quick);
-  }
-
+  /* A popover of what is to review (the kit's PopoverPopup): its title held at its top, its
+     items scrolling under it past 480 px. */
   .menu-tagpop-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    max-height: min(480px, 70vh, var(--available-height));
     outline: none;
   }
 
-  .menu-tagpop-title {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    padding: 12px 10px 6px;
-    background-color: var(--card);
-    font-size: var(--text-body);
-    font-weight: 600;
-    line-height: 18px;
+  .menu-tagpop-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 0;
+    padding: 0 6px 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   /* An item that leaves fades and the list closes over it; one that arrives opens its place. */
@@ -746,13 +718,8 @@
       display: none;
     }
 
-    .menu-tagpop,
     .menu-tagpop-row {
       transition: opacity var(--duration-quick) var(--ease-out-strong);
-    }
-
-    .menu-tagpop:is([data-starting-style], [data-ending-style]) {
-      scale: 1;
     }
   }
 

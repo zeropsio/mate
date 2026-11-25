@@ -22,7 +22,6 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import {
@@ -62,15 +61,18 @@ import { usePutLiveStanding } from "~/zerops/putLive";
 import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
 import { Button } from "../ui/button";
+import { EmptyState } from "../ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
 import { useHeadingLine } from "./SidebarHeadingLine";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 import { ownerMark } from "./SidebarMateRow.logic";
-import { AskToFix, ChipPortal, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProductionChip";
+import { AskToFix, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProductionChip";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
 import {
   answeringSections,
@@ -224,7 +226,7 @@ export function ProjectSites(
     <Tooltip>
       <TooltipTrigger
         render={
-          <PopoverPrimitive.Trigger
+          <PopoverTrigger
             id={globeId}
             onAuxClick={(event) => {
               if (event.button !== 1 || prodUrl === undefined) return;
@@ -268,7 +270,7 @@ export function ProjectSites(
       <Tooltip>
         <TooltipTrigger
           render={
-            <PopoverPrimitive.Trigger
+            <PopoverTrigger
               id={tagId}
               render={
                 <Button
@@ -293,7 +295,7 @@ export function ProjectSites(
   const focusSection = door === "tag" ? shown?.section : undefined;
 
   return (
-    <PopoverPrimitive.Root
+    <Popover
       onOpenChange={(next, details) => {
         // Esc clears the filter first, then closes.
         if (!next && details.reason === "escape-key" && query !== "") {
@@ -340,70 +342,65 @@ export function ProjectSites(
           </>
         ),
       })}
-      <ChipPortal>
-        <PopoverPrimitive.Positioner
-          align="end"
-          className="z-130"
-          // Kept at the door's end and slid to fit, never flipped to its start, and never out to the
-          // side over the conversation: where neither below nor above holds it whole, it takes the
-          // roomier one and its list scrolls in what it has (`--available-height`).
-          collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-          collisionPadding={8}
-          side="bottom"
-          sideOffset={6}
-        >
-          <PopoverPrimitive.Popup
-            aria-label={`Addresses of ${projectName}`}
-            className="zerops-sites"
-            data-zerops-surface="sidebar-project-sites-popover"
-            initialFocus={(openType) => {
-              const root = popup.current;
-              if (root === null) return true;
-              // A press opens it calm, nothing lit as if picked; its keys still land in it.
-              if (openType !== "keyboard") return root;
-              const section = focusSection === undefined ? null : sectionIn(root, focusSection);
-              return (
-                section?.querySelector<HTMLElement>("[data-sites-nav]") ??
-                root.querySelector<HTMLElement>("[data-sites-filter]") ??
-                root.querySelector<HTMLElement>("[data-sites-nav]") ??
-                root
-              );
-            }}
-            ref={popup}
-          >
-            <SitesPanel
-              focusSection={focusSection}
-              groupId={props.groupId}
-              line={line}
-              mates={mates}
-              onAskToFix={
-                props.onAskToFix === undefined
-                  ? undefined
-                  : (mateProjectId, problem) => {
-                      close();
-                      props.onAskToFix?.(mateProjectId, problem);
-                    }
-              }
-              onOpenStop={(projectId) => {
-                const opens = props.onOpenStop(projectId);
-                return opens === undefined
-                  ? undefined
-                  : () => {
-                      close();
-                      opens();
-                    };
-              }}
-              onClose={close}
-              onQuery={setQuery}
-              production={production}
-              projectName={projectName}
-              query={query}
-              stages={stages}
-            />
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </ChipPortal>
-    </PopoverPrimitive.Root>
+      <PopoverPopup
+        align="end"
+        // Kept at the door's end and slid to fit, never flipped to its start, and never out to the
+        // side over the conversation: where neither below nor above holds it whole, it takes the
+        // roomier one and its list scrolls in what it has (`--available-height`).
+        collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+        collisionPadding={8}
+        padding="none"
+        side="bottom"
+        sideOffset={6}
+        width="lg"
+        aria-label={`Addresses of ${projectName}`}
+        data-zerops-surface="sidebar-project-sites-popover"
+        initialFocus={(openType) => {
+          const root = popup.current;
+          if (root === null) return true;
+          // A press opens it calm, nothing lit as if picked; its keys still land in it.
+          if (openType !== "keyboard") return root;
+          const section = focusSection === undefined ? null : sectionIn(root, focusSection);
+          return (
+            section?.querySelector<HTMLElement>("[data-sites-nav]") ??
+            root.querySelector<HTMLElement>("[data-sites-filter]") ??
+            root.querySelector<HTMLElement>("[data-sites-nav]") ??
+            root
+          );
+        }}
+        ref={popup}
+      >
+        <SitesPanel
+          focusSection={focusSection}
+          groupId={props.groupId}
+          line={line}
+          mates={mates}
+          onAskToFix={
+            props.onAskToFix === undefined
+              ? undefined
+              : (mateProjectId, problem) => {
+                  close();
+                  props.onAskToFix?.(mateProjectId, problem);
+                }
+          }
+          onOpenStop={(projectId) => {
+            const opens = props.onOpenStop(projectId);
+            return opens === undefined
+              ? undefined
+              : () => {
+                  close();
+                  opens();
+                };
+          }}
+          onClose={close}
+          onQuery={setQuery}
+          production={production}
+          projectName={projectName}
+          query={query}
+          stages={stages}
+        />
+      </PopoverPopup>
+    </Popover>
   );
 }
 
@@ -579,13 +576,12 @@ export function SitesPanel({
   const first = mates[0];
   return (
     <div className="zerops-sites-body" onKeyDown={onKeyDown}>
-      <div className="zerops-sites-head">
-        <h5 className="zerops-sites-title">{projectName}</h5>
-        {total === 0 ? null : (
-          <span className="zerops-sites-count">
-            {total === 1 ? "1 address" : `${String(total)} addresses`}
-          </span>
-        )}
+      <div className="flex-none px-4 pt-3 pb-2">
+        <SectionHeader
+          count={total === 0 ? undefined : total === 1 ? "1 address" : `${String(total)} addresses`}
+          level={3}
+          title={projectName}
+        />
       </div>
       {total < FILTER_FROM ? null : (
         <div className="mx-2 mb-1.5 flex-none">
@@ -612,15 +608,18 @@ export function SitesPanel({
       )}
       <div className="zerops-sites-scroll" ref={scroll}>
         {sections.length === 0 ? (
-          <div className="zerops-sites-empty" data-zerops-surface="sidebar-project-sites-empty">
-            <p>No public addresses yet</p>
-            <span>A service shows here once it has a public address.</span>
+          <div className="flex flex-col gap-1" data-zerops-surface="sidebar-project-sites-empty">
+            <EmptyState mark={<GlobeIcon aria-hidden="true" />} size="row">
+              No public addresses yet
+            </EmptyState>
             {first === undefined ? null : <OpenInZerops projectId={first.candidate.project.id} />}
           </div>
         ) : filtering && kept.size === 0 ? (
-          <p className="zerops-sites-empty" data-zerops-surface="sidebar-project-sites-nomatch">
-            {`No address matches “${query.trim()}”`}
-          </p>
+          <div data-zerops-surface="sidebar-project-sites-nomatch">
+            <EmptyState mark={<SearchIcon aria-hidden="true" />} size="row">
+              {`No address matches “${query.trim()}”`}
+            </EmptyState>
+          </div>
         ) : null}
         {sections.map((section) => {
           const shown = kept.get(section.key);
@@ -1496,61 +1495,56 @@ function SitesPopover({
     setOpen(false);
   };
   return (
-    <PopoverPrimitive.Root
+    <Popover
       onOpenChange={(next) => {
         if (next) setQuery("");
         setOpen(next);
       }}
       open={open}
     >
-      <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Positioner
-          align="end"
-          className="z-130"
-          collisionPadding={8}
-          side="bottom"
-          sideOffset={6}
-        >
-          <PopoverPrimitive.Popup
-            aria-label={label ?? `Sites of ${sites.projectName}`}
-            className="zerops-sites"
-            data-zerops-surface={surface}
-          >
-            <SitesPanel
-              answering={answering}
-              focusSection={undefined}
-              groupId={sites.groupId}
-              line={sites.line}
-              mates={mates}
-              onAskToFix={
-                sites.onAskToFix === undefined
-                  ? undefined
-                  : (mateProjectId, problem) => {
-                      close();
-                      sites.onAskToFix?.(mateProjectId, problem);
-                    }
-              }
-              onOpenStop={(projectId) => {
-                const opens = sites.onOpenStop(projectId);
-                return opens === undefined
-                  ? undefined
-                  : () => {
-                      close();
-                      opens();
-                    };
-              }}
-              onClose={close}
-              onQuery={setQuery}
-              production={sites.production}
-              projectName={sites.projectName}
-              query={query}
-              stages={sites.stages}
-            />
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
+      <PopoverTrigger render={trigger}>{children}</PopoverTrigger>
+      <PopoverPopup
+        align="end"
+        collisionPadding={8}
+        padding="none"
+        side="bottom"
+        sideOffset={6}
+        width="lg"
+        aria-label={label ?? `Sites of ${sites.projectName}`}
+        data-zerops-surface={surface}
+      >
+        <SitesPanel
+          answering={answering}
+          focusSection={undefined}
+          groupId={sites.groupId}
+          line={sites.line}
+          mates={mates}
+          onAskToFix={
+            sites.onAskToFix === undefined
+              ? undefined
+              : (mateProjectId, problem) => {
+                  close();
+                  sites.onAskToFix?.(mateProjectId, problem);
+                }
+          }
+          onOpenStop={(projectId) => {
+            const opens = sites.onOpenStop(projectId);
+            return opens === undefined
+              ? undefined
+              : () => {
+                  close();
+                  opens();
+                };
+          }}
+          onClose={close}
+          onQuery={setQuery}
+          production={sites.production}
+          projectName={sites.projectName}
+          query={query}
+          stages={sites.stages}
+        />
+      </PopoverPopup>
+    </Popover>
   );
 }
 

@@ -6,7 +6,6 @@
  * The tags sit inside the row but never inside its button: a press, a pointer down or a key on
  * them (or in their popover, which React bubbles through them) never reaches the row.
  */
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { GitMergeIcon, GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
 import {
   useEffect,
@@ -32,9 +31,10 @@ import {
 import { usePutLiveStanding } from "~/zerops/putLive";
 import { putLiveMark } from "~/zerops/putLive.logic";
 import { useOpenReview, useReviewShown } from "~/zerops/review";
-import { gatedPortal } from "../ui/portal-gate";
 import { Button } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
+import { SectionHeader } from "../ui/section";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -61,8 +61,6 @@ export {
   crewTaskReviewItem,
   type ProjectReviewItem,
 } from "./SidebarProjectReview.logic";
-
-const TagPortal = gatedPortal(PopoverPrimitive.Portal);
 
 /** How long a tag, a digit or a popover item takes to go (`.menu-tag`, `.menu-tagpop-row`). */
 const LEAVE_MS = 160;
@@ -411,7 +409,7 @@ function ReviewTag({
   const [only] = listed;
   const many = listed.length > 1;
   return (
-    <PopoverPrimitive.Root
+    <Popover
       onOpenChange={(next) => {
         if (next && !many && only !== undefined) {
           openReview(only.target, { from: tag.current });
@@ -426,7 +424,7 @@ function ReviewTag({
       <Tooltip disabled={many || open}>
         <TooltipTrigger
           render={
-            <PopoverPrimitive.Trigger
+            <PopoverTrigger
               render={
                 <Button
                   aria-label={read.label}
@@ -457,56 +455,51 @@ function ReviewTag({
           </TooltipPopup>
         )}
       </Tooltip>
-      <TagPortal>
-        <PopoverPrimitive.Positioner
-          align="end"
-          className="z-130"
-          // Below or above its tag, never out to the side over the conversation: where neither
-          // holds it whole, the roomier one, its list scrolling in what it has.
-          collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-          collisionPadding={8}
-          side="bottom"
-          sideOffset={6}
-        >
-          <PopoverPrimitive.Popup
-            className="menu-tagpop"
-            data-zerops-surface="sidebar-project-changes"
-            // An item pressed keeps the focus its review takes; a tag that left with its last item
-            // hands it to its row, never to the page.
-            finalFocus={() =>
-              pressed.current
-                ? false
-                : leaving
-                  ? (tag.current
-                      ?.closest(".menu-row-box")
-                      ?.querySelector<HTMLElement>("[data-zerops-row]") ?? true)
-                  : true
-            }
-            // A press opens it calm, nothing lit as if picked; ↓ then walks into it. Keys land on
-            // its first item.
-            initialFocus={(openType) => (openType === "keyboard" ? true : list.current)}
-          >
-            <ReviewList
-              items={listed}
-              listRef={list}
-              onOpen={(item) => {
-                pressed.current = true;
-                setOpen(false);
-                openReview(item.target, { from: tag.current });
-              }}
-              onOpenAll={(queue) => {
-                const [first] = queue;
-                if (first === undefined) return;
-                pressed.current = true;
-                setOpen(false);
-                openReview(first, { from: tag.current, queue });
-              }}
-              projectName={projectName}
-            />
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </TagPortal>
-    </PopoverPrimitive.Root>
+      <PopoverPopup
+        align="end"
+        // Below or above its tag, never out to the side over the conversation: where neither
+        // holds it whole, the roomier one, its list scrolling in what it has.
+        collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+        collisionPadding={8}
+        padding="none"
+        side="bottom"
+        sideOffset={6}
+        width="lg"
+        data-zerops-surface="sidebar-project-changes"
+        // An item pressed keeps the focus its review takes; a tag that left with its last item
+        // hands it to its row, never to the page.
+        finalFocus={() =>
+          pressed.current
+            ? false
+            : leaving
+              ? (tag.current
+                  ?.closest(".menu-row-box")
+                  ?.querySelector<HTMLElement>("[data-zerops-row]") ?? true)
+              : true
+        }
+        // A press opens it calm, nothing lit as if picked; ↓ then walks into it. Keys land on
+        // its first item.
+        initialFocus={(openType) => (openType === "keyboard" ? true : list.current)}
+      >
+        <ReviewList
+          items={listed}
+          listRef={list}
+          onOpen={(item) => {
+            pressed.current = true;
+            setOpen(false);
+            openReview(item.target, { from: tag.current });
+          }}
+          onOpenAll={(queue) => {
+            const [first] = queue;
+            if (first === undefined) return;
+            pressed.current = true;
+            setOpen(false);
+            openReview(first, { from: tag.current, queue });
+          }}
+          projectName={projectName}
+        />
+      </PopoverPopup>
+    </Popover>
   );
 }
 
@@ -662,47 +655,51 @@ function ReviewList({
       role="group"
       tabIndex={-1}
     >
-      <div className="menu-tagpop-title flex items-center justify-between gap-2">
-        <p id={headingId}>{reviewPopoverTitle(live, projectName)}</p>
-        {together.length === 0 ? null : (
-          // Its own height inside the title's line: the title keeps its height with it.
-          <span className="-my-1 flex">
-            <Button
-              onClick={() => {
-                onOpenAll(together);
-              }}
-              size="xs"
-              variant="secondary"
-            >
-              {REVIEW_ALL_LABEL}
-            </Button>
-          </span>
-        )}
+      <div className="px-2.5 pt-3 pb-1.5">
+        <SectionHeader
+          action={
+            together.length === 0 ? undefined : (
+              <Button
+                onClick={() => {
+                  onOpenAll(together);
+                }}
+                size="xs"
+                variant="secondary"
+              >
+                {REVIEW_ALL_LABEL}
+              </Button>
+            )
+          }
+          level={3}
+          title={<span id={headingId}>{reviewPopoverTitle(live, projectName)}</span>}
+        />
       </div>
-      {shown.map(({ item, leaving }) => (
-        <div
-          className="menu-tagpop-row"
-          data-arrive={arrived.has(item.key) ? "" : undefined}
-          data-leaving={leaving ? "" : undefined}
-          inert={leaving}
-          key={item.key}
-        >
-          {/* The cell the row closes and opens: no padding of its own, so it reaches 0. */}
-          <div>
-            <ReviewListItem
-              current={item.key === current}
-              item={item}
-              together={together.length > 0}
-              onFocus={() => setActiveKey(item.key)}
-              onOpen={() => onOpen(item)}
-              refOf={(element) => {
-                if (element === null) buttons.current.delete(item.key);
-                else buttons.current.set(item.key, element);
-              }}
-            />
+      <div className="menu-tagpop-items">
+        {shown.map(({ item, leaving }) => (
+          <div
+            className="menu-tagpop-row"
+            data-arrive={arrived.has(item.key) ? "" : undefined}
+            data-leaving={leaving ? "" : undefined}
+            inert={leaving}
+            key={item.key}
+          >
+            {/* The cell the row closes and opens: no padding of its own, so it reaches 0. */}
+            <div>
+              <ReviewListItem
+                current={item.key === current}
+                item={item}
+                together={together.length > 0}
+                onFocus={() => setActiveKey(item.key)}
+                onOpen={() => onOpen(item)}
+                refOf={(element) => {
+                  if (element === null) buttons.current.delete(item.key);
+                  else buttons.current.set(item.key, element);
+                }}
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
