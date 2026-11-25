@@ -14,6 +14,7 @@ const VARIANTS = variantsOf<ToggleVariant>({
   default: true,
   ghost: true,
   outline: true,
+  toolbar: true,
 });
 
 function Choices({ disabled = false }: { readonly disabled?: boolean }) {

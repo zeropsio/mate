@@ -30,6 +30,13 @@ const toggleVariants = cva(
           "border-transparent text-foreground shadow-none [:disabled,:active,[data-pressed]]:shadow-none before:shadow-none data-pressed:bg-accent data-pressed:text-accent-foreground disabled:opacity-100 disabled:text-muted-foreground disabled:[&_svg]:opacity-100",
         outline:
           "border-input bg-field bg-clip-ground shadow-xs/5 hover:bg-field-hover data-pressed:bg-field-pressed not-disabled:not-active:not-data-pressed:before:shadow-edge [:disabled,:active,[data-pressed]]:shadow-none",
+        /**
+         * A quiet press on the top bar: the bar's ink, in the header and in the titlebar strip
+         * alike, so the panel toggles look the same as the panel opens; hover and pressed keep
+         * the ghost's accent, and disabled is the ink at 55 %.
+         */
+        toolbar:
+          "border-transparent text-toolbar-foreground shadow-none [:disabled,:active,[data-pressed]]:shadow-none before:shadow-none data-pressed:bg-accent disabled:opacity-100 disabled:text-toolbar-foreground/55 disabled:[&_svg]:opacity-100",
         segmented:
           "border-transparent text-muted-foreground shadow-none transition-colors before:shadow-none hover:bg-segment-hover hover:text-foreground data-pressed:bg-segment data-pressed:text-foreground data-pressed:shadow-xs/10",
       },

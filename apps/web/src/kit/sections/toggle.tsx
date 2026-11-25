@@ -15,6 +15,7 @@ const VARIANTS = variantsOf<ToggleVariant>({
   ghost: true,
   outline: true,
   segmented: true,
+  toolbar: true,
 });
 const SIZES = variantsOf<ToggleSize>({
   xs: true,

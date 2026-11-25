@@ -538,6 +538,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
+  /* The top bar's ground and ink: the conversation's header and its panel toggles. */
+  --color-toolbar: var(--toolbar-background);
+  --color-toolbar-foreground: var(--contrast-toolbar-foreground);
   /* The ground of a project's open group on the closed menu's rail, and a press on it: a step of
      the menu's ink into its ground. */
   --color-rail-group: color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar));
