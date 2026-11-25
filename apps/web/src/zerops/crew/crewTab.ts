@@ -1,25 +1,38 @@
 /**
  * A view of the Crew tab asked for from outside it: the left menu's ⋯ asks a
- * Mate's tab for its setup, and a crewmate's menu on the conversation's line
- * for its job or the crew's goal, before the tab has drawn. The ask waits
+ * Mate's tab for its setup, a crew card in the conversation for its setup
+ * filled in, and a crewmate's menu on the conversation's line for its job or
+ * the crew's goal, before the tab has drawn. The ask waits
  * here, one per Mate, until that Mate's tab draws and takes it up: the view
  * opens as the tab's own state, and the ask is spent — so a tab that goes
  * away with a view open never opens it again by itself. *Crew* drops an ask
  * no tab took up. In memory only: a reload forgets it.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { CrewAskSeat } from "@t3tools/shared/crewTemplates";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 
 import { useRightPanelStore } from "~/rightPanelStore";
 
 /**
- * What the Crew tab shows in place of its column: its setup, the crew's
- * goal, or one crewmate's job — `null` for a crewmate being added, the lead
- * when `lead`.
+ * A crew the Mate set up in its conversation (a `crew-ask` card), for the
+ * setup to fill in: its goal, and each crewmate on what it runs on here.
+ */
+export interface CrewTabProposal {
+  /** The card's ask: the setup fills in once per ask it opens on. */
+  readonly key: string;
+  readonly goal: string;
+  readonly seats: ReadonlyArray<CrewAskSeat>;
+}
+
+/**
+ * What the Crew tab shows in place of its column: its setup — filled in
+ * with a crew the Mate set up, when `proposed` — the crew's goal, or one
+ * crewmate's job — `null` for a crewmate being added, the lead when `lead`.
  */
 export type CrewTabView =
-  | { readonly kind: "setup" }
+  | { readonly kind: "setup"; readonly proposed?: CrewTabProposal }
   | { readonly kind: "goal" }
   | { readonly kind: "job"; readonly handle: string | null; readonly lead?: boolean };
 

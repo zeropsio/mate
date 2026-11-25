@@ -1,11 +1,12 @@
 /**
  * crewTemplates — the starting crews of the Crew tab's setup: *Start with a
  * lead and two builders* (the lead, two builders), the empty crew *Add
- * someone yourself* begins from, and the crew the Mate proposed from the goal
- * (*Let Fen suggest a crew*). Each is a definition that parses and
- * validates as it is, so the setup opens on a crew that could start — a
- * builder on a service with a database shares it — and the person names each
- * crewmate and writes what it is responsible for there.
+ * someone yourself* begins from, the crew the Mate proposed from the goal
+ * (*Let Fen suggest a crew*) and the one it set up in its conversation (a
+ * `crew-ask`). Each is a definition that parses and validates as it is, so
+ * the setup opens on a crew that could start — a builder on a service with a
+ * database shares it — and the person names each crewmate and writes what it
+ * is responsible for there.
  *
  * A job is written to its crewmate, and its first sentence is what the Crew
  * tab's row says while the crewmate is on nothing: each opens with the line
@@ -48,6 +49,10 @@ const BUILDER_JOB = `Builds its part of the work.
 Build what your task asks. Keep each change small and covered by tests; report when the check passes.
 `;
 
+const REVIEWER_JOB = `Reviews the crew's finished work.
+Read each finished task against its Done when and the goal's rules, and say what must change before it lands. You read; you never change files.
+`;
+
 /** The goal every template starts from: a placeholder the person replaces. */
 export const CREW_BRIEF_TEMPLATE = `Describe what the crew builds and why.
 
@@ -78,6 +83,10 @@ interface Seat {
   readonly displayName: string;
   readonly kind: CrewMemberKind;
   readonly job: string;
+  /** The login it runs on, its model and effort; absent, the login's defaults. */
+  readonly login?: string;
+  readonly model?: string;
+  readonly effort?: string;
 }
 
 const seatsOf = (template: CrewTemplateId): ReadonlyArray<Seat> => {
@@ -123,12 +132,29 @@ const handleOf = (name: string): string =>
     .slice(0, HANDLE_MAX)
     .replace(/-+$/u, "") || "crewmate";
 
+/** One crewmate of a crew the Mate set up: proposed from the goal, or in its conversation. */
+export interface CrewAskSeat {
+  readonly name: string;
+  /** The one line of its part, which its row says. */
+  readonly part: string;
+  readonly kind: CrewMemberKind;
+  /** The Mate's login it runs on, its model and effort; absent, the login's defaults. */
+  readonly login?: string | undefined;
+  readonly model?: string | undefined;
+  readonly effort?: string | undefined;
+}
+
+export interface CrewFromAskInput extends Omit<CrewFromProposalInput, "proposal"> {
+  readonly seats: ReadonlyArray<CrewAskSeat>;
+}
+
 /**
- * The crew the Mate proposed, as a crew home: each crewmate named as proposed,
- * its handle from its name (once each), its job opening with its part — the
- * line its row says — and going on as the starting crew's lead or builder.
+ * The crew a Mate set up, as a crew home: each crewmate named as set up, its handle from its name
+ * (once each), its job opening with its part — the line its row says — and going on as the
+ * starting crew's lead or builder, or as a reviewer, on the login, model and effort it was set up
+ * on.
  */
-export const crewFromProposal = (input: CrewFromProposalInput): CrewDefinition => {
+export const crewFromAsk = (input: CrewFromAskInput): CrewDefinition => {
   const taken = new Set<string>();
   const unique = (name: string): string => {
     const base = handleOf(name);
@@ -140,20 +166,31 @@ export const crewFromProposal = (input: CrewFromProposalInput): CrewDefinition =
     taken.add(handle);
     return handle;
   };
-  const seat = (kind: CrewMemberKind, proposed: CrewProposal["lead"], template: string): Seat => ({
-    handle: unique(proposed.name),
-    displayName: proposed.name,
-    kind,
-    job: `${proposed.part}\n${jobRest(template)}`,
-  });
+  const jobOf = (kind: CrewMemberKind): string =>
+    kind === "lead" ? LEAD_JOB : kind === "reader" ? REVIEWER_JOB : BUILDER_JOB;
   return crewOf(
-    [
-      seat("lead", input.proposal.lead, LEAD_JOB),
-      ...input.proposal.builders.map((builder) => seat("writer", builder, BUILDER_JOB)),
-    ],
+    input.seats.map((seat): Seat => ({
+      handle: unique(seat.name),
+      displayName: seat.name,
+      kind: seat.kind,
+      job: `${seat.part}\n${jobRest(jobOf(seat.kind))}`,
+      ...(seat.login === undefined ? {} : { login: seat.login }),
+      ...(seat.model === undefined ? {} : { model: seat.model }),
+      ...(seat.effort === undefined ? {} : { effort: seat.effort }),
+    })),
     input,
   );
 };
+
+/** The crew the Mate proposed from the goal: its lead, then its builders. */
+export const crewFromProposal = ({ proposal, ...input }: CrewFromProposalInput): CrewDefinition =>
+  crewFromAsk({
+    ...input,
+    seats: [
+      { ...proposal.lead, kind: "lead" },
+      ...proposal.builders.map((builder) => ({ ...builder, kind: "writer" as const })),
+    ],
+  });
 
 const crewOf = (
   seats: ReadonlyArray<Seat>,
@@ -177,6 +214,9 @@ const crewOf = (
       ...(pool ? { pool } : {}),
       restartAfterMerge: false,
       afterLandRestart: false,
+      ...(seat.login === undefined ? {} : { login: seat.login }),
+      ...(seat.model === undefined ? {} : { model: seat.model }),
+      ...(seat.effort === undefined ? {} : { effort: seat.effort }),
       env: {},
       migrations: [],
       job: seat.job,

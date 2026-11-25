@@ -2,7 +2,7 @@
  * Mate Asks: every verb on the board ("Mate Asks", 2026-11-04) in every state, built from the ask
  * kit — approve on production, provide (the vault ask itself, and one for the Mate's own vault,
  * which only the Mate reads), connect as steps with the paste
- * fallback, reveal, and an organization's proposal with "Only Juno" — in the conversation's
+ * fallback, reveal, an organization's proposal with "Only Juno", and a crew to set up — in the conversation's
  * column at the owner's size (1786 wide, the left menu at 435, `?menu=` for another). `Full` draws
  * each as the conversation does; `Compact` as above the composer while the Mate is stopped on it.
  * `?theme=dark`, `?density=compact`.
@@ -12,7 +12,15 @@
  */
 import { deriveZeropsThreadModel, operationLineWords } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { type OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
+import {
+  type CrewStatus,
+  type OrchestrationThreadActivity,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type ServerProviderModel,
+  TurnId,
+} from "@t3tools/contracts";
 import { type ReactNode, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -32,6 +40,8 @@ import {
   AskSteps,
 } from "~/components/ask/AskCard";
 import { AskRevealed } from "~/components/ask/AskSecret";
+import { CrewAskCardView } from "~/components/ask/CrewAsk";
+import { parseCrewAsk } from "~/components/ask/crewAsk.logic";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -1125,6 +1135,121 @@ function OrganizationScope({ density }: { readonly density: AskDensity }) {
   );
 }
 
+/** A signed-in login a crewmate may run on, with its models; Claude's offer an effort. */
+function crewLogin(
+  id: string,
+  driver: string,
+  name: string,
+  models: ReadonlyArray<readonly [string, string]>,
+): ServerProvider {
+  return {
+    instanceId: ProviderInstanceId.make(id),
+    driver: ProviderDriverKind.make(driver),
+    displayName: name,
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-11-25T07:00:00.000Z",
+    threadProfile: { tools: true, reportsSpend: true },
+    models: models.map(([slug, model]): ServerProviderModel => ({
+      slug,
+      name: model,
+      isCustom: false,
+      capabilities:
+        driver === "claudeAgent"
+          ? {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Reasoning",
+                  type: "select",
+                  options: [
+                    { id: "medium", label: "Medium", isDefault: true },
+                    { id: "high", label: "High" },
+                    { id: "max", label: "Max" },
+                  ],
+                },
+              ],
+            }
+          : null,
+    })),
+    slashCommands: [],
+    skills: [],
+  };
+}
+
+const CLAUDE_LOGIN = crewLogin("claudeAgent", "claudeAgent", "Claude Code", [
+  ["claude-opus-5-5", "Claude Opus 5.5"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+]);
+const CODEX_LOGIN = crewLogin("codex", "codex", "Codex", [["gpt-6-sol", "GPT-6 Sol"]]);
+
+const CREW_ASK = parseCrewAsk(
+  JSON.stringify({
+    title: "Set up a crew for the checkout",
+    why: "The payment API and the checkout page can be built at once, and a reviewer keeps both to the goal.",
+    goal: "Rebuild the checkout so a guest can pay without an account.\n\n## Binding decisions\n- Payments go through the existing provider.\n\n## Done when\n- A guest pays on the preview and gets a receipt.",
+    crew: [
+      {
+        name: "Lead",
+        role: "lead",
+        part: "Plans the checkout and reviews each part.",
+        agent: "claude-code",
+        model: "claude-opus-5-5",
+        effort: "high",
+      },
+      {
+        name: "Sol",
+        role: "builder",
+        part: "Builds the payment API.",
+        agent: "codex",
+        model: "gpt-6-sol",
+      },
+      {
+        name: "Ivo",
+        role: "builder",
+        part: "Builds the checkout page.",
+        agent: "claude-code",
+        model: "claude-sonnet-5-5",
+      },
+      { name: "Vera", role: "reviewer", part: "Reviews each finished part against the goal." },
+    ],
+  }),
+)!;
+
+type CrewAskState = "ready" | "signIn" | "applied" | "off";
+const CREW_ASK_STATES: ReadonlyArray<readonly [CrewAskState, string]> = [
+  ["ready", "Waiting"],
+  ["signIn", "Not signed in to Codex"],
+  ["applied", "Crew set up"],
+  ["off", "Crews off"],
+];
+
+/** The crew card: drawn in the conversation only, so one density. */
+function CrewSetUp({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<CrewAskState>("ready");
+  if (density === "compact") return null;
+  const status: CrewStatus = state === "applied" ? "applied" : state === "off" ? "off" : "none";
+  return (
+    <Specimen
+      chips={<States label="Crew ask" onChange={setState} states={CREW_ASK_STATES} value={state} />}
+      density={density}
+      name="Set up a crew"
+    >
+      <CrewAskCardView
+        ask={CREW_ASK}
+        mate={{ name: MATE, tint: "sky" }}
+        onOpenCrew={() => undefined}
+        onSetUp={() => undefined}
+        providers={state === "signIn" ? [CLAUDE_LOGIN] : [CLAUDE_LOGIN, CODEX_LOGIN]}
+        status={status}
+      />
+    </Specimen>
+  );
+}
+
 function Harness() {
   const [density, setDensity] = useState<AskDensity>(
     params.get("density") === "compact" ? "compact" : "full",
@@ -1159,6 +1284,7 @@ function Harness() {
           <Choose density={density} />
           <Mirror density={density} />
           <OrganizationScope density={density} />
+          <CrewSetUp density={density} />
         </div>
       </div>
     </div>

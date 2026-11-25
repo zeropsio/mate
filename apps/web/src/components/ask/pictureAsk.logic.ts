@@ -7,6 +7,7 @@
  * the card reads its progress from the conversation itself.
  */
 import type { ChatMessage } from "~/types";
+import { askKeyOf } from "./ask.logic";
 
 export type PictureShape = "square" | "portrait" | "landscape" | "widescreen";
 const SHAPES: ReadonlySet<string> = new Set(["square", "portrait", "landscape", "widescreen"]);
@@ -83,15 +84,6 @@ function isKey<T extends object>(table: T, value: unknown): value is keyof T {
   return typeof value === "string" && Object.hasOwn(table, value);
 }
 
-/** A short name for a fence's words, the same each time they are read. */
-function keyOf(source: string): string {
-  let hash = 5381;
-  for (let index = 0; index < source.length; index++) {
-    hash = ((hash << 5) + hash + source.charCodeAt(index)) | 0;
-  }
-  return (hash >>> 0).toString(36);
-}
-
 /** The ask a `picture-ask` fence sets up, or `null` for words that set up none. */
 export function parsePictureAsk(source: string): PictureAsk | null {
   let raw: unknown;
@@ -105,7 +97,7 @@ export function parsePictureAsk(source: string): PictureAsk | null {
   const title = text(fields.title);
   if (title === undefined) return null;
   const head = {
-    key: keyOf(source.trim()),
+    key: askKeyOf(source.trim()),
     title,
     why: text(fields.why),
     target: text(fields.for),

@@ -3,6 +3,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
+import { CrewAskFence } from "./ask/CrewAsk";
 import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
@@ -2724,6 +2725,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
             {highlightedCode}
           </MarkdownCodeBlock>
         </PictureAskFence>
+      );
+    }
+    // A crew the Mate set up for the person to start (`CrewAsk`).
+    if (language === "crew-ask" && variant !== "person") {
+      return (
+        <CrewAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </CrewAskFence>
       );
     }
     if (language === "mermaid") {
