@@ -376,6 +376,20 @@ export const HqOperation = Schema.Struct({
       Schema.Struct({ projectId: Schema.String, result: Schema.optionalKey(Schema.String) }),
     ),
   ),
+  /**
+   * An application's deletion's parts in the order it runs them (`mate`, each `stage`, each
+   * `production`, then `code`), each by its project where it has one, and how it stands:
+   * `pending`, `deleting` or `gone`. Read as strings, as `kind` and `phase` are.
+   */
+  steps: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        part: Schema.String,
+        projectId: Schema.optionalKey(Schema.String),
+        state: Schema.String,
+      }),
+    ),
+  ),
 });
 export type HqOperation = typeof HqOperation.Type;
 
@@ -774,13 +788,20 @@ export interface HqApi {
   ) => Promise<void>;
   /**
    * Starts an application's deletion with its code with the person's access token (`POST
-   * /api/apps/{appId}/deletion`): HQ deletes each of `stages` (the stage projects the person
-   * reviewed) from Zerops, then the application with its code; it refuses a list that differs from
-   * its own (`held_changed`). `id` as `startMateDeletion`'s.
+   * /api/apps/{appId}/deletion`): HQ deletes its last Mate's project first where `mate` names it,
+   * then each of `stages` (the stage projects the person reviewed) and each of `productions` (the
+   * production projects the person confirmed) from Zerops, then the application with its code; it
+   * refuses a list that differs from its own (`held_changed`) and a Mate it holds that `mate` does
+   * not name (`app_has_mate`). `id` as `startMateDeletion`'s.
    */
   readonly startAppDeletion: (
     appId: string,
-    start: { readonly id: string; readonly stages: ReadonlyArray<string> },
+    start: {
+      readonly id: string;
+      readonly stages: ReadonlyArray<string>;
+      readonly mate?: string;
+      readonly productions?: ReadonlyArray<string>;
+    },
   ) => Promise<void>;
   /** Starts a stage's or a production's addition to the application (`HqEnvironmentStart`). */
   readonly startEnvironment: (appId: string, start: HqEnvironmentStart) => Promise<void>;

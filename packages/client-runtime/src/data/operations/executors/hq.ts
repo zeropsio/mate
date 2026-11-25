@@ -596,7 +596,15 @@ export function makeHqExecutor(ports: {
       case "start-app-deletion":
         return Effect.as(
           Effect.tryPromise({
-            try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }),
+            try: () =>
+              api.startAppDeletion(intent.appId, {
+                id: intent.id,
+                stages: intent.stages,
+                ...(intent.mate === undefined ? {} : { mate: intent.mate }),
+                ...(intent.productions === undefined || intent.productions.length === 0
+                  ? {}
+                  : { productions: intent.productions }),
+              }),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.appId),

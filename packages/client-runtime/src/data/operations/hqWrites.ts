@@ -79,13 +79,17 @@ declare module "../model.ts" {
     };
     /**
      * An application's deletion with its code, which HQ runs as its operation `id` on the person's
-     * token: `stages`, the stage projects the person reviewed, go from Zerops first.
+     * token: its last Mate's project `mate` where it has one, then `stages`, the stage projects
+     * the person reviewed, then `productions`, the production projects the person confirmed, go
+     * from Zerops before its code.
      */
     readonly "start-app-deletion": {
       readonly orgId: string;
       readonly appId: string;
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
+      readonly mate?: string;
+      readonly productions?: ReadonlyArray<string>;
     };
     /**
      * A stage or a production added to the application, which HQ runs as its `environment`
