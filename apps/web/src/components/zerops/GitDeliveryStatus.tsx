@@ -12,6 +12,7 @@ import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import { InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useNowMs } from "~/zerops/useNowMs";
+import { Text } from "~/components/ui/text";
 
 type GitTarget = Extract<HqEnvironmentTarget, { readonly kind: "git" }>;
 
@@ -49,7 +50,7 @@ function GitCiStatus({ repo }: { readonly repo: GitRepositoryDelivery }) {
   const line = gitCiLine(repo);
   if (line === undefined) return null;
   return (
-    <p className="mt-1.5 text-body text-muted-foreground" data-git-ci>
+    <Text className="mt-1.5" render={<p />} variant="description" data-git-ci>
       {line.words}
       {line.failed.length === 0 ? null : ": "}
       {line.failed.map((check, index) => (
@@ -65,7 +66,7 @@ function GitCiStatus({ repo }: { readonly repo: GitRepositoryDelivery }) {
         </Fragment>
       ))}
       {line.notes.map((note) => ` · ${note}`).join("")}
-    </p>
+    </Text>
   );
 }
 
@@ -93,13 +94,13 @@ export function GitDeliveryStatus({
         {delivery?.line ?? "Checking what HQ pushed…"}
       </p>
       {!showDestination ? null : connected === undefined || connected.length === 0 ? (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           {gitWhereLine(environment.tier, environment.target)}
           {showExpiry ? " · Expiry not reported" : null}
-        </p>
+        </Text>
       ) : (
         connected.map((repo) => (
-          <p className="mt-1.5 text-body text-muted-foreground" key={repo.name}>
+          <Text className="mt-1.5" render={<p />} variant="description" key={repo.name}>
             <Tooltip>
               <TooltipTrigger render={<span tabIndex={0} />}>
                 {gitWhereLine(environment.tier, environment.target, repo.remote!.url)}
@@ -111,17 +112,17 @@ export function GitDeliveryStatus({
             {!showExpiry || gitRemoteExpiry(repo.remote!, now) === undefined ? null : (
               <> · {gitRemoteExpiry(repo.remote!, now)}</>
             )}
-          </p>
+          </Text>
         ))
       )}
       {delivery?.previousVersion === undefined ? null : (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           Previous hand-over: {delivery.previousVersion}
-        </p>
+        </Text>
       )}
       {delivery?.repositories.map((repo) => (
         <Fragment key={repo.repo}>
-          <p className="mt-1.5 text-body text-muted-foreground">
+          <Text className="mt-1.5" render={<p />} variant="description">
             {repo.repo} · {repo.sha.slice(0, 7)} ·{" "}
             {repo.confirmed === undefined ? (repo.reason ?? repo.state) : "Pushed"}
             {repo.confirmed === undefined ? null : (
@@ -130,15 +131,15 @@ export function GitDeliveryStatus({
                 · <GitCommitLink remote={repo.confirmed.remote.url} sha={repo.confirmed.after} />
               </>
             )}
-          </p>
+          </Text>
           <GitCiStatus repo={repo} />
         </Fragment>
       ))}
       {delivery?.nextAction ? (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           {delivery.nextActor === "hq" ? "HQ: " : ""}
           {delivery.nextAction}
-        </p>
+        </Text>
       ) : null}
     </div>
   );

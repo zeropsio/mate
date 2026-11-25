@@ -36,6 +36,7 @@ import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./Conve
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 /** A picture sent with a message: its frame over the bubble. */
 const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
@@ -63,110 +64,112 @@ export function QueuedMessageTimelineRow({
   });
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
-      <div className="max-w-[80%] rounded-card border border-dashed border-border p-3 text-message-foreground/80">
-        {text.length > 0 ? (
-          <UserMessageBody
-            text={text}
-            terminalContexts={[]}
-            skills={ctx.skills}
-            markdownCwd={ctx.markdownCwd}
-          />
-        ) : null}
-        {attachmentCount > 0 || contextCount > 0 ? (
-          <div className={cn("text-secondary-label text-caption", text.length > 0 && "mt-1.5")}>
-            {[
-              attachmentCount > 0
-                ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
-                : null,
-              contextCount > 0
-                ? `${contextCount} context item${contextCount === 1 ? "" : "s"}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-          </div>
-        ) : null}
-        <div className="mt-2 flex items-center gap-4 text-secondary-label text-caption">
-          {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
-          {state.line === null ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={<span className="inline-flex h-6 items-center" />}
-                aria-label={`Queued. ${state.clockLabel}.`}
-              >
-                <ClockIcon className="size-3.5" aria-hidden />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">{state.clockLabel}</TooltipPopup>
-            </Tooltip>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className={cn(
-                      "min-w-0 truncate leading-6",
-                      state.line.tone === "error" && "text-destructive",
-                    )}
-                    data-queued-line={state.line.tone}
-                  />
-                }
-              >
-                {state.line.text}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">{state.line.text}</TooltipPopup>
-            </Tooltip>
-          )}
-          <div className="ml-auto flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    onPointerDown={(event) => event.preventDefault()}
-                    // Held back while an answer is due, never pressed to do nothing: it says why.
-                    aria-disabled={state.send.disabled ? true : undefined}
-                    onClick={() => {
-                      if (!state.send.disabled) ctx.onSteerQueuedMessage(queuedMessage.id);
-                    }}
-                    aria-label={state.send.label}
-                  />
-                }
-              >
-                {state.send.retry ? (
-                  <RotateCcwIcon className="size-3.5" aria-hidden />
-                ) : (
-                  <ArrowUpIcon className="size-3.5" aria-hidden />
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {state.send.label}
-                {row.isNext && !state.send.disabled && ctx.steerQueuedMessageShortcutLabel
-                  ? ` (${ctx.steerQueuedMessageShortcutLabel})`
-                  : null}
-              </TooltipPopup>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
-                    aria-label="Cancel and return to the composer"
-                  />
-                }
-              >
-                <XIcon className="size-3.5" aria-hidden />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">Cancel and return to the composer</TooltipPopup>
-            </Tooltip>
+      <Card className="max-w-[80%]" variant="slot">
+        <div className="p-3 text-message-foreground/80">
+          {text.length > 0 ? (
+            <UserMessageBody
+              text={text}
+              terminalContexts={[]}
+              skills={ctx.skills}
+              markdownCwd={ctx.markdownCwd}
+            />
+          ) : null}
+          {attachmentCount > 0 || contextCount > 0 ? (
+            <div className={cn("text-secondary-label text-caption", text.length > 0 && "mt-1.5")}>
+              {[
+                attachmentCount > 0
+                  ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
+                  : null,
+                contextCount > 0
+                  ? `${contextCount} context item${contextCount === 1 ? "" : "s"}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </div>
+          ) : null}
+          <div className="mt-2 flex items-center gap-4 text-secondary-label text-caption">
+            {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
+            {state.line === null ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span className="inline-flex h-6 items-center" />}
+                  aria-label={`Queued. ${state.clockLabel}.`}
+                >
+                  <ClockIcon className="size-3.5" aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">{state.clockLabel}</TooltipPopup>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      className={cn(
+                        "min-w-0 truncate leading-6",
+                        state.line.tone === "error" && "text-destructive",
+                      )}
+                      data-queued-line={state.line.tone}
+                    />
+                  }
+                >
+                  {state.line.text}
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">{state.line.text}</TooltipPopup>
+              </Tooltip>
+            )}
+            <div className="ml-auto flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      onPointerDown={(event) => event.preventDefault()}
+                      // Held back while an answer is due, never pressed to do nothing: it says why.
+                      aria-disabled={state.send.disabled ? true : undefined}
+                      onClick={() => {
+                        if (!state.send.disabled) ctx.onSteerQueuedMessage(queuedMessage.id);
+                      }}
+                      aria-label={state.send.label}
+                    />
+                  }
+                >
+                  {state.send.retry ? (
+                    <RotateCcwIcon className="size-3.5" aria-hidden />
+                  ) : (
+                    <ArrowUpIcon className="size-3.5" aria-hidden />
+                  )}
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  {state.send.label}
+                  {row.isNext && !state.send.disabled && ctx.steerQueuedMessageShortcutLabel
+                    ? ` (${ctx.steerQueuedMessageShortcutLabel})`
+                    : null}
+                </TooltipPopup>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
+                      aria-label="Cancel and return to the composer"
+                    />
+                  }
+                >
+                  <XIcon className="size-3.5" aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">Cancel and return to the composer</TooltipPopup>
+              </Tooltip>
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

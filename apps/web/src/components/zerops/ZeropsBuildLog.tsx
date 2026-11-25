@@ -28,6 +28,7 @@ import {
 } from "~/components/ui/dialog";
 import { Loading } from "~/components/ui/loading";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 export interface ZeropsBuildLogLine {
   readonly id: string;
@@ -125,9 +126,9 @@ export function ZeropsBuildLog({
             {lines.length === 0 && emptyLogWords(status) === null ? (
               <Loading count={4} label="This build's log" shape="lines" />
             ) : lines.length === 0 ? (
-              <p className="text-muted-foreground text-body" data-zerops-build-log-empty>
+              <Text render={<p />} variant="description" data-zerops-build-log-empty>
                 {emptyLogWords(status)}
-              </p>
+              </Text>
             ) : (
               <BuildLogLines lines={lines} live={status === "live"} />
             )}

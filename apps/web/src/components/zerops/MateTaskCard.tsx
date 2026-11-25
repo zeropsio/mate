@@ -38,6 +38,7 @@ import { Button, InlineButton } from "../ui/button";
 import { HeaderReviewDoor } from "./SidebarProjectReview";
 import { taskReviewItems } from "./SidebarProjectReview.logic";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 /** "acme/tea-shop#12 · opened by nova-dev": where the task came from, and whose it is. */
 function mateTaskCardSource(task: MateTaskSource): string {
@@ -271,7 +272,7 @@ export function MateTaskCardView({
   return (
     <Card data-zerops-surface="mate-task-card" render={<article />}>
       <div className="flex flex-col gap-1.5 px-5 pt-3.5 pb-3">
-        <div className="flex min-w-0 items-center gap-2 text-line text-muted-foreground">
+        <Text className="flex min-w-0 items-center gap-2" render={<div />} variant="remark">
           <SourceMark source={task} />
           <span className="min-w-0 truncate">{mateTaskCardSource(task)}</span>
           {link === null ? null : (
@@ -282,8 +283,10 @@ export function MateTaskCardView({
               </InlineButton>
             </span>
           )}
-        </div>
-        <h3 className="text-emphasis font-semibold text-balance text-foreground">{task.title}</h3>
+        </Text>
+        <Text render={<h3 />} variant="headline">
+          {task.title}
+        </Text>
         {said === "" ? null : (
           <div className="flex flex-col items-start gap-1">
             <p
@@ -303,8 +306,10 @@ export function MateTaskCardView({
           </div>
         )}
         {/* Its facts' line holds its room from the first frame: what lands moves nothing. */}
-        <div
-          className="mt-1 flex min-h-6 flex-wrap items-center gap-x-4 gap-y-1 text-line text-muted-foreground"
+        <Text
+          className="mt-1 flex min-h-6 flex-wrap items-center gap-x-4 gap-y-1"
+          render={<div />}
+          variant="remark"
           data-zerops-surface="mate-task-facts"
         >
           {session.workedMs === null ? null : (
@@ -338,7 +343,7 @@ export function MateTaskCardView({
               </span>
             )}
           </span>
-        </div>
+        </Text>
       </div>
     </Card>
   );
@@ -367,9 +372,9 @@ export function MateTaskMessageRow({ message }: { readonly message: MateTaskMess
   return (
     <Card data-zerops-surface="mate-task-message">
       <div className="flex flex-col gap-1 px-4 py-2.5">
-        <p className="min-w-0 truncate text-line text-muted-foreground">
+        <Text className="min-w-0" render={<p />} truncate variant="remark">
           {mateTaskMessageHeading(message)}
-        </p>
+        </Text>
         <p className="max-h-60 min-w-0 overflow-y-auto text-prose break-words whitespace-pre-wrap text-foreground">
           {message.text}
         </p>

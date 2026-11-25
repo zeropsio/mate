@@ -89,6 +89,14 @@ import {
   type UsagePagePreferences,
 } from "./usagePagePreferences";
 import { Text } from "~/components/ui/text";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
 
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
@@ -706,7 +714,7 @@ export function UsagePage({
                   </Text>
                   <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
-                      <div className="h-5 w-36 rounded-mark bg-muted" />
+                      <Skeleton className="h-5 w-36" />
                     ) : costsHidden ? (
                       <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
@@ -795,39 +803,38 @@ export function UsagePage({
                       onScopeChange={onScopeChange}
                     />
                   ) : breakdown === "model" ? (
-                    <table className="w-full table-fixed text-body">
+                    <Table className="table-fixed" size="md">
                       <colgroup>
                         <col className="w-2/5" />
                         <col className="w-1/5" />
                         <col className="w-1/5" />
                         <col className="w-1/5" />
                       </colgroup>
-                      <thead>
-                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
-                          <th className="py-2 font-normal">Model</th>
-                          <th className="py-2 text-right font-normal">Priced cost</th>
-                          <th className="py-2 text-right font-normal">Share</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Model</TableHead>
+                          <TableHead align="end">Priced cost</TableHead>
+                          <TableHead align="end">Share</TableHead>
+                          <TableHead align="end">Tokens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {breakdownModels.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                              {sections.models.kind === "read"
-                                ? "No recorded model data."
-                                : "Model values are not available."}
-                            </td>
-                          </tr>
+                          <TableRow>
+                            <TableCell colSpan={4} tone="muted">
+                              <span className="block py-6 text-center">
+                                {sections.models.kind === "read"
+                                  ? "No recorded model data."
+                                  : "Model values are not available."}
+                              </span>
+                            </TableCell>
+                          </TableRow>
                         ) : (
                           breakdownModels.map((model) => {
                             const share = modelShare(model, dimensionMetric);
                             return (
-                              <tr
-                                key={`${model.provider}:${model.model}`}
-                                className="border-b border-border/50 transition-colors hover:bg-muted/50"
-                              >
-                                <td className="py-2 text-foreground">
+                              <TableRow key={`${model.provider}:${model.model}`}>
+                                <TableCell>
                                   <InlineButton
                                     tone="plain"
                                     className="max-w-full"
@@ -842,28 +849,28 @@ export function UsagePage({
                                       <span className="truncate">{model.model}</span>
                                     </span>
                                   </InlineButton>
-                                </td>
-                                <td className="py-2 text-right text-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end">
                                   {isModelCostUnknown(model) ? (
                                     <span className="text-muted-foreground">{unpriced}</span>
                                   ) : (
                                     formatUsageCost(model)
                                   )}
-                                </td>
-                                <td className="py-2 text-right text-muted-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end" tone="muted">
                                   {share === null ? "—" : formatPercent(share)}
-                                </td>
-                                <td className="py-2 text-right text-muted-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end" tone="muted">
                                   {formatTokens(model.totalTokens)}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })
                         )}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   ) : (
-                    <table className="w-full table-fixed text-body">
+                    <Table className="table-fixed" size="md">
                       <colgroup>
                         <col className="w-2/5" />
                         {activeProviders.map((provider) => (
@@ -872,65 +879,58 @@ export function UsagePage({
                         <col style={{ width: timeValueColumnWidth }} />
                         <col style={{ width: timeValueColumnWidth }} />
                       </colgroup>
-                      <thead>
-                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
-                          <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{isPast24Hours ? "Hour" : "Day"}</TableHead>
                           {activeProviders.map((provider) => (
-                            <th key={provider} className="py-2 text-right font-normal">
+                            <TableHead align="end" key={provider}>
                               {PROVIDER_PRESENTATION[provider].label} (
                               {metric === "tokens" ? "tokens" : "cost"})
-                            </th>
+                            </TableHead>
                           ))}
-                          <th className="py-2 text-right font-normal">Priced cost</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                          <TableHead align="end">Priced cost</TableHead>
+                          <TableHead align="end">Tokens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {breakdownPeriods.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={activeProviders.length + 3}
-                              className="py-6 text-center text-muted-foreground"
-                            >
-                              {sections.periods.kind === "read"
-                                ? "No recorded usage in this period."
-                                : "Period values are not available."}
-                            </td>
-                          </tr>
+                          <TableRow>
+                            <TableCell colSpan={activeProviders.length + 3} tone="muted">
+                              <span className="block py-6 text-center">
+                                {sections.periods.kind === "read"
+                                  ? "No recorded usage in this period."
+                                  : "Period values are not available."}
+                              </span>
+                            </TableCell>
+                          </TableRow>
                         ) : (
                           breakdownPeriods.map((period) => (
-                            <tr
-                              key={"hourStart" in period ? period.hourStart : period.day}
-                              className="border-b border-border/50 transition-colors hover:bg-muted/50"
-                            >
-                              <td className="py-2 text-foreground">
+                            <TableRow key={"hourStart" in period ? period.hourStart : period.day}>
+                              <TableCell>
                                 {"hourStart" in period
                                   ? formatDateTimeShort(period.hourStart, window.timeZone)
                                   : formatDayShort(period.day)}
-                              </td>
+                              </TableCell>
                               {activeProviders.map((provider) => (
-                                <td
-                                  key={provider}
-                                  className="py-2 text-right text-muted-foreground tabular-nums"
-                                >
+                                <TableCell align="end" key={provider} tone="muted">
                                   {period.byProvider.get(provider) === undefined
                                     ? "No data"
                                     : metric === "tokens"
                                       ? formatTokens(period.byProvider.get(provider)!.totalTokens)
                                       : formatUsageCost(period.byProvider.get(provider)!)}
-                                </td>
+                                </TableCell>
                               ))}
-                              <td className="py-2 text-right text-foreground tabular-nums">
+                              <TableCell align="end">
                                 {period.costKnown === false ? unpriced : formatUsageCost(period)}
-                              </td>
-                              <td className="py-2 text-right text-muted-foreground tabular-nums">
+                              </TableCell>
+                              <TableCell align="end" tone="muted">
                                 {formatTokens(period.totalTokens)}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))
                         )}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   )}
                 </section>
               </>
@@ -1004,7 +1004,7 @@ function UsageTotals({
             label={label}
             value={
               totals === null ? (
-                <span aria-hidden className="block h-6 w-16 rounded-mark bg-muted" />
+                <Skeleton aria-hidden className="h-6 w-16" />
               ) : unknown && key !== "totalTokens" ? (
                 "Unknown"
               ) : (

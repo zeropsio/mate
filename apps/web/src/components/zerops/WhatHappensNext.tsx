@@ -15,6 +15,7 @@ import { SignInPhrase } from "./ZeropsArrivalSteps";
 import type { WhatHappensNext as Next } from "./whatHappensNext.logic";
 import { Card } from "~/components/ui/card";
 import { StepNumber } from "~/components/ui/step-number";
+import { Text } from "~/components/ui/text";
 
 interface WhatHappensNextVersion {
   readonly key: string;
@@ -37,9 +38,9 @@ export function WhatHappensNext({
       variant="inset"
     >
       <div className="flex flex-col gap-1 px-3.5 py-2.5">
-        <h3 className="text-caption leading-4 font-medium text-muted-foreground" id={id}>
+        <Text render={<h3 />} variant="label" id={id}>
           What happens next
-        </h3>
+        </Text>
         <div className="grid">
           {versions.map(({ key, next, shown }) => (
             <div
@@ -72,7 +73,9 @@ export function WhatHappensNext({
                   </li>
                 ))}
               </ol>
-              <p className="ps-7 text-line leading-5 text-muted-foreground">{next.note}</p>
+              <Text className="ps-7" render={<p />} variant="remark">
+                {next.note}
+              </Text>
             </div>
           ))}
         </div>

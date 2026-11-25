@@ -1,6 +1,7 @@
 import { InlineButton } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Text } from "~/components/ui/text";
 
 /**
  * A Mate whose link is being made again, beside its name in the conversation's header: a small
@@ -19,7 +20,7 @@ export function MateLinkMarker({
   readonly onTryNow?: (() => void) | undefined;
 }) {
   return (
-    <span className="inline-flex min-w-0 items-center gap-1.5 text-caption font-medium text-muted-foreground">
+    <Text className="inline-flex min-w-0 items-center gap-1.5" variant="label">
       <Tooltip>
         <TooltipTrigger
           render={
@@ -42,6 +43,6 @@ export function MateLinkMarker({
           Try now
         </InlineButton>
       )}
-    </span>
+    </Text>
   );
 }

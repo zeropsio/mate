@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-type TableSize = "sm" | "md";
+type TableSize = "sm" | "md" | "report";
 
 const TableSizeContext = React.createContext<TableSize>("sm");
 
@@ -13,7 +13,10 @@ const TableSizeContext = React.createContext<TableSize>("sm");
  *
  * `size`: `sm` is a dense table of facts, its words and its column names in caption type; `md` is
  * a table of people or places, its rows 44 px tall in body type, its column names muted caption
- * words standing on the rows' rule.
+ * words standing on the rows' rule; `report` is a report of facts set edge to edge in a card (a
+ * server's processes, its slowest spans, its log), in caption type: its cells 16 px apart and
+ * 12 px above and below, its first and last columns at the card's inset (20 px from `sm`), each
+ * cell's words top-aligned and wrapping, its column names muted on the rows' rule.
  *
  * What sticks (a header, a first column) stands on the table's ground, `--color-table-ground`: the
  * card's, unless the surface the table sits in sets `--table-ground` to its own.
@@ -75,7 +78,7 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
 }
 
 /**
- * A row. In an `sm` table it lights under the pointer; an `md` table's rows hold their own presses
+ * A row. In an `sm` or a `report` table it lights under the pointer; an `md` table's rows hold their own presses
  * (a person's menu, a level's), so the row itself stays still.
  */
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
@@ -98,6 +101,14 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 const STICKY_COLUMN = "sticky start-0 z-1 bg-table-ground";
 
 /**
+ * Where a column's words stand: `start`, or `end` for a column of figures (a cost, a share, a
+ * count, a duration), set on its head and on each of its cells so the figures and their name line
+ * up on the column's end edge, each digit as wide as the next.
+ */
+type TableAlign = "start" | "end";
+const ALIGN_END = "text-end tabular-nums";
+
+/**
  * A column's name, or a row's (`scope="row"`). `sticky` holds it at the scrolling box's start, so
  * the column it heads stays in view as the others scroll sideways under it: put it on the first
  * cell of every row, the header's included.
@@ -105,8 +116,12 @@ const STICKY_COLUMN = "sticky start-0 z-1 bg-table-ground";
 function TableHead({
   className,
   sticky = false,
+  align = "start",
   ...props
-}: React.ComponentProps<"th"> & { readonly sticky?: boolean }) {
+}: Omit<React.ComponentProps<"th">, "align"> & {
+  readonly sticky?: boolean;
+  readonly align?: TableAlign;
+}) {
   const size = React.use(TableSizeContext);
   return (
     <th
@@ -115,8 +130,11 @@ function TableHead({
       className={cn(
         size === "md"
           ? "h-8 px-2 pb-1.5 text-left align-bottom font-medium whitespace-nowrap text-caption text-muted-foreground in-[tbody]:h-11 in-[tbody]:pb-0 in-[tbody]:align-middle in-[tbody]:font-normal in-[tbody]:text-body in-[tbody]:text-foreground"
-          : "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+          : size === "report"
+            ? "h-9 px-4 py-2 text-left align-bottom font-medium whitespace-nowrap text-caption text-muted-foreground sm:first:ps-5 sm:last:pe-5"
+            : "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         sticky && STICKY_COLUMN,
+        align === "end" && ALIGN_END,
         className,
       )}
       {...props}
@@ -124,12 +142,22 @@ function TableHead({
   );
 }
 
-/** A cell. `sticky` holds it at the scrolling box's start, as its column's `TableHead sticky`. */
+/**
+ * A cell. `sticky` holds it at the scrolling box's start, as its column's `TableHead sticky`.
+ * `tone="muted"` says a column that stands behind the row's name and figures (a command, a PID, a
+ * share, an end time) in the muted ink.
+ */
 function TableCell({
   className,
   sticky = false,
+  align = "start",
+  tone = "default",
   ...props
-}: React.ComponentProps<"td"> & { readonly sticky?: boolean }) {
+}: Omit<React.ComponentProps<"td">, "align"> & {
+  readonly sticky?: boolean;
+  readonly align?: TableAlign;
+  readonly tone?: "default" | "muted";
+}) {
   const size = React.use(TableSizeContext);
   return (
     <td
@@ -138,8 +166,12 @@ function TableCell({
       className={cn(
         size === "md"
           ? "h-11 px-2 align-middle whitespace-nowrap"
-          : "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+          : size === "report"
+            ? "px-4 py-3 align-top sm:first:ps-5 sm:last:pe-5"
+            : "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         sticky && STICKY_COLUMN,
+        align === "end" && ALIGN_END,
+        tone === "muted" && "text-muted-foreground",
         className,
       )}
       {...props}

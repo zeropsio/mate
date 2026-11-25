@@ -31,6 +31,7 @@ import {
 } from "../ui/dialog";
 import { MateFace } from "./primitives";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsAskConfirm({
   ask,
@@ -73,9 +74,9 @@ export function ZeropsAskConfirm({
               <p className="min-w-0 px-3 py-2 text-body wrap-anywhere text-foreground">{ask}</p>
             </Card>
           </div>
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             It is sent straight away and {who} starts working; you can stop it in the conversation.
-          </p>
+          </Text>
         </div>
       </DialogPanel>
       <DialogFooter>

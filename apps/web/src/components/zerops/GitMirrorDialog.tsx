@@ -25,6 +25,7 @@ import { connectLeadLine, repoState } from "./gitMirror.logic";
 import { GithubConnectPicker } from "./github/GithubConnectPicker";
 import { Loading } from "~/components/ui/loading";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 export function GitMirrorDialog({
   appId,
@@ -90,7 +91,7 @@ export function GitMirrorDialog({
                       pressable
                       render={<button type="button" />}
                       size="sm"
-                      title={<span className="font-mono">{entry.name}</span>}
+                      title={<Text variant="code">{entry.name}</Text>}
                     />
                   );
                 })

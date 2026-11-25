@@ -45,6 +45,7 @@ import {
   type WaitingMate,
 } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
+import { Text } from "~/components/ui/text";
 
 /** What the list asks of the menu: a Mate's conversation, and the fix request's composer. */
 export interface WaitingVerbs {
@@ -229,10 +230,13 @@ export function WaitingList({
         <SectionHeader
           action={
             // A key's hint means nothing under a finger.
-            <span className="inline-flex items-center gap-1.5 text-body text-muted-foreground pointer-coarse:hidden">
+            <Text
+              className="inline-flex items-center gap-1.5 pointer-coarse:hidden"
+              variant="description"
+            >
               <Kbd>⌥↓</Kbd>
               next
-            </span>
+            </Text>
           }
           level={3}
           title="Waiting on you"

@@ -95,6 +95,7 @@ import {
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /** One of the project's Mates, as its section and the fix list it. */
 export interface SitesMate extends ChipMate {
@@ -1305,9 +1306,9 @@ function SitesLinks({
   }
   if (links.length === 0) {
     return sayNone ? (
-      <p className="pt-0.5 pr-2.5 pb-2 pl-7.5 text-caption text-muted-foreground">
+      <Text className="pt-0.5 pr-2.5 pb-2 pl-7.5" render={<p />} variant="note">
         No public address yet
-      </p>
+      </Text>
     ) : null;
   }
   return links.map((link) => {

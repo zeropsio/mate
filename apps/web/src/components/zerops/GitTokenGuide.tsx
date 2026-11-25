@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import { Input } from "~/components/ui/input";
+import { Text } from "~/components/ui/text";
 
 export function GitTokenGuide({ project }: { readonly project: string }) {
   const id = useId();
@@ -12,15 +13,15 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
     <section aria-label="Direct push token guide" className="flex min-w-0 flex-col gap-3">
       <div>
         <h2 className="text-emphasis font-medium text-foreground">Token for your repository</h2>
-        <p className="mt-1 text-caption text-muted-foreground">
+        <Text className="mt-1" render={<p />} variant="note">
           Direct push to a branch only. This guide does not connect a repository or check access.
-        </p>
+        </Text>
       </div>
       <Card variant="flat">
         <div className="flex min-w-0 flex-col gap-3 p-4">
-          <label htmlFor={id} className="text-body font-medium text-foreground">
+          <Text render={<label htmlFor={id} />} variant="heading">
             Repository HTTPS URL
-          </label>
+          </Text>
           <Input
             id={id}
             type="url"
@@ -33,9 +34,11 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
             value={repositoryUrl}
             onChange={(event) => setRepositoryUrl(event.target.value)}
           />
-          <div
+          <Text
+            className="flex flex-col gap-2"
+            render={<div />}
+            variant="description"
             id={`${id}-instructions`}
-            className="flex flex-col gap-2 text-body text-muted-foreground"
           >
             {guide.kind === "empty" ? (
               <p>Enter your repository URL to see which token to create.</p>
@@ -92,7 +95,7 @@ export function GitTokenGuide({ project }: { readonly project: string }) {
                 </p>
               </>
             )}
-          </div>
+          </Text>
         </div>
       </Card>
     </section>

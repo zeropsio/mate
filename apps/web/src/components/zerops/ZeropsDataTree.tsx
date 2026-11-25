@@ -30,6 +30,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Row } from "~/components/ui/row";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsDataTreeProps {
   readonly rootPath: ZeropsDataConsolePath;
@@ -132,9 +133,9 @@ function renderNodeList({
   return (
     <ul className="space-y-0.5" data-zerops-data-tree-list={key}>
       {visibleNodes.length === 0 ? (
-        <li className="text-muted-foreground text-caption" style={{ paddingLeft: depth * 12 }}>
+        <Text render={<li />} variant="note" style={{ paddingLeft: depth * 12 }}>
           {emptyLabel}
-        </li>
+        </Text>
       ) : null}
       {visibleNodes.map((node) => (
         <li key={treePathKey(node.path)} style={{ paddingLeft: depth * 12 }}>

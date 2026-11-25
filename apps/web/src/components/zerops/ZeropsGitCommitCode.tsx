@@ -21,6 +21,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 
 import { AnnotatableCodeView } from "../diffs/AnnotatableCodeView";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 export default function ZeropsGitCommitCode({
   environmentId,
@@ -91,7 +92,9 @@ export default function ZeropsGitCommitCode({
       ) : null}
       {patch?.kind === "raw" ? (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <p className="text-caption text-muted-foreground">{patch.reason}</p>
+          <Text render={<p />} variant="note">
+            {patch.reason}
+          </Text>
           <pre className="overflow-auto whitespace-pre-wrap text-caption">{patch.text}</pre>
         </div>
       ) : (

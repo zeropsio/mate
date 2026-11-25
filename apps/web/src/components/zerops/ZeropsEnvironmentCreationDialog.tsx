@@ -49,6 +49,7 @@ import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
 import type { EnvironmentCreationChoice } from "~/zerops/useEnvironmentCreation";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsEnvironmentCreationFormProps {
   readonly groupName: string;
@@ -214,15 +215,19 @@ function EnvironmentSheet(
       <DialogPanel>
         <div className="flex flex-col gap-6">
           <section aria-label="Where" className="flex flex-col gap-1">
-            <h3 className="text-muted-foreground text-caption">Where</h3>
-            <p className="font-medium text-foreground text-body">{defaultName}</p>
-            <p className="text-muted-foreground text-body">
+            <Text render={<h3 />} variant="label">
+              Where
+            </Text>
+            <Text render={<p />} variant="heading">
+              {defaultName}
+            </Text>
+            <Text render={<p />} variant="description">
               {/* The person's project is the application: this is a copy of it, never a second
                   project (the run's owner read "a new Zerops project" as another in the menu). */}
               {role === "prod"
                 ? `A production environment for ${groupName}, reserved for its first release.`
                 : `A separate copy of ${groupName} with its own address, ready in a few minutes.`}
-            </p>
+            </Text>
           </section>
           <div className="flex flex-col gap-1">
             <Button className={SHEET_LINK} onClick={props.onYourself} size="sm" variant="link">
@@ -240,9 +245,9 @@ function EnvironmentSheet(
                   Use a branch in your Git repository instead…
                 </Button>
                 {gitOffered ? null : (
-                  <p className="text-muted-foreground text-caption">
+                  <Text render={<p />} variant="note">
                     {props.git.unavailableReason ?? "HQ has not said yet."}
-                  </p>
+                  </Text>
                 )}
               </>
             )}
@@ -252,7 +257,9 @@ function EnvironmentSheet(
       <DialogFooter>
         {held === undefined ? null : (
           <div className="me-auto flex flex-col items-start self-center" role="status">
-            <p className="text-muted-foreground text-body">{held}</p>
+            <Text render={<p />} variant="description">
+              {held}
+            </Text>
             {submit.kind === "held" &&
             submit.action === "setup-change" &&
             props.onSetupChange !== undefined ? (
@@ -366,9 +373,7 @@ function EnvironmentForm({
                 >
                   <span className="flex flex-col gap-0.5">
                     <span>Has its own Mate</span>
-                    <span className="text-caption text-muted-foreground">
-                      {agentSwitchNote(role)}
-                    </span>
+                    <Text variant="note">{agentSwitchNote(role)}</Text>
                   </span>
                   <Switch
                     checked={withAgent}
@@ -399,7 +404,7 @@ function EnvironmentForm({
                       className="flex items-center justify-between gap-3 px-3 py-2.5"
                       role="status"
                     >
-                      <span className="text-caption text-muted-foreground">{held}</span>
+                      <Text variant="note">{held}</Text>
                       {recipe === "unreadable" && onRecipeRetry !== undefined ? (
                         <Button
                           aria-busy={recipeRereading === true || undefined}

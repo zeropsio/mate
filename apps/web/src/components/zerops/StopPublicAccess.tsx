@@ -1,5 +1,6 @@
 import { usePublicAccess, type PublicAccessView } from "~/zerops/usePublicAccess";
 import { Button, InlineButton } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 /**
  * Address failures are independent of whether the deployed version is healthy. An address put in
@@ -20,9 +21,11 @@ export function StopPublicAccessStatus({
   if (!access.bound || (access.state === "ready" && pending.length === 0)) return null;
   const failed = access.state === "failed";
   return (
-    <div
+    <Text
+      className="flex items-center gap-2"
+      render={<div />}
+      variant="note"
       data-zerops-surface="stop-public-access-status"
-      className="flex items-center gap-2 text-caption text-muted-foreground"
     >
       <span>
         {failed
@@ -36,7 +39,7 @@ export function StopPublicAccessStatus({
           Again
         </Button>
       ) : null}
-    </div>
+    </Text>
   );
 }
 

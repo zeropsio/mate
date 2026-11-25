@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 
 import { UsageMateTaskRowsView } from "~/components/usage/UsageAutomated";
 import "../index.css";
+import { Table, TableBody, TableCell, TableRow } from "~/components/ui/table";
 
 const nothing = () => {};
 
@@ -52,11 +53,13 @@ const UNTIL = "2026-10-18T00:00:00.000Z";
 
 function MateRow({ name, cost }: { readonly name: string; readonly cost: string }) {
   return (
-    <tr className="border-b border-border/50 text-body">
-      <td className="py-2 ps-6">{name}</td>
-      <td className="py-2 text-right tabular-nums">{cost}</td>
-      <td className="w-8" />
-    </tr>
+    <TableRow>
+      <TableCell>
+        <span className="block ps-6">{name}</span>
+      </TableCell>
+      <TableCell align="end">{cost}</TableCell>
+      <TableCell className="w-8" />
+    </TableRow>
   );
 }
 
@@ -64,9 +67,9 @@ function Case({ title, children }: { readonly title: string; readonly children: 
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-caption font-medium text-muted-foreground">{title}</h2>
-      <table className="w-full border-collapse">
-        <tbody>{children}</tbody>
-      </table>
+      <Table size="md">
+        <TableBody>{children}</TableBody>
+      </Table>
     </section>
   );
 }

@@ -10,6 +10,7 @@ import {
 
 import { defineKitSection } from "../kitSection";
 import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
+import { Card } from "~/components/ui/card";
 
 const ROWS = [
   { name: "storefront", runtime: "Node.js 22", state: "Running", tone: "success" as const },
@@ -21,6 +22,21 @@ const ROWS = [
     state: "Needs attention",
     tone: "warning" as const,
   },
+];
+
+const MODELS = [
+  { name: "claude-opus", cost: "$41.20", tokens: "8,214,903" },
+  { name: "gpt-5", cost: "$9.75", tokens: "1,120,488" },
+  { name: "gemini-pro", cost: "$0.42", tokens: "61,002" },
+];
+
+const SPANS = [
+  {
+    name: "provider.turn",
+    cause: "The provider closed the stream before the turn ended, so the run was retried once.",
+    duration: "12.4s",
+  },
+  { name: "git.push", cause: "Rejected: the branch moved on the remote.", duration: "840ms" },
 ];
 
 const PEOPLE = [
@@ -65,6 +81,74 @@ export default defineKitSection({
                       <TableCell>
                         <Badge tone={row.tone}>{row.state}</Badge>
                       </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+          <Specimen align="start" label='<Table size="report">' span="row">
+            <Card className="w-full max-w-[40rem] overflow-hidden">
+              <Table size="report">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Span</TableHead>
+                    <TableHead>Cause</TableHead>
+                    <TableHead align="end">Duration</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {SPANS.map((span) => (
+                    <TableRow key={span.name}>
+                      <TableCell>{span.name}</TableCell>
+                      <TableCell tone="muted">{span.cause}</TableCell>
+                      <TableCell align="end">{span.duration}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </Specimen>
+          <Specimen align="start" label='<TableCell tone="muted">' span="row">
+            <div className="w-full max-w-[40rem]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Runtime</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ROWS.slice(0, 3).map((row) => (
+                    <TableRow key={row.name}>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell tone="muted">{row.runtime}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
+          <Specimen
+            align="start"
+            label='<TableHead align="end"> · <TableCell align="end">'
+            span="row"
+          >
+            <div className="w-full max-w-[40rem]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Model</TableHead>
+                    <TableHead align="end">Cost</TableHead>
+                    <TableHead align="end">Tokens</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {MODELS.map((model) => (
+                    <TableRow key={model.name}>
+                      <TableCell>{model.name}</TableCell>
+                      <TableCell align="end">{model.cost}</TableCell>
+                      <TableCell align="end">{model.tokens}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

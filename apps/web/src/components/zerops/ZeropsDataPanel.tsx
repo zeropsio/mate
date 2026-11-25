@@ -82,6 +82,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Badge } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
 import { Spinner } from "~/components/ui/spinner";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsDataPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -319,9 +320,9 @@ export function ZeropsDataPanel({
             size="sm"
             variant="flat"
           >
-            <p className="text-muted-foreground text-caption">
+            <Text render={<p />} variant="note">
               This Mate doesn't include the data console yet.
-            </p>
+            </Text>
             <ZeropsMateUpdateControl environmentId={environmentId}>
               {({ line }) => line}
             </ZeropsMateUpdateControl>
@@ -695,16 +696,16 @@ export function ZeropsDataPanel({
     status === "idle" || status === "starting" ? (
       // Never a state word: the console opening is not the database starting (the onboarding run,
       // 2026-10-16: "Starting" over a database half an hour up).
-      <p className="text-muted-foreground text-caption" data-zerops-data-starting>
+      <Text render={<p />} variant="note" data-zerops-data-starting>
         Opening this project's data…
-      </p>
+      </Text>
     ) : status === "unavailable" ? (
       <div className="space-y-2">
-        <p className="text-muted-foreground text-caption" data-zerops-data-unavailable>
+        <Text render={<p />} variant="note" data-zerops-data-unavailable>
           {session?.reason !== undefined
             ? `Data isn't available right now. ${session.reason}`
             : "Data isn't available right now."}
-        </p>
+        </Text>
         <Button
           data-zerops-data-retry
           onClick={() => requestServices()}
@@ -796,10 +797,10 @@ export function ZeropsDataPanel({
                  Refresh and eight hundred pixels of nothing. Saying so is not
                  an error — most projects have no database — so it is a line,
                  not a warning. */
-                    <p className="text-muted-foreground text-caption" data-zerops-data-empty>
+                    <Text render={<p />} variant="note" data-zerops-data-empty>
                       This project has no database or storage service. Add one and it will be
                       browsable here.
-                    </p>
+                    </Text>
                   ) : (
                     serviceList(
                       serviceRows.map((row) => {
@@ -928,10 +929,10 @@ export function ZeropsDataPanel({
 
   const treeView = (
     <div className="space-y-1">
-      <p className="text-caption text-muted-foreground">
+      <Text render={<p />} variant="note">
         {database.summary?.bucket ? `Bucket: ${database.summary.bucket}` : noun} · {loadedCount}{" "}
         loaded · Total unknown
-      </p>
+      </Text>
       <Input
         aria-label="Filter loaded items"
         data-zerops-data-loaded-search
@@ -941,14 +942,14 @@ export function ZeropsDataPanel({
         onChange={(event) => setLoadedSearch(event.target.value)}
       />
       {loadedSearch !== "" ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Searching loaded items only.{" "}
           {inventoryNodes.some((node) =>
             node.name.toLowerCase().includes(loadedSearch.toLowerCase()),
           )
             ? ""
             : "No matches in loaded items."}
-        </p>
+        </Text>
       ) : null}
       {treeRootEmpty ? (
         <Button data-zerops-data-tree-reload onClick={handleReloadTree} size="sm" variant="ghost">
@@ -971,17 +972,17 @@ export function ZeropsDataPanel({
         );
       })}
       {database.lastRead[`tree/${treePathKey({ service, segments: [] })}`] !== undefined ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="meta">
           Last read{" "}
           {new Date(
             database.lastRead[`tree/${treePathKey({ service, segments: [] })}`]!,
           ).toLocaleTimeString()}
-        </p>
+        </Text>
       ) : null}
       {selectedService?.family === "kv" ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Prefix totals unknown · Scan is not a snapshot
-        </p>
+        </Text>
       ) : null}
       <ZeropsDataTree
         emptyLabel={loadedSearch ? "No matches in loaded items." : `No ${noun}.`}
@@ -1014,9 +1015,9 @@ export function ZeropsDataPanel({
 
   const gridNoticeView =
     gridNotice === undefined ? undefined : gridNotice.kind === "unsupported" ? (
-      <p className="text-muted-foreground text-caption" data-zerops-data-grid-unsupported>
+      <Text render={<p />} variant="note" data-zerops-data-grid-unsupported>
         This value can't be browsed yet.
-      </p>
+      </Text>
     ) : (
       <div className="space-y-1 text-caption" data-zerops-data-grid-error>
         <p className="text-destructive-foreground">Couldn't load rows</p>
@@ -1066,8 +1067,10 @@ export function ZeropsDataPanel({
         {...(searching
           ? {
               belowToolbar: (
-                <div
-                  className="flex shrink-0 items-center justify-between gap-2 py-1 text-muted-foreground text-caption"
+                <Text
+                  className="flex shrink-0 items-center justify-between gap-2 py-1"
+                  render={<div />}
+                  variant="note"
                   data-zerops-data-document-search-status
                 >
                   <span>
@@ -1084,7 +1087,7 @@ export function ZeropsDataPanel({
                   >
                     Back to index
                   </Button>
-                </div>
+                </Text>
               ),
             }
           : {})}
@@ -1204,10 +1207,10 @@ export function ZeropsDataPanel({
       {selectedNode?.kind === "tabular" &&
       selectedService?.family === "tabular" &&
       !affordances?.canQuery ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           This console does not offer read-only SQL or filters. Update the Mate to check for
           support.
-        </p>
+        </Text>
       ) : null}
       {sqlOpen && affordances?.canQuery ? (
         <ZeropsDataQuery pending={activePending} onSubmit={(stmt) => runQuery(stmt, "query")} />
@@ -1243,16 +1246,16 @@ export function ZeropsDataPanel({
       ) : null}
       {selectedState?.pending ? <Spinner aria-label="The detail" size="xs" tone="muted" /> : null}
       {detailTime !== undefined ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="meta">
           Last read {new Date(detailTime).toLocaleTimeString()}
-        </p>
+        </Text>
       ) : null}
       {missingItem
         ? null
         : (gridView ?? (
             <>
               {selectedNode === null ? (
-                <p className="p-3 text-body text-muted-foreground" data-zerops-data-choose>
+                <Text className="p-3" render={<p />} variant="description" data-zerops-data-choose>
                   Choose a{" "}
                   {noun === "tables"
                     ? "table to preview its rows"
@@ -1260,7 +1263,7 @@ export function ZeropsDataPanel({
                       ? "key to preview its value"
                       : "item to inspect"}
                   .
-                </p>
+                </Text>
               ) : null}
               {selectedNode?.kind === "blob" && blob !== undefined ? (
                 <div className="min-h-0 flex-1 overflow-auto">
@@ -1313,9 +1316,9 @@ export function ZeropsDataPanel({
 
   const notBrowsableLine =
     services !== undefined && !browsable && !awaitingMissingServiceRefresh ? (
-      <p className="text-muted-foreground text-caption" data-zerops-data-not-browsable>
+      <Text render={<p />} variant="note" data-zerops-data-not-browsable>
         This service can't be browsed yet.
-      </p>
+      </Text>
     ) : null;
   const serviceStopped = ["STOPPED", "STOPPING", "stopped"].includes(platformStatus ?? "");
   const showBrowse =

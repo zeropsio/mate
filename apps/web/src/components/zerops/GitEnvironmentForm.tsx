@@ -26,6 +26,7 @@ import {
   gitSetupReview,
 } from "./GitEnvironmentForm.logic";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 export interface GitEnvironmentFormProps {
   readonly groupName: string;
@@ -207,20 +208,20 @@ export function GitEnvironmentForm({
                 setNotice(undefined);
               }}
             />
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               {repository
                 ? `${repository.guide.hostLabel} · a token comes next`
                 : "A token comes next"}
-            </p>
+            </Text>
             {address.trim() !== "" && repos !== undefined && repository === undefined ? (
               <p role="alert" className="text-body text-destructive">
                 {gitSetupRepositoryHint(address)}
               </p>
             ) : null}
             {repos === undefined ? (
-              <p className="text-caption text-muted-foreground">
+              <Text render={<p />} variant="note">
                 Reading the application’s repositories…
-              </p>
+              </Text>
             ) : null}
             {connected ? (
               <p className="text-body">
@@ -261,9 +262,9 @@ export function GitEnvironmentForm({
                   <li>Workflows: Read and write (optional)</li>
                   <li>Expiration: 366 days</li>
                 </ul>
-                <p className="text-caption text-muted-foreground">
+                <Text render={<p />} variant="note">
                   Your organization may require approval or limit the token’s lifetime.
-                </p>
+                </Text>
               </>
             ) : (
               <>
@@ -323,9 +324,9 @@ export function GitEnvironmentForm({
             >
               Test
             </Button>
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               Mate keeps it in HQ. Agents and containers never see it.
-            </p>
+            </Text>
             {pending === "connect" ? (
               <p role="status" className="text-body">
                 Testing the token against {repository.guide.repository}…
@@ -379,10 +380,10 @@ export function GitEnvironmentForm({
               Push directly to {branch || "the branch"} — Mate must be the only one that writes to
               it.
             </p>
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               A commit made on {branch || "the branch"} any other way stops Mate’s pushes until you
               settle it.
-            </p>
+            </Text>
             {reading ? (
               <p role="status" className="text-body">
                 Reading the remote branch and HQ main…
@@ -395,15 +396,12 @@ export function GitEnvironmentForm({
                       <p>No branch rules on this plan</p>
                     ) : null}
                     {entry.ci ? (
-                      <ul
-                        aria-label="Reads to show CI"
-                        className="text-caption text-muted-foreground"
-                      >
+                      <Text render={<ul />} variant="note" aria-label="Reads to show CI">
                         <li>Optional, to show CI:</li>
                         {gitCiAccessRows(entry.ci).map((row) => (
                           <li key={row}>{row}</li>
                         ))}
-                      </ul>
+                      </Text>
                     ) : null}
                     <p>
                       {gitAdoptionSentence(entry)}
@@ -412,49 +410,49 @@ export function GitEnvironmentForm({
                   </div>
                 ))
               : null}
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               {tier === "production"
                 ? "Adding production pushes nothing. It starts with the next Release."
                 : "Adoption before attachment pushes nothing to this stage. Its first push follows the next main move."}{" "}
               Verified remotes stay connected if you cancel environment setup.
-            </p>
+            </Text>
           </div>
         ) : null}
         {preview?.key === previewKey && preview?.error ? (
-          <p role="status" className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description" role="status">
             {preview.error}
-          </p>
+          </Text>
         ) : null}
         {step === "branch" && name === undefined ? (
           takenNames === undefined ? (
             <Loading label="This project's environment names" shape="line" />
           ) : (
-            <p role="status" className="text-body text-muted-foreground">
+            <Text render={<p />} variant="description" role="status">
               This project has used all generated names. Remove an unused environment before adding
               another.
-            </p>
+            </Text>
           )
         ) : null}
         {notice ? (
-          <p role="status" className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description" role="status">
             {notice}
-          </p>
+          </Text>
         ) : null}
         {uncertain ? (
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             HQ may have accepted setup. Close this form and check the environment and repository
             records before trying again.
-          </p>
+          </Text>
         ) : null}
         {pending === "add" ? (
-          <p role="status" className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description" role="status">
             Adding environment… HQ may accept it even if you close this form.
-          </p>
+          </Text>
         ) : null}
         {!offered.add ? (
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             {unavailableReason ?? "HQ has not said yet."}
-          </p>
+          </Text>
         ) : null}
       </DialogPanel>
       <DialogFooter>

@@ -46,6 +46,7 @@ import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /**
  * How to make GitHub hold a production's branch to what stage tested — HQ never sets it: one
@@ -162,8 +163,10 @@ export function GitStopDetail({
                         gitRequiredChecks(environment.jobs, repo.name),
                       );
                 return guide === undefined ? null : (
-                  <p
-                    className="mt-1.5 text-body text-muted-foreground"
+                  <Text
+                    className="mt-1.5"
+                    render={<p />}
+                    variant="description"
                     data-git-ruleset
                     key={repo.name}
                   >
@@ -171,7 +174,7 @@ export function GitStopDetail({
                     <InlineButton render={<a href={guide.url} rel="noreferrer" target="_blank" />}>
                       Open {repo.name}'s rulesets
                     </InlineButton>
-                  </p>
+                  </Text>
                 );
               })}
           {environment.target.kind !== "git" || environment.target.delivery === "direct" ? null : (
@@ -180,7 +183,9 @@ export function GitStopDetail({
             </EmptyState>
           )}
           {notice === undefined ? null : (
-            <p className="mt-1.5 text-body text-muted-foreground">{notice}</p>
+            <Text className="mt-1.5" render={<p />} variant="description">
+              {notice}
+            </Text>
           )}
           <div className="flex flex-wrap gap-2 empty:hidden">
             {onRunAgain !== undefined && hqOffer(can, "redeploy").kind === "allowed"
@@ -316,41 +321,41 @@ function GitEnvironmentRemoval({
           {environment.tier !== "production" ? null : (
             <>
               {targets?.map((target) => (
-                <p className="mt-1.5 text-body text-muted-foreground" key={target.name}>
+                <Text className="mt-1.5" render={<p />} variant="description" key={target.name}>
                   {`Removes production. ${gitRemoteLabel(target.url)} ${environment.target.branch} stays as it is; Mate stops pushing to it.`}
-                </p>
+                </Text>
               ))}
               {targetKnown ? null : (
-                <p className="mt-1.5 text-body text-muted-foreground">
+                <Text className="mt-1.5" render={<p />} variant="description">
                   Read the repository addresses before confirming removal.
-                </p>
+                </Text>
               )}
-              <p className="mt-1.5 text-body text-muted-foreground">
+              <Text className="mt-1.5" render={<p />} variant="description">
                 The remote stays connected. Manage it under Repositories on this project's page.
-              </p>
+              </Text>
             </>
           )}
-          <p className="mt-1.5 text-body text-muted-foreground">
+          <Text className="mt-1.5" render={<p />} variant="description">
             Its push history goes with it. Removing this environment never deletes an external
             branch or undoes a push.
             {targets?.length && targets.every((target) => target.viaApp)
               ? ""
               : " The token stays valid at its host until you revoke it there."}
-          </p>
+          </Text>
           {delivery?.standing === "unresolved" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               The last push couldn't be confirmed. Anything already sent may remain at the host.
-            </p>
+            </Text>
           ) : null}
           {delivery === undefined || delivery.repositories.length === 0 ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               External leftovers could not be confirmed
-            </p>
+            </Text>
           ) : null}
           {delivery?.repositories.map((repo) => (
-            <p className="mt-1.5 text-body text-muted-foreground" key={repo.repo}>
+            <Text className="mt-1.5" render={<p />} variant="description" key={repo.repo}>
               {repo.repo}: {repo.confirmed?.ref ?? "External leftovers could not be confirmed"}
-            </p>
+            </Text>
           ))}
           {delivery?.standing === "unresolved" ? (
             <div className="flex items-center gap-2">
@@ -359,9 +364,9 @@ function GitEnvironmentRemoval({
                 checked={historyLoss}
                 onCheckedChange={(checked) => setHistoryLoss(checked === true)}
               />{" "}
-              <span className="mt-1.5 text-body text-muted-foreground">
+              <Text className="mt-1.5" variant="description">
                 I understand that the unresolved push history will be lost.
-              </span>
+              </Text>
             </div>
           ) : null}
           <Button
@@ -528,23 +533,27 @@ function ZeropsProductionRemoval({
     );
   if (removal.kind === "going")
     return (
-      <p
-        className="mt-1.5 text-body text-muted-foreground"
+      <Text
+        className="mt-1.5"
+        render={<p />}
+        variant="description"
         data-zerops-surface="production-removal-going"
       >
         Removing production…
-      </p>
+      </Text>
     );
   if (removal.kind === "waiting") {
     const end = endOperationIntent(removal, orgId, appId);
     return (
       <>
-        <p
-          className="mt-1.5 text-body text-muted-foreground"
+        <Text
+          className="mt-1.5"
+          render={<p />}
+          variant="description"
           data-zerops-surface="production-removal-waiting"
         >
           <RemovalWaitingWords orgId={orgId} userId={removal.continueBy} />
-        </p>
+        </Text>
         {removal.yours ? (
           <Button
             size="sm"
@@ -593,13 +602,13 @@ function ZeropsProductionRemoval({
       {said}
       {!confirming ? null : (
         <div role="group" aria-label={`Remove ${environment.name}`} aria-busy={busy}>
-          <p className="mt-1.5 text-body text-muted-foreground">
+          <Text className="mt-1.5" render={<p />} variant="description">
             {project === null
               ? "Read the project name before confirming removal."
               : deleteProject
                 ? `Removes production and deletes the Zerops project ${project.name} with its services and data.`
                 : `Removes production. The Zerops project ${project.name} stays as it is; Mate stops releasing to it.`}
-          </p>
+          </Text>
           <Button
             size="sm"
             disabled={busy || project === null}

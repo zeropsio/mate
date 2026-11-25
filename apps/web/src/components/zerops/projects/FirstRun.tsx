@@ -260,7 +260,7 @@ function FirstRunForm({
         <>
           <NewProjectFields className="flex flex-col gap-5" form={form}>
             <ProjectNameField form={form} inputRef={nameField} size="xl" />
-            <FirstMateField form={form} label="Your first Mate" look="apart" size="xl" />
+            <FirstMateField form={form} label="Your first Mate" size="xl" />
             {access === undefined ? null : access(form.setUserRoles)}
             <NewProjectLocation form={form} />
           </NewProjectFields>

@@ -1,7 +1,7 @@
 /**
  * A Mate's face, being picked: the face its colour and its shape make, big, beside a row of the
  * eight colours and a row of the eight shapes, under whatever else the form asks first (a new
- * Mate's name) — or, folded, a small face, the name and *Change look* — or, apart, the rows alone,
+ * Mate's name) — or, apart, the rows alone,
  * the face standing elsewhere as its page's hero (`MateFacePreview`) — or, as a ring, the colours
  * and the shapes opened out around the face (`MateFaceRing`, New project's Mate step). The one
  * picker wherever a face is picked: *New Mate*, New project's first Mate, an account's first run,
@@ -19,11 +19,10 @@ import {
   type MateShapeId,
   type MateTintId,
 } from "@t3tools/shared/brand";
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 
-import { Button } from "../ui/button";
 import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { MateFace } from "./primitives";
 
@@ -230,7 +229,6 @@ export function MateFacePicker({
   face,
   onPickTint,
   onPickShape,
-  folded = false,
   apart = false,
   children,
 }: {
@@ -238,11 +236,6 @@ export function MateFacePicker({
   readonly face: ZeropsMateFace;
   readonly onPickTint: (tint: MateTintId) => void;
   readonly onPickShape: (shape: MateShapeId) => void;
-  /**
-   * One row — the face small, the name, *Change look* — with the colours and the shapes in a
-   * panel over what follows, so opening them moves nothing.
-   */
-  readonly folded?: boolean;
   /** The rows alone, under what the form asks first: the face is drawn elsewhere, larger. */
   readonly apart?: boolean;
   /** What the form asks before the face: a new Mate's name. */
@@ -272,12 +265,6 @@ export function MateFacePicker({
       </PickerRow>
     </>
   );
-  if (folded)
-    return (
-      <LookBehindButton face={face} rows={rows}>
-        {children}
-      </LookBehindButton>
-    );
   if (apart)
     return (
       <div className="flex w-full min-w-0 flex-col gap-3.5">
@@ -291,69 +278,6 @@ export function MateFacePicker({
       <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
         {children}
         <div className="flex flex-col gap-0.5">{rows}</div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The folded picker: the face, the name, and *Change look*, whose panel of colours and shapes
- * stands over what follows rather than pushing it down. Escape or a press outside folds it, the
- * focus back on *Change look*; it opens on the colour picked.
- */
-function LookBehindButton({
-  face,
-  rows,
-  children,
-}: {
-  readonly face: ZeropsMateFace;
-  readonly rows: ReactNode;
-  readonly children: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
-  const root = useRef<HTMLDivElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    panel.current?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]')?.focus();
-    const away = (event: PointerEvent) => {
-      if (event.target instanceof Node && root.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", away);
-    return () => document.removeEventListener("pointerdown", away);
-  }, [open]);
-  return (
-    <div className="relative flex items-center gap-3" ref={root}>
-      <MateFacePreview className="size-10" face={face} />
-      <div className="min-w-0 flex-1">{children}</div>
-      <Button
-        aria-controls={panelId}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        ref={trigger}
-        variant="secondary"
-      >
-        Change look
-      </Button>
-      <div
-        aria-label="Look"
-        className="absolute end-0 top-full z-10 mt-2 flex w-80 flex-col gap-0.5 rounded-card border bg-popover p-2 shadow-lg"
-        hidden={!open}
-        id={panelId}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          // The panel folds; the dialog it stands in stays.
-          event.stopPropagation();
-          setOpen(false);
-          trigger.current?.focus();
-        }}
-        ref={panel}
-        role="group"
-      >
-        {rows}
       </div>
     </div>
   );

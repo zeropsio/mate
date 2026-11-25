@@ -32,6 +32,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
 import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
 import { useLinkedChange } from "../../zerops/useLinkedChange";
+import { Text } from "~/components/ui/text";
 
 /**
  * When the message a chip stands in was written: a change that landed after
@@ -109,12 +110,12 @@ export function ZeropsChangeLinkChip({
         <span className="inline-flex flex-wrap items-baseline gap-1">
           {children}
           {landed.kind === "gone" ? (
-            <span className="text-body text-muted-foreground">
+            <Text variant="description">
               {`${link?.repo ?? ""} has no change #${String(link?.number ?? 0)}`}
-            </span>
+            </Text>
           ) : (
             <Tooltip>
-              <TooltipTrigger render={<span className="text-body text-muted-foreground" />}>
+              <TooltipTrigger render={<Text variant="description" />}>
                 This change could not be read
               </TooltipTrigger>
               <TooltipPopup>{landed.reason}</TooltipPopup>

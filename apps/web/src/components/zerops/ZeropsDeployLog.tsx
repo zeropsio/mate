@@ -6,6 +6,7 @@ import { useOpenPipeline } from "~/zerops/pipelineSearch";
 import { Button, InlineButton } from "../ui/button";
 import { ZeropsBuildLog } from "./ZeropsBuildLog";
 import { PipelineCalculating, PipelineStepList } from "./operation/PipelineStepList";
+import { Text } from "~/components/ui/text";
 
 /**
  * The same process handles open from a stop or the answer to a merge, release, or Run again: its
@@ -43,9 +44,9 @@ export function ZeropsDeployLog({
         </Button>
       </span>
       {!open && unavailable ? (
-        <p className="col-span-full text-caption text-muted-foreground">
+        <Text className="col-span-full" render={<p />} variant="note">
           Deploy history unavailable in Zerops’ recent processes.
-        </p>
+        </Text>
       ) : null}
       {open ? (
         <div className="col-span-full pb-2">
@@ -98,7 +99,7 @@ export function DeployLogDetails({
   return (
     <div className="pt-2" data-zerops-deploy-inspection>
       {words === undefined ? null : (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           {words}
           {again === undefined ? null : (
             <>
@@ -108,15 +109,15 @@ export function DeployLogDetails({
               </InlineButton>
             </>
           )}
-        </p>
+        </Text>
       )}
       {pipeline === undefined ? null : pipeline.calculating || pipeline.steps.length === 0 ? (
         read?.live ? (
           <PipelineCalculating aria-label={`${service} deploy steps`} />
         ) : (
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             Zerops keeps no pipeline steps for this deploy.
-          </p>
+          </Text>
         )
       ) : (
         <PipelineStepList

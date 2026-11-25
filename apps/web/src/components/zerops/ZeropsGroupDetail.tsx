@@ -62,6 +62,7 @@ import { Button, InlineButton } from "../ui/button";
 import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
+import { Text } from "~/components/ui/text";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -434,10 +435,12 @@ function ZeropsStopLine({
   if (notice !== null) {
     return (
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
-        <span className="shrink-0 text-body font-medium text-foreground">
+        <Text className="shrink-0" variant="heading">
           {environmentTitle(environment.tier, environment.tier)}
-        </span>
-        <span className="truncate text-caption text-muted-foreground">{notice}</span>
+        </Text>
+        <Text truncate variant="note">
+          {notice}
+        </Text>
         {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       </li>
     );
@@ -455,9 +458,9 @@ function ZeropsStopLine({
         variant="ghost"
       >
         <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3">
-          <span className="min-w-0 truncate text-start text-body font-medium text-foreground">
+          <Text className="min-w-0 text-start" truncate variant="heading">
             {title}
-          </span>
+          </Text>
           <span className="truncate text-end font-mono text-caption text-muted-foreground tabular-nums">
             {says.version}
           </span>
@@ -466,13 +469,13 @@ function ZeropsStopLine({
           {/* The dot carries the state; the word supports it. Unsized, it
             inherited 16px and came out larger than the name it annotates. */}
           {dotTone === undefined ? (
-            <span className="text-caption text-muted-foreground">{word}</span>
+            <Text variant="meta">{word}</Text>
           ) : (
-            <span className="shrink-0 text-caption text-muted-foreground">
+            <Text className="shrink-0" variant="note">
               <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
                 {word}
               </Badge>
-            </span>
+            </Text>
           )}
           <ChevronRightIcon
             aria-hidden="true"
@@ -482,9 +485,9 @@ function ZeropsStopLine({
       </Button>
       {/* An application of several parts: how many, and each that differs from the version. */}
       {environment.parts === undefined ? null : (
-        <span className="block truncate px-2 pb-2 text-caption text-muted-foreground">
+        <Text className="block px-2 pb-2" truncate variant="note">
           {environment.parts}
-        </span>
+        </Text>
       )}
       {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
     </li>
@@ -573,7 +576,11 @@ function Section({
 }
 
 export function Note({ children }: { readonly children: React.ReactNode }) {
-  return <p className="text-body text-muted-foreground">{children}</p>;
+  return (
+    <Text render={<p />} variant="description">
+      {children}
+    </Text>
+  );
 }
 
 /** What a page says in place of a project it cannot read (`unreadFlowWords`). */
@@ -581,7 +588,9 @@ export function UnreadNote({ words }: { readonly words: UnreadFlowWords }) {
   if (typeof words === "string") return <Note>{words}</Note>;
   return (
     <div className="flex flex-col gap-0.5">
-      <p className="text-body font-medium text-foreground">{words.title}</p>
+      <Text render={<p />} variant="heading">
+        {words.title}
+      </Text>
       <Note>{words.why}</Note>
     </div>
   );

@@ -27,6 +27,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
+import { Text } from "~/components/ui/text";
 
 /**
  * The route: what goes live, then where, on the release plan's card and marks; its rows wrap, a
@@ -166,14 +167,16 @@ export function PutLiveSheet({
           </li>
         </ol>
         {model.later === undefined ? null : (
-          <p className="text-muted-foreground text-caption">{model.later}</p>
+          <Text render={<p />} variant="note">
+            {model.later}
+          </Text>
         )}
       </DialogPanel>
       <DialogFooter>
         {model.hold === undefined && model.refused === undefined ? null : (
-          <p className="me-auto self-center text-muted-foreground text-body" role="status">
+          <Text className="me-auto self-center" render={<p />} variant="description" role="status">
             {model.hold ?? model.refused}
-          </p>
+          </Text>
         )}
         <DialogClose render={<Button variant="ghost" />}>Cancel</DialogClose>
         <Button

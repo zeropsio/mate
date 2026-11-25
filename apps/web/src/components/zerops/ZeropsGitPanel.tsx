@@ -48,6 +48,7 @@ import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { ChangeList, ChangeRow, ProjectLine, type ProjectLineView } from "./system";
 import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 /** One code repository the Mate works in, as the tab draws it. */
 export interface ZeropsGitRepository {
@@ -189,12 +190,14 @@ export function ZeropsGitPanel({
               <Card className="min-w-0">
                 {repository.work.length === 0 ? (
                   // No change to show while the remote does not answer: the slot says what it holds.
-                  <p
-                    className="m-0 flex min-h-14 items-center px-4 text-body text-muted-foreground"
+                  <Text
+                    className="m-0 flex min-h-14 items-center px-4"
+                    render={<p />}
+                    variant="description"
                     data-zerops-surface="git-work-awaits"
                   >
                     {WORK_AWAITS_REPOSITORY}
-                  </p>
+                  </Text>
                 ) : (
                   <div className="px-3.5 py-1.5">
                     <ChangeList label={possessive(mateName ?? "This Mate", "work")}>

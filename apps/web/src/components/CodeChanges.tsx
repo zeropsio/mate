@@ -565,14 +565,16 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
   ) : files.length > 0 ? null : raw !== null ? (
     <div className="flex min-w-0 flex-col gap-2">
       <p className="text-2xs text-muted-foreground/75">Showing the raw patch.</p>
-      <pre
-        className={cn(
-          "max-h-[72vh] rounded-control border border-border/70 bg-background/70 p-3 font-mono text-2xs leading-relaxed text-muted-foreground/90",
-          wordWrap ? "overflow-auto whitespace-pre-wrap wrap-break-word" : "overflow-auto",
-        )}
-      >
-        {raw}
-      </pre>
+      <Card>
+        <pre
+          className={cn(
+            "max-h-[72vh] p-3 font-mono text-2xs leading-relaxed text-muted-foreground/90",
+            wordWrap ? "overflow-auto whitespace-pre-wrap wrap-break-word" : "overflow-auto",
+          )}
+        >
+          {raw}
+        </pre>
+      </Card>
     </div>
   ) : previewError ? (
     // A read that failed is not a diff with nothing in it: it says so, and reads again.

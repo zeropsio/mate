@@ -65,6 +65,14 @@ import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
 import { Text } from "~/components/ui/text";
 import { Card } from "~/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
 
 const HISTORY_WINDOWS = [
   { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
@@ -569,7 +577,7 @@ function ProcessTable({
         hideScrollbars
         className="max-h-[min(68vh,48rem)] w-full max-w-full"
       >
-        <table className="w-full min-w-[1320px] table-fixed text-left text-caption">
+        <Table className="min-w-[1320px] table-fixed" size="report">
           <colgroup>
             <col className="w-[20%]" />
             <col className="w-[10%]" />
@@ -583,72 +591,80 @@ function ProcessTable({
             <col className="w-[6%]" />
             <col className="w-[4%]" />
           </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Process</th>
-              <th className="px-3 py-2 font-semibold">Category</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU Time</th>
-              <th className="px-3 py-2 text-right font-semibold">Memory</th>
-              <th className="px-3 py-2 text-right font-semibold">Read/s</th>
-              <th className="px-3 py-2 text-right font-semibold">Write/s</th>
-              <th className="px-3 py-2 text-right font-semibold">Read Total</th>
-              <th className="px-3 py-2 text-right font-semibold">Write Total</th>
-              <th className="px-3 py-2 text-right font-semibold">PID</th>
-              <th className="px-2 py-2 text-right font-semibold sm:pr-4">Kill</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
+          <TableHeader sticky>
+            <TableRow>
+              <TableHead>Process</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead align="end">CPU</TableHead>
+              <TableHead align="end">CPU Time</TableHead>
+              <TableHead align="end">Memory</TableHead>
+              <TableHead align="end">Read/s</TableHead>
+              <TableHead align="end">Write/s</TableHead>
+              <TableHead align="end">Read Total</TableHead>
+              <TableHead align="end">Write Total</TableHead>
+              <TableHead align="end">PID</TableHead>
+              <TableHead align="end">Kill</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {visible.map((process) => (
-              <tr key={processIdentityKey(process)} className="hover:bg-muted/20">
-                <td className="px-4 py-2 sm:pl-5">
+              <TableRow key={processIdentityKey(process)}>
+                <TableCell>
                   <ProcessTreeName
                     process={process}
                     collapsed={collapsed.has(processIdentityKey(process))}
                     onToggle={toggle}
                   />
-                </td>
-                <td className="truncate px-3 py-2 text-2xs text-muted-foreground">
-                  {categoryLabel(process.category)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {process.cpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatCpuTime(process.cpuTimeMs)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatBytes(process.residentBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatRate(process.ioReadBytesPerSecond)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatRate(process.ioWriteBytesPerSecond)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {formatBytes(process.ioReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  <Tooltip>
-                    <TooltipTrigger render={<span>{formatBytes(process.ioWriteBytes)}</span>} />
-                    <TooltipPopup side="top">{ioSemanticsLabel(process.ioSemantics)}</TooltipPopup>
-                  </Tooltip>
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {process.identity.pid}
-                </td>
-                <td className="px-2 py-2 text-right sm:pr-4">
+                </TableCell>
+                <TableCell tone="muted">
+                  <span className="block truncate text-2xs">{categoryLabel(process.category)}</span>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.cpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatCpuTime(process.cpuTimeMs)}</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatBytes(process.residentBytes)}</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <span className="text-info-foreground">
+                    <Text variant="code">{formatRate(process.ioReadBytesPerSecond)}</Text>
+                  </span>
+                </TableCell>
+                <TableCell align="end">
+                  <span className="text-warning-foreground">
+                    <Text variant="code">{formatRate(process.ioWriteBytesPerSecond)}</Text>
+                  </span>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{formatBytes(process.ioReadBytes)}</Text>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">
+                    <Tooltip>
+                      <TooltipTrigger render={<span>{formatBytes(process.ioWriteBytes)}</span>} />
+                      <TooltipPopup side="top">
+                        {ioSemanticsLabel(process.ioSemantics)}
+                      </TooltipPopup>
+                    </Tooltip>
+                  </Text>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{process.identity.pid}</Text>
+                </TableCell>
+                <TableCell align="end">
                   <ProcessActions
                     process={process}
                     signalingKeys={signalingKeys}
                     onSignal={onSignal}
                   />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </ScrollArea>
     </div>
   );
@@ -667,7 +683,7 @@ function HistoryProcessTable({
         hideScrollbars
         className="max-h-[28rem] w-full max-w-full"
       >
-        <table className="w-full min-w-[1020px] table-fixed text-left text-caption">
+        <Table className="min-w-[1020px] table-fixed" size="report">
           <colgroup>
             <col className="w-[24%]" />
             <col className="w-[11%]" />
@@ -679,30 +695,30 @@ function HistoryProcessTable({
             <col className="w-[7%]" />
             <col className="w-[5%]" />
           </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Process</th>
-              <th className="px-3 py-2 font-semibold">Category</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU Time</th>
-              <th className="px-3 py-2 text-right font-semibold">Peak CPU</th>
-              <th className="px-3 py-2 text-right font-semibold">Peak Mem</th>
-              <th className="px-3 py-2 text-right font-semibold">Read</th>
-              <th className="px-3 py-2 text-right font-semibold">Write</th>
-              <th className="px-3 py-2 text-right font-semibold">Samples</th>
-              <th className="px-3 py-2 text-right font-semibold sm:pr-5">PID</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
+          <TableHeader sticky>
+            <TableRow>
+              <TableHead>Process</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead align="end">CPU Time</TableHead>
+              <TableHead align="end">Peak CPU</TableHead>
+              <TableHead align="end">Peak Mem</TableHead>
+              <TableHead align="end">Read</TableHead>
+              <TableHead align="end">Write</TableHead>
+              <TableHead align="end">Samples</TableHead>
+              <TableHead align="end">PID</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {processes.length === 0 ? (
-              <tr>
+              <TableRow>
                 <Text className="px-4 py-5 sm:px-5" render={<td colSpan={9} />} variant="note">
                   No retained process samples in this window.
                 </Text>
-              </tr>
+              </TableRow>
             ) : null}
             {processes.map((process) => (
-              <tr key={processSummaryIdentityKey(process)} className="hover:bg-muted/20">
-                <td className="px-4 py-2 sm:pl-5">
+              <TableRow key={processSummaryIdentityKey(process)}>
+                <TableCell>
                   <Tooltip>
                     <TooltipTrigger
                       render={
@@ -715,35 +731,39 @@ function HistoryProcessTable({
                       {process.command || process.name}
                     </TooltipPopup>
                   </Tooltip>
-                </td>
-                <td className="truncate px-3 py-2 text-2xs text-muted-foreground">
-                  {categoryLabel(process.category)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatCpuTime(process.cpuTimeMs)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {process.maxCpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatBytes(process.peakRssBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatBytes(process.ioReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatBytes(process.ioWriteBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {process.sampleCount}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                  {process.identity.pid}
-                </td>
-              </tr>
+                </TableCell>
+                <TableCell tone="muted">
+                  <span className="block truncate text-2xs">{categoryLabel(process.category)}</span>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatCpuTime(process.cpuTimeMs)}</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{process.maxCpuPercent.toFixed(1)}%</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <Text variant="code">{formatBytes(process.peakRssBytes)}</Text>
+                </TableCell>
+                <TableCell align="end">
+                  <span className="text-info-foreground">
+                    <Text variant="code">{formatBytes(process.ioReadBytes)}</Text>
+                  </span>
+                </TableCell>
+                <TableCell align="end">
+                  <span className="text-warning-foreground">
+                    <Text variant="code">{formatBytes(process.ioWriteBytes)}</Text>
+                  </span>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{process.sampleCount}</Text>
+                </TableCell>
+                <TableCell align="end" tone="muted">
+                  <Text variant="code">{process.identity.pid}</Text>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </ScrollArea>
     </div>
   );
@@ -759,53 +779,65 @@ function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttribut
         hideScrollbars
         className="w-full max-w-full"
       >
-        <table className="w-full min-w-[720px] table-fixed text-left text-caption">
-          <colgroup>
-            <col className="w-[22%]" />
-            <col className="w-[28%]" />
-            <col className="w-[14%]" />
-            <col className="w-[14%]" />
-            <col className="w-[10%]" />
-            <col className="w-[12%]" />
-          </colgroup>
-          <thead className="border-b border-border/60 text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Component</th>
-              <th className="px-3 py-2 font-semibold">Operation</th>
-              <th className="px-3 py-2 text-right font-semibold">Logical Read</th>
-              <th className="px-3 py-2 text-right font-semibold">Logical Write</th>
-              <th className="px-3 py-2 text-right font-semibold">Count</th>
-              <th className="px-3 py-2 text-right font-semibold sm:pr-5">Time</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {entries.length === 0 ? (
-              <tr>
-                <Text className="px-4 py-5 sm:px-5" render={<td colSpan={6} />} variant="note">
-                  No instrumented application I/O has been recorded yet.
-                </Text>
-              </tr>
-            ) : null}
-            {entries.map((entry) => (
-              <tr key={`${entry.component}:${entry.operation}`} className="hover:bg-muted/20">
-                <td className="truncate px-4 py-2 font-medium text-foreground sm:pl-5">
-                  {entry.component}
-                </td>
-                <td className="truncate px-3 py-2 text-muted-foreground">{entry.operation}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatBytes(entry.logicalReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatBytes(entry.logicalWriteBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{entry.count}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                  {(entry.durationMs / 1_000).toFixed(2)}s
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="min-w-[720px]">
+          <Table className="table-fixed" size="report">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[28%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+            </colgroup>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Component</TableHead>
+                <TableHead>Operation</TableHead>
+                <TableHead align="end">Logical Read</TableHead>
+                <TableHead align="end">Logical Write</TableHead>
+                <TableHead align="end">Count</TableHead>
+                <TableHead align="end">Time</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.length === 0 ? (
+                <TableRow>
+                  <Text className="px-4 py-5 sm:px-5" render={<td colSpan={6} />} variant="note">
+                    No instrumented application I/O has been recorded yet.
+                  </Text>
+                </TableRow>
+              ) : null}
+              {entries.map((entry) => (
+                <TableRow key={`${entry.component}:${entry.operation}`}>
+                  <TableCell>
+                    <span className="block truncate">
+                      <span className="font-medium">{entry.component}</span>
+                    </span>
+                  </TableCell>
+                  <TableCell tone="muted">
+                    <span className="block truncate">{entry.operation}</span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-info-foreground">
+                      <Text variant="code">{formatBytes(entry.logicalReadBytes)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-warning-foreground">
+                      <Text variant="code">{formatBytes(entry.logicalWriteBytes)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{entry.count}</Text>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">{(entry.durationMs / 1_000).toFixed(2)}s</Text>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </ScrollArea>
     </div>
   );

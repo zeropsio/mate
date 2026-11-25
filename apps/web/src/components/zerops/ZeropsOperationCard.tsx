@@ -85,6 +85,7 @@ import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadResultBody } from "./ZeropsToolResultCards";
 import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 export interface ObservedRegion {
   /** Replaces `operation.steps` for the body while an observation is attached; a deploy's is empty. */
@@ -214,30 +215,31 @@ function CardHeader({
           </span>
           <OperationSubjectLine running={running} subject={subject} />
         </div>
-        <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption">
+        <Text className="flex shrink-0 items-center gap-1.5 pt-0.5" variant="note">
           <HeaderMeta durationText={durationText} led={false} running={running} />
-        </span>
+        </Text>
       </header>
     );
   }
   return (
     <header className="flex items-start justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2 font-medium text-foreground text-body">
+      <Text className="flex min-w-0 items-center gap-2" render={<div />} variant="heading">
         <KindGlyph kind={operation.kind} />
         <span className="min-w-0" data-zerops-voice-source={operation.voiceSource}>
           {operation.voice}
         </span>
-      </div>
-      <span
+      </Text>
+      <Text
+        className="flex shrink-0 items-center gap-1.5 pt-0.5"
+        variant="note"
         aria-label="Result status"
-        className="flex shrink-0 items-center gap-1.5 pt-0.5 text-muted-foreground text-caption"
         role="status"
       >
         <Badge dot pulse={tone === "busy"} tone={STATUS_BADGE_TONE[tone]}>
           {operation.statusWord}
         </Badge>
         <HeaderMeta durationText={durationText} led running={running} />
-      </span>
+      </Text>
     </header>
   );
 }
@@ -603,9 +605,9 @@ function BrowserCard({
           </p>
         ) : null}
         {summary === undefined && !isRunningPhase(operation) && operation.closing !== undefined ? (
-          <p className="text-line text-muted-foreground" data-zerops-card-outcome="true">
+          <Text render={<p />} variant="remark" data-zerops-card-outcome="true">
             {operation.closing}
-          </p>
+          </Text>
         ) : null}
         {summary?.failedStep !== undefined ? (
           <ProcessSteps aria-label="Failed step" density="compact" steps={[summary.failedStep]} />
@@ -704,9 +706,9 @@ function StepsBody({
         ? null
         : (observed?.log ?? null)}
       {observed !== undefined && observed.provenance.length > 0 ? (
-        <p className="text-muted-foreground text-caption" data-zerops-operation-provenance>
+        <Text render={<p />} variant="note" data-zerops-operation-provenance>
           {observed.provenance}
-        </p>
+        </Text>
       ) : null}
       {/* A deploy says why under the step that broke, a batch under the service that did; any other card here. */}
       {operation.explanation !== undefined && !saysWhyOnStep && !saysWhyOnService ? (
@@ -871,12 +873,14 @@ export function ZeropsOperationCard(props: {
               data-zerops-result-row
             >
               {closing !== undefined ? (
-                <p
-                  className="min-w-0 text-line text-muted-foreground"
+                <Text
+                  className="min-w-0"
+                  render={<p />}
+                  variant="remark"
                   data-zerops-card-outcome="true"
                 >
                   {closing}
-                </p>
+                </Text>
               ) : null}
               {props.onRestartRetry === undefined ? null : (
                 <Button
@@ -897,13 +901,14 @@ export function ZeropsOperationCard(props: {
                 </Button>
               )}
               {version !== undefined ? (
-                <span
-                  className="flex items-baseline gap-1.5 text-muted-foreground text-caption"
+                <Text
+                  className="flex items-baseline gap-1.5"
+                  variant="note"
                   data-zerops-operation-version
                 >
                   <MicroLabel>Version</MicroLabel>
-                  <span className="font-mono">{version}</span>
-                </span>
+                  <Text variant="code">{version}</Text>
+                </Text>
               ) : null}
               {links.length > 0 && !addressRows ? (
                 <div aria-label="URLs" className="flex flex-wrap gap-1.5">

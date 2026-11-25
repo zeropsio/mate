@@ -74,6 +74,7 @@ import {
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 export const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
@@ -298,7 +299,9 @@ function RailGroupTip({
             )}
           </span>
           {mate.line.length === 0 ? null : (
-            <span className="truncate text-caption text-muted-foreground">{mate.line}</span>
+            <Text truncate variant="note">
+              {mate.line}
+            </Text>
           )}
         </span>
       ))}

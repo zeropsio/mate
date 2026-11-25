@@ -51,6 +51,7 @@ import {
   offeredBotName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newProjectButton, regionPlace } from "./ZeropsNewProjectForm.logic";
+import { Text } from "~/components/ui/text";
 
 /** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
 export interface NewProjectChoice {
@@ -330,18 +331,16 @@ export function ProjectNameField({
 }
 
 /**
- * Who the first Mate is: its name, with the die, and its look — folded behind *Change look* in the
- * dialog, or apart, the rows under the name, where the page draws the face as its hero.
+ * Who the first Mate is: its name, with the die, and its look — the rows under the name, where the
+ * page draws the face as its hero.
  */
 export function FirstMateField({
   form,
   label,
-  look,
   size,
 }: {
   readonly form: NewProjectForm;
   readonly label: string;
-  readonly look: "folded" | "apart";
   /** `xl` where the form is the page's hero (the first run's card). */
   readonly size?: "default" | "xl" | undefined;
 }) {
@@ -350,9 +349,8 @@ export function FirstMateField({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={MATE_FIELD}>{label}</Label>
       <MateFacePicker
-        apart={look === "apart"}
+        apart
         face={form.face}
-        folded={look === "folded"}
         onPickShape={form.pickShape}
         onPickTint={form.pickTint}
       >
@@ -551,7 +549,9 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     return (
       <NewProjectPageFrame>
         <h1 className={HEADING_CLASS}>What do you want to build?</h1>
-        <p className="m-0 text-center text-body text-muted-foreground">{closed}</p>
+        <Text className="m-0 text-center" render={<p />} variant="description">
+          {closed}
+        </Text>
       </NewProjectPageFrame>
     );
   if (step === "mate")

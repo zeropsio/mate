@@ -201,6 +201,7 @@ import {
   useStageFirstDeploys,
   useWithheldStops,
 } from "./ZeropsGroupDetail";
+import { Text } from "~/components/ui/text";
 
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
 function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<string, string> {
@@ -1324,7 +1325,9 @@ export function ZeropsStopPane({
           {subjectRows}
         </ChangeList>
         {untold.length === 0 ? null : (
-          <p className="pt-1 pb-2 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+          <Text className="pt-1 pb-2" render={<p />} variant="description">
+            {cannotTellWhatRuns(untold)}.
+          </Text>
         )}
       </>
     );
@@ -1443,19 +1446,23 @@ export function ZeropsStopPane({
             <p className="mt-1.5 px-3 text-body text-status-failed-text">{runAgain.refused}</p>
           )}
           {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
-            <p className="mt-1.5 px-3 text-body text-muted-foreground">{runAgain.held}</p>
+            <Text className="mt-1.5 px-3" render={<p />} variant="description">
+              {runAgain.held}
+            </Text>
           )}
           {down || renewing?.kind !== "failed" ? null : (
             <p className="mt-1.5 px-3 text-body text-status-failed-text">{renewing.words}</p>
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.
-            <p
-              className="mt-1.5 px-3 text-body text-muted-foreground"
+            <Text
+              className="mt-1.5 px-3"
+              render={<p />}
+              variant="description"
               data-zerops-surface="place-why"
             >
               {verdict.why}
-            </p>
+            </Text>
           )}
         </div>
       )}
@@ -1480,12 +1487,14 @@ export function ZeropsStopPane({
                   {nextRows}
                 </PlaceNextRelease>
                 {laterLine === undefined ? null : (
-                  <p
-                    className="px-1 text-body text-muted-foreground"
+                  <Text
+                    className="px-1"
+                    render={<p />}
+                    variant="description"
                     data-zerops-surface="place-later-changes"
                   >
                     {laterLine}
-                  </p>
+                  </Text>
                 )}
               </PlaceSection>
             ) : (
@@ -1605,14 +1614,14 @@ export function ZeropsStopPane({
                       <Skeleton className="h-3 w-1/2" surface="card" />
                     </div>
                   ) : repo === undefined ? (
-                    <p className="text-body text-muted-foreground">
+                    <Text render={<p />} variant="description">
                       No repository is declared for this environment&rsquo;s services, so its
                       history cannot be read.
-                    </p>
+                    </Text>
                   ) : history.kind === "read" && history.commits.length === 0 ? (
-                    <p className="text-body text-muted-foreground">
+                    <Text render={<p />} variant="description">
                       No deploys yet. Each merge to main lands here.
-                    </p>
+                    </Text>
                   ) : (
                     <ZeropsHistoryView
                       here={stop.name}
@@ -1776,7 +1785,7 @@ export function ZeropsStopPane({
               {stopsUnverified.length === 0 ? null : (
                 // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
                 <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                  <p className="text-body text-muted-foreground">
+                  <Text render={<p />} variant="description">
                     Stop not confirmed:{" "}
                     {[
                       ...new Set(
@@ -1785,7 +1794,7 @@ export function ZeropsStopPane({
                         ),
                       ),
                     ].join(", ") || "a service"}
-                  </p>
+                  </Text>
                   <HqProblems problems={stopsUnverified} />
                 </div>
               )}

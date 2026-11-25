@@ -14,6 +14,7 @@ import { useState, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsDataQueryProps {
   readonly pending?: boolean;
@@ -35,10 +36,10 @@ export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryPr
   return (
     <Card className="shrink-0" data-zerops-data-query>
       <div className="space-y-1 p-2">
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           One SELECT statement · 100 rows per page · 10 second timeout. Comments and escape syntax
           are not supported.
-        </p>
+        </Text>
         <Textarea
           data-zerops-data-query-input
           onChange={handleChange}

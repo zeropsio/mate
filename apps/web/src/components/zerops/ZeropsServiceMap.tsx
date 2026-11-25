@@ -61,6 +61,7 @@ import { ServiceList, ServiceMeters, ServiceRow } from "./system/ServiceRow";
 import { Badge } from "~/components/ui/badge";
 import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -474,9 +475,9 @@ function ServiceRoutes({
       ))}
       {production.map((link) =>
         link.url === undefined ? (
-          <li className="text-caption text-muted-foreground" key={link.label}>
+          <Text render={<li />} variant="note" key={link.label}>
             Production · {link.label}
-          </li>
+          </Text>
         ) : (
           <RouteLink href={link.url} key={link.label} label={`Production · ${link.label}`} />
         ),
@@ -492,9 +493,9 @@ function PoolWorkspaces({ workspaces }: { workspaces: ReadonlyArray<PoolWorkspac
     <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-pool-workspaces>
       {workspaces.map((workspace) =>
         workspace.url === undefined ? (
-          <li className="text-caption text-muted-foreground" key={workspace.key}>
+          <Text render={<li />} variant="note" key={workspace.key}>
             {`${workspace.label} · ${workspace.why ?? ""}`}
-          </li>
+          </Text>
         ) : (
           <RouteLink
             href={workspace.url}
@@ -513,12 +514,9 @@ function MetricRange({ metric }: { metric: ZeropsServiceMetric }) {
   const unit = metric.unit === undefined ? "" : ` ${metric.unit}`;
   const mode = metric.cpuMode === undefined ? "" : ` · ${metric.cpuMode}`;
   return (
-    <span
-      className="shrink-0 text-caption text-muted-foreground tabular-nums"
-      data-zerops-service-metric-range
-    >
+    <Text className="shrink-0" variant="meta" data-zerops-service-metric-range>
       {`${metric.range}${unit}${mode}`}
-    </span>
+    </Text>
   );
 }
 
@@ -584,12 +582,14 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         />
       </InlineButton>
       {row.meta.length === 0 ? null : (
-        <p
-          className="mt-0.5 min-w-0 max-w-full break-words text-caption text-muted-foreground"
+        <Text
+          className="mt-0.5 min-w-0 max-w-full break-words"
+          render={<p />}
+          variant="note"
           data-zerops-service-meta
         >
           {row.meta.map(factText).join(" · ")}
-        </p>
+        </Text>
       )}
       {row.workspaces === undefined ? (
         <ServiceRoutes routes={row.service.routes} row={row} />
@@ -741,9 +741,9 @@ function ControlPlaneRow({
                     ) : null}
                   </span>
                   {versioned ? null : (
-                    <span className="min-w-0 truncate text-caption text-muted-foreground">
+                    <Text className="min-w-0" truncate variant="note">
                       {mate === undefined ? row.service.hostname : `${mate.name} lives here`}
-                    </span>
+                    </Text>
                   )}
                 </span>
               </PopoverTrigger>
@@ -756,12 +756,14 @@ function ControlPlaneRow({
           {versioned ? (
             // The Mate's version and its update, under its title — outside the hover pop's
             // trigger, so a hand on Update never opens the pop.
-            <div
-              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ps-8.5 text-caption text-muted-foreground"
+            <Text
+              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ps-8.5"
+              render={<div />}
+              variant="note"
               data-zerops-mate-update
             >
               {mateUpdate}
-            </div>
+            </Text>
           ) : null}
           {row.restNote === undefined ? null : (
             <p
@@ -950,13 +952,13 @@ export function ZeropsServiceMap({
                 // A tool at work on these services is the section's state, at the label's end and
                 // in its type: alone under the label it took the panel's base size and read as a
                 // heading.
-                <span className="text-caption text-muted-foreground">
+                <Text variant="note">
                   <Badge
                     dot
                     data-zerops-running-tool={view.runningTool}
                     tone="info"
                   >{`${view.runningTool} running`}</Badge>
-                </span>
+                </Text>
               )}
               {/* The Mate's own Zerops project, where these services run: the way out to it. */}
               <Button
@@ -1004,9 +1006,9 @@ export function ZeropsServiceMap({
         )}
       </section>
       {view.warnings.map((warning) => (
-        <p className="text-muted-foreground text-caption" key={warning}>
+        <Text render={<p />} variant="note" key={warning}>
           {warning}
-        </p>
+        </Text>
       ))}
     </div>
   );

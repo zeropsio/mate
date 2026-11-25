@@ -16,6 +16,7 @@ import { NextRelease, type NextReleaseInput } from "./system/NextRelease";
 import { PlaceLine } from "./system/PlaceLine";
 import { SectionAction } from "./system/SectionLabel";
 import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 /**
  * The column a Mate's Zerops and Code pages stand in, from the page's top: its gutters, its width
@@ -101,12 +102,12 @@ export function MateProjectCard({
     >
       <div className="flex min-w-0 items-center justify-between gap-3 px-4 pt-3.5 pb-1.5">
         <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-caption text-muted-foreground">
+          <Text variant="note">
             {mateName === undefined ? "This Mate's project" : possessive(mateName, "project")}
-          </span>
-          <span className="truncate text-emphasis font-semibold text-foreground">
+          </Text>
+          <Text truncate variant="headline">
             {project.name}
-          </span>
+          </Text>
         </span>
         <SectionAction onClick={project.onOpenProject}>
           Open project
@@ -118,7 +119,7 @@ export function MateProjectCard({
           className="flex min-w-0 items-center justify-between gap-3 px-4 pt-1 pb-3.5"
           data-zerops-surface="panel-not-live"
         >
-          <span className="text-body text-muted-foreground">Not live yet</span>
+          <Text variant="description">Not live yet</Text>
           <Button onClick={project.onOpenProject} size="sm" variant="secondary">
             Put it live
           </Button>

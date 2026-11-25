@@ -35,6 +35,7 @@ import { changeTitle } from "./projects/projectHistory.logic";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
+import { Text } from "~/components/ui/text";
 
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
 interface ZeropsReleasesCarried {
@@ -249,12 +250,9 @@ function ReleaseRow({
   ) : releasing === release.tag && tone === "ok" ? (
     <Badge tone="info">{RELEASING_WORD}</Badge>
   ) : tone === "ok" ? null : releaseFailureIsOver(release, every) ? (
-    <span
-      className="shrink-0 text-caption whitespace-nowrap text-muted-foreground"
-      data-zerops-surface="release-over"
-    >
+    <Text className="shrink-0 whitespace-nowrap" variant="meta" data-zerops-surface="release-over">
       {DIDNT_GO_LIVE_QUIET}
-    </span>
+    </Text>
   ) : (
     <Badge tone={STATUS_BADGE_TONE[tone]}>
       {notDeployed?.has(release.tag) === true ? RELEASE_DIDNT_GO_LIVE : release.word}
