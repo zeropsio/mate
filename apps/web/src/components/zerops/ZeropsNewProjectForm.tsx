@@ -549,10 +549,12 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
       <NewProjectPageFrame centered>
         <NewProjectFormFrame className="new-project-form new-project-mate" form={form}>
           <MateFaceRing
+            className="my-4"
             face={form.face}
             onPickShape={form.pickShape}
             onPickTint={form.pickTint}
             open={styling}
+            size="page"
           />
           <h1 className="new-project-heading">
             <MateNameText

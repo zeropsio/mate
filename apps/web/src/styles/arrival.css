@@ -542,10 +542,6 @@
   gap: 10px;
 }
 
-.new-project-mate .mate-face-ring-stage {
-  margin-block: 16px;
-}
-
 .new-project-mate-acts {
   display: flex;
   justify-content: center;
@@ -610,31 +606,6 @@
   flex-direction: column;
   align-items: center;
   padding: 0 24px 32px;
-}
-
-.new-mate-creator .mate-face-ring-stage {
-  --ring-radius: 84px;
-  width: 200px;
-  height: 189px;
-  margin-block: 12px;
-}
-
-.new-mate-creator .mate-face-ring-hero {
-  width: 152px;
-  height: 152px;
-}
-
-/* Open, the face keeps most of its size and the options stay small, so the ring has air
-   between each option and around the face. */
-.new-mate-creator .mate-face-ring-stage[data-open] .mate-face-ring-face {
-  scale: 0.66;
-}
-
-.new-mate-creator .mate-face-ring-seat {
-  top: calc(50% - 13px);
-  left: calc(50% - 13px);
-  width: 26px;
-  height: 26px;
 }
 
 /* The Mate's name, at the headline's size, cut to one line. */

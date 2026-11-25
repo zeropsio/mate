@@ -1,0 +1,18 @@
+/* ==== the arrival's keyframes ==== */
+/* The choreographies of a Mate's arrival, first run, New project and New Mate, applied by their
+   `animate-*` tokens (`foundation.css`). */
+
+/* A face being picked: the one before fades out under the new one, which settles from 92 %. */
+@keyframes face-out {
+  from {
+    opacity: 1;
+  }
+}
+
+@keyframes face-in {
+  from {
+    scale: 0.92;
+  }
+}
+
+/* ==== end of the arrival's keyframes ==== */

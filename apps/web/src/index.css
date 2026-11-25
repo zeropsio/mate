@@ -16,7 +16,6 @@
 @import "./styles/chat-markdown.css";
 @import "./styles/run-shimmer.css";
 @import "./styles/mate-face.css";
-@import "./styles/face-picker.css";
 @import "./styles/person-avatar.css";
 @import "./styles/menu-rows.css";
 @import "./styles/menu-projects.css";
@@ -34,6 +33,7 @@
 @import "./styles/switch-motion.css";
 @import "./styles/arrival.css";
 @import "./styles/motion.css";
+@import "./styles/motion-arrival.css";
 @import "./styles/crew.css";
 @import "./styles/vault.css";
 @import "./styles/published-page.css";

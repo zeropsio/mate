@@ -302,6 +302,7 @@ export function ZeropsNewMateForm({
           >
             <div className="new-mate-creator">
               <MateFaceRing
+                className="my-3"
                 face={face}
                 onPickShape={(shape) => {
                   setPicked((current) => ({ ...current, shape }));
@@ -310,6 +311,7 @@ export function ZeropsNewMateForm({
                   setPicked((current) => ({ ...current, tint }));
                 }}
                 open={styling}
+                size="dialog"
               />
               <p className="new-mate-name">
                 <MateNameText
