@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
@@ -8,14 +8,14 @@ import { Specimen } from "../Specimen";
 
 function ReviewSheetOpener() {
   const [open, setOpen] = useState(false);
-  const from = useRef<HTMLButtonElement | null>(null);
+  const [from, setFrom] = useState<HTMLButtonElement | null>(null);
   return (
     <>
-      <Button onClick={() => setOpen(true)} ref={from} variant="secondary">
+      <Button onClick={() => setOpen(true)} ref={setFrom} variant="secondary">
         Review a change
       </Button>
       <ZeropsReviewDialog
-        from={from.current}
+        from={from}
         labelledBy="kit-review-title"
         onClosed={() => {}}
         onOpenChange={setOpen}
