@@ -24,6 +24,7 @@ import {
   isProduction,
 } from "./ask.logic";
 import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 export type AskDensity = "full" | "compact";
 
@@ -151,7 +152,7 @@ export function AskDock(props: {
   return (
     <section
       aria-label={props.label}
-      className="@container border-foreground/8 border-b"
+      className="@container border-rule border-b"
       // It stands over the conversation's end and never moves it (`ChatView`).
       data-chat-composer-asks="true"
       data-composer-top={props.kind}
@@ -386,7 +387,7 @@ export interface AskStep {
 export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) {
   return (
     <Card variant="inset">
-      <ol className="divide-y divide-foreground/6">
+      <List render={<ol />}>
         {steps.map((step, index) => (
           <li
             className="grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
@@ -417,7 +418,7 @@ export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) 
             {step.end === undefined ? <span /> : <Text variant="note">{step.end}</Text>}
           </li>
         ))}
-      </ol>
+      </List>
     </Card>
   );
 }

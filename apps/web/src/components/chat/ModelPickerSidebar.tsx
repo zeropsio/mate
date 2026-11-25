@@ -11,6 +11,7 @@ import {
   type ProviderInstanceEntry,
 } from "../../providerInstances";
 import { resolveModelPickerRailButtonState } from "./ModelPickerSidebar.logic";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * Build the hover tooltip for an instance button. Mirrors the old
@@ -145,7 +146,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   </TooltipPopup>
                 </Tooltip>
               </div>
-              <div className="border-b border-border/70" aria-hidden="true" />
+              <Separator />
             </>
           ) : null}
 

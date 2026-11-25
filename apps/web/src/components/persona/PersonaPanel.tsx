@@ -557,7 +557,7 @@ function PersonaMark(props: { readonly icon: LucideIcon; readonly quiet?: boolea
 
 /** A line under the persona's text, past a hairline, where the words start. */
 const STRIP_CLASS =
-  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border py-2 ps-11 pe-3 text-caption leading-4.5";
+  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-rule py-2 ps-11 pe-3 text-caption leading-4.5";
 
 function CurrentPersona(props: {
   readonly mate: MateName;

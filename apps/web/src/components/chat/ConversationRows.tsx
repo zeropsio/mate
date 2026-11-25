@@ -262,21 +262,14 @@ export function Seam({
           : row.seam === "new"
             ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
             : formatDayAwareTimestamp(row.createdAt, timestampFormat);
-  const fresh = row.seam === "new";
   return (
-    <div
+    <Separator
       aria-label={label}
-      className={cn(
-        "flex items-center gap-3 text-caption",
-        fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
-      )}
       data-seam={row.seam}
-      role="separator"
+      tone={row.seam === "new" ? "info" : "default"}
     >
-      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
-      <span className="shrink-0 tabular-nums">{label}</span>
-      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
-    </div>
+      {label}
+    </Separator>
   );
 }
 

@@ -26,6 +26,7 @@ import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { InlineButton } from "./ui/button";
 import { Dot } from "./ui/dot";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { Separator } from "~/components/ui/separator";
 
 interface PrStatusIndicator {
   label: string;
@@ -144,7 +145,7 @@ function PrStatusTooltipContent({ status }: { status: PrStatusIndicator }) {
   return (
     <span className="flex max-w-[min(34rem,calc(100vw-2rem))] items-stretch overflow-hidden whitespace-nowrap">
       <span className="shrink-0 pr-2 font-medium">{status.tooltipLead}</span>
-      <span className="min-h-4 shrink-0 border-border/70 border-l" aria-hidden="true" />
+      <Separator className="min-h-4" orientation="vertical" />
       <span className="min-w-0 truncate pl-2">{status.tooltipTitle}</span>
     </span>
   );
