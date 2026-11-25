@@ -406,6 +406,8 @@ import {
   readComposerFileDataUrl,
 } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
+import { PersonaAsk, PersonaAskFold, usePersonaAskFold } from "./persona/PersonaAsk";
+import { useMateHoldsNoConversation, useMatePersonaAsk } from "./persona/useMatePersonaAsk";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { mateShowsSignIn } from "./mateSignIn.logic";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
@@ -3134,6 +3136,17 @@ function ConversationView(props: ChatViewProps) {
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
   const zeropsArrivalHoldsComposer = admission.holdsComposer || mateSignIn;
+  // A new project's Mate asks its person how to work with them in its first draft, over the
+  // composer where the headline stands, and folds the ask away once answered.
+  const mateHoldsNoConversation = useMateHoldsNoConversation(environmentId);
+  const heroPersonaAsk = useMatePersonaAsk({
+    environmentId,
+    threadRef: routeThreadRef,
+    moment: "start",
+    here: isDraftHeroState && !zeropsArrivalHoldsComposer && mateHoldsNoConversation,
+    written: false,
+  });
+  const heroPersonaAskFold = usePersonaAskFold(heroPersonaAsk);
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -7539,6 +7552,7 @@ function ConversationView(props: ChatViewProps) {
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProjectDisplayName ?? null}
+                          asking={heroPersonaAskFold === "asking"}
                         />
                       </div>
                       <NoticesOverComposer notices={conversationNotices} />
@@ -7572,6 +7586,11 @@ function ConversationView(props: ChatViewProps) {
                   )}
                   {shownThreadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={shownThreadSyncPhase} />
+                  ) : null}
+                  {isDraftHeroState && heroPersonaAsk !== null && heroPersonaAskFold !== null ? (
+                    <PersonaAskFold folding={heroPersonaAskFold === "folding"}>
+                      <PersonaAsk {...heroPersonaAsk} />
+                    </PersonaAskFold>
                   ) : null}
                   <div
                     // While a new Mate's stand-up waits on this person, the conversation's one

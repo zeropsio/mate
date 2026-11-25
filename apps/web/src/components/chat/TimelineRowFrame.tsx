@@ -38,6 +38,7 @@ import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { easeRooms } from "./runRoom";
 import { TimelineRowCtx } from "./timelineContext";
 import { PauseBlock, StandUpAskLine } from "./ConversationRows";
+import { PersonaAsk } from "../persona/PersonaAsk";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { MateTaskMessageRow } from "../zerops/MateTaskCard";
 import { MateAnswerWait, MateMessageRow } from "../zerops/MateMessageRow";
@@ -294,11 +295,19 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
   return (
     <>
       {askLine && row.kind === "message" && ctx.standUpAsk !== null ? (
-        <StandUpAskLine
-          at={row.message.createdAt}
-          timestampFormat={ctx.timestampFormat}
-          words={ctx.standUpAsk}
-        />
+        <>
+          <StandUpAskLine
+            at={row.message.createdAt}
+            timestampFormat={ctx.timestampFormat}
+            words={ctx.standUpAsk}
+          />
+          {/* The Mate's first message: how it should work with its person, while it sets up. */}
+          {ctx.personaAsk == null ? null : (
+            <div className="pt-5" data-persona-ask="">
+              <PersonaAsk {...ctx.personaAsk} />
+            </div>
+          )}
+        </>
       ) : null}
       {row.kind === "message" && row.message.role === "user" && !askLine ? (
         <UserTimelineRow row={row} />

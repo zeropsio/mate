@@ -54,11 +54,14 @@ import { createRoot } from "react-dom/client";
 import { StandUpAskLine } from "~/components/chat/ConversationRows";
 import { ComposerAccessControl } from "~/components/chat/ComposerModelControl";
 import { ClaudeAI } from "~/components/Icons";
-import { type PersonaChoice, PersonaAsk } from "~/components/persona/PersonaAsk";
+import {
+  PERSONA_CHOICES,
+  PersonaAsk,
+  PersonaAskFold,
+  usePersonaAskFold,
+} from "~/components/persona/PersonaAsk";
 import type { AskState } from "~/components/ask/ask.logic";
-import { NOT_NOW } from "~/components/ask/ask.logic";
-import { personaIcon } from "~/components/persona/personaIcon";
-import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
+import type { MatePersonaAskView, PersonaAskMoment } from "~/components/persona/useMatePersonaAsk";
 import { RunLine } from "~/components/chat/RunChat";
 import {
   TimelineRowActivityCtx,
@@ -254,9 +257,10 @@ interface HarnessState {
   readonly watching?: boolean;
   /**
    * The Mate's first message asking how to work with its person (`PersonaAsk`): asked, one picked,
-   * answered, or put off. A new project's (no `conversation`) answered is its usual empty start.
+   * answered, or saved but not shown. A new project's (no `conversation`) answered is its usual
+   * empty start.
    */
-  readonly persona?: "asked" | "picked" | "answered" | "notNow";
+  readonly persona?: "asked" | "picked" | "answered" | "failed";
 }
 
 // Every source-backed recovery/refusal copy branch joins the same production composition.
@@ -645,12 +649,12 @@ const STATES: ReadonlyArray<HarnessState> = [
     persona: "answered",
   },
   {
-    id: "persona-standup-not-now",
-    label: "5 Persona · not now",
+    id: "persona-standup-failed",
+    label: "5 Persona · saved, not shown",
     mate: WREN,
     phase: null,
     conversation: true,
-    persona: "notNow",
+    persona: "failed",
   },
   {
     id: "not-created",
@@ -1131,24 +1135,10 @@ function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
   }));
 }
 
-/** The templates about the person, as the Mate offers them (an organization's would lead). */
-const PERSONA_CHOICES: readonly PersonaChoice[] = PREMADE_PERSONA_TEMPLATES.filter(
-  (template) => template.about === "you",
-).map((template) => ({
-  key: template.id,
-  name: template.name,
-  description: template.description,
-  icon: personaIcon({ source: "premade", id: template.id, revision: template.revision }),
-}));
-
 /** What a state that opens with one picked has picked. */
 const PICKED = "teacher";
 /** How long the fixture's save takes. */
 const SAVE_MS = 600;
-/** How long a new project holds the answer's line before the ask folds away. */
-const HOLD_MS = 900;
-/** How long the ask takes to fold into the headline (`--duration-slow`). */
-const FOLD_MS = 260;
 
 const answered = (key: string | null, mateName: string): AskState => ({
   kind: "done",
@@ -1156,26 +1146,32 @@ const answered = (key: string | null, mateName: string): AskState => ({
   told: null,
 });
 
-/** The ask as the product would answer it: a pick, a save that takes a moment, Not now. */
-function usePersonaAsk(state: HarnessState) {
+/** The ask as the product's hook answers it (`useMatePersonaAsk`), its save a fixture's moment. */
+function usePersonaAskView(state: HarnessState, moment: PersonaAskMoment): MatePersonaAskView {
+  const mateName = state.mate.name;
   const [picked, setPicked] = useState<string | null>(() =>
     state.persona === "asked" ? null : PICKED,
   );
   const [ask, setAsk] = useState<AskState>(() =>
     state.persona === "answered"
-      ? answered(PICKED, state.mate.name)
-      : state.persona === "notNow"
-        ? { kind: "notNow", words: NOT_NOW }
+      ? answered(PICKED, mateName)
+      : state.persona === "failed"
+        ? { kind: "failed", words: `${mateName} has not shown it yet.` }
         : { kind: "waiting" },
   );
-  const choose = (then?: () => void) => {
-    setAsk({ kind: "working", words: "Saving…", pressed: "main" });
-    window.setTimeout(() => {
-      setAsk(answered(picked, state.mate.name));
-      then?.();
-    }, SAVE_MS);
+  return {
+    mateName,
+    project: state.mate.project ?? "this project",
+    moment,
+    picked,
+    onPick: setPicked,
+    state: ask,
+    onChoose: () => {
+      setAsk({ kind: "working", words: "Saving…", pressed: "main" });
+      window.setTimeout(() => setAsk(answered(picked, mateName)), SAVE_MS);
+    },
+    onOpenPersonaPage: () => undefined,
   };
-  return { picked, setPicked, ask, setAsk, choose };
 }
 
 /** The composer as a Mate's conversation draws it: its words, the model, the access, Send. */
@@ -1207,21 +1203,15 @@ function ComposerStandIn({ mateName }: { readonly mateName: string }) {
 }
 
 /**
- * A new project's Mate before its person's first message: its face, and its first message asking
- * how to work with them where the empty conversation's headline stands, over the composer. Once
- * answered, the line says so a beat, then the ask folds away as the usual headline unfolds in its
- * place (`DraftHeroHeadline`), its face back at rest; Not now folds it at once.
+ * A new project's Mate before its person's first message, as `ChatView`'s empty conversation draws
+ * it: its face waiting on them, its headline given way to its first message over the composer, and
+ * once answered the ask's own fold (`usePersonaAskFold`). Answered from the start, it never asks:
+ * its usual empty start.
  */
 function NewProjectPersona({ state }: { readonly state: HarnessState }) {
-  const { picked, setPicked, ask, setAsk, choose } = usePersonaAsk(state);
-  const [asking, setAsking] = useState(state.persona !== "answered");
-  const fold = () => setAsking(false);
-  const settled = !asking;
-  const folds = (open: boolean) =>
-    cn(
-      "grid w-full transition-[grid-template-rows,opacity] duration-260 ease-in-out-strong motion-reduce:transition-none",
-      open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-    );
+  const view = usePersonaAskView(state, "start");
+  const fold = usePersonaAskFold(state.persona === "answered" ? null : view);
+  const asking = fold === "asking";
   return (
     <div
       className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto px-6 py-8"
@@ -1231,39 +1221,32 @@ function NewProjectPersona({ state }: { readonly state: HarnessState }) {
         <MateFace
           shape={state.mate.shape}
           size={64}
-          state={settled ? "idle" : ask.kind === "done" ? "done" : "needs"}
+          state={asking ? "needs" : "idle"}
           tint={state.mate.tint}
         />
-        <div className={folds(asking)} inert={settled}>
-          <div className={cn("min-h-0", settled && "overflow-hidden")}>
-            <div className="pt-5">
-              <PersonaAsk
-                choices={PERSONA_CHOICES}
-                mateName={state.mate.name}
-                moment="start"
-                onAskAgain={() => setAsk({ kind: "waiting" })}
-                onChoose={() => choose(() => window.setTimeout(fold, HOLD_MS))}
-                onNotNow={() => {
-                  setAsk({ kind: "notNow", words: NOT_NOW });
-                  fold();
-                }}
-                onOpenPersonaPage={() => undefined}
-                onPick={setPicked}
-                picked={picked}
-                project={state.mate.project ?? ""}
-                state={ask}
-              />
-            </div>
-          </div>
+        {/* The headline's own fold (`DraftHeroHeadline`'s `asking`). */}
+        <div
+          className={cn(
+            "grid w-full transition-[grid-template-rows,opacity] duration-260 ease-in-out-strong motion-reduce:transition-none",
+            asking ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
+          )}
+          inert={asking}
+        >
+          <h1
+            className={cn(
+              "min-h-0 pt-5 text-center font-normal text-title text-foreground tracking-tight sm:text-display",
+              asking && "overflow-hidden",
+            )}
+          >
+            What should {state.mate.name} do on {state.mate.project}?
+          </h1>
         </div>
-        <div className={folds(settled)}>
-          <div className="min-h-0 overflow-hidden">
-            <h1 className="pt-5 text-center font-normal text-title text-foreground tracking-tight sm:text-display">
-              What should {state.mate.name} do on {state.mate.project}?
-            </h1>
-          </div>
-        </div>
-        <div className="w-full pt-4">
+        <div className="w-full pt-5">
+          {fold === null ? null : (
+            <PersonaAskFold folding={fold === "folding"}>
+              <PersonaAsk {...view} />
+            </PersonaAskFold>
+          )}
           <ComposerStandIn mateName={state.mate.name} />
         </div>
       </div>
@@ -1273,22 +1256,7 @@ function NewProjectPersona({ state }: { readonly state: HarnessState }) {
 
 /** The Mate's first message under the setup's ask: it stays where it was asked, answered or not. */
 function SetupPersonaAsk({ state }: { readonly state: HarnessState }) {
-  const { picked, setPicked, ask, setAsk, choose } = usePersonaAsk(state);
-  return (
-    <PersonaAsk
-      choices={PERSONA_CHOICES}
-      mateName={state.mate.name}
-      moment="setup"
-      onAskAgain={() => setAsk({ kind: "waiting" })}
-      onChoose={() => choose()}
-      onNotNow={() => setAsk({ kind: "notNow", words: NOT_NOW })}
-      onOpenPersonaPage={() => undefined}
-      onPick={setPicked}
-      picked={picked}
-      project={state.mate.project ?? ""}
-      state={ask}
-    />
-  );
+  return <PersonaAsk {...usePersonaAskView(state, "setup")} />;
 }
 
 function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
