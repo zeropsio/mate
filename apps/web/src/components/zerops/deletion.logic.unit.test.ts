@@ -71,7 +71,7 @@ const zeropsRefusal = {
 } as const;
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (others.length > 0 || births.length > 0) { → if (others.length > 0) {
-it("MN+1: A Mate's or a project's Delete offers exactly what the person may delete: a Mate that is not its project's last goes alone, the last Mate of a project the person may not delete whole goes alone keeping the project, the last Mate of one they may delete offers the choice, and a project HQ deletes, waits on or failed to delete shows that; breaks: the last Mate's Delete deletes a project holding a Mate still being set up or a Stage the person cannot delete", () => {
+it("MN83: A Mate's or a project's Delete offers exactly what the person may delete: a Mate that is not its project's last goes alone, the last Mate of a project the person may not delete whole goes alone keeping the project, the last Mate of one they may delete offers the choice, and a project HQ deletes, waits on or failed to delete shows that; breaks: the last Mate's Delete deletes a project holding a Mate still being set up or a Stage the person cannot delete", () => {
   const other = { projectId: "Z_OAT", kind: "mate", name: "Oat" };
   const plain = { projectId: "Z_PLAIN", kind: "plain", name: "z_plain" };
   const cases: ReadonlyArray<
@@ -214,7 +214,7 @@ it("MN38: A production that stays is named in the Delete dialog from the person'
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | choice.slid.has(production.projectId) ? [production.projectId] : [], → [production.projectId],
-it("MN+2: The whole project's Delete sends one project deletion naming its last Mate, every Stage and only the Productions slid, and no Mate deletion; the last Mate's Delete alone sends one Mate deletion that keeps its project's code; breaks: a Production not slid is deleted, or the Mate and the project are deleted by two starts", () => {
+it("MN84: The whole project's Delete sends one project deletion naming its last Mate, every Stage and only the Productions slid, and no Mate deletion; the last Mate's Delete alone sends one Mate deletion that keeps its project's code; breaks: a Production not slid is deleted, or the Mate and the project are deleted by two starts", () => {
   const plan = projectDeletionPlan(
     bakery({ environments: [stage("Z_STAGE"), production("Z_LIVE"), production("Z_SHOP")] }),
     MATE,
@@ -247,7 +247,7 @@ it("MN+2: The whole project's Delete sends one project deletion naming its last 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (plan.stages.some((stage) => !slid.has(stage.projectId))) → if (plan.stages.every((stage) => !slid.has(stage.projectId)))
-it("MN+3: A project's Delete opens only once every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid", () => {
+it("MN85: A project's Delete opens only once every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid", () => {
   const plan = projectDeletionPlan(
     bakery({ environments: [stage("Z_STAGE"), stage("Z_REVIEW"), production("Z_LIVE")] }),
     MATE,
@@ -262,7 +262,7 @@ it("MN+3: A project's Delete opens only once every Stage is slid and its name is
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | project.deletion.kind === "failed" && step.state !== "gone" → project.deletion.kind === "waiting" && step.state !== "gone"
-it("MN+4: A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage", () => {
+it("MN86: A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage", () => {
   const steps = [
     { part: "mate", projectId: "Z_RYE", state: "gone" },
     { part: "stage", projectId: "Z_STAGE", state: "deleting" },

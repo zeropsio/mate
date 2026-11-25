@@ -43,6 +43,7 @@ export type PermissionCall =
   | { readonly fn: "structurePermission" }
   | { readonly fn: "addMatePermission"; readonly projectIds: ReadonlyArray<string> }
   | { readonly fn: "operateMatePermission"; readonly projectId: string }
+  | { readonly fn: "deleteProjectPermission"; readonly projectId: string }
   | {
       readonly fn: "mateRecordPermission";
       readonly projectId: string;
@@ -73,8 +74,7 @@ export type PermissionCall =
       readonly production: ReleaseProduction;
       readonly mergers: MergeLimit | null;
     }
-  | { readonly fn: "detachPermission"; readonly projectId: string; readonly held: string }
-  | { readonly fn: "deleteProjectPermission"; readonly projectId: string };
+  | { readonly fn: "detachPermission"; readonly projectId: string; readonly held: string };
 
 export interface PermissionVector {
   readonly name: string;
@@ -308,6 +308,26 @@ export const permissionVectors: ReadonlyArray<PermissionVector> = [
   {
     name: "Editing a Mate record",
     call: { fn: "mateRecordPermission", projectId: "P", create: false, held: "mate" },
+    canCreateProjects: false,
+    grid: `
+    role       status  gone              none              NO_ACCESS         READ_ONLY         BASIC_USER        ADMIN             OWNER             SUPERUSER
+    OWNER      ACTIVE  project_gone      allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    OWNER      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+    ADMIN      ACTIVE  project_gone      allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    ADMIN      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+    BASIC_USER ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    BASIC_USER INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+    READ_ONLY  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    READ_ONLY  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+    NO_ACCESS  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+    SUPERUSER  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
+    SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
+`,
+  },
+  {
+    name: "Deleting an environment's project with its application",
+    call: { fn: "deleteProjectPermission", projectId: "P" },
     canCreateProjects: false,
     grid: `
     role       status  gone              none              NO_ACCESS         READ_ONLY         BASIC_USER        ADMIN             OWNER             SUPERUSER
@@ -980,26 +1000,6 @@ export const permissionVectors: ReadonlyArray<PermissionVector> = [
     NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member    not_active_member    not_active_member
     SUPERUSER  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin not_structure_writer not_structure_writer not_project_admin
     SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member    not_active_member    not_active_member
-`,
-  },
-  {
-    name: "Deleting an environment's project with its application",
-    call: { fn: "deleteProjectPermission", projectId: "P" },
-    canCreateProjects: false,
-    grid: `
-    role       status  gone              none              NO_ACCESS         READ_ONLY         BASIC_USER        ADMIN             OWNER             SUPERUSER
-    OWNER      ACTIVE  project_gone      allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    OWNER      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    ADMIN      ACTIVE  project_gone      allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    ADMIN      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    BASIC_USER ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    BASIC_USER INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    READ_ONLY  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    READ_ONLY  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    NO_ACCESS  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    SUPERUSER  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
 `,
   },
 ];
