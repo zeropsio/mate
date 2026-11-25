@@ -101,14 +101,7 @@ export function ContextWindowMeter(props: {
           </Button>
         }
       />
-      <PopoverPopup
-        tooltipStyle
-        side="top"
-        align="end"
-        padding="none"
-        width="sm"
-        className="text-left whitespace-normal"
-      >
+      <PopoverPopup side="top" align="end" padding="none" width="sm">
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
             <div className="font-medium text-muted-foreground text-caption">Context Window</div>

@@ -43,7 +43,7 @@ function PopoverSpecimens() {
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Openers: paddings, tooltip style">
+      <SpecimenBlock title="Openers: paddings, the tooltip variant">
         <SpecimenGrid>
           {PADDINGS.map((padding) => (
             <Specimen key={padding} label={specimenLabel({ padding, width: "md" })}>
@@ -55,10 +55,10 @@ function PopoverSpecimens() {
               </Popover>
             </Specimen>
           ))}
-          <Specimen label="tooltipStyle">
+          <Specimen label={specimenLabel({ variant: "tooltip" })}>
             <Popover>
               <PopoverTrigger render={<Button variant="secondary" />}>Open</PopoverTrigger>
-              <PopoverPopup tooltipStyle>Saved to the project's vault.</PopoverPopup>
+              <PopoverPopup variant="tooltip">Saved to the project's vault.</PopoverPopup>
             </Popover>
           </Specimen>
         </SpecimenGrid>

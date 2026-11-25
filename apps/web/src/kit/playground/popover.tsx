@@ -13,9 +13,11 @@ import { definePlayground, jsxElement } from "../kitPlayground";
 import { variantsOf } from "../specimenLabel";
 
 type PopoverProps = ComponentProps<typeof PopoverPopup>;
+type PopoverVariant = NonNullable<PopoverProps["variant"]>;
 type PopoverWidth = NonNullable<PopoverProps["width"]>;
 type PopoverPadding = NonNullable<PopoverProps["padding"]>;
 
+const VARIANTS = variantsOf<PopoverVariant>({ default: true, tooltip: true });
 const WIDTHS = variantsOf<PopoverWidth>({ auto: true, sm: true, md: true, lg: true });
 const PADDINGS = variantsOf<PopoverPadding>({ default: true, compact: true, none: true });
 const SIDES = ["bottom", "top", "right", "left"] as const;
@@ -30,6 +32,11 @@ export default definePlayground({
   imports:
     'import { Popover, PopoverClose, PopoverPopup, PopoverTitle, PopoverTrigger } from "~/components/ui/popover";',
   controls: {
+    variant: {
+      kind: "enum",
+      options: VARIANTS,
+      note: "tooltip: one line that answers a press; it fits its words, so no width or padding",
+    },
     width: {
       kind: "enum",
       options: WIDTHS,
@@ -42,28 +49,23 @@ export default definePlayground({
     },
     side: { kind: "enum", options: SIDES },
     align: { kind: "enum", options: ALIGNS },
-    tooltipStyle: { kind: "boolean", note: "one line that answers a press, a tooltip's look" },
   },
   initial: {
+    variant: "default",
     width: "md",
     padding: "default",
     side: "bottom",
     align: "center",
-    tooltipStyle: false,
   },
-  render: ({ width, padding, side, align, tooltipStyle }) => (
+  render: ({ variant, width, padding, side, align }) => (
     <Popover>
       <PopoverTrigger render={<Button variant="secondary" />}>Who can open it</PopoverTrigger>
-      <PopoverPopup
-        align={align}
-        padding={padding}
-        side={side}
-        tooltipStyle={tooltipStyle}
-        width={width}
-      >
-        {tooltipStyle ? (
-          LINE
-        ) : (
+      {variant === "tooltip" ? (
+        <PopoverPopup align={align} side={side} variant="tooltip">
+          {LINE}
+        </PopoverPopup>
+      ) : (
+        <PopoverPopup align={align} padding={padding} side={side} width={width}>
           <div className="flex flex-col gap-2">
             <PopoverTitle>Who can open it</PopoverTitle>
             <p className="m-0 text-body">{PROSE}</p>
@@ -71,11 +73,11 @@ export default definePlayground({
               <PopoverClose render={<Button size="sm" variant="secondary" />}>Done</PopoverClose>
             </div>
           </div>
-        )}
-      </PopoverPopup>
+        </PopoverPopup>
+      )}
     </Popover>
   ),
-  jsx: ({ width, padding, side, align, tooltipStyle }) =>
+  jsx: ({ variant, width, padding, side, align }) =>
     jsxElement(
       "Popover",
       {},
@@ -83,8 +85,8 @@ export default definePlayground({
         '<PopoverTrigger render={<Button variant="secondary" />}>Who can open it</PopoverTrigger>',
         jsxElement(
           "PopoverPopup",
-          { width, padding, side, align, tooltipStyle },
-          tooltipStyle
+          variant === "tooltip" ? { variant, side, align } : { width, padding, side, align },
+          variant === "tooltip"
             ? LINE
             : [
                 "<PopoverTitle>Who can open it</PopoverTitle>",
@@ -96,7 +98,6 @@ export default definePlayground({
             padding: "default",
             side: "bottom",
             align: "center",
-            tooltipStyle: false,
           },
         ),
       ].join("\n"),

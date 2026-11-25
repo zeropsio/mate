@@ -1279,7 +1279,7 @@ function TerminalActionButton({
         {children}
       </PopoverTrigger>
       <PopoverPopup
-        tooltipStyle
+        variant="tooltip"
         side="bottom"
         sideOffset={6}
         align="center"

@@ -35,30 +35,42 @@ const popoverViewportPaddingClassName = {
   none: "rounded-[calc(var(--radius-card)-1px)] py-0 [--viewport-inline-padding:0px]",
 } as const;
 
+/**
+ * `default` is a panel of prose or a short form, set by `width` and `padding`. `tooltip` is one
+ * line that answers a press, in a tooltip's look: it fits its words and pads itself, so it takes
+ * neither.
+ */
+type PopoverPopupVariant =
+  | {
+      variant?: "default";
+      width?: keyof typeof popoverPopupWidthClassName;
+      padding?: keyof typeof popoverViewportPaddingClassName;
+    }
+  | { variant: "tooltip"; width?: never; padding?: never };
+
 function PopoverPopup({
   children,
   className,
+  variant = "default",
   padding = "default",
   width = "auto",
   side = "bottom",
   align = "center",
   sideOffset = 4,
   alignOffset = 0,
-  tooltipStyle = false,
   keepMounted = false,
   anchor,
   ...props
-}: PopoverPrimitive.Popup.Props & {
-  padding?: keyof typeof popoverViewportPaddingClassName;
-  side?: PopoverPrimitive.Positioner.Props["side"];
-  align?: PopoverPrimitive.Positioner.Props["align"];
-  sideOffset?: PopoverPrimitive.Positioner.Props["sideOffset"];
-  alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
-  tooltipStyle?: boolean;
-  keepMounted?: PopoverPrimitive.Portal.Props["keepMounted"];
-  anchor?: PopoverPrimitive.Positioner.Props["anchor"];
-  width?: keyof typeof popoverPopupWidthClassName;
-}) {
+}: PopoverPrimitive.Popup.Props &
+  PopoverPopupVariant & {
+    side?: PopoverPrimitive.Positioner.Props["side"];
+    align?: PopoverPrimitive.Positioner.Props["align"];
+    sideOffset?: PopoverPrimitive.Positioner.Props["sideOffset"];
+    alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
+    keepMounted?: PopoverPrimitive.Portal.Props["keepMounted"];
+    anchor?: PopoverPrimitive.Positioner.Props["anchor"];
+  }) {
+  const tooltip = variant === "tooltip";
   // The popup sizes itself in CSS, capped by the room Base UI measures
   // (`--available-height`), from its first painted frame. Base UI's Viewport
   // part is not used: it morphs one popup between several triggers' contents,
@@ -82,10 +94,11 @@ function PopoverPopup({
             "dropdown-glass relative flex origin-(--transform-origin) rounded-card text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge data-starting-style:scale-98 data-starting-style:opacity-0",
             // Leaves as it enters, so a closing popover stops covering the page and taking clicks.
             "data-ending-style:scale-98 data-ending-style:opacity-0",
-            tooltipStyle &&
+            tooltip &&
               "w-fit text-balance rounded-control text-caption shadow-md/5 before:rounded-[calc(var(--radius-control)-1px)]",
-            !tooltipStyle && "shadow-popup",
-            width !== "auto" && ["max-w-[calc(100vw-2rem)]", popoverPopupWidthClassName[width]],
+            !tooltip && "shadow-popup",
+            !tooltip &&
+              width !== "auto" && ["max-w-[calc(100vw-2rem)]", popoverPopupWidthClassName[width]],
             className,
           )}
           data-slot="popover-popup"
@@ -94,10 +107,10 @@ function PopoverPopup({
           <div
             className={cn(
               "relative size-full max-h-(--available-height) overflow-clip px-(--viewport-inline-padding) has-data-[slot=calendar]:p-2",
-              tooltipStyle && padding === "default"
+              tooltip
                 ? "py-1 [--viewport-inline-padding:--spacing(2)]"
                 : popoverViewportPaddingClassName[padding],
-              !tooltipStyle && "overflow-y-auto",
+              !tooltip && "overflow-y-auto",
             )}
             data-slot="popover-viewport"
           >
