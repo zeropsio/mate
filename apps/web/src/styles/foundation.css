@@ -359,6 +359,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      settles from a touch smaller (`motion-arrival.css`). */
   --animate-face-out: face-out var(--duration-quick) var(--ease-out-strong);
   --animate-face-in: face-in var(--duration-base) var(--ease-out-strong);
+  /* A vault row found flashes its ring; a value saved shows its check, which leaves by itself
+     (`motion-panels.css`). */
+  --animate-vault-flash: vault-flash 1.5s var(--ease-out-strong);
+  --animate-vault-settled: vault-settled 1.4s var(--ease-out-strong) both;
   /* A project's spend, one hue per series (validated as a pair in both themes with the dataviz
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);

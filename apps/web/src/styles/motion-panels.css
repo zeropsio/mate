@@ -1,0 +1,33 @@
+/* ==== the panels' keyframes ==== */
+/* The choreographies of the Crew and Vault tabs, applied by their `animate-*` tokens
+   (`foundation.css`). */
+
+/* A vault row found: its ring flashes in the primary's colour and fades. */
+@keyframes vault-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+/* A vault value saved: its check comes in and leaves by itself. */
+@keyframes vault-settled {
+  0% {
+    opacity: 0;
+    scale: 0.6;
+  }
+  14%,
+  72% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+/* ==== end of the panels' keyframes ==== */
