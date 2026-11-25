@@ -12,6 +12,7 @@ import { MOTION } from "@t3tools/shared/brand";
 import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
@@ -491,9 +492,11 @@ function PlanStep({
         <div className={MORE} data-zerops-surface="release-import">
           {step.creates.cost.trim() === "" ? null : <p>{step.creates.cost}</p>}
           {/* Its import, as YAML, scrolling inside its own box. */}
-          <pre className="max-h-60 overflow-auto rounded-control bg-muted px-3 py-2.5 font-mono text-caption whitespace-pre">
-            {yaml}
-          </pre>
+          <Card variant="inset">
+            <pre className="max-h-60 overflow-auto px-3 py-2.5 font-mono text-caption whitespace-pre">
+              {yaml}
+            </pre>
+          </Card>
           <p>
             <InlineButton onClick={() => copyToClipboard(yaml)}>
               {isCopied ? "Copied" : "Copy"}
