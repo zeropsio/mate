@@ -77,6 +77,26 @@ export default defineKitSection({
               </Table>
             </div>
           </Specimen>
+          <Specimen align="start" label='<TableCell tone="muted">' span="row">
+            <div className="w-full max-w-[40rem]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Runtime</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ROWS.slice(0, 3).map((row) => (
+                    <TableRow key={row.name}>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell tone="muted">{row.runtime}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Specimen>
           <Specimen
             align="start"
             label='<TableHead align="end"> · <TableCell align="end">'

@@ -137,15 +137,21 @@ function TableHead({
   );
 }
 
-/** A cell. `sticky` holds it at the scrolling box's start, as its column's `TableHead sticky`. */
+/**
+ * A cell. `sticky` holds it at the scrolling box's start, as its column's `TableHead sticky`.
+ * `tone="muted"` says a column that stands behind the row's name and figures (a command, a PID, a
+ * share, an end time) in the muted ink.
+ */
 function TableCell({
   className,
   sticky = false,
   align = "start",
+  tone = "default",
   ...props
 }: Omit<React.ComponentProps<"td">, "align"> & {
   readonly sticky?: boolean;
   readonly align?: TableAlign;
+  readonly tone?: "default" | "muted";
 }) {
   const size = React.use(TableSizeContext);
   return (
@@ -158,6 +164,7 @@ function TableCell({
           : "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
         sticky && STICKY_COLUMN,
         align === "end" && ALIGN_END,
+        tone === "muted" && "text-muted-foreground",
         className,
       )}
       {...props}

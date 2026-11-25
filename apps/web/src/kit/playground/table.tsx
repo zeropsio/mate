@@ -38,6 +38,7 @@ export default definePlayground({
     rows: { kind: "enum", options: ROWS, note: "like things, compared across the same columns" },
     state: { kind: "boolean", note: "a State column of Badges" },
     figures: { kind: "boolean", note: 'a Memory column of figures, align="end"' },
+    mutedRuntime: { kind: "boolean", note: 'the Runtime column behind the name, tone="muted"' },
     longName: { kind: "boolean", note: "the first name long enough to wrap" },
     selected: { kind: "enum", options: SELECTED, note: 'a row with data-state="selected"' },
     sticky: {
@@ -54,13 +55,24 @@ export default definePlayground({
     rows: "3",
     state: true,
     figures: false,
+    mutedRuntime: false,
     longName: false,
     selected: "none",
     sticky: false,
     stickyColumn: false,
     size: "sm",
   },
-  render: ({ rows, state, figures, longName, selected, sticky, stickyColumn, size }) => (
+  render: ({
+    rows,
+    state,
+    figures,
+    mutedRuntime,
+    longName,
+    selected,
+    sticky,
+    stickyColumn,
+    size,
+  }) => (
     <div
       className={
         sticky
@@ -88,7 +100,7 @@ export default definePlayground({
               <TableHead scope="row" sticky={stickyColumn}>
                 {longName && index === 0 ? LONG_NAME : service.name}
               </TableHead>
-              <TableCell>{service.runtime}</TableCell>
+              <TableCell tone={mutedRuntime ? "muted" : "default"}>{service.runtime}</TableCell>
               {state ? (
                 <TableCell>
                   <Badge tone={service.tone}>{service.state}</Badge>
@@ -101,7 +113,7 @@ export default definePlayground({
       </Table>
     </div>
   ),
-  jsx: ({ rows, state, figures, longName, selected, sticky, stickyColumn, size }) => {
+  jsx: ({ rows, state, figures, mutedRuntime, longName, selected, sticky, stickyColumn, size }) => {
     const first = stickyColumn ? "TableHead sticky" : "TableHead";
     const head = [
       `<${first}>Service</TableHead>`,
@@ -116,7 +128,9 @@ export default definePlayground({
           { "data-state": String(index + 1) === selected ? "selected" : undefined },
           [
             `<${first} scope="row">${longName && index === 0 ? LONG_NAME : service.name}</TableHead>`,
-            `<TableCell>${service.runtime}</TableCell>`,
+            mutedRuntime
+              ? `<TableCell tone="muted">${service.runtime}</TableCell>`
+              : `<TableCell>${service.runtime}</TableCell>`,
             ...(state
               ? [
                   `<TableCell>\n  <Badge tone="${service.tone}">${service.state}</Badge>\n</TableCell>`,
