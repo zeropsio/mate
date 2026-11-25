@@ -13,6 +13,10 @@
  */
 
 import { byNewest, changeState, type FlowPullRequest } from "./projectFlow.ts";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { CodeStanding } from "./codeStanding.ts";
+
+export type GitRepositoryFacts = Pick<RepoListEntry, "remote" | "follows" | "updatedAt">;
 
 /** An open change on a repository's row: the flow's own, and its number with its Mate's name. */
 export interface GitOverviewChange {
@@ -24,6 +28,7 @@ export interface GitOverviewChange {
 
 export interface GitOverviewRepository {
   readonly name: string;
+  readonly facts?: GitRepositoryFacts | undefined;
   readonly changes: ReadonlyArray<GitOverviewChange>;
   readonly coverage: "complete" | "unread" | "failed";
   /** Included in Open changes: unknown coverage is not a quiet repository. */
@@ -34,12 +39,6 @@ export interface GitOverviewApp {
   readonly appId: string;
   readonly name: string;
   readonly repositories: ReadonlyArray<GitOverviewRepository>;
-}
-
-/** `2 open changes` — a repository's one line. */
-export function gitRepositoryLine(open: number): string {
-  if (open === 0) return "No open change";
-  return open === 1 ? "1 open change" : `${String(open)} open changes`;
 }
 
 function byName(left: string, right: string): number {
@@ -57,7 +56,7 @@ export function gitOverview(input: {
     readonly appId: string;
     readonly name: string;
     /** Its repositories, as HQ listed them. */
-    readonly repositories: ReadonlyArray<{ readonly name: string }>;
+    readonly repositories: ReadonlyArray<{ readonly name: string } & GitRepositoryFacts>;
     /** Its open changes, as HQ's stream says them. */
     readonly changes: ReadonlyArray<FlowPullRequest>;
     readonly coverage?: "complete" | "unread" | "failed";
@@ -71,6 +70,16 @@ export function gitOverview(input: {
       const repositories = new Map<string, Array<GitOverviewChange>>(
         app.repositories.map((repository) => [repository.name, []]),
       );
+      const facts = new Map(
+        app.repositories.map(({ name, remote, follows, updatedAt }) => [
+          name,
+          {
+            ...(remote === undefined ? {} : { remote }),
+            ...(follows === undefined ? {} : { follows }),
+            updatedAt,
+          },
+        ]),
+      );
       for (const pull of [...app.changes].sort(byNewest)) {
         const mate = input.mateName(pull.mateProjectId);
         const number = `#${String(pull.number)}`;
@@ -79,7 +88,7 @@ export function gitOverview(input: {
         changes.push({
           pull,
           line: mate === undefined ? number : `${number} · ${mate}`,
-          status: pull.merged ? { word: "Merged", tone: "off" } : changeState(pull),
+          status: changeState(pull),
         });
       }
       return {
@@ -89,6 +98,7 @@ export function gitOverview(input: {
           .sort(([left], [right]) => byName(left, right))
           .map(([name, changes]) => ({
             name,
+            facts: facts.get(name),
             changes,
             coverage: app.coverage ?? "complete",
             open:
@@ -99,82 +109,61 @@ export function gitOverview(input: {
     });
 }
 
-export type GitOverviewView = "open" | "all";
-
-/** Presentation memory holds identities only; every displayed fact comes from today's projection. */
-export interface GitOverviewIdentity {
-  readonly appId: string;
-  readonly repository: string;
-  readonly changes: ReadonlyArray<number>;
-}
-
-export function gitOverviewPresentation(
+/** Each project's setup is its header link, never a code-repository row. */
+export function gitOverviewGroups(
   apps: ReadonlyArray<GitOverviewApp>,
-  view: GitOverviewView,
-  held?: ReadonlyArray<GitOverviewIdentity>,
+  standingOf: (appId: string) => CodeStanding,
+  openOnly: boolean,
 ) {
-  const available = apps.flatMap((app) =>
-    app.repositories.map((repository) => ({ app, repository })),
-  );
-  const key = (appId: string, repository: string) => JSON.stringify([appId, repository]);
-  const byIdentity = new Map(
-    available.map((row) => [key(row.app.appId, row.repository.name), row]),
-  );
-  const current = available
-    .filter(({ repository }) => view === "all" || repository.open)
-    .map(({ app, repository }) => ({
-      appId: app.appId,
-      repository: repository.name,
-      changes: repository.changes
-        .filter(({ pull }) => pull.state === "open")
-        .map(({ pull }) => pull.number),
-    }));
-  const identities = (held ?? current).flatMap((identity) => {
-    const row = byIdentity.get(key(identity.appId, identity.repository));
-    return row === undefined
-      ? []
-      : [
-          {
-            ...identity,
-            changes: identity.changes.filter((number) =>
-              row.repository.changes.some(({ pull }) => pull.number === number),
-            ),
-          },
-        ];
+  const groups = [...apps]
+    .sort((a, b) => byName(a.name, b.name))
+    .map((app) => {
+      const standing = standingOf(app.appId);
+      const setup = app.repositories.find((repository) => repository.name === "group");
+      const repositories = app.repositories.filter((repository) => repository.name !== "group");
+      return { ...app, standing, setup, repositories, repositoryCount: repositories.length };
+    });
+  const shown = groups.flatMap((group) => {
+    const repositories = openOnly
+      ? group.repositories.filter((repository) => repository.open)
+      : group.repositories;
+    const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
+    return openOnly && repositories.length === 0 && !setupOpen ? [] : [{ ...group, repositories }];
   });
-  const rows = identities.flatMap((identity) => {
-    const row = byIdentity.get(key(identity.appId, identity.repository));
-    return row === undefined
-      ? []
-      : [
-          {
-            appId: row.app.appId,
-            project: row.app.name,
-            ...row.repository,
-            changes: identity.changes.flatMap((number) =>
-              row.repository.changes.filter(({ pull }) => pull.number === number),
-            ),
-          },
-        ];
-  });
-  // Compare membership, not sort order: renames update in place without asking for a refresh.
-  const membership = (values: ReadonlyArray<GitOverviewIdentity>) =>
-    values
-      .map(({ appId, repository, changes }) =>
-        JSON.stringify([appId, repository, [...changes].sort((a, b) => a - b)]),
-      )
-      .sort()
-      .join("|");
+  const isKept = ({ standing }: (typeof groups)[number]) =>
+    standing.kind === "kept" ||
+    standing.kind === "asked" ||
+    (standing.kind === "deleting" && !standing.placed);
   return {
-    identities,
-    rows,
-    changed: membership(identities) !== membership(current),
-    openChanges: rows.reduce(
-      (count, row) => count + row.changes.filter(({ pull }) => pull.state === "open").length,
+    used: shown.filter((group) => !isKept(group)),
+    kept: shown.filter(isKept),
+    projects: groups.length,
+    repositories: groups.reduce((count, group) => count + group.repositories.length, 0),
+    openChanges: apps.reduce(
+      (count, app) =>
+        count +
+        app.repositories.reduce(
+          (sum, repository) =>
+            sum + repository.changes.filter(({ pull }) => pull.state === "open").length,
+          0,
+        ),
       0,
     ),
     incomplete: apps.some((app) =>
       app.repositories.some((repository) => repository.coverage !== "complete"),
     ),
   };
+}
+
+/** Open-change count and status words, in the changes' newest-first order. */
+export function gitChangesSummary(changes: ReadonlyArray<GitOverviewChange>): string | undefined {
+  const open = changes.filter(({ pull }) => pull.state === "open");
+  if (open.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  for (const { status } of open)
+    if (status !== undefined) counts.set(status.word, (counts.get(status.word) ?? 0) + 1);
+  const statuses = [...counts]
+    .map(([word, count]) => (open.length === 1 ? word : `${String(count)} ${word}`))
+    .join(", ");
+  return `${String(open.length)} open ${open.length === 1 ? "change" : "changes"}${statuses ? ` · ${statuses}` : ""}`;
 }

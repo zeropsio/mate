@@ -421,10 +421,9 @@ export {
 } from "./codeStanding.ts";
 export {
   gitOverview,
-  gitOverviewPresentation,
-  type GitOverviewIdentity,
-  type GitOverviewView,
-  gitRepositoryLine,
+  gitOverviewGroups,
+  gitChangesSummary,
+  type GitRepositoryFacts,
   type GitOverviewApp,
   type GitOverviewChange,
   type GitOverviewRepository,

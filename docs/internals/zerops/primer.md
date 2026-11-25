@@ -21,6 +21,8 @@
 - A **pooled part** is a part of an application whose development runs in a dev pool: its pool and
   its stage, paired by name. Its first build is zcp's (`zeropsio/zcp:docs/spec-mate.md` §2.8b).
 - A **repository** is one codebase's durable history.
+- A project's **code standing** is how its code stands in HQ: in use, asked, kept (nothing placed,
+  with code or only setup held), or being deleted.
 - A **recipe** describes how an application is built and run in its environments.
 - A **change** is proposed repository work awaiting merge or closure.
 - A **release** names a fixed selection of application code and configuration for production.

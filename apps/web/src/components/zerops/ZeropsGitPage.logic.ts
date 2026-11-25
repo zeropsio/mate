@@ -10,8 +10,21 @@ import {
   gitOverview,
   type FlowPullRequest,
   type GitOverviewApp,
+  type GitRepositoryFacts,
 } from "@t3tools/client-runtime/zerops";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+import { githubName, hostWords } from "./gitMirror.logic";
+
+/** The remote or followed repository's host and path, if HQ has named one. */
+export function repositoryWhere(facts: GitRepositoryFacts | undefined): string | undefined {
+  if (facts === undefined) return undefined;
+  const address = facts.remote?.url ?? facts.follows;
+  if (address === undefined) return "Only in Mate";
+  const path =
+    githubName(address) ??
+    new URL(address).pathname.replace(/^\/+|\/+$/gu, "").replace(/\.git$/u, "");
+  return `${facts.remote == null ? "Follows " : ""}${hostWords(address)} ${path}`;
+}
 
 /** One application, as the page asks about it. */
 export interface GitPageApp {
@@ -22,10 +35,8 @@ export interface GitPageApp {
   readonly readReason?: string | undefined;
   /** The changes open on it a push reached, as HQ's stream says them; `undefined` until told. */
   readonly changes: ReadonlyArray<FlowPullRequest> | undefined;
-  /** Current merged facts keep an already displayed change labeled until Update list. */
-  readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
   /** Its repositories, as HQ last listed them with its releases; `undefined` until it answered. */
-  readonly repositories: ReadonlyArray<{ readonly name: string }> | undefined;
+  readonly repositories: ReadonlyArray<{ readonly name: string } & GitRepositoryFacts> | undefined;
   /** Why HQ's last read of its repositories did not answer, beside what it read before. */
   readonly failure: string | undefined;
 }
@@ -83,7 +94,7 @@ export function gitPageState(input: {
             appId: app.appId,
             name: app.name,
             repositories: app.repositories,
-            changes: [...(app.changes ?? []), ...(app.merged ?? [])],
+            changes: app.changes ?? [],
             coverage:
               app.changes === undefined
                 ? ("unread" as const)

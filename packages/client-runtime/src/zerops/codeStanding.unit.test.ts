@@ -10,7 +10,7 @@ const code = { empty: false, deletingProjectIds: [] } as const;
 const setup = { empty: true, deletingProjectIds: [] } as const;
 
 // witness: packages/client-runtime/src/zerops/codeStanding.ts | facts.contents.empty ? "setup" : "code" → facts.contents.empty ? "code" : "code"
-it("ZV+1: A project's standing is decided from HQ's facts in one order: a deletion of the whole project HQ runs, then anything placed in it or still being deleted, then HQ's open question, then HQ not having said what it holds, and what is left is kept, holding code or only its setup; breaks: a project whose Mates are gone reads as never started and is not listed with the code it holds", () => {
+it("ZV180: A project's standing is decided from HQ's facts in one order: a deletion of the whole project HQ runs, then anything placed in it or still being deleted, then HQ's open question, then HQ not having said what it holds, and what is left is kept, holding code or only its setup; breaks: a project whose Mates are gone reads as never started and is not listed with the code it holds", () => {
   const rows = [
     [
       { deletion: "going", placed: 0, mates: 0, contents: code, asked: false },
@@ -68,7 +68,7 @@ it("ZV+1: A project's standing is decided from HQ's facts in one order: a deleti
 });
 
 // witness: packages/client-runtime/src/zerops/codeStanding.ts | ? "owner" → ? "offered"
-it("ZV+2: What a project's standing offers follows HQ's word on deleting the project and the add-Mate door: a kept project offers Add a Mate as the door says and its Delete to who may delete it, says who can to who may not, and waits while HQ has not said; an asked one offers only the answer, a deletion that stopped only its review, and a project in use nothing; breaks: a kept project's code cannot be deleted where it is shown", () => {
+it("ZV181: What a project's standing offers follows HQ's word on deleting the project and the add-Mate door: a kept project offers Add a Mate as the door says and its Delete to who may delete it, says who can to who may not, and waits while HQ has not said; an asked one offers only the answer, a deletion that stopped only its review, and a project in use nothing; breaks: a kept project's code cannot be deleted where it is shown", () => {
   const viewers = [
     { deleteApp: "allowed", addMate: "offered" },
     { deleteApp: "refused", addMate: "off" },
@@ -114,7 +114,7 @@ it("ZV+2: What a project's standing offers follows HQ's word on deleting the pro
 });
 
 // witness: packages/client-runtime/src/zerops/codeStanding.ts | standing.holds === "code" ? "Code kept" : "Setup kept" → standing.holds === "code" ? "No Mate yet" : "Setup kept"
-it("ZV+3: A project's standing has one set of words, and says which of them stand over a row's own content; breaks: a kept project reads No Mate yet", () => {
+it("ZV182: A project's standing has one set of words, and says which of them stand over a row's own content; breaks: a kept project reads No Mate yet", () => {
   const rows: ReadonlyArray<
     readonly [CodeStanding, { words: string; notice: boolean } | undefined]
   > = [
