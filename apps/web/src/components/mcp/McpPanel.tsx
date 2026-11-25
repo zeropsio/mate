@@ -644,7 +644,7 @@ function ToolRow(props: {
                     "min-w-0 truncate",
                     row.note?.kind === "error" &&
                       row.cannot.length === 0 &&
-                      "text-destructive-foreground",
+                      "text-status-failed-text",
                   )}
                   data-mcp-note={row.note?.kind}
                 >
@@ -882,7 +882,7 @@ function ToolFacts(props: {
       ) : null}
       {error === null ? null : (
         <Fact label={MCP_WORDS.error}>
-          <span className="whitespace-pre-wrap break-words font-mono text-destructive-foreground">
+          <span className="whitespace-pre-wrap break-words font-mono text-status-failed-text">
             {error}
           </span>
         </Fact>

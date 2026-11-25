@@ -424,7 +424,7 @@ function DomainProgress(props: ProposalCardProps & { readonly stage: "done" | "u
         <p
           className={
             tone === "problem"
-              ? "flex min-w-0 items-start gap-1.5 text-body text-destructive-foreground"
+              ? "flex min-w-0 items-start gap-1.5 text-body text-status-failed-text"
               : "flex min-w-0 items-center gap-1.5 text-body text-muted-foreground"
           }
           data-proposal-domain={tone}

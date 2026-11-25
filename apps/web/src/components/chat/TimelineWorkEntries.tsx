@@ -354,7 +354,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     showWarningIndicator
       ? "text-warning"
       : showDestructiveRowStyle
-        ? "text-destructive"
+        ? "text-status-failed-text"
         : workEntry.tone === "tool" || showFailedIndicator
           ? "text-icon-muted"
           : iconConfig.className,
@@ -362,7 +362,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const headingClass = showWarningIndicator
     ? "font-medium text-warning"
     : showDestructiveRowStyle
-      ? "font-medium text-destructive"
+      ? "font-medium text-status-failed-text"
       : workLogEntryIsToolLike(workEntry)
         ? "text-muted-foreground"
         : "text-foreground/80";

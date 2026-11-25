@@ -140,7 +140,7 @@ interface LogLine {
 
 const LOG_LINE_TONE: Record<LogTone, string> = {
   default: "",
-  failed: "bg-destructive/8 text-destructive-foreground",
+  failed: "bg-status-failed/8 text-status-failed-text",
   warning: "text-warning-foreground",
   quiet: "text-muted-foreground",
 };

@@ -312,7 +312,7 @@ export function CodeChangesEmpty({
       <div className="flex flex-col items-start gap-0.5 px-4 py-3.5 text-body">
         <p className="text-foreground">{title}</p>
         {line === undefined || line === null ? null : (
-          <p className={alert ? "text-error/80" : "text-muted-foreground"}>{line}</p>
+          <p className={alert ? "text-status-failed-text" : "text-muted-foreground"}>{line}</p>
         )}
         {action}
       </div>

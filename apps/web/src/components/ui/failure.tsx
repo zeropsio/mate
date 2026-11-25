@@ -115,7 +115,7 @@ const given = (node: React.ReactNode) => node !== undefined && node !== null && 
  * - `page` — a whole page that failed, in a fixed frame, marked with its subject.
  * - `line` — an action's refusal said where the action stands (under a form, beside its buttons,
  *   in a card's foot, in a person's row): the cause as one red line of body text that wraps, no
- *   box and no mark; its why in muted words under it; then its action and Details on one line,
+ *   box and no mark, in the one ink of what is wrong (`status-failed-text`, as `Text`'s `error`); its why in muted words under it; then its action and Details on one line,
  *   flowing with the text's own alignment.
  */
 function Failure({

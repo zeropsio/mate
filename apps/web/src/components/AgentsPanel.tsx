@@ -528,9 +528,7 @@ function CollapsedWorkflowSection({
         title={group.workflow.workflowName ?? group.workflow.title}
         meta={
           <span className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground/80">
-            {failed > 0 ? (
-              <span className="text-destructive-foreground">{failed} failed</span>
-            ) : null}
+            {failed > 0 ? <span className="text-status-failed-text">{failed} failed</span> : null}
             <span>{members.length} agents</span>
             <span className="tabular-nums">· {formatSubagentTokenCount(totalTokens)} tok</span>
             {elapsed ? <span className="tabular-nums">· {elapsed}</span> : null}

@@ -264,7 +264,7 @@ function IconStat({
         className={cn(
           "mt-2.5 truncate font-mono text-title font-semibold tracking-tighter tabular-nums text-foreground",
           tone === "warning" && "text-warning-foreground",
-          tone === "danger" && "text-destructive",
+          tone === "danger" && "text-status-failed-text",
         )}
       >
         {value ?? <Skeleton aria-label={label} className="my-1.5 h-5 w-20" role="status" />}
@@ -1201,7 +1201,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
                     valueClassName={
                       snapshot.power.thermalState === "serious" ||
                       snapshot.power.thermalState === "critical"
-                        ? "text-destructive"
+                        ? "text-status-failed-text"
                         : undefined
                     }
                   />

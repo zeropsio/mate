@@ -207,7 +207,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
 const MARK_CLASS = {
   "+": "text-status-ok-text",
   "~": "text-warning-foreground",
-  "!": "text-destructive-foreground",
+  "!": "text-status-failed-text",
 } as const;
 
 /** Each line with where it starts in its section: a key that stays while lines above it hold. */

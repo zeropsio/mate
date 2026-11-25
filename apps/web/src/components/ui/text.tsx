@@ -27,8 +27,11 @@ import { cn } from "~/lib/utils";
  *   Under a base-ui `Field` it is `FieldDescription`.
  * - `meta` — a fact beside or under a name: a time, a count, a size, a version, a state's word.
  *   12/16, muted, figures in even columns.
- * - `error` — what is wrong with a value or a step, said where it went wrong. 12/16, the error ink.
- *   Under a base-ui `Field` it is `FieldError`; an action's refusal is `Failure size="line"`.
+ * - `error` — what is wrong with a value or a step, said where it went wrong. 12/16, in the one
+ *   ink of what is wrong, `status-failed-text` (the failed status's words, 5.4:1 or more on every
+ *   ground in both themes); `destructive-foreground` is the ink of a press that deletes, never of
+ *   words saying something is wrong. Under a base-ui `Field` it is `FieldError`; an action's
+ *   refusal is `Failure size="line"`.
  * - `code` — a literal someone may copy: an id, a path, a command, a hash. Monospace, in the step
  *   and ink of the words around it. With `chip` it stands on its own quiet ground, a 4 px corner,
  *   at 11/16 in the ink around it: a literal set apart in a sentence (a `${NAME}` in a value, the
@@ -49,7 +52,7 @@ const textVariants = cva("", {
       remark: "text-line text-muted-foreground [text-wrap-style:pretty]",
       note: "text-caption text-muted-foreground [text-wrap-style:pretty]",
       meta: "text-caption text-muted-foreground tabular-nums",
-      error: "text-caption text-destructive-foreground [text-wrap-style:pretty]",
+      error: "text-caption text-status-failed-text [text-wrap-style:pretty]",
       code: "font-mono",
     },
     truncate: {

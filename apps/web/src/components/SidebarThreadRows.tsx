@@ -213,7 +213,7 @@ function SidebarThreadTooltip({
             </div>
           ) : null}
           {thread.session?.lastError ? (
-            <div className="flex min-w-0 items-center gap-2 text-destructive-foreground">
+            <div className="flex min-w-0 items-center gap-2 text-status-failed-text">
               <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
               <div className="min-w-0 truncate">Error occurred</div>
             </div>

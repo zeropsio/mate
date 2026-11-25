@@ -124,7 +124,7 @@ function Progress({
             "flex size-4 shrink-0 items-center justify-center",
             state === "running" && "text-primary",
             state === "done" && "text-success",
-            state === "failed" && "text-destructive",
+            state === "failed" && "text-status-failed-text",
           )}
         >
           {state === "done" ? (

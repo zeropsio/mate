@@ -163,6 +163,9 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   `description`, a `remark`, a `note`, a `meta` fact, an `error`, a `code` literal. The variant
   fixes the step, the ink and the weight; a kit piece that draws its own words (a row, a section
   label, a page header, an empty place, a field, a failure) keeps them.
+- What is wrong is said in one red ink, `status-failed-text`: a value's error, a refusal, a failed
+  count, a failed step's mark. `destructive` and its foreground are a press's that deletes, stops or
+  acts on Production, never the words of something wrong.
 - Who or what a thing is stands before its name: a person is a `PersonAvatar` (`nobody` for the
   seat no person holds, `PersonAvatarStack` for who has access), a Mate its `MateFace`, anything
   else a `LogoTile` (a logo, an organization's letter, a kind of thing's icon), each at the size of
@@ -184,9 +187,6 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   words is its `dot` form; a number is its `count` form, beside a title or on a control's corner.
   A state mark with no words of its own (a line's mark, something new on an icon's corner) is a
   `Dot` in the same tones.
-
-  `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
-  `dot` form, with its words or an accessible name.
 
 - A quantity is drawn by the kit: one amount against its limit is a `Meter`, a whole split into
   parts a `ShareBar`, and a chart's legend, hover readout, time axis and plot ground are its chart

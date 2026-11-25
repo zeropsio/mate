@@ -58,7 +58,7 @@ export function useTrackWidths(
 /** A word's ink: muted unless toned; a name in the ink, its link underlined under the pointer. */
 const WORD_TONE: Record<NonNullable<LineWord["tone"]> | "none", string> = {
   none: "",
-  danger: "text-destructive-foreground",
+  danger: "text-status-failed-text",
   info: "text-info-foreground",
   warning: "text-warning-foreground",
   dim: "text-muted-foreground/72",

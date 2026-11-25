@@ -27,13 +27,13 @@ const VARIANT_OF_LOOK: ReadonlyMap<string, string> = new Map([
   ["text-line text-muted-foreground", "remark"],
   ["text-caption text-muted-foreground", "note"],
   ["tabular-nums text-caption text-muted-foreground", "meta"],
-  ["text-caption text-destructive-foreground", "error"],
+  ["text-caption text-status-failed-text", "error"],
   ["font-mono", "code"],
 ]);
 
 /** A class that says how words look: a step, an ink, a weight, the mono family, even figures. */
 const LOOK =
-  /^(?:text-(?:5xs|4xs|3xs|2xs|caption|line|body|prose|emphasis|typed|title|display|foreground|muted-foreground|destructive-foreground)|font-(?:mono|medium|semibold)|tabular-nums)$/u;
+  /^(?:text-(?:5xs|4xs|3xs|2xs|caption|line|body|prose|emphasis|typed|title|display|foreground|muted-foreground|status-failed-text)|font-(?:mono|medium|semibold)|tabular-nums)$/u;
 
 /** A step's own leading, written again: it changes nothing. */
 const STEP_LEADING: Readonly<Record<string, string>> = {

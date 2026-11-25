@@ -127,7 +127,7 @@ function StatBlock({
         className={cn(
           "mt-1 truncate font-mono text-title font-semibold tabular-nums text-foreground",
           tone === "warning" && "text-warning-foreground",
-          tone === "danger" && "text-destructive",
+          tone === "danger" && "text-status-failed-text",
         )}
       >
         {value ?? <Skeleton aria-label={label} className="my-1.5 h-4 w-16" role="status" />}

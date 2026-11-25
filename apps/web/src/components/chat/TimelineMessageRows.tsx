@@ -104,7 +104,7 @@ export function QueuedMessageTimelineRow({
                   <span
                     className={cn(
                       "min-w-0 truncate leading-6",
-                      state.line.tone === "error" && "text-destructive",
+                      state.line.tone === "error" && "text-status-failed-text",
                     )}
                     data-queued-line={state.line.tone}
                   />

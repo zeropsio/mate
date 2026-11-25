@@ -188,7 +188,10 @@ export function UsageAutomatedBudget() {
       <span>
         Automated Mates spent{" "}
         <span
-          className={cn("tabular-nums", budget.reached ? "text-destructive" : "text-foreground")}
+          className={cn(
+            "tabular-nums",
+            budget.reached ? "text-status-failed-text" : "text-foreground",
+          )}
         >
           {budget.spent}
         </span>{" "}

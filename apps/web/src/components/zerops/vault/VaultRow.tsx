@@ -219,7 +219,7 @@ export function VaultRow(props: VaultRowProps) {
           ) : null}
           {activity.kind === "refused" ? (
             <span
-              className="flex min-w-0 items-center gap-1.25 text-destructive-foreground"
+              className="flex min-w-0 items-center gap-1.25 text-status-failed-text"
               role="alert"
             >
               <TriangleAlertIcon aria-hidden="true" className="size-3 shrink-0" />

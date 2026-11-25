@@ -959,7 +959,7 @@ function PersonaEditor(props: {
           <span
             className={cn(
               "tabular-nums",
-              over ? "text-destructive-foreground" : "text-muted-foreground",
+              over ? "text-status-failed-text" : "text-muted-foreground",
             )}
             data-persona-count
           >

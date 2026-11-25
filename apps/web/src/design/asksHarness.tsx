@@ -418,7 +418,7 @@ function ProvideOwn({ density }: { readonly density: AskDensity }) {
       )}
       {source === null ? (
         state === "asking" ? null : (
-          <p className="text-body text-destructive-foreground" role="alert">
+          <p className="text-body text-status-failed-text" role="alert">
             The call reads as no ask: the conversation would hold no card.
           </p>
         )
