@@ -146,6 +146,25 @@ export function keyProblem(key: string, scope: VaultScope): string | null {
   return null;
 }
 
+/** A key the add card has sent to a scope. */
+export interface VaultAddSent {
+  readonly key: string;
+  readonly scopeId: string;
+}
+
+/**
+ * Why the add card cannot save a key to a scope (`keyProblem`), or null — never for the key it has
+ * sent there: the vault shows the card's own write before that write ends, which the card would
+ * otherwise read as the key already being there.
+ */
+export function addKeyProblem(
+  key: string,
+  scope: VaultScope,
+  sent: VaultAddSent | null,
+): string | null {
+  return sent?.key === key && sent.scopeId === scope.id ? null : keyProblem(key, scope);
+}
+
 /** 32 random bytes in base64url (43 characters), from the given source of randomness. */
 export function generateVaultValue(
   fill: (target: Uint8Array<ArrayBuffer>) => Uint8Array = (target) =>

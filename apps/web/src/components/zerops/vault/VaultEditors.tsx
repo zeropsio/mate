@@ -17,9 +17,10 @@ import { Switch } from "../../ui/switch";
 import { Textarea } from "../../ui/textarea";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
+  addKeyProblem,
   generateVaultValue,
-  keyProblem,
   reviewLine,
+  type VaultAddSent,
   vaultName,
   sensitiveWordIn,
   vaultReach,
@@ -71,12 +72,14 @@ export function VaultAddCard(props: VaultAddCardProps) {
   const word = sensitiveWordIn(key);
   const sensitive = chosen ?? (props.forMessage === true || word !== null);
   const mate = props.mateName ?? "the Mate";
-  const problem = keyProblem(key, scope);
+  const [sent, setSent] = useState<VaultAddSent | null>(null);
+  const problem = addKeyProblem(key, scope, sent);
   const error = problem ?? props.refusal;
   const canSave = key !== "" && problem === null && !props.busy;
 
   const save = () => {
     if (!canSave) return;
+    setSent({ key, scopeId: scope.id });
     props.onAdd(scope, { kind: "add", key, value, sensitive });
   };
   const onKeys = (event: React.KeyboardEvent) => {
