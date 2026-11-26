@@ -3,6 +3,7 @@ import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq
 import { expect, it } from "vite-plus/test";
 
 import {
+  chooseDeletionFate,
   deletionOffer,
   deletionPageMate,
   deletionPageState,
@@ -92,7 +93,9 @@ const choice = (
   fates: DeletionChoice["fates"] = {},
   names: DeletionChoice["names"] = {},
   projectName = "bakery",
-): DeletionChoice => ({ fates, names, projectName });
+  repoFates: DeletionChoice["repoFates"] = {},
+): DeletionChoice => ({ fates, repoFates, names, projectName });
+const codeChoice = (repoFates: DeletionChoice["repoFates"]) => choice({}, {}, "bakery", repoFates);
 const review = (
   project: DeletionProject,
   mate: typeof MATE | undefined,
@@ -208,8 +211,10 @@ it("MN84: The page's Delete sends one start: the project's deletion naming its M
     },
     {
       selected: choice(
-        { p: "goes", made: "goes", attached: "goes", web: "stays" },
+        { p: "goes", made: "goes", attached: "goes" },
         { p: "plain", made: "made" },
+        "bakery",
+        { web: "stays" },
       ),
       kind: "start-app-deletion",
       expected: {
@@ -246,6 +251,15 @@ it("MN84: The page's Delete sends one start: the project's deletion naming its M
   expect(sameDeletionStart(base, { ...base, keepRepos: ["docs"] })).toBe(false);
   expect(sameDeletionStart(base, { ...base, stages: [] })).toBe(false);
   expect(sameDeletionStart(base, { ...base, productions: [] })).toBe(false);
+
+  const sameId = bakery({ placements: [], environments: [stage("docs")] });
+  const initial = review(sameId, undefined);
+  const code = initial.rows.find((row) => row.kind === "code" && row.id === "docs")!;
+  const keptCode = chooseDeletionFate(choice(), code, "stays");
+  const selected = review(sameId, undefined, keptCode);
+  expect(selected.rows.find((row) => row.kind === "stage")?.fate).toBe("goes");
+  expect(selected.rows.find((row) => row.kind === "code" && row.id === "docs")?.fate).toBe("stays");
+  expect(selected.start).toMatchObject({ stages: ["docs"], keepRepos: ["docs"] });
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | trimmed.length <= 100 → trimmed.length > 0
@@ -1037,7 +1051,7 @@ it("MN+1: A project's deletion page lists every part it holds, going or staying 
       environments: [stage("s", false), production("prod", { deletable: false })],
     }),
     undefined,
-    choice({ p: "goes", s: "goes", prod: "goes", docs: "goes" }),
+    choice({ p: "goes", s: "goes", prod: "goes" }, {}, "bakery", { docs: "goes" }),
   );
   expect(blocked.rows.find((row) => row.id === "p")).toMatchObject({
     fate: "stays",
@@ -1077,12 +1091,28 @@ it("MN+1: A project's deletion page lists every part it holds, going or staying 
   const kept = review(
     bakery({ placements: [], environments: [] }),
     undefined,
-    choice({ docs: "stays" }),
+    codeChoice({ docs: "stays" }),
   );
   expect(kept.rows.find((row) => row.id === "group")).toMatchObject({
     fate: "stays",
     switchable: false,
   });
+  const specialNames: ApplicationHoldings = {
+    repos: [
+      { name: "constructor", canKeep: true },
+      { name: "toString", canKeep: true },
+    ],
+    openChanges: 0,
+  };
+  const emptyProject = bakery({ placements: [], environments: [] });
+  const defaults = review(emptyProject, undefined, choice(), specialNames);
+  const constructor = defaults.rows.find((row) => row.kind === "code" && row.id === "constructor")!;
+  expect(constructor.fate).toBe("goes");
+  expect(defaults.rows.find((row) => row.id === "toString")?.fate).toBe("goes");
+  const specialChoice = chooseDeletionFate(choice(), constructor, "stays");
+  const specialReview = review(emptyProject, undefined, specialChoice, specialNames);
+  expect(specialReview.rows.find((row) => row.id === "constructor")?.fate).toBe("stays");
+  expect(specialReview.start).toMatchObject({ keepRepos: ["constructor"] });
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const hiddenParts: DeletionProject["hidden"] = project.hidden; → const hiddenParts: DeletionProject["hidden"] = [];
@@ -1122,7 +1152,7 @@ it("MN+2: What the person set says what the project becomes, and the summary agr
     {
       label: "one repository kept",
       project: bakery({ placements: [], environments: [] }),
-      selected: choice({ docs: "stays" }),
+      selected: codeChoice({ docs: "stays" }),
       place: "git",
       stays: "Repository docs",
     },
@@ -1159,7 +1189,7 @@ it("MN+2: What the person set says what the project becomes, and the summary agr
   const split = review(
     bakery({ placements: [], environments: [] }),
     undefined,
-    choice({ docs: "stays" }),
+    codeChoice({ docs: "stays" }),
   );
   expect(split.goes).toContain("Open changes in the repositories that go");
   expect(split.stays).toContain("Repository docs");
@@ -1168,7 +1198,7 @@ it("MN+2: What the person set says what the project becomes, and the summary agr
   const none = review(
     bakery({ placements: [], environments: [] }),
     undefined,
-    choice({ docs: "stays", web: "stays" }),
+    codeChoice({ docs: "stays", web: "stays" }),
   );
   expect(none.goes).not.toContain("2 open changes");
   expect(none.goes).not.toContain("Open changes in the repositories that go");
@@ -1190,14 +1220,16 @@ it("MN+3: Delete again starts from what the stopped deletion named: each part it
     ],
   });
   const selected = deletionChoiceAgain(project, holdings);
-  expect(selected.fates).toMatchObject({ one: "goes", two: "stays", docs: "stays", web: "goes" });
+  expect(selected.fates).toMatchObject({ one: "goes", two: "stays" });
+  expect(selected.repoFates).toMatchObject({ docs: "stays", web: "goes" });
   expect(selected.names).toEqual({});
   expect(selected.projectName).toBe("");
   const noCode = deletionChoiceAgain(
     { ...project, steps: [{ part: "stage", projectId: "one", state: "pending" }] },
     holdings,
   );
-  expect(noCode.fates).toMatchObject({ one: "goes", two: "stays", docs: "stays", web: "stays" });
+  expect(noCode.fates).toMatchObject({ one: "goes", two: "stays" });
+  expect(noCode.repoFates).toMatchObject({ docs: "stays", web: "stays" });
   const late = deletionChoiceAgain(
     { ...project, environments: [], steps: [{ part: "code", state: "pending", keeps: ["docs"] }] },
     undefined,
@@ -1205,4 +1237,30 @@ it("MN+3: Delete again starts from what the stopped deletion named: each part it
   const rows = review({ ...project, environments: [] }, undefined, late, holdings).rows;
   expect(rows.find((row) => row.id === "docs")?.fate).toBe("stays");
   expect(rows.find((row) => row.id === "web")?.fate).toBe("goes");
+  const sameId = deletionChoiceAgain(
+    {
+      ...project,
+      environments: [stage("docs")],
+      steps: [
+        { part: "stage", projectId: "docs", state: "pending" },
+        { part: "code", state: "pending", keeps: ["docs"] },
+      ],
+    },
+    holdings,
+  );
+  expect(sameId.fates.docs).toBe("goes");
+  expect(sameId.repoFates.docs).toBe("stays");
+  const specialNames: ApplicationHoldings = {
+    repos: [
+      { name: "constructor", canKeep: true },
+      { name: "toString", canKeep: true },
+    ],
+    openChanges: 0,
+  };
+  const special = deletionChoiceAgain(
+    { ...project, steps: [{ part: "code", state: "pending", keeps: ["constructor"] }] },
+    specialNames,
+  );
+  expect(special.repoFates.constructor).toBe("stays");
+  expect(special.repoFates.toString).toBe("goes");
 });

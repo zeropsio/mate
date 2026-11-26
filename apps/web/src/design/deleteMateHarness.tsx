@@ -317,8 +317,8 @@ const PAGE_INITIAL =
             ? { "acme-docs-live": "goes" as const }
             : {}),
           ...(STATE === "stage-stays" ? { "acme-docs-stage": "stays" as const } : {}),
-          ...(STATE === "code-kept" ? { docs: "stays" as const } : {}),
         },
+        repoFates: STATE === "code-kept" ? { docs: "stays" as const } : {},
         names: STATE === "all-goes" ? { "acme-docs-live": "acme-docs-live" } : {},
         projectName: ["all-goes", "stage-stays", "code-kept"].includes(STATE) ? ACME : "",
       };

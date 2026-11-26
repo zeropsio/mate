@@ -44,6 +44,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import { MateFace } from "./primitives";
 import {
   applicationHoldings,
+  chooseDeletionFate,
   deletionChoiceAgain,
   deletionPageMate,
   deletionPageState,
@@ -111,7 +112,7 @@ export function ZeropsDeletionPage({
   readonly initial?: DeletionChoice | undefined;
 }) {
   const [choice, setChoice] = useState<DeletionChoice>(
-    () => initial ?? { fates: {}, names: {}, projectName: "" },
+    () => initial ?? { fates: {}, repoFates: {}, names: {}, projectName: "" },
   );
   const page = deletionPageWords("project" in state ? state.project.name : "");
   if (state.kind === "reading") return <Loading label={page.reading} shape="words" />;
@@ -220,7 +221,7 @@ export function ZeropsDeletionPage({
               onValueChange={(value) => {
                 const fate = value[0];
                 if (fate === "goes" || fate === "stays")
-                  setChoice((held) => ({ ...held, fates: { ...held.fates, [row.id]: fate } }));
+                  setChoice((held) => chooseDeletionFate(held, row, fate));
               }}
             >
               <Toggle value="goes">Goes</Toggle>

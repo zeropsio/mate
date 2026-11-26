@@ -248,6 +248,7 @@ export function applicationHoldings(detail: {
 
 export interface DeletionChoice {
   readonly fates: Readonly<Record<string, "goes" | "stays">>;
+  readonly repoFates: Readonly<Record<string, "goes" | "stays">>;
   readonly names: Readonly<Record<string, string>>;
   readonly projectName: string;
   /** A stopped operation's code selection, including repositories read after the form opens. */
@@ -290,7 +291,23 @@ export function everythingStays(project: DeletionProject): DeletionChoice {
       environment.kind === "zerops" ? [environment.projectId] : [],
     ),
   ];
-  return { fates: Object.fromEntries(ids.map((id) => [id, "stays"])), names: {}, projectName: "" };
+  return {
+    fates: Object.fromEntries(ids.map((id) => [id, "stays"])),
+    repoFates: {},
+    names: {},
+    projectName: "",
+  };
+}
+
+/** Project ids and repository names are independent namespaces. */
+export function chooseDeletionFate(
+  choice: DeletionChoice,
+  row: DeletionRow,
+  fate: "goes" | "stays",
+): DeletionChoice {
+  return row.kind === "code"
+    ? { ...choice, repoFates: { ...choice.repoFates, [row.id]: fate } }
+    : { ...choice, fates: { ...choice.fates, [row.id]: fate } };
 }
 
 /** A failed deletion's recorded steps are the only source of its next choice. */
@@ -307,10 +324,15 @@ export function deletionChoiceAgain(
   const choice = everythingStays(project);
   const fates: Record<string, "goes" | "stays"> = { ...choice.fates };
   for (const id of Object.keys(fates)) fates[id] = named.has(id) ? "goes" : "stays";
-  for (const repo of holdings?.repos ?? [])
-    fates[repo.name] = code !== undefined && !keeps.has(repo.name) ? "goes" : "stays";
+  const repoFates = Object.fromEntries(
+    (holdings?.repos ?? []).map((repo) => [
+      repo.name,
+      code !== undefined && !keeps.has(repo.name) ? ("goes" as const) : ("stays" as const),
+    ]),
+  );
   return {
     fates,
+    repoFates,
     names: {},
     projectName: "",
     codeAgain: { hasStep: code !== undefined, keeps: code?.keeps ?? [] },
@@ -443,11 +465,10 @@ export function deletionReview(input: {
       recorded !== undefined && (!recorded.hasStep || recorded.keeps.includes(repo.name))
         ? "stays"
         : "goes";
-    const fate = partStays
-      ? "stays"
-      : switchable
-        ? (choice.fates[repo.name] ?? defaultFate)
-        : "goes";
+    const chosenFate = Object.hasOwn(choice.repoFates, repo.name)
+      ? choice.repoFates[repo.name]
+      : undefined;
+    const fate = partStays ? "stays" : switchable ? (chosenFate ?? defaultFate) : "goes";
     rows.push({
       kind: "code",
       id: repo.name,
