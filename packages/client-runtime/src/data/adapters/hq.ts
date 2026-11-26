@@ -172,6 +172,8 @@ export function hqNavigationLink(options: {
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   readonly retryDetail: (demand: DetailDemand) => void;
+  /** Reads navigation after this ask, resolving only once HQ's new snapshot is committed. */
+  readonly readNavigation: () => Effect.Effect<void, StreamFault>;
   /**
    * The person's access moved in the client's own Zerops data (`data/accountRuntime/accessChanges.ts`)
    * on these projects, or on their membership alone: the navigation, every organization-wide scope
@@ -351,6 +353,8 @@ export function hqNavigationLink(options: {
     });
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
+  const queuedNavigation = new Set<Deferred.Deferred<void, StreamFault>>();
+  const readingNavigation = new Set<Deferred.Deferred<void, StreamFault>>();
   let requests = 0;
   /**
    * The scopes to ask again on a new registration in the attempt under way, if one is: the
@@ -397,6 +401,10 @@ export function hqNavigationLink(options: {
       const changed = new Map<string, HqScope>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
+      let navigationAnswer: {
+        readonly readers: ReadonlyArray<Deferred.Deferred<void, StreamFault>>;
+        readonly fault?: StreamFault;
+      } | null = null;
       /** When the open segment last said anything. */
       let heardAt = 0;
       /** Fails once the open segment said nothing for {@link HQ_SILENCE_MS}. */
@@ -587,6 +595,8 @@ export function hqNavigationLink(options: {
               const entry = subscribed.get(scopeKey);
               answering.delete(scopeKey);
               if (entry === undefined) return;
+              if (message.scope.kind === "navigation")
+                navigationAnswer = { readers: [...readingNavigation] };
               cursors.set(scopeKey, {
                 incarnation: message.incarnation,
                 revision: message.revision,
@@ -646,6 +656,8 @@ export function hqNavigationLink(options: {
                 message: message.reason ?? `HQ could not read this (${message.code}).`,
                 code: message.code,
               };
+              if (message.scope.kind === "navigation")
+                navigationAnswer = { readers: [...readingNavigation, ...queuedNavigation], fault };
               if (message.disposition === "refused") refused.add(scopeKey);
               const jitter = yield* Random.next;
               for (const { scope } of entry.generations)
@@ -689,6 +701,16 @@ export function hqNavigationLink(options: {
           yield* Effect.forEach(messages, onMessage, { discard: true }).pipe(
             Effect.ensuring(Effect.sync(settle)),
           );
+          if (navigationAnswer !== null) {
+            const { fault, readers } = navigationAnswer;
+            for (const waiting of readers) {
+              Deferred.doneUnsafe(waiting, fault === undefined ? Effect.void : Effect.fail(fault));
+              readingNavigation.delete(waiting);
+              queuedNavigation.delete(waiting);
+            }
+            navigationAnswer = null;
+            if (fault === undefined) wakeAttempt?.();
+          }
           const segment = open;
           if (stopped || segment === null) return;
           yield* askChanged(segment);
@@ -737,6 +759,18 @@ export function hqNavigationLink(options: {
             stream.generation !== entry.generations[0]?.generation
           )
             fresh.push(registered);
+        }
+        // A snapshot requested after a write must begin after the ask. Finish any registration
+        // already in flight first, then ask HQ for the navigation whole on this same socket.
+        if (
+          queuedNavigation.size > 0 &&
+          readingNavigation.size === 0 &&
+          streamOf(store.state(), nav.families[0]!.scope).phase === "live"
+        ) {
+          for (const waiting of queuedNavigation) readingNavigation.add(waiting);
+          queuedNavigation.clear();
+          cursors.delete(hqScopeKey(nav.wire));
+          if (!fresh.some(({ wire }) => wire.kind === "navigation")) fresh.push(nav);
         }
         // Registered in one publication, however many: the ask leaves that much sooner. Gathered
         // here, never in `again`: one asked again inside a turn of HQ's answers belongs to that
@@ -801,6 +835,13 @@ export function hqNavigationLink(options: {
               Effect.fail({ outcome: "transient", message: "HQ's stream closed." }),
             );
           pendingOffers.clear();
+          for (const waiting of [...queuedNavigation, ...readingNavigation])
+            Deferred.doneUnsafe(
+              waiting,
+              Effect.fail({ outcome: "transient", message: "HQ's stream closed." }),
+            );
+          queuedNavigation.clear();
+          readingNavigation.clear();
         }),
       );
 
@@ -895,6 +936,30 @@ export function hqNavigationLink(options: {
     details: () => (stopped ? [] : demands.scopes().flatMap(fedBy)),
     attempt,
     childMoved: () => wakeAttempt?.(),
+    readNavigation: () =>
+      Effect.suspend(() => {
+        if (open === null || stopped)
+          return Effect.fail<StreamFault>({
+            outcome: "transient",
+            message: "HQ's stream is not open.",
+          });
+        if (streamOf(store.state(), nav.families[0]!.scope).phase === "refused")
+          return Effect.fail<StreamFault>({
+            outcome: "definitive-refusal",
+            message: "HQ refused to read this organization.",
+          });
+        const waiting = Deferred.makeUnsafe<void, StreamFault>();
+        queuedNavigation.add(waiting);
+        wakeAttempt?.();
+        return Deferred.await(waiting).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              queuedNavigation.delete(waiting);
+              readingNavigation.delete(waiting);
+            }),
+          ),
+        );
+      }),
     retryDetail: (demand) => {
       const scope = detailScopeOf(orgId, demand);
       refresh.add(scope);

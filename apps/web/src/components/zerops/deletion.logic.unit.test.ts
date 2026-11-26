@@ -2,6 +2,7 @@ import { hqOperationOf } from "@t3tools/client-runtime/data";
 import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { expect, it } from "vite-plus/test";
 
+import { landingAfterProjectDelete } from "./ZeropsDeleteMateDialog.logic.ts";
 import {
   chooseDeletionFate,
   deletionOffer,
@@ -21,6 +22,19 @@ import {
   type DeletionChoice,
   type ApplicationHoldings,
 } from "./deletion.logic.ts";
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | if (place === "git") return { to: "/git" as const, search: { appId } }; → if (place === "gone") return { to: "/git" as const, search: { appId } };
+it("MN+1: a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.", () => {
+  expect(landingAfterProjectDelete("git", "bakery")).toEqual({
+    to: "/git",
+    search: { appId: "bakery" },
+  });
+  expect(landingAfterProjectDelete("menu", "bakery")).toEqual({
+    to: "/projects/$projectKey",
+    params: { projectKey: "bakery" },
+  });
+  expect(landingAfterProjectDelete("gone", "bakery")).toEqual({ to: "/zerops" });
+});
 
 const AT = "2026-11-25T10:00:00.000Z";
 const MATE = { projectId: "Z_RYE", name: "Rye" };

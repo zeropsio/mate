@@ -15,6 +15,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { randomUUID } from "~/lib/utils";
 import { applicationOperationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
+import { useAccountData } from "~/zerops/accountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqStructure } from "~/zerops/useHqOffers";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -61,7 +62,11 @@ import {
   type DeletionPart,
   type DeletionRow,
 } from "./deletion.logic";
-import { deleteMateServiceCount, MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import {
+  deleteMateServiceCount,
+  landingAfterProjectDelete,
+  MATE_DELETING_WORD,
+} from "./ZeropsDeleteMateDialog.logic";
 import { ZeropsConfirmName } from "./ZeropsConfirmName";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 
@@ -387,6 +392,7 @@ export function ZeropsDeletionPageContainer({
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const operations = useAccountOperations();
+  const account = useAccountData();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const structure = useHqStructure();
@@ -443,6 +449,16 @@ export function ZeropsDeletionPageContainer({
     readonly start: NonNullable<ReturnType<typeof deletionStart>>;
   } | null>(null);
   const active = useRef(true);
+  const read = useRef<AbortController | null>(null);
+  const landed = useRef(false);
+  const [acceptedReview, setAcceptedReview] = useState<
+    | {
+        readonly orgId: string;
+        readonly project: NonNullable<typeof project>;
+        readonly becomes: ReturnType<typeof deletionReview>["becomes"];
+      }
+    | undefined
+  >();
   const [pressing, setPressing] = useState(false);
   const pressingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -450,8 +466,28 @@ export function ZeropsDeletionPageContainer({
     active.current = true;
     return () => {
       active.current = false;
+      read.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (
+      acceptedReview === undefined ||
+      orgId !== acceptedReview.orgId ||
+      structure === null ||
+      deletion.kind !== "none" ||
+      landed.current
+    )
+      return;
+    landed.current = true;
+    const landing = landingAfterProjectDelete(acceptedReview.becomes.place, appId);
+    if (landing.to === "/git")
+      tellKept(
+        acceptedReview.project,
+        acceptedReview.becomes,
+        (id) => void navigate({ to: "/git", search: { appId: id } }),
+      );
+    void navigate(landing);
+  }, [acceptedReview, appId, deletion.kind, navigate, orgId, structure]);
   const submit = (intent: Parameters<typeof operations.submit>[0]) =>
     operations.submit(intent).then(({ progress, evidence }) => {
       const trouble = writeTrouble(progress, evidence);
@@ -490,14 +526,28 @@ export function ZeropsDeletionPageContainer({
     startId.current = { formId, start };
     const accepted = start;
     settle(
-      submit(accepted).then(() => {
-        if (accepted.kind !== "start-mate-deletion" || !active.current) return;
-        tellKept(
-          state.project,
-          review.becomes,
-          (id) => void navigate({ to: "/git", search: { appId: id } }),
-        );
-        back();
+      submit(accepted).then(async () => {
+        if (!active.current) return;
+        if (accepted.kind === "start-mate-deletion") {
+          tellKept(
+            state.project,
+            review.becomes,
+            (id) => void navigate({ to: "/git", search: { appId: id } }),
+          );
+          back();
+          return;
+        }
+        const controller = new AbortController();
+        read.current = controller;
+        try {
+          await account.readNavigation(orgId, controller.signal);
+        } finally {
+          if (read.current === controller) read.current = null;
+        }
+        if (active.current) {
+          landed.current = false;
+          setAcceptedReview({ orgId, project: state.project, becomes: review.becomes });
+        }
       }),
     );
   };
@@ -536,6 +586,7 @@ export function ZeropsDeletionPageContainer({
         onAgain={() => {
           if (state.kind !== "standing" || state.offer.deletion.kind !== "failed") return;
           startId.current = null;
+          setAcceptedReview(undefined);
           setError(null);
           setAgainChoice(deletionChoiceAgain(state.project, holdings));
           setPast(state.offer.deletion.id);

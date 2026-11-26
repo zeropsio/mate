@@ -136,6 +136,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       retryDetail: observation.retryDetail,
       retry: observation.retry,
       showHq: observation.showHq,
+      readNavigation: observation.readNavigation,
       moveOffers: observation.moveOffers,
       logs,
       reveal,

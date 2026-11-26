@@ -154,6 +154,14 @@ export function landingAfterDelete(input: {
   return next === undefined ? { kind: "projects" } : { kind: "mate", projectId: next.projectId };
 }
 
+/** Where this page goes after its project deletion finishes. */
+export function landingAfterProjectDelete(place: "git" | "menu" | "gone", appId: string) {
+  if (place === "git") return { to: "/git" as const, search: { appId } };
+  if (place === "menu")
+    return { to: "/projects/$projectKey" as const, params: { projectKey: appId } };
+  return { to: "/zerops" as const };
+}
+
 /** Each thing an adopted birth's attempt left in the project, as its Delete dialog names it. */
 const LEFT_WORDS: Readonly<Record<HqBirthLeft, string>> = {
   zcp_service: "its zcp service",

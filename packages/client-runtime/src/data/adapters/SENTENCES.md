@@ -91,3 +91,4 @@ next: AD92
 - AD89 — A Mate that did not open is reported to HQ once per project and kind until that project opens, only for an unreachable descriptor, a failed identity exchange or a spent opening deadline, and never for a refusal the page explains; breaks: one unreachable Mate spends the session's allowance in a minute, or a version refusal is counted as an outage
 - AD90 — A report HQ refuses, cannot take or has no account for changes nothing: no error reaches the caller and nothing is retried; breaks: a rate-limited or unreachable HQ breaks opening a Mate, or reports loop
 - AD91 — The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history
+- AD+1 — A navigation read asked after a write waits for HQ's new snapshot to be committed, even when an earlier subscription is still answering; breaks: a completed deletion is mistaken for the state before it started
