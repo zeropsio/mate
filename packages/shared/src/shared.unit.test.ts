@@ -491,7 +491,7 @@ it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits
 });
 
 // witness: packages/shared/src/zeropsOffers.ts | if (kind === "plain") return { delete_project: deleteProjectPermission(facts, projectId) }; → if (false) return { delete_project: deleteProjectPermission(facts, projectId) };
-it("SH+1: A Zerops project placed without a Mate offers exactly its deletion with its project, to an Admin of that Zerops project; breaks: the deletion page offers its switch to someone HQ then refuses, or withholds it from an Admin.", () => {
+it("SH12: A Zerops project placed without a Mate offers exactly its deletion with its project, to an Admin of that Zerops project; breaks: the deletion page offers its switch to someone HQ then refuses, or withholds it from an Admin.", () => {
   const table: ReadonlyArray<readonly [string, string, string | undefined, boolean, Decision]> = [
     ["OWNER", "ACTIVE", undefined, true, { allow: true }],
     ["ADMIN", "ACTIVE", undefined, true, { allow: true }],

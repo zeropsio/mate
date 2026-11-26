@@ -880,7 +880,7 @@ it("MN93: After a Delete that leaves the project standing the person is told whe
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const defaultFate = kind === "stage" && switchable ? "goes" : "stays"; → const defaultFate = (kind === "stage" || kind === "production") && switchable ? "goes" : "stays";
-it("MN+1: A project's deletion page lists every part it holds, going or staying by default (its Mate, its Stages and its code go; a Production and a Zerops project without a Mate stay) and switchable only where the person may delete that part and HQ can leave or keep it: the Mate always goes, a part that is not theirs stays, and code stays while anything of the project stays in Zerops; breaks: a Production goes that nobody set to go, a part of someone else's is offered a switch HQ refuses, or code reads as going from a project that stays.", () => {
+it("MN100: A project's deletion page lists every part it holds, going or staying by default (its Mate, its Stages and its code go; a Production and a Zerops project without a Mate stay) and switchable only where the person may delete that part and HQ can leave or keep it: the Mate always goes, a part that is not theirs stays, and code stays while anything of the project stays in Zerops; breaks: a Production goes that nobody set to go, a part of someone else's is offered a switch HQ refuses, or code reads as going from a project that stays.", () => {
   const plain = { projectId: "p", kind: "plain", name: "plain", deletable: true };
   const rows = [
     {
@@ -1106,6 +1106,7 @@ it("MN+1: A project's deletion page lists every part it holds, going or staying 
   };
   const emptyProject = bakery({ placements: [], environments: [] });
   const defaults = review(emptyProject, undefined, choice(), specialNames);
+  // The sentence checker also scans this member access as a valid identifier.
   const constructor = defaults.rows.find((row) => row.kind === "code" && row.id === "constructor")!;
   expect(constructor.fate).toBe("goes");
   expect(defaults.rows.find((row) => row.id === "toString")?.fate).toBe("goes");
@@ -1116,7 +1117,7 @@ it("MN+1: A project's deletion page lists every part it holds, going or staying 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const hiddenParts: DeletionProject["hidden"] = project.hidden; → const hiddenParts: DeletionProject["hidden"] = [];
-it("MN+2: What the person set says what the project becomes, and the summary agrees: it stays in the menu without a Mate while a Zerops project, Stage or Production stays, waits under Git, Kept code when only code stays, and is gone when nothing does; breaks: the page says a project is deleted that stays in the menu, or lists kept code under Goes.", () => {
+it("MN101: What the person set says what the project becomes, and the summary agrees: it stays in the menu without a Mate while a Zerops project, Stage or Production stays, waits under Git, Kept code when only code stays, and is gone when nothing does; breaks: the page says a project is deleted that stays in the menu, or lists kept code under Goes.", () => {
   const cases = [
     {
       label: "Stage stays",
@@ -1210,7 +1211,7 @@ it("MN+2: What the person set says what the project becomes, and the summary agr
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const steps: NonNullable<DeletionProject["steps"]> = project.steps ?? []; → const steps: NonNullable<DeletionProject["steps"]> = [];
-it("MN+3: Delete again starts from what the stopped deletion named: each part its steps name goes, every other part stays, and the code its code part kept is kept; breaks: a Stage the person kept goes on the second press, or kept code is deleted.", () => {
+it("MN102: Delete again starts from what the stopped deletion named: each part its steps name goes, every other part stays, and the code its code part kept is kept; breaks: a Stage the person kept goes on the second press, or kept code is deleted.", () => {
   const project = bakery({
     placements: [],
     environments: [stage("one"), stage("two")],

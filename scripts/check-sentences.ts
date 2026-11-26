@@ -550,7 +550,12 @@ function bannedForms(
     if (node.type !== "MemberExpression") return;
     const root = rootIdentifier(node.object);
     const name = propertyName(node);
-    if (root && name && bannedModifiers[root]?.includes(name))
+    if (
+      root &&
+      name &&
+      Object.hasOwn(bannedModifiers, root) &&
+      bannedModifiers[root]?.includes(name)
+    )
       problems.push({ file, line: at(Number(node.start)), what: `uses ${root}.${name}` });
   });
   return problems;
