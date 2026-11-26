@@ -37,6 +37,15 @@ export function endProjectOperationIntent(
   return offered && { kind: "end-operation" as const, ...offered, projectId };
 }
 
+/** The name the Mate's row End is about: its application for an app deletion, the Mate otherwise. */
+export function mateOperationEndTargetName(
+  operationKind: string,
+  mateName: string,
+  projectName: string | undefined,
+): string | undefined {
+  return operationKind === "app_deletion" ? projectName : mateName;
+}
+
 /** The confirmation of ending the operation of `kind` on what the person knows as `name`. */
 export function operationEndWords(
   kind: string,

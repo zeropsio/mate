@@ -102,40 +102,37 @@ export function deletionOffer(facts: DeletionFacts): DeletionOffer {
       project.births.includes(facts.mate.projectId))
       ? facts.mate
       : undefined;
-  if (project !== undefined) {
-    const deletion = project.deletion;
-    if (
-      deletion.kind === "going" ||
-      deletion.kind === "waiting" ||
-      (deletion.kind === "failed" && deletion.id !== facts.past)
-    )
-      return { kind: "standing", deletion };
-  }
   if (project === undefined)
     return { kind: "mate", projectId: facts.mate!.projectId, stays: undefined };
-  if (mate === undefined) return { kind: "project", appId: project.appId };
-  const { placements: others, births } = otherHolders(project, mate.projectId);
-  if (others.length > 0 || births.length > 0) {
-    return {
-      kind: "mate",
-      projectId: mate.projectId,
-      stays: `${project.name} stays, with its code and its other Mates.`,
-    };
+  const { deletion } = project;
+  if (deletion.kind === "going" || deletion.kind === "waiting")
+    return { kind: "standing", deletion };
+  if (mate !== undefined) {
+    const { placements: others, births } = otherHolders(project, mate.projectId);
+    if (others.length > 0 || births.length > 0) {
+      return {
+        kind: "mate",
+        projectId: mate.projectId,
+        stays: `${project.name} stays, with its code and its other Mates.`,
+      };
+    }
+    if (!project.deleteApp) {
+      const review = deletionReview({
+        project,
+        mate,
+        holdings: undefined,
+        choice: everythingStays(project),
+      });
+      return {
+        kind: "last-mate-only",
+        projectId: mate.projectId,
+        stays: `${mate.name} is the last Mate of ${project.name}. ${project.name} stays, with ${listed(["its code", ...review.mateStaysParts])}: only an Owner or an Admin can delete a project.`,
+      };
+    }
   }
-  if (!project.deleteApp) {
-    const review = deletionReview({
-      project,
-      mate,
-      holdings: undefined,
-      choice: everythingStays(project),
-    });
-    return {
-      kind: "last-mate-only",
-      projectId: mate.projectId,
-      stays: `${mate.name} is the last Mate of ${project.name}. ${project.name} stays, with ${listed(["its code", ...review.mateStaysParts])}: only an Owner or an Admin can delete a project.`,
-    };
-  }
-  return { kind: "project", appId: project.appId, mate };
+  if (deletion.kind === "failed" && deletion.id !== facts.past)
+    return { kind: "standing", deletion };
+  return { kind: "project", appId: project.appId, ...(mate === undefined ? {} : { mate }) };
 }
 
 const DELETE_PROJECT_WHO = "Only an Owner or an Admin can delete a project.";
@@ -157,7 +154,10 @@ export function deletionPageMate(input: {
 export function deletionPageState(input: {
   readonly structureRead: boolean;
   readonly project: DeletionProject | undefined;
+  /** The Mate in the address, absent for a project's own Delete. */
   readonly mate: { readonly projectId: string; readonly name: string } | undefined;
+  /** The Mate named by a failed operation, or by the address otherwise. */
+  readonly formMate?: DeletionFacts["mate"];
   readonly past?: string | undefined;
 }):
   | { readonly kind: "reading" }
@@ -172,11 +172,38 @@ export function deletionPageState(input: {
       readonly kind: "form";
       readonly project: DeletionProject;
       readonly offer: Extract<DeletionOffer, { kind: "project" }>;
+      readonly failedDeletion?: Extract<HqOperationStanding, { kind: "failed" }> | undefined;
     } {
   if (!input.structureRead) return { kind: "reading" };
   if (input.project === undefined) return { kind: "gone" };
+  const project = input.project;
+  const formOffer = (
+    offer: Extract<DeletionOffer, { kind: "project" }>,
+    past: string | undefined,
+  ) => {
+    if (input.formMate === undefined) return offer;
+    const named = deletionOffer({ project, mate: input.formMate, past });
+    // The project form stays visible while another Mate holds its review closed.
+    return named.kind === "project" ? named : offer;
+  };
   const offer = deletionOffer({ project: input.project, mate: input.mate, past: input.past });
-  if (offer.kind === "standing") return { kind: "standing", project: input.project, offer };
+  if (offer.kind === "standing") {
+    if (offer.deletion.kind === "failed" && !offer.deletion.again && input.project.deleteApp) {
+      const fresh = deletionOffer({
+        project: input.project,
+        mate: input.mate,
+        past: offer.deletion.id,
+      });
+      if (fresh.kind === "project")
+        return {
+          kind: "form",
+          project: input.project,
+          offer: formOffer(fresh, offer.deletion.id),
+          failedDeletion: offer.deletion,
+        };
+    }
+    return { kind: "standing", project: input.project, offer };
+  }
   if (offer.kind === "mate" || offer.kind === "last-mate-only")
     return { kind: "refused", project: input.project, line: offer.stays ?? "" };
   if (offer.kind === "project" && !input.project.deleteApp)
@@ -185,7 +212,7 @@ export function deletionPageState(input: {
       project: input.project,
       line: DELETE_PROJECT_WHO,
     };
-  return { kind: "form", project: input.project, offer };
+  return { kind: "form", project: input.project, offer: formOffer(offer, input.past) };
 }
 
 /** HQ's structure of the project, as `deletionOffer` reads it; `undefined` where it holds none. */

@@ -2,6 +2,7 @@ import { hqOperationOf } from "@t3tools/client-runtime/data";
 import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { expect, it } from "vite-plus/test";
 
+import { landingAfterProjectDelete } from "./ZeropsDeleteMateDialog.logic.ts";
 import {
   chooseDeletionFate,
   deletionOffer,
@@ -21,6 +22,19 @@ import {
   type DeletionChoice,
   type ApplicationHoldings,
 } from "./deletion.logic.ts";
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | if (place === "git") return { to: "/git" as const, search: { appId } }; → if (place === "gone") return { to: "/git" as const, search: { appId } };
+it("MN111: a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.", () => {
+  expect(landingAfterProjectDelete("git", "bakery")).toEqual({
+    to: "/git",
+    search: { appId: "bakery" },
+  });
+  expect(landingAfterProjectDelete("menu", "bakery")).toEqual({
+    to: "/projects/$projectKey",
+    params: { projectKey: "bakery" },
+  });
+  expect(landingAfterProjectDelete("gone", "bakery")).toEqual({ to: "/zerops" });
+});
 
 const AT = "2026-11-25T10:00:00.000Z";
 const MATE = { projectId: "Z_RYE", name: "Rye" };
@@ -103,8 +117,8 @@ const review = (
   held: ApplicationHoldings | undefined = holdings,
 ) => deletionReview({ project, mate, holdings: held, choice: selected });
 
-// witness: apps/web/src/components/zerops/deletion.logic.ts | if (others.length > 0 || births.length > 0) { → if (others.length > 0) {
-it("MN83: A Mate's or a project's Delete offers exactly what the person may delete: a Mate that is not its project's last goes alone, the last Mate of a project the person may not delete goes alone keeping the project, the last Mate of one they may delete opens the project's page with it, and a project HQ deletes, waits on or failed to delete shows that; breaks: the last Mate's Delete deletes a project holding a Mate still being set up or a Stage the person cannot delete", () => {
+// witness: apps/web/src/components/zerops/deletion.logic.ts | if (deletion.kind === "going" || deletion.kind === "waiting") → if (deletion.kind === "going" || deletion.kind === "waiting" || (deletion.kind === "failed" && deletion.id !== facts.past))
+it("MN83: A Mate's or a project's Delete offers exactly what the person may delete: a Mate that is not its project's last goes alone, the last Mate of a project the person may not delete goes alone keeping the project, and the last Mate of one they may delete opens the project's page with it; a project HQ deletes or waits on shows that, and a failed project deletion leaves a Mate's Delete open while its project's Delete shows the failure; breaks: a Mate's Delete opens a failed project deletion instead of deleting the Mate", () => {
   const other = { projectId: "Z_OAT", kind: "mate", name: "Oat", deletable: true };
   const plain = { projectId: "Z_PLAIN", kind: "plain", name: "z_plain", deletable: true };
   const cases: ReadonlyArray<readonly [string, Parameters<typeof deletionOffer>[0], string]> = [
@@ -135,6 +149,14 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
     ["project Delete", { project: bakery({ placements: [] }) }, "project"],
     ["running", { mate: MATE, project: bakery({ deletion: deletion({}) }) }, "standing"],
     [
+      "running, another Mate",
+      {
+        mate: MATE,
+        project: bakery({ placements: [...bakery().placements, other], deletion: deletion({}) }),
+      },
+      "standing",
+    ],
+    [
       "waiting",
       {
         project: bakery({
@@ -146,7 +168,65 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
       },
       "standing",
     ],
+    [
+      "waiting, last Mate without project Delete",
+      {
+        mate: MATE,
+        project: bakery({
+          deleteApp: false,
+          deletion: deletion({
+            failure: { ...zeropsRefusal, code: "token_expired", origin: "hq" },
+            continueBy: "person",
+          }),
+        }),
+      },
+      "standing",
+    ],
     ["failed", { project: bakery({ deletion: deletion({ failure: zeropsRefusal }) }) }, "standing"],
+    [
+      "failed, another Mate",
+      {
+        mate: MATE,
+        project: bakery({
+          placements: [...bakery().placements, other],
+          deletion: deletion({ failure: zeropsRefusal }),
+        }),
+      },
+      "mate",
+    ],
+    [
+      "failed, another birth",
+      {
+        mate: MATE,
+        project: bakery({ births: [null], deletion: deletion({ failure: zeropsRefusal }) }),
+      },
+      "mate",
+    ],
+    [
+      "failed, another Mate without project Delete",
+      {
+        mate: MATE,
+        project: bakery({
+          placements: [...bakery().placements, other],
+          deleteApp: false,
+          deletion: deletion({ failure: zeropsRefusal }),
+        }),
+      },
+      "mate",
+    ],
+    [
+      "failed, last Mate without project Delete",
+      {
+        mate: MATE,
+        project: bakery({ deleteApp: false, deletion: deletion({ failure: zeropsRefusal }) }),
+      },
+      "last-mate-only",
+    ],
+    [
+      "failed, last Mate with project Delete",
+      { mate: MATE, project: bakery({ deletion: deletion({ failure: zeropsRefusal }) }) },
+      "standing",
+    ],
     [
       "past failure",
       {
@@ -170,6 +250,28 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
     ],
   ];
   for (const [label, facts, kind] of cases) expect(deletionOffer(facts).kind, label).toBe(kind);
+  const failed = deletion({ failure: zeropsRefusal });
+  const single = deletionOffer({
+    mate: MATE,
+    project: bakery({ placements: [...bakery().placements, other], deletion: failed }),
+  });
+  expect(deletionStart({ orgId: "org", id: "new", offer: single })).toEqual({
+    kind: "start-mate-deletion",
+    orgId: "org",
+    id: "new",
+    projectId: MATE.projectId,
+  });
+  const last = deletionOffer({
+    mate: MATE,
+    project: bakery({ deleteApp: false, deletion: failed }),
+  });
+  expect(deletionStart({ orgId: "org", id: "new", offer: last })).toEqual({
+    kind: "start-mate-deletion",
+    orgId: "org",
+    id: "new",
+    projectId: MATE.projectId,
+    keptGit: "keep",
+  });
   const restricted = deletionOffer({
     mate: MATE,
     project: bakery({ deleteApp: false, placements: [...bakery().placements, plain] }),
@@ -183,6 +285,126 @@ it("MN83: A Mate's or a project's Delete offers exactly what the person may dele
     }),
   });
   expect(branch.kind === "last-mate-only" && branch.stays).toContain("its code and Production");
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | failedDeletion: offer.deletion, → failedDeletion: undefined,
+it("MN110: An Admin who cannot press Delete again sees a failed project deletion above a fresh form, while a reader offered Delete again or unable to delete the project sees the failure; breaks: an Admin cannot start a fresh deletion after the project deletion failed.", () => {
+  const failed = deletion({ failure: zeropsRefusal });
+  const retryable = deletion({ failure: zeropsRefusal, offers: ["again"] });
+  const cases = [
+    { project: bakery({ deletion: failed }), mate: MATE, kind: "form", failure: failed },
+    {
+      project: bakery({ placements: [], deletion: failed }),
+      mate: undefined,
+      kind: "form",
+      failure: failed,
+    },
+    { project: bakery({ deletion: retryable }), mate: MATE, kind: "standing", failure: undefined },
+    {
+      project: bakery({ placements: [], deleteApp: false, deletion: failed }),
+      mate: undefined,
+      kind: "standing",
+      failure: undefined,
+    },
+  ] as const;
+  for (const row of cases) {
+    const state = deletionPageState({ structureRead: true, project: row.project, mate: row.mate });
+    expect(state.kind).toBe(row.kind);
+    if (state.kind === "form") {
+      expect(state.offer.kind).toBe("project");
+      expect(state.offer.mate).toEqual(row.mate);
+      expect(state.failedDeletion).toEqual(row.failure);
+      expect(
+        deletionStart({
+          orgId: "org",
+          id: "new",
+          offer: state.offer,
+          review: review(row.project, row.mate),
+        })?.kind,
+      ).toBe("start-app-deletion");
+    } else if (state.kind === "standing") {
+      expect(state.offer.deletion).toEqual(row.project.deletion);
+    }
+  }
+
+  const mateStep = { part: "mate", projectId: MATE.projectId, state: "pending" } as const;
+  const another = { projectId: "Z_OAT", kind: "mate", name: "Oat", deletable: true };
+  const projectCases = [
+    {
+      project: bakery({
+        placements: [...bakery().placements, another],
+        deletion: failed,
+        steps: [mateStep],
+      }),
+      kind: "form",
+      expectedMate: undefined,
+      blocked: true,
+    },
+    {
+      project: bakery({
+        placements: [...bakery().placements, another],
+        deletion: retryable,
+        steps: [mateStep],
+      }),
+      kind: "standing",
+      expectedMate: undefined,
+      blocked: false,
+    },
+    {
+      project: bakery({
+        placements: [...bakery().placements, another],
+        deletion: retryable,
+        steps: [mateStep],
+      }),
+      past: "op-1",
+      kind: "form",
+      expectedMate: undefined,
+      blocked: true,
+    },
+    {
+      project: bakery({ deleteApp: false, deletion: failed, steps: [mateStep] }),
+      kind: "standing",
+      expectedMate: undefined,
+      blocked: false,
+    },
+    {
+      project: bakery({ deletion: failed, steps: [mateStep] }),
+      kind: "form",
+      expectedMate: MATE,
+      blocked: false,
+    },
+    {
+      project: bakery({ deletion: retryable, steps: [mateStep] }),
+      past: "op-1",
+      kind: "form",
+      expectedMate: MATE,
+      blocked: false,
+    },
+  ] as const;
+  for (const row of projectCases) {
+    const mateId = deletionPageMate({ project: row.project, address: undefined });
+    expect(mateId).toBe(MATE.projectId);
+    const state = deletionPageState({
+      structureRead: true,
+      project: row.project,
+      mate: undefined,
+      formMate: mateId === undefined ? undefined : MATE,
+      past: "past" in row ? row.past : undefined,
+    });
+    expect(state.kind).toBe(row.kind);
+    if (state.kind === "form") {
+      expect(state.offer.mate).toEqual(row.expectedMate);
+      const current = review(state.project, state.offer.mate);
+      expect(current.missing).toBe(
+        row.blocked ? "A Mate still works on this project. Delete it first." : null,
+      );
+      expect(
+        deletionStart({ orgId: "org", id: "new", offer: state.offer, review: current })?.kind,
+      ).toBe(row.blocked ? undefined : "start-app-deletion");
+    } else if (state.kind === "standing") {
+      expect(state.offer.deletion).toEqual(row.project.deletion);
+    }
+  }
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | JSON.stringify(left.keepRepos ?? []) === JSON.stringify(right.keepRepos ?? []) → true
@@ -823,7 +1045,8 @@ it("MN98: Delete again over a project's deletion that ended failed makes its for
     const state = deletionPageState({
       structureRead: true,
       project: row.project,
-      mate: mateId === undefined ? undefined : { projectId: mateId, name: MATE.name },
+      mate: undefined,
+      formMate: mateId === undefined ? undefined : { projectId: mateId, name: MATE.name },
       past: row.past,
     });
     expect(state.kind).toBe(row.state);

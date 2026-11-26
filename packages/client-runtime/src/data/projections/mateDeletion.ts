@@ -31,6 +31,7 @@ export type MateDeletion =
   | (WaitingWords & {
       readonly kind: "waiting";
       readonly id: string;
+      readonly operationKind: typeof MATE_DELETION | typeof APP_DELETION;
       readonly continueBy: string;
       readonly yours: boolean;
       readonly endable?: true;
@@ -56,7 +57,7 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   const deletion = hqOperationOf(evidence.operation, kind);
   // Its wait for its maker's fresh token outlives Zerops deleting the project, as the steps after
   // it (the key's retirement) do.
-  if (deletion.kind === "waiting") return deletion;
+  if (deletion.kind === "waiting") return { ...deletion, operationKind: kind };
   // Zerops deletes its project, whoever asked: nothing HQ says of it can open it again.
   if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
   // A Mate's deletion ends at no decision of the person's.

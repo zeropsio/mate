@@ -29,6 +29,7 @@ export interface AccountData extends AccountReads {
   readonly database?: DatabaseReads | null;
   /** The organization's official HQ, once known (`ZeropsHqNavigation`); `null` while none is. */
   readonly showHq: AccountObservation["showHq"];
+  readonly readNavigation: AccountObservation["readNavigation"];
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: AccountObservation["moveOffers"];
   /** `null` until the mount has made them. */

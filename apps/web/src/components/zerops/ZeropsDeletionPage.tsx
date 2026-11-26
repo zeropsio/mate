@@ -15,6 +15,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { randomUUID } from "~/lib/utils";
 import { applicationOperationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
+import { useAccountData } from "~/zerops/accountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqStructure } from "~/zerops/useHqOffers";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -61,7 +62,11 @@ import {
   type DeletionPart,
   type DeletionRow,
 } from "./deletion.logic";
-import { deleteMateServiceCount, MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import {
+  deleteMateServiceCount,
+  landingAfterProjectDelete,
+  MATE_DELETING_WORD,
+} from "./ZeropsDeleteMateDialog.logic";
 import { ZeropsConfirmName } from "./ZeropsConfirmName";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 
@@ -208,6 +213,10 @@ export function ZeropsDeletionPage({
     );
   }
 
+  const failed =
+    state.kind === "form" && state.failedDeletion !== undefined
+      ? deletionStandingWords(project, state.failedDeletion)
+      : undefined;
   const review = deletionReview({ project, mate, holdings, choice });
   const renderRow = (row: DeletionRow) => (
     <div key={`${row.kind}:${row.id}`} data-zerops-surface="delete-page-part">
@@ -280,6 +289,14 @@ export function ZeropsDeletionPage({
   return (
     <div className="contents" data-zerops-surface="delete-page-form">
       <PageHeader line={page.line} title={page.title} />
+      {failed === undefined ? null : (
+        <Failure
+          cause={failed.line}
+          details={failed.details ?? undefined}
+          role="alert"
+          size="line"
+        />
+      )}
       <Section title="In Zerops">
         {zerops.length === 0 ? (
           <Text render={<p />} variant="description">
@@ -375,6 +392,7 @@ export function ZeropsDeletionPageContainer({
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const operations = useAccountOperations();
+  const account = useAccountData();
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const structure = useHqStructure();
@@ -385,18 +403,26 @@ export function ZeropsDeletionPageContainer({
   const project = deletionProjectOf(structure, appId, deletion);
   const mateId = deletionPageMate({ project, address });
   const candidate = candidates.find((row) => row.project.id === mateId);
-  const placement = project?.placements.find((item) => item.projectId === mateId);
-  const mateName =
-    candidate === undefined
+  const mateNameFor = (id: string) => {
+    const target = candidates.find((row) => row.project.id === id);
+    const placement = project?.placements.find((item) => item.projectId === id);
+    return target === undefined
       ? nameUnderApp(placement?.name ?? "", project?.name) || "Its Mate"
-      : projectNameInApp(candidate.project);
+      : projectNameInApp(target.project);
+  };
+  const mateName = mateId === undefined ? "Its Mate" : mateNameFor(mateId);
   const mateFacts = mateId === undefined ? undefined : { projectId: mateId, name: mateName };
+  const requestedMate =
+    address === undefined
+      ? undefined
+      : { projectId: address, name: address === mateId ? mateName : mateNameFor(address) };
   const [past, setPast] = useState<string>();
   const [againChoice, setAgainChoice] = useState<DeletionChoice>();
   const state = deletionPageState({
     structureRead: structure !== null,
     project,
-    mate: mateFacts,
+    mate: requestedMate,
+    formMate: mateFacts,
     past,
   });
   const holdings = applicationHoldings(useHqAppDetail(appId));
@@ -417,8 +443,22 @@ export function ZeropsDeletionPageContainer({
               ? ("slate" as const)
               : (assignCandidateMateTints(candidates).get(mateId) ?? "slate")),
         };
-  const startId = useRef<NonNullable<ReturnType<typeof deletionStart>> | null>(null);
+  const failedFormId = state.kind === "form" ? state.failedDeletion?.id : undefined;
+  const startId = useRef<{
+    readonly formId: string | undefined;
+    readonly start: NonNullable<ReturnType<typeof deletionStart>>;
+  } | null>(null);
   const active = useRef(true);
+  const read = useRef<AbortController | null>(null);
+  const landed = useRef(false);
+  const [acceptedReview, setAcceptedReview] = useState<
+    | {
+        readonly orgId: string;
+        readonly project: NonNullable<typeof project>;
+        readonly becomes: ReturnType<typeof deletionReview>["becomes"];
+      }
+    | undefined
+  >();
   const [pressing, setPressing] = useState(false);
   const pressingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -426,8 +466,28 @@ export function ZeropsDeletionPageContainer({
     active.current = true;
     return () => {
       active.current = false;
+      read.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (
+      acceptedReview === undefined ||
+      orgId !== acceptedReview.orgId ||
+      structure === null ||
+      deletion.kind !== "none" ||
+      landed.current
+    )
+      return;
+    landed.current = true;
+    const landing = landingAfterProjectDelete(acceptedReview.becomes.place, appId);
+    if (landing.to === "/git")
+      tellKept(
+        acceptedReview.project,
+        acceptedReview.becomes,
+        (id) => void navigate({ to: "/git", search: { appId: id } }),
+      );
+    void navigate(landing);
+  }, [acceptedReview, appId, deletion.kind, navigate, orgId, structure]);
   const submit = (intent: Parameters<typeof operations.submit>[0]) =>
     operations.submit(intent).then(({ progress, evidence }) => {
       const trouble = writeTrouble(progress, evidence);
@@ -452,7 +512,8 @@ export function ZeropsDeletionPageContainer({
   };
   const confirm = (review: ReturnType<typeof deletionReview>) => {
     if (orgId === undefined || state.kind !== "form" || pressingRef.current) return;
-    const previous = startId.current;
+    const formId = failedFormId ?? past;
+    const previous = startId.current?.formId === formId ? (startId.current?.start ?? null) : null;
     let start = deletionStart({
       orgId,
       id: previous?.id ?? randomUUID(),
@@ -462,17 +523,31 @@ export function ZeropsDeletionPageContainer({
     if (start === undefined) return;
     if (previous !== null && !sameDeletionStart(previous, start))
       start = { ...start, id: randomUUID() };
-    startId.current = start;
+    startId.current = { formId, start };
     const accepted = start;
     settle(
-      submit(accepted).then(() => {
-        if (accepted.kind !== "start-mate-deletion" || !active.current) return;
-        tellKept(
-          state.project,
-          review.becomes,
-          (id) => void navigate({ to: "/git", search: { appId: id } }),
-        );
-        back();
+      submit(accepted).then(async () => {
+        if (!active.current) return;
+        if (accepted.kind === "start-mate-deletion") {
+          tellKept(
+            state.project,
+            review.becomes,
+            (id) => void navigate({ to: "/git", search: { appId: id } }),
+          );
+          back();
+          return;
+        }
+        const controller = new AbortController();
+        read.current = controller;
+        try {
+          await account.readNavigation(orgId, controller.signal);
+        } finally {
+          if (read.current === controller) read.current = null;
+        }
+        if (active.current) {
+          landed.current = false;
+          setAcceptedReview({ orgId, project: state.project, becomes: review.becomes });
+        }
       }),
     );
   };
@@ -498,19 +573,20 @@ export function ZeropsDeletionPageContainer({
   return (
     <ZeropsHostedFrame bar={false} width="column">
       <ZeropsDeletionPage
-        key={past ?? "first"}
+        key={failedFormId === undefined ? `past:${past ?? "first"}` : `failed:${failedFormId}`}
         state={state}
         mate={mate}
         holdings={holdings}
         pending={pressing}
         error={error}
         waiting={waiting}
-        initial={againChoice}
+        initial={failedFormId === undefined ? againChoice : undefined}
         onCancel={back}
         onConfirm={confirm}
         onAgain={() => {
           if (state.kind !== "standing" || state.offer.deletion.kind !== "failed") return;
           startId.current = null;
+          setAcceptedReview(undefined);
           setError(null);
           setAgainChoice(deletionChoiceAgain(state.project, holdings));
           setPast(state.offer.deletion.id);

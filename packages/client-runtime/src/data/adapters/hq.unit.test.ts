@@ -28,6 +28,75 @@ const opened = (orgId: string) =>
     return { store, fixture, link, fiber };
   });
 
+// witness: packages/client-runtime/src/data/adapters/hq.ts | !answering.has(hqScopeKey(nav.wire)) && → true &&
+it.effect(
+  "AD92: A navigation read asked after a write waits for HQ's new snapshot to be committed, even when an earlier subscription or retry is still answering; breaks: a completed deletion is mistaken for the state before it started",
+  () =>
+    Effect.gen(function* () {
+      const { store, fixture, link, fiber } = yield* opened("v9");
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
+      yield* settle;
+      const before = fixture.sent.length;
+      let answered = false;
+      const read = yield* Effect.forkChild(
+        link.readNavigation().pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              answered = true;
+            }),
+          ),
+        ),
+      );
+      yield* settle;
+      expect(answered).toBe(false);
+      expect(fixture.sent).toHaveLength(before);
+
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      expect(answered).toBe(false);
+      const requests = fixture.sent.slice(before).map(({ request }) => request);
+      expect(requests).toHaveLength(1);
+      const [subscribe] = requests;
+      assert(subscribe?.type === "subscribe");
+      expect(subscribe.scopes).toHaveLength(1);
+      expect(subscribe.scopes[0]?.scope).toEqual({ kind: "navigation" });
+      expect("cursor" in subscribe.scopes[0]!).toBe(false);
+
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
+      yield* settle;
+      expect(answered).toBe(false);
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* Fiber.join(read);
+      expect(answered).toBe(true);
+      expect(streamOf(store.state(), hqAppsScope("v9")).phase).toBe("live");
+
+      // A retry can be answering while navigation remains live. Its older ready is not this read.
+      yield* fixture.send(recorded("scope-changed", "mate-hq/navigation.scope-changed"));
+      yield* settle;
+      answered = false;
+      const afterRetry = yield* Effect.forkChild(
+        link.readNavigation().pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              answered = true;
+            }),
+          ),
+        ),
+      );
+      yield* settle;
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      expect(answered).toBe(false);
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* Fiber.join(afterRetry);
+      expect(answered).toBe(true);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
 // witness: packages/client-runtime/src/data/adapters/hq.ts | message.type === "scope-reset" || → message.type === "scope-values" ||
 it.effect(
   "AD1: Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped",

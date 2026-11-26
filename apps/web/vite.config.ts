@@ -779,14 +779,23 @@ export default defineConfig(({ command }) => {
       manifest: true,
       sourcemap: buildSourcemap,
       rolldownOptions: {
-        ...(harnessBuild
-          ? { input: [NodePath.resolve(import.meta.dirname, DESIGN_HARNESS_PAGE)] }
+        // A build writes one page: the app's, or the harness's in its own pass. Bundled dev
+        // serves only its inputs' pages, so the dev server takes both.
+        ...(harnessBuild || command === "serve"
+          ? {
+              input: [...(harnessBuild ? [] : ["index.html"]), DESIGN_HARNESS_PAGE].map((page) =>
+                NodePath.resolve(import.meta.dirname, page),
+              ),
+            }
           : {}),
         // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
-        // The tag follows the actual static graph and leaves demanded surfaces outside it.
-        output: harnessBuild
-          ? {}
-          : { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } },
+        // The tag follows the actual static graph and leaves demanded surfaces outside it. Beside
+        // the harness page each entry starts on its own: one startup chunk would hold both entries
+        // and run the app's on a harness page.
+        output:
+          harnessBuild || command === "serve"
+            ? {}
+            : { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } },
       },
     },
     test: {

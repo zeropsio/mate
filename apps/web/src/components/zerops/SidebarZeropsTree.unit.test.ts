@@ -68,6 +68,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   const waiting = {
     kind: "waiting",
     id: "op-1",
+    operationKind: "mate_deletion",
     continueBy: "ada",
     yours: false,
     ...waitingWords("token_expired"),
@@ -134,6 +135,7 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
       {
         kind: "waiting",
         id: "op-7",
+        operationKind: "mate_deletion",
         continueBy: "ada",
         yours: true,
         ...waitingWords("token_expired"),
@@ -145,6 +147,7 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
       {
         kind: "waiting",
         id: "op-7",
+        operationKind: "mate_deletion",
         continueBy: "ada",
         yours: false,
         ...waitingWords("token_expired"),

@@ -91,6 +91,7 @@ export function startZeropsNavigation(options: {
 interface RunningHq extends Omit<RunningLink, "revalidate" | "owedRead" | "renew" | "reread"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
+  readonly readNavigation: (signal?: AbortSignal) => Promise<void>;
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
   /** Asks HQ what lies between two commits; rejects with HQ's words for why it did not answer. */
@@ -122,6 +123,11 @@ function startHqNavigation(options: {
     signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
     demandDetail: link.demandDetail,
     retryDetail: link.retryDetail,
+    readNavigation: (signal) =>
+      Effect.runPromise(
+        Effect.catch(link.readNavigation(), (fault) => Effect.die(new Error(fault.message))),
+        { signal },
+      ),
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
     compare: (ask) =>
       // HQ's words for why it did not answer, as what the promise rejects with.
@@ -197,6 +203,8 @@ export interface AccountObservation {
    * Letting it go returns the completion of the queued release decision.
    */
   readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
+  /** Reads the shown organization's HQ navigation after this ask. */
+  readonly readNavigation: (orgId: string, signal?: AbortSignal) => Promise<void>;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
   /** Asks the shown organization's HQ what lies between two commits; refused without one. */
@@ -398,6 +406,10 @@ export function observeAccount(options: {
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
         : hq.moveOffers(projectId),
+    readNavigation: (orgId, signal) =>
+      hq === null || shown?.orgId !== orgId
+        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
+        : hq.readNavigation(signal),
     compare: (ask) =>
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
