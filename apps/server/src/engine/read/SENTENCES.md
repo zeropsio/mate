@@ -1,4 +1,4 @@
-next: RS23
+next: RS24
 
 - RS1 — A run reads as a running turn from its admission until it ends and as none while queued or in a state this build does not know; its end reads completed, interrupted when stopped, cut by a restart or held by a usage limit, broken when it failed or crashed, and none for an end kind this build does not know; breaks: a stopped turn shows as an error, or a queued message as working
 - RS2 — An attempt admission refused because the sender may not use the login or nobody is on record for it never ran: it reads interrupted and leaves its conversation ready, while a refusal whose reason this build does not know reads broken; breaks: another person's refused message marks the conversation failed
@@ -22,3 +22,4 @@ next: RS23
 - RS20 — A started run's time is split with nothing counted twice or left out: waiting on the person first, then each call by its class in priority where calls overlap, then the gap holding a compaction, the rest the model's, its round-trips the stretches a call was open; a run that never started has no timing and a call still open counts to the run's end; breaks: the parts do not add up to the run, so time moved by a change hides in another part
 - RS21 — A run's trace is its own events only, oldest first, read from its queueing on; breaks: another run's calls are counted into this run's time, or one line reads the whole conversation
 - RS22 — A run's end writes one line to the trace, named for its conversation and run, whose start and end are the run's and whose attributes are the timing's and nothing else, and the same end told again writes none; breaks: a speed change cannot be seen, is counted twice, or a person's command line lands in the trace
+- RS23 — A row says since when its latest run stopped answering while that run is on, and nothing of it once the run ended or while it answers; breaks: HQ's operator reads a hung run as a working one, or a finished run as hung

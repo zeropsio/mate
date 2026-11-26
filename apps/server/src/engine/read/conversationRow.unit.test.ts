@@ -1,4 +1,5 @@
-import { ConversationId, RequestId, runId, type RunEnd } from "@t3tools/contracts";
+import { ConversationId, ConversationRow, RequestId, runId, type RunEnd } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
 import { conversationRowOf, restartLine } from "./conversationRow.ts";
@@ -498,6 +499,46 @@ it("RS16: The row names the run on and, as its latest run, the one with the high
     endedAt: null,
     turnState: "running",
   });
+});
+
+// witness: apps/server/src/engine/read/conversationRow.ts | latest.endedAt === null && latest.unresponsiveSince !== null → latest.unresponsiveSince !== null
+it("RS23: A row says since when its latest run stopped answering while that run is on, and nothing of it once the run ended or while it answers; breaks: HQ's operator reads a hung run as a working one, or a finished run as hung", () => {
+  const cases = [
+    {
+      input: view({ activeRun: run(1, { unresponsiveSince: 1000 }) }),
+      id: runId(c, 1),
+      since: 1000,
+    },
+    { input: view({ activeRun: run(1) }), id: runId(c, 1), since: null },
+    {
+      input: view({ lastEnded: { ...ended(1, { kind: "completed" }), unresponsiveSince: 1000 } }),
+      id: runId(c, 1),
+      since: null,
+    },
+    { input: view(), id: null, since: null },
+    {
+      input: view({
+        activeRun: run(1, { unresponsiveSince: 1000 }),
+        queued: [run(2, { state: "queued", admittedAt: null, startedAt: null })],
+      }),
+      id: runId(c, 2),
+      since: null,
+    },
+  ];
+  for (const { input, id, since } of cases) {
+    const projected = conversationRowOf(input, revision);
+    const row = Schema.decodeUnknownSync(ConversationRow)(projected);
+    expect(row.latestRun?.id ?? null).toBe(id);
+    if (id === null) {
+      expect(row.latestRun).toBeNull();
+    } else if (since === null) {
+      expect(projected.latestRun).not.toHaveProperty("unresponsiveSince");
+      expect(row.latestRun).not.toHaveProperty("unresponsiveSince");
+    } else {
+      expect(row.latestRun?.unresponsiveSince).toBe(since);
+      expect(row.state.kind).toBe("working");
+    }
+  }
 });
 
 // witness: apps/server/src/engine/read/conversationRow.ts | view.openRequests.find((request) => request.runId === view.activeRun?.id) ?? → view.openRequests.find((request) => request.runId !== view.activeRun?.id) ??

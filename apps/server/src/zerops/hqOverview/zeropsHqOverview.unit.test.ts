@@ -566,6 +566,42 @@ it("HO13: A conversation's error line and the words it waits on are masked and c
   expect(asks?.state.kind === "waiting" ? asks.state.words : "").toHaveLength(280);
 });
 
+// witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | ? row.latestRun → ? row.latestRun === null ? null : { id: row.latestRun.id, end: row.latestRun.end, endedAt: row.latestRun.endedAt, turnState: row.latestRun.turnState }
+it("HO38: HQ is told since when a conversation's run stopped answering, on that conversation's row; breaks: the mark stays in the Mate and its operator sees a working chat", () => {
+  const secret = "sk-ant-api03-" + "x".repeat(40);
+  const overview = engineOverview([
+    row("working", {
+      at: 2000,
+      state: { kind: "working", since: 100, waitsOnHelpers: false },
+      latestRun: {
+        id: "run-1",
+        end: null,
+        endedAt: null,
+        turnState: "running",
+        unresponsiveSince: 1000,
+      },
+    }),
+    row("failed", {
+      at: 1000,
+      state: { kind: "failed", errorLine: "Failed" },
+      latestRun: {
+        id: "run-2",
+        end: { kind: "failed", reason: `Unable to run: ${secret}`, next: null },
+        endedAt: 900,
+        turnState: "error",
+      },
+    }),
+  ]);
+  const [working, failed] = overview.conversations ?? [];
+  expect(working?.latestRun?.unresponsiveSince).toBe(1000);
+  expect(failed?.latestRun?.end).toEqual({
+    kind: "failed",
+    reason: "Unable to run: ••••••",
+    next: null,
+  });
+  expect(failed?.latestRun).not.toHaveProperty("unresponsiveSince");
+});
+
 // witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | restingRow(row) && (row.conversationId as string) !== overview.main?.id; → restingRow(row);
 it("HO14: Over the frame bound, idle conversations go oldest first after the idle chats; the main chat's conversation and every one that is not idle stay", () => {
   const rows = [

@@ -1,4 +1,4 @@
-next: HO38
+next: HO39
 
 - HO36 — HQ is told how zcp's stand-up of the Mate stands, running, done or failed, with zcp's own stamp of it, and nothing of a stand-up zcp never ran or a status the Mate cannot read; breaks: a Mate whose stand-up failed looks set up to HQ, or one that never stood up looks failed
 - HO37 — A failed stand-up names to HQ each service zcp failed with where it failed, zcp's class and the source's words, the pooled rows first, eight at most and the rest counted, a credential in the words masked and long words cut; breaks: the source's words never reach HQ's operator, or a token in a build line leaves the Mate
@@ -37,3 +37,4 @@ next: HO38
 - HO33 — An incarnation's attention starts at revision 0, keeps its revision while nothing the attention carries changed, and raises it by one when anything did
 - HO34 — An attention over one frame of the link drops the oldest entries of its longer list, marked cut, until it fits
 - HO35 — A chat a restart cut that waits on the person to continue it waits as failed with the interruption on its cut turn, an answer it asks keeps the interruption, a changed interruption raises the revision, and continuing clears it
+- HO38 — HQ is told since when a conversation's run stopped answering, on that conversation's row; breaks: the mark stays in the Mate and its operator sees a working chat
