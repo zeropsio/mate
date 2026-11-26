@@ -50,6 +50,7 @@ const row = (type: string, at: number, fields: Partial<RunTraceRow> = {}): RunTr
   step: null,
   tool: null,
   input: null,
+  action: null,
   marker: null,
   trigger: null,
   cause: null,
@@ -70,8 +71,73 @@ const tool = (name: string, step: string | null = null, input: string | null = n
   input,
 });
 
+// witness: apps/server/src/engine/read/runTiming.ts | if (leaseAction === "acquire" || leaseAction === "release") return "lease"; → if (leaseAction === "acquire" || leaseAction === "release") return "zcp";
+it("RS24: A lease acquire or release call spends its run time in lease, whether the agent calls the Zerops tool or a direct zcp command is timed in the run, while other lease actions stay in their own class; breaks: lease acquisition time is hidden among other tools", () => {
+  const calls = [
+    { tool: "mcp__zerops__zerops_lease", step: "tool", input: null, action: "acquire" },
+    { tool: "zerops_lease", step: "tool", input: null, action: "release" },
+    {
+      tool: "zerops_lease",
+      step: "tool",
+      input: 'zerops_lease: {"action":"acquire"}',
+      action: null,
+    },
+    { tool: "Bash", step: "command", input: "zcp lease acquire --pool webpool", action: null },
+    { tool: "Bash", step: "command", input: "zcp lease release --branch work", action: null },
+    {
+      tool: "Bash",
+      step: "command",
+      input: 'Bash: {"command":"zcp lease acquire --pool webpool"}',
+      action: null,
+    },
+  ];
+  for (const fields of calls) {
+    const timing = runTiming([
+      row("RunStarted", 0),
+      row("ItemOpened", 100, { ...fields, kind: "call", item: "lease" }),
+      row("ItemClosed", 1100, { ...fields, kind: "call", item: "lease" }),
+      row("RunEnded", 1200),
+    ]);
+    expect(timing?.tools.lease).toEqual({ ms: 1000, calls: 1 });
+  }
+  expect(toolClass({ tool: "zerops_lease", step: "tool", input: null, action: "status" })).toBe(
+    "zcp",
+  );
+  expect(
+    toolClass({ tool: "Bash", step: "command", input: "zcp lease status", action: null }),
+  ).toBe("other");
+  expect(
+    toolClass({
+      tool: "Bash",
+      step: "command",
+      input: 'rg "zcp lease acquire" docs',
+      action: null,
+    }),
+  ).toBe("other");
+  const overlapping = runTiming([
+    row("RunStarted", 0),
+    call("deploy", 100, "zerops_deploy"),
+    row("ItemOpened", 100, {
+      tool: "zerops_lease",
+      action: "acquire",
+      kind: "call",
+      item: "lease",
+    }),
+    close("deploy", 1100, "zerops_deploy"),
+    row("ItemClosed", 1100, {
+      tool: "zerops_lease",
+      action: "acquire",
+      kind: "call",
+      item: "lease",
+    }),
+    row("RunEnded", 1200),
+  ]);
+  expect(overlapping?.tools.deploy).toEqual({ ms: 1000, calls: 1 });
+  expect(overlapping?.tools.lease).toEqual({ ms: 0, calls: 1 });
+});
+
 // witness: apps/server/src/engine/read/runTiming.ts | const name = bareToolName(tool ?? ""); → const name = tool ?? "";
-it("RS19: A call's time goes to its class by its tool's name with the MCP prefix read past and, for a command, by the line it ran: a Zerops deploy, the agent's browser, a zcp run, git, any other zcp tool, else other; breaks: a deploy's minutes are counted as the model's, so a release that removes a build shows no gain", () => {
+it("RS19: A call's time goes to its class by its tool's name with the MCP prefix read past and, for a command, by the line it ran: a Zerops deploy, the agent's browser, a zcp run, git, other zcp tools apart from lease acquire or release, else other; breaks: a deploy's minutes are counted as the model's, so a release that removes a build shows no gain", () => {
   expect([
     toolClass(tool("mcp__zerops__zerops_deploy")),
     toolClass(tool("zerops_deploy_batch")),
@@ -103,7 +169,7 @@ it("RS19: A call's time goes to its class by its tool's name with the MCP prefix
   ]);
 });
 
-// witness: apps/server/src/engine/read/runTiming.ts | const CLASSES = ["deploy", "browser", "zcp_run", "git", "zcp", "other"] as const; → const CLASSES = ["other", "zcp", "git", "zcp_run", "browser", "deploy"] as const;
+// witness: apps/server/src/engine/read/runTiming.ts | const CLASSES = ["deploy", "lease", "browser", "zcp_run", "git", "zcp", "other"] as const; → const CLASSES = ["other", "zcp", "git", "zcp_run", "browser", "lease", "deploy"] as const;
 it("RS20: A started run's time is split with nothing counted twice or left out: waiting on the person first, then each call by its class in priority where calls overlap, then the gap holding a compaction, the rest the model's, its round-trips the stretches a call was open; a run that never started has no timing and a call still open counts to the run's end; breaks: the parts do not add up to the run, so time moved by a change hides in another part", () => {
   const scenes = [
     {
@@ -210,7 +276,7 @@ it("RS20: A started run's time is split with nothing counted twice or left out: 
   expect(runTiming([row("RunQueued", 0), row("RunEnded", 1000)])).toBeUndefined();
 });
 
-const openedCall = (n: number, key: string) =>
+const openedCall = (n: number, key: string, shows?: Readonly<Record<string, unknown>>) =>
   signal({
     kind: "item-opened",
     turn: turn(n),
@@ -218,26 +284,27 @@ const openedCall = (n: number, key: string) =>
     by: { kind: "mate" },
     body: {
       kind: "call",
-      step: "command",
-      tool: { name: "Bash" },
+      step: shows === undefined ? "command" : "tool",
+      tool: { name: shows === undefined ? "Bash" : "zerops_lease" },
       words: null,
       state: "running",
       endedAt: null,
+      ...(shows === undefined ? {} : { shows }),
     },
   });
-const closedCall = (n: number, key: string) =>
+const closedCall = (n: number, key: string, shows?: Readonly<Record<string, unknown>>) =>
   signal({
     kind: "item-closed",
     turn: turn(n),
     key,
     body: {
       kind: "call",
-      step: "command",
-      tool: { name: "Bash" },
+      step: shows === undefined ? "command" : "tool",
+      tool: { name: shows === undefined ? "Bash" : "zerops_lease" },
       words: null,
       state: "done",
       endedAt: 2,
-      input: "git status",
+      ...(shows === undefined ? { input: "git status" } : { shows }),
     },
   });
 
@@ -259,8 +326,8 @@ it.effect(
         ended(1),
         prepared(2),
         sent(2),
-        openedCall(2, "second-call"),
-        closedCall(2, "second-call"),
+        openedCall(2, "second-call", { item: { arguments: { action: "acquire" } } }),
+        closedCall(2, "second-call", { input: { action: "acquire" } }),
         ended(2),
       ]);
       const trace = yield* readRunTrace(sql, conversation, r(2));
@@ -269,6 +336,11 @@ it.effect(
         "ItemOpened",
         "ItemClosed",
       ]);
+      expect(trace.filter((event) => event.kind === "call").map((event) => event.action)).toEqual([
+        "acquire",
+        "acquire",
+      ]);
+      expect(runTiming(trace)?.tools.lease.calls).toBe(1);
       expect(trace.at(-1)?.type).toBe("RunEnded");
       const plan = yield* sql.unsafe<{ readonly detail: string }>(
         `EXPLAIN QUERY PLAN ${RUN_TRACE_SQL}`,
@@ -374,6 +446,8 @@ it.effect(
             "run.context_tokens",
             "run.tool.deploy_ms",
             "run.tool.deploy_calls",
+            "run.tool.lease_ms",
+            "run.tool.lease_calls",
             "run.tool.browser_ms",
             "run.tool.browser_calls",
             "run.tool.zcp_run_ms",

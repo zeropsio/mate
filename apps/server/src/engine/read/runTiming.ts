@@ -6,7 +6,7 @@ import { bareToolName } from "../domain/mateAsks.ts";
 
 export const RUN_SPAN = "engine.run";
 
-const CLASSES = ["deploy", "browser", "zcp_run", "git", "zcp", "other"] as const;
+const CLASSES = ["deploy", "lease", "browser", "zcp_run", "git", "zcp", "other"] as const;
 type ToolClass = (typeof CLASSES)[number];
 
 /** Command input is used only to classify the call, never written to the trace. */
@@ -14,15 +14,29 @@ export const toolClass = ({
   step,
   tool,
   input,
+  action,
 }: {
   readonly step: string | null;
   readonly tool: string | null;
   readonly input: string | null;
+  readonly action?: string | null;
 }): ToolClass => {
   const name = bareToolName(tool ?? "");
   if (name === "zerops_deploy" || name === "zerops_deploy_batch") return "deploy";
+  if (name === "zerops_lease") {
+    const leaseAction =
+      action ??
+      input?.match(/["']?action["']?\s*[:=]\s*["']?(acquire|release)(?=["'\s,}]|$)/u)?.[1];
+    if (leaseAction === "acquire" || leaseAction === "release") return "lease";
+  }
   if (name === "zerops_browser") return "browser";
   if (step === "command" && input !== null) {
+    if (
+      /^(?:[A-Za-z][\w-]*:\s*)?(?:\{\s*"(?:command|cmd)"\s*:\s*")?zcp\s+lease\s+(?:acquire|release)(?=$|[\s;&|)'"}])/u.test(
+        input,
+      )
+    )
+      return "lease";
     if (/(?:^|[\s;&|('"`])zcp\s+run(?=$|[\s;&|)'"`])/u.test(input)) return "zcp_run";
     if (/(?:^|[\s;&|('"`])(?:zcp\s+git|git)(?=$|[\s;&|)'"`])/u.test(input)) return "git";
   }
@@ -39,6 +53,7 @@ export interface RunTraceRow {
   readonly step: string | null;
   readonly tool: string | null;
   readonly input: string | null;
+  readonly action: string | null;
   readonly marker: string | null;
   readonly trigger: string | null;
   readonly cause: string | null;
@@ -48,7 +63,10 @@ export const RUN_TRACE_SQL = `
   SELECT type, at,
     json_extract(payload_json, '$.itemId') AS item, json_extract(payload_json, '$.body.kind') AS kind,
     json_extract(payload_json, '$.body.step') AS step, json_extract(payload_json, '$.body.tool.name') AS tool,
-    json_extract(payload_json, '$.body.input') AS input, json_extract(payload_json, '$.body.marker.kind') AS marker,
+    json_extract(payload_json, '$.body.input') AS input,
+    COALESCE(json_extract(payload_json, '$.body.shows.input.action'),
+      json_extract(payload_json, '$.body.shows.item.arguments.action')) AS action,
+    json_extract(payload_json, '$.body.marker.kind') AS marker,
     json_extract(payload_json, '$.trigger.kind') AS trigger, json_extract(payload_json, '$.trigger.cause') AS cause
   FROM engine_event
   WHERE conversation_id = ? AND seq >= (SELECT seq FROM engine_run WHERE run_id = ?) AND run_id = ?
@@ -153,6 +171,7 @@ export const runTiming = (rows: ReadonlyArray<RunTraceRow>): RunTiming | undefin
   const active: Record<Part, number> = {
     waiting: 0,
     deploy: 0,
+    lease: 0,
     browser: 0,
     zcp_run: 0,
     git: 0,
