@@ -138,7 +138,7 @@ function ProductionBlock({
         pending={pending}
         typed={typed}
         verb="unlock"
-        whose="the Production's"
+        whose={words.whose}
       />
       <SlideConfirm
         confirmed={slid}
@@ -161,6 +161,7 @@ export function ZeropsDeletionPage({
   onCancel,
   onConfirm,
   onAgain,
+  initial,
 }: {
   readonly state: ReturnType<typeof deletionPageState>;
   /** The last Mate, which goes first; absent: the project's own Delete. */
@@ -187,13 +188,17 @@ export function ZeropsDeletionPage({
   readonly onCancel: () => void;
   readonly onConfirm: (confirmation: DeletionConfirmation) => void;
   readonly onAgain: () => void;
+  readonly initial?: {
+    readonly confirmation: DeletionConfirmation;
+    readonly opened: ReadonlySet<string>;
+    readonly typed: string;
+  };
 }) {
-  const [confirmation, setConfirmation] = useState<DeletionConfirmation>(() => ({
-    slid: new Set(),
-    productionTyped: {},
-  }));
-  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
-  const [typed, setTyped] = useState("");
+  const [confirmation, setConfirmation] = useState<DeletionConfirmation>(
+    () => initial?.confirmation ?? { slid: new Set(), productionTyped: {} },
+  );
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => initial?.opened ?? new Set());
+  const [typed, setTyped] = useState(initial?.typed ?? "");
   const toggle = (id: string, on: boolean) => {
     setConfirmation((held) => {
       const slid = new Set(held.slid);
@@ -233,7 +238,7 @@ export function ZeropsDeletionPage({
             <Failure
               action={
                 <Button onClick={onAgain} size="sm" type="button" variant="destructive">
-                  Delete again
+                  {page.again}
                 </Button>
               }
               cause={standing.line}
@@ -244,7 +249,7 @@ export function ZeropsDeletionPage({
           ) : waiting !== undefined ? (
             <Alert surface="tint" variant="warning">
               <AlertTitle>
-                {standing.line} · waiting for {waiting.person}
+                {standing.line} · {page.waitingFor} {waiting.person}
               </AlertTitle>
               {offer.deletion.kind === "waiting" && offer.deletion.yours ? (
                 <AlertDescription>{offer.deletion.line}</AlertDescription>
@@ -357,7 +362,7 @@ export function ZeropsDeletionPage({
                         type="button"
                         variant={opened.has(row.id) ? "ghost" : "secondary"}
                       >
-                        {opened.has(row.id) ? "Keep it" : "Delete it too…"}
+                        {opened.has(row.id) ? page.keepProduction : page.deleteProduction}
                       </Button>
                     )
                   }
@@ -372,18 +377,18 @@ export function ZeropsDeletionPage({
                   meta={
                     row.kind === "production" ? undefined : (
                       <Badge dot tone={row.goes ? "danger" : "success"}>
-                        {row.goes ? "Goes" : "Stays"}
+                        {row.goes ? page.goes : page.stays}
                       </Badge>
                     )
                   }
                   title={row.title}
                 />
-                {row.kind === "stage" ? (
+                {row.kind === "stage" && row.slide !== undefined ? (
                   <div className="ps-14 pe-4 pb-4" data-zerops-surface="delete-page-stage">
                     <SlideConfirm
                       confirmed={slid.has(row.id)}
-                      confirmedLabel={`Stage ${row.title} will be deleted`}
-                      label={`Slide to delete Stage ${row.title}`}
+                      confirmedLabel={row.slide.confirmed}
+                      label={row.slide.label}
                       locked={pending}
                       onConfirmedChange={(confirmed) => {
                         toggle(row.id, confirmed);
@@ -427,7 +432,7 @@ export function ZeropsDeletionPage({
         }
       >
         {holdings === undefined ? (
-          <Loading label="Reading what HQ holds" shape="words" />
+          <Loading label={page.holdingsReading} shape="words" />
         ) : (
           <Card variant="flat">
             <List>
@@ -435,7 +440,7 @@ export function ZeropsDeletionPage({
                 <Row
                   meta={
                     <Badge dot tone="danger">
-                      Goes
+                      {page.goes}
                     </Badge>
                   }
                   key={row.repo}
@@ -463,7 +468,7 @@ export function ZeropsDeletionPage({
         <div className="flex flex-col gap-5">
           <Card size="md" variant="inset">
             <Facts>
-              <Fact label="Goes">
+              <Fact label={page.goes}>
                 {words.goes === undefined
                   ? "…"
                   : words.goes.map((line) => (
@@ -472,7 +477,7 @@ export function ZeropsDeletionPage({
                       </span>
                     ))}
               </Fact>
-              <Fact label="Stays">
+              <Fact label={page.stays}>
                 {words.stays.map((line) => (
                   <span className="block" key={line}>
                     {line}
@@ -487,13 +492,13 @@ export function ZeropsDeletionPage({
             onTyped={setTyped}
             pending={pending}
             typed={typed}
-            whose="the project's"
+            whose={page.whose}
           />
           {error === null ? null : <Failure cause={error} role="alert" size="line" />}
           <div className="flex items-center justify-end gap-3">
             {ready.missing === null ? null : <Text variant="note">{ready.missing}</Text>}
             <Button onClick={onCancel} type="button" variant="ghost">
-              Cancel
+              {page.cancel}
             </Button>
             <Button
               aria-busy={pending || undefined}

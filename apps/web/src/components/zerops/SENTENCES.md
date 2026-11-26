@@ -1,10 +1,9 @@
-next: MN91
+next: MN95
 
-- MN+1 — A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when the address names it; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.
-- MN+2 — The page's three steps turn into checks in order: the first two once every Stage is slid, the third once Delete is ready, and a Production opened and not slid changes none; breaks: a step reads done while its part still holds Delete.
-- MN+3 — After Only the Mate the dialog says where the project waits: in the menu when it keeps a Stage or a Production, listed or hidden, and under Git, Kept code when it holds only its code, and only that one is offered Open in Git; breaks: a person deletes the last Mate and cannot find the project to delete the rest.
-- MN+4 — The field that asks a name typed is pressed by 'Type <name> to confirm', or 'to unlock' for a Production, and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.
-
+- MN91 — A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when the address names it; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.
+- MN92 — The page's three steps turn into checks in order: the first two once every Stage is slid, the third once Delete is ready, and a Production opened and not slid changes none; breaks: a step reads done while its part still holds Delete.
+- MN93 — After Only the Mate the dialog says where the project waits: in the menu when it keeps a Stage or a Production, listed or hidden, and under Git, Kept code when it holds only its code, and only that one is offered Open in Git; breaks: a person deletes the last Mate and cannot find the project to delete the rest.
+- MN94 — The field that asks a name typed is pressed by 'Type <name> to confirm', or 'to unlock' for a Production, and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened

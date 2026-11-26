@@ -115,14 +115,18 @@ export function confirmNameWords(input: {
 }): {
   readonly ask: string;
   readonly label: string;
+  readonly copyLabel: string;
   readonly matches: boolean;
+  readonly match: string;
   readonly hint: string | null;
 } {
   const matches = deleteMateConfirmed(input.typed, input.name);
   return {
     ask: `To ${input.verb}, type ${input.whose} name exactly as shown`,
     label: `Type ${input.name} to ${input.verb}`,
+    copyLabel: `the name ${input.name}`,
     matches,
+    match: "Matches",
     hint: matches
       ? null
       : input.typed.trim() === ""

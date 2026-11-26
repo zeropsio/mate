@@ -40,7 +40,7 @@ export function ZeropsConfirmName({
     <div className="flex flex-col gap-1.5" data-zerops-surface="confirm-name">
       <Label htmlFor={`${id}-name`}>{words.ask}</Label>
       <div className="flex">
-        <CopyLine label={`the name ${name}`} value={name} />
+        <CopyLine label={words.copyLabel} value={name} />
       </div>
       <Input
         aria-describedby={`${id}-hint`}
@@ -60,7 +60,7 @@ export function ZeropsConfirmName({
           hold === undefined || hold === null ? (
             <Text variant="note">
               <Badge dot tone="success">
-                Matches
+                {words.match}
               </Badge>
             </Text>
           ) : (

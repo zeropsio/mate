@@ -296,7 +296,7 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (plan.stages.some((stage) => !slid.has(stage.projectId))) → if (plan.stages.every((stage) => !slid.has(stage.projectId)))
-it("MN85: A project's Delete opens only once every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid", () => {
+it("MN85: A project's Delete opens only once HQ has said its holdings, every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid or holdings unread", () => {
   const plan = projectDeletionPlan(
     bakery({ environments: [stage("Z_STAGE"), stage("Z_REVIEW"), production("Z_LIVE")] }),
     MATE,
@@ -553,7 +553,7 @@ it("MN87: What HQ's structure says of a project becomes the deletion's facts one
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (offer.kind === "project" && !input.project.deleteApp) → if (offer.kind === "project" && false)
-it("MN+1: A deletion page renders the authorized form, refusal, existing run or gone state", () => {
+it("MN91: A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when the address names it; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.", () => {
   const empty = bakery({ placements: [], environments: [] });
   const waiting = deletion({
     failure: { ...zeropsRefusal, code: "token_expired", origin: "hq" },
@@ -617,7 +617,7 @@ it("MN+1: A deletion page renders the authorized form, refusal, existing run or 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const stagesSlid = plan.stages.every((stage) => confirmation.slid.has(stage.projectId)); → const stagesSlid = true;
-it("MN+2: The three page steps show Stage progress and final readiness", () => {
+it("MN92: The page's three steps turn into checks in order: the first two once every Stage is slid, the third once Delete is ready, and a Production opened and not slid changes none; breaks: a step reads done while its part still holds Delete.", () => {
   const plan = projectDeletionPlan(
     bakery({ environments: [stage("stage-a"), stage("stage-b"), production("production")] }),
     MATE,
@@ -648,7 +648,7 @@ it("MN+2: The three page steps show Stage progress and final readiness", () => {
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const hidden = project.hidden.includes(tier); → const hidden = false;
-it("MN+3: A kept project waits in its menu with a Zerops tier or under Git with only code", () => {
+it("MN93: After Only the Mate the dialog says where the project waits: in the menu when it keeps a Stage or a Production, listed or hidden, and under Git, Kept code when it holds only its code, and only that one is offered Open in Git; breaks: a person deletes the last Mate and cannot find the project to delete the rest.", () => {
   const cases = [
     { environments: [stage("stage")], hidden: [], place: "menu" },
     { environments: [production("production")], hidden: [], place: "menu" },

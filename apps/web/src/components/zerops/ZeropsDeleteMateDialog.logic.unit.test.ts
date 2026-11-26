@@ -12,7 +12,7 @@ it("MN8: Deleting a Mate is confirmed only by its name typed as spelled, spaces 
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | const matches = deleteMateConfirmed(input.typed, input.name); → const matches = deleteMateConfirmed(input.typed.toLowerCase(), input.name.toLowerCase());
-it("MN+4: A name field is addressed by its verb and matches only the spelling asked for", () => {
+it("MN94: The field that asks a name typed is pressed by 'Type <name> to confirm', or 'to unlock' for a Production, and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.", () => {
   const cases = [
     { typed: "", verb: "confirm", matches: false },
     { typed: "sample", verb: "confirm", matches: false },

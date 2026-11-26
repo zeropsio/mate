@@ -479,11 +479,13 @@ export function productionDeletionWords(name: string): {
   readonly warning: string;
   readonly slide: string;
   readonly slid: string;
+  readonly whose: string;
 } {
   return {
     warning: `Deleting Production ${name} takes it offline at once. Its services and data go from Zerops; Zerops keeps its backups for 7 days and then destroys them. Nobody can bring it back after that.`,
     slide: `Slide to delete Production ${name}`,
     slid: `Production ${name} will be deleted`,
+    whose: "the Production's",
   };
 }
 
@@ -788,6 +790,15 @@ export function deletionPageWords(name: string) {
     gone: "This project is gone.",
     back: "Back",
     projects: "Projects",
+    cancel: "Cancel",
+    again: "Delete again",
+    waitingFor: "waiting for",
+    deleteProduction: "Delete it too…",
+    keepProduction: "Keep it",
+    goes: "Goes",
+    stays: "Stays",
+    holdingsReading: "Reading what HQ holds",
+    whose: "the project's",
   };
 }
 
@@ -799,6 +810,7 @@ export interface DeletionGoesRow {
   readonly badge: string;
   readonly line: string;
   readonly goes: boolean;
+  readonly slide?: { readonly label: string; readonly confirmed: string };
 }
 
 /**
@@ -833,6 +845,10 @@ export function deletionGoesRows(input: {
       badge: "Stage",
       line: "Goes from Zerops, with everything in it",
       goes: true,
+      slide: {
+        label: `Slide to delete Stage ${stage.name}`,
+        confirmed: `Stage ${stage.name} will be deleted`,
+      },
     })),
     ...plan.productions.map((production) => ({
       kind: "production" as const,
