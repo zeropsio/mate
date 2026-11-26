@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <title>Mate — design harness</title>
+    <style>
+      /* A harness page scrolls as a document. The app's body never does (`document.css`: its
+         panes scroll inside it), and a harness laid out in the page's flow was cut at the
+         window's foot, its body's hidden overflow being the window's own. */
+      html body {
+        overflow: visible;
+      }
+    </style>
   </head>
   <body>
     <div id="design"></div>
