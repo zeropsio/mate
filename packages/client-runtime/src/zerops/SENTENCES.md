@@ -1,4 +1,4 @@
-next: ZV190
+next: ZV193
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -158,5 +158,6 @@ next: ZV190
 - ZV187 — A kept, asked or deleting project's code is said in one sentence that names the project and what is kept, and a project in use has none; breaks: the banner of a project that holds only its setup says its code is billed
 - ZV188 — A release's creation HQ refused is told apart from one Zerops failed or left unresolved, by HQ's job state alone; breaks: a person is told Zerops could not create a service HQ never asked Zerops for.
 - ZV189 — HQ's door is told the client's build at each sign-in and each renewal, and a build that is empty or is no plain version is left out of the request; breaks: HQ's operator cannot tell which web build a person runs, or a malformed build string changes the body of every sign-in
-- ZV+1 — The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it
-- ZV+2 — A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match
+- ZV190 — The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it
+- ZV191 — A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match
+- ZV192 — A project's standing badge is neutral for kept code, a warning for an open question, informational while deletion is going, and dangerous when deletion needs a person or failed; breaks: a question looks like ordinary kept code

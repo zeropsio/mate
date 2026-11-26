@@ -5,6 +5,7 @@ import {
   gitOverview,
   gitOverviewGroups,
   gitOverviewView,
+  gitStandingNotice,
 } from "./gitOverview.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { CodeStanding } from "./codeStanding.ts";
@@ -174,7 +175,7 @@ it("ZV184: A repository's open changes are said as their count, each status with
 });
 
 // witness: packages/client-runtime/src/zerops/gitOverview.ts | tab === "open" || → false ||
-it("ZV+1: The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it", () => {
+it("ZV190: The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it", () => {
   const apps = gitOverview({
     mateName: () => undefined,
     apps: [
@@ -214,8 +215,8 @@ it("ZV+1: The Open changes tab keeps every project with an open change, cut to i
   expect([overview.openChanges, overview.keptCount]).toEqual([3, 3]);
 });
 
-// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.name.toLocaleLowerCase().includes(needle) → group.name.toLocaleLowerCase().includes(needle)
-it("ZV+2: A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match", () => {
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | matchesName(repository.name) → matchesName(group.name)
+it("ZV191: A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match", () => {
   const apps = gitOverview({
     mateName: () => undefined,
     apps: [
@@ -248,5 +249,64 @@ it("ZV+2: A search keeps a project whose name matches with all its repositories,
   expect(rows("  ")).toEqual([
     ["Acme Store", ["api", "storefront"]],
     ["Docs", ["handbook", "store-notes"]],
+  ]);
+  const refusals = [
+    { appId: "p", name: "Private Store", reason: "Forbidden" },
+    { appId: "q", name: "Payments", reason: "Restricted" },
+  ];
+  expect(gitOverviewView(overview, "all", "  STORE  ", refusals)).toMatchObject({
+    refusals: [{ appId: "p", name: "Private Store", reason: "Forbidden" }],
+    refusalCount: 2,
+  });
+  expect(gitOverviewView(overview, "all", "  ", refusals)).toMatchObject({
+    refusals: [
+      { appId: "p", name: "Private Store", reason: "Forbidden" },
+      { appId: "q", name: "Payments", reason: "Restricted" },
+    ],
+    refusalCount: 2,
+  });
+  expect(gitOverviewView(overview, "all", "zzz", refusals)).toMatchObject({
+    refusals: [],
+    refusalCount: 2,
+  });
+  expect(gitOverviewView(overview, "open", "", refusals)).toMatchObject({
+    refusals: [],
+    refusalCount: 2,
+  });
+  expect(gitOverviewView(overview, "kept", "", refusals)).toMatchObject({
+    refusals: [],
+    refusalCount: 2,
+  });
+});
+
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | ? "attention" → ? "off"
+it("ZV192: A project's standing badge is neutral for kept code, a warning for an open question, informational while deletion is going, and dangerous when deletion needs a person or failed; breaks: a question looks like ordinary kept code", () => {
+  const standings: ReadonlyArray<CodeStanding> = [
+    { kind: "kept", holds: "code" },
+    { kind: "kept", holds: "setup" },
+    { kind: "asked" },
+    { kind: "deleting", placed: false, phase: "going" },
+    { kind: "deleting", placed: true, phase: "going" },
+    { kind: "in-use", mate: true, leaving: true },
+    { kind: "deleting", placed: false, phase: "needs" },
+    { kind: "deleting", placed: true, phase: "waiting" },
+    { kind: "deleting", placed: true, phase: "failed" },
+    { kind: "in-use", mate: true, leaving: false },
+    { kind: "in-use", mate: false, leaving: false },
+    { kind: "unread" },
+  ];
+  expect(standings.map((standing) => gitStandingNotice(standing)?.tone)).toEqual([
+    "off",
+    "off",
+    "attention",
+    "busy",
+    "busy",
+    "busy",
+    "failed",
+    "failed",
+    "failed",
+    undefined,
+    undefined,
+    undefined,
   ]);
 });

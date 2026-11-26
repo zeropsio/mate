@@ -115,7 +115,7 @@ export function ZeropsGitOverview(props: OverviewProps) {
   const apps = state.kind === "read" ? state.apps : [];
   const openQuestions = questions.map(({ question }) => question);
   const overview = gitOverviewGroups(apps, (id) => standingOf(id).standing, openQuestions);
-  const shown = overviewView(overview, tab, query);
+  const shown = overviewView(overview, tab, query, state.kind === "read" ? state.refusals : []);
   const card = (group: GitGroup) => {
     const question = questions.find(({ question }) => question.appId === group.appId);
     return (
@@ -145,20 +145,14 @@ export function ZeropsGitOverview(props: OverviewProps) {
   const reading =
     (state.kind === "unread" && failure === null) ||
     (state.kind === "read" && state.reading === true);
-  const refusals =
-    state.kind === "read" && tab === "all"
-      ? (state.refusals ?? []).filter(({ name }) =>
-          name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-        )
-      : [];
   const empty =
     state.kind === "read" &&
     overview.projects === 0 &&
-    refusals.length === 0 &&
+    shown.refusalCount === 0 &&
     !reading &&
     failure === null;
   const nothing =
-    shown.waiting.length + shown.projects.length + shown.kept.length + refusals.length === 0;
+    shown.waiting.length + shown.projects.length + shown.kept.length + shown.refusals.length === 0;
   const tabs = [
     { id: "all" as const, label: "All projects" },
     { id: "open" as const, label: "Open changes", count: overview.openChanges },
@@ -267,14 +261,14 @@ export function ZeropsGitOverview(props: OverviewProps) {
               <div className="flex flex-col gap-4">{shown.waiting.map(card)}</div>
             </Section>
           )}
-          {shown.projects.length + refusals.length === 0 ? null : (
+          {shown.projects.length + shown.refusals.length === 0 ? null : (
             <Section
               title={tab === "open" ? "With open changes" : "Projects"}
-              count={shown.projects.length + refusals.length}
+              count={shown.projects.length + shown.refusals.length}
             >
               <div className="flex flex-col gap-4">
                 {shown.projects.map(card)}
-                {refusals.map(({ appId, name, reason }) => (
+                {shown.refusals.map(({ appId, name, reason }) => (
                   <Card key={appId} variant="sheet">
                     <div className="flex flex-col gap-1 px-5 py-4">
                       <Text variant="headline">{name}</Text>

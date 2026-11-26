@@ -192,8 +192,14 @@ export function gitOverviewView(
   overview: ReturnType<typeof gitOverviewGroups>,
   tab: "all" | "open" | "kept",
   query: string,
+  refusals: ReadonlyArray<{
+    readonly appId: string;
+    readonly name: string;
+    readonly reason: string;
+  }> = [],
 ) {
   const needle = query.trim().toLocaleLowerCase();
+  const matchesName = (name: string) => name.toLocaleLowerCase().includes(needle);
   const groups = overview.groups.flatMap((group) => {
     if (tab === "kept" && !nothingPlaced(group.standing)) return [];
     const repositories =
@@ -202,14 +208,13 @@ export function gitOverviewView(
         : group.repositories;
     const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
     if (tab === "open" && repositories.length === 0 && !setupOpen) return [];
-    if (needle === "" || group.name.toLocaleLowerCase().includes(needle))
-      return [{ ...group, repositories }];
-    const matches = repositories.filter((repository) =>
-      repository.name.toLocaleLowerCase().includes(needle),
-    );
+    if (matchesName(group.name)) return [{ ...group, repositories }];
+    const matches = repositories.filter((repository) => matchesName(repository.name));
     return matches.length === 0 ? [] : [{ ...group, repositories: matches }];
   });
   return {
+    refusals: tab === "all" ? refusals.filter(({ name }) => matchesName(name)) : [],
+    refusalCount: refusals.length,
     waiting:
       tab === "open"
         ? []
