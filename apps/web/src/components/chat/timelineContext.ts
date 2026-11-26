@@ -23,6 +23,7 @@ import type { ConversationSpeaker, ServerUsagePause, PauseBlock } from "./Conver
 import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import type { MateMentionMatcher } from "../../zerops/mateMentions";
+import type { MatePersonaAskView } from "../persona/useMatePersonaAsk";
 
 /** A conversation's rows that enter by opening their room (`opensRoom`). */
 export interface RowRooms {
@@ -79,6 +80,8 @@ export interface TimelineRowSharedState {
    * (`mateStandUpAskLine`); null where the words are just a message.
    */
   standUpAsk: string | null;
+  /** The Mate's ask for its persona, drawn under its stand-up's ask (`useMatePersonaAsk`). */
+  personaAsk?: MatePersonaAskView | null;
   /** The pause row that holds the thread now, and the server's reading of it. */
   livePauseId: string | null;
   usagePause: ServerUsagePause | null;

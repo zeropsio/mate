@@ -37,6 +37,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateMark } from "../MateMark";
 import { MateFace } from "../zerops/primitives";
 import { mateFaceFor } from "~/zerops/agentActivity";
+import { cn } from "~/lib/utils";
 import {
   draftHeroHeadlineKind,
   draftHeroNoProject,
@@ -46,11 +47,17 @@ import {
 interface DraftHeroHeadlineProps {
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
+  /**
+   * The Mate asks its person how to work with them under it (`PersonaAsk`): its face waits on
+   * them and the question gives way, unfolding again once answered.
+   */
+  readonly asking?: boolean;
 }
 
 export function DraftHeroHeadline({
   activeProjectRef,
   activeProjectTitle,
+  asking = false,
 }: DraftHeroHeadlineProps) {
   const allProjects = useProjects();
   const directory = useAtomValue(shownHqMateDirectoryAtom);
@@ -259,40 +266,52 @@ export function DraftHeroHeadline({
         <MateFace
           shape={mate.shape}
           size={64}
-          state={mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs))}
+          state={
+            asking ? "needs" : mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs))
+          }
           tint={mate.tint}
         />
       )}
-      <h1
-        aria-label={headingLabel}
-        // Its project still read: the line stands empty in its place, never "no project".
-        aria-hidden={kind === "reading" ? true : undefined}
-        className="mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display"
-      >
-        {kind === "reading" ? (
-          "\u00a0"
-        ) : hasResolvedProject ? (
-          chiefAsks !== undefined ? (
-            chiefAsks
-          ) : whoLivesHere?.kind === "unknown" ? (
-            // Neither question while who lives here is not known: the
-            // project alone, which both of them name.
-            projectSelector
-          ) : mate === undefined ? (
-            <>What should we build in {projectSelector}?</>
-          ) : mate.project === undefined ? (
-            <>What should {mate.name} do?</>
-          ) : (
-            <>
-              What should {mate.name} do on {projectSelector}?
-            </>
-          )
-        ) : canChooseProject ? (
-          <>{projectSelector} to start</>
-        ) : (
-          <>{noProject.words}</>
+      <div
+        className={cn(
+          "grid w-full transition-[grid-template-rows,opacity] duration-260 ease-in-out-strong motion-reduce:transition-none",
+          asking ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
         )}
-      </h1>
+        inert={asking}
+      >
+        <div className={cn("min-h-0", asking && "overflow-hidden")}>
+          <h1
+            aria-label={headingLabel}
+            // Its project still read: the line stands empty in its place, never "no project".
+            aria-hidden={kind === "reading" ? true : undefined}
+            className="mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display"
+          >
+            {kind === "reading" ? (
+              "\u00a0"
+            ) : hasResolvedProject ? (
+              chiefAsks !== undefined ? (
+                chiefAsks
+              ) : whoLivesHere?.kind === "unknown" ? (
+                // Neither question while who lives here is not known: the
+                // project alone, which both of them name.
+                projectSelector
+              ) : mate === undefined ? (
+                <>What should we build in {projectSelector}?</>
+              ) : mate.project === undefined ? (
+                <>What should {mate.name} do?</>
+              ) : (
+                <>
+                  What should {mate.name} do on {projectSelector}?
+                </>
+              )
+            ) : canChooseProject ? (
+              <>{projectSelector} to start</>
+            ) : (
+              <>{noProject.words}</>
+            )}
+          </h1>
+        </div>
+      </div>
     </div>
   );
 }

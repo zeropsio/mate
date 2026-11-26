@@ -171,20 +171,6 @@ function MateChatsMenu({
 }
 
 /**
- * Whether something drawn now came after the first paint: a persona the
- * line was first painted without arrives; one there from the start is
- * simply there.
- */
-function useArrival(present: boolean): boolean {
-  const [seen, setSeen] = useState({ present, arrived: false });
-  if (seen.present !== present) {
-    setSeen({ present, arrived: present });
-    return present;
-  }
-  return seen.arrived;
-}
-
-/**
  * The Mate, leading the line: its face at 24 and its name at 16/600 in ink,
  * and what its chat is about on the name's hover. While its own chat is open
  * a double-click renames that chat, and — with a crew — it stands on the
@@ -199,7 +185,6 @@ function MatePill({
   onOpen,
   onCloseChat,
   onRename,
-  persona,
   trailing,
   owner,
 }: {
@@ -210,8 +195,6 @@ function MatePill({
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
   readonly onRename: (() => void) | null;
-  /** The Mate's persona, quiet after its name (`MatePersonaPress`). */
-  readonly persona?: ReactNode;
   /** What stands right after its name (`ChatHeader`). */
   readonly trailing?: ReactNode;
   /** Whose Mate it is, on its face's corner as on its row in the menu (`ownerBadge`). */
@@ -219,7 +202,6 @@ function MatePill({
 }) {
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
-  const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);
   // Its row's face, playing what the row's plays: each Mate's line is drawn anew (its `key`), so
@@ -290,13 +272,9 @@ function MatePill({
   const nameHover = mate.tooltip;
   return (
     <div
-      className={cn(
-        // A control's corners, on the menu's selected band while its chat is open; the band coming
-        // and going changes no width.
-        "flex h-8 min-w-0 items-center rounded-control data-opens:hover:bg-sidebar-row-hover",
-        // Only the persona's label gives way to the line's end; the name never does.
-        persona != null ? "min-w-0 shrink" : "shrink-0",
-      )}
+      // A control's corners, on the menu's selected band while its chat is open; the band coming and
+      // going changes no width.
+      className="flex h-8 min-w-0 shrink-0 items-center rounded-control data-opens:hover:bg-sidebar-row-hover"
       data-conversation-mate
       data-on={band ? "" : undefined}
       data-opens={opens ? "" : undefined}
@@ -317,17 +295,6 @@ function MatePill({
           name does: it never stands in the header ahead of what it is about. */}
       {trailing === undefined || trailing === null ? null : (
         <ConversationOpeningYields>{trailing}</ConversationOpeningYields>
-      )}
-      {/* After what waits on the person, so arriving late it moves nothing already placed. */}
-      {persona == null ? null : (
-        <span
-          // Arriving after its line stands, it fades in where it stays: the name before it never
-          // moves.
-          className="flex min-w-0 shrink overflow-hidden data-arrived:animate-zerops-appear"
-          data-arrived={personaArrived ? "" : undefined}
-        >
-          {persona}
-        </span>
       )}
     </div>
   );
@@ -598,8 +565,6 @@ interface ConversationStripViewProps {
   readonly crew: ReadonlyArray<LineCrewmate> | null;
   /** The rename field, over the line from the Mate's name while its chat is renamed. */
   readonly renameField: ReactNode;
-  /** The Mate's persona (`ConversationStripProps.persona`). */
-  readonly persona?: ReactNode;
   /** What stands right after the line (`ConversationStripProps.trailing`). */
   readonly trailing?: ReactNode;
   /** Whose Mate it is, on its face's corner (`MatePill`'s `owner`). */
@@ -624,7 +589,6 @@ export function ConversationStripView({
   mate,
   chats,
   crew,
-  persona,
   trailing,
   owner,
   renameField,
@@ -675,7 +639,6 @@ export function ConversationStripView({
         onOpen={onOpen}
         onRename={onRename}
         owner={owner}
-        persona={persona}
         trailing={trailing}
       />
       {crew === null ? null : (
@@ -721,8 +684,6 @@ interface ConversationStripProps {
   /** What the chat on screen is about, when it is the Mate's own: its hover. */
   readonly subject: string | null;
   readonly renameField: ReactNode;
-  /** The Mate's persona, after its name; nothing in a crewmate's chat, which takes none. */
-  readonly persona?: ReactNode;
   /** What stands right after the line: what waits on the person in its project (`ChatHeader`). */
   readonly trailing?: ReactNode;
   /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
@@ -745,7 +706,6 @@ export function ConversationStrip({
   crewChat,
   subject,
   renameField,
-  persona,
   trailing,
   onRename,
   onEditJob,
@@ -851,7 +811,6 @@ export function ConversationStrip({
       onOpen={open}
       onRename={onRename}
       owner={badge}
-      persona={persona}
       renameField={renameField}
       trailing={trailing}
     />

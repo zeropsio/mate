@@ -70,8 +70,9 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
-import { mateStandUpStopped } from "~/zerops/mateStandUp";
+import { isMateStandUpAsk, mateStandUpStopped } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
+import { useMatePersonaAsk } from "../persona/useMatePersonaAsk";
 import { useEngineLiveStructure } from "./useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
@@ -731,6 +732,24 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // shared state handed every message's markdown a new prop, and each was
   // parsed again.
   const threadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
+  // The Mate's ask for its persona stands under its stand-up's ask, until its person writes here.
+  const written = useMemo(
+    () =>
+      rows.some(
+        (row) =>
+          row.kind === "message" &&
+          row.message.role === "user" &&
+          !isMateStandUpAsk(row.message.text),
+      ),
+    [rows],
+  );
+  const personaAsk = useMatePersonaAsk({
+    environmentId: activeThreadEnvironmentId,
+    threadRef,
+    moment: "setup",
+    here: standUpAsk !== null,
+    written,
+  });
   const openingActivity = useZeropsThreadActivity(threadRef);
   // The room a pause's stage takes, where one stands. With none, what the composer covers is no
   // row's to know: a draft wrapping to a new line changes the list's end and draws no row again.
@@ -769,6 +788,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onDismissEndNotice,
       driver: provider,
       standUpAsk,
+      personaAsk,
       livePauseId: livePause,
       usagePause,
       pauseStage: { id: pauseStageId, mate: mate ?? null, height: pauseStageHeight },
@@ -809,6 +829,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onDismissEndNotice,
       provider,
       standUpAsk,
+      personaAsk,
       livePause,
       pauseStageId,
       usagePause,

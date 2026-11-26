@@ -36,12 +36,32 @@ import {
   ZeropsAgentId,
   type ZeropsAgentLoginState,
   ZeropsUserId,
+  type RuntimeMode,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { StrictMode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUpIcon, ChevronDownIcon } from "lucide-react";
+import {
+  type ReactNode,
+  StrictMode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 
 import { StandUpAskLine } from "~/components/chat/ConversationRows";
+import { ComposerAccessControl } from "~/components/chat/ComposerModelControl";
+import { ClaudeAI } from "~/components/Icons";
+import {
+  PERSONA_CHOICES,
+  PersonaAsk,
+  PersonaAskFold,
+  usePersonaAskFold,
+} from "~/components/persona/PersonaAsk";
+import type { AskState } from "~/components/ask/ask.logic";
+import type { MatePersonaAskView, PersonaAskMoment } from "~/components/persona/useMatePersonaAsk";
 import { RunLine } from "~/components/chat/RunChat";
 import {
   TimelineRowActivityCtx,
@@ -50,6 +70,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
+import { cn } from "~/lib/utils";
 import { Dialog, DialogTrigger } from "~/components/ui/dialog";
 import { Textarea } from "~/components/ui/textarea";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
@@ -234,6 +255,12 @@ interface HarnessState {
   /** A colleague's view of it: who added the Mate, null where unnamed; absent for its person. */
   readonly setupAddedBy?: string | null;
   readonly watching?: boolean;
+  /**
+   * The Mate's first message asking how to work with its person (`PersonaAsk`): asked, one picked,
+   * answered, or saved but not shown. A new project's (no `conversation`) answered is its usual
+   * empty start.
+   */
+  readonly persona?: "asked" | "picked" | "answered" | "failed";
 }
 
 // Every source-backed recovery/refusal copy branch joins the same production composition.
@@ -583,6 +610,51 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: WREN,
     phase: null,
     conversation: true,
+  },
+  {
+    id: "persona-new",
+    label: "5 Persona · a new project: its first message asks",
+    mate: WREN,
+    phase: null,
+    persona: "asked",
+  },
+  {
+    id: "persona-new-picked",
+    label: "5 Persona · a new project: one picked",
+    mate: WREN,
+    phase: null,
+    persona: "picked",
+  },
+  {
+    id: "persona-new-answered",
+    label: "5 Persona · a new project: answered, its usual start",
+    mate: WREN,
+    phase: null,
+    persona: "answered",
+  },
+  {
+    id: "persona-standup",
+    label: "5 Persona · asked while it sets up",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "asked",
+  },
+  {
+    id: "persona-standup-answered",
+    label: "5 Persona · answered while it sets up",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "answered",
+  },
+  {
+    id: "persona-standup-failed",
+    label: "5 Persona · saved, not shown",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    persona: "failed",
   },
   {
     id: "not-created",
@@ -1006,7 +1078,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   };
 }
 
-function Conversation() {
+/** The conversation under the setup's ask; `ask` is the Mate's first message, asked under it. */
+function Conversation({ ask }: { readonly ask?: ReactNode }) {
   const startedAt = useMemo(() => ago(8), []);
   return (
     <TimelineRowCtx value={SHARED}>
@@ -1016,6 +1089,7 @@ function Conversation() {
           data-harness-conversation
         >
           <StandUpAskLine at={ago(9)} timestampFormat="24-hour" words={SHARED.standUpAsk ?? ""} />
+          {ask}
           <div>
             <div className={RUN_TRAY_SLICE.top}>
               <RunLine
@@ -1059,6 +1133,130 @@ function signInRuntimes(sinceMs: number): ReadonlyArray<BirthRuntimeFact> {
       status: role === "stage" ? "READY_TO_DEPLOY" : sinceMs >= after ? "ACTIVE" : "CREATING",
     },
   }));
+}
+
+/** What a state that opens with one picked has picked. */
+const PICKED = "teacher";
+/** How long the fixture's save takes. */
+const SAVE_MS = 600;
+
+const answered = (key: string | null, mateName: string): AskState => ({
+  kind: "done",
+  words: `${mateName} works as ${PERSONA_CHOICES.find((choice) => choice.key === key)?.name}`,
+  told: null,
+});
+
+/** The ask as the product's hook answers it (`useMatePersonaAsk`), its save a fixture's moment. */
+function usePersonaAskView(state: HarnessState, moment: PersonaAskMoment): MatePersonaAskView {
+  const mateName = state.mate.name;
+  const [picked, setPicked] = useState<string | null>(() =>
+    state.persona === "asked" ? null : PICKED,
+  );
+  const [ask, setAsk] = useState<AskState>(() =>
+    state.persona === "answered"
+      ? answered(PICKED, mateName)
+      : state.persona === "failed"
+        ? { kind: "failed", words: `${mateName} has not shown it yet.` }
+        : { kind: "waiting" },
+  );
+  return {
+    mateName,
+    project: state.mate.project ?? "this project",
+    moment,
+    picked,
+    onPick: setPicked,
+    state: ask,
+    onChoose: () => {
+      setAsk({ kind: "working", words: "Saving…", pressed: "main" });
+      window.setTimeout(() => setAsk(answered(picked, mateName)), SAVE_MS);
+    },
+    onOpenPersonaPage: () => undefined,
+  };
+}
+
+/** The composer as a Mate's conversation draws it: its words, the model, the access, Send. */
+function ComposerStandIn({ mateName }: { readonly mateName: string }) {
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("full-access");
+  return (
+    <div
+      className="w-full rounded-sheet border border-border bg-card"
+      data-chat-composer-main-surface="true"
+    >
+      <p className="px-5 pt-4 pb-2 text-muted-foreground text-prose">
+        Ask {mateName} to do something…
+      </p>
+      <div className="flex items-center gap-2 pt-1.5 pe-3 pb-3 ps-3.5">
+        {/* The model's picker as it reads at rest (`ProviderModelPicker`). */}
+        <Button className="min-w-0 shrink" size="sm" variant="ghost-muted">
+          <ClaudeAI aria-hidden="true" />
+          Opus 5.5
+          <ChevronDownIcon aria-hidden="true" />
+        </Button>
+        <ComposerAccessControl onRuntimeModeChange={setRuntimeMode} runtimeMode={runtimeMode} />
+        <span className="flex-1" />
+        <Button aria-label="Send" disabled shape="round" size="icon-md" variant="send">
+          <ArrowUpIcon aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A new project's Mate before its person's first message, as `ChatView`'s empty conversation draws
+ * it: its face waiting on them, its headline given way to its first message over the composer, and
+ * once answered the ask's own fold (`usePersonaAskFold`). Answered from the start, it never asks:
+ * its usual empty start.
+ */
+function NewProjectPersona({ state }: { readonly state: HarnessState }) {
+  const view = usePersonaAskView(state, "start");
+  const fold = usePersonaAskFold(state.persona === "answered" ? null : view);
+  const asking = fold === "asking";
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center overflow-y-auto px-6 py-8"
+      data-harness-composer="hero"
+    >
+      <div className="flex w-full max-w-3xl flex-col items-center">
+        <MateFace
+          shape={state.mate.shape}
+          size={64}
+          state={asking ? "needs" : "idle"}
+          tint={state.mate.tint}
+        />
+        {/* The headline's own fold (`DraftHeroHeadline`'s `asking`). */}
+        <div
+          className={cn(
+            "grid w-full transition-[grid-template-rows,opacity] duration-260 ease-in-out-strong motion-reduce:transition-none",
+            asking ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr]",
+          )}
+          inert={asking}
+        >
+          <h1
+            className={cn(
+              "min-h-0 pt-5 text-center font-normal text-title text-foreground tracking-tight sm:text-display",
+              asking && "overflow-hidden",
+            )}
+          >
+            What should {state.mate.name} do on {state.mate.project}?
+          </h1>
+        </div>
+        <div className="w-full pt-5">
+          {fold === null ? null : (
+            <PersonaAskFold folding={fold === "folding"}>
+              <PersonaAsk {...view} />
+            </PersonaAskFold>
+          )}
+          <ComposerStandIn mateName={state.mate.name} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The Mate's first message under the setup's ask: it stays where it was asked, answered or not. */
+function SetupPersonaAsk({ state }: { readonly state: HarnessState }) {
+  return <PersonaAsk {...usePersonaAskView(state, "setup")} />;
 }
 
 function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: string) => void }) {
@@ -1141,7 +1339,15 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
             />
           </div>
         ) : state.conversation === true ? (
-          <Conversation />
+          <Conversation
+            ask={
+              state.persona === undefined ? undefined : (
+                <SetupPersonaAsk key={state.id} state={state} />
+              )
+            }
+          />
+        ) : state.persona !== undefined ? (
+          <NewProjectPersona key={state.id} state={state} />
         ) : (
           stage
         )}
@@ -1150,6 +1356,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
         <div className="shrink-0 px-6 pb-5" data-harness-composer>
           <div className="mx-auto max-w-3xl">
             <Textarea aria-label="Message Wren" placeholder="Ask Wren to do something…" />
+          </div>
+        </div>
+      ) : state.persona !== undefined && state.conversation === true ? (
+        <div className="shrink-0 px-6 pb-5" data-harness-composer>
+          <div className="mx-auto max-w-3xl">
+            <ComposerStandIn mateName={state.mate.name} />
           </div>
         </div>
       ) : null}
