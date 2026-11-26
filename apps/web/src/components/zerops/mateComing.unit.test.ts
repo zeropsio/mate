@@ -53,6 +53,7 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
   const waiting = {
     kind: "waiting",
     id: "op-1",
+    operationKind: "mate_deletion",
     continueBy: "ada",
     ...waitingWords("token_expired"),
   } as const;

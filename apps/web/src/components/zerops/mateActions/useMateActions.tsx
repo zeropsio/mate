@@ -156,7 +156,7 @@ import {
 import { useBirthActions } from "~/zerops/useBirthActions";
 import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
 import { ZeropsOperationEndDialog } from "../ZeropsOperationEnd";
-import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
+import { endProjectOperationIntent, mateOperationEndTargetName } from "../ZeropsOperationEnd.logic";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
@@ -1115,7 +1115,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                   },
                 ]
               : []),
-            ...endOn("end-deletion", "mate_deletion", deletion),
+            ...endOn("end-deletion", deletion.operationKind, deletion),
           ],
         };
       }
@@ -1384,12 +1384,26 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       : undefined;
   const movingMembership =
     movingCandidate === undefined ? undefined : readZeropsMembership(movingCandidate.project);
+  const endingName =
+    dialog?.kind === "end-operation"
+      ? mateOperationEndTargetName(
+          dialog.operationKind,
+          projectNameInApp(dialog.candidate.project),
+          readZeropsMembership(dialog.candidate.project).label,
+        )
+      : undefined;
   const dialogs = (
     <>
       {dialog?.kind === "end-operation" ? (
         <ZeropsOperationEndDialog
           kind={dialog.operationKind}
-          name={projectNameInApp(dialog.candidate.project)}
+          name={
+            endingName === undefined
+              ? "this project"
+              : dialog.operationKind === "app_deletion"
+                ? `project ${endingName}`
+                : endingName
+          }
           onEnd={() => {
             const orgId = activeOrganization?.id;
             if (orgId === undefined) return;

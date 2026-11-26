@@ -1,4 +1,4 @@
-next: MN109
+next: MN110
 
 - MN104 — a project group offers New Mate and Automated Mates according to its Add door and whether HQ makes automated Mates; breaks: a project offers automation this HQ cannot make or hides an action the viewer may use
 - MN91 — A project's deletion page shows what the person may do there: its form to an Owner or an Admin, with the project's last Mate when it is given one; why not to anyone else or for a Mate that is not its last; HQ's run, wait or stop to every reader; and that the project is gone once HQ holds it no more; breaks: a Member's address opens a form HQ then refuses, or a stopped deletion is hidden from a colleague.
@@ -103,3 +103,4 @@ next: MN109
 - MN105 — A part whose own data goes from Zerops for good asks a slide before Delete opens, every other part asks nothing, and a slide holds only for the fate it was slid for; breaks: Delete opens over a part nobody confirmed, or a part set back to stay and to go again is already confirmed.
 - MN106 — The name block says exactly one state: nothing typed, not the same yet, matching but held by what else is missing, or matching; breaks: the block reads Matches while Delete is closed, or the hold is said twice.
 - MN108 — the live warning says only that it goes offline at once for good; breaks: the warning promises backups for services without them
+- MN109 — End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.

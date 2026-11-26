@@ -2,7 +2,11 @@ import { waitingWords } from "@t3tools/client-runtime/data";
 import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import { expect, it } from "vite-plus/test";
 
-import { endOperationIntent, endProjectOperationIntent } from "./ZeropsOperationEnd.logic.ts";
+import {
+  endOperationIntent,
+  endProjectOperationIntent,
+  mateOperationEndTargetName,
+} from "./ZeropsOperationEnd.logic.ts";
 
 const waiting = {
   kind: "waiting",
@@ -45,5 +49,18 @@ it("MN72: A waiting restart, move, deletion or approved effect on a project draw
       endProjectOperationIntent(standing, "org-1", "project-1"),
       JSON.stringify(standing),
     ).toEqual(expected);
+  }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsOperationEnd.logic.ts | operationKind === "app_deletion" ? projectName : mateName → operationKind === "app_deletion" ? mateName : mateName
+it("MN109: End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.", () => {
+  const cases: ReadonlyArray<readonly [string, string | undefined, string | undefined]> = [
+    ["app_deletion", "Bakery", "Bakery"],
+    ["app_deletion", undefined, undefined],
+    ["mate_deletion", "Bakery", "Quinn"],
+    ["mate_restart", "Bakery", "Quinn"],
+  ];
+  for (const [kind, projectName, expected] of cases) {
+    expect(mateOperationEndTargetName(kind, "Quinn", projectName)).toBe(expected);
   }
 });
