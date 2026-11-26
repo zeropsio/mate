@@ -688,6 +688,8 @@ export interface RepoGovernanceEntry {
   readonly governance: HqRepoGovernance | null;
 }
 
+export type WebFailureKind = "descriptor-unreachable" | "identity-failed" | "opening-deadline";
+
 export interface HqApi {
   readonly gitTargetWrite: (
     requestId: string,
@@ -744,6 +746,10 @@ export interface HqApi {
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** One use of the person's session to open the support console. */
   readonly supportExchange: () => Promise<{ readonly exchange: string }>;
+  readonly webFailure: (report: {
+    readonly projectId: string;
+    readonly kind: WebFailureKind;
+  }) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
@@ -1772,20 +1778,23 @@ export function makeHqApi(input: {
    * A call as the session's holder. A session HQ no longer takes is forgotten and renewed once —
    * another tab's kept one, else through the door — and the call made again; HQ refusing the
    * renewal too, or a session from its door it never took, ends the call with that refusal. A call
-   * HQ refused for its session wrote nothing, so a write is made again as safely as a read.
+   * HQ refused for its session wrote nothing, so a write is made again as safely as a read. A
+   * best-effort report uses only an existing session and never renews or replays the call.
    */
   const authorized = async (
     path: string,
     init: RequestInit = {},
     write = false,
     browse = false,
-    retrySession = true,
+    sessionPolicy: "normal" | "no-retry" | "existing-once" = "normal",
   ): Promise<Response> => {
     let renewed = false;
     for (;;) {
-      const held = session ?? restore() ?? enter();
+      const held = session ?? restore() ?? (sessionPolicy === "existing-once" ? null : enter());
+      if (held === null)
+        throw new HqError({ kind: "refused", code: "no_session", message: "HQ has no session." });
       const token = await held;
-      if (!unproven.has(held)) await renewIfDue(token);
+      if (sessionPolicy !== "existing-once" && !unproven.has(held)) await renewIfDue(token);
       try {
         // The HQ session alone: Git browsing names it in its own header.
         const headers: Record<string, string> = browse
@@ -1806,9 +1815,10 @@ export function makeHqApi(input: {
         unproven.delete(held);
         return response;
       } catch (cause) {
+        if (sessionPolicy === "existing-once") throw cause;
         if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
         drop(held, token);
-        if (!retrySession || renewed || unproven.has(held)) throw cause;
+        if (sessionPolicy === "no-retry" || renewed || unproven.has(held)) throw cause;
         renewed = true;
       }
     }
@@ -2241,8 +2251,30 @@ export function makeHqApi(input: {
     // A session refusal is the page's answer; never ask for a second exchange.
     supportExchange: async () =>
       readSupportExchange(
-        await authorized("/api/operator-support/exchanges", { method: "POST" }, true, false, false),
+        await authorized(
+          "/api/operator-support/exchanges",
+          { method: "POST" },
+          true,
+          false,
+          "no-retry",
+        ),
       ),
+    webFailure: async (report) => {
+      await authorized(
+        "/api/web-failure",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: report.projectId,
+            kind: report.kind,
+            ...(build === undefined ? {} : { build }),
+          }),
+        },
+        true,
+        false,
+        "existing-once",
+      );
+    },
     deleteApp: (appId) =>
       confirmedDone(
         async () =>

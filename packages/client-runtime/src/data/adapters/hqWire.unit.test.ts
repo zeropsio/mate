@@ -63,6 +63,65 @@ it("AD88: The exchange is asked for with the session's bearer and no body, and i
   expect(refused).toHaveLength(1);
 });
 
+// witness: packages/client-runtime/src/zerops/hq/client.ts | ...(build === undefined ? {} : { build }) → build: input[DOOR_BUILD_KEY]
+it("AD+3: The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history", async () => {
+  const requests: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+  const api = (clientBuild?: string, status = 204, hasSession = true) =>
+    makeHqApi({
+      address: "https://hq.invalid",
+      orgId: "org",
+      ...(clientBuild === undefined ? {} : { clientBuild }),
+      fetch: async (url, init) => {
+        requests.push({ url, method: init?.method, body: JSON.parse(String(init?.body)) });
+        return status === 204
+          ? new Response(null, { status })
+          : Response.json({ code: "session_required" }, { status });
+      },
+      accessToken: () => Promise.reject(new Error("no door")),
+      openSocket: () => {
+        throw new Error("no socket");
+      },
+      now: () => 0,
+      ...(hasSession
+        ? {
+            kept: {
+              read: () => ({ token: "session", expiresAtMs: Number.MAX_SAFE_INTEGER }),
+              keep: () => {},
+              forget: () => {},
+            },
+          }
+        : {}),
+    });
+  const report = { projectId: "project-1", kind: "opening-deadline", extra: "private" } as const;
+  await api("0.0.21+f1325c7").webFailure(report);
+  await api().webFailure(report);
+  await api("invalid/build").webFailure(report);
+  await expect(api(undefined, 401).webFailure(report)).rejects.toBeInstanceOf(HqError);
+  await expect(api(undefined, 204, false).webFailure(report)).rejects.toBeInstanceOf(HqError);
+  expect(requests).toEqual([
+    {
+      url: "https://hq.invalid/api/web-failure",
+      method: "POST",
+      body: { projectId: "project-1", kind: "opening-deadline", build: "0.0.21+f1325c7" },
+    },
+    {
+      url: "https://hq.invalid/api/web-failure",
+      method: "POST",
+      body: { projectId: "project-1", kind: "opening-deadline" },
+    },
+    {
+      url: "https://hq.invalid/api/web-failure",
+      method: "POST",
+      body: { projectId: "project-1", kind: "opening-deadline" },
+    },
+    {
+      url: "https://hq.invalid/api/web-failure",
+      method: "POST",
+      body: { projectId: "project-1", kind: "opening-deadline" },
+    },
+  ]);
+});
+
 // witness: packages/client-runtime/src/data/adapters/hqWire.ts | cause.kind !== "refused" → cause.kind === "refused"
 it.effect(
   "AD12: HQ's 401 to a stream ticket asked with an ended session, as HQ sends it, when the session the account keeps is refused again, fails the socket's opening as HQ's refusal of the session, never as an outage",

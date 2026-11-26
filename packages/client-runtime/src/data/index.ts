@@ -649,6 +649,11 @@ export {
 export { zeropsAccessToken } from "./adapters/hqAccessToken.ts";
 export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
 export { supportEntry, supportEntryOf, type SupportEntry } from "./adapters/hqSupport.ts";
+export {
+  webFailureKindOf,
+  webFailureReporter,
+  type WebFailureKind,
+} from "./adapters/hqWebFailure.ts";
 
 export {
   hqKeptGitQuestions,
