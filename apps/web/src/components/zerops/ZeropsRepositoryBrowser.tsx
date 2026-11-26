@@ -8,7 +8,7 @@ import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
 import { Text } from "~/components/ui/text";
 import { Button } from "~/components/ui/button";
 import { Loading } from "~/components/ui/loading";
-import { repositoryPage } from "./ZeropsRepositoryBrowser.logic";
+import { repositoryChanges, repositoryPage } from "./ZeropsRepositoryBrowser.logic";
 
 export function RepositoryGone({ onBack }: { readonly onBack: () => void }) {
   return (
@@ -107,6 +107,7 @@ export function ZeropsRepositoryBrowser({
     () => (repository?.changes ?? []).map(({ pull }) => pull),
     [repository?.changes],
   );
+  const changesAnswer = repositoryChanges(repository);
   const state = repositoryPage({
     appsKnown,
     appListed,
@@ -142,11 +143,7 @@ export function ZeropsRepositoryBrowser({
         home={home.view}
         onHomeAgain={home.again}
         changes={changes}
-        openChanges={
-          repository === undefined || repository.coverage === "unread"
-            ? undefined
-            : repository.changes.filter(({ pull }) => pull.state === "open").length
-        }
+        openChanges={changesAnswer.kind === "read" ? changesAnswer.open.length : undefined}
         banner={banner}
         onPick={(next) => onNavigate({ rev: next })}
         onTab={(next) => onNavigate({ ...(rev === undefined ? {} : { rev }), view: next })}

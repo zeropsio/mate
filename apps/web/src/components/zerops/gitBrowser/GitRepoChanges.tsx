@@ -5,6 +5,7 @@ import { EmptyState } from "~/components/ui/empty";
 import { List } from "~/components/ui/list";
 import { Text } from "~/components/ui/text";
 import { ZeropsGitChangeRow } from "../ZeropsGitChangeRow";
+import { repositoryChanges } from "../ZeropsRepositoryBrowser.logic";
 import { GitBrowserLink } from "./GitBrowserLink";
 import type { GitRepoPageProps } from "./GitBrowseView";
 
@@ -28,7 +29,8 @@ export function GitRepoChanges({
   | "onOpenChange"
   | "search"
 >) {
-  const changes = repository?.changes.filter(({ pull }) => pull.state === "open") ?? [];
+  const answer = repositoryChanges(repository);
+  const changes = answer.kind === "read" ? answer.open : [];
   return (
     <section aria-label="Open changes" className="flex flex-col gap-2">
       <h2 className="text-emphasis font-medium text-foreground">Open changes</h2>
@@ -42,11 +44,11 @@ export function GitRepoChanges({
           </Button>
         </div>
       )}
-      {repository === undefined || repository.coverage === "unread" ? (
+      {answer.kind === "unread" ? (
         <Text render={<p />} variant="description">
           Changes not read yet.
         </Text>
-      ) : repository.coverage === "failed" ? (
+      ) : answer.stale ? (
         <Text render={<p />} variant="description">
           Showing the last read changes.
         </Text>
@@ -69,7 +71,7 @@ export function GitRepoChanges({
             </List>
           </div>
         </Card>
-      ) : repository?.coverage === "complete" ? (
+      ) : answer.kind === "read" && !answer.stale ? (
         <EmptyState size="line">No open changes.</EmptyState>
       ) : null}
       <Text render={<p />} variant="note">

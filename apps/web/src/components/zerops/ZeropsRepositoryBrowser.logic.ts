@@ -1,3 +1,5 @@
+import type { GitOverviewChange, GitOverviewRepository } from "@t3tools/client-runtime/zerops";
+
 /** The repository page's answer, from the facts already held for it. */
 export function repositoryPage(input: {
   readonly appsKnown: boolean;
@@ -30,4 +32,21 @@ export function repositoryPage(input: {
   if (input.repositories !== undefined && !input.repositories.includes(input.repo))
     return { kind: "gone" };
   return { kind: "open" };
+}
+
+/** The overview's coverage and open changes, shared by the tab and its page. */
+export function repositoryChanges(repository: GitOverviewRepository | undefined):
+  | { readonly kind: "unread" }
+  | {
+      readonly kind: "read";
+      readonly open: ReadonlyArray<GitOverviewChange>;
+      readonly stale: boolean;
+    } {
+  if (repository === undefined) return { kind: "unread" };
+  if (repository.coverage === "unread") return { kind: "unread" };
+  return {
+    kind: "read",
+    open: repository.changes.filter(({ pull }) => pull.state === "open"),
+    stale: repository.coverage === "failed",
+  };
 }
