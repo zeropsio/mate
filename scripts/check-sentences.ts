@@ -919,6 +919,15 @@ function freePrefix(proposal: string, held: ReadonlySet<string>): string | undef
   ].find((candidate) => !held.has(candidate));
 }
 
+/** Assign consecutive final ids to the lane-local sentences in list order. */
+export function numberLocalEntries(
+  entries: ReadonlyArray<Pick<Sentence, "id" | "local" | "sentence">>,
+  prefix: string,
+  start: number,
+): Map<string, string> {
+  return new Map(entries.map((entry, index) => [sentenceKey(entry), `${prefix}${start + index}`]));
+}
+
 /**
  * Numbers the tree's lane-local ids, list by list in path order: a `next: <PREFIX>+` list first
  * gets a prefix no other list holds (`freePrefix`), then each `<PREFIX>+<k>`, in list order, becomes
@@ -951,7 +960,8 @@ export function numberSentences(root: string): {
     if (prefix === undefined) throw new Error(`${file}: no prefix near ${list.prefix} is free`);
     held.add(prefix);
     let next = list.next ?? 1;
-    const renamed = new Map(locals.map((entry) => [sentenceKey(entry), `${prefix}${next++}`]));
+    const renamed = numberLocalEntries(locals, prefix, next);
+    next += locals.length;
     const lines = text.split("\n");
     lines[0] = `next: ${prefix}${next}`;
     for (const entry of locals)
