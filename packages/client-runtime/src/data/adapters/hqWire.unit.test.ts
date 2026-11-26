@@ -64,7 +64,7 @@ it("AD88: The exchange is asked for with the session's bearer and no body, and i
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | ...(build === undefined ? {} : { build }) → build: input[DOOR_BUILD_KEY]
-it("AD+3: The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history", async () => {
+it("AD91: The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history", async () => {
   const requests: Array<{ url: string; method: string | undefined; body: unknown }> = [];
   const api = (clientBuild?: string, status = 204, hasSession = true) =>
     makeHqApi({

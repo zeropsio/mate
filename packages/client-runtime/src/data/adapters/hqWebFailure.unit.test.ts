@@ -5,7 +5,7 @@ import { webFailureKindOf, webFailureReporter } from "./hqWebFailure.ts";
 type Report = { readonly projectId: string; readonly kind: WebFailureKind };
 
 // witness: packages/client-runtime/src/data/adapters/hqWebFailure.ts | if (kinds.has(kind)) return; →
-it("AD+1: A Mate that did not open is reported to HQ once per project and kind until that project opens, only for an unreachable descriptor, a failed identity exchange or a spent opening deadline, and never for a refusal the page explains; breaks: one unreachable Mate spends the session's allowance in a minute, or a version refusal is counted as an outage", () => {
+it("AD89: A Mate that did not open is reported to HQ once per project and kind until that project opens, only for an unreachable descriptor, a failed identity exchange or a spent opening deadline, and never for a refusal the page explains; breaks: one unreachable Mate spends the session's allowance in a minute, or a version refusal is counted as an outage", () => {
   const reports: Array<{ readonly orgId: string; readonly report: Report }> = [];
   const reporter = webFailureReporter((orgId) => ({
     webFailure: async (report) => {
@@ -43,7 +43,7 @@ it("AD+1: A Mate that did not open is reported to HQ once per project and kind u
 });
 
 // witness: packages/client-runtime/src/data/adapters/hqWebFailure.ts | .catch(() => {}) →
-it("AD+2: A report HQ refuses, cannot take or has no account for changes nothing: no error reaches the caller and nothing is retried; breaks: a rate-limited or unreachable HQ breaks opening a Mate, or reports loop", async () => {
+it("AD90: A report HQ refuses, cannot take or has no account for changes nothing: no error reaches the caller and nothing is retried; breaks: a rate-limited or unreachable HQ breaks opening a Mate, or reports loop", async () => {
   const reports: Report[] = [];
   const pending: Promise<void>[] = [];
   const handled: unknown[] = [];
