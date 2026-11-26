@@ -90,6 +90,7 @@ declare module "../model.ts" {
       readonly stages: ReadonlyArray<string>;
       readonly mate?: string;
       readonly productions?: ReadonlyArray<string>;
+      readonly names?: Readonly<Record<string, string>>;
     };
     /**
      * A stage or a production added to the application, which HQ runs as its `environment`

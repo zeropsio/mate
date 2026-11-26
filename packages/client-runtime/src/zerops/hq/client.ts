@@ -810,6 +810,7 @@ export interface HqApi {
       readonly stages: ReadonlyArray<string>;
       readonly mate?: string;
       readonly productions?: ReadonlyArray<string>;
+      readonly names?: Readonly<Record<string, string>>;
     },
   ) => Promise<void>;
   /** Starts a stage's or a production's addition to the application (`HqEnvironmentStart`). */

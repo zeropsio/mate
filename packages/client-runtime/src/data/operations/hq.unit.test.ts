@@ -239,6 +239,7 @@ it.effect(
         mate: "p-mate",
         stages: ["p-stage-a", "p-stage-b"],
         productions: ["p-prod"],
+        names: { "p-stage-a": "stage", "p-prod": "production" },
       });
       expect(sent).toEqual([
         [
@@ -249,9 +250,27 @@ it.effect(
             mate: "p-mate",
             stages: ["p-stage-a", "p-stage-b"],
             productions: ["p-prod"],
+            names: { "p-stage-a": "stage", "p-prod": "production" },
           },
         ],
       ]);
+      for (const names of [undefined, {}] as const) {
+        const withoutNames: unknown[] = [];
+        const next = operationsOf(account(), {
+          startAppDeletion: async (...args) => {
+            withoutNames.push(args);
+          },
+        });
+        yield* next.submit({
+          kind: "start-app-deletion",
+          orgId: ORG,
+          appId: "app-1",
+          id: "op-2",
+          stages: [],
+          ...(names === undefined ? {} : { names }),
+        });
+        expect(withoutNames).toEqual([["app-1", { id: "op-2", stages: [] }]]);
+      }
     }),
 );
 

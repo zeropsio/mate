@@ -75,6 +75,8 @@ export type DeletionFacts = { readonly past?: string | undefined } & (
 
 /** What deleting the whole project takes, before anything is slid. */
 export interface ProjectDeletionPlan {
+  /** Names the client holds for the Mate and each Zerops environment. */
+  readonly names: Readonly<Record<string, string>>;
   /** Every Stage in Zerops: each goes, and each is slid before Delete opens. */
   readonly stages: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   /** Each Production that may go: its name typed, then slid; one not slid stays. */
@@ -146,6 +148,19 @@ export function projectDeletionPlan(
   const zerops = project.environments.flatMap((environment) =>
     environment.kind === "zerops" ? [environment] : [],
   );
+  const names = Object.fromEntries(
+    [
+      ...zerops,
+      ...project.placements.filter(
+        (placement) => mate !== undefined && placement.projectId === mate.projectId,
+      ),
+    ].flatMap(({ projectId, name }) => {
+      const trimmed = name?.trim();
+      return trimmed !== undefined && trimmed.length > 0 && trimmed.length <= 100
+        ? [[projectId, trimmed]]
+        : [];
+    }),
+  );
   const stages = zerops.filter((environment) => environment.tier === "stage");
   const productions = zerops.filter((environment) => environment.tier === "production");
   const goes = (environment: (typeof zerops)[number]) =>
@@ -167,6 +182,7 @@ export function projectDeletionPlan(
           ? "Deleting it would delete a Stage you have no access to."
           : undefined;
   return {
+    names,
     stages: stages.map((stage) => ({ projectId: stage.projectId, name: stage.name ?? "" })),
     productions: productions.flatMap((production) =>
       goes(production) ? [{ projectId: production.projectId, name: production.name! }] : [],
@@ -564,6 +580,7 @@ export function deletionStart(input: {
       readonly stages: ReadonlyArray<string>;
       readonly mate?: string;
       readonly productions?: ReadonlyArray<string>;
+      readonly names?: Readonly<Record<string, string>>;
     }
   | undefined {
   const { orgId, id, offer, choice } = input;
@@ -599,6 +616,7 @@ export function deletionStart(input: {
     stages: offer.plan.stages.map((stage) => stage.projectId),
     ...(offer.kind === "last-choice" ? { mate: offer.projectId } : {}),
     ...(productions.length === 0 ? {} : { productions }),
+    ...(Object.keys(offer.plan.names).length === 0 ? {} : { names: offer.plan.names }),
   };
 }
 

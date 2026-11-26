@@ -604,6 +604,9 @@ export function makeHqExecutor(ports: {
                 ...(intent.productions === undefined || intent.productions.length === 0
                   ? {}
                   : { productions: intent.productions }),
+                ...(intent.names === undefined || Object.keys(intent.names).length === 0
+                  ? {}
+                  : { names: intent.names }),
               }),
             catch: (cause) => faultOf(cause, true),
           }),

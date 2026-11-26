@@ -22,7 +22,10 @@ import {
 
 const AT = "2026-11-25T10:00:00.000Z";
 const MATE = { projectId: "Z_RYE", name: "Rye" };
-const stage = (projectId: string, deletable = true): DeletionEnvironment => ({
+const stage = (
+  projectId: string,
+  deletable = true,
+): Extract<DeletionEnvironment, { kind: "zerops" }> => ({
   tier: "stage",
   kind: "zerops",
   projectId,
@@ -268,6 +271,7 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
     appId: "app",
     stages: ["Z_STAGE"],
     productions: ["Z_SHOP"],
+    names: { Z_RYE: "Rye", Z_STAGE: "z_stage", Z_LIVE: "z_live", Z_SHOP: "z_shop" },
   } as const;
   for (const [offer, selected, expected] of [
     [mate, mateChoice, mateStart],
@@ -293,6 +297,94 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
   })!;
   expect(sameDeletionStart(first, { ...first, id: "another" })).toBe(true);
   expect(sameDeletionStart(first, next)).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | trimmed.length <= 100 → trimmed.length > 0
+it("MN+1: The whole project's deletion start carries the Zerops name the client holds for its last Mate, every Stage and every Production in Zerops, one that stays included, leaves out a name that is blank or over 100 characters, and two starts that differ only in names are one start; breaks: a stopped deletion cannot say which Stage went or which Production stays, or one over-long name makes HQ refuse the whole deletion.", () => {
+  const mate = { projectId: "p-mate", name: "address name" };
+  const hundred = "x".repeat(100);
+  const testProject = (more: Partial<DeletionProject>) =>
+    bakery({ appId: "app", name: "project", ...more });
+  const withMate = testProject({
+    placements: [{ projectId: "p-mate", kind: "mate", name: "  workspace  " }],
+    environments: [
+      { ...stage("p-stage"), name: "  stage  " },
+      production("p-optional", { name: hundred }),
+      production("p-kept", { name: "kept", madeByMate: false }),
+    ],
+  });
+  const withoutMate = testProject({
+    placements: [],
+    environments: [
+      { ...stage("p-blank"), name: "   " },
+      production("p-long", { name: "x".repeat(101) }),
+      production("p-bound", { name: `  ${hundred}  ` }),
+    ],
+  });
+  const unnamed = testProject({
+    placements: [],
+    environments: [{ ...stage("p-unknown"), name: undefined }],
+  });
+  const choice = { kind: "project", slid: new Set<string>(), productionTyped: {} } as const;
+  const start = (project: DeletionProject, selectedMate?: typeof mate) =>
+    deletionStart({
+      orgId: "org",
+      id: "op",
+      offer: deletionOffer({ project, mate: selectedMate }),
+      choice,
+    });
+  const rows = [
+    {
+      name: "last Mate and every environment, including both kept productions",
+      project: withMate,
+      mate,
+      expected: {
+        kind: "start-app-deletion",
+        orgId: "org",
+        appId: "app",
+        id: "op",
+        mate: "p-mate",
+        stages: ["p-stage"],
+        names: {
+          "p-mate": "workspace",
+          "p-stage": "stage",
+          "p-optional": hundred,
+          "p-kept": "kept",
+        },
+      },
+    },
+    {
+      name: "no Mate, blank and too long omitted, 100 kept after trimming",
+      project: withoutMate,
+      mate: undefined,
+      expected: {
+        kind: "start-app-deletion",
+        orgId: "org",
+        appId: "app",
+        id: "op",
+        stages: ["p-blank"],
+        names: { "p-bound": hundred },
+      },
+    },
+    {
+      name: "no known names leaves the key out",
+      project: unnamed,
+      mate: undefined,
+      expected: {
+        kind: "start-app-deletion",
+        orgId: "org",
+        appId: "app",
+        id: "op",
+        stages: ["p-unknown"],
+      },
+    },
+  ] as const;
+  for (const row of rows) expect(start(row.project, row.mate), row.name).toEqual(row.expected);
+  const renamed = { ...withMate, placements: [{ ...withMate.placements[0]!, name: "renamed" }] };
+  const first = start(withMate, mate)!;
+  const next = start(renamed, mate)!;
+  expect(first).not.toEqual(next);
+  expect(sameDeletionStart(first, next)).toBe(true);
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | if (plan.stages.some((stage) => !slid.has(stage.projectId))) → if (plan.stages.every((stage) => !slid.has(stage.projectId)))
