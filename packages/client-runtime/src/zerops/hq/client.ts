@@ -752,8 +752,6 @@ export interface HqApi {
   }) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
-  /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
-  readonly deleteApp: (appId: string) => Promise<void>;
   readonly createBirth: (
     birth: HqCreateBirth,
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;
@@ -1861,20 +1859,6 @@ export function makeHqApi(input: {
     }
   };
 
-  /** {@link confirmed} for a write that answers nothing: `holds` says whether HQ holds it made. */
-  const confirmedDone = async (
-    write: () => Promise<unknown>,
-    holds: () => Promise<boolean>,
-  ): Promise<void> => {
-    await confirmed(
-      async () => {
-        await write();
-        return true;
-      },
-      async () => ((await holds()) ? true : undefined),
-    );
-  };
-
   /**
    * Create, Continue, an access change's start and a deletion, removal, move or rename start need a token that
    * outlives the session's next renewal, and its expiry: the operation runs on it after the request
@@ -1952,7 +1936,6 @@ export function makeHqApi(input: {
       ),
       unreadable(STRUCTURE),
     );
-  const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
   const releasesOf = async (appId: string) =>
     (await readReleases(await authorized(releasesPath(appId)))).releases;
@@ -2276,16 +2259,6 @@ export function makeHqApi(input: {
         "existing-once",
       );
     },
-    deleteApp: (appId) =>
-      confirmedDone(
-        async () =>
-          authorized(
-            `/api/apps/${encodeURIComponent(appId)}`,
-            { method: "DELETE", body: JSON.stringify({}) },
-            true,
-          ),
-        async () => (await appOf(appId)) === undefined,
-      ),
     answerKeptGit: async (appId, answer) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/kept-git`,

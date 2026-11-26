@@ -27,7 +27,7 @@ import { deleteAccessChange, startAccessChanges } from "./hqAccess.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
 import { createServices } from "./createServices.ts";
-import { deleteApp, answerKeptGit } from "./hqAppWrites.ts";
+import { answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
   createGitRemoteViaApp,
@@ -99,7 +99,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   startAccessChanges,
   deleteAccessChange,
   changeComment,
-  deleteApp,
   answerKeptGit,
   connectGitRemoteViaApp,
   createGitRemoteViaApp,

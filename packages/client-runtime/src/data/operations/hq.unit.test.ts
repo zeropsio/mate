@@ -224,9 +224,6 @@ it.effect(
         startAppDeletion: async (...args) => {
           sent.push(["start-app-deletion", ...args]);
         },
-        deleteApp: async (...args) => {
-          sent.push(["delete-app", ...args]);
-        },
         startMateDeletion: async (...args) => {
           sent.push(["start-mate-deletion", ...args]);
         },

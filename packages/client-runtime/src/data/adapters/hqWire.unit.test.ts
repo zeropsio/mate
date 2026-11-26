@@ -181,7 +181,7 @@ it.effect(
       const refusedWith = (body: unknown) =>
         Effect.promise(() =>
           hqAnswering(403, body)
-            .deleteApp("app")
+            .deleteBirth("app")
             .then(
               () => null,
               (cause: unknown) => cause,

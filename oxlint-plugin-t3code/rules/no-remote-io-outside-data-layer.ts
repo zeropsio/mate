@@ -168,7 +168,6 @@ const HQ_CLIENT_VERBS = [
   "supportExchange",
   "webFailure",
   "answerKeptGit",
-  "deleteApp",
   "deleteBirth",
   "startEnvironment",
   "startDeployKey",

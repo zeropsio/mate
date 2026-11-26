@@ -40,7 +40,6 @@ const RELEASE = {
 /** HQ calls besides the door and the calls whose Zerops writes HQ makes on the person's token. */
 const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> = [
   (api) => api.mateTicket("p1"),
-  (api) => api.deleteApp("app-1"),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),
   (api) => api.release("app-1", RELEASE),

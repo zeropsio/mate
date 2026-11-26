@@ -70,7 +70,6 @@ type FlowWrites = Pick<
 export type HqWrites = Pick<
   HqApi,
   | "commentOnChange"
-  | "deleteApp"
   | "answerKeptGit"
   | "createBirth"
   | "continueOperation"
@@ -821,20 +820,6 @@ export function makeHqExecutor(ports: {
           return {
             ...answered(requestId, intent.templateId),
             affected: [{ family: "hqPersonaTemplates", id: intent.orgId }],
-          };
-        }
-        if (intent.kind === "delete-app") {
-          const api = ports.apiOf(intent.orgId);
-          if (api === null)
-            return yield* Effect.fail<StreamFault>({
-              outcome: "definitive-refusal",
-              message: HQ_NOT_OPEN,
-            });
-          yield* Effect.tryPromise({ try: () => api.deleteApp(intent.appId), catch: faultOf });
-          return {
-            ...answered(requestId, intent.appId),
-            affected: [{ family: "hqApp", id: intent.appId }],
-            outcome: { kind: "succeeded", evidence: "HQ answered the write." },
           };
         }
         if (intent.kind === "connect-git-remote-via-app") {

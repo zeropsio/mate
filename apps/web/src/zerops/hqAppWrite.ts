@@ -4,7 +4,7 @@ import type { AccountOperations } from "./accountOperations";
 
 type AppWrite = Extract<
   Parameters<AccountOperations["submit"]>[0],
-  { readonly kind: "delete-app" | "answer-kept-git" }
+  { readonly kind: "answer-kept-git" }
 >;
 
 export async function submitHqAppWrite(
@@ -19,11 +19,7 @@ export async function submitHqAppWrite(
     case "unsent":
       throw new Error(progress.reason ?? "HQ is not answering right now.");
     case "uncertain":
-      throw new Error(
-        intent.kind === "answer-kept-git"
-          ? KEPT_GIT_UNCONFIRMED
-          : "HQ may have accepted this change, but its answer was lost. Check the project before trying again.",
-      );
+      throw new Error(KEPT_GIT_UNCONFIRMED);
     case "unresolved":
       throw new Error(progress.reason ?? progress.nextAction ?? "Check the project in HQ.");
     case "done":
