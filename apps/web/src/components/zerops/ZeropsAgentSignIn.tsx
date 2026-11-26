@@ -41,6 +41,7 @@ import {
 } from "react";
 
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
+import { openCodeOffered } from "@t3tools/shared/openCodeKeyProviders";
 
 import { OpenCodeIcon } from "~/components/Icons";
 import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
@@ -891,10 +892,8 @@ export function ZeropsAgentSignIn({
   const capabilities = usePlatformCapabilities(environmentId);
   // Offered until the role is known to forbid it, as every project control is; the server decides.
   const keysReadOnly = capabilities.projectAccessKnown && !capabilities.operate;
-  const hasOpenCode =
-    environment?.serverConfig?.providers.some(
-      (provider) => provider.driver === "opencode" && provider.installed,
-    ) === true;
+  // Offered at once, not after OpenCode's first check (`openCodeOffered`).
+  const hasOpenCode = openCodeOffered(environment?.serverConfig?.providers);
   const loginId = login?.id;
   // It waited for the project's order: its cards arrive rather than stand there.
   const waited = useRef(!usual.settled);

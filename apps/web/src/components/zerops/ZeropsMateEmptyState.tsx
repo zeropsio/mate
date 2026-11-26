@@ -604,10 +604,17 @@ function ArrivalComposition({
     >
       {/* The block hangs from a fixed height, a little above the room's centre — never centred on
           its own height — so steps, a stop's reason or Details that arrive grow it downward and
-          the face and headline stay where they stand, through every state and the hand-over. */}
-      <div aria-hidden="true" className="h-[max(0px,calc(50%-12rem))] shrink-0" />
+          the face and headline stay where they stand, through every state and the hand-over.
+          The sign-in is the exception: its cards stand at once and as tall as the room may
+          be, so it centres on its own height, and from the top once it is taller than the room. */}
+      {signingIn ? null : (
+        <div aria-hidden="true" className="h-[max(0px,calc(50%-12rem))] shrink-0" />
+      )}
       <div
-        className="flex w-full max-w-2xl shrink-0 flex-col items-center"
+        className={cn(
+          "flex w-full max-w-2xl shrink-0 flex-col items-center",
+          signingIn && "my-auto",
+        )}
         data-mate-empty-lead
         role={status ? "status" : undefined}
       >
