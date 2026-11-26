@@ -15,12 +15,19 @@ export function failureSummary(output: string, logPath: string): string {
     lines.find(
       (line) =>
         !/\b(?:suggestion|warning)\s+TS\d+:/iu.test(line) &&
-        /(?:\b[A-Za-z]*Error:|:\s*error\b|^\s*error\b|^\s*[x✖✘]\s|\b(?:ENOENT|EACCES|ECONNREFUSED|ENOSPC)\b)/iu.test(
+        (/(?:\b[A-Za-z]*Error:|:\s*error\b|^\s*error\b|^\s*[x✖✘]\s|\b(?:ENOENT|EACCES|ECONNREFUSED|ENOSPC)\b)/iu.test(
           line,
-        ),
+        ) ||
+          /^\s*(?:\S+\.(?:[cm]?[jt]sx?|css|md)(?::\d+(?::\d+)?)?:\s+|T1 (?:over budget\b|[^:]+:\s+))/u.test(
+            line,
+          ) ||
+          /^\s*(?:guard exceptions|[a-z][a-z0-9]*(?:-[a-z0-9]+)+): (?!ledger reconciled\b)/u.test(
+            line,
+          )),
     ) ??
     lines.find((line) => /^\s*FAIL\b/iu.test(line)) ??
-    "No explicit error line reported";
+    lines.find((line) => line.trim().length > 0) ??
+    "Stage produced no output";
   const starts = lines.flatMap((line, index) =>
     /^\s*(?:FAIL\b|(?:Assertion|Type|Syntax|Reference)?Error:|[^\s]+\(\d+,\d+\): error|[x✖✘]\s)/u.test(
       line,
