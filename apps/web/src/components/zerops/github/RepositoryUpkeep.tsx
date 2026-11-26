@@ -25,7 +25,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/compone
 import { Popover, PopoverPopup } from "~/components/ui/popover";
 import { Spinner } from "~/components/ui/spinner";
 import { Text } from "~/components/ui/text";
-import { cn, randomUUID } from "~/lib/utils";
+import { randomUUID } from "~/lib/utils";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -487,44 +487,52 @@ const DOT_WORDS = { ok: "Working", warn: "Needs attention", bad: "Stopped" } as 
  * stands on the words' x-height.
  */
 export function StateLine({ state }: { readonly state: RepoState }) {
-  const mark =
-    state.tone === "quiet" ? null : (
-      <span className="me-1.5 inline-flex align-middle">
-        {state.tone === "busy" ? (
-          <Spinner aria-hidden="true" size="xs" />
-        ) : (
-          <Badge
-            aria-label={DOT_WORDS[state.tone]}
-            dot
-            tone={state.tone === "ok" ? "success" : state.tone === "warn" ? "warning" : "danger"}
-          />
-        )}
-      </span>
-    );
   return (
-    <p
-      className={cn(
-        "min-w-0 text-caption",
+    <Text className="min-w-0" render={<p />} variant="note">
+      {stateSays(state) ? (
+        <span className="block text-pretty">
+          <StateWords state={state} />
+        </span>
+      ) : (
+        <CutText className="block truncate" text={state.line}>
+          <StateWords state={state} />
+        </CutText>
+      )}
+    </Text>
+  );
+}
+
+/** Where something stopped or needs the person: its line is said whole, never cut. */
+export const stateSays = (state: RepoState) => state.tone === "warn" || state.tone === "bad";
+
+/** The state's mark and words, in the ink its tone takes; the line around them is the caller's. */
+export function StateWords({ state }: { readonly state: RepoState }) {
+  return (
+    <span
+      className={
         state.tone === "warn"
           ? "text-status-attention-text"
           : state.tone === "bad"
             ? "text-status-failed-text"
-            : "text-muted-foreground",
-      )}
+            : undefined
+      }
       role={state.tone === "busy" ? "status" : undefined}
     >
-      {state.tone === "warn" || state.tone === "bad" ? (
-        <span className="block text-pretty">
-          {mark}
-          {state.line}
+      {state.tone === "quiet" ? null : (
+        <span className="me-1.5 inline-flex align-middle">
+          {state.tone === "busy" ? (
+            <Spinner aria-hidden="true" size="xs" />
+          ) : (
+            <Badge
+              aria-label={DOT_WORDS[state.tone]}
+              dot
+              tone={state.tone === "ok" ? "success" : state.tone === "warn" ? "warning" : "danger"}
+            />
+          )}
         </span>
-      ) : (
-        <CutText className="block truncate" text={state.line}>
-          {mark}
-          {state.line}
-        </CutText>
       )}
-    </p>
+      {state.line}
+    </span>
   );
 }
 
