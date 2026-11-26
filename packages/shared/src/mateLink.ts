@@ -329,6 +329,7 @@ export const OverviewStandUp = Schema.Struct({
     }),
   ).check(atMost(MATE_STAND_UP_FAILED_MAX)),
   omitted: Count,
+  error: Schema.optionalKey(Text),
 });
 export type OverviewStandUp = typeof OverviewStandUp.Type;
 

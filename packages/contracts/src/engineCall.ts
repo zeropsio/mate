@@ -132,6 +132,9 @@ export type CallRecord =
   | { readonly content: ReadonlyArray<CallRecordDiff>; readonly rawInput?: CallRecordInput }
   | { readonly toolName: string; readonly input: CallRecordInput };
 
+export const CommandClass = Schema.Literals(["lease", "zcp_run", "git", "other"]);
+export type CommandClass = typeof CommandClass.Type;
+
 export const callFields = {
   /** What the call was given, as one line: the command, the path, the query. */
   input: Schema.optionalKey(Schema.String),
@@ -143,6 +146,13 @@ export const callFields = {
    * are for the card, never for a rule.
    */
   shows: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  /** Facts for the run's timing, independent of the bounded line shown on the call. */
+  timing: Schema.optionalKey(
+    Schema.Struct({
+      inputComplete: Schema.optionalKey(Schema.Boolean),
+      commandClass: Schema.optionalKey(CommandClass),
+    }),
+  ),
   /** A `zerops_*` call's result. */
   result: Schema.optionalKey(CallResult),
 } as const;

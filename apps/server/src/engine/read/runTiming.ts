@@ -1,36 +1,12 @@
 /** The timing of an ended run, derived once from its own event record. */
-import type { ConversationId, RunId } from "@t3tools/contracts";
+import type { CommandClass, ConversationId, RunId } from "@t3tools/contracts";
 import type * as SqlClient from "effect/sql/SqlClient";
 
-import { bareToolName } from "../domain/mateAsks.ts";
+import { TOOL_CLASSES, toolClass, type ToolClass } from "../domain/toolTiming.ts";
 
 export const RUN_SPAN = "engine.run";
 
-const CLASSES = ["deploy", "browser", "zcp_run", "git", "zcp", "other"] as const;
-type ToolClass = (typeof CLASSES)[number];
-
-/** Command input is used only to classify the call, never written to the trace. */
-export const toolClass = ({
-  step,
-  tool,
-  input,
-}: {
-  readonly step: string | null;
-  readonly tool: string | null;
-  readonly input: string | null;
-}): ToolClass => {
-  const name = bareToolName(tool ?? "");
-  if (name === "zerops_deploy" || name === "zerops_deploy_batch") return "deploy";
-  if (name === "zerops_browser") return "browser";
-  if (step === "command" && input !== null) {
-    if (/(?:^|[\s;&|('"`])zcp\s+run(?=$|[\s;&|)'"`])/u.test(input)) return "zcp_run";
-    if (/(?:^|[\s;&|('"`])(?:zcp\s+git|git)(?=$|[\s;&|)'"`])/u.test(input)) return "git";
-  }
-  if (name.startsWith("zerops_")) return "zcp";
-  return "other";
-};
-
-/** Only columns needed for the timing; no streamed updates or message text are decoded. */
+/** Only columns needed for timing; message text and non-call updates are not decoded. */
 export interface RunTraceRow {
   readonly type: string;
   readonly at: number;
@@ -39,6 +15,9 @@ export interface RunTraceRow {
   readonly step: string | null;
   readonly tool: string | null;
   readonly input: string | null;
+  readonly action: string | null;
+  readonly inputComplete: number | null;
+  readonly command: CommandClass | null;
   readonly marker: string | null;
   readonly trigger: string | null;
   readonly cause: string | null;
@@ -48,11 +27,17 @@ export const RUN_TRACE_SQL = `
   SELECT type, at,
     json_extract(payload_json, '$.itemId') AS item, json_extract(payload_json, '$.body.kind') AS kind,
     json_extract(payload_json, '$.body.step') AS step, json_extract(payload_json, '$.body.tool.name') AS tool,
-    json_extract(payload_json, '$.body.input') AS input, json_extract(payload_json, '$.body.marker.kind') AS marker,
+    json_extract(payload_json, '$.body.input') AS input,
+    COALESCE(json_extract(payload_json, '$.body.shows.input.action'),
+      json_extract(payload_json, '$.body.shows.item.arguments.action')) AS action,
+    json_extract(payload_json, '$.body.timing.inputComplete') AS inputComplete,
+    json_extract(payload_json, '$.body.timing.commandClass') AS command,
+    json_extract(payload_json, '$.body.marker.kind') AS marker,
     json_extract(payload_json, '$.trigger.kind') AS trigger, json_extract(payload_json, '$.trigger.cause') AS cause
   FROM engine_event
   WHERE conversation_id = ? AND seq >= (SELECT seq FROM engine_run WHERE run_id = ?) AND run_id = ?
-    AND type IN ('RunQueued', 'RunStarted', 'RunWaiting', 'RunResumed', 'RunEnded', 'ItemOpened', 'ItemClosed')
+    AND type IN ('RunQueued', 'RunStarted', 'RunWaiting', 'RunResumed', 'RunEnded', 'ItemOpened', 'ItemUpdated', 'ItemClosed')
+    AND (type <> 'ItemUpdated' OR json_extract(payload_json, '$.body.kind') = 'call')
   ORDER BY seq
 `;
 
@@ -97,17 +82,39 @@ export const runTiming = (rows: ReadonlyArray<RunTraceRow>): RunTiming | undefin
     return { start: first, end: Math.max(first, clamp(to)) };
   };
   const queued = rows.find((row) => row.type === "RunQueued");
-  const callsByItem = new Map<string, { opened: RunTraceRow; last: RunTraceRow }>();
+  const callsByItem = new Map<
+    string,
+    {
+      opened: RunTraceRow;
+      last: RunTraceRow;
+      closedAt: number | undefined;
+      ready: number | undefined;
+    }
+  >();
   const waits: Interval[] = [];
   const compactions: Interval[] = [];
   let waitingAt: number | undefined;
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index]!;
     if (row.type === "ItemOpened" && row.kind === "call" && row.item !== null) {
-      callsByItem.set(row.item, { opened: row, last: row });
+      callsByItem.set(row.item, {
+        opened: row,
+        last: row,
+        closedAt: undefined,
+        ready: row.inputComplete === 1 ? row.at : undefined,
+      });
+    } else if (row.type === "ItemUpdated" && row.item !== null) {
+      const call = callsByItem.get(row.item);
+      if (call !== undefined) {
+        call.last = row;
+        if (call.ready === undefined && row.inputComplete === 1) call.ready = row.at;
+      }
     } else if (row.type === "ItemClosed" && row.item !== null) {
       const call = callsByItem.get(row.item);
-      if (call !== undefined) call.last = row;
+      if (call !== undefined) {
+        call.last = row;
+        call.closedAt = row.at;
+      }
     }
     if (row.type === "RunWaiting" && waitingAt === undefined) waitingAt = row.at;
     if (row.type === "RunResumed" && waitingAt !== undefined) {
@@ -116,21 +123,29 @@ export const runTiming = (rows: ReadonlyArray<RunTraceRow>): RunTiming | undefin
     }
     if (row.type === "ItemOpened" && row.marker === "compacted") {
       let before = index - 1;
-      while (before >= 0 && rows[before]!.item === row.item) before -= 1;
+      while (
+        before >= 0 &&
+        (rows[before]!.type === "ItemUpdated" || rows[before]!.item === row.item)
+      )
+        before -= 1;
       let after = index + 1;
-      while (after < rows.length && rows[after]!.item === row.item) after += 1;
+      while (
+        after < rows.length &&
+        (rows[after]!.type === "ItemUpdated" || rows[after]!.item === row.item)
+      )
+        after += 1;
       compactions.push(interval(rows[before]?.at ?? start, rows[after]?.at ?? end));
     }
   }
   if (waitingAt !== undefined) waits.push(interval(waitingAt, end));
-  const calls: Call[] = Array.from(callsByItem.values(), ({ opened, last }) => ({
-    ...interval(opened.at, last === opened ? end : last.at),
-    class: toolClass(last),
-  }));
-  const tools = Object.fromEntries(CLASSES.map((name) => [name, { ms: 0, calls: 0 }])) as Record<
-    ToolClass,
-    { ms: number; calls: number }
-  >;
+  const calls: Call[] = Array.from(callsByItem.values(), (call) => {
+    const closedAt = call.closedAt ?? end;
+    const callStart = call.ready ?? (call.opened.inputComplete === 0 ? closedAt : call.opened.at);
+    return { ...interval(callStart, closedAt), class: toolClass(call.last) };
+  });
+  const tools = Object.fromEntries(
+    TOOL_CLASSES.map((name) => [name, { ms: 0, calls: 0 }]),
+  ) as Record<ToolClass, { ms: number; calls: number }>;
   for (const call of calls) tools[call.class].calls += 1;
 
   // Count even an instantaneous call; touching calls are one round-trip.
@@ -152,7 +167,9 @@ export const runTiming = (rows: ReadonlyArray<RunTraceRow>): RunTiming | undefin
   boundaries.sort((a, b) => a.at - b.at);
   const active: Record<Part, number> = {
     waiting: 0,
+    person: 0,
     deploy: 0,
+    lease: 0,
     browser: 0,
     zcp_run: 0,
     git: 0,
@@ -168,8 +185,9 @@ export const runTiming = (rows: ReadonlyArray<RunTraceRow>): RunTiming | undefin
   while (index < boundaries.length) {
     const at = boundaries[index]!.at;
     const elapsed = at - previous;
-    const tool = CLASSES.find((name) => active[name] > 0);
-    if (active.waiting > 0) waiting += elapsed;
+    const tool = TOOL_CLASSES.find((name) => active[name] > 0);
+    if (active.person > 0) tools.person.ms += elapsed;
+    else if (active.waiting > 0) waiting += elapsed;
     else if (tool !== undefined) tools[tool].ms += elapsed;
     else if (active.compaction > 0) compaction += elapsed;
     else model += elapsed;
@@ -214,7 +232,7 @@ export const timingAttributes = (timing: RunTiming): Record<string, string | num
   "run.calls": timing.calls,
   ...(timing.firstCall === undefined ? {} : { "run.first_call_ms": timing.firstCall }),
   ...Object.fromEntries(
-    CLASSES.flatMap((name) => [
+    TOOL_CLASSES.flatMap((name) => [
       [`run.tool.${name}_ms`, timing.tools[name].ms],
       [`run.tool.${name}_calls`, timing.tools[name].calls],
     ]),

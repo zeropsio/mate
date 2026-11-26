@@ -1,4 +1,4 @@
-next: PL11
+next: PL13
 
 - PL1 — An empty Claude home, `~/.claude` and its expanded path are one Claude home with one continuation group, and an empty home leaves Claude's environment as given
 - PL2 — A configured Claude home is resolved from `~`, reaches Claude as `CLAUDE_CONFIG_DIR`, and names the continuation group and the capability cache key, which also differs per working directory
@@ -10,3 +10,5 @@ next: PL11
 - PL8 — OpenCode's server starts with the keys stored on its instance in its environment
 - PL9 — On Linux and macOS OpenCode's installer directory is appended to the instance's PATH, after the entries already there, so an OpenCode found on PATH wins, and on Windows the PATH is left as it is
 - PL10 — OpenCode's status, title and skills server starts with zcp's MCP server turned off, over whatever config content its environment already gives
+- PL11 — A provider's runtime instructions ask it to put independent reads and searches in one call or in parallel calls
+- PL12 — Claude starts with zcp's MCP tools loaded up front and keeps a crewmate's own tools alongside them

@@ -10,10 +10,12 @@ import {
   CALL_SHOWS_STRING_MAX,
   type OrchestrationThreadActivity,
   type SpiEvent,
+  type CommandClass,
 } from "@t3tools/contracts";
 
 import { projectActivityPayload } from "../../activity/ActivityPayloadProjection.ts";
 import type { ZeropsActivityResult } from "../../activity/zeropsActivityResult.ts";
+import { commandClass } from "../domain/toolTiming.ts";
 
 type ToolEvent = Extract<
   SpiEvent,
@@ -26,6 +28,7 @@ export interface CallFacts {
   readonly line?: string;
   /** V1's projected activity data, but its result and the driver's own id. */
   readonly shows?: Readonly<Record<string, unknown>>;
+  readonly timing?: { readonly inputComplete?: boolean; readonly commandClass?: CommandClass };
   /** A `zerops_*` call's result, its pictures still as the driver gave them. */
   readonly result?: ZeropsActivityResult;
 }
@@ -92,6 +95,19 @@ export function callFacts(event: ToolEvent, previous: CallFacts = {}): CallFacts
   } as unknown as OrchestrationThreadActivity;
   const projected = (projectActivityPayload(activity).payload as { readonly data?: unknown }).data;
   const data = isRecord(projected) ? projected : {};
+  const rawData = isRecord(payload.data) ? payload.data : {};
+  const rawInput = isRecord(rawData.input) ? rawData.input : {};
+  const item = isRecord(data.item) ? data.item : {};
+  const itemInput = isRecord(item.input) ? item.input : {};
+  const command = data.command ?? item.command ?? itemInput.command ?? rawInput.cmd;
+  const complete = rawData.inputComplete;
+  const timing = {
+    ...previous.timing,
+    ...(typeof complete === "boolean" ? { inputComplete: complete } : {}),
+    ...(payload.itemType === "command_execution" && typeof command === "string"
+      ? { commandClass: commandClass(command) }
+      : {}),
+  };
   const { zerops, toolCallId: _native, ...shown } = data;
   const shows = cutRecord({ ...previous.shows, ...shown });
   const result = (zerops as ZeropsActivityResult | undefined) ?? previous.result;
@@ -99,6 +115,7 @@ export function callFacts(event: ToolEvent, previous: CallFacts = {}): CallFacts
   return {
     ...(kept === undefined ? {} : { line: kept }),
     ...(Object.keys(shows).length === 0 ? {} : { shows }),
+    ...(Object.keys(timing).length === 0 ? {} : { timing }),
     ...(result === undefined ? {} : { result }),
   };
 }

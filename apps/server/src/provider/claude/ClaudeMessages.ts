@@ -48,7 +48,7 @@ export const makeClaudeMessages = Effect.fn("makeClaudeMessages")(function* (
   const { emitProposedPlanCompleted, emitClaudeTaskPlanUpdated } = parts.runtimeEmit;
   const { backfillAssistantTextBlocksFromSnapshot, backfillThinkingFromSnapshot } =
     parts.assistantText;
-  const { presentCalls, startHelperCalls } = parts.toolCalls;
+  const { presentCalls, syncSnapshotCalls } = parts.toolCalls;
   const { startSyntheticTurn } = parts.turns;
 
   const handleUserMessage = Effect.fn("handleUserMessage")(function* (
@@ -279,7 +279,7 @@ export const makeClaudeMessages = Effect.fn("makeClaudeMessages")(function* (
           snapshotModel,
         );
       }
-      yield* startHelperCalls(context, message, assistantParentToolUseId);
+      yield* syncSnapshotCalls(context, message, assistantParentToolUseId);
       context.lastAssistantUuid = message.uuid;
       yield* updateResumeCursor(context);
       return;
@@ -309,6 +309,7 @@ export const makeClaudeMessages = Effect.fn("makeClaudeMessages")(function* (
       yield* updateResumeCursor(context);
     }
 
+    yield* syncSnapshotCalls(context, message);
     yield* presentCalls(context, message);
     const content = message.message?.content;
     if (Array.isArray(content)) {

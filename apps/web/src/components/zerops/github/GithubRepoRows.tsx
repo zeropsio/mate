@@ -10,6 +10,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { List } from "~/components/ui/list";
 import { Loading } from "~/components/ui/loading";
 import { RealName } from "~/components/ui/real-name";
+import { Row } from "~/components/ui/row";
 import { Text } from "~/components/ui/text";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
@@ -22,7 +23,7 @@ import {
   type RepoPress,
   type RepoStateApps,
 } from "../gitMirror.logic";
-import { FixButton, RepositoryConnectDialog, StateLine } from "./RepositoryUpkeep";
+import { FixButton, RepositoryConnectDialog, StateWords, stateSays } from "./RepositoryUpkeep";
 import { useRepoPress } from "./repoPress";
 import { repositoryUpkeep } from "./repoUpkeep.logic";
 
@@ -88,7 +89,7 @@ export function RepoRowsView(props: RepoRowsViewProps) {
   const someUnconnected = listed.some((entry) => entry.remote == null);
   return (
     <div className="grid" data-zerops-surface="git-remotes">
-      <List className="@container grid" render={<ul />}>
+      <List className="grid" render={<ul />}>
         {listed.map((entry) => (
           <RepoRow entry={entry} key={entry.name} {...props} />
         ))}
@@ -136,54 +137,51 @@ function RepoRow({
   });
   const to = { appId: project, repo: entry.name };
   const link = useGitLinkProps(to);
+  const onGithub = state.destination?.href.startsWith("https://github.com/") === true;
   return (
-    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2 py-2.5 text-body/5 @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
-      <span className="hidden self-start truncate text-foreground @lg:block">
-        <GitBrowserLink to={to}>
+    <Row
+      control={
+        <FixButton
+          state={state}
+          writes={writes}
+          admin={admin}
+          firstConnect={offered.includes("connect")}
+          onConnect={() => onConnect(entry.name)}
+          onFix={() => {}}
+          onToken={() => {}}
+          onSetUpGithub={() => {}}
+          otherFix={
+            <Button render={<a {...link} />} size="sm" variant="secondary">
+              Open repository
+            </Button>
+          }
+        />
+      }
+      lead={onGithub ? <GitHubIcon aria-hidden="true" /> : <GitBranchIcon aria-hidden="true" />}
+      line={
+        <>
+          {state.destination === null ? null : (
+            <>
+              <InlineButton
+                render={<a href={state.destination.href} rel="noreferrer" target="_blank" />}
+                tone="muted"
+              >
+                <RealName>{state.destination.label}</RealName>
+              </InlineButton>
+              <span aria-hidden="true"> · </span>
+            </>
+          )}
+          <StateWords state={state} />
+        </>
+      }
+      lineWraps={stateSays(state)}
+      render={<li />}
+      size="sm"
+      title={
+        <GitBrowserLink to={to} tone="plain">
           <RealName>{entry.name}</RealName>
         </GitBrowserLink>
-      </span>
-      <div className="grid min-w-0 gap-0.5">
-        <p className="flex min-h-5 min-w-0 items-baseline gap-1.5 max-sm:flex-col max-sm:items-start max-sm:gap-0">
-          <span className="shrink-0 text-foreground @lg:hidden">
-            <GitBrowserLink to={to}>
-              <RealName>{entry.name}</RealName>
-            </GitBrowserLink>
-          </span>
-          {state.destination === null ? null : (
-            <InlineButton
-              className="min-w-0 max-sm:max-w-full"
-              render={<a href={state.destination.href} rel="noreferrer" target="_blank" />}
-              tone={state.tone === "busy" ? "muted" : "plain"}
-            >
-              {state.destination.href.startsWith("https://github.com/") ? (
-                <GitHubIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
-              ) : (
-                <GitBranchIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
-              )}
-              <span className="truncate font-normal">
-                <RealName>{state.destination.label}</RealName>
-              </span>
-            </InlineButton>
-          )}
-        </p>
-        <StateLine state={state} />
-      </div>
-      <FixButton
-        state={state}
-        writes={writes}
-        admin={admin}
-        firstConnect={offered.includes("connect")}
-        onConnect={() => onConnect(entry.name)}
-        onFix={() => {}}
-        onToken={() => {}}
-        onSetUpGithub={() => {}}
-        otherFix={
-          <Button render={<a {...link} />} size="sm" variant="secondary">
-            Open repository
-          </Button>
-        }
-      />
-    </li>
+      }
+    />
   );
 }

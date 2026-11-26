@@ -18,6 +18,7 @@ import {
 } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
+import { canReuseStage, stageInputHash } from "./gate/stage-reuse.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
 import {
   failureSummary,
@@ -862,6 +863,7 @@ function selectionInputs(root: string): string[] {
     gateDefinition,
     "scripts/gate-input-scopes.ts",
     "scripts/gate-file-inputs.ts",
+    "scripts/gate/stage-reuse.ts",
     "scripts/gate-timing-reporter.ts",
     "scripts/gate-log.ts",
     "pnpm-lock.yaml",
@@ -1042,30 +1044,6 @@ function stageHashes(
   inputSets: StageInputSets,
   selection: string,
 ): Record<string, string> {
-  const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
-    const hash = NodeCrypto.createHash("sha256");
-    const files = [...new Set(paths)].sort();
-    hash.update(baseIdentity(base, [...baseline].sort()));
-    for (const path of files) {
-      const absolute = NodePath.join(root, path);
-      const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
-      const bytes = !stat
-        ? Buffer.alloc(0)
-        : stat.isSymbolicLink()
-          ? Buffer.from(NodeFS.readlinkSync(absolute))
-          : NodeFS.readFileSync(absolute);
-      hash.update(
-        JSON.stringify([
-          path,
-          stat ? (stat.isSymbolicLink() ? "symlink" : "file") : "deleted",
-          Boolean(stat && stat.mode & 0o111),
-          bytes.length,
-        ]),
-      );
-      hash.update(bytes);
-    }
-    return hash.digest("hex");
-  };
   return Object.fromEntries(
     stages.map((stage) => {
       const { files, baseline } = stageReads(root, stage, {
@@ -1081,7 +1059,13 @@ function stageHashes(
       return [
         stage.name,
         NodeCrypto.createHash("sha256")
-          .update(JSON.stringify([selection, command, digest(files, baseline)]))
+          .update(
+            JSON.stringify([
+              stage.name === "guard ledgers" ? null : selection,
+              command,
+              stageInputHash(root, files, baseIdentity(base, [...baseline].sort())),
+            ]),
+          )
           .digest("hex"),
       ];
     }),
@@ -2168,15 +2152,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         .filter(
           (step) =>
             !alwaysRunStages.has(step.name) &&
-            previousReceipt?.selectionHash === selection &&
-            previousReceipt.stageHashes?.[step.name] === fingerprints[step.name] &&
-            previousReceipt.selectedStages?.some((prior) => prior.name === step.name) &&
-            previousReceipt.results?.some(
-              (result) =>
-                result.name === step.name &&
-                result.status === 0 &&
-                Number.isFinite(result.durationMs) &&
-                result.durationMs >= 0,
+            canReuseStage(
+              step.name,
+              fingerprints[step.name],
+              selection,
+              previousReceipt,
+              shared?.key(step, fingerprints[step.name]) !== undefined,
             ),
         )
         .map((step) => [step.name, { name: step.name, status: 0, durationMs: 0 }]),
@@ -2269,7 +2250,13 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       }
       record({ name: step.name, status, durationMs: Date.now() - started });
       receipt.durationMs = Date.now() - gateStarted;
-      writeReceipt(receiptPath, receipt);
+      // A freshly run guard is reusable only after its complete input snapshot is checked again.
+      writeReceipt(receiptPath, {
+        ...receipt,
+        results: receipt.results.filter(
+          (result) => result.name !== "guard ledgers" || reusable.has(result.name),
+        ),
+      });
       const output = NodeFS.readFileSync(logPath, "utf8");
       if (verbose) process.stdout.write(output);
       console.log(
@@ -2332,6 +2319,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       `gate · ${((Date.now() - gateStarted) / 1000).toFixed(2)}s wall · ${(stageMs / 1000).toFixed(2)}s of stage time`,
     );
     if (status !== 0) {
+      if (
+        !reusable.has("guard ledgers") &&
+        receipt.results.some((result) => result.name === "guard ledgers" && result.status === 0) &&
+        (await unchanged())
+      )
+        writeReceipt(receiptPath, receipt);
       // The last stderr line: `land.ts` names these stages in its `gate` refusal.
       if (red.length > 0)
         console.error(

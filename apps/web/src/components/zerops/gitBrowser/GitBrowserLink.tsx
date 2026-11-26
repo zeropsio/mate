@@ -86,7 +86,7 @@ export function GitBrowserLink({
   children,
 }: {
   readonly to: GitSearch;
-  readonly tone?: "default" | "muted";
+  readonly tone?: "default" | "muted" | "plain";
   readonly children: ReactNode;
 }) {
   const props = useGitLinkProps(to);

@@ -280,7 +280,16 @@ function standUpOf(status: ZcpStatus | null): OverviewStandUp | null {
     return null;
   }
   const at = standup.state === "running" ? standup.startedAt : standup.endedAt;
-  if (standup.state === "done") return { state: standup.state, at, failed: [], omitted: 0 };
+  const error = textOf(standup.error);
+  if (standup.state === "done") {
+    return {
+      state: standup.state,
+      at,
+      failed: [],
+      omitted: 0,
+      ...(error === null ? {} : { error }),
+    };
+  }
   const failures = [
     ...(standup.verdict?.rows ?? [])
       .filter((row) => row.state === "failed")
@@ -303,6 +312,7 @@ function standUpOf(status: ZcpStatus | null): OverviewStandUp | null {
     at,
     failed: failures.slice(0, MATE_STAND_UP_FAILED_MAX),
     omitted: Math.max(0, failures.length - MATE_STAND_UP_FAILED_MAX),
+    ...(error === null ? {} : { error }),
   };
 }
 

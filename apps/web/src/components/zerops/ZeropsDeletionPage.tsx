@@ -3,7 +3,13 @@ import { BoxIcon, GitBranchIcon, GlobeIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { hqOperationOf, shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import {
+  appEnvironments,
+  hqOperationOf,
+  shownHqMateIdentitiesAtom,
+  type AppEnvironmentsRead,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
 import {
   assignCandidateMateTints,
   nameUnderApp,
@@ -15,7 +21,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { randomUUID } from "~/lib/utils";
 import { applicationOperationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { useAccountData } from "~/zerops/accountData";
+import { useAccountData, useProjection } from "~/zerops/accountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqStructure } from "~/zerops/useHqOffers";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -77,6 +83,7 @@ const PART_STEP: Readonly<Record<DeletionPart["state"], StepNumberState>> = {
   stopped: "attention",
   here: "todo",
 };
+const NO_ENVIRONMENTS = Atom.make<AppEnvironmentsRead>({ environments: undefined, unread: [] });
 
 export function ZeropsDeletionPage({
   state,
@@ -297,7 +304,12 @@ export function ZeropsDeletionPage({
           size="line"
         />
       )}
-      <Section title="In Zerops">
+      <Section title="Project parts">
+        {project.environmentRecordsRead ? null : (
+          <Text render={<p />} variant="description">
+            Environment details are unavailable, so this list may be incomplete.
+          </Text>
+        )}
         {zerops.length === 0 ? (
           <Text render={<p />} variant="description">
             {page.nothing}
@@ -396,11 +408,16 @@ export function ZeropsDeletionPageContainer({
   const { activeOrganization } = useZeropsSession();
   const orgId = activeOrganization?.id;
   const structure = useHqStructure();
+  const environmentRead = useProjection(
+    appEnvironments,
+    orgId === undefined ? null : { orgId, appId },
+    NO_ENVIRONMENTS,
+  );
   const deletion = hqOperationOf(useAtomValue(applicationOperationAtom(appId)), "app_deletion");
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const { listing } = useZeropsCandidates();
   const candidates = heldCandidates(listing).rows;
-  const project = deletionProjectOf(structure, appId, deletion);
+  const project = deletionProjectOf(structure, appId, deletion, environmentRead);
   const mateId = deletionPageMate({ project, address });
   const candidate = candidates.find((row) => row.project.id === mateId);
   const mateNameFor = (id: string) => {

@@ -16,6 +16,7 @@ import {
   classifyToolItemType,
   summarizeToolRequest,
   titleForTool,
+  toolInputFingerprint,
 } from "./ClaudeToolItems.ts";
 import { agentIdForParentToolUse, helperOfCall, frameAgentId } from "./ClaudeTasks.ts";
 
@@ -144,17 +145,11 @@ export const makeClaudeToolCalls = (kit: ClaudeAdapterKit) => {
     }
   });
 
-  /**
-   * A helper's calls, from its snapshot: the SDK streams no events for a
-   * helper's response, so its snapshot is the first sight of each call. Each
-   * starts as a step of the helper that made it (the owner of its parent
-   * call), and its result completes it (`handleUserMessage`). A call its
-   * stream already started is left alone.
-   */
-  const startHelperCalls = Effect.fn("startHelperCalls")(function* (
+  /** A snapshot either starts a call with its complete input or finishes a streamed input. */
+  const syncSnapshotCalls = Effect.fn("syncSnapshotCalls")(function* (
     context: ClaudeSessionContext,
     message: Extract<SDKMessage, { type: "assistant" }>,
-    parentToolUseId: string,
+    parentToolUseId?: string,
   ) {
     const content = (message.message as { content?: unknown }).content;
     if (!Array.isArray(content)) return;
@@ -171,21 +166,26 @@ export const makeClaudeToolCalls = (kit: ClaudeAdapterKit) => {
       }
       if (typeof block.id !== "string" || typeof block.name !== "string") continue;
       const itemId = block.id;
-      if (Array.from(context.inFlightTools.values()).some((tool) => tool.itemId === itemId)) {
-        continue;
-      }
+      const existing = Array.from(context.inFlightTools.entries()).find(
+        ([, tool]) => tool.itemId === itemId,
+      );
       const toolInput =
         typeof block.input === "object" && block.input !== null
           ? (block.input as Record<string, unknown>)
           : {};
       const itemType = classifyToolItemType(block.name, toolInput);
-      const owningAgentId = helperOfCall(
-        context.taskAgents,
-        parentToolUseId,
-        frameAgentId(message),
-      );
-      const presentation = claudeCallPresentation(meta, block.name, itemId);
+      if (
+        existing?.[1].inputComplete === true &&
+        toolInputFingerprint(existing[1].input) === toolInputFingerprint(toolInput)
+      )
+        continue;
+      const owningAgentId = parentToolUseId
+        ? helperOfCall(context.taskAgents, parentToolUseId, frameAgentId(message))
+        : undefined;
+      const presentation =
+        existing?.[1].presentation ?? claudeCallPresentation(meta, block.name, itemId);
       const tool: ToolInFlight = {
+        ...existing?.[1],
         itemId,
         itemType,
         toolName: block.name,
@@ -193,14 +193,18 @@ export const makeClaudeToolCalls = (kit: ClaudeAdapterKit) => {
         detail: summarizeToolRequest(block.name, toolInput),
         input: toolInput,
         partialInputJson: "",
+        inputComplete: true,
         ...(owningAgentId ? { agentId: owningAgentId } : {}),
-        parentToolUseId,
+        ...(parentToolUseId ? { parentToolUseId } : {}),
         ...(presentation ? { presentation } : {}),
       };
-      context.inFlightTools.set(`${parentToolUseId}#${itemId}`, tool);
+      context.inFlightTools.set(
+        existing?.[0] ?? `${parentToolUseId ?? "snapshot"}#${itemId}`,
+        tool,
+      );
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
-        type: "item.started",
+        type: existing === undefined ? "item.started" : "item.updated",
         eventId: stamp.eventId,
         provider: PROVIDER,
         createdAt: stamp.createdAt,
@@ -213,8 +217,8 @@ export const makeClaudeToolCalls = (kit: ClaudeAdapterKit) => {
           title: tool.title,
           ...(tool.detail ? { detail: tool.detail } : {}),
           ...(owningAgentId ? { agentId: owningAgentId } : {}),
-          parentToolUseId,
-          data: { toolName: block.name, input: toolInput },
+          ...(parentToolUseId ? { parentToolUseId } : {}),
+          data: { toolName: block.name, input: toolInput, inputComplete: true },
           ...(presentation ? { presentation } : {}),
         },
         providerRefs: nativeProviderRefs(context, { providerItemId: itemId }),
@@ -232,7 +236,7 @@ export const makeClaudeToolCalls = (kit: ClaudeAdapterKit) => {
     closeHelperCalls,
     helperStillWorks,
     presentCalls,
-    startHelperCalls,
+    syncSnapshotCalls,
   };
 };
 

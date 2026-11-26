@@ -4,6 +4,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
 import { buildGateGraph, selectGateSteps, stageInputSets } from "./gate-changed.ts";
+import { canReuseStage, stageInputHash } from "./gate/stage-reuse.ts";
+import { failureSummary } from "./gate-log.ts";
 
 // witness: scripts/gate-changed.ts | gateChanged || paths.some((path) => files.has(path)) → paths.some((path) => files.has(path))
 it("GA3: a diff that changes a stage's definition selects that stage", () => {
@@ -71,4 +73,55 @@ it("GA3: a diff that changes a stage's definition selects that stage", () => {
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// witness: scripts/gate/stage-reuse.ts | hash.update(bytes); → hash.update(Buffer.alloc(0));
+it("GA4: a passing guard stage is reused only while its identified inputs match", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gate-guard-"));
+  try {
+    NodeFS.writeFileSync(NodePath.join(root, "guarded.ts"), "one");
+    NodeFS.writeFileSync(NodePath.join(root, "guard.ts"), "guard code");
+    const fingerprint = () => stageInputHash(root, ["guarded.ts", "guard.ts"], "baseline");
+    const previous = {
+      selectionHash: "old selection",
+      stageHashes: { "guard ledgers": fingerprint() },
+      selectedStages: [{ name: "guard ledgers" }],
+      results: [{ name: "guard ledgers", status: 0, durationMs: 1 }],
+    };
+    const reuse = (identified = true) =>
+      canReuseStage("guard ledgers", fingerprint(), "new selection", previous, identified);
+    expect(reuse()).toBe(true);
+    expect(reuse(false)).toBe(false);
+    NodeFS.writeFileSync(NodePath.join(root, "guarded.ts"), "two");
+    expect(reuse()).toBe(false);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// witness: scripts/gate-log.ts | (?!ledger reconciled\b) → (?=ledger reconciled\b)
+it("GA5: a failed stage reports its first actionable error", () => {
+  const output = [
+    "guard cache: 5 hits, 0 misses",
+    "no-raw-controls: ledger reconciled (2 entries)",
+    "no-hand-popup: unlisted apps/web/src/popup.tsx:popup — add to the ledger",
+    "TypeError: a later failure",
+  ].join("\n");
+  expect(failureSummary(output, "/tmp/stage.log").split("\n")[0]).toBe(
+    "First error: no-hand-popup: unlisted apps/web/src/popup.tsx:popup — add to the ledger",
+  );
+  expect(failureSummary("ledger could not be loaded\n", "/tmp/stage.log").split("\n")[0]).toBe(
+    "First error: ledger could not be loaded",
+  );
+  expect(
+    failureSummary("T1 1384 cases 60.1 s (budget 60 s)\nT1 over budget\n", "/tmp/stage.log").split(
+      "\n",
+    )[0],
+  ).toBe("First error: T1 over budget");
+  expect(
+    failureSummary(
+      "no-frame-per-tick: ledger reconciled (0 entries)\napps/web/src/theme.css: unsupported motion\nno-infinite-motion: unlisted theme.css:motion\n",
+      "/tmp/stage.log",
+    ).split("\n")[0],
+  ).toBe("First error: apps/web/src/theme.css: unsupported motion");
 });

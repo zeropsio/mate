@@ -1,5 +1,6 @@
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import {
+  appEnvironments,
   faceAction,
   hqOperationOf,
   mateDeletionOfProject,
@@ -8,6 +9,7 @@ import {
   NO_FACE_ACTION,
   operationFailureDetails,
   projectMoveOf,
+  type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
@@ -225,6 +227,8 @@ const faceRequests = Atom.family((key: string) =>
 );
 const NO_FACE_REQUEST = Atom.make<FaceRequestIntent | null>(null);
 const EMPTY_FACE_ACTION = Atom.make(NO_FACE_ACTION);
+const EMPTY_ENVIRONMENTS: AppEnvironmentsRead = { environments: undefined, unread: [] };
+const NO_DELETE_ENVIRONMENTS = Atom.make(EMPTY_ENVIRONMENTS);
 const UNPRESSED: DialogPress = { pending: false, error: null };
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -334,6 +338,15 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [dialog, setDialog, captureDialogReply] = useProjectDialog(
     (open: MateDialog) => open.candidate.project.id,
   );
+  const deleteAppId =
+    dialog?.kind === "delete" ? readZeropsMembership(dialog.candidate.project).groupId : undefined;
+  const deleteEnvironments = useProjection(
+    appEnvironments,
+    activeOrganization === null || deleteAppId === undefined
+      ? null
+      : { orgId: activeOrganization.id, appId: deleteAppId },
+    NO_DELETE_ENVIRONMENTS,
+  );
   const faceRequest = useAtomValue(
     dialog?.kind === "face" && activeOrganization !== null
       ? faceRequests(
@@ -398,6 +411,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         structure,
         groupId,
         hqOperationOf(operation, "app_deletion"),
+        groupId === deleteAppId ? deleteEnvironments : EMPTY_ENVIRONMENTS,
       );
       return {
         project,
@@ -407,7 +421,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         }),
       };
     },
-    [activeOrganization?.id, hqStructure],
+    [activeOrganization?.id, deleteAppId, deleteEnvironments, hqStructure],
   );
   /**
    * Where a Mate may be moved, as HQ answered when the move opened (`moveTo`) and as it offers its

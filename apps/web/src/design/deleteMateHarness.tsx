@@ -272,6 +272,8 @@ const ACME_PROJECT: DeletionProject = {
   ],
   births: [],
   deleteApp: STATE !== "last-member" && STATE !== "page-refused" && STATE !== "stopped-member",
+  environmentRecordsRead: true,
+  environmentRecords: [],
   environments: [
     ...(HAS_STAGE
       ? [

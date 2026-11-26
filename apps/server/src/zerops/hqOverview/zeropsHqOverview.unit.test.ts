@@ -15,7 +15,7 @@ import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
-import type { ZcpStatus } from "../zeropsSetupSteps.ts";
+import { parseZcpStatus, type ZcpStatus } from "../zeropsSetupSteps.ts";
 
 const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 const decodeCrew = Schema.decodeUnknownSync(CrewSnapshot);
@@ -766,6 +766,7 @@ const zcpStandUp = (state: ZcpStandUp["state"], extra: Partial<ZcpStandUp> = {})
     startedAt: "2026-11-25T20:00:00Z",
     callStartedAt: "2026-11-25T20:00:00Z",
     endedAt: "2026-11-25T20:01:00Z",
+    error: "",
     services: [],
     process: undefined,
     verdict: undefined,
@@ -792,6 +793,40 @@ const failedService = {
   at: "",
   error: "deploy refused",
 } as const;
+
+// witness: apps/server/src/zerops/zeropsSetupSteps.ts | error: text(standup["error"]), → error: "",
+it("HO40: HQ receives zcp's stand-up error when one was written, masked and cut to 280 characters, and no error when none was written; breaks: an operator cannot see why a stand-up failed, or credentials leave the Mate", () => {
+  const fromStatus = (extra: object) =>
+    overviewWithStatus(
+      parseZcpStatus({
+        version: 1,
+        standup: { state: "failed", endedAt: "2026-11-25T20:01:00Z", ...extra },
+      }) ?? null,
+    ).standUp;
+  const failed = { state: "failed", at: "2026-11-25T20:01:00Z", failed: [], omitted: 0 };
+
+  expect(fromStatus({ error: "the project's recipe is not merged yet" })).toEqual({
+    ...failed,
+    error: "the project's recipe is not merged yet",
+  });
+  expect(fromStatus({})).toEqual(failed);
+  expect(fromStatus({ error: "" })).toEqual(failed);
+  expect(fromStatus({ state: "done", error: "a note from zcp" })).toEqual({
+    ...failed,
+    state: "done",
+    error: "a note from zcp",
+  });
+
+  const secret = "sk-ant-api03-" + "x".repeat(40);
+  expect(fromStatus({ error: `build ${secret} refused` })).toEqual({
+    ...failed,
+    error: "build •••••• refused",
+  });
+  expect(fromStatus({ error: "w".repeat(330) })).toEqual({
+    ...failed,
+    error: `${"w".repeat(279)}…`,
+  });
+});
 
 // witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | standup.state === "running" ? standup.startedAt : standup.endedAt → standup.state === "running" ? standup.endedAt : standup.endedAt
 it("HO36: HQ is told how zcp's stand-up of the Mate stands, running, done or failed, with zcp's own stamp of it, and nothing of a stand-up zcp never ran or a status the Mate cannot read; breaks: a Mate whose stand-up failed looks set up to HQ, or one that never stood up looks failed", () => {

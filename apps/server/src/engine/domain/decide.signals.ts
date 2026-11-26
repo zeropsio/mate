@@ -27,7 +27,7 @@ import {
   type OpenItem,
   type RunRecord,
 } from "./state.ts";
-import { Rejected, type StepBuilder, isLive } from "./decide.step.ts";
+import { ENGINE, Rejected, type StepBuilder, isLive } from "./decide.step.ts";
 import { BY_THE_PERSON, LOST_HOW, personStopped, noteLostWork } from "./decide.lostWork.ts";
 import { turnDueWakeId, expectAgentTurn, closeSession, sessionClosed } from "./decide.sessions.ts";
 import {
@@ -35,6 +35,8 @@ import {
   CONTINUE_TEXT,
   type EndFacts,
   admitNext,
+  queueRun,
+  isAutoCompaction,
   dispatch,
   redispatch,
   endRun,
@@ -138,11 +140,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // A run still being prepared has sent nothing: it goes back to the head of the queue and
       // is sent when the agent's own turn ends.
       if (active?.state === "admitted") {
-        b.emit({
-          _tag: "RunRequeued",
-          runId: active.id,
-          reason: "the agent started a turn of its own",
-        });
+        if (isAutoCompaction(active)) {
+          // The new turn can change the context. Its end decides afresh whether to compact.
+          endRun(b, active, { kind: "stopped", by: ENGINE }, "inferred-from-effect");
+        } else {
+          b.emit({
+            _tag: "RunRequeued",
+            runId: active.id,
+            reason: "the agent started a turn of its own",
+          });
+        }
       }
       return selfStarted(b, signal.turn, signal.providerTurnId, joined);
     }
@@ -347,6 +354,23 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const end = turnEnd(live, signal.outcome, refusedBy(b, live));
       endRun(b, live, end, signal.source, undefined, endFacts(signal));
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
+      if (
+        b.state.session?.driver === "claudeAgent" &&
+        !live.maintenance &&
+        live.stopAsked === null &&
+        signal.context !== undefined &&
+        signal.context.usedTokens > 300_000
+      ) {
+        const compact = queueRun(b, {
+          trigger: () => ({ kind: "wake", cause: "compaction", wakeId: null }),
+          joins: live.id,
+          principal: live.principal,
+          maintenance: true,
+          text: "/compact",
+        });
+        // A message already waiting must follow the compaction too.
+        b.emit({ _tag: "RunRequeued", runId: compact, reason: "compact before the next ask" });
+      }
       admitNext(b);
       expectAgentTurn(b);
       return;
