@@ -133,6 +133,32 @@ const provider: ServerProvider = {
   slashCommands: [],
 };
 
+// witness: apps/server/src/provider/model-manifest.json | "profile": "opus-5-5", → "profile": "fable-5-2",
+it("MC14: Every bundled Claude Opus model defaults to High effort and retains an explicitly chosen effort", () => {
+  const catalog = resolveClaudeModelCatalog(BUNDLED_MODEL_MANIFEST);
+  const opus = catalog.models.filter(({ model }) => model.slug.startsWith("claude-opus-"));
+  assert.isAbove(opus.length, 0);
+
+  for (const { model } of opus) {
+    const effort = model.capabilities?.optionDescriptors?.find((option) => option.id === "effort");
+    const choices = effort?.type === "select" ? effort.options : [];
+    assert.deepStrictEqual(
+      choices.filter((choice) => choice.isDefault).map((choice) => choice.id),
+      ["high"],
+      model.slug,
+    );
+    assert.strictEqual(
+      resolveClaudeCatalogEffort(catalog, model.slug, undefined),
+      "high",
+      model.slug,
+    );
+    for (const choice of choices) {
+      if (effort?.type === "select" && effort.promptInjectedValues?.includes(choice.id)) continue;
+      assert.strictEqual(resolveClaudeCatalogEffort(catalog, model.slug, choice.id), choice.id);
+    }
+  }
+});
+
 // witness: apps/server/src/provider/ClaudeModelCatalog.ts | if (compatibility.minVersion && compareSemverVersions(version, compatibility.minVersion) < 0) { → if (compatibility.minVersion && compareSemverVersions(version, compatibility.minVersion) <= 0) {
 it("MC1: A Claude model whose minimum Claude Code version is above the installed one is not offered, and the upgrade hint names that model and its minimum version", () => {
   const catalog = resolveClaudeModelCatalog(claudeManifest());

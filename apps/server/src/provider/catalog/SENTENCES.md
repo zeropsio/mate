@@ -1,4 +1,4 @@
-next: MC14
+next: MC15
 
 - MC1 — A Claude model whose minimum Claude Code version is above the installed one is not offered, and the upgrade hint names that model and its minimum version
 - MC2 — A Claude model picked by its alias reaches Claude Code under its slug, with the effort its profile maps the chosen effort to and the suffix its profile gives the chosen option
@@ -13,3 +13,4 @@ next: MC14
 - MC11 — A provider CLI version, with or without a leading v, takes the status of the first range that holds it in the policy for its driver and this Mate release, a prerelease, an unlisted version, an unknown tag or no version is unknown, and no policy applies outside its Mate range
 - MC12 — A remote compatibility policy replaces its bundled one without touching the provider's own status and message, an omitted one leaves the bundled in force, the latest version gets its own verdict beside the update advice, and a disabled or uninstalled provider carries no compatibility verdict
 - MC13 — A compatibility policy is refused when a range is not a version comparison, its Mate range is open, or its recommended version is not a plain version whose first matching range is supported
+- MC14 — Every bundled Claude Opus model defaults to High effort and retains an explicitly chosen effort

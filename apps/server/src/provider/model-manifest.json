@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-22T12:00:00Z",
+  "updatedAt": "2026-11-26T18:46:39Z",
   "compatibility": [
     {
       "driver": "codex",
@@ -244,8 +244,8 @@
                 "type": "select",
                 "options": [
                   { "id": "low", "label": "Low" },
-                  { "id": "medium", "label": "Medium", "isDefault": true },
-                  { "id": "high", "label": "High" },
+                  { "id": "medium", "label": "Medium" },
+                  { "id": "high", "label": "High", "isDefault": true },
                   { "id": "xhigh", "label": "Extra High" },
                   { "id": "max", "label": "Max" },
                   {
@@ -435,12 +435,12 @@
                   },
                   {
                     "id": "high",
-                    "label": "High"
+                    "label": "High",
+                    "isDefault": true
                   },
                   {
                     "id": "xhigh",
-                    "label": "Extra High",
-                    "isDefault": true
+                    "label": "Extra High"
                   },
                   {
                     "id": "max",
