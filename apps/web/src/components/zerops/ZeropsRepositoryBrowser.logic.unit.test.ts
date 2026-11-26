@@ -37,7 +37,7 @@ it("MN81: A repository's page is loading until HQ has answered, says the reposit
 });
 
 // witness: apps/web/src/components/zerops/ZeropsRepositoryBrowser.logic.ts | if (repository.coverage === "unread") return { kind: "unread" }; → if (repository.coverage === "unread") return { kind: "read", open: [], stale: false };
-it("MN+1: A repository's Changes tab says its changes are not read until the overview has read them, lists only the open ones, keeps the last read ones marked as such when their read failed, and says none is open only when the read is complete; breaks: a repository whose changes were never read says no change is open", () => {
+it("MN89: A repository's Changes tab says its changes are not read until the overview has read them, lists only the open ones, keeps the last read ones marked as such when their read failed, and says none is open only when the read is complete; breaks: a repository whose changes were never read says no change is open", () => {
   const one: GitOverviewChange = {
     pull: {
       repository: "code",

@@ -9,13 +9,14 @@ import { LegendList } from "@legendapp/list/react";
 import { FileIcon, FolderIcon, LinkIcon, PackageIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 
+import { Card } from "~/components/ui/card";
 import { EmptyState } from "~/components/ui/empty";
 import { Row } from "~/components/ui/row";
 import { Text } from "~/components/ui/text";
 
 /** Rows drawn as a plain list; a longer folder draws only the rows in view. */
 const PLAIN_ROWS = 100;
-const ROW_HEIGHT = 45;
+const ROW_HEIGHT = 46;
 /** The tallest a long folder's list stands before it scrolls inside itself. */
 const LONG_LIST_HEIGHT = 640;
 
@@ -49,7 +50,7 @@ function EntryRow({
     size: "sm",
   } as const;
   return (
-    <div className="border-b border-rule">
+    <div className="pb-0.5">
       {entry.type === "submodule" ? (
         <Row {...parts} title={`${entry.name} · submodule ${entry.sha.slice(0, 7)}`} />
       ) : (
@@ -76,23 +77,25 @@ function EntryRow({
 export function GitDirectoryList({ entries, truncated, hrefOf, onOpen }: GitDirectoryListProps) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {entries.length === 0 && !truncated ? (
-        <EmptyState size="row">No files here.</EmptyState>
-      ) : entries.length > PLAIN_ROWS ? (
-        <LegendList<GitTreeEntry>
-          data={entries as Array<GitTreeEntry>}
-          keyExtractor={(entry) => entry.path}
-          renderItem={({ item }) => <EntryRow entry={item} hrefOf={hrefOf} onOpen={onOpen} />}
-          estimatedItemSize={ROW_HEIGHT}
-          style={{ height: Math.min(entries.length * ROW_HEIGHT, LONG_LIST_HEIGHT) }}
-        />
-      ) : (
-        <div>
-          {entries.map((entry) => (
-            <EntryRow key={entry.path} entry={entry} hrefOf={hrefOf} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
+      <Card size="rows" variant="sheet">
+        {entries.length === 0 && !truncated ? (
+          <EmptyState size="row">No files here.</EmptyState>
+        ) : entries.length > PLAIN_ROWS ? (
+          <LegendList<GitTreeEntry>
+            data={entries as Array<GitTreeEntry>}
+            keyExtractor={(entry) => entry.path}
+            renderItem={({ item }) => <EntryRow entry={item} hrefOf={hrefOf} onOpen={onOpen} />}
+            estimatedItemSize={ROW_HEIGHT}
+            style={{ height: Math.min(entries.length * ROW_HEIGHT, LONG_LIST_HEIGHT) }}
+          />
+        ) : (
+          <div>
+            {entries.map((entry) => (
+              <EntryRow key={entry.path} entry={entry} hrefOf={hrefOf} onOpen={onOpen} />
+            ))}
+          </div>
+        )}
+      </Card>
       {truncated ? (
         <Text render={<p />} variant="description">
           Only the first entries are shown. Clone the repository to read the whole folder.

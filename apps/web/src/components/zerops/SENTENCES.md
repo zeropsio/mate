@@ -1,4 +1,4 @@
-next: MN89
+next: MN90
 
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
@@ -85,4 +85,4 @@ next: MN89
 - MN86 — A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage
 - MN88 — A Production that stays is a part the project's deletion lets go of: it reads letting go while its part runs and let go once done, the project's line says letting go of it, a failed deletion lists it as let go apart from what is gone and as still here while it stands; breaks: a Production the person kept reads Deleting or Gone, or a deletion Zerops stopped at its deploy token names every part but that one.
 - MN87 — What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.
-- MN+1 — A repository's Changes tab says its changes are not read until the overview has read them, lists only the open ones, keeps the last read ones marked as such when their read failed, and says none is open only when the read is complete; breaks: a repository whose changes were never read says no change is open
+- MN89 — A repository's Changes tab says its changes are not read until the overview has read them, lists only the open ones, keeps the last read ones marked as such when their read failed, and says none is open only when the read is complete; breaks: a repository whose changes were never read says no change is open
