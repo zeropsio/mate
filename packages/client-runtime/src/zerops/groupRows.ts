@@ -70,8 +70,9 @@ export interface EnvironmentRow {
 
 /**
  * The commit an app version was built from, as its name spells it
- * (`parseVersionName`): whole in a name written before 2026-09-30, short in
- * one written since — so it is compared with `sameCommit`, never `===`.
+ * (`parseVersionName`): whole in a name written before 2026-09-30, seven hex
+ * in an HQ name since, and 12 hex in a zcp commit deploy — so it is compared
+ * with `sameCommit`, never `===`.
  *
  * `undefined` for a name that is not one of ours — a version somebody deployed
  * with `zcli` by hand, say. Saying nothing is right: this row's whole job is to
@@ -85,12 +86,13 @@ export function deployedCommit(appVersionName: string | undefined): string | und
  * What is deployed, as a person talks about it: its name, and the commit
  * underneath.
  *
- * Zerops keeps one string per service — the app version's name — and the two
- * parties that write it write different things. HQ's Core names a stage
- * deploy `main {short sha}` and a release `{tag} {short sha}`, as main's
+ * Zerops keeps one string per service — the app version's name — and its
+ * writers name it differently. HQ's Core names a stage deploy `main {short
+ * sha}` and a release `{tag} {short sha}`, as main's
  * broker named them `{branch} {short sha}` and `{tag} {short sha}` (before
- * 2026-09-30: the bare sha, and `{sha} {tag} {tagger}`); somebody deploying
- * with `zcli` by hand names it whatever they typed.
+ * 2026-09-30: the bare sha, and `{sha} {tag} {tagger}`). zcp's commit deploy
+ * names it `zcp {12-hex sha}`; somebody deploying with `zcli` by hand names
+ * it whatever they typed.
  *
  * The name is what a row writes, and the commit is only its fallback: a
  * release is `v1.2.0` to everyone who talks about it, and `77ab0e1` answers a
@@ -110,7 +112,7 @@ export interface DeployedVersion {
   readonly commit: string | undefined;
   /**
    * The commit as the name spells it — the whole 40-hex sha in an old name, the
-   * short one in a new one. `commit` is what a person reads; this is what is
+   * seven- or 12-hex prefix in a new one. `commit` is what a person reads; this is what is
    * compared, with `sameCommit`, and resolved to a whole sha where a key needs
    * one (`resolveCommit`).
    */

@@ -3,14 +3,16 @@
  * `versionNames.ts` names them now, as the old broker did before it).
  *
  * The name is the platform's evidence of what a service runs, and a service
- * keeps whatever name it was deployed under, so every name HQ or the broker
- * before it has ever written is read:
+ * keeps whatever name it was deployed under, so names written by HQ, the
+ * broker before it, and zcp's commit deploy are read:
  *
  * - **now** — exactly two tokens, a label and the commit's short sha, exactly
  *   seven hex: a stage's `main 7e2d4c1`, production's `v0.1.0 7e2d4c1`.
  *   Branches and tags hold no space, so the label is always one token;
  * - **before 2026-09-30** — a stage's bare whole sha, and production's
- *   `{sha} {tag} {tagger}`, the whole sha first.
+ *   `{sha} {tag} {tagger}`, the whole sha first;
+ * - **zcp commit deploy** — `zcp` followed by the commit's first 12 hex,
+ *   without a branch or tag.
  *
  * A whole sha is 40 hex, or 64 in a SHA-256 repository.
  *
@@ -35,6 +37,7 @@ export const SHORT_SHA_LENGTH = 7;
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 const SHA = /^[0-9a-f]{7,64}$/u;
 const SHORT_SHA = /^[0-9a-f]{7}$/u;
+const COMMIT_DEPLOY_SHA = /^[0-9a-f]{12}$/u;
 
 /** Whether `sha` is a whole commit sha — 40 hex, or 64 in a SHA-256 repository — in any case. */
 export function isWholeSha(sha: string): boolean {
@@ -43,9 +46,9 @@ export function isWholeSha(sha: string): boolean {
 
 /** What an app version's name says, where one of ours named it. */
 interface ParsedVersionName {
-  /** The commit, lower case, whole in an old name and seven hex in a new one. */
+  /** The commit, lower case, as much of it as the version name spells. */
   readonly sha: string;
-  /** The tag or the branch the name carries; absent from an old stage name. */
+  /** The tag or branch the name carries; absent when the name carries neither. */
   readonly label?: string;
   /** Who tagged the release, which only an old production name says. */
   readonly taggedBy?: string;
@@ -62,6 +65,8 @@ export function parseVersionName(name: string | undefined): ParsedVersionName | 
   if (second === undefined) return FULL_SHA.test(firstSha) ? { sha: firstSha } : undefined;
   const secondSha = second.toLowerCase();
   if (rest.length === 0 && SHORT_SHA.test(secondSha)) return { sha: secondSha, label: first };
+  if (rest.length === 0 && first === "zcp" && COMMIT_DEPLOY_SHA.test(secondSha))
+    return { sha: secondSha };
   if (!FULL_SHA.test(firstSha)) return undefined;
   return rest.length === 0
     ? { sha: firstSha, label: second }
