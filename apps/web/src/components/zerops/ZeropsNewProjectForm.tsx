@@ -720,7 +720,9 @@ export function NewProjectSetup({
   /** Its room in the column around it. */
   readonly className?: string;
 }) {
-  const { access } = form.input;
+  const { access, locations, closed } = form.input;
+  // With one region to run in and no access to grant, there is nothing to set up: no disclosure.
+  if (access === undefined && (closed !== undefined || locations.length <= 1)) return null;
   return (
     <div className={cn("self-stretch", className)} data-zerops-new-project="setup">
       <Collapsible className="flex flex-col">
