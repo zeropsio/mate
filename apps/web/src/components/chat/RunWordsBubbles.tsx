@@ -55,8 +55,10 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
       streaming: Boolean(message.streaming) && index === said.length - 1,
     }));
   });
+  // In block flow, never a grid: the log's two lines of a thought count across its paragraphs
+  // (`CappedBox`), and a grid hides their lines from that count.
   return (
-    <div className="grid gap-2.5">
+    <div className="space-y-2.5">
       {paragraphs.map((paragraph) => (
         <ChatMarkdown
           key={paragraph.key}

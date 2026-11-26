@@ -29,6 +29,10 @@ function cappedAtEnd(box: HTMLElement): boolean {
  * working row what runs past scrolls inside it, a fade at an edge saying there is more past it;
  * in the log nothing scrolls inside it, its foot fades where more runs past (never under a box
  * whose lines its item cuts: its last line is whole, "more" over it), and opened it is whole.
+ *
+ * A thought in the log counts its two lines as lines (`line-clamp-2`), never as a height: its
+ * paragraphs stand apart by a gap no line is, and two lines' height cut the second paragraph's
+ * first line through its middle, "more" floating beside the half of it.
  */
 function capClassName(box: {
   readonly detail: boolean;
@@ -48,7 +52,7 @@ function capClassName(box: {
           : "max-h-[6lh]"
         : box.lines === "thought"
           ? box.log
-            ? "max-h-[2lh]"
+            ? "line-clamp-2"
             : "max-h-[5lh]"
           : box.detail
             ? "max-h-60"
@@ -157,7 +161,8 @@ function LogBox({
     if (box === null || content === null) return;
     const measure = () => {
       if (wholeRef.current) return;
-      const next = content.offsetHeight > box.clientHeight + 1;
+      // Read off the box, never its content: a line clamp ends its content where it ends.
+      const next = box.scrollHeight > box.clientHeight + 1;
       closedHeightRef.current = box.offsetHeight;
       // Its fade at once, before the frame paints; the draw that says so follows.
       if (typeof box.toggleAttribute === "function") box.toggleAttribute("data-more-below", next);
@@ -206,7 +211,7 @@ function LogBox({
     const box = boxRef.current;
     const content = contentRef.current;
     if (box === null || content === null || typeof content.animate !== "function") return;
-    const past = content.offsetHeight - box.clientHeight;
+    const past = box.scrollHeight - box.clientHeight;
     if (past < 1 || prefersReducedMotion()) return;
     content.animate([{ opacity: 0 }, { opacity: 1 }], {
       duration: HEAD_SETTLE_MS,
