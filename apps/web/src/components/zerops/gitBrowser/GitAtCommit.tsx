@@ -6,6 +6,7 @@ import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/da
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { EmptyState } from "~/components/ui/empty";
+import { Failure } from "~/components/ui/failure";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 import { Loading } from "~/components/ui/loading";
@@ -116,14 +117,16 @@ export function GitHomeAgain({
 }) {
   if (!home.failed) return null;
   return (
-    <span className="flex flex-wrap items-center gap-3">
-      <span className="text-status-failed" role="alert">
-        HQ could not read this again. Showing the last read.
-      </span>
-      <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
-        Read again
-      </Button>
-    </span>
+    <Failure
+      size="line"
+      role="alert"
+      cause="HQ could not read this again. Showing the last read."
+      action={
+        <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
+          Read again
+        </Button>
+      }
+    />
   );
 }
 

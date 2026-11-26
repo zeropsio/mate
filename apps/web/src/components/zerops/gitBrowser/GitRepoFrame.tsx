@@ -6,6 +6,14 @@ import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/da
 import { githubRepositoryUrl } from "@t3tools/client-runtime/zerops/gitBrowse/home";
 import type { GitHome, GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
+import {
+  Code2Icon,
+  FolderGit2Icon,
+  GitCompareArrowsIcon,
+  GitPullRequestIcon,
+  HistoryIcon,
+  SearchIcon,
+} from "lucide-react";
 import { GitHubIcon } from "~/components/Icons";
 import {
   WorkspaceBreadcrumb,
@@ -16,7 +24,11 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { PageHeader } from "~/components/ui/page-header";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
-import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
+import { Card } from "~/components/ui/card";
+import { Fact, Facts } from "~/components/ui/facts";
+import { LogoTile } from "~/components/ui/logo-tile";
+import { SectionHeader } from "~/components/ui/section";
+import { Tab, TabLabel, TabPress, TabStrip, useTabFolded } from "~/components/ui/tab-strip";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { GitTokenGuide } from "../GitTokenGuide";
 import { ZeropsGitCredentials } from "../ZeropsGitCredentials";
@@ -40,13 +52,10 @@ const mirrorLine = (mirror: NonNullable<GitHomeAbout["mirror"]>) =>
       ? "Not synced with GitHub yet"
       : `Synced with GitHub ${formatRelativeTimeLabel(mirror.syncedAt)}`;
 
-const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 /** Facts supplied by the held home read; storage keeps its own existing control. */
 export function GitRepoFacts({
   about,
   storage,
-  again,
 }: {
   readonly about: GitHomeAbout | null;
   readonly storage: ReactNode;
@@ -59,28 +68,30 @@ export function GitRepoFacts({
         ? mirrorLine(about.mirror)
         : "On GitHub";
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {about === null ? null : (
-        <>
-          <Text variant="note">
-            {about.remote !== null && about.mirror?.syncedAt ? (
-              <GitWhen at={about.mirror.syncedAt}>{where}</GitWhen>
-            ) : (
-              where
-            )}
-          </Text>
-          <Text variant="note">
-            <GitWhen at={about.updatedAt}>
-              Updated {formatRelativeTimeLabel(about.updatedAt)}
-            </GitWhen>
-          </Text>
-          <Text variant="note">{count(about.branchCount, "branch", "branches")}</Text>
-          <Text variant="note">{count(about.tagCount, "tag", "tags")}</Text>
-        </>
-      )}
-      {storage}
-      {again}
-    </div>
+    <Card size="md" variant="sheet">
+      <div className="flex min-w-0 flex-col gap-4">
+        <SectionHeader level={3} size="panel" title="About" />
+        {about === null ? null : (
+          <>
+            <Text variant="note">
+              {about.remote !== null && about.mirror?.syncedAt ? (
+                <GitWhen at={about.mirror.syncedAt}>{where}</GitWhen>
+              ) : (
+                where
+              )}
+            </Text>
+            <Facts>
+              <Fact label="Updated">
+                <GitWhen at={about.updatedAt}>{formatRelativeTimeLabel(about.updatedAt)}</GitWhen>
+              </Fact>
+              <Fact label="Branches">{about.branchCount}</Fact>
+              <Fact label="Tags">{about.tagCount}</Fact>
+            </Facts>
+          </>
+        )}
+        {storage}
+      </div>
+    </Card>
   );
 }
 
@@ -129,17 +140,31 @@ export function GitRepoHeading({
   project,
   repo,
   actions,
+  where,
 }: {
   readonly appId: string;
   readonly project: string;
   readonly repo: string;
   readonly actions?: ReactNode;
+  readonly where?: string | undefined;
 }) {
   return (
     <PageHeader
       actions={actions}
+      lead={
+        <LogoTile size="lg">
+          <FolderGit2Icon />
+        </LogoTile>
+      }
       line={`${project}’s ${repo === "group" ? "setup repository" : "repository"}`}
-      tag={repo === "group" ? <Badge>Setup</Badge> : undefined}
+      tag={
+        repo === "group" || where !== undefined ? (
+          <span className="flex flex-wrap items-center gap-2">
+            {repo === "group" ? <Badge>Setup</Badge> : null}
+            {where === undefined ? null : <Badge>{where}</Badge>}
+          </span>
+        ) : undefined
+      }
       title={repo}
       trail={
         <InPhoneBar>
@@ -166,6 +191,21 @@ export function GitRepoHeading({
   );
 }
 
+const TAB_ICONS: Readonly<Record<string, typeof Code2Icon>> = {
+  Code: Code2Icon,
+  Changes: GitPullRequestIcon,
+  History: HistoryIcon,
+  Compare: GitCompareArrowsIcon,
+  Search: SearchIcon,
+};
+
+/** Folded tabs keep a visible mark while their labels remain available to assistive technology. */
+function GitRepoTabIcon({ label }: { readonly label: string }) {
+  const folded = useTabFolded();
+  const Icon = TAB_ICONS[label];
+  return folded && Icon !== undefined ? <Icon aria-hidden="true" size={16} /> : null;
+}
+
 /** The tabs and their picker, using the held open-change count. */
 export function GitRepoTabs({
   view,
@@ -182,24 +222,48 @@ export function GitRepoTabs({
   return (
     <div className="flex flex-wrap items-center gap-3">
       {picker}
-      <ToggleGroup
-        aria-label="Repository page"
-        variant="segmented"
-        value={[active.label]}
-        onValueChange={(value) => {
-          const tab = GIT_VIEW_TABS.find((candidate) => candidate.label === value[0]) ?? active;
-          onTab(tab.views[0]!);
-        }}
-      >
-        {GIT_VIEW_TABS.map((tab) => (
-          <Toggle key={tab.label} value={tab.label}>
-            {tab.label}
-            {tab.label === "Changes" && openChanges !== undefined
-              ? ` ${String(openChanges)}`
-              : null}
-          </Toggle>
-        ))}
-      </ToggleGroup>
+      <div className="min-w-0 flex-1">
+        <TabStrip
+          activeId={active.label}
+          items={GIT_VIEW_TABS.map((tab) => ({ id: tab.label, label: tab.label }))}
+          onSelect={(id) => {
+            const tab = GIT_VIEW_TABS.find((candidate) => candidate.label === id) ?? active;
+            onTab(tab.views[0]!);
+          }}
+        >
+          {GIT_VIEW_TABS.map((tab) => (
+            <Tab active={tab === active} key={tab.label} size="md" tabId={tab.label}>
+              <TabPress
+                aria-pressed={tab === active}
+                title={tab.label}
+                onClick={() => onTab(tab.views[0]!)}
+              >
+                <GitRepoTabIcon label={tab.label} />
+                <TabLabel>{tab.label}</TabLabel>
+                {tab.label === "Changes" && openChanges !== undefined && openChanges > 0 ? (
+                  <Badge tone="info">{openChanges}</Badge>
+                ) : null}
+              </TabPress>
+            </Tab>
+          ))}
+        </TabStrip>
+      </div>
+    </div>
+  );
+}
+
+/** The Code page and its About share the same responsive layout in the flow and the page. */
+export function GitRepoColumns({
+  children,
+  about,
+}: {
+  readonly children: ReactNode;
+  readonly about: ReactNode;
+}) {
+  return (
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 self-start">{about}</div>
     </div>
   );
 }
@@ -215,6 +279,8 @@ export function GitRepoFrame({
   changes,
   openChanges,
   banner,
+  where,
+  children,
   onPick,
   onTab,
 }: {
@@ -228,6 +294,8 @@ export function GitRepoFrame({
   readonly changes: ReadonlyArray<PickerChange>;
   readonly openChanges: number | undefined;
   readonly banner?: ReactNode;
+  readonly where?: string | undefined;
+  readonly children: ReactNode;
   readonly onPick: (rev: string) => void;
   readonly onTab: (view: GitView) => void;
 }) {
@@ -235,13 +303,14 @@ export function GitRepoFrame({
   return (
     <RepositoryUpkeep key={`${appId}:${repo}`} appId={appId} project={project} repo={repo}>
       {({ menu, status, storage }) => (
-        <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-12">
           <GitRepoHeading
             appId={appId}
             project={project}
             repo={repo}
+            where={where}
             actions={
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex max-w-36 flex-wrap items-center justify-end gap-2 sm:max-w-none">
                 {about?.remote ? (
                   <Button
                     render={
@@ -268,31 +337,41 @@ export function GitRepoFrame({
               </div>
             }
           />
-          <GitRepoFacts
-            about={about}
-            storage={<GitStorageFigure view={storage} storage={about?.storage} />}
-            again={
-              home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null
-            }
-          />
-          {status}
-          {banner}
-          <GitRepoTabs
-            view={view}
-            openChanges={openChanges}
-            onTab={onTab}
-            picker={
-              <GitRefPicker
-                appId={appId}
-                repo={repo}
-                label={readingLabel(home, rev)}
-                kind={home.state === "known" ? home.answer.ref.kind : null}
-                changes={changes}
-                mounted={about?.remote != null}
-                onPick={onPick}
-              />
-            }
-          />
+          <div className="flex min-w-0 flex-col gap-5">
+            {status}
+            {banner}
+            <GitRepoTabs
+              view={view}
+              openChanges={openChanges}
+              onTab={onTab}
+              picker={
+                <GitRefPicker
+                  appId={appId}
+                  repo={repo}
+                  label={readingLabel(home, rev)}
+                  kind={home.state === "known" ? home.answer.ref.kind : null}
+                  changes={changes}
+                  mounted={about?.remote != null}
+                  onPick={onPick}
+                />
+              }
+            />
+            {home.state === "known" ? <GitHomeAgain home={home} onHomeAgain={onHomeAgain} /> : null}
+            {view === "home" ? (
+              <GitRepoColumns
+                about={
+                  <GitRepoFacts
+                    about={about}
+                    storage={<GitStorageFigure view={storage} storage={about?.storage} />}
+                  />
+                }
+              >
+                {children}
+              </GitRepoColumns>
+            ) : (
+              children
+            )}
+          </div>
         </div>
       )}
     </RepositoryUpkeep>

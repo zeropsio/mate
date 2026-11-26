@@ -5,21 +5,33 @@ import { appBasePath } from "~/basePath";
 import { useGitBrowse, useGitBrowseReads } from "~/zerops/useGitBrowse";
 import { GitBrowseView, gitView, pageRead, type GitBrowseSearch } from "./gitBrowser/GitBrowseView";
 import { GitRepoFrame, GitRepoHeading } from "./gitBrowser/GitRepoFrame";
-import { Text } from "~/components/ui/text";
+import { EmptyState } from "~/components/ui/empty";
+import { Failure } from "~/components/ui/failure";
+import { LogoTile } from "~/components/ui/logo-tile";
+import { FolderGit2Icon } from "lucide-react";
+import { repositoryWhere } from "./ZeropsGitPage.logic";
 import { Button } from "~/components/ui/button";
 import { Loading } from "~/components/ui/loading";
 import { repositoryChanges, repositoryPage } from "./ZeropsRepositoryBrowser.logic";
 
 export function RepositoryGone({ onBack }: { readonly onBack: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-2">
-      <Text render={<p />} variant="description">
-        This repository is not here: it was deleted or your access was removed.
-      </Text>
-      <Button variant="link" size="sm" onClick={onBack}>
-        Back to Git
-      </Button>
-    </div>
+    <EmptyState
+      action={
+        <Button variant="secondary" onClick={onBack}>
+          Back to Git
+        </Button>
+      }
+      mark={
+        <LogoTile size="xl">
+          <FolderGit2Icon />
+        </LogoTile>
+      }
+      size="page"
+      title="This repository is not here"
+    >
+      It was deleted or your access was removed.
+    </EmptyState>
   );
 }
 
@@ -31,13 +43,9 @@ export function RepositoryPageEnd({
   readonly state: Exclude<ReturnType<typeof repositoryPage>, { readonly kind: "open" }>;
   readonly onBack: () => void;
 }) {
-  if (state.kind === "reading") return <Loading label="The repository" shape="lines" />;
+  if (state.kind === "reading") return <Loading label="The repository" shape="rows" />;
   if (state.kind === "gone") return <RepositoryGone onBack={onBack} />;
-  return (
-    <Text render={<p />} variant="description" role="alert">
-      {state.reason}
-    </Text>
-  );
+  return <Failure size="page" cause={state.reason} role="alert" />;
 }
 
 /**
@@ -145,24 +153,26 @@ export function ZeropsRepositoryBrowser({
         changes={changes}
         openChanges={changesAnswer.kind === "read" ? changesAnswer.open.length : undefined}
         banner={banner}
+        where={repositoryWhere(repository?.facts)}
         onPick={(next) => onNavigate({ rev: next })}
         onTab={(next) => onNavigate({ ...(rev === undefined ? {} : { rev }), view: next })}
-      />
-      <GitBrowseView
-        view={view}
-        appId={appId}
-        repo={repo}
-        project={project}
-        search={query}
-        home={home.view}
-        onHomeAgain={home.again}
-        repository={repository}
-        changesFailure={changesFailure}
-        onReadChanges={onReadChanges}
-        onOpenChange={onOpenChange}
-        navigate={onNavigate}
-        hrefOf={hrefOf}
-      />
+      >
+        <GitBrowseView
+          view={view}
+          appId={appId}
+          repo={repo}
+          project={project}
+          search={query}
+          home={home.view}
+          onHomeAgain={home.again}
+          repository={repository}
+          changesFailure={changesFailure}
+          onReadChanges={onReadChanges}
+          onOpenChange={onOpenChange}
+          navigate={onNavigate}
+          hrefOf={hrefOf}
+        />
+      </GitRepoFrame>
     </section>
   );
 }

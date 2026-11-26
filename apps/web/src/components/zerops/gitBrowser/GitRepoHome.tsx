@@ -4,6 +4,7 @@
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Failure } from "~/components/ui/failure";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import type { GitRepoPageProps } from "./GitBrowseView";
 import { GitAtCommit, GitNotRead } from "./GitAtCommit";
@@ -41,14 +42,16 @@ function HomeAt({
         <Card variant="flat">
           <div className="flex min-w-0 flex-col gap-3 p-4">
             {top.state === "known" && top.failed ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-body text-status-failed" role="alert">
-                  HQ could not read this repository again. Showing the last read source.
-                </p>
-                <Button variant="ghost" size="sm" disabled={top.busy} onClick={again}>
-                  Read again
-                </Button>
-              </div>
+              <Failure
+                size="line"
+                role="alert"
+                cause="HQ could not read this repository again. Showing the last read source."
+                action={
+                  <Button variant="ghost" size="sm" disabled={top.busy} onClick={again}>
+                    Read again
+                  </Button>
+                }
+              />
             ) : null}
             {top.state === "known" ? (
               <GitDirectoryList
