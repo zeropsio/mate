@@ -24,7 +24,7 @@ import {
 } from "./deletion.logic.ts";
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | if (place === "git") return { to: "/git" as const, search: { appId } }; → if (place === "gone") return { to: "/git" as const, search: { appId } };
-it("MN+1: a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.", () => {
+it("MN111: a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.", () => {
   expect(landingAfterProjectDelete("git", "bakery")).toEqual({
     to: "/git",
     search: { appId: "bakery" },

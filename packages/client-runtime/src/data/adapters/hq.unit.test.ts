@@ -28,9 +28,9 @@ const opened = (orgId: string) =>
     return { store, fixture, link, fiber };
   });
 
-// witness: packages/client-runtime/src/data/adapters/hq.ts | if (!fresh.some(({ wire }) => wire.kind === "navigation")) fresh.push(nav); → if (fresh.some(({ wire }) => wire.kind === "navigation")) fresh.push(nav);
+// witness: packages/client-runtime/src/data/adapters/hq.ts | !answering.has(hqScopeKey(nav.wire)) && → true &&
 it.effect(
-  "AD+1: A navigation read asked after a write waits for HQ's new snapshot to be committed, even when an earlier subscription is still answering; breaks: a completed deletion is mistaken for the state before it started",
+  "AD92: A navigation read asked after a write waits for HQ's new snapshot to be committed, even when an earlier subscription or retry is still answering; breaks: a completed deletion is mistaken for the state before it started",
   () =>
     Effect.gen(function* () {
       const { store, fixture, link, fiber } = yield* opened("v9");
@@ -69,6 +69,28 @@ it.effect(
       yield* Fiber.join(read);
       expect(answered).toBe(true);
       expect(streamOf(store.state(), hqAppsScope("v9")).phase).toBe("live");
+
+      // A retry can be answering while navigation remains live. Its older ready is not this read.
+      yield* fixture.send(recorded("scope-changed", "mate-hq/navigation.scope-changed"));
+      yield* settle;
+      answered = false;
+      const afterRetry = yield* Effect.forkChild(
+        link.readNavigation().pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              answered = true;
+            }),
+          ),
+        ),
+      );
+      yield* settle;
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      expect(answered).toBe(false);
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* Fiber.join(afterRetry);
+      expect(answered).toBe(true);
 
       link.stop();
       yield* Fiber.interrupt(fiber);

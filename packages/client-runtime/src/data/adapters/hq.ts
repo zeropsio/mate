@@ -761,10 +761,11 @@ export function hqNavigationLink(options: {
             fresh.push(registered);
         }
         // A snapshot requested after a write must begin after the ask. Finish any registration
-        // already in flight first, then ask HQ for the navigation whole on this same socket.
+        // or retry already in flight first, then ask HQ for the navigation whole on this socket.
         if (
           queuedNavigation.size > 0 &&
           readingNavigation.size === 0 &&
+          !answering.has(hqScopeKey(nav.wire)) &&
           streamOf(store.state(), nav.families[0]!.scope).phase === "live"
         ) {
           for (const waiting of queuedNavigation) readingNavigation.add(waiting);
