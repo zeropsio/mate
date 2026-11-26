@@ -167,6 +167,7 @@ export interface ZcpStatus {
          */
         readonly callStartedAt: string;
         readonly endedAt: string;
+        readonly error: string;
         readonly services: ReadonlyArray<StandUpService>;
         /** Its process; `undefined` from a zcp that names none. */
         readonly process: ZcpProcess | undefined;
@@ -292,6 +293,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
             startedAt: text(standup["startedAt"]),
             callStartedAt: text(standup["callStartedAt"]) || text(standup["startedAt"]),
             endedAt: text(standup["endedAt"]),
+            error: text(standup["error"]),
             services: (Array.isArray(standup["services"]) ? standup["services"] : []).flatMap(
               (service) => {
                 const read = readService(service);
