@@ -16,9 +16,10 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  * is one row per service by its real hostname (`mateParts`), as a place's addresses are — each
  * part's dev, then its stage; a pool's dev is each workspace zcp holds on it, by its alias, read
  * from a conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
- * deployed is its head alone. Each address is listed once, opens in a
- * new tab, and copies from its row or its link (`c`, ⌘C, or the button an address row's hover
- * shows).
+ * deployed is its head alone. Each address is listed once and copies from its row or its link
+ * (`c`, ⌘C, or the button an address row's hover shows). An address opens in a Mate's side panel
+ * (`openInMatePanel`): a Mate's in its own, a place's in one of its application's Mates' — and, from
+ * the arrow its row's hover shows or a new-tab click, in a new tab.
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
@@ -28,13 +29,16 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   CopyIcon,
+  ExternalLinkIcon,
   GlobeIcon,
   LayoutDashboardIcon,
+  PanelRightIcon,
   PlusIcon,
   SearchIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import {
+  use,
   useEffect,
   useId,
   useLayoutEffect,
@@ -49,6 +53,7 @@ import {
 
 import { isMacPlatform } from "~/lib/utils";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { OpenInMatePanelContext } from "~/zerops/openInMatePanel";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
@@ -69,6 +74,7 @@ import { Row } from "../ui/row";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
+import { mateAddressOpenTarget } from "./MateAddresses.logic";
 import { MateFace } from "./primitives";
 import { useHeadingLine } from "./SidebarHeadingLine";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
@@ -402,6 +408,7 @@ export function ProjectSites(
           }}
           onClose={close}
           onQuery={setQuery}
+          panelMates={mates}
           production={production}
           projectName={projectName}
           query={query}
@@ -430,6 +437,7 @@ export function SitesPanel({
   onAskToFix,
   onOpenStop,
   onClose,
+  panelMates,
 }: {
   readonly production: ProjectSitesInput["production"];
   readonly stages: ProjectSitesInput["stages"];
@@ -447,6 +455,11 @@ export function SitesPanel({
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
   /** Closes the popover, as a door to elsewhere opens. */
   readonly onClose: () => void;
+  /**
+   * Every Mate of the project in the menu's order, yours first, whether its section is listed here
+   * or not: a place's address opens in one of their side panels.
+   */
+  readonly panelMates: ReadonlyArray<SitesMate>;
 }) {
   const [openedAt] = useState(Date.now);
   // A place's addresses sheet, opened from its head (or to add a domain) as the popover closes.
@@ -486,6 +499,20 @@ export function SitesPanel({
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
   const total = sitesLinkCount(sections);
   const faces = new Map(mates.map((mate) => [mate.candidate.project.id, mate]));
+  // An address opens in the side panel of a Mate that knows it, as the popover closes: a Mate's in
+  // its own, a place's in one of its application's Mates'. A project with no Mate has no panel.
+  const openInPanel = use(OpenInMatePanelContext);
+  const placeMates = panelMates.map((mate) => mate.candidate.project.id);
+  const previewOf = (
+    panels: ReadonlyArray<string>,
+    named: (service: string) => string,
+  ): Preview | undefined =>
+    openInPanel === null || panels.length === 0
+      ? undefined
+      : (service, url) => {
+          onClose();
+          openInPanel(panels, named(service), url);
+        };
 
   const scroll = useRef<HTMLDivElement>(null);
   const [flash, setFlash] = useState<string | undefined>(undefined);
@@ -643,11 +670,17 @@ export function SitesPanel({
         {sections.map((section) => {
           const shown = kept.get(section.key);
           const links = filtering ? shown?.links : section.links;
+          const preview =
+            section.kind === "mate"
+              ? previewOf([section.projectId], (service) => service)
+              : // Its panel tab names the place, beside the Mate's own service of that name.
+                previewOf(placeMates, (service) => `${service} · ${section.title}`);
           const body = (
             <SitesLinks
               copied={copied}
               links={links}
               onCopy={copy}
+              onPreview={preview}
               sayNone={section.kind === "place" && section.stop !== undefined}
             />
           );
@@ -692,6 +725,7 @@ export function SitesPanel({
                   <SitesServices
                     copied={copied}
                     onCopy={copy}
+                    onPreview={preview}
                     services={
                       filtering ? (shown?.kind === "mate" ? shown.services : []) : section.services
                     }
@@ -1121,27 +1155,47 @@ function copyOnKey(event: KeyboardEvent<HTMLElement>, onCopy: () => void) {
   onCopy();
 }
 
+/** Opens an address, by its service, in a Mate's side panel. */
+type Preview = (service: string, url: string) => void;
+
 /**
- * An address's row: ↗ in the place mark's column, its service and host, opening in a new tab and
- * copying on `c` or ⌘C; its end keeps the room its copy button shows in.
+ * An address's row: its mark in the place mark's column, its service and host, copying on `c` or
+ * ⌘C; its end keeps the room its buttons show in. With `onPreview` it opens in the side panel (the
+ * panel's mark) and a new-tab click still opens a new tab; without, it opens in a new tab (↗).
  */
 function SitesLinkRow({
   href,
   title,
   onCopyKey,
+  onPreview,
   ...trigger
 }: Omit<ComponentProps<typeof Row>, "title"> & {
   readonly href: string;
   readonly title: ReactNode;
   readonly onCopyKey: () => void;
+  readonly onPreview?: (() => void) | undefined;
 }) {
   return (
     <Row
       {...trigger}
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-link"
-      lead={<ArrowUpRightIcon aria-hidden="true" />}
-      meta={<span aria-hidden="true" className="block w-6" />}
+      lead={
+        onPreview === undefined ? (
+          <ArrowUpRightIcon aria-hidden="true" />
+        ) : (
+          <PanelRightIcon aria-hidden="true" />
+        )
+      }
+      meta={
+        <span aria-hidden="true" className={onPreview === undefined ? "block w-6" : "block w-12"} />
+      }
+      onClick={(event) => {
+        trigger.onClick?.(event);
+        if (onPreview === undefined || mateAddressOpenTarget(event) !== "panel") return;
+        event.preventDefault();
+        onPreview();
+      }}
       onKeyDown={(event) => {
         copyOnKey(event, onCopyKey);
       }}
@@ -1153,19 +1207,38 @@ function SitesLinkRow({
   );
 }
 
-/** A row's copy button, which its hover or focus shows and which says so once copied. */
-function CopyButton({
+/**
+ * A row's buttons, at its end in room kept for them: its hover or focus shows them, a finger
+ * always sees them. A row that opens in the side panel offers a new tab first; then its copy
+ * button, which says so once copied.
+ */
+function RowButtons({
   host,
+  href,
+  inPanel,
   done,
   onCopy,
 }: {
   readonly host: string;
+  readonly href: string;
+  readonly inPanel: boolean;
   readonly done: boolean;
   readonly onCopy: () => void;
 }) {
   return (
-    // At the row's end, in room kept for it: its hover or focus shows it, a finger always sees it.
     <span className="absolute top-1/2 right-2 inline-flex -translate-y-1/2 opacity-0 transition-opacity duration-150 ease-out-strong group-focus-within/link:opacity-100 group-hover/link:opacity-100 group-data-copied/link:opacity-100 pointer-coarse:opacity-100">
+      {inPanel && !done ? (
+        <Button
+          aria-label={`Open ${host} in a new tab`}
+          data-zerops-surface="sidebar-project-sites-new-tab"
+          render={<a href={href} rel="noreferrer" target="_blank" />}
+          size="icon-xs"
+          tabIndex={-1}
+          variant="ghost-muted"
+        >
+          <ExternalLinkIcon aria-hidden="true" />
+        </Button>
+      ) : null}
       <Button
         aria-label={`Copy ${host}`}
         data-zerops-surface="sidebar-project-sites-copy"
@@ -1188,18 +1261,21 @@ function CopyButton({
 }
 
 /**
- * A Mate's services, one row each as a place's addresses are: its hostname, its host, ↗ — opening
- * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with
- * nothing to open is its hostname, muted, with why in its host's place: never only on a hover.
+ * A Mate's services, one row each as a place's addresses are: its hostname, its host — opening in
+ * the Mate's side panel where `onPreview` is given, else in a new tab — its other ports' hosts in
+ * its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname, muted, with
+ * why in its host's place: never only on a hover.
  */
 function SitesServices({
   services,
   copied,
   onCopy,
+  onPreview,
 }: {
   readonly services: ReadonlyArray<SitesService>;
   readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
+  readonly onPreview: Preview | undefined;
 }) {
   return services.map((row) => {
     const { url } = row;
@@ -1242,6 +1318,12 @@ function SitesServices({
       onCopyKey: () => {
         onCopy({ key: row.key, url });
       },
+      onPreview:
+        onPreview === undefined
+          ? undefined
+          : () => {
+              onPreview(row.service, url);
+            },
       title: (
         <>
           <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
@@ -1270,9 +1352,11 @@ function SitesServices({
             </TooltipPopup>
           </Tooltip>
         )}
-        <CopyButton
+        <RowButtons
           done={done}
           host={host}
+          href={url}
+          inPanel={onPreview !== undefined}
           onCopy={() => {
             onCopy({ key: row.key, url });
           }}
@@ -1282,17 +1366,22 @@ function SitesServices({
   });
 }
 
-/** A section's links: each opens in a new tab, and copies from its row. */
+/**
+ * A section's links: each opens in a Mate's side panel where `onPreview` is given, else in a new
+ * tab, and copies from its row.
+ */
 function SitesLinks({
   links,
   copied,
   onCopy,
+  onPreview,
   sayNone,
 }: {
   /** `undefined` while unread. */
   readonly links: ReadonlyArray<SitesLink> | undefined;
   readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
+  readonly onPreview: Preview | undefined;
   /** A read place with no address says so; a Mate with none has no section. */
   readonly sayNone: boolean;
 }) {
@@ -1320,6 +1409,13 @@ function SitesLinks({
           onCopyKey={() => {
             onCopy(link);
           }}
+          onPreview={
+            onPreview === undefined
+              ? undefined
+              : () => {
+                  onPreview(link.service, link.url);
+                }
+          }
           title={
             <>
               <span className="me-2 inline-block max-w-[45%] truncate align-top font-medium text-foreground">
@@ -1334,9 +1430,11 @@ function SitesLinks({
             </>
           }
         />
-        <CopyButton
+        <RowButtons
           done={done}
           host={link.host}
+          href={link.url}
+          inPanel={onPreview !== undefined}
           onCopy={() => {
             onCopy(link);
           }}
@@ -1592,6 +1690,7 @@ function SitesPopover({
           }}
           onClose={close}
           onQuery={setQuery}
+          panelMates={sites.mates}
           production={sites.production}
           projectName={sites.projectName}
           query={query}

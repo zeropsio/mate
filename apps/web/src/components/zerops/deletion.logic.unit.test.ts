@@ -1074,9 +1074,6 @@ it("MN100: A project's deletion page lists every part it holds, going or staying
     fate: "goes",
     line: "Goes from Zerops, with its services and data",
   });
-  expect(selected.rows.find((row) => row.id === "prod")?.warning).toContain(
-    "takes it offline at once",
-  );
   const kept = review(
     bakery({ placements: [], environments: [] }),
     undefined,
@@ -1103,6 +1100,18 @@ it("MN100: A project's deletion page lists every part it holds, going or staying
   const specialReview = review(emptyProject, undefined, specialChoice, specialNames);
   expect(specialReview.rows.find((row) => row.id === "constructor")?.fate).toBe("stays");
   expect(specialReview.start).toMatchObject({ keepRepos: ["constructor"] });
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | takes it offline at once and can't be undone. → takes it offline at once. Its services have backups.
+it("MN108: the live warning says only that it goes offline at once for good; breaks: the warning promises backups for services without them", () => {
+  const selected = review(
+    bakery({ placements: [], environments: [production("prod")] }),
+    undefined,
+    choice({ prod: "goes" }),
+  );
+  expect(selected.rows.find((row) => row.id === "prod")?.warning).toBe(
+    "Deleting Production prod takes it offline at once and can't be undone.",
+  );
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const hiddenParts: DeletionProject["hidden"] = project.hidden; → const hiddenParts: DeletionProject["hidden"] = [];

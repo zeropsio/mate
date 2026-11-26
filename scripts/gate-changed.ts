@@ -1717,7 +1717,7 @@ const gateStageTable = {
   ]),
   "pr-assets": scopedStage("PR assets", (): GateStage[] => [
     nodeCheck("PR assets", "-e", [
-      `const cp = require("node:child_process"); const files = cp.execFileSync("git", ["ls-files", ".github/pr-assets"], {encoding:"utf8"}).trim(); if (files) { console.error("PR evidence must be uploaded to GitHub, not committed:\n" + files); process.exit(1); }`,
+      `const cp = require("node:child_process"); const files = cp.execFileSync("git", ["ls-files", ".github/pr-assets"], {encoding:"utf8"}).trim(); if (files) { console.error("PR evidence must be uploaded to GitHub, not committed:\\n" + files); process.exit(1); }`,
     ]),
   ]),
   "rust-format": scopedStage("resource monitor formatting", (): GateStage[] => [
