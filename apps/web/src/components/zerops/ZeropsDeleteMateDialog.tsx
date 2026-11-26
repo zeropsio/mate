@@ -11,7 +11,6 @@
  * person may delete whole never opens it: its Delete offers the choice of the Mate alone or the
  * whole project (`ZeropsDeleteApplicationDialog`).
  */
-import { Text } from "~/components/ui/text";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";

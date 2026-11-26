@@ -83,6 +83,7 @@ import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers } from "~/zerops/useHqOffers";
 import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { toastManager } from "~/lib/toasts";
 import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
 import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
@@ -93,6 +94,7 @@ import {
   deletionOffer,
   deletionProjectOf,
   deletionStart,
+  keptWhere,
   sameDeletionStart,
   type DeletionProject,
 } from "../deletion.logic";
@@ -782,6 +784,22 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [groupTree.groups, linkTarget, openMate, router, visibilities],
   );
 
+  const tellKept = useCallback(
+    (project: DeletionProject, where: ReturnType<typeof keptWhere>) => {
+      if (where.place !== "git") return;
+      toastManager.add({
+        type: "info",
+        title: project.name,
+        description: where.line,
+        actionProps: {
+          children: "Open in Git",
+          onClick: () => void router.navigate({ to: "/git", search: { appId: project.appId } }),
+        },
+      });
+    },
+    [router],
+  );
+
   const openProjectDeletion = useCallback(
     (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
       useDeleteApplicationDialog.getState().open({
@@ -792,13 +810,14 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           name: projectNameInApp(candidate.project),
           services: deleteMateServiceCount(candidate),
           owner: colleagueOf(candidate),
-          leave: () => {
+          leave: (where) => {
             leaveDeleted(candidate);
+            if (where !== undefined) tellKept(project, where);
           },
         },
       });
     },
-    [colleagueOf, leaveDeleted],
+    [colleagueOf, leaveDeleted, tellKept],
   );
 
   /**
@@ -856,7 +875,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             if (!isCurrent()) return;
             setPress(UNPRESSED);
             replyToDialog(null);
-            if (start.kind === "start-mate-deletion") leaveDeleted(candidate);
+            if (start.kind === "start-mate-deletion") {
+              leaveDeleted(candidate);
+              if (start.keptGit === "keep" && project !== undefined)
+                tellKept(project, keptWhere(project));
+            }
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -871,6 +894,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       captureDialogReply,
       deletionOfferFor,
       openProjectDeletion,
+      tellKept,
     ],
   );
 

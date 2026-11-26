@@ -794,15 +794,6 @@ export function deletionPageWords(name: string) {
   };
 }
 
-/** A part's state, said beside it while HQ deletes the project. */
-export const DELETION_PART_WORDS: Readonly<Record<DeletionPart["state"], string>> = {
-  gone: "Gone",
-  deleting: "Deleting",
-  pending: "Waiting its turn",
-  stopped: "Stopped here",
-  here: "Still here",
-};
-
 /** One thing in Zerops the project's deletion page lists under its first step. */
 export interface DeletionGoesRow {
   readonly kind: "mate" | "stage" | "production";

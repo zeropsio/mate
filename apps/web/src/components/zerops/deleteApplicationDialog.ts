@@ -17,7 +17,9 @@ export interface DeleteApplicationMate {
   /** Whose Mate it is, where that is a colleague, as its own dialog says it. */
   readonly owner: string | undefined;
   /** HQ took its deletion: a viewer in its conversation leaves it. */
-  readonly leave: () => void;
+  readonly leave: (
+    where: { readonly place: "menu" | "git"; readonly line: string } | undefined,
+  ) => void;
 }
 
 interface DeleteApplicationRequest {

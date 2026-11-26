@@ -52,7 +52,6 @@ import { Text } from "~/components/ui/text";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { MateFace } from "./primitives";
 import {
-  DELETION_PART_WORDS,
   applicationHoldings,
   deletionPageState,
   deletionProjectOf,
@@ -65,6 +64,7 @@ import {
   deletionGoesRows,
   deletionPageWords,
   deletionStandingWords,
+  partStateWords,
   productionDeletionWords,
   projectDeletionReady,
   projectDeletionWords,
@@ -279,7 +279,7 @@ export function ZeropsDeletionPage({
                 <Row
                   key={`${part.part}:${part.label}`}
                   lead={<StepNumber n={index + 1} state={PART_STEP[part.state]} />}
-                  meta={DELETION_PART_WORDS[part.state]}
+                  meta={partStateWords(part)}
                   size="sm"
                   title={part.label}
                 />

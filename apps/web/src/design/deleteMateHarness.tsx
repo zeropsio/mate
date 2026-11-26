@@ -36,7 +36,6 @@ import {
   operationFailureDetails,
 } from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -136,7 +135,6 @@ const PROJECT_STATES = [
 ];
 const LAST = PROJECT_STATES.includes(STATE);
 const ACME = "Acme Docs";
-const ACME_HOLDINGS = { repos: ["docs", RECIPE_REPO], openChanges: 2 };
 
 /** HQ's deletion of Acme Docs as its navigation shows it, in each state the dialog says. */
 const ACME_DELETIONS: Readonly<Record<string, HqOperation>> = {
@@ -555,14 +553,13 @@ function Harness() {
           <DialogPopup className="max-w-md">
             <ZeropsDeletionForm
               error={null}
-              holdings={ACME_HOLDINGS}
               mate={{
                 name: "Quinn",
                 services: deleteMateServiceCount(QUINN),
                 owner: undefined,
               }}
               offer={ACME_OFFER}
-              onAgain={() => {}}
+              onWhole={() => setOpen(false)}
               onCancel={() => setOpen(false)}
               onConfirm={() => {
                 setPressed((count) => count + 1);
@@ -570,11 +567,6 @@ function Harness() {
               }}
               pending={pending}
               project={ACME_PROJECT}
-              waiting={
-                ACME_OFFER.kind === "standing" && ACME_OFFER.deletion.kind === "waiting"
-                  ? { person: THEO.name, press: ACME_OFFER.deletion.press }
-                  : undefined
-              }
             />
           </DialogPopup>
         </Dialog>
