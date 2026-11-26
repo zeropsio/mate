@@ -1,6 +1,11 @@
 import { expect, it } from "vite-plus/test";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import { repositoryUpkeep, type RepoRowActions } from "./github/repoUpkeep.logic";
+import {
+  repositoryUpkeep,
+  repositoryUpkeepGroups,
+  type RepoRowActions,
+  type RepositoryUpkeepEntry,
+} from "./github/repoUpkeep.logic";
 
 const remote = {
   url: "https://github.com/acme/code.git",
@@ -135,4 +140,20 @@ it("MN82: A repository's upkeep menu offers each verb only to who may change rem
     },
   ];
   for (const { input, entries } of rows) expect(repositoryUpkeep(input)).toEqual(entries);
+});
+
+// witness: apps/web/src/components/zerops/github/repoUpkeep.logic.ts | .filter((group) => group.length > 0) → .map((group) => group)
+it("MN+1: A repository's menu groups what it offers as the way out to its host, the remote's verbs, the storage limit and Delete, in that order, and holds no group nothing is offered in; breaks: a separator stands at the menu's start or end, or Delete stands among the remote's verbs", () => {
+  const rows: Array<{ entries: RepositoryUpkeepEntry[]; groups: RepositoryUpkeepEntry[][] }> = [
+    {
+      entries: ["open", "change", "token", "disconnect", "limit", "delete"],
+      groups: [["open"], ["change", "token", "disconnect"], ["limit"], ["delete"]],
+    },
+    { entries: ["connect", "delete"], groups: [["connect"], ["delete"]] },
+    { entries: ["open"], groups: [["open"]] },
+    { entries: ["limit"], groups: [["limit"]] },
+    { entries: [], groups: [] },
+    { entries: ["change", "unfollow", "limit"], groups: [["change", "unfollow"], ["limit"]] },
+  ];
+  for (const { entries, groups } of rows) expect(repositoryUpkeepGroups(entries)).toEqual(groups);
 });

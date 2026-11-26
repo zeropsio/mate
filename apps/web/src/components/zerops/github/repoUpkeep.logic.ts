@@ -59,3 +59,18 @@ export function repositoryUpkeep({
   if (canDelete?.allow === true && actions.deleteRepository !== undefined) entries.push("delete");
   return entries;
 }
+
+/** Groups the offered verbs for the repository's menu, leaving out empty groups. */
+export function repositoryUpkeepGroups(
+  entries: readonly RepositoryUpkeepEntry[],
+): RepositoryUpkeepEntry[][] {
+  const groups: RepositoryUpkeepEntry[][] = [
+    ["open"],
+    ["connect", "change", "token", "disconnect", "unfollow"],
+    ["limit"],
+    ["delete"],
+  ];
+  return groups
+    .map((group) => group.filter((entry) => entries.includes(entry)))
+    .filter((group) => group.length > 0);
+}
