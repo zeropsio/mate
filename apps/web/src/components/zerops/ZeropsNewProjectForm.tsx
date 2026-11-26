@@ -25,7 +25,7 @@ import {
   InfoIcon,
   MapPinIcon,
   PencilIcon,
-  ShuffleIcon,
+  DicesIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
@@ -707,7 +707,7 @@ export function NewMateTools({
         size="sm"
         variant="secondary"
       >
-        <ShuffleIcon aria-hidden />
+        <DicesIcon aria-hidden />
         Shuffle
       </Button>
       <Button
