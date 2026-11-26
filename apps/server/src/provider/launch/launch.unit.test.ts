@@ -1,16 +1,23 @@
 import * as NodeOS from "node:os";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import type { Options as ClaudeQueryOptions } from "@anthropic-ai/claude-agent-sdk";
 import { assert, expect, it } from "@effect/vitest";
-import { CodexSettings } from "@t3tools/contracts";
+import { ClaudeSettings, CodexSettings, ThreadId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
+import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
+import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts";
+import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import {
   makeClaudeCapabilitiesCacheKey,
   makeClaudeContinuationGroupKey,
@@ -27,6 +34,8 @@ import {
 } from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import { makeClaudeAdapter } from "../Layers/ClaudeAdapter.ts";
+import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
@@ -488,3 +497,96 @@ it("PL10: OpenCode's status, title and skills server starts with zcp's MCP serve
     },
   });
 });
+
+// witness: apps/server/src/provider/RuntimeInstructions.ts | Put independent reads and searches in one call or in parallel calls. → Read and search one at a time.
+it("PL11: A provider's runtime instructions ask it to put independent reads and searches in one call or in parallel calls", () => {
+  expect(buildRuntimeInstructions({ harness: "test harness" })).toContain(
+    "Put independent reads and searches in one call or in parallel calls.",
+  );
+  expect(buildRuntimeInstructions({ harness: "test harness", places: false })).toContain(
+    "Put independent reads and searches in one call or in parallel calls.",
+  );
+});
+
+// witness: apps/server/src/provider/Layers/ClaudeAdapter.ts | alwaysLoad: true, → alwaysLoad: false,
+it.effect(
+  "PL12: Claude starts with zcp's MCP tools loaded up front and keeps a crewmate's own tools alongside them",
+  () =>
+    Effect.gen(function* () {
+      const queryOptions: ClaudeQueryOptions[] = [];
+      const claudeSettings = yield* Schema.decodeEffect(ClaudeSettings)({});
+      const adapter = yield* makeClaudeAdapter(claudeSettings, {
+        environment: {},
+        createQuery: ({ options }) => {
+          queryOptions.push(options);
+          return {
+            usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+              session: {
+                total_cost_usd: 0,
+                total_api_duration_ms: 0,
+                total_duration_ms: 0,
+                total_lines_added: 0,
+                total_lines_removed: 0,
+                model_usage: {},
+              },
+              subscription_type: null,
+              rate_limits_available: false,
+              rate_limits: null,
+              behaviors: null,
+            }),
+            setModel: async () => {},
+            setPermissionMode: async () => {},
+            setMaxThinkingTokens: async () => {},
+            applyFlagSettings: async () => {},
+            close: () => {},
+            [Symbol.asyncIterator]: () => ({
+              next: async () => ({ done: true as const, value: undefined }),
+            }),
+          };
+        },
+      });
+      const ordinary = ThreadId.make("ordinary-thread");
+      const crew = ThreadId.make("crew-thread");
+      yield* (yield* ThreadToolPolicyRegistry).install({
+        profileFor: ({ threadId }) =>
+          Effect.succeed(
+            threadId === crew
+              ? {
+                  sessionContext: "crew",
+                  contextWindow: 200_000,
+                  decideTool: () => Effect.succeed({ kind: "allow" as const }),
+                  tools: [
+                    {
+                      name: "crew_report",
+                      description: "Report the result",
+                      inputSchema: { type: "object", properties: {} },
+                      run: () => Effect.succeed({ text: "reported", isError: false }),
+                    },
+                  ],
+                }
+              : undefined,
+          ),
+      });
+      yield* adapter.startSession({ threadId: ordinary, runtimeMode: "full-access" });
+      yield* adapter.startSession({ threadId: crew, runtimeMode: "full-access" });
+
+      for (const options of [queryOptions[0], queryOptions[1]]) {
+        expect(options?.mcpServers?.zerops).toEqual({
+          command: "zcp",
+          args: ["serve"],
+          alwaysLoad: true,
+        });
+      }
+      expect(queryOptions[1]?.mcpServers?.crew).toMatchObject({ type: "sdk", name: "crew" });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          ServerConfig.layerTest(NodeOS.tmpdir(), NodeOS.tmpdir()),
+          ServerSettingsService.layerTest(),
+          ThreadToolPolicyRegistry.layer,
+          ClaudeThreadExtensionRegistry.layer,
+        ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+      ),
+    ),
+);

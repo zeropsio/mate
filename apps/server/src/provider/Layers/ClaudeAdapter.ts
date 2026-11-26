@@ -491,7 +491,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };
-      const queryOptions = threadSetup
+      const profiledQueryOptions = threadSetup
         ? applyClaudeQueryOptionsPatch(
             baseQueryOptions,
             claudeQueryOptionsPatch(
@@ -502,6 +502,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ),
           )
         : baseQueryOptions;
+      const queryOptions: ClaudeQueryOptions = {
+        ...profiledQueryOptions,
+        mcpServers: {
+          ...profiledQueryOptions.mcpServers,
+          zerops: {
+            command: "zcp",
+            args: ["serve"],
+            alwaysLoad: true,
+          },
+        },
+      };
       // What the session holds: a crewmate's profile appends its crew context.
       const appended = presetAppend(queryOptions.systemPrompt) ?? startInstructions;
       const freshMark = instructionsMark(appended);
