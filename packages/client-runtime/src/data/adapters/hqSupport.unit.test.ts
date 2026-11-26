@@ -3,7 +3,7 @@ import { HqError } from "../../zerops/hq/client.ts";
 import { supportEntry, supportEntryOf } from "./hqSupport.ts";
 
 // witness: packages/client-runtime/src/data/adapters/hqSupport.ts | return { kind: "denied" }; → return { kind: "unavailable" };
-it('AD+1: The support page goes to HQ\'s console only with a code HQ issued, and says in one sentence each why it does not: no support access, signed out, or HQ not answering; breaks: a person who is not listed is sent to a sign-in that fails with no words, or an HQ outage reads as "no access"', async () => {
+it('AD87: The support page goes to HQ\'s console only with a code HQ issued, and says in one sentence each why it does not: no support access, signed out, or HQ not answering; breaks: a person who is not listed is sent to a sign-in that fails with no words, or an HQ outage reads as "no access"', async () => {
   const rows = [
     {
       outcome: { ok: true, exchange: "one-use-code" },

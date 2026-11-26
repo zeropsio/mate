@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ZeropsRouteImport } from './routes/zerops'
 import { Route as UsageRouteImport } from './routes/usage'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as KitRouteImport } from './routes/kit'
@@ -54,6 +55,11 @@ const ZeropsRoute = ZeropsRouteImport.update({
 const UsageRoute = UsageRouteImport.update({
   id: '/usage',
   path: '/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -238,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
@@ -274,6 +281,7 @@ export interface FileRoutesByTo {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
@@ -313,6 +321,7 @@ export interface FileRoutesById {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/_chat/chief': typeof ChatChiefRoute
@@ -353,6 +362,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/chief'
@@ -389,6 +399,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/chief'
@@ -427,6 +438,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/_chat/chief'
@@ -466,6 +478,7 @@ export interface RootRouteChildren {
   KitRoute: typeof KitRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  SupportRoute: typeof SupportRoute
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
@@ -487,6 +500,13 @@ declare module '@tanstack/react-router' {
       path: '/usage'
       fullPath: '/usage'
       preLoaderRoute: typeof UsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -806,6 +826,7 @@ const rootRouteChildren: RootRouteChildren = {
   KitRoute: KitRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  SupportRoute: SupportRoute,
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,

@@ -30,7 +30,7 @@ const hqAnswering = (
   });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | decoded(HqSupportExchange, "a support exchange") → json<{ readonly exchange: string }>
-it("AD+2: The exchange is asked for with the session's bearer and no body, and its answer's code is taken as it is; breaks: the request carries something HQ does not read, or a malformed answer is posted to HQ", async () => {
+it("AD88: The exchange is asked for with the session's bearer and no body, and its answer's code is taken as it is; breaks: the request carries something HQ does not read, or a malformed answer is posted to HQ", async () => {
   const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
   const observe = (url: string, init: RequestInit | undefined) => requests.push({ url, init });
   const api = hqAnswering(
