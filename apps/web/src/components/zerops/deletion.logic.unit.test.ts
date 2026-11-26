@@ -1265,3 +1265,204 @@ it("MN102: Delete again starts from what the stopped deletion named: each part i
   expect(special.repoFates.constructor).toBe("stays");
   expect(special.repoFates.toString).toBe("goes");
 });
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | const switchable = mate !== undefined && parts.length === 0 && repos.length === 0; → const switchable = false;
+it("MN103: The setup files of a project whose only code they are, with nothing of it staying in Zerops, can be set to stay, and the last Mate's Delete is then the Mate's own deletion keeping the project under Git, Kept code; breaks: a person cannot delete only the last Mate of a project without a code repository.", () => {
+  const project = bakery({
+    placements: [{ projectId: "Z_RYE", kind: "mate", name: "Rye", deletable: true }],
+    environments: [],
+  });
+  const setupOnly = { repos: [{ name: "group", canKeep: false }], openChanges: 0 };
+  const withRepo = {
+    repos: [
+      { name: "group", canKeep: false },
+      { name: "docs", canKeep: true },
+    ],
+    openChanges: 0,
+  };
+  const withStage = {
+    ...project,
+    placements: [
+      ...project.placements,
+      { projectId: "s", kind: "stage", name: "s", deletable: true },
+    ],
+    environments: [stage("s")],
+  };
+  const noCodeStep = deletionChoiceAgain({ ...project, steps: [] }, undefined);
+  const cases = [
+    {
+      label: "setup only defaults to goes",
+      project,
+      held: setupOnly,
+      selected: choice(),
+      expected: ["goes", true],
+    },
+    {
+      label: "setup only can stay",
+      project,
+      held: setupOnly,
+      selected: codeChoice({ group: "stays" }),
+      expected: ["stays", true],
+    },
+    {
+      label: "a repository controls setup even after a choice to stay",
+      project,
+      held: withRepo,
+      selected: codeChoice({ group: "stays" }),
+      expected: ["goes", false],
+    },
+    {
+      label: "a staying repository keeps setup",
+      project,
+      held: withRepo,
+      selected: codeChoice({ docs: "stays", group: "goes" }),
+      expected: ["stays", false],
+    },
+    {
+      label: "a staying Stage keeps setup",
+      project: withStage,
+      held: setupOnly,
+      selected: choice({ s: "stays" }, {}, "bakery", { group: "goes" }),
+      expected: ["stays", false],
+    },
+    {
+      label: "a staying plain project keeps setup",
+      project: {
+        ...project,
+        placements: [
+          ...project.placements,
+          { projectId: "plain", kind: "plain" as const, name: "plain", deletable: true },
+        ],
+      },
+      held: setupOnly,
+      selected: codeChoice({ group: "goes" }),
+      expected: ["stays", false],
+    },
+    {
+      label: "a staying Production keeps setup",
+      project: { ...project, environments: [production("prod")] },
+      held: setupOnly,
+      selected: codeChoice({ group: "goes" }),
+      expected: ["stays", false],
+    },
+    {
+      label: "a going Stage takes setup with the project",
+      project: withStage,
+      held: setupOnly,
+      selected: codeChoice({ group: "stays" }),
+      expected: ["goes", false],
+    },
+    {
+      label: "a going plain project takes setup with the project",
+      project: {
+        ...project,
+        placements: [
+          ...project.placements,
+          { projectId: "plain", kind: "plain" as const, name: "plain", deletable: true },
+        ],
+      },
+      held: setupOnly,
+      selected: choice({ plain: "goes" }, { plain: "plain" }, "bakery", { group: "stays" }),
+      expected: ["goes", false],
+    },
+    {
+      label: "a going Production takes setup with the project",
+      project: { ...project, environments: [production("prod")] },
+      held: setupOnly,
+      selected: choice({ prod: "goes" }, { prod: "prod" }, "bakery", { group: "stays" }),
+      expected: ["goes", false],
+    },
+    {
+      label: "a staying Stage keeps setup when Production goes",
+      project: { ...withStage, environments: [stage("s"), production("prod")] },
+      held: setupOnly,
+      selected: choice({ s: "stays", prod: "goes" }, { prod: "prod" }, "bakery", {
+        group: "goes",
+      }),
+      expected: ["stays", false],
+    },
+    {
+      label: "delete again after no code step",
+      project,
+      held: setupOnly,
+      selected: noCodeStep,
+      expected: ["stays", true],
+    },
+    {
+      label: "delete again after a code step that went",
+      project,
+      held: setupOnly,
+      selected: { ...choice(), codeAgain: { hasStep: true, keeps: [] } },
+      expected: ["goes", true],
+    },
+    {
+      label: "delete again after a code step that kept setup",
+      project,
+      held: setupOnly,
+      selected: { ...choice(), codeAgain: { hasStep: true, keeps: ["group"] } },
+      expected: ["stays", true],
+    },
+    {
+      label: "a new choice overrides delete again",
+      project,
+      held: setupOnly,
+      selected: { ...noCodeStep, repoFates: { group: "goes" } },
+      expected: ["goes", true],
+    },
+  ] as const;
+  for (const row of cases) {
+    const result = review(row.project, MATE, row.selected, row.held);
+    const setup = result.rows.find((part) => part.kind === "setup");
+    expect.soft([setup?.fate, setup?.switchable], row.label).toEqual(row.expected);
+  }
+
+  const initial = review(project, MATE, choice(), setupOnly);
+  expect.soft(initial.start).toEqual({
+    kind: "start-app-deletion",
+    appId: "app-bakery",
+    stages: [],
+    mate: "Z_RYE",
+    names: { Z_RYE: "Rye" },
+  });
+  const setup = initial.rows.find((row) => row.kind === "setup");
+  if (setup === undefined) throw new Error("Missing setup row");
+  const selected = chooseDeletionFate(choice({ group: "goes" }), setup, "stays");
+  expect.soft(selected.repoFates).toEqual({ group: "stays" });
+  expect.soft(selected.fates).toEqual({ group: "goes" });
+  const kept = review(project, MATE, selected, setupOnly);
+  expect.soft(kept.start).toEqual({
+    kind: "start-mate-deletion",
+    projectId: "Z_RYE",
+    keptGit: "keep",
+  });
+  expect.soft(kept.becomes.place).toBe("git");
+  expect.soft(kept.stays).toContain("Its setup files");
+  expect.soft(kept.goes).not.toContain("Its setup files");
+
+  const stageGoes = review(withStage, MATE, codeChoice({ group: "stays" }), setupOnly);
+  expect.soft(stageGoes.ready).toBe(true);
+  expect.soft(stageGoes.becomes.place).toBe("gone");
+  expect.soft(stageGoes.goes).toContain("Its setup files");
+  expect.soft(stageGoes.stays).not.toContain("Its setup files");
+  expect.soft(stageGoes.start).toEqual({
+    kind: "start-app-deletion",
+    appId: "app-bakery",
+    stages: ["s"],
+    mate: "Z_RYE",
+    names: { Z_RYE: "Rye", s: "s" },
+  });
+
+  const noMate = review(
+    { ...project, placements: [] },
+    undefined,
+    codeChoice({ group: "stays" }),
+    setupOnly,
+  );
+  const noMateSetup = noMate.rows.find((part) => part.kind === "setup");
+  expect.soft([noMateSetup?.fate, noMateSetup?.switchable]).toEqual(["goes", false]);
+  expect.soft(noMate.start).toEqual({
+    kind: "start-app-deletion",
+    appId: "app-bakery",
+    stages: [],
+  });
+});
