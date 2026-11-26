@@ -5,49 +5,37 @@
  * list there says nothing of the organization: it never reads as an organization with nothing in
  * it, and it never tells someone who may not create a project to start one. Pure.
  *
- * One who may create a project meets its first Mate by name — the one the screen's own form
- * proposes, and renames as it is typed.
+ * One who may create a project starts one, meeting its first Mate by name (`FirstRunView`); a
+ * Developer is told, under it, which projects this page will list.
  */
-interface FirstRunWords {
-  /** Above the heading, to one who starts here; none otherwise. */
-  readonly welcome: string | undefined;
-  readonly heading: string;
-  readonly body: string;
-  /** New project is offered: the role creates projects. */
-  readonly newProject: boolean;
-  /** Under it all: what the role means for what this page lists. */
-  readonly note: string | undefined;
-}
+export type FirstRunWords =
+  | {
+      readonly kind: "start";
+      /** Under it all: what the role means for what this page lists. */
+      readonly note: string | undefined;
+    }
+  | { readonly kind: "wait"; readonly heading: string; readonly body: string };
 
 export function firstRunWords(input: {
   readonly create: boolean;
   readonly reachesEveryProject: boolean;
-  /** The first Mate the form proposes, met by name; the Mate until it has one. */
-  readonly mateName: string;
 }): FirstRunWords {
   if (input.create)
     return {
-      welcome: "Welcome to Mate",
-      heading: `Meet ${input.mateName}, your first Mate`,
-      body: `A Mate is a coding agent with a workspace of its own. Tell ${input.mateName} what to build, and it writes the code, runs it and gives you a preview to try.`,
-      newProject: true,
+      kind: "start",
       note: input.reachesEveryProject
         ? undefined
         : "You're a Developer: you start projects and join the ones you're added to. Projects an owner or admin gives you access to appear here.",
     };
   return input.reachesEveryProject
     ? {
-        welcome: undefined,
+        kind: "wait",
         heading: "No projects yet",
         body: "Projects appear here once someone on your team starts one.",
-        newProject: false,
-        note: undefined,
       }
     : {
-        welcome: undefined,
+        kind: "wait",
         heading: "Nothing is shared with you yet",
         body: "You're a Guest: you follow the projects you're added to. Projects an owner or admin gives you access to appear here.",
-        newProject: false,
-        note: undefined,
       };
 }

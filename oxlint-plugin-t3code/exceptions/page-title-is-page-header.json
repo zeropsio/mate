@@ -26,7 +26,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "fingerprint": "<h1 className={NEW_PROJECT_HEADING_CLASS}>",
     "owner": "unify pages",
     "reason": "the new project form's question, the hero of its own screen",
     "expires": "never"
@@ -34,7 +34,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "fingerprint": "<h1 className={NEW_PROJECT_HEADING_CLASS}>",
     "owner": "unify pages",
     "reason": "the new project form's question, the hero of its own screen",
     "expires": "never"
@@ -42,7 +42,7 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "fingerprint": "<h1 className={NEW_PROJECT_HEADING_CLASS}>",
     "owner": "unify pages",
     "reason": "the new project form's question, the hero of its own screen",
     "expires": "never"
@@ -66,7 +66,7 @@
   {
     "path": "apps/web/src/components/zerops/projects/FirstRun.tsx",
     "kind": "JSXOpeningElement",
-    "fingerprint": "<h1 className={cn( \"font-medium tracking-tight text-balance text-foreground\", waits ? \"mt-4 text-title\" : \"mt-1.5 text-display\", )} >",
+    "fingerprint": "<h1 className={className}>",
     "owner": "unify pages",
     "reason": "the first run's headline, a screen of its own with no page around it",
     "expires": "never"

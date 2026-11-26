@@ -1,15 +1,14 @@
 /**
- * Pieces of a Mate's arrival other surfaces draw: its services' line, its runtimes still coming
- * up and the sign-in phrase with each brand wearing its logo. The arrival itself is one
+ * Pieces of a Mate's arrival other surfaces draw: its services' line and its runtimes still coming
+ * up. The arrival itself is one
  * progress row (`ComingBelow`).
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 
 import { Badge, type BadgeTone } from "../ui/badge";
-import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 
 import {
   nextRuntimesLine,
@@ -17,8 +16,6 @@ import {
   type ArrivalService,
   type RuntimesLine,
 } from "~/zerops/mateArrival";
-
-import type { SignInPhrasePart } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 /** A service's state as the kit's dot: a hollow one where nothing runs yet or ever will. */
 const SERVICE_DOT: Readonly<
@@ -114,25 +111,4 @@ export function ArrivalRuntimesLine({
       <span>coming up</span>
     </div>
   );
-}
-
-/**
- * The words that tell a person they will sign a Mate in (`signInPhrase`), with each subscription
- * they name wearing its agent's own logo, the size of the text around it — the arrival's own step,
- * and the add dialogs' *What happens next*.
- */
-export function SignInPhrase({ parts }: { readonly parts: ReadonlyArray<SignInPhrasePart> }) {
-  return parts.map((part, index) => {
-    const key = `${String(index)}:${part.text}`;
-    if (part.agentId === undefined) return <Fragment key={key}>{part.text}</Fragment>;
-    return (
-      <span className="whitespace-nowrap" data-agent-brand={part.agentId} key={key}>
-        <ZeropsAgentLogo
-          agentId={part.agentId}
-          className="me-[0.25em] inline-block size-[1em] align-[-0.14em]"
-        />
-        {part.text}
-      </span>
-    );
-  });
 }

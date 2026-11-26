@@ -164,9 +164,9 @@ export interface SignInPhrasePart {
 }
 
 /**
- * The person's own step wherever it is told ahead — the arrival's steps, the add dialogs' *What
- * happens next*: what they sign the Mate in with, every subscription the sign-in offers named by
- * its brand, in the sign-in's own order (the owner, 2026-09-30).
+ * The person's own step where the arrival's steps tell it ahead: what they sign the Mate in with,
+ * every subscription the sign-in offers named by its brand, in the sign-in's own order (the owner,
+ * 2026-09-30).
  */
 export function signInPhrase(mateName: string): ReadonlyArray<SignInPhrasePart> {
   const brands = AGENT_ORDER.flatMap((agentId, index): ReadonlyArray<SignInPhrasePart> => [

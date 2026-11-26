@@ -64,3 +64,6 @@ export function useMateShuffle({
   };
   return { rolling, roll };
 }
+
+/** A roll, as the forms that make a Mate hold it. */
+export type MateShuffle = ReturnType<typeof useMateShuffle>;

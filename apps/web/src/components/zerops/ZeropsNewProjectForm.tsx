@@ -42,7 +42,7 @@ import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import { MateNameText } from "./MateNameText";
 import { PressLine } from "./PressLine";
-import { useMateShuffle } from "./useMateShuffle";
+import { useMateShuffle, type MateShuffle } from "./useMateShuffle";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import {
   faceName,
@@ -98,7 +98,7 @@ const NAME_YOUR_PROJECT = "Name your project.";
 const PROJECT_FIELD = "zerops-new-project";
 const REGION_LABEL = "zerops-new-project-region";
 const MATE_FIELD = "zerops-new-project-mate";
-const LINE = "zerops-new-project-line";
+export const NEW_PROJECT_LINE = "zerops-new-project-line";
 
 /**
  * A New project form's state, wherever it is drawn — the dialog (`ZeropsNewProjectForm`) or an
@@ -312,7 +312,7 @@ export function ProjectNameField({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={PROJECT_FIELD}>Project name</Label>
       <Input
-        aria-describedby={form.unnamed ? LINE : undefined}
+        aria-describedby={form.unnamed ? NEW_PROJECT_LINE : undefined}
         aria-invalid={form.unnamed || undefined}
         autoComplete="off"
         id={PROJECT_FIELD}
@@ -355,7 +355,7 @@ export function FirstMateField({
         onPickTint={form.pickTint}
       >
         <MateNameInput
-          describedBy={LINE}
+          describedBy={NEW_PROJECT_LINE}
           id={MATE_FIELD}
           invalid={form.refused !== undefined}
           onAnother={form.another}
@@ -449,7 +449,7 @@ export function NewProjectLine({
   return (
     <PressLine
       className={className}
-      id={LINE}
+      id={NEW_PROJECT_LINE}
       refusal={form.failed}
       waiting={form.failed === undefined ? form.line : undefined}
     />
@@ -497,7 +497,7 @@ export function CreateProjectButton({
 }
 
 /** The page's one field: the project's name, its placeholder the label it needs. */
-function NewProjectNameInput({
+export function NewProjectNameInput({
   form,
   inputRef,
 }: {
@@ -506,7 +506,7 @@ function NewProjectNameInput({
 }) {
   return (
     <Input
-      aria-describedby={form.unnamed ? LINE : undefined}
+      aria-describedby={form.unnamed ? NEW_PROJECT_LINE : undefined}
       aria-invalid={form.unnamed || undefined}
       aria-label="Project name"
       autoComplete="off"
@@ -531,15 +531,8 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const form = useNewProjectForm(input, nameField);
   const [step, setStep] = useState<"project" | "mate">("project");
   const [styling, setStyling] = useState(false);
-  const { closed, access, forecast, proposeAnotherName, creating } = input;
-  const shuffle = useMateShuffle({
-    name: form.botName,
-    pickTint: form.pickTint,
-    pickShape: form.pickShape,
-    setName: form.propose,
-    // Until every name is read no proposal is offered, so the roll keeps the name.
-    proposeAnotherName: form.another === undefined ? undefined : proposeAnotherName,
-  });
+  const { closed, forecast, creating } = input;
+  const shuffle = useNewMateShuffle(form);
   // Each step opens on what it asks, where a keyboard is at hand: the name, then the Mate's press.
   useEffect(() => {
     if (!window.matchMedia("(pointer: fine)").matches) return;
@@ -548,7 +541,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   if (closed !== undefined)
     return (
       <NewProjectPageFrame>
-        <h1 className={HEADING_CLASS}>What do you want to build?</h1>
+        <h1 className={NEW_PROJECT_HEADING_CLASS}>What do you want to build?</h1>
         <Text className="m-0 text-center" render={<p />} variant="description">
           {closed}
         </Text>
@@ -569,43 +562,22 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             open={styling}
             size="page"
           />
-          <h1 className={HEADING_CLASS}>
+          <h1 className={NEW_PROJECT_HEADING_CLASS}>
             <MateNameText
-              describedBy={LINE}
+              describedBy={NEW_PROJECT_LINE}
               onValueChange={form.nameMate}
               readOnly={creating}
               value={form.botName}
             />
           </h1>
           {/* Its two pill presses, 16 px under the name and 32 px over the press. */}
-          <div className="mt-1.5 mb-5.5 flex justify-center gap-1">
-            {/* Pills, so they read as tools on the Mate rather than the page's next step. */}
-            <Button
-              aria-busy={shuffle.rolling || undefined}
-              disabled={creating}
-              onClick={shuffle.roll}
-              shape="round"
-              size="sm"
-              variant="secondary"
-            >
-              <ShuffleIcon aria-hidden />
-              Shuffle
-            </Button>
-            <Button
-              aria-expanded={styling}
-              data-zerops-new-project="style"
-              disabled={creating}
-              shape="round"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                setStyling(!styling);
-              }}
-            >
-              {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
-              {styling ? "Confirm style" : "Change style"}
-            </Button>
-          </div>
+          <NewMateTools
+            className="mt-1.5 mb-5.5"
+            form={form}
+            onStyling={setStyling}
+            shuffle={shuffle}
+            styling={styling}
+          />
           <CreateProjectButton
             buttonRef={addMate}
             rolling={shuffle.rolling}
@@ -637,7 +609,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     );
   return (
     <NewProjectPageFrame>
-      <h1 className={HEADING_CLASS}>What do you want to build?</h1>
+      <h1 className={NEW_PROJECT_HEADING_CLASS}>What do you want to build?</h1>
       <form
         className="flex w-full flex-col items-center pt-6"
         data-zerops-surface="new-project-form"
@@ -657,37 +629,118 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           {/* A missing name, under the press; saying nothing, it gives the column's gap back. */}
           <PressLine
             className="text-center empty:-mt-4"
-            id={LINE}
+            id={NEW_PROJECT_LINE}
             refusal={form.unnamed ? NAME_YOUR_PROJECT : undefined}
           />
         </div>
         {/* *Project access & region setup*: 20 px under the press, as wide as the column. */}
-        <div className="self-stretch pt-5" data-zerops-new-project="setup">
-          <Collapsible className="flex flex-col">
-            <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1.5 self-center rounded-full px-4 py-2 font-medium text-body text-muted-foreground leading-4.5 outline-ring outline-offset-2 hover:text-foreground focus-visible:outline-2 ">
-              Project access & region setup
-              <ChevronDownIcon
-                aria-hidden
-                className="size-4 transition-transform duration-200 ease-out-strong in-data-panel-open:rotate-180"
-              />
-            </CollapsibleTrigger>
-            <CollapsiblePanel>
-              {/* The region and the people, 40 px apart, opening under it. */}
-              <div className="flex flex-col gap-10 px-px pt-2.5 pb-0.5 text-start">
-                <NewProjectLocation className="pt-6" form={form} />
-                {access === undefined ? null : access(form.setUserRoles)}
-              </div>
-            </CollapsiblePanel>
-          </Collapsible>
-        </div>
+        <NewProjectSetup className="pt-5" form={form} />
       </form>
     </NewProjectPageFrame>
   );
 }
 
 /** The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
-const HEADING_CLASS =
+export const NEW_PROJECT_HEADING_CLASS =
   "m-0 text-center text-title font-normal tracking-tight text-balance text-foreground sm:text-display";
+
+/** *Shuffle*'s roll of the form's new Mate: its colour, shape and name. */
+export function useNewMateShuffle(form: NewProjectForm): MateShuffle {
+  return useMateShuffle({
+    name: form.botName,
+    pickTint: form.pickTint,
+    pickShape: form.pickShape,
+    setName: form.propose,
+    // Until every name is read no proposal is offered, so the roll keeps the name.
+    proposeAnotherName: form.another === undefined ? undefined : form.input.proposeAnotherName,
+  });
+}
+
+/**
+ * The new Mate's two pill presses under its name: *Shuffle* rolls its name and look, *Change
+ * style* opens its ring of colours and shapes (`MateFaceRing`) and confirms it. Pills, so they read
+ * as tools on the Mate rather than the page's next step.
+ */
+export function NewMateTools({
+  form,
+  shuffle,
+  styling,
+  onStyling,
+  className,
+}: {
+  readonly form: NewProjectForm;
+  readonly shuffle: MateShuffle;
+  /** The ring is open. */
+  readonly styling: boolean;
+  readonly onStyling: (styling: boolean) => void;
+  /** Its room in the column around it. */
+  readonly className?: string;
+}) {
+  const { creating } = form.input;
+  return (
+    <div className={cn("flex justify-center gap-1", className)}>
+      <Button
+        aria-busy={shuffle.rolling || undefined}
+        disabled={creating}
+        onClick={shuffle.roll}
+        shape="round"
+        size="sm"
+        variant="secondary"
+      >
+        <ShuffleIcon aria-hidden />
+        Shuffle
+      </Button>
+      <Button
+        aria-expanded={styling}
+        data-zerops-new-project="style"
+        disabled={creating}
+        shape="round"
+        size="sm"
+        variant="secondary"
+        onClick={() => {
+          onStyling(!styling);
+        }}
+      >
+        {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+        {styling ? "Confirm style" : "Change style"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * *Project access & region setup*, folded under the press, as wide as the column: the region and
+ * the people, 40 px apart, opening under it.
+ */
+export function NewProjectSetup({
+  form,
+  className,
+}: {
+  readonly form: NewProjectForm;
+  /** Its room in the column around it. */
+  readonly className?: string;
+}) {
+  const { access } = form.input;
+  return (
+    <div className={cn("self-stretch", className)} data-zerops-new-project="setup">
+      <Collapsible className="flex flex-col">
+        <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1.5 self-center rounded-full px-4 py-2 font-medium text-body text-muted-foreground leading-4.5 outline-ring outline-offset-2 hover:text-foreground focus-visible:outline-2 ">
+          Project access & region setup
+          <ChevronDownIcon
+            aria-hidden
+            className="size-4 transition-transform duration-200 ease-out-strong in-data-panel-open:rotate-180"
+          />
+        </CollapsibleTrigger>
+        <CollapsiblePanel>
+          <div className="flex flex-col gap-10 px-px pt-2.5 pb-0.5 text-start">
+            <NewProjectLocation className="pt-6" form={form} />
+            {access === undefined ? null : access(form.setUserRoles)}
+          </div>
+        </CollapsiblePanel>
+      </Collapsible>
+    </div>
+  );
+}
 
 /**
  * New project, as a page beside the menu (the owner, 2026-11-23, to the design's measures): the
