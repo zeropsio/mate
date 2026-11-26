@@ -1,11 +1,7 @@
-/**
- * The projects page's applications with nothing in them: one HQ holds with no project — what a New
- * project that stopped before its Mate leaves (`mate-rig-e2e-a`, 2026-10-02) — is drawn as its
- * project all the same (`deriveCanonicalGroups`'s `apps`), offered *Add a Mate* for the Mate it was
- * made for.
- */
+/** The registry's empty applications, empty groups and the Overview Delete offer. */
 import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
-import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import type { HqNavigationView } from "~/state/zerops";
 
@@ -37,42 +33,14 @@ export function groupIsEmpty(
   return group.environments.length === 0 && group.pending.length === 0;
 }
 
-/** Only HQ's answer for this organization and application, as last read, establishes emptiness. */
-export function applicationContents(
-  view: Pick<HqNavigationView, "orgId"> & {
-    readonly structure: {
-      readonly apps: ReadonlyArray<
-        Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
-      >;
-    } | null;
-  },
-  organizationId: string | undefined,
-  appId: string,
-): HqAppContents | undefined {
-  if (view.orgId !== organizationId) return undefined;
-  return view.structure?.apps.find((app) => app.id === appId)?.contents;
-}
-
-/** An empty projected Mates cell still names the records HQ has not released. */
-export function emptyMateLine(contents: HqAppContents | undefined): string {
-  if (contents === undefined) return "Checking what HQ holds…";
-  if (contents.deletingProjectIds.length > 0) return "Deletion is still in progress.";
-  return contents.empty ? "No Mate yet" : "HQ still holds this project's records.";
-}
-
-/**
- * Which *Delete* a project's menu offers, where it has no Mate in it and the person writes the
- * structure (`delete_app`; `projectDeleteOffered`, the menu's rule): on HQ's empty answer the plain
- * one, whose dialog has nothing to list (`empty`); on HQ's word that it still holds code or
- * changes, the menu's dialog that lists what goes with it (`with-code`,
- * `ZeropsDeleteApplicationDialog`). None while HQ has not answered or a deletion is still under way.
- */
-export function deleteOffered(
+/** Overview draws the menu's Delete while HQ's offer is still unknown, but cannot press it. */
+export function projectDeleteOnOverview(
   group: Parameters<typeof groupWithoutMate>[0],
-  mayDelete: boolean,
-  contents: HqAppContents | undefined,
-): "empty" | "with-code" | undefined {
-  if (!projectDeleteOffered({ withoutMate: groupWithoutMate(group), mayDelete })) return undefined;
-  if (contents === undefined || contents.deletingProjectIds.length > 0) return undefined;
-  return contents.empty ? "empty" : "with-code";
+  offer: HqOfferState["kind"],
+): "pressable" | "waits" | undefined {
+  if (
+    !projectDeleteOffered({ withoutMate: groupWithoutMate(group), mayDelete: offer !== "refused" })
+  )
+    return undefined;
+  return offer === "allowed" ? "pressable" : "waits";
 }
