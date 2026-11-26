@@ -44,6 +44,11 @@ const MessageEntry = Schema.Struct({
    * again, under the same command id, never to another conversation.
    */
   target: Schema.optionalKey(Schema.String),
+  /**
+   * The conversation it opens where the Mate had none, chosen once and kept before the engine is
+   * given it: a restart or a second look opens that one, never a second.
+   */
+  opens: Schema.optionalKey(Schema.String),
   /** An answer's: the conversation whose call sent its ask, where it is told the answer was heard. */
   askedFrom: Schema.optionalKey(Schema.String),
   /**

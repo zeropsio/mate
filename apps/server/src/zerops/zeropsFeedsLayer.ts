@@ -244,6 +244,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
   // admitted through the same gate.
   Layer.provide(
     ZeropsMateMessagesModule.layer.pipe(
+      Layer.provide(providerInstancesLayer),
       Layer.provide(ZeropsMateMessageLedgerModule.layer),
       Layer.provide(ZeropsTurnAdmissionLive),
       Layer.provide(ZeropsAgentLoginModule.layer),

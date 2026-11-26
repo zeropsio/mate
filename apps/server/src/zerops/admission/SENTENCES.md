@@ -1,4 +1,4 @@
-next: TA12
+next: TA13
 
 - TA1 — A turn on a login its person signed in here, or on an agent a project token authorizes, is admitted
 - TA2 — A turn on a login that is not signed in, whose sign-in nobody recorded, or that another member signed in is refused and names that login: an agent's own login by its agent id, a login beyond the defaults by its own id
@@ -11,3 +11,4 @@ next: TA12
 - TA9 — Another Mate's message runs only on a login its owner signed in here: on a project token or an agent nobody lists it is refused for now, and on a login another member signed it is refused for good
 - TA10 — A turn whose instance resolves to no agent, or to an agent the auth feed does not list, passes unjudged
 - TA11 — While HQ cannot say a starter's standing, the last standing heard for them decides for at most 15 minutes and nothing decides after; a later answer replaces an earlier one, and a verdict the server does not know never clears one heard
+- TA12 — A message to a Mate with no conversation, or whose main conversation has no agent, gives that conversation the first agent its owner signed in that admits the message, and waits while the stand-up may still open it or no agent of its owner's admits it; breaks: a new Mate never works another Mate's message, or opens a second conversation beside its stand-up's

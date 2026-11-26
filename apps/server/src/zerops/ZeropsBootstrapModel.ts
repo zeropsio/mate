@@ -17,8 +17,8 @@
  * banner, which is a better landing than no thread at all.
  *
  * The agent a Mate's main conversation is given for a person
- * (`mainConversationAgent`) is the same question's: the stand-up and zcp's
- * failed verdict both give it by this one function.
+ * (`mainConversationAgent`) is the same question's: the stand-up, zcp's failed
+ * verdict and another Mate's message all give it by this one function.
  *
  * Scope: this module is only consulted inside a Zerops container
  * (`isZeropsEnvironment`). Everywhere else the upstream default is returned

@@ -9,9 +9,13 @@
  * - **Worked:** where its person's message goes, as its own run: the main conversation, as every
  *   surface opens it (`resolvePrimaryConversation`); an answer, in the conversation whose call sent
  *   its ask; a notice, in its change's branch conversation. Each choice is kept. One archived,
- *   gone, or a crewmate's (the crew is a crewmate's only door) gives way to the main one. It is
- *   kept before the message is sent, under its id (`mate-message:<id>`, and a count where an
- *   earlier send was taken back), so a restart sends it once, to the same place. The agent hears
+ *   gone, or a crewmate's (the crew is a crewmate's only door) gives way to the main one. On a Mate
+ *   with no conversation the message opens its main one, and a main one with no agent is given
+ *   one: the agent the stand-up gives it, for the message's owner (`mateMessageAgent`), only once
+ *   the stand-up's wait ended, so it never opens a second conversation beside the stand-up's. The
+ *   conversation is kept before the engine is touched (one it opens under `opens`, chosen once),
+ *   and the message sent under its id (`mate-message:<id>`, and a count where an earlier send was
+ *   taken back), so a restart sends it once, to the same place. The agent hears
  *   the message's words (`toldOf`); the person item carries `mateMessage`, so every client draws
  *   it as the sender's row or a notice, never as the person's. A run on takes nothing of it:
  *   the engine queues the message behind it, so it starts the next run and every driver gets it as
@@ -19,11 +23,12 @@
  * - **Admitted for the owner:** the run is for the principal `mate`, with the owner HQ named when
  *   the Mate took the message; it spends the conversation's agent login only where that login's
  *   recorded signer is that owner (`ZeropsTurnAdmission.admitRun`): never a project token, never an
- *   agent nobody signs in to. Until it is, the message waits, asked again only once a login, its
- *   signer, the owner or its conversation moved. Where admission refused the run it opened before
- *   any run of it reached the agent (a sign-in that moved between, the door unable to say in time),
- *   it waits again; a continuation of work already done is never sent again. HQ naming another
- *   owner while it waits, or while its run is still queued, declines it.
+ *   agent nobody signs in to. Until it is, the message waits, said once in the log, asked again
+ *   only once a login, its signer, the owner, its conversation or the stand-up's wait moved. Where
+ *   admission refused the run it opened before any run of it reached the agent (a sign-in that
+ *   moved between, the door unable to say in time), it waits again; a continuation of work already
+ *   done is never sent again. HQ naming another owner while it waits, or while its run is still
+ *   queued, declines it.
  * - **Declined:** on an automated Mate, which takes no Mate's messages, where HQ named no owner,
  *   where the conversation refuses the message for good (archived, an empty message), and after
  *   {@link TAKEN_BACK_WAIT_MS} of sends taken back for now since it was taken; a refusal for
@@ -42,6 +47,7 @@
  */
 import {
   CommandId,
+  type ConversationAgent,
   ConversationId,
   MATE_MESSAGE_ANSWER_MAX,
   type MateMessage,
@@ -49,6 +55,7 @@ import {
   type Principal,
   type RunEnd,
   ZeropsUserId,
+  defaultInstanceIdForAgent,
   mateMessageItemOf,
   mateMessageNamesOf,
   mateMessageSenderName,
@@ -61,15 +68,21 @@ import {
 } from "@t3tools/shared/primaryConversation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
+import * as ServerConfig from "../config.ts";
 import { type ConversationView, MateEngine } from "../engine/MateEngine.ts";
+import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
+import { mateMessageAgent } from "./admission/mateMessageAgent.ts";
 import { engineShellOf } from "./engineOverview.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -78,7 +91,9 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { type MessageEntry, ZeropsMateMessageLedger } from "./ZeropsMateMessageLedger.ts";
 import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
+import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import { standUpAgents } from "./zeropsSetupSteps.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -198,6 +213,11 @@ export const make = Effect.gen(function* () {
   const agentLogin = yield* ZeropsAgentLogin;
   const agentAuth = yield* ZeropsAgentAuth;
   const logins = yield* ZeropsLogins;
+  const instances = yield* ProviderInstances;
+  const projection = yield* ProjectionSnapshotQuery;
+  const { cwd } = yield* ServerConfig.ServerConfig;
+  const standUp = yield* ZeropsStandUpReceipt;
+  const crypto = yield* SecureRandom.SecureRandom;
   // Each end as it is kept, for every link that tells them.
   const ends = yield* PubSub.unbounded<EndedUp>();
   // Something a message may hang on moved: a burst is looked at once, by one fiber.
@@ -211,8 +231,8 @@ export const make = Effect.gen(function* () {
   let mainSeen: string | undefined;
   // Each message whose end waits on its run's background work: looked at again at its deadline.
   const deadlines = yield* FiberMap.make<string>();
-  // The messages whose wait for their owner's sign-in was logged: each said once.
-  const waitSaid = new Set<string>();
+  // What each waiting message's wait was logged as: each wait said once.
+  const waitSaid = new Map<string, "sign-in" | "stand-up">();
 
   const principalOf = (id: string, ownerUserId: string): Principal => ({
     kind: "mate",
@@ -322,18 +342,22 @@ export const make = Effect.gen(function* () {
       (now) => (entry.attempt ?? 0) > 0 && now - entry.takenAt >= TAKEN_BACK_WAIT_MS,
     );
 
-  /** The conversation a person's message goes to: the main one, as every surface opens it. */
+  /**
+   * The conversation a person's message goes to: the main one, as every surface opens it; `null`
+   * where the Mate has none, `undefined` while the engine cannot read every conversation.
+   */
   const mainConversation = Effect.map(engine.conversations, (list) => {
     if (!list.complete) return undefined;
     mainSeen = resolvePrimaryConversation(list.views.map(engineShellOf)).primary?.id;
-    return mainSeen;
+    return mainSeen ?? null;
   });
 
   /**
    * Where a message's run goes, with that conversation's view: the conversation it was given
    * before (a restart sends it there again); an answer, to the one whose call sent its ask; a notice,
    * to its change's branch conversation; else the main one. One archived, gone, or a crewmate's
-   * (the crew is a crewmate's only door) gives way to the main one.
+   * (the crew is a crewmate's only door) gives way to the main one. Where the Mate has no
+   * conversation, none and no view: the message opens the main one.
    */
   const placeOf = (id: string, entry: MessageEntry, message: MateMessage) =>
     Effect.gen(function* () {
@@ -341,36 +365,42 @@ export const make = Effect.gen(function* () {
       let askedFrom = entry.askedFrom;
       if (place === undefined && message.kind === "answer" && message.inReplyTo !== undefined) {
         askedFrom = yield* engine.askedIn(message.inReplyTo);
-        place = askedFrom ?? (yield* mainConversation);
-        if (
-          place === undefined ||
-          !(yield* keep(id, (kept) => ({
-            ...kept,
-            target: place!,
-            ...(askedFrom === undefined ? {} : { askedFrom }),
-          })))
-        )
-          return undefined;
+        const chosen = askedFrom ?? (yield* mainConversation);
+        if (chosen === undefined) return undefined;
+        if (chosen !== null) {
+          if (
+            !(yield* keep(id, (kept) => ({
+              ...kept,
+              target: chosen,
+              ...(askedFrom === undefined ? {} : { askedFrom }),
+            })))
+          )
+            return undefined;
+          place = chosen;
+        }
       }
       if (place === undefined && message.kind === "notice") {
         const list = yield* engine.conversations;
         if (!list.complete) return undefined;
         const chats = list.views.map(engineShellOf);
-        place =
+        const chosen =
           conversationOfBranch(chats, message.about.branch, (repo) =>
             leaseMayBeOf(repo, message.about),
           )?.id ?? resolvePrimaryConversation(chats).primary?.id;
-        if (place === undefined || !(yield* keep(id, (kept) => ({ ...kept, target: place! }))))
-          return undefined;
+        if (chosen !== undefined) {
+          if (!(yield* keep(id, (kept) => ({ ...kept, target: chosen })))) return undefined;
+          place = chosen;
+        }
       }
-      const usable = (view: ConversationView | undefined) =>
+      const usable = (view: ConversationView | undefined): view is ConversationView =>
         view !== undefined && !view.archived && view.agent?.profile.kind !== "crewmate";
       if (place !== undefined) {
         const view = yield* engine.conversation(ConversationId.make(place));
-        if (usable(view)) return { place, view: view!, askedFrom };
+        if (usable(view)) return { place, view, askedFrom };
       }
       const main = yield* mainConversation;
       if (main === undefined) return undefined;
+      if (main === null) return { place: undefined, view: undefined, askedFrom };
       const view = yield* engine.conversation(ConversationId.make(main));
       if (!usable(view)) return undefined;
       if (
@@ -379,8 +409,59 @@ export const make = Effect.gen(function* () {
       ) {
         if (!(yield* keep(id, (kept) => ({ ...kept, target: main })))) return undefined;
       }
-      return { place: main, view: view!, askedFrom };
+      return { place: main, view, askedFrom };
     });
+
+  /**
+   * The agent a message gives the main conversation that has none, or the one it opens
+   * (`mateMessageAgent`): its owner's, on an agent they signed in here that admits it.
+   */
+  const agentFor = (
+    main: ConversationView | undefined,
+    ownerUserId: string,
+    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<string | undefined>,
+  ) =>
+    Effect.gen(function* () {
+      const owner = ZeropsUserId.make(ownerUserId);
+      const candidates = standUpAgents(
+        (yield* agentAuth.latest).agents,
+        yield* signers.signers,
+        owner,
+      );
+      const mayRun = yield* Effect.filter(candidates, (agentId) =>
+        Effect.map(
+          admitted(defaultInstanceIdForAgent(agentId), ownerUserId),
+          (refused) => refused === undefined,
+        ),
+      );
+      return mateMessageAgent({
+        main,
+        standUpSettled: yield* standUp.settled,
+        mayRun,
+        projectDefault: yield* projectDefault,
+        providers: yield* instances.providers,
+      });
+    });
+
+  /** The project's default model, where a V1 project still holds one; none on a new Mate. */
+  const projectDefault = projection.getActiveProjectByWorkspaceRoot(cwd).pipe(
+    Effect.map((found) => Option.getOrUndefined(found)?.defaultModelSelection ?? null),
+    Effect.orElseSucceed(() => null),
+  );
+
+  /** Logs a message's wait once for what it waits on. */
+  const sayWait = (id: string, on: "sign-in" | "stand-up", reason: string) =>
+    waitSaid.get(id) === on
+      ? Effect.void
+      : Effect.andThen(
+          Effect.sync(() => waitSaid.set(id, on)),
+          Effect.logInfo(
+            on === "sign-in"
+              ? "zerops mate messages: a message waits for its owner's sign-in"
+              : "zerops mate messages: a message waits for the stand-up",
+            { reason },
+          ),
+        );
 
   /** A message not in the engine yet: put there once its owner's login may run it. */
   const start = (
@@ -394,31 +475,41 @@ export const make = Effect.gen(function* () {
       if (yield* waitedOut(entry)) return yield* settle(id, "declined");
       const found = yield* placeOf(id, entry, message);
       if (found === undefined) return;
-      const { place, view, askedFrom } = found;
-      const conversationId = ConversationId.make(place);
+      const { view, askedFrom } = found;
       // Taken back while background work lived in the session: sent again once it ended, or once
       // the conversation runs on another session.
       if (
+        found.place !== undefined &&
         entry.held?.reason === "background-work" &&
-        view.background !== null &&
-        (yield* engine.generation(conversationId)) === entry.held.generation
+        found.view.background !== null &&
+        (yield* engine.generation(ConversationId.make(found.place))) === entry.held.generation
       )
         return;
-      const instanceId = view.agent?.instanceId;
+      // A conversation with no agent, or none at all: given its owner's first.
+      let given: ConversationAgent | undefined;
+      if (view?.agent == null) {
+        const chosen = yield* agentFor(view, ownerUserId, admitted);
+        if (chosen.kind === "wait-stand-up")
+          return yield* sayWait(id, "stand-up", "the stand-up may open the conversation yet");
+        if (chosen.kind === "wait-sign-in")
+          return yield* sayWait(id, "sign-in", "no agent its owner signed in here admits it");
+        given = chosen.agent;
+      }
+      const instanceId = given?.instanceId ?? view?.agent?.instanceId;
       if (instanceId === undefined) return;
       const refused = yield* admitted(instanceId, ownerUserId);
-      if (refused !== undefined) {
-        if (!waitSaid.has(id)) {
-          waitSaid.add(id);
-          yield* Effect.logInfo("zerops mate messages: a message waits for its owner's sign-in", {
-            reason: refused,
-          });
-        }
+      if (refused !== undefined) return yield* sayWait(id, "sign-in", refused);
+      // Its conversation is kept before the engine is touched: a restart never sends it to a
+      // second one, nor opens a second one. One it opens is chosen once.
+      const place = found.place ?? entry.opens ?? (yield* crypto.uuidV4());
+      const opens = found.place === undefined ? { opens: place } : {};
+      if (
+        (entry.target !== place || (found.place === undefined && entry.opens !== place)) &&
+        !(yield* keep(id, (kept) => ({ ...kept, target: place, ...opens })))
+      )
         return;
-      }
-      // Its conversation is kept before it is sent: a restart never sends it to a second one.
-      if (entry.target !== place && !(yield* keep(id, (kept) => ({ ...kept, target: place }))))
-        return;
+      const conversationId = ConversationId.make(place);
+      if (given !== undefined && !(yield* engine.assignAgent(conversationId, given))) return;
       const result = yield* engine.deliver(
         conversationId,
         {
@@ -694,6 +785,18 @@ export const make = Effect.gen(function* () {
         admissionMoved = true;
         yield* Queue.offer(wake, undefined);
       }),
+    ),
+  );
+  // The stand-up's wait ended: a message that waited for it may open the conversation now.
+  yield* Effect.forkScoped(
+    Effect.andThen(
+      standUp.await,
+      Effect.andThen(
+        Effect.sync(() => {
+          admissionMoved = true;
+        }),
+        Queue.offer(wake, undefined),
+      ),
     ),
   );
   // What the ledger held as the Mate started is looked at whole once, then at each move.
