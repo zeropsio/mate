@@ -17,9 +17,9 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  * part's dev, then its stage; a pool's dev is each workspace zcp holds on it, by its alias, read
  * from a conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
  * deployed is its head alone. Each address is listed once and copies from its row or its link
- * (`c`, ⌘C, or the button an address row's hover shows). A Mate's address opens in its side panel
- * (`openInMatePanel`) and, from the arrow its row's hover shows or a new-tab click, in a new tab; a
- * place's opens in a new tab.
+ * (`c`, ⌘C, or the button an address row's hover shows). An address opens in a Mate's side panel
+ * (`openInMatePanel`): a Mate's in its own, a place's in one of its application's Mates' — and, from
+ * the arrow its row's hover shows or a new-tab click, in a new tab.
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
@@ -408,6 +408,7 @@ export function ProjectSites(
           }}
           onClose={close}
           onQuery={setQuery}
+          panelMates={mates}
           production={production}
           projectName={projectName}
           query={query}
@@ -436,6 +437,7 @@ export function SitesPanel({
   onAskToFix,
   onOpenStop,
   onClose,
+  panelMates,
 }: {
   readonly production: ProjectSitesInput["production"];
   readonly stages: ProjectSitesInput["stages"];
@@ -453,6 +455,11 @@ export function SitesPanel({
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
   /** Closes the popover, as a door to elsewhere opens. */
   readonly onClose: () => void;
+  /**
+   * Every Mate of the project in the menu's order, yours first, whether its section is listed here
+   * or not: a place's address opens in one of their side panels.
+   */
+  readonly panelMates: ReadonlyArray<SitesMate>;
 }) {
   const [openedAt] = useState(Date.now);
   // A place's addresses sheet, opened from its head (or to add a domain) as the popover closes.
@@ -492,14 +499,19 @@ export function SitesPanel({
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
   const total = sitesLinkCount(sections);
   const faces = new Map(mates.map((mate) => [mate.candidate.project.id, mate]));
-  // A Mate's addresses open in its side panel, the one that knows its services, as the popover closes.
+  // An address opens in the side panel of a Mate that knows it, as the popover closes: a Mate's in
+  // its own, a place's in one of its application's Mates'. A project with no Mate has no panel.
   const openInPanel = use(OpenInMatePanelContext);
-  const previewOf = (mateProjectId: string): Preview | undefined =>
-    openInPanel === null
+  const placeMates = panelMates.map((mate) => mate.candidate.project.id);
+  const previewOf = (
+    panels: ReadonlyArray<string>,
+    named: (service: string) => string,
+  ): Preview | undefined =>
+    openInPanel === null || panels.length === 0
       ? undefined
       : (service, url) => {
           onClose();
-          openInPanel(mateProjectId, service, url);
+          openInPanel(panels, named(service), url);
         };
 
   const scroll = useRef<HTMLDivElement>(null);
@@ -658,7 +670,11 @@ export function SitesPanel({
         {sections.map((section) => {
           const shown = kept.get(section.key);
           const links = filtering ? shown?.links : section.links;
-          const preview = section.kind === "mate" ? previewOf(section.projectId) : undefined;
+          const preview =
+            section.kind === "mate"
+              ? previewOf([section.projectId], (service) => service)
+              : // Its panel tab names the place, beside the Mate's own service of that name.
+                previewOf(placeMates, (service) => `${service} · ${section.title}`);
           const body = (
             <SitesLinks
               copied={copied}
@@ -1139,7 +1155,7 @@ function copyOnKey(event: KeyboardEvent<HTMLElement>, onCopy: () => void) {
   onCopy();
 }
 
-/** Opens one of a Mate's addresses, by its service, in the Mate's side panel. */
+/** Opens an address, by its service, in a Mate's side panel. */
 type Preview = (service: string, url: string) => void;
 
 /**
@@ -1351,7 +1367,7 @@ function SitesServices({
 }
 
 /**
- * A section's links: each opens in the Mate's side panel where `onPreview` is given, else in a new
+ * A section's links: each opens in a Mate's side panel where `onPreview` is given, else in a new
  * tab, and copies from its row.
  */
 function SitesLinks({
@@ -1674,6 +1690,7 @@ function SitesPopover({
           }}
           onClose={close}
           onQuery={setQuery}
+          panelMates={sites.mates}
           production={sites.production}
           projectName={sites.projectName}
           query={query}
