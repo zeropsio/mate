@@ -508,6 +508,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         });
         break;
       case "context.compacted":
+        if (signal.afterTokens === undefined) lastContext = undefined;
+        else if (lastContext?.usedTokens !== signal.afterTokens)
+          lastContext = { usedTokens: signal.afterTokens };
         marker(signal.turn, "compacted");
         break;
       case "plan.updated":

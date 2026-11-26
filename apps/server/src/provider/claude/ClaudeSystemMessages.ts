@@ -225,6 +225,9 @@ export const makeClaudeSystemMessages = (
           context.lastKnownContextWindow,
           context.lastKnownTotalProcessedTokens,
         );
+        // The earlier reading describes the context before compaction, even when Claude gives no
+        // post-compaction count. Never report it again as the size of the compacted context.
+        context.lastKnownTokenUsage = compactedUsage;
         yield* emitThreadTokenUsage(context, compactedUsage, {
           rawMethod: "claude/system/compact_boundary",
           rawPayload: message,

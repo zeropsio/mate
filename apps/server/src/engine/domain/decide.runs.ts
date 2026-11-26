@@ -106,6 +106,10 @@ export const queueRun = (
   return id;
 };
 
+/** A compaction requested at a turn's end, rather than a person's maintenance command. */
+export const isAutoCompaction = (run: RunRecord): boolean =>
+  run.trigger.kind === "wake" && run.trigger.cause === "compaction";
+
 /**
  * Admits the oldest queued run when nothing is active and no usage limit holds the queue; with
  * nothing to admit, an open session starts its idle time.
@@ -159,6 +163,20 @@ const selectionOf = (state: ConversationState) =>
  * only on the instance its settled admission was asked for; for any other it is asked again.
  */
 export const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
+  if (isAutoCompaction(run)) {
+    const session = b.state.session;
+    const joined = run.joins === null ? undefined : b.state.runs[run.joins];
+    if (
+      b.state.archived ||
+      session === null ||
+      b.state.closing !== null ||
+      session.id !== joined?.sessionId ||
+      misfit(b.state, session) !== null
+    ) {
+      endRun(b, run, { kind: "stopped", by: ENGINE }, "inferred-from-effect");
+      return admitNext(b);
+    }
+  }
   if (needsPrepare(run)) {
     if (run.prepare === "asked") return;
     if (run.prepare === "none" || run.preparedFor !== (b.state.agent?.instanceId ?? null)) {

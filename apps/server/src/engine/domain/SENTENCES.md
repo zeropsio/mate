@@ -1,4 +1,4 @@
-next: ED142
+next: ED144
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -133,3 +133,5 @@ next: ED142
 - ED139 — Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.
 - ED140 — Where the work stands goes in front of a run's message between its own tags, alone when the message has no words, and never in front of a slash command or a maintenance run; breaks: a slash command turns into prose the model answers, or a compaction carries a block
 - ED141 — A run's send carries the where text its admission read, on each send of that run and on no other run's, and a run whose read said nothing sends its message as it is; breaks: after a compaction or an idle close the agent asks zcp where it is before it can act, or the next message repeats a stale block
+- ED142 — After a Claude turn ends above 300,000 context tokens, a single maintenance compaction runs before the next ask; at or below the threshold, on another provider, or at a compaction's end none starts. Breaks: an ask waits for compaction or an already small context is compacted.
+- ED143 — An automatic compaction waiting to send is stopped when the session changes or the agent starts another turn; that turn's end decides again from its own context. Breaks: a new or already compacted context is compacted, or two compactions are sent.

@@ -353,6 +353,98 @@ it("ED39: A turn's end records what the turn cost and how full the conversation'
   });
 });
 
+// witness: apps/server/src/engine/domain/decide.signals.ts | signal.context.usedTokens > 300_000 → signal.context.usedTokens >= 300_000
+it("ED142: After a Claude turn ends above 300,000 context tokens, a single maintenance compaction runs before the next ask; at or below the threshold, on another provider, or at a compaction's end none starts. Breaks: an ask waits for compaction or an already small context is compacted.", () => {
+  const started = play([...running]).state;
+  const claude = { ...started, session: { ...started.session!, driver: "claudeAgent" } };
+  const endAt = (usedTokens: number, turn = 1) =>
+    signal({
+      kind: "turn-ended",
+      turn: T(turn),
+      outcome: { kind: "completed" },
+      source: "agent",
+      context: { usedTokens, maxTokens: 1_000_000, autoCompactWindow: 400_000 },
+    });
+
+  const waiting = play([send("next")], claude);
+  expect(waiting.state.runs[r(2)]?.state).toBe("queued");
+  expect(waiting.effects).toEqual([]);
+
+  const endedHigh = play([send("next"), endAt(320_000)], claude);
+  expect(endedHigh.events.findIndex((event) => event._tag === "RunEnded")).toBeLessThan(
+    endedHigh.events.findIndex((event) => event._tag === "RunQueued"),
+  );
+  expect(endedHigh.state.runs[r(3)]).toMatchObject({
+    state: "admitted",
+    maintenance: true,
+    text: "/compact",
+    joins: r(1),
+  });
+  expect(endedHigh.state.queue).toEqual([r(2)]);
+  const sentCompact = play([send("next"), endAt(320_000), prepared(3)], claude);
+  expect(sentCompact.effects).toMatchObject([
+    { kind: "provider.send", payload: { runId: r(3), text: "/compact" } },
+  ]);
+
+  const afterCompact = play(
+    [
+      send("next"),
+      endAt(320_000),
+      prepared(3),
+      settled(r(3), "provider.send", { kind: "ok" }),
+      endAt(320_000, 3),
+    ],
+    claude,
+  );
+  expect(afterCompact.state.runs[r(4)]).toBeUndefined();
+  expect(afterCompact.state.runs[r(2)]?.state).toBe("admitted");
+  for (const tokens of [200_000, 300_000]) {
+    expect(play([endAt(tokens)], claude).state.runs[r(2)]).toBeUndefined();
+  }
+  const codex = { ...started, session: { ...started.session!, driver: "codex" } };
+  expect(play([endAt(320_000)], codex).state.runs[r(2)]).toBeUndefined();
+});
+
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (isAutoCompaction(active)) { → if (!isAutoCompaction(active)) {
+it("ED143: An automatic compaction waiting to send is stopped when the session changes or the agent starts another turn; that turn's end decides again from its own context. Breaks: a new or already compacted context is compacted, or two compactions are sent.", () => {
+  const started = play([...running]).state;
+  const claude = {
+    ...started,
+    session: { ...started.session!, driver: "claudeAgent", instanceId: "claude-1" },
+  };
+  const endAt = (turn: number, usedTokens: number) =>
+    signal({
+      kind: "turn-ended",
+      turn: T(turn),
+      outcome: { kind: "completed" },
+      source: "agent",
+      context: { usedTokens, maxTokens: 1_000_000 },
+    });
+  const self = signal({ kind: "turn-started", turn: T(3), origin: "self", providerTurnId: "self" });
+  const interrupted = play([endAt(1, 320_000), self], claude);
+  expect(interrupted.state.runs[r(2)]?.end).toEqual({ kind: "stopped", by: { kind: "engine" } });
+  expect(interrupted.state.runs[r(3)]?.state).toBe("running");
+  const small = play([endAt(1, 320_000), self, endAt(3, 200_000)], claude);
+  expect(small.state.runs[r(4)]).toBeUndefined();
+  const large = play([endAt(1, 320_000), self, endAt(3, 320_000), prepared(4)], claude);
+  expect(large.effects).toMatchObject([
+    { kind: "provider.send", payload: { runId: r(4), text: "/compact" } },
+  ]);
+  expect(large.state.queue).toEqual([]);
+
+  const changed = play(
+    [
+      endAt(1, 320_000),
+      { _tag: "ChooseAgent", instanceId: "codex", driver: "codex", model: "model", resumes: false },
+      prepared(2),
+    ],
+    claude,
+  );
+  expect(changed.state.runs[r(2)]?.end).toEqual({ kind: "stopped", by: { kind: "engine" } });
+  expect(changed.effects).toEqual([]);
+  expect(play([stop(), endAt(1, 320_000)], claude).state.runs[r(2)]).toBeUndefined();
+});
+
 // witness: apps/server/src/engine/domain/evolve.ts | context: event.context ?? state.context, → context: event.context ?? null,
 it("ED112: A conversation keeps the context reading its latest turn end recorded, through a run that ends with none; breaks: reopening after a turn that reported no usage shows no meter.", () => {
   const context = { usedTokens: 91_000, maxTokens: 1_000_000, autoCompactWindow: 400_000 };
