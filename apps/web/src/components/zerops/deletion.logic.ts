@@ -305,7 +305,7 @@ export function chooseDeletionFate(
   row: DeletionRow,
   fate: "goes" | "stays",
 ): DeletionChoice {
-  return row.kind === "code"
+  return row.kind === "code" || row.kind === "setup"
     ? { ...choice, repoFates: { ...choice.repoFates, [row.id]: fate } }
     : { ...choice, fates: { ...choice.fates, [row.id]: fate } };
 }
@@ -487,14 +487,24 @@ export function deletionReview(input: {
   }
   if (holdings?.repos.some((repo) => repo.name === RECIPE_REPO)) {
     const repoStays = rows.some((row) => row.kind === "code" && row.fate === "stays");
-    const fate = partStays || repoStays ? "stays" : "goes";
+    const switchable = mate !== undefined && parts.length === 0 && repos.length === 0;
+    const recorded = choice.codeAgain;
+    const defaultFate =
+      recorded !== undefined && (!recorded.hasStep || recorded.keeps.includes(RECIPE_REPO))
+        ? "stays"
+        : "goes";
+    const chosenFate = Object.hasOwn(choice.repoFates, RECIPE_REPO)
+      ? choice.repoFates[RECIPE_REPO]
+      : undefined;
+    const fate =
+      partStays || repoStays ? "stays" : switchable ? (chosenFate ?? defaultFate) : "goes";
     rows.push({
       kind: "setup",
       id: RECIPE_REPO,
       title: "Setup files",
       badge: "Setup files",
       fate,
-      switchable: false,
+      switchable,
       line:
         fate === "stays"
           ? "Stay with the project."
