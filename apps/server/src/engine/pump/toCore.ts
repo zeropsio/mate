@@ -678,6 +678,7 @@ const engineBody = (
             : {}),
           ...(facts?.line === undefined ? {} : { input: facts.line }),
           ...(facts?.shows === undefined ? {} : { shows: facts.shows }),
+          ...(facts?.timing === undefined ? {} : { timing: facts.timing }),
           // Its pictures go to the asset store first (`pictures`): the record holds references.
           ...(result === undefined ? {} : { result: withoutPictures(result) }),
         },

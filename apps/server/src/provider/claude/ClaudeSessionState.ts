@@ -132,6 +132,7 @@ export interface ToolInFlight {
   readonly detail?: string;
   readonly input: Record<string, unknown>;
   readonly partialInputJson: string;
+  readonly inputComplete?: boolean;
   readonly lastEmittedInputFingerprint?: string;
   /** Owning agent when this tool ran inside a subagent (see attribution note). */
   readonly agentId?: string;

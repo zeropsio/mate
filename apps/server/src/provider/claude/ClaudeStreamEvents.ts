@@ -320,6 +320,7 @@ export const makeClaudeStreamEvents = (
         detail,
         input: toolInput,
         partialInputJson: "",
+        inputComplete: false,
         ...(inputFingerprint ? { lastEmittedInputFingerprint: inputFingerprint } : {}),
         ...(owningAgentId ? { agentId: owningAgentId } : {}),
         ...(parentToolUseId ? { parentToolUseId } : {}),
@@ -348,6 +349,7 @@ export const makeClaudeStreamEvents = (
           data: {
             toolName: tool.toolName,
             input: toolInput,
+            inputComplete: false,
           },
         },
         providerRefs: nativeProviderRefs(context, {
@@ -380,6 +382,35 @@ export const makeClaudeStreamEvents = (
       if (!tool) {
         return;
       }
+      context.inFlightTools.set(inFlightToolKey(streamParentToolUseId, index), {
+        ...tool,
+        inputComplete: true,
+      });
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        type: "item.updated",
+        eventId: stamp.eventId,
+        provider: PROVIDER,
+        createdAt: stamp.createdAt,
+        threadId: context.session.threadId,
+        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+        itemId: asRuntimeItemId(tool.itemId),
+        payload: {
+          itemType: tool.itemType,
+          status: "inProgress",
+          title: tool.title,
+          ...(tool.detail ? { detail: tool.detail } : {}),
+          ...(tool.agentId ? { agentId: tool.agentId } : {}),
+          ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+          data: { toolName: tool.toolName, input: tool.input, inputComplete: true },
+        },
+        providerRefs: nativeProviderRefs(context, { providerItemId: tool.itemId }),
+        raw: {
+          source: "claude.sdk.message",
+          method: "claude/stream_event/content_block_stop",
+          payload: message,
+        },
+      });
     }
   });
 
