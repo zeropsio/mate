@@ -378,8 +378,8 @@ export const HqOperation = Schema.Struct({
   ),
   /**
    * An application's deletion's parts in the order it runs them, each by its project where it has
-   * one, and how it stands. A code part names any repositories kept:
-   * `pending`, `deleting` or `gone`. Read as strings, as `kind` and `phase` are.
+   * one, and how it stands: `pending`, `deleting` or `gone`. A `code` part names in `keeps`
+   * the repositories it keeps. Read as strings, as `kind` and `phase` are.
    */
   steps: Schema.optionalKey(
     Schema.Array(
