@@ -4,25 +4,21 @@ The shared [testing rules](../testing-rules.md) say what may become a test; this
 this repository's checks, inputs and suites. Suites other than T1 run only when a maintainer asks
 (`AGENTS.md`).
 
-- T1 is `node scripts/t1.ts`: every unit's cases, whole, at every landing (a red case blocks; its
-  time is printed) and in CI's `T1` job, which alone enforces the budget constant in that file and
-  is required for a release. A wrong or flaky case is retired forward: one commit, on a card naming
+- T1 is `node scripts/t1.ts`: every unit's cases, whole, at every landing and in CI's `T1` job.
+  The gate and CI run it with the budget constant in that file; a red case or an over-budget run
+  blocks. A wrong or flaky case is retired forward: one commit, on a card naming
   its id, removes the id from `SENTENCES.md` and deletes the case; it is never skipped or retried.
-- The gate (`scripts/gate-changed.ts`) runs, for every diff, T1, `sentences`, `guard ledgers`,
-  `check touched files` and the repository checks of CI's `Check Guards` job, each named as its CI
-  step and running its command: `imported lock`, `showcase scenes`, `css motion`,
-  `css theme tokens`, `generated theme tokens`, `doc paths`. The changed packages' typecheck follows the diff;
-  `runtime cycle ratchet`, `build web client` and `pack server` each run when the diff touches a
-  file in its input set, the one set that also fingerprints the stage. `build web client` builds
-  the client `zerops.yml`'s `prod` setup deploys, service worker included: it takes that setup's
-  variables that change which entries are built, so `zerops.yml` is in its input set and a setup
-  without one fails the stage. CI keeps those steps and
-  runs the ratchet and the build on every push, the clean-machine witness the release reads.
+- The gate (`scripts/gate-changed.ts`) and CI's required jobs run the same stage table. T1, the
+  sentence check, guard ledgers and the repository guards run on every diff. Other stages run when
+  the diff touches their inputs: these include workflow schema, lockfile policy, release smoke,
+  typecheck, the runtime cycle ratchet, the web build and the server pack. The web build takes the
+  switches of the `prod` setup in `zerops.yml`, including the service worker, and fails if they are
+  missing. CI runs the stages against its clean checkout.
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
   always in the gate, holds the list's format, the mapping of ids to cases, witness lines and
-  admission, and prints the list's delta against the base. A landing names the ids it retires,
-  changes or adds (`node scripts/land.ts --sentences PJ12,PJ+1`); a delta that differs is refused.
+  admission, and prints the list's delta against the base. A landing reads the delta from the branch
+  and checks its lists before numbering them.
   `scripts/witness-replay.ts <file>` replays a file's witnesses.
 - The server's engine cases that need the store run on `engineDatabase`
   (`apps/server/src/engine/testing/fixtures.ts`): the engine's migrated tables on an in-process
@@ -51,10 +47,7 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
   `next:` stands right past them. The landing delta treats base placeholders that were numbered as
   renamings, not additions by the branch. A landing that stops after numbering without
-  landing resets the branch to its rebased commit before the numbers. A landing onto a whole's
-  branch (`--onto whole/<name>`) numbers nothing and gates by the branch rule, so the whole keeps
-  lane-local ids; the whole's own landing on `main` numbers
-  them all, so only `main`'s landings give final ids.
+  landing resets the branch to its rebased commit before the numbers.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
   It decodes a committed recording through the consumer's schema for the wire name in its header.

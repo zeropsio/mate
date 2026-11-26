@@ -30,21 +30,11 @@ How mate reaches users. Each step names the file that owns its detail.
   caller that stops it waits 5 s before SIGKILL. Once the push has started, origin decides: when
   its `main` contains the pushed tip, the landing prints `LANDED <sha>` whatever stopped it. A lock
   directory that names no holder (no landing makes one) is refused `lock` with its path, to be
-  removed once no landing runs. A landing whose
-  lists' delta (the sentence ids its `SENTENCES.md` changes retire, change or add) differs from
-  `--sentences <id>[,<id>…]` is refused `sentences`; the lander passes the ids its card names, an
-  added sentence by its lane-local id (`ED+1`). The ids are numbered inside the rebased branch's
-  last commit (amended, never a commit of its own, so a landing pushes only the branch's commits),
-  the gate covers the numbered tip, and each `<unit>: <old> → <new>` is printed to stderr and
-  added to that commit's body; a landing that does not land leaves its branch on its own rebased
-  commit, before the numbering.
-  `--onto whole/<name>` lands on a whole's branch instead, so changes that belong together reach
-  `main` in one push, one CI run and one release: the first landing makes the branch from
-  `origin/main`, and the branch is append-only until its close. A later landing rebases its own
-  commits onto the branch head, never onto a `main` that moved, fast-forwards the branch with a
-  lease on the head it saw, prints `LANDED <sha> on whole/<name>`, numbers nothing and gates by
-  the branch rule. The close reaches `main` as one ordinary landing of the branch's head, naming
-  every id the whole adds: a moved `main` is met there once, rebased and gated once.
+  removed once no landing runs. The landing checks the branch's sentence diff and numbers its
+  lane-local ids inside the rebased branch's last commit (amended, never a commit of its own, so a
+  landing pushes only the branch's commits). The gate covers the numbered tip, and each
+  `<unit>: <old> → <new>` is printed to stderr and added to that commit's body; a landing that does
+  not land leaves its branch on its own rebased commit, before the numbering.
 - **Hosted web client.** A `web-v*` tag deploys https://mate.zerops.io through `zerops.yml`'s `prod`
   setup. A successful CI run on `main` runs the release cutter for its commit automatically. For a
   minor release or a chosen green `main` commit, run **Release hosted web** on `main` in GitHub
