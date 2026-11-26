@@ -247,7 +247,7 @@ export function AppSidebarLayout({
       ? getWindowFullscreenState()
       : false;
   });
-  // Closed on a desktop, the menu is an 88 px rail of tiles (`SidebarRail`) the open menu docks
+  // Closed on a desktop, the menu is a 76 px rail of tiles (`SidebarRail`) the open menu docks
   // from (`SidebarStage`); settings closes it away.
   const rail = !isOnSettings;
   // A menu its person left closed comes back closed: the rail, as the first frame drew it.
@@ -256,7 +256,7 @@ export function AppSidebarLayout({
   const whole = useWholeWindowClaimed();
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
-    "--sidebar-width-icon": "88px",
+    "--sidebar-width-icon": "76px",
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),

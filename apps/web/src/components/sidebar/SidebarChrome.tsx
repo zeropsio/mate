@@ -7,7 +7,7 @@ import {
   LayoutGridIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
-  PlusIcon,
+  CirclePlusIcon,
   SettingsIcon,
   UsersIcon,
   WalletIcon,
@@ -174,7 +174,7 @@ export function SidebarCreateButton({
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-5" />
+          <CirclePlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{why}</TooltipPopup>
       </Tooltip>
@@ -197,7 +197,7 @@ export function SidebarCreateButton({
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-5" />
+          <CirclePlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>
@@ -219,7 +219,7 @@ export function SidebarCreateButton({
             />
           }
         >
-          <PlusIcon aria-hidden="true" className="size-5" />
+          <CirclePlusIcon aria-hidden="true" className="size-5" />
         </TooltipTrigger>
         <TooltipPopup side="bottom">{label}</TooltipPopup>
       </Tooltip>

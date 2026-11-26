@@ -11,12 +11,7 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
 import { MenuMateLine } from "../SidebarZeropsTree";
 import { chiefRowLine, chiefRowOpens } from "./chiefTop.logic";
-import {
-  ChiefSetupRowLine,
-  SidebarChiefRow,
-  SidebarChiefTile,
-  type SidebarChiefRowProps,
-} from "./SidebarChiefRow";
+import { ChiefSetupRowLine, SidebarChiefRow, SidebarChiefTile } from "./SidebarChiefRow";
 
 export function SidebarChiefTop<T extends CandidateRow>({
   chief,
@@ -28,7 +23,6 @@ export function SidebarChiefTop<T extends CandidateRow>({
   currentPage,
   onOpenMate,
   onOpenPage,
-  waiting,
   tile = false,
 }: {
   /** The person's own Chief among the listed Mates; undefined while it is not listed. */
@@ -44,7 +38,6 @@ export function SidebarChiefTop<T extends CandidateRow>({
   readonly currentPage: boolean;
   readonly onOpenMate: (chief: T) => void;
   readonly onOpenPage: () => void;
-  readonly waiting: SidebarChiefRowProps["waiting"];
   /** Drawn as the closed menu's rail draws it (`SidebarChiefTile`). */
   readonly tile?: boolean;
 }) {
@@ -56,7 +49,6 @@ export function SidebarChiefTop<T extends CandidateRow>({
         current={currentPage}
         line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
         onOpen={onOpenPage}
-        waiting={waiting}
       />
     );
   }
@@ -84,7 +76,6 @@ export function SidebarChiefTop<T extends CandidateRow>({
               ) : undefined
             }
             onOpen={opens === "mate" ? () => onOpenMate(chief) : onOpenPage}
-            waiting={waiting}
           />
         );
       }}

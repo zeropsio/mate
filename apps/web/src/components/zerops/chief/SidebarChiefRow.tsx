@@ -3,7 +3,7 @@
  * wearing the Chief's state as a Mate's face does; "Chief"; and a second line only while it has
  * something to say (`chiefRowLine`), the name centred in the row otherwise. While its setup runs
  * the same row opens the Chief page; before that there is no row. What waits on the person counts
- * in the menu's headline, and on the rail's tile (`SidebarChiefTile`).
+ * in the menu's headline, and on the rail's Overview.
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { CircleAlertIcon } from "lucide-react";
@@ -15,16 +15,13 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
 import { Row } from "../../ui/row";
-import { Button } from "../../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
-import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
-import type { WaitingItem } from "~/zerops/waiting.logic";
 import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
+import { RAIL_NAME_CLASS, RailControl } from "../SidebarRail";
 import { RailTip } from "../SidebarRailTip";
 
 export interface SidebarChiefRowProps {
@@ -37,10 +34,6 @@ export interface SidebarChiefRowProps {
   /** Its conversation, or the Chief page, is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
-  /** What waits on the person, and what its list asks of the menu. */
-  readonly waiting?:
-    | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
-    | undefined;
 }
 
 /** The title, its noun whole: the words before "Chief" give way first in a narrow menu. */
@@ -160,8 +153,8 @@ export function SidebarChiefRow({
 }
 
 /**
- * The Chief on the closed menu's rail, in Overview's old place: its mark as a tile, wearing its
- * state, what waits on the person counted on its corner; its name and line in its card.
+ * The Chief on the closed menu's rail, the first of its tiles: its mark wearing its state over
+ * "Chief Mate"; its whole name and line in its card.
  */
 export function SidebarChiefTile({
   face,
@@ -169,49 +162,32 @@ export function SidebarChiefTile({
   line,
   current,
   onOpen,
-  waiting,
 }: SidebarChiefRowProps) {
-  const items = waiting?.items ?? [];
   // Named as its row names it: one name on the rail and in the open menu.
   const name = chiefRowName(useSignedInAccount());
   return (
-    <div className="relative grid" data-zerops-surface="sidebar-chief">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-current={current ? "page" : undefined}
-              aria-label={name}
-              data-current={current ? "" : undefined}
-              className="group/rail"
-              data-zerops-surface="sidebar-chief-row"
-              onClick={onOpen}
-              variant="bare"
-            />
-          }
-        >
-          <span className="grid size-12 place-items-center rounded-card text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-data-current/rail:bg-sidebar-row-active motion-reduce:transition-none">
-            <span className="relative flex">
-              <MateMark
-                awake
-                playful
-                className="h-8.25 w-7"
-                {...(face === undefined ? {} : { state: face })}
-              />
-              {unseen ? (
-                <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
-              ) : null}
-            </span>
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="right">
-          <RailTip line={line} name={name} />
-        </TooltipPopup>
-      </Tooltip>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount seat="rail" items={items} verbs={waiting.verbs} />
-      )}
-    </div>
+    <RailControl
+      aria-current={current ? "page" : undefined}
+      aria-label={name}
+      data-current={current ? "" : undefined}
+      data-zerops-surface="sidebar-chief-row"
+      look="tile"
+      onClick={onOpen}
+      tip={<RailTip line={line} name={name} />}
+    >
+      <span className="relative grid size-9 place-items-center" data-zerops-surface="sidebar-chief">
+        <MateMark
+          awake
+          playful
+          className="h-8.25 w-7"
+          {...(face === undefined ? {} : { state: face })}
+        />
+        {unseen ? <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" /> : null}
+      </span>
+      <span aria-hidden="true" className={RAIL_NAME_CLASS} data-zerops-surface="sidebar-rail-name">
+        Chief Mate
+      </span>
+    </RailControl>
   );
 }
 

@@ -1809,14 +1809,17 @@ function RailFrame({
           organizations={[ORGANIZATION]}
         />
       }
-      actions={
+      create={
+        <SidebarCreateButton
+          onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
+          onNewProject={() => menuActions.push("new project")}
+          projects={HARNESS_PROJECTS}
+        />
+      }
+      find={
         <>
           <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
-          <SidebarCreateButton
-            onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
-            onNewProject={() => menuActions.push("new project")}
-            projects={HARNESS_PROJECTS}
-          />
+          <SidebarScopeButton onScope={() => menuActions.push("scope")} scope={scope} />
         </>
       }
       activeProjectId={open === "" ? null : open}
@@ -1827,7 +1830,6 @@ function RailFrame({
             menuActions.push("chief");
             setOpen("");
           }}
-          waiting={{ items, verbs }}
         />
       }
       headline={HARNESS_HEADLINE}
@@ -2139,7 +2141,7 @@ const router = createRouter({
           style={
             {
               "--sidebar-width": `${MENU_WIDTH}px`,
-              "--sidebar-width-icon": "88px",
+              "--sidebar-width-icon": "76px",
             } as CSSProperties
           }
         >

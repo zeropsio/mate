@@ -1735,17 +1735,11 @@ export default function Sidebar() {
         setup={chiefSetupLine}
         tile={tile}
         timestampFormat={timestampFormat}
-        // Counted on the rail's tile; the open menu counts it in its headline.
-        waiting={
-          !tile || zeropsListHeld
-            ? undefined
-            : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
-        }
       />
     ) : undefined;
   // The account has nothing yet: the menu draws only what it can do there.
   const zeropsFirstRun = useAccountFirstRun();
-  // Search and the +, on the open menu's top row and under the rail's Chief.
+  // Search and the +, on the open menu's top row and the rail's.
   const zeropsJump = (
     <SidebarJumpButton
       onJump={() => {
@@ -1776,16 +1770,14 @@ export default function Sidebar() {
           destinationIcon={sidebarAccountDestinationIcon}
         />
       }
-      actions={
-        rosterOnly ? (
-          zeropsFirstRun ? (
-            zeropsCreate
-          ) : (
-            <>
-              {zeropsJump}
-              {zeropsCreate}
-            </>
-          )
+      create={rosterOnly ? zeropsCreate : undefined}
+      find={
+        // At the account's first run there is nothing to search or narrow.
+        rosterOnly && !zeropsFirstRun ? (
+          <>
+            {zeropsJump}
+            <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
+          </>
         ) : undefined
       }
       activeProjectId={zeropsOverviewOpen ? null : litZeropsProjectId}
@@ -1803,7 +1795,8 @@ export default function Sidebar() {
       showMark={!(isElectron && isMacPlatform(navigator.platform))}
       tiles={zeropsRailTiles.tiles}
       verbs={zeropsWaitingVerbs}
-      waiting={zeropsWaiting.items}
+      // Counted on the rail's Overview; the open menu counts it in its headline.
+      waiting={zeropsListHeld ? [] : zeropsWaiting.items}
     />
   );
   return (

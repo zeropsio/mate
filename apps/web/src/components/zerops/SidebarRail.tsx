@@ -1,9 +1,10 @@
 /**
- * The closed menu on a desktop (`SidebarRail.logic.ts`): an 88 px rail of tiles. On top the Chief,
- * what waits on the viewer counted on its corner (the mark to the overview where the organization
- * holds no Chief), then search and the +; then one tile per project in the open menu's order — the
- * menu row's own face, or its group's cluster, over the project's name on one line — each with one
- * dot; at the foot the viewer's photo and the button that opens the menu again.
+ * The closed menu on a desktop (`SidebarRail.logic.ts`): a 76 px rail of tiles, to the owner's
+ * design (pen.dev, "Collapsed sidebar"). On top the open menu's squares in two rows — Overview,
+ * what waits on the viewer counted on its corner, and the +; search and whose Mates — then the
+ * Chief's tile and one tile per project in the open menu's order — the menu row's own face, or its
+ * group's cluster, over the project's name on one line — each with one dot; at the foot the
+ * viewer's photo and the button that opens the menu again.
  *
  * A group's tile opens and folds its Mates' tiles under it, with the menu's own fold. A tile's card,
  * at once and instant from one tile to the next, names its project and Mate, says its state in
@@ -27,7 +28,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { MateComing } from "@t3tools/client-runtime/data";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { asksPerson } from "@t3tools/shared/threadStatus";
-import { PanelLeftOpenIcon } from "lucide-react";
+import { LayoutGridIcon, PanelRightCloseIcon } from "lucide-react";
 import { useMemo, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -42,7 +43,6 @@ import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
-import { MateMark } from "../MateMark";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { MateDot } from "./MateDot";
 import { MateOwnerMark } from "./MateOwnerMark";
@@ -71,8 +71,8 @@ import {
   type RailTile,
   type RailTileMate,
 } from "./SidebarRail.logic";
-import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
-import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
+import { SidebarWaitingCount, type WaitingVerbs } from "./SidebarWaiting";
+import type { WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
 import { Text } from "~/components/ui/text";
 
@@ -369,13 +369,16 @@ function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid
  * ground a face's rings are cut in (`--menu-ground`) follows its light.
  */
 const RAIL_LOOK = {
-  tile: "flex w-20 flex-col items-center gap-1 rounded-card pt-2 pb-1.5 text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
+  tile: "flex w-16 flex-col items-center gap-1 rounded-card p-1.5 text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
   kid: "grid h-10 w-11 place-items-center rounded-control transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
-  open: "grid size-9 place-items-center rounded-control text-sidebar-muted-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-hover/rail:text-sidebar-foreground motion-reduce:transition-none",
+  open: "grid size-8 place-items-center rounded-control text-sidebar-muted-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-hover/rail:text-sidebar-foreground motion-reduce:transition-none",
 } as const;
 
+/** A tile's name under its face: one line, cut where the tile ends. */
+export const RAIL_NAME_CLASS = "w-full truncate text-center text-caption font-medium";
+
 /** A rail press: the kit's bare press around its look, which keys its hover and current on it. */
-function RailControl({
+export function RailControl({
   tip,
   look,
   children,
@@ -458,7 +461,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={projectName.length > 0 ? projectName : undefined}
-        className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
+        className="flex w-16 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -474,7 +477,7 @@ function RailTileView({
           <RailComingFace coming={tile} />
           <span
             aria-hidden="true"
-            className="max-w-18 truncate text-caption font-medium"
+            className={RAIL_NAME_CLASS}
             data-zerops-surface="sidebar-rail-name"
           >
             {projectName.length > 0 ? projectName : member.name}
@@ -490,7 +493,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={mate.projectName.length > 0 ? mate.projectName : undefined}
-        className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
+        className="flex w-16 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -506,7 +509,7 @@ function RailTileView({
           <RailFace mate={mate} />
           <span
             aria-hidden="true"
-            className="max-w-18 truncate text-caption font-medium"
+            className={RAIL_NAME_CLASS}
             data-zerops-surface="sidebar-rail-name"
           >
             {name}
@@ -522,7 +525,7 @@ function RailTileView({
       aria-current={tile.holdsCurrent ? "true" : undefined}
       aria-label={name}
       // Open, the project's Mates stand on its group's ground, which their faces cut out of.
-      className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
+      className="flex w-16 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
       data-rail-open={tile.open ? "" : undefined}
       data-zerops-surface="sidebar-rail-project"
       role="group"
@@ -573,7 +576,7 @@ function RailTileView({
         </span>
         <span
           aria-hidden="true"
-          className="max-w-18 truncate text-caption font-medium"
+          className={RAIL_NAME_CLASS}
           data-zerops-surface="sidebar-rail-name"
         >
           {name}
@@ -630,7 +633,8 @@ export function SidebarRail({
   tiles,
   activeProjectId,
   chief,
-  actions,
+  create,
+  find,
   overviewCurrent,
   headline,
   waiting,
@@ -647,10 +651,12 @@ export function SidebarRail({
   readonly tiles: ReadonlyArray<RailTile<RailMate>>;
   /** The Mate whose conversation is open. */
   readonly activeProjectId: string | null;
-  /** The Chief's tile (`SidebarChiefTop`'s `tile`); none where the organization holds no Chief. */
+  /** The Chief's tile (`SidebarChiefTop`'s `tile`), the first; none where it is not listed. */
   readonly chief?: ReactNode;
-  /** Search and the +, as the open menu's top row holds them. */
-  readonly actions?: ReactNode;
+  /** The +, beside Overview. */
+  readonly create?: ReactNode;
+  /** Search and whose Mates, under them, as the open menu's top row holds them. */
+  readonly find?: ReactNode;
   readonly overviewCurrent: boolean;
   readonly headline: string;
   readonly waiting: ReadonlyArray<WaitingItem>;
@@ -668,54 +674,33 @@ export function SidebarRail({
   readonly onFold: ((groupId: string, open: boolean) => void) | null;
   readonly onOpenMenu: () => void;
 }) {
-  const words = waitingCountWords(waiting);
-  const head = chief ?? (
-    // Without a Chief the mark leads to the overview, what waits on the viewer on its corner.
-    <div className="relative grid">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-current={overviewCurrent ? "page" : undefined}
-              aria-label="Overview"
-              data-current={overviewCurrent ? "" : undefined}
-              data-zerops-surface="sidebar-rail-overview"
-              className="group/rail"
-              onClick={onOverview}
-              variant="bare"
-            />
-          }
-        >
-          <span className="grid size-12 place-items-center rounded-card text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-data-current/rail:bg-sidebar-row-active motion-reduce:transition-none">
-            <MateMark awake playful className="h-8.25 w-7" />
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="right">
-          <RailTip line={headline} name="Overview" shortcut="⌥0" />
-        </TooltipPopup>
-      </Tooltip>
-      {waiting.length === 0 ? null : (
-        // The count's seat on the tile's corner, cut out of the tile by the menu's ground.
-        <span className="absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5">
-          <SidebarWaitingPopover
-            items={waiting}
-            tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
-            trigger={
+  const head = (
+    <div className="flex flex-none justify-center px-1.5">
+      <div className="relative grid">
+        <Tooltip>
+          <TooltipTrigger
+            render={
               <Button
-                aria-label={words.label}
-                data-waiting-trigger=""
-                data-zerops-surface="sidebar-rail-waiting"
-                shape="round"
-                size="2xs"
-                variant="warning"
+                aria-current={overviewCurrent ? "page" : undefined}
+                aria-label="Overview"
+                data-zerops-surface="sidebar-rail-overview"
+                onClick={onOverview}
+                size="icon-md"
+                variant="sidebar"
               />
             }
-            verbs={verbs}
           >
-            {waiting.length}
-          </SidebarWaitingPopover>
-        </span>
-      )}
+            <LayoutGridIcon aria-hidden="true" className="size-5" />
+          </TooltipTrigger>
+          <TooltipPopup side="right">
+            <RailTip line={headline} name="Overview" shortcut="⌥0" />
+          </TooltipPopup>
+        </Tooltip>
+        {waiting.length === 0 ? null : (
+          <SidebarWaitingCount seat="rail" items={waiting} verbs={verbs} />
+        )}
+      </div>
+      {create}
     </div>
   );
   return (
@@ -735,10 +720,11 @@ export function SidebarRail({
             <div className="grid flex-none place-items-center pb-1">{head}</div>
           </>
         )}
-        {actions === undefined ? null : (
-          <div className="flex flex-none justify-center gap-1 pt-0.5 pb-1.5">{actions}</div>
+        {find === undefined ? null : (
+          <div className="flex flex-none justify-center px-1.5">{find}</div>
         )}
-        <div className="flex min-h-0 w-full flex-auto scrollbar-none flex-col items-center gap-0.5 overflow-y-auto overscroll-contain pt-1 pb-3">
+        <div className="flex min-h-0 w-full flex-auto scrollbar-none flex-col items-center gap-0.5 overflow-y-auto overscroll-contain pt-2 pb-3">
+          {chief}
           {tiles.map((tile) => (
             <RailTileView
               activeProjectId={activeProjectId}
@@ -750,7 +736,7 @@ export function SidebarRail({
             />
           ))}
         </div>
-        <div className="flex flex-none flex-col items-center gap-2.5 pt-2.5 pb-3.5">
+        <div className="flex flex-none flex-col items-center gap-3 pt-2.5 pb-2">
           {account}
           <RailControl
             aria-label="Open the menu"
@@ -759,7 +745,7 @@ export function SidebarRail({
             onClick={onOpenMenu}
             tip={<RailTip name="Open the menu" shortcut={openShortcut} />}
           >
-            <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
+            <PanelRightCloseIcon aria-hidden="true" className="size-4" />
           </RailControl>
         </div>
       </div>
