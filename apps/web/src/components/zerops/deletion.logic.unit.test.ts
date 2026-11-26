@@ -4,6 +4,9 @@ import { expect, it } from "vite-plus/test";
 
 import {
   deletionOffer,
+  deletionPageState,
+  deletionStepStates,
+  keptWhere,
   deletionProjectOf,
   deletionParts,
   deletionStandingWords,
@@ -280,7 +283,7 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
   ] as const) {
     expect(deletionStart({ ...base, offer, choice: selected })).toEqual(expected);
   }
-  const ready = projectDeletionReady(plan, confirmed, true);
+  const ready = projectDeletionReady(plan, confirmed, true, true);
   expect([...ready.slid]).toEqual(["Z_STAGE", "Z_SHOP"]);
   const first = deletionStart({ ...base, offer: project, choice: confirmed })!;
   const next = deletionStart({
@@ -299,11 +302,19 @@ it("MN85: A project's Delete opens only once every Stage is slid and its name is
     MATE,
   );
   const ready = (slid: ReadonlyArray<string>, typed: boolean) =>
-    projectDeletionReady(plan, { slid: new Set(slid), productionTyped: {} }, typed).ready;
+    projectDeletionReady(plan, { slid: new Set(slid), productionTyped: {} }, typed, true).ready;
   expect(ready([], true)).toBe(false);
   expect(ready(["Z_STAGE"], true)).toBe(false);
   expect(ready(["Z_STAGE", "Z_REVIEW"], false)).toBe(false);
   expect(ready(["Z_STAGE", "Z_REVIEW"], true)).toBe(true);
+  expect(
+    projectDeletionReady(
+      plan,
+      { slid: new Set(["Z_STAGE", "Z_REVIEW"]), productionTyped: {} },
+      true,
+      false,
+    ).ready,
+  ).toBe(false);
   expect(ready(["Z_STAGE", "Z_REVIEW", "Z_LIVE"], true)).toBe(true);
 });
 
@@ -539,4 +550,119 @@ it("MN87: What HQ's structure says of a project becomes the deletion's facts one
       { kind: "none" },
     )?.deleteApp,
   ).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | if (offer.kind === "project" && !input.project.deleteApp) → if (offer.kind === "project" && false)
+it("MN+1: A deletion page renders the authorized form, refusal, existing run or gone state", () => {
+  const empty = bakery({ placements: [], environments: [] });
+  const waiting = deletion({
+    failure: { ...zeropsRefusal, code: "token_expired", origin: "hq" },
+    continueBy: "user",
+  });
+  const failed = deletion({ failure: zeropsRefusal });
+  const cases = [
+    { read: false, project: undefined, mate: undefined, kind: "reading" },
+    { read: true, project: undefined, mate: undefined, kind: "gone" },
+    { read: true, project: empty, mate: undefined, kind: "form" },
+    { read: true, project: { ...empty, deleteApp: false }, mate: undefined, kind: "refused" },
+    { read: true, project: bakery(), mate: MATE, kind: "form" },
+    {
+      read: true,
+      project: bakery({
+        placements: [...bakery().placements, { projectId: "other", kind: "mate", name: undefined }],
+      }),
+      mate: MATE,
+      kind: "refused",
+    },
+    { read: true, project: bakery({ deleteApp: false }), mate: MATE, kind: "refused" },
+    {
+      read: true,
+      project: bakery({ environments: [stage("stage", false)] }),
+      mate: MATE,
+      kind: "refused",
+    },
+    { read: true, project: bakery(), mate: undefined, kind: "form", held: true },
+    {
+      read: true,
+      project: { ...empty, deleteApp: false, deletion: deletion({}) },
+      mate: undefined,
+      kind: "standing",
+    },
+    {
+      read: true,
+      project: { ...empty, deleteApp: false, deletion: waiting },
+      mate: undefined,
+      kind: "standing",
+    },
+    {
+      read: true,
+      project: { ...empty, deleteApp: false, deletion: failed },
+      mate: undefined,
+      kind: "standing",
+    },
+    { read: true, project: { ...empty, deletion: failed }, mate: MATE, past: "op-1", kind: "form" },
+  ] as const;
+  for (const row of cases) {
+    const state = deletionPageState({
+      structureRead: row.read,
+      project: row.project,
+      mate: row.mate,
+      past: "past" in row ? row.past : undefined,
+    });
+    expect(state.kind).toBe(row.kind);
+    if ("held" in row)
+      expect(state.kind === "form" && state.offer.plan.refusal !== undefined).toBe(true);
+    if ("past" in row) expect(state.kind === "form" && state.offer.kind).toBe("project");
+  }
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | const stagesSlid = plan.stages.every((stage) => confirmation.slid.has(stage.projectId)); → const stagesSlid = true;
+it("MN+2: The three page steps show Stage progress and final readiness", () => {
+  const plan = projectDeletionPlan(
+    bakery({ environments: [stage("stage-a"), stage("stage-b"), production("production")] }),
+    MATE,
+  );
+  const cases = [
+    { slid: [], ready: false, steps: ["current", "todo", "todo"] },
+    { slid: ["stage-a"], ready: false, steps: ["current", "todo", "todo"] },
+    { slid: ["stage-a", "stage-b"], ready: false, steps: ["done", "done", "current"] },
+    { slid: ["stage-a", "stage-b"], ready: true, steps: ["done", "done", "done"] },
+    {
+      slid: ["stage-a", "stage-b"],
+      typed: { production: "production" },
+      ready: false,
+      steps: ["done", "done", "current"],
+    },
+  ] as const;
+  for (const row of cases)
+    expect(
+      deletionStepStates(
+        plan,
+        { slid: new Set(row.slid), productionTyped: "typed" in row ? row.typed : {} },
+        row.ready,
+      ),
+    ).toEqual(row.steps);
+  expect(
+    deletionStepStates({ ...plan, stages: [] }, { slid: new Set(), productionTyped: {} }, false),
+  ).toEqual(["done", "done", "current"]);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | const hidden = project.hidden.includes(tier); → const hidden = false;
+it("MN+3: A kept project waits in its menu with a Zerops tier or under Git with only code", () => {
+  const cases = [
+    { environments: [stage("stage")], hidden: [], place: "menu" },
+    { environments: [production("production")], hidden: [], place: "menu" },
+    { environments: [], hidden: ["stage"], place: "menu" },
+    { environments: [], hidden: ["production"], place: "menu" },
+    {
+      environments: [{ tier: "production", kind: "git", branch: "release" }],
+      hidden: [],
+      place: "git",
+    },
+    { environments: [], hidden: [], place: "git" },
+  ] as const;
+  for (const row of cases)
+    expect(keptWhere(bakery({ environments: row.environments, hidden: row.hidden })).place).toBe(
+      row.place,
+    );
 });

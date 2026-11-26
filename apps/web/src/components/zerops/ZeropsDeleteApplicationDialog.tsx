@@ -408,7 +408,12 @@ export function ZeropsDeletionForm({
   const projectReady =
     plan === undefined
       ? undefined
-      : projectDeletionReady(plan, confirmation, deleteMateConfirmed(typedProject, project.name));
+      : projectDeletionReady(
+          plan,
+          confirmation,
+          deleteMateConfirmed(typedProject, project.name),
+          holdings !== undefined,
+        );
   const slid = projectReady?.slid ?? confirmation.slid;
   const mateWords = deleteMateWords({
     name: mateName,
@@ -432,7 +437,7 @@ export function ZeropsDeletionForm({
         });
   const ready =
     whole && plan !== undefined
-      ? { ...projectReady!, ready: projectReady!.ready && words?.goes !== undefined }
+      ? projectReady!
       : { ready: deleteMateConfirmed(typedMate, mateName), missing: null };
 
   return (
@@ -453,7 +458,7 @@ export function ZeropsDeletionForm({
           {offer.kind === "project"
             ? "This can't be undone."
             : offer.kind === "last-choice"
-              ? lastChoiceWords(project, offer.plan, mateName, slid).description
+              ? lastChoiceWords(project, offer.plan, mateName).description
               : mateWords.body}
         </DialogDescription>
       </DialogHeader>
@@ -469,16 +474,16 @@ export function ZeropsDeletionForm({
               value={choice}
             >
               <RadioCard
-                title={lastChoiceWords(project, offer.plan, mateName, slid).only.title}
+                title={lastChoiceWords(project, offer.plan, mateName).only.title}
                 value="mate"
               >
-                {lastChoiceWords(project, offer.plan, mateName, slid).only.line}
+                {lastChoiceWords(project, offer.plan, mateName).only.line}
               </RadioCard>
               <RadioCard
-                title={lastChoiceWords(project, offer.plan, mateName, slid).whole.title}
+                title={lastChoiceWords(project, offer.plan, mateName).whole.title}
                 value="project"
               >
-                {lastChoiceWords(project, offer.plan, mateName, slid).whole.line}
+                {lastChoiceWords(project, offer.plan, mateName).whole.line}
               </RadioCard>
             </RadioGroup>
           )}

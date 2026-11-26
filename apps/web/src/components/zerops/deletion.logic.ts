@@ -259,18 +259,22 @@ export function lastChoiceWords(
   project: DeletionProject,
   plan: ProjectDeletionPlan,
   mate: string,
-  /** The Productions slid, by project id: the whole project's choice names each. */
-  slid: ReadonlySet<string>,
 ): {
   readonly description: string;
-  readonly only: { readonly title: string; readonly line: string };
-  readonly whole: { readonly title: string; readonly line: string };
+  readonly only: { readonly title: string; readonly line: string; readonly where: string };
+  readonly whole: {
+    readonly title: string;
+    readonly line: string;
+    readonly next: string;
+    readonly press: string;
+  };
 } {
   return {
     description: `${mate} is the last Mate of ${project.name}. Choose what goes.`,
     only: {
       title: `Only ${mate}`,
       line: `${project.name} stays, with ${keptWith(project)}. Start a new Mate in it any time.`,
+      where: keptWhere(project).line,
     },
     whole: {
       title: `${mate} and the whole project`,
@@ -278,12 +282,64 @@ export function lastChoiceWords(
         project.name,
         "its code",
         ...(plan.stages.length === 0 ? [] : ["Stage"]),
-        ...plan.productions.flatMap((production) =>
-          slid.has(production.projectId) ? [`Production ${production.name}`] : [],
-        ),
       ])} go. This can't be undone.`,
+      next: "The next page lists what goes and what stays, step by step, and asks you to confirm each part. Nothing is deleted before its last press.",
+      press: "Continue",
     },
   };
+}
+
+/** Where a project waits after its last Mate goes alone. */
+export function keptWhere(project: DeletionProject): {
+  readonly place: "menu" | "git";
+  readonly line: string;
+} {
+  const placed = (tier: "stage" | "production") => {
+    const hidden = project.hidden.includes(tier);
+    return (
+      project.environments.some(
+        (environment) => environment.kind === "zerops" && environment.tier === tier,
+      ) || hidden
+    );
+  };
+  const tiers = [
+    ...(placed("stage") ? ["Stage"] : []),
+    ...(placed("production") ? ["Production"] : []),
+  ];
+  return tiers.length > 0
+    ? {
+        place: "menu",
+        line: `It stays in the menu with its ${listed(tiers)}; its row's menu deletes the rest any time.`,
+      }
+    : {
+        place: "git",
+        line: "It leaves the menu and waits under Git, Kept code: add a Mate to it or delete it there any time.",
+      };
+}
+
+/** The page renders this answer, including an existing operation for every reader. */
+export function deletionPageState(input: {
+  readonly structureRead: boolean;
+  readonly project: DeletionProject | undefined;
+  readonly mate: { readonly projectId: string; readonly name: string } | undefined;
+  readonly past?: string | undefined;
+}):
+  | { readonly kind: "reading" | "gone" }
+  | { readonly kind: "refused"; readonly line: string }
+  | { readonly kind: "standing"; readonly offer: Extract<DeletionOffer, { kind: "standing" }> }
+  | {
+      readonly kind: "form";
+      readonly offer: Extract<DeletionOffer, { kind: "last-choice" | "project" }>;
+    } {
+  if (!input.structureRead) return { kind: "reading" };
+  if (input.project === undefined) return { kind: "gone" };
+  const offer = deletionOffer({ project: input.project, mate: input.mate, past: input.past });
+  if (offer.kind === "standing") return { kind: "standing", offer };
+  if (offer.kind === "mate" || offer.kind === "last-mate-only")
+    return { kind: "refused", line: offer.stays ?? "" };
+  if (offer.kind === "project" && !input.project.deleteApp)
+    return { kind: "refused", line: "Only an Owner or an Admin can delete a project." };
+  return { kind: "form", offer };
 }
 
 /** HQ's structure of the project, as `deletionOffer` reads it; `undefined` where it holds none. */
@@ -352,8 +408,6 @@ export interface ProjectDeletionWords {
   /** Each thing that goes; `undefined` until HQ said what the project holds. */
   readonly goes: ReadonlyArray<string> | undefined;
   readonly stays: ReadonlyArray<string>;
-  /** "Type shop to confirm" */
-  readonly label: string;
   /** "Delete shop" */
   readonly submit: string;
 }
@@ -406,7 +460,6 @@ export function projectDeletionWords(input: {
       ),
       ...plan.stays,
     ],
-    label: `Type ${name} to confirm`,
     submit: `Delete ${name}`,
   };
 }
@@ -417,13 +470,11 @@ export function projectDeletionWords(input: {
  */
 export function productionDeletionWords(name: string): {
   readonly warning: string;
-  readonly label: string;
   readonly slide: string;
   readonly slid: string;
 } {
   return {
     warning: `Deleting Production ${name} takes it offline at once. Its services and data go from Zerops; Zerops keeps its backups for 7 days and then destroys them. Nobody can bring it back after that.`,
-    label: `Type ${name} to unlock`,
     slide: `Slide to delete Production ${name}`,
     slid: `Production ${name} will be deleted`,
   };
@@ -439,6 +490,7 @@ export function projectDeletionReady(
   plan: ProjectDeletionPlan,
   confirmation: DeletionConfirmation,
   confirmed: boolean,
+  holdingsRead: boolean,
 ): {
   readonly ready: boolean;
   readonly missing: string | null;
@@ -461,7 +513,22 @@ export function projectDeletionReady(
   if (plan.refusal !== undefined) return { ready: false, missing: plan.refusal, slid };
   if (plan.stages.some((stage) => !slid.has(stage.projectId)))
     return { ready: false, missing: "Slide each Stage to confirm.", slid };
+  if (!holdingsRead) return { ready: false, missing: "Reading what HQ holds.", slid };
   return { ready: confirmed, missing: null, slid };
+}
+
+/** The three page steps reflect Stage confirmation and the final readiness answer. */
+export function deletionStepStates(
+  plan: ProjectDeletionPlan,
+  confirmation: DeletionConfirmation,
+  ready: boolean,
+): readonly ["done" | "current", "done" | "todo", "done" | "current" | "todo"] {
+  const stagesSlid = plan.stages.every((stage) => confirmation.slid.has(stage.projectId));
+  return [
+    stagesSlid ? "done" : "current",
+    stagesSlid ? "done" : "todo",
+    ready ? "done" : stagesSlid ? "current" : "todo",
+  ];
 }
 
 /** One start, entirely from the offer rendered at the press and the person's choice. */
@@ -673,4 +740,111 @@ export function deletionStandingWords(
     details: operationFailureDetails(deletion.failure),
     parts,
   };
+}
+
+/** Code and setup files the project deletion removes. */
+export function deletionCodeRows(
+  holdings: ApplicationHoldings,
+): ReadonlyArray<{ readonly repo: string; readonly title: string; readonly line: string }> {
+  return [
+    ...holdings.repos
+      .filter((repo) => repo !== RECIPE_REPO)
+      .map((repo) => ({ repo, title: repo, line: "Goes with its history and branches" })),
+    ...(holdings.repos.includes(RECIPE_REPO)
+      ? [
+          {
+            repo: RECIPE_REPO,
+            title: "Setup files",
+            line: "Go with the project: they describe its Stages and Productions",
+          },
+        ]
+      : []),
+  ];
+}
+
+/** Words for the deletion page and its three steps. */
+export function deletionPageWords(name: string) {
+  return {
+    title: `Delete ${name}`,
+    line: "Nothing is deleted until you press Delete at the end.",
+    steps: ["What goes from Zerops", "Code", "Confirm"] as const,
+    stepLines: [
+      "Slide each Stage. A Production stays unless you delete it too.",
+      "The project's code and setup files go with it.",
+      "Check the summary, then type the project's name.",
+    ] as const,
+    running:
+      "You can leave this page. HQ finishes the deletion, and every device shows how far it got.",
+    runningTitle: `Deleting ${name}`,
+    nothing: "Nothing in Zerops: it has no Mate, Stage or Production left.",
+    reading: "Reading the project from HQ…",
+    gone: "This project is gone.",
+    back: "Back",
+    projects: "Projects",
+  };
+}
+
+/** A part's state, said beside it while HQ deletes the project. */
+export const DELETION_PART_WORDS: Readonly<Record<DeletionPart["state"], string>> = {
+  gone: "Gone",
+  deleting: "Deleting",
+  pending: "Waiting its turn",
+  stopped: "Stopped here",
+  here: "Still here",
+};
+
+/** One thing in Zerops the project's deletion page lists under its first step. */
+export interface DeletionGoesRow {
+  readonly kind: "mate" | "stage" | "production";
+  readonly id: string;
+  readonly title: string;
+  readonly badge: string;
+  readonly line: string;
+  readonly goes: boolean;
+}
+
+/**
+ * What the first step lists: its last Mate, each Stage (slid to go), each Production that may go
+ * (it stays until its name is typed and it is slid).
+ */
+export function deletionGoesRows(input: {
+  readonly plan: ProjectDeletionPlan;
+  readonly mate?:
+    | { readonly projectId: string; readonly name: string; readonly services: number | undefined }
+    | undefined;
+  readonly slid: ReadonlySet<string>;
+}): ReadonlyArray<DeletionGoesRow> {
+  const { plan, mate, slid } = input;
+  return [
+    ...(mate === undefined
+      ? []
+      : [
+          {
+            kind: "mate" as const,
+            id: mate.projectId,
+            title: mate.name,
+            badge: "Mate",
+            line: `Goes first, with its conversations and its workspace in Zerops${mate.services === undefined || mate.services === 0 ? "" : mate.services === 1 ? " and its 1 service" : ` and its ${String(mate.services)} services`}`,
+            goes: true,
+          },
+        ]),
+    ...plan.stages.map((stage) => ({
+      kind: "stage" as const,
+      id: stage.projectId,
+      title: stage.name,
+      badge: "Stage",
+      line: "Goes from Zerops, with everything in it",
+      goes: true,
+    })),
+    ...plan.productions.map((production) => ({
+      kind: "production" as const,
+      id: production.projectId,
+      title: production.name,
+      badge: "Production",
+      line: slid.has(production.projectId)
+        ? "Goes from Zerops, with its services and data"
+        : "Stays in Zerops and keeps running. Mate lets go of it.",
+      goes: slid.has(production.projectId),
+    })),
+  ];
 }
