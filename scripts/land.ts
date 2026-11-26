@@ -694,7 +694,7 @@ function stoppedOutcome(
 /**
  * Numbers the tree's lane-local sentence ids inside `sha`, the branch's last commit, amending it
  * with the numbers and their `<old> → <new>` lines in its body, and returns the amended commit:
- * `sha` itself when the landing adds no sentence.
+ * `sha` itself when the tree has no lane-local sentences.
  */
 async function numberLanding(root: string, sha: string): Promise<string> {
   let result: ReturnType<typeof numberSentences>;

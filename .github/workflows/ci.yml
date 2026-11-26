@@ -851,13 +851,7 @@ jobs:
         env: *verified_lockfile
         run: *hosted_dependencies
 
-      - name: Sentences
-        run: node scripts/check-sentences.ts
-
-      - name: T1
-        run: node scripts/t1.ts --budget
-
-      # The checkout stays shallow: exactly the one commit the replay compares against.
+      # The checkout stays shallow: one base for the pull-request check and witness replay.
       - name: Fetch replay base
         if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         env:
@@ -868,6 +862,19 @@ jobs:
             exit 1
           fi
           git fetch --no-tags --depth=1 origin "$T1_BASE"
+
+      - name: Sentences
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ -n "$PR_BASE" ]]; then
+            node scripts/check-sentences.ts --base "$PR_BASE"
+          else
+            node scripts/check-sentences.ts
+          fi
+
+      - name: T1
+        run: node scripts/t1.ts --budget
 
       - name: Witness replay
         if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}

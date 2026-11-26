@@ -29,27 +29,31 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   SQLite, in memory, or on a temporary file when a case spans a restart (two lifetimes over one
   file). A failing write is forced by a SQLite trigger the case creates, never by a product hook.
 - A list starts `next: <PREFIX><n>`, the next free number; its sentences are `- <ID> — <sentence>`
-  and each case title is `"<ID>: <sentence>"`. On `main` every id is numbered (`PJ12`). A branch
-  never writes a final id: it adds `- PJ+<k> — <sentence>` with the case `"PJ+<k>: <sentence>"`
+  and each case title is `"<ID>: <sentence>"`. A branch never writes a final id: it adds
+  `- PJ+<k> — <sentence>` with the case `"PJ+<k>: <sentence>"`
   (k = 1, 2, … within the list), never touches `next:`, and starts a new unit's list
   `next: <PREFIX>+`, its prefix a proposal. `check-sentences.ts --base` (the gate's run) refuses a
-  branch that changes a `next:` line, adds a numbered id or starts a list otherwise; the landing
-  applies the same rule to its branch's rebased tree, refusing it `gate`.
-  `SENTENCES.md merge=union` (`.gitattributes`) keeps the lines two branches append on rebase.
-- `scripts/land.ts`, the only writer of `main`, numbers them on the branch's tree rebased onto
+  branch that changes a `next:` line, adds a numbered id or starts a list otherwise; CI applies it
+  to pull requests and the landing to its branch's rebased tree, refusing it `gate`.
+  `SENTENCES.md merge=union` (`.gitattributes`) keeps the lines two branches append on rebase;
+  lane-local ids identify their sentences by both id and text, so the same id with different text
+  may occur twice in one list, but the same id and text may not.
+- A pull request merged on `main` leaves its lane-local ids there. `scripts/land.ts`, the only
+  giver of final ids, numbers all lane-local ids on the branch's tree rebased onto
   `origin/main` once that tree passes the branch rule (again after a rebase onto a `main` that
   moved while it queued): a new list gets its proposed prefix when no other list holds
   it, else the first free of the proposal with one letter appended (up to four letters), then with
-  its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
+  its last letter replaced; each `<PREFIX>+<k>`, in list order, becomes the next number in its list
   line and its case title, and `next:` moves above it. It amends this into the branch's last
   commit, whose body gains each `<unit>: <old> → <new>`, never a commit of its own. Its gate judges
   the numbered tip with `check-sentences.ts --base <base> --landing`, which applies the landing
   rule instead of the branch rule the numbering breaks: every id is final, a list keeps its
   prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
-  `next:` stands right past them. A landing that stops after numbering without
+  `next:` stands right past them. The landing delta treats base placeholders that were numbered as
+  renamings, not additions by the branch. A landing that stops after numbering without
   landing resets the branch to its rebased commit before the numbers. A landing onto a whole's
   branch (`--onto whole/<name>`) numbers nothing and gates by the branch rule, so the whole keeps
-  lane-local ids, unique within each list by that rule; the whole's own landing on `main` numbers
+  lane-local ids; the whole's own landing on `main` numbers
   them all, so only `main`'s landings give final ids.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).

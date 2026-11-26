@@ -9,9 +9,9 @@
  * An id is numbered (`ED12`) or lane-local (`ED+1`). A branch writes lane-local ids for the
  * sentences it adds and never touches a list's `next:` line; a new unit's list starts `next: ED+`,
  * its prefix a proposal. With `--base` this branch rule is checked against the base's lists. The
- * landing (`scripts/land.ts`), the only writer of `main`, judges each branch by this rule before it
- * numbers its sentences through `numberSentences`, then gates the numbered tip with `--base <base>
- * --landing`, which keeps the delta's checks and drops the branch rule the numbering breaks.
+ * landing (`scripts/land.ts`) judges each branch by this rule before it numbers every lane-local
+ * sentence in the tree, including those a merged pull request left on `main`. It then gates the
+ * numbered tip with `--base <base> --landing`.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -76,6 +76,10 @@ interface SentenceList {
   readonly proposal: boolean;
   readonly sentences: ReadonlyArray<Sentence>;
 }
+
+/** A lane-local id identifies its sentence with its text; a final id stands alone. */
+const sentenceKey = (entry: Pick<Sentence, "id" | "local" | "sentence">): string =>
+  entry.local ? JSON.stringify([entry.id, entry.sentence]) : entry.id;
 
 function git(root: string, args: ReadonlyArray<string>): string {
   const result = NodeChildProcess.spawnSync("git", args, {
@@ -153,9 +157,12 @@ function parseList(text: string, file: string, problems: Problem[] = []): Senten
       problem(line, `${id} is not below next ${prefix}${next}`);
     if (!local && proposal)
       problem(line, `${id} is numbered in a list whose next is ${prefix}+: the landing numbers it`);
-    if (seen.has(id)) problem(line, `${id} is listed twice`);
-    seen.add(id);
-    sentences.push({ id, number, local, sentence: sentence!, line });
+    const entry = { id, number, local, sentence: sentence!, line };
+    const key = sentenceKey(entry);
+    if (seen.has(key))
+      problem(line, local ? `${id} — ${sentence} is listed twice` : `${id} is listed twice`);
+    seen.add(key);
+    sentences.push(entry);
   }
   return { prefix, next, proposal, sentences };
 }
@@ -644,10 +651,10 @@ function witness(root: string, file: string, line: number, text: string): Proble
     : [{ file, line, what: `witness <old> occurs ${count} times in ${product}, not once` }];
 }
 
-/** Cases of one unit against its list: one case per id, verbatim titles, a witness above each. */
+/** Cases of one unit against its list: one case per sentence, verbatim titles, a witness above each. */
 function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyArray<string>) {
   const problems: Problem[] = [];
-  const listed = new Map(list.sentences.map((entry) => [entry.id, entry]));
+  const listed = new Map(list.sentences.map((entry) => [sentenceKey(entry), entry]));
   const cases = new Map<string, number>();
   for (const file of files) {
     const source = NodeFS.readFileSync(NodePath.join(root, file), "utf8");
@@ -666,7 +673,10 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
       if (testCase.suite) continue;
       const title = testCase.titles[0] ?? "";
       const match = caseTitle.exec(title);
-      const entry = match ? listed.get(match[1]!) : undefined;
+      const key = match
+        ? sentenceKey({ id: match[1]!, local: match[1]!.includes("+"), sentence: match[2]! })
+        : undefined;
+      const entry = key === undefined ? undefined : listed.get(key);
       if (!match || !entry)
         problems.push({
           file,
@@ -674,7 +684,7 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
           what: `title names no id listed in ${dir}/${LIST}: ${title}`,
         });
       else {
-        cases.set(entry.id, (cases.get(entry.id) ?? 0) + 1);
+        cases.set(key!, (cases.get(key!) ?? 0) + 1);
         if (match[2] !== entry.sentence)
           problems.push({
             file,
@@ -695,7 +705,7 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
   }
   const listFile = `${dir === "." ? "" : `${dir}/`}${LIST}`;
   for (const entry of list.sentences) {
-    const count = cases.get(entry.id) ?? 0;
+    const count = cases.get(sentenceKey(entry)) ?? 0;
     if (count !== 1)
       problems.push({
         file: listFile,
@@ -707,25 +717,44 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
 }
 
 /** The list's differences against the base list, each with its id. */
-function delta(base: SentenceList | undefined, now: SentenceList) {
+function delta(base: SentenceList | undefined, now: SentenceList, landing = false) {
   const lines: string[] = [];
   const ids: string[] = [];
-  const before = new Map((base?.sentences ?? []).map((entry) => [entry.id, entry]));
-  const after = new Map(now.sentences.map((entry) => [entry.id, entry]));
-  for (const [id, entry] of before)
-    if (!after.has(id)) {
-      lines.push(`retired ${id} — ${entry.sentence}`);
-      ids.push(id);
+  const before = new Map((base?.sentences ?? []).map((entry) => [sentenceKey(entry), entry]));
+  const after = new Map(now.sentences.map((entry) => [sentenceKey(entry), entry]));
+  if (landing) {
+    // Numbered base leftovers are renamings, not additions by the branch being landed.
+    const numbered = now.sentences.filter(
+      (entry) => !entry.local && entry.number >= (base?.next ?? 1),
+    );
+    for (const entry of base?.sentences ?? []) {
+      if (!entry.local) continue;
+      const index = numbered.findIndex((candidate) => candidate.sentence === entry.sentence);
+      if (index < 0) continue;
+      const renamed = numbered.splice(index, 1)[0]!;
+      before.delete(sentenceKey(entry));
+      before.set(sentenceKey(renamed), {
+        ...entry,
+        id: renamed.id,
+        number: renamed.number,
+        local: false,
+      });
     }
-  for (const [id, entry] of after) {
-    const old = before.get(id);
+  }
+  for (const [key, entry] of before)
+    if (!after.has(key)) {
+      lines.push(`retired ${entry.id} — ${entry.sentence}`);
+      ids.push(entry.id);
+    }
+  for (const [key, entry] of after) {
+    const old = before.get(key);
     if (old && old.sentence !== entry.sentence) {
-      lines.push(`changed ${id} — ${old.sentence} → ${entry.sentence}`);
-      ids.push(id);
+      lines.push(`changed ${entry.id} — ${old.sentence} → ${entry.sentence}`);
+      ids.push(entry.id);
     }
     if (old) continue;
-    lines.push(`added ${id} — ${entry.sentence}`);
-    ids.push(id);
+    lines.push(`added ${entry.id} — ${entry.sentence}`);
+    ids.push(entry.id);
   }
   return { lines, ids };
 }
@@ -770,8 +799,8 @@ function landingRule(base: SentenceList | undefined, now: SentenceList, listFile
     problem(1, `the landing keeps the base list's prefix ${base.prefix}, not ${now.prefix}`);
   const before = new Set((base?.sentences ?? []).map((entry) => entry.id));
   const added = now.sentences.filter((entry) => !before.has(entry.id));
-  for (const entry of added.filter((entry) => entry.local))
-    problem(entry.line, `${entry.id} is not numbered; the landing numbers every id it adds`);
+  for (const entry of now.sentences.filter((entry) => entry.local))
+    problem(entry.line, `${entry.id} is not numbered; the landing numbers every lane-local id`);
   const start = base?.next ?? 1;
   const numbered = added
     .filter((entry) => !entry.local)
@@ -822,7 +851,7 @@ function unitDeltas(
   for (const { dir, list } of lists) {
     const file = listPath(dir);
     const before = baseList(root, base, file);
-    const change = delta(before, list);
+    const change = delta(before, list, landing);
     problems.push(...(landing ? landingRule : branchRule)(before, list, file));
     if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
   }
@@ -850,11 +879,15 @@ export function sentenceDelta(
   lines: ReadonlyArray<string>;
   problems: ReadonlyArray<string>;
 } {
+  const problems: Problem[] = [];
   const lists = readUnits(root).map(({ dir }) => ({
     dir,
-    list: parseList(NodeFS.readFileSync(NodePath.join(root, listPath(dir)), "utf8"), listPath(dir)),
+    list: parseList(
+      NodeFS.readFileSync(NodePath.join(root, listPath(dir)), "utf8"),
+      listPath(dir),
+      problems,
+    ),
   }));
-  const problems: Problem[] = [];
   const deltas = unitDeltas(root, base, lists, problems);
   return {
     ids: deltas.flatMap((change) => change.ids),
@@ -883,7 +916,7 @@ function freePrefix(proposal: string, held: ReadonlySet<string>): string | undef
 
 /**
  * Numbers the tree's lane-local ids, list by list in path order: a `next: <PREFIX>+` list first
- * gets a prefix no other list holds (`freePrefix`), then each `<PREFIX>+<k>`, in k order, becomes
+ * gets a prefix no other list holds (`freePrefix`), then each `<PREFIX>+<k>`, in list order, becomes
  * `<PREFIX><next>` counting from the list's `next:` (1 for a new list), in its list line and in its
  * case's title literal, and `next:` is written above the highest id. Only the landing calls it, on a
  * branch's tree the branch rule passed; it writes the files and returns them with every renaming.
@@ -907,34 +940,36 @@ export function numberSentences(root: string): {
   const files: string[] = [];
   const numbered: NumberedId[] = [];
   for (const { unit, file, text, list } of lists) {
-    const locals = list.sentences
-      .filter((entry) => entry.local)
-      .toSorted((left, right) => left.number - right.number);
+    const locals = list.sentences.filter((entry) => entry.local);
     if (!list.proposal && locals.length === 0) continue;
     const prefix = list.proposal ? freePrefix(list.prefix!, held) : list.prefix!;
     if (prefix === undefined) throw new Error(`${file}: no prefix near ${list.prefix} is free`);
     held.add(prefix);
     let next = list.next ?? 1;
-    const renamed = new Map(locals.map((entry) => [entry.id, `${prefix}${next++}`]));
+    const renamed = new Map(locals.map((entry) => [sentenceKey(entry), `${prefix}${next++}`]));
     const lines = text.split("\n");
     lines[0] = `next: ${prefix}${next}`;
     for (const entry of locals)
-      lines[entry.line - 1] = `- ${renamed.get(entry.id)!} — ${entry.sentence}`;
+      lines[entry.line - 1] = `- ${renamed.get(sentenceKey(entry))!} — ${entry.sentence}`;
     NodeFS.writeFileSync(NodePath.join(root, file), lines.join("\n"));
     files.push(file);
-    for (const [from, to] of renamed) numbered.push({ unit: unit.dir, from, to });
+    for (const entry of locals)
+      numbered.push({ unit: unit.dir, from: entry.id, to: renamed.get(sentenceKey(entry))! });
     const titled = new Set<string>();
     for (const caseFile of unit.files) {
       const source = NodeFS.readFileSync(NodePath.join(root, caseFile), "utf8");
       const edits = collectTestCases(source, caseFile).flatMap((testCase) => {
-        const id = testCase.suite ? undefined : caseTitle.exec(testCase.titles[0] ?? "")?.[1];
-        const to = id === undefined ? undefined : renamed.get(id);
-        if (id === undefined || to === undefined) return [];
+        const match = testCase.suite ? undefined : caseTitle.exec(testCase.titles[0] ?? "");
+        const id = match?.[1];
+        const key =
+          id === undefined ? undefined : sentenceKey({ id, local: true, sentence: match![2]! });
+        const to = key === undefined ? undefined : renamed.get(key);
+        if (id === undefined || key === undefined || to === undefined) return [];
         // Past the opening quote the literal reads the title as written: the id comes first.
         const at = testCase.titleStart + 1;
         if (!source.startsWith(`${id}:`, at))
           throw new Error(`${caseFile}:${testCase.line}: the title literal does not start ${id}:`);
-        titled.add(id);
+        titled.add(key);
         return [{ at, id, to }];
       });
       if (edits.length === 0) continue;
@@ -944,8 +979,11 @@ export function numberSentences(root: string): {
       NodeFS.writeFileSync(NodePath.join(root, caseFile), rewritten);
       files.push(caseFile);
     }
-    const untitled = [...renamed.keys()].filter((id) => !titled.has(id));
-    if (untitled.length) throw new Error(`${file}: no case title names ${untitled.join(", ")}`);
+    const untitled = locals.filter((entry) => !titled.has(sentenceKey(entry)));
+    if (untitled.length)
+      throw new Error(
+        `${file}: no case title names ${untitled.map((entry) => `${entry.id}: ${entry.sentence}`).join(", ")}`,
+      );
   }
   return { files, numbered };
 }
