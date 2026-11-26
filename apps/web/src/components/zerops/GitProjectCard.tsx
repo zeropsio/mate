@@ -88,7 +88,7 @@ export function GitSetup({
     <Button
       variant="ghost-muted"
       size="sm"
-      render={href === undefined ? undefined : <a href={href} />}
+      render={<a href={href} />}
       onClick={(event) =>
         intercept(
           event,
@@ -149,7 +149,7 @@ export function GitRepositoryRows({
                 <Text truncate variant="heading">
                   <InlineButton
                     tone="plain"
-                    render={href === undefined ? undefined : <a href={href} />}
+                    render={<a href={href} />}
                     onClick={(event) =>
                       intercept(
                         event,
@@ -163,16 +163,17 @@ export function GitRepositoryRows({
                   </InlineButton>
                 </Text>
               </span>
-              <Text truncate variant="description">
-                {repositoryWhere(repository.facts)}
-              </Text>
+              <span className="min-w-0 break-words">
+                <Text variant="description">{repositoryWhere(repository.facts)}</Text>
+              </span>
               <span className="flex min-w-0 items-center gap-2">
                 {repository.coverage === "unread" ? (
                   <Text variant="meta">Changes not read yet.</Text>
                 ) : status === undefined ? null : (
                   <InlineButton
+                    className="min-w-0 max-w-full shrink"
                     tone="plain"
-                    render={changesHref === undefined ? undefined : <a href={changesHref} />}
+                    render={<a href={changesHref} />}
                     onClick={(event) =>
                       intercept(
                         event,
@@ -184,9 +185,9 @@ export function GitRepositoryRows({
                   >
                     <Badge tone="info">{status.open} open</Badge>
                     <Dot tone={STATUS_BADGE_TONE[status.tone]} />
-                    <Text truncate variant="meta">
-                      {status.words}
-                    </Text>
+                    <span className="min-w-0 whitespace-normal break-words">
+                      <Text variant="meta">{status.words}</Text>
+                    </span>
                   </InlineButton>
                 )}
               </span>
@@ -195,12 +196,16 @@ export function GitRepositoryRows({
                   ? undefined
                   : formatRelativeTimeLabel(repository.facts.updatedAt)}
               </Text>
-              <Text className="text-end" variant="meta">
-                {repository.facts?.usedBytes === undefined
-                  ? undefined
-                  : formatStorageBytes(repository.facts.usedBytes)}
+              <span className="text-end">
+                <Text variant="meta">
+                  {repository.facts?.usedBytes === undefined
+                    ? undefined
+                    : formatStorageBytes(repository.facts.usedBytes)}
+                </Text>
+              </span>
+              <Text variant="meta">
+                <ChevronRightIcon aria-hidden className="size-4" />
               </Text>
-              <ChevronRightIcon aria-hidden className="size-4 text-muted-foreground" />
             </Row>
           );
         })}
@@ -209,7 +214,7 @@ export function GitRepositoryRows({
   );
 }
 
-export function GitProjectCard(props: CardProps) {
+export default function GitProjectCard(props: CardProps) {
   const { group, view, question, answer, chief } = props;
   const { standing } = group;
   const line =
@@ -267,9 +272,7 @@ export function GitProjectCard(props: CardProps) {
           </div>
         </div>
         {chief === undefined ? null : <Text variant="description">The Chief Mate's own code.</Text>}
-        {question === undefined && line !== undefined ? (
-          <Text variant="description">{line}</Text>
-        ) : null}
+        {line === undefined ? null : <Text variant="description">{line}</Text>}
         {lines}
         {view.stopped === undefined ? null : <Failure size="line" cause={view.stopped} />}
       </div>

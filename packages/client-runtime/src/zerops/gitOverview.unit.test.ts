@@ -173,7 +173,7 @@ it("ZV184: A repository's open changes are said as their count, each status with
   ).toEqual({ open: 3, words: "2 Ready to merge, 1 Conflicts with main", tone: "attention" });
 });
 
-// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.open → repository.changes.length > 0
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | tab === "open" || → false ||
 it("ZV+1: The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it", () => {
   const apps = gitOverview({
     mateName: () => undefined,
