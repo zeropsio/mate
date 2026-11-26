@@ -3,6 +3,7 @@ import {
   asSentence,
   operationFailureDetails,
   operationFailureWords,
+  type AppEnvironmentsRead,
   type HqOperationStanding,
 } from "@t3tools/client-runtime/data";
 import type { HqOperation, HqStructure } from "@t3tools/client-runtime/zerops/hq";
@@ -31,6 +32,28 @@ export type DeletionEnvironment =
       readonly name: string | undefined;
     };
 
+/** Environment records without a known Zerops project, as HQ's environment reader holds them. */
+type DeletionEnvironmentRecord =
+  | {
+      readonly kind: "git";
+      readonly id: string;
+      readonly tier: "stage" | "production";
+      readonly name: string;
+      readonly branch: string;
+    }
+  | {
+      readonly kind: "outside";
+      readonly id: string;
+      readonly tier: "production";
+      readonly name: string;
+    }
+  | {
+      readonly kind: "unread";
+      readonly id: string;
+      readonly tier: "stage" | "production" | null;
+      readonly name: string | null;
+    };
+
 /** The project a Delete is about, as HQ's structure holds it for the person. */
 export interface DeletionProject {
   readonly appId: string;
@@ -47,6 +70,9 @@ export interface DeletionProject {
   /** HQ's `delete_app` for the person: an Owner or an Admin of the organization. */
   readonly deleteApp: boolean;
   readonly environments: ReadonlyArray<DeletionEnvironment>;
+  /** Whether HQ supplied environment records for this reader. */
+  readonly environmentRecordsRead: boolean;
+  readonly environmentRecords: ReadonlyArray<DeletionEnvironmentRecord>;
   /** The tiers of its Stages and Productions Zerops does not list to the person. */
   readonly hidden: ReadonlyArray<"stage" | "production">;
   /** HQ's deletion of it (`hqOperationOf` its `app_deletion`). */
@@ -225,6 +251,7 @@ export function deletionProjectOf(
   structure: Pick<HqStructure, "can" | "apps"> | null | undefined,
   appId: string | undefined,
   deletion: HqOperationStanding,
+  read: AppEnvironmentsRead,
 ): DeletionProject | undefined {
   const app = structure?.apps.find(({ id }) => id === appId);
   if (app === undefined) return undefined;
@@ -271,6 +298,38 @@ export function deletionProjectOf(
       }),
       ...unavailable,
     ],
+    environmentRecordsRead: read.environments !== undefined,
+    environmentRecords: [
+      ...(read.environments ?? []).flatMap((environment): DeletionEnvironmentRecord[] =>
+        environment.target.kind === "git"
+          ? [
+              {
+                kind: "git",
+                id: environment.id,
+                tier: environment.tier,
+                name: environment.name,
+                branch: environment.target.branch,
+              },
+            ]
+          : [],
+      ),
+      ...(read.outside === undefined
+        ? []
+        : [
+            {
+              kind: "outside" as const,
+              id: read.outside.id,
+              tier: read.outside.tier,
+              name: read.outside.name,
+            },
+          ]),
+      ...read.unread.map((environment, index): DeletionEnvironmentRecord => ({
+        kind: "unread",
+        id: environment.id ?? `unread:${String(index)}`,
+        tier: environment.tier,
+        name: environment.name,
+      })),
+    ],
     hidden: (app.hiddenEnvironments ?? []).map((hidden) => hidden.tier),
     deletion,
     ...(app.operation?.steps === undefined ? {} : { steps: app.operation.steps }),
@@ -306,7 +365,7 @@ export interface DeletionChoice {
 }
 
 export interface DeletionRow {
-  readonly kind: "mate" | "plain" | "stage" | "production" | "code" | "setup";
+  readonly kind: "mate" | "plain" | "stage" | "production" | "environment" | "code" | "setup";
   readonly id: string;
   readonly title: string;
   readonly badge: string;
@@ -590,6 +649,63 @@ export function deletionReview(input: {
   const codeStays = rows.some(
     (row) => (row.kind === "code" || row.kind === "setup") && row.fate === "stays",
   );
+  // These records leave only when HQ runs the application's final code step. A Mate-only
+  // deletion, or an application deletion that leaves a Zerops project, does not run it.
+  const actionGone = rows.filter((row) => row.fate === "goes");
+  const onlyMate =
+    mate !== undefined &&
+    actionGone.length === 1 &&
+    actionGone[0]?.kind === "mate" &&
+    (partStays || codeStays);
+  const recordsStay =
+    partStays ||
+    onlyMate ||
+    (holdings === undefined &&
+      mate !== undefined &&
+      actionGone.length === 1 &&
+      actionGone[0]?.kind === "mate");
+  const recordRows: DeletionRow[] = project.environmentRecords.map((record) => {
+    const tier =
+      record.tier === "stage"
+        ? "Stage"
+        : record.tier === "production"
+          ? "Production"
+          : "environment";
+    const title =
+      record.kind === "unread"
+        ? `Unread ${tier} record${record.name === null ? "" : ` ${record.name}`}`
+        : record.kind === "git"
+          ? `${tier} ${record.name} on Git branch ${record.branch}`
+          : `Outside Production ${record.name}`;
+    const line =
+      record.kind === "unread"
+        ? `Details unavailable; it may already be listed above. Its record ${recordsStay ? "stays" : "leaves Mate"}.`
+        : recordsStay
+          ? "Its record stays in this project."
+          : record.kind === "git"
+            ? "Its record leaves Mate. Its Git branch is not touched."
+            : "Its record leaves Mate. What runs outside Mate is not touched.";
+    return {
+      kind: "environment",
+      id: record.id,
+      title,
+      badge: tier === "environment" ? "Environment" : tier,
+      fate: recordsStay ? "stays" : "goes",
+      switchable: false,
+      line,
+      summary: recordsStay ? title : `${title}. ${line}`,
+    };
+  });
+  const firstCode = rows.findIndex((row) => row.kind === "code" || row.kind === "setup");
+  rows.splice(firstCode < 0 ? rows.length : firstCode, 0, ...recordRows);
+  const mateStaysParts = [...keptKinds];
+  if (recordsStay) {
+    for (const record of project.environmentRecords) {
+      const name =
+        record.tier === "stage" ? "Stage" : record.tier === "production" ? "Production" : undefined;
+      if (name !== undefined && !mateStaysParts.includes(name)) mateStaysParts.push(name);
+    }
+  }
   const place: "menu" | "git" | "gone" = partStays
     ? "menu"
     : codeStays || holdings === undefined
@@ -628,7 +744,7 @@ export function deletionReview(input: {
       ? "A Mate still works on this project. Delete it first."
       : holdings === undefined
         ? "Reading what HQ holds."
-        : gone.length === 0
+        : actionGone.length === 0
           ? "Nothing is set to go."
           : asked?.slide !== undefined
             ? asked.slide.missing
@@ -655,8 +771,6 @@ export function deletionReview(input: {
         .filter((row) => row.kind === "code" && row.fate === "stays")
         .map((row) => row.id)
         .sort();
-  const onlyMate =
-    mate !== undefined && gone.length === 1 && gone[0]?.kind === "mate" && (partStays || codeStays);
   const start: DeletionStartBody | undefined =
     missing !== null
       ? undefined
@@ -675,7 +789,7 @@ export function deletionReview(input: {
   return {
     rows,
     becomes,
-    mateStaysParts: keptKinds,
+    mateStaysParts,
     goes,
     stays,
     missing,
