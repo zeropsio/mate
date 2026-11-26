@@ -3,7 +3,6 @@
  * follows it, Clone and Download, which branch, tag or commit the pages read, and the pages' tabs.
  */
 import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/data";
-import { githubRepositoryUrl } from "@t3tools/client-runtime/zerops/gitBrowse/home";
 import type { GitHome, GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import {
@@ -14,7 +13,6 @@ import {
   HistoryIcon,
   SearchIcon,
 } from "lucide-react";
-import { GitHubIcon } from "~/components/Icons";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -311,22 +309,6 @@ export function GitRepoFrame({
             where={where}
             actions={
               <div className="flex max-w-36 flex-wrap items-center justify-end gap-2 sm:max-w-none">
-                {about?.remote ? (
-                  <Button
-                    render={
-                      <a
-                        href={githubRepositoryUrl(about.remote)}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      />
-                    }
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <GitHubIcon aria-hidden="true" />
-                    Open on GitHub
-                  </Button>
-                ) : null}
                 <ClonePopover
                   appId={appId}
                   repo={repo}
