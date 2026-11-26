@@ -1608,7 +1608,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             body: deletingBirth.adopted
               ? adoptedBirthDeleteBody(openBirthLeft(births, deletingBirth.birthId))
               : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
-            label: `Type ${deletingBirth.name} to confirm`,
             submit: `Delete ${deletingBirth.name}`,
             pending: "Deleting…",
           }}

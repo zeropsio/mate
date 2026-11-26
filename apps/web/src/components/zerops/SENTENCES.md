@@ -1,5 +1,7 @@
 next: MN91
 
+- MN+4 — The field that asks a name typed is pressed by 'Type <name> to confirm', or 'to unlock' for a Production, and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.
+
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened

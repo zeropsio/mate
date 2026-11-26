@@ -12,12 +12,12 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { hqOperationOf } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn, randomUUID } from "~/lib/utils";
-import { Failure, FailureDetails } from "~/components/ui/failure";
+import { Failure } from "~/components/ui/failure";
 import { Text } from "~/components/ui/text";
 import { Badge } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
@@ -41,8 +41,6 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import {
   applicationHoldings,
   deletionOffer,
@@ -68,6 +66,7 @@ import {
   deleteMateWords,
   MATE_DELETING_WORD,
 } from "./ZeropsDeleteMateDialog.logic";
+import { ZeropsConfirmName } from "./ZeropsConfirmName";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 
@@ -126,54 +125,6 @@ function DeletionLists({
           ))}
         </ul>
       </div>
-    </div>
-  );
-}
-
-/** The one field that asks for a name typed, and the line under it that says what holds Delete. */
-function NameField({
-  label,
-  typed,
-  onTyped,
-  pending,
-  reason,
-  failed,
-  details,
-}: {
-  readonly label: string;
-  readonly typed: string;
-  readonly onTyped: (typed: string) => void;
-  readonly pending: boolean;
-  readonly reason: ReactNode;
-  readonly failed: boolean;
-  readonly details: string | null;
-}) {
-  const id = useId();
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={`${id}-name`}>{label}</Label>
-      <Input
-        aria-describedby={`${id}-reason`}
-        autoComplete="off"
-        id={`${id}-name`}
-        onChange={(event) => {
-          onTyped(event.target.value);
-        }}
-        readOnly={pending}
-        spellCheck={false}
-        value={typed}
-      />
-      <p
-        className={cn(
-          "min-h-4 text-caption",
-          failed ? "text-status-failed-text" : "text-muted-foreground",
-        )}
-        id={`${id}-reason`}
-        role="alert"
-      >
-        {reason}
-      </p>
-      {details === null ? null : <FailureDetails>{details}</FailureDetails>}
     </div>
   );
 }
@@ -258,26 +209,20 @@ function ProductionDeletion({
   readonly onTyped: (typed: string) => void;
   readonly pending: boolean;
 }) {
-  const id = useId();
   const words = productionDeletionWords(name);
   const unlocked = productionConfirmed(typed, name, true);
   return (
     <div className="space-y-2" data-zerops-surface="delete-application-production">
       <Badge tone="danger">Production</Badge>
       <p className="text-body text-pretty">{words.warning}</p>
-      <div className="space-y-1.5">
-        <Label htmlFor={`${id}-production`}>{words.label}</Label>
-        <Input
-          autoComplete="off"
-          id={`${id}-production`}
-          onChange={(event) => {
-            onTyped(event.target.value);
-          }}
-          readOnly={pending}
-          spellCheck={false}
-          value={typed}
-        />
-      </div>
+      <ZeropsConfirmName
+        name={name}
+        onTyped={onTyped}
+        pending={pending}
+        typed={typed}
+        verb="unlock"
+        whose="the Production's"
+      />
       <SlideConfirm
         confirmed={confirmed}
         confirmedLabel={words.slid}
@@ -489,8 +434,6 @@ export function ZeropsDeletionForm({
     whole && plan !== undefined
       ? { ...projectReady!, ready: projectReady!.ready && words?.goes !== undefined }
       : { ready: deleteMateConfirmed(typedMate, mateName), missing: null };
-  const reason = error ?? ready.missing;
-  const failed = error !== null || plan?.refusal !== undefined;
 
   return (
     <form
@@ -553,27 +496,15 @@ export function ZeropsDeletionForm({
               words={words}
             />
           ) : null}
-          {whole ? (
-            <NameField
-              details={null}
-              failed={failed}
-              label={words?.label ?? ""}
-              onTyped={setTypedProject}
-              pending={pending}
-              reason={reason}
-              typed={typedProject}
-            />
-          ) : (
-            <NameField
-              details={null}
-              failed={failed}
-              label={mateWords.label}
-              onTyped={setTypedMate}
-              pending={pending}
-              reason={reason}
-              typed={typedMate}
-            />
-          )}
+          <ZeropsConfirmName
+            hold={whole ? ready.missing : null}
+            name={whole ? project.name : mateName}
+            onTyped={whole ? setTypedProject : setTypedMate}
+            pending={pending}
+            typed={whole ? typedProject : typedMate}
+            whose={whole ? "the project's" : "the Mate's"}
+          />
+          {error === null ? null : <Failure cause={error} role="alert" size="line" />}
         </div>
       </DialogPanel>
       <DialogFooter>
