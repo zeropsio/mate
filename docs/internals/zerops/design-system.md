@@ -34,8 +34,9 @@ One word for each thing:
   hq.zerops.io (billing, top-ups, tokens) is HQ too. Copy never says "Zerops" as a place: the
   products are Platform (app.zerops.io), Box, Mate and HQ.
 - **project** — what the menu lists. Source words: environment (a server connection), application, an HQ application.
-  A Zerops project beside an application is called by its name. A Zerops-level part of a project is never a project:
-  it is Stage, Production or a Mate's workspace.
+  A Zerops project beside an application is called by its name. A Zerops-level part of a project is a Stage,
+  Production, a Mate's workspace, or a Zerops project running no Mate that is neither Stage nor Production, called
+  by its name.
 - **Mate** — a colleague, always by name; the organization-wide one is the Chief. "A Mate is a coding agent with a
   workspace of its own and one conversation you come back to." Never "the agent" for a Mate.
 - **coding agent** — Claude, Codex and the others, only where a Mate is signed in. Source: provider, agent. Say

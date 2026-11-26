@@ -102,7 +102,7 @@ export function deleteMateConfirmed(typed: string, name: string): boolean {
 
 /**
  * The field that asks a name typed before something is deleted: what it asks in words, the
- * label it is pressed by (`Type {name} to confirm`, or `to unlock` a Production's slide), and
+ * label it is pressed by (`Type {name} to confirm`), and
  * under it whether what is typed matches, or how it does not. The rule is
  * `deleteMateConfirmed`'s: spelled the same, spaces around it aside.
  */
@@ -110,7 +110,6 @@ export function confirmNameWords(input: {
   readonly name: string;
   /** Whose name it is: "the Mate's", "the project's", "the Production's". */
   readonly whose: string;
-  readonly verb: "confirm" | "unlock";
   readonly typed: string;
 }): {
   readonly ask: string;
@@ -122,8 +121,8 @@ export function confirmNameWords(input: {
 } {
   const matches = deleteMateConfirmed(input.typed, input.name);
   return {
-    ask: `To ${input.verb}, type ${input.whose} name exactly as shown`,
-    label: `Type ${input.name} to ${input.verb}`,
+    ask: `To confirm, type ${input.whose} name exactly as shown`,
+    label: `Type ${input.name} to confirm`,
     copyLabel: `the name ${input.name}`,
     matches,
     match: "Matches",

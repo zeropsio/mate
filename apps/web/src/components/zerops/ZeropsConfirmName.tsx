@@ -16,7 +16,6 @@ import { confirmNameWords } from "./ZeropsDeleteMateDialog.logic";
 export function ZeropsConfirmName({
   name,
   whose,
-  verb = "confirm",
   typed,
   onTyped,
   pending,
@@ -26,7 +25,6 @@ export function ZeropsConfirmName({
   readonly name: string;
   /** "the Mate's", "the project's", "the Production's". */
   readonly whose: string;
-  readonly verb?: "confirm" | "unlock";
   readonly typed: string;
   readonly onTyped: (typed: string) => void;
   readonly pending: boolean;
@@ -35,7 +33,7 @@ export function ZeropsConfirmName({
   readonly autoFocus?: boolean;
 }) {
   const id = useId();
-  const words = confirmNameWords({ name, whose, verb, typed });
+  const words = confirmNameWords({ name, whose, typed });
   return (
     <div className="flex flex-col gap-1.5" data-zerops-surface="confirm-name">
       <Label htmlFor={`${id}-name`}>{words.ask}</Label>

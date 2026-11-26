@@ -94,11 +94,11 @@ import {
   deletionOffer,
   deletionProjectOf,
   deletionStart,
-  keptWhere,
+  deletionReview,
+  everythingStays,
   sameDeletionStart,
   type DeletionProject,
 } from "../deletion.logic";
-import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import {
   adoptedBirthDeleteBody,
   openBirthLeft,
@@ -240,6 +240,23 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
 interface MateMenuActions {
   readonly setupOnly: boolean;
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
+}
+
+/** One message for a project retained by a Mate deletion. */
+export function tellKept(
+  project: DeletionProject,
+  where: ReturnType<typeof deletionReview>["becomes"],
+  openGit: (appId: string) => void,
+) {
+  if (where.place === "gone") return;
+  toastManager.add({
+    type: "info",
+    title: project.name,
+    description: where.line,
+    ...(where.place === "git"
+      ? { actionProps: { children: "Open in Git", onClick: () => openGit(project.appId) } }
+      : {}),
+  });
 }
 
 export interface MateActions {
@@ -784,39 +801,10 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [groupTree.groups, linkTarget, openMate, router, visibilities],
   );
 
-  const tellKept = useCallback(
-    (project: DeletionProject, where: ReturnType<typeof keptWhere>) => {
-      if (where.place !== "git") return;
-      toastManager.add({
-        type: "info",
-        title: project.name,
-        description: where.line,
-        actionProps: {
-          children: "Open in Git",
-          onClick: () => void router.navigate({ to: "/git", search: { appId: project.appId } }),
-        },
-      });
-    },
+  const notifyKept = useCallback(
+    (project: DeletionProject, where: ReturnType<typeof deletionReview>["becomes"]) =>
+      tellKept(project, where, (appId) => void router.navigate({ to: "/git", search: { appId } })),
     [router],
-  );
-
-  const openProjectDeletion = useCallback(
-    (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
-      useDeleteApplicationDialog.getState().open({
-        appId: project.appId,
-        mate: {
-          projectId: candidate.project.id,
-          name: projectNameInApp(candidate.project),
-          services: deleteMateServiceCount(candidate),
-          owner: colleagueOf(candidate),
-          leave: (where) => {
-            leaveDeleted(candidate);
-            if (where !== undefined) tellKept(project, where);
-          },
-        },
-      });
-    },
-    [colleagueOf, leaveDeleted, tellKept],
   );
 
   const openDeletionPage = useCallback(
@@ -855,7 +843,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         orgId,
         id: previous !== undefined && previous.id !== shownId ? previous.id : randomUUID(),
         offer,
-        choice: { kind: "mate" },
       });
       if (start === undefined) {
         if (project !== undefined) {
@@ -888,7 +875,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             if (start.kind === "start-mate-deletion") {
               leaveDeleted(candidate);
               if (start.keptGit === "keep" && project !== undefined)
-                tellKept(project, keptWhere(project));
+                notifyKept(
+                  project,
+                  deletionReview({ project, holdings: undefined, choice: everythingStays(project) })
+                    .becomes,
+                );
             }
           },
           (cause: unknown) => {
@@ -904,7 +895,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       captureDialogReply,
       deletionOfferFor,
       openDeletionPage,
-      tellKept,
+      notifyKept,
     ],
   );
 
@@ -921,10 +912,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         setDialog({ kind: "delete", candidate });
         return;
       }
-      if (offer.kind === "last-choice") openProjectDeletion(candidate, project);
-      else openDeletionPage(candidate, project);
+      openDeletionPage(candidate, project);
     },
-    [deletionOfferFor, openDeletionPage, openProjectDeletion, setDialog],
+    [deletionOfferFor, openDeletionPage, setDialog],
   );
 
   /**

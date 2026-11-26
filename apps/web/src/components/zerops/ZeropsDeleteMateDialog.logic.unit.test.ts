@@ -12,17 +12,16 @@ it("MN8: Deleting a Mate is confirmed only by its name typed as spelled, spaces 
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | const matches = deleteMateConfirmed(input.typed, input.name); → const matches = deleteMateConfirmed(input.typed.toLowerCase(), input.name.toLowerCase());
-it("MN94: The field that asks a name typed is pressed by 'Type <name> to confirm', or 'to unlock' for a Production, and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.", () => {
+it("MN94: The field that asks a name typed is pressed by 'Type <name> to confirm', and says it matches only for the name spelled the same, spaces around it aside; breaks: a name with a different capital readies Delete, or the journeys find no field.", () => {
   const cases = [
-    { typed: "", verb: "confirm", matches: false },
-    { typed: "sample", verb: "confirm", matches: false },
-    { typed: "Sample-name", verb: "confirm", matches: false },
-    { typed: "  sample-name  ", verb: "confirm", matches: true },
-    { typed: "sample-name", verb: "unlock", matches: true },
+    { typed: "", matches: false },
+    { typed: "sample", matches: false },
+    { typed: "Sample-name", matches: false },
+    { typed: "  sample-name  ", matches: true },
   ] as const;
-  for (const { typed, verb, matches } of cases) {
-    const words = confirmNameWords({ name: "sample-name", whose: "the project's", verb, typed });
+  for (const { typed, matches } of cases) {
+    const words = confirmNameWords({ name: "sample-name", whose: "the project's", typed });
     expect(words.matches).toBe(matches);
-    expect(words.label).toBe(`Type sample-name to ${verb}`);
+    expect(words.label).toBe("Type sample-name to confirm");
   }
 });

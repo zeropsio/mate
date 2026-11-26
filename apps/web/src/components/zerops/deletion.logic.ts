@@ -1,17 +1,4 @@
-/**
- * Deleting a Mate and its project, decided once (`deletionOffer`) and said in words: which dialog
- * a Mate's or a project's Delete opens, what goes and what stays, what the person must slide and
- * type before Delete opens, the one start it sends, and how HQ's deletion of the project stands.
- *
- * A project owns its code: HQ's repositories with their history, its changes and its releases go
- * with it. HQ runs its deletion as one operation (`app_deletion`) on the person's token, in a fixed
- * order: Productions that stay first, then its last Mate where it has one, each Stage, each
- * Production the person slid, and its code. Only a Production Mate made, of a person who
- * administers it, may go; any other stays in Zerops and Mate lets go of it. Nothing on GitHub is
- * touched. HQ decides every start again; this only chooses what to show.
- *
- * Pure.
- */
+/** Pure decisions for a Mate's or project's deletion and HQ's recorded deletion. */
 import {
   asSentence,
   operationFailureDetails,
@@ -48,6 +35,7 @@ export interface DeletionProject {
     readonly projectId: string;
     readonly kind: string;
     readonly name: string | undefined;
+    readonly deletable: boolean;
   }>;
   /** The projects of the births on their way into it (`null`: one that has none yet). */
   readonly births: ReadonlyArray<string | null>;
@@ -73,50 +61,23 @@ export type DeletionFacts = { readonly past?: string | undefined } & (
     }
 );
 
-/** What deleting the whole project takes, before anything is slid. */
-export interface ProjectDeletionPlan {
-  /** Names the client holds for the Mate and each Zerops environment. */
-  readonly names: Readonly<Record<string, string>>;
-  /** Every Stage in Zerops: each goes, and each is slid before Delete opens. */
-  readonly stages: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
-  /** Each Production that may go: its name typed, then slid; one not slid stays. */
-  readonly productions: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
-  /** What stays whatever is slid, in words: other Productions, Git ones, hidden ones, GitHub. */
-  readonly stays: ReadonlyArray<string>;
-  /** Why the person cannot delete it (a Stage not theirs, a Mate in it); absent: they can. */
-  readonly refusal?: string;
-}
-
-/** Which dialog a Delete opens (design §2), the one answer both dialogs and both menus render. */
+/** Which surface a Delete opens. */
 export type DeletionOffer =
-  /** A Mate that is not its project's last (`stays`: what stays), or one in no project. */
   | { readonly kind: "mate"; readonly projectId: string; readonly stays: string | undefined }
-  /** The last Mate, the project not the person's to delete: only the Mate goes, keeping its code. */
   | { readonly kind: "last-mate-only"; readonly projectId: string; readonly stays: string }
-  /** The last Mate of a project the person may delete whole: they choose. */
-  | {
-      readonly kind: "last-choice";
-      readonly projectId: string;
-      readonly appId: string;
-      readonly plan: ProjectDeletionPlan;
-    }
-  /** A project without a Mate, from its own Delete or Delete again. */
-  | { readonly kind: "project"; readonly appId: string; readonly plan: ProjectDeletionPlan }
-  /** HQ's deletion of the project runs, waits or ended failed: its state, no form. */
+  | { readonly kind: "project"; readonly appId: string; readonly mate?: DeletionFacts["mate"] }
   | {
       readonly kind: "standing";
       readonly deletion: Extract<HqOperationStanding, { kind: "going" | "waiting" | "failed" }>;
     };
 
-/** HQ's kinds of a project that keep a Mate from being its project's last (`app_has_mate`). */
-const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]);
 const MATE_KINDS: ReadonlySet<string> = new Set(["mate", "devstage"]);
 
-/** Placements and births HQ says hold the project, except the Mate being deleted. */
+/** Other Mates and births, excluding the Mate this page names. */
 function otherHolders(project: DeletionProject, projectId: string | undefined) {
   return {
     placements: project.placements.filter(
-      (placement) => HOLDING_KINDS.has(placement.kind) && placement.projectId !== projectId,
+      (placement) => MATE_KINDS.has(placement.kind) && placement.projectId !== projectId,
     ),
     births: project.births.filter((birth) => birth !== projectId),
   };
@@ -128,97 +89,7 @@ function listed(names: ReadonlyArray<string>): string {
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]!}`;
 }
 
-/** "its code, Stage and Production": what the project keeps, naming only what it has. */
-function keptWith(project: DeletionProject): string {
-  const has = (tier: "stage" | "production") =>
-    project.environments.some((environment) => environment.tier === tier) ||
-    project.hidden.includes(tier);
-  return listed([
-    "its code",
-    ...(has("stage") ? ["Stage"] : []),
-    ...(has("production") ? ["Production"] : []),
-  ]);
-}
-
-/** What deleting the whole project takes, and why the person may not where they may not. */
-export function projectDeletionPlan(
-  project: DeletionProject,
-  mate: DeletionFacts["mate"],
-): ProjectDeletionPlan {
-  const zerops = project.environments.flatMap((environment) =>
-    environment.kind === "zerops" ? [environment] : [],
-  );
-  const names = Object.fromEntries(
-    [
-      ...zerops,
-      ...project.placements.filter(
-        (placement) => mate !== undefined && placement.projectId === mate.projectId,
-      ),
-    ].flatMap(({ projectId, name }) => {
-      const trimmed = name?.trim();
-      return trimmed !== undefined && trimmed.length > 0 && trimmed.length <= 100
-        ? [[projectId, trimmed]]
-        : [];
-    }),
-  );
-  const stages = zerops.filter((environment) => environment.tier === "stage");
-  const productions = zerops.filter((environment) => environment.tier === "production");
-  const goes = (environment: (typeof zerops)[number]) =>
-    environment.deletable && environment.madeByMate && environment.name !== undefined;
-  const notTheirs = stages.find((stage) => !stage.deletable || stage.name === undefined);
-  const holders = otherHolders(project, mate?.projectId);
-  const otherMate =
-    holders.births.length > 0 ||
-    holders.placements.some((placement) => MATE_KINDS.has(placement.kind));
-  const refusal = otherMate
-    ? "A Mate still works on this project. Delete it first."
-    : holders.placements.length > 0
-      ? "A plain project still belongs to this project. Remove it first."
-      : notTheirs !== undefined
-        ? notTheirs.name === undefined
-          ? "Deleting it would delete a Stage you have no access to."
-          : `Deleting it would delete Stage ${notTheirs.name}, and you are not an Admin of it.`
-        : project.hidden.includes("stage")
-          ? "Deleting it would delete a Stage you have no access to."
-          : undefined;
-  return {
-    names,
-    stages: stages.map((stage) => ({ projectId: stage.projectId, name: stage.name ?? "" })),
-    productions: productions.flatMap((production) =>
-      goes(production) ? [{ projectId: production.projectId, name: production.name! }] : [],
-    ),
-    stays: [
-      ...productions.flatMap((production) =>
-        goes(production) ? [] : [productionStaysWords(production.name)],
-      ),
-      ...project.environments.flatMap((environment) =>
-        environment.kind === "git" && environment.tier === "production"
-          ? [`Production on Git branch ${environment.branch}. Nothing to delete in Zerops.`]
-          : [],
-      ),
-      ...project.hidden.flatMap((tier) =>
-        tier === "production" ? ["A Production you have no access to stays in Zerops."] : [],
-      ),
-      "Anything on GitHub",
-    ],
-    ...(refusal === undefined ? {} : { refusal }),
-  };
-}
-
-/** A Zerops Production that stays, by its name; one HQ's structure gives no name is still said. */
-export function productionStaysWords(name: string | undefined): string {
-  return name === undefined || name === ""
-    ? "Its Production stays in Zerops and keeps running. Mate lets go of it."
-    : `Production ${name} stays in Zerops and keeps running. Mate lets go of it.`;
-}
-
-/**
- * Which dialog a Delete opens. A Mate that is not its project's last — another Mate, a plain
- * project or a birth stands in it, HQ's own rule — goes alone. The last Mate of a project the
- * person may not delete whole (not an Owner or an Admin, or a Stage not theirs) goes alone, its
- * project kept with the reason. Otherwise the person chooses the Mate alone or the whole project.
- * A project HQ deletes, waits on or failed to delete shows that, until Delete again.
- */
+/** A Mate goes alone when another Mate or birth stands, or the reader cannot delete the project. */
 export function deletionOffer(facts: DeletionFacts): DeletionOffer {
   const { project } = facts;
   const mate =
@@ -242,95 +113,29 @@ export function deletionOffer(facts: DeletionFacts): DeletionOffer {
   }
   if (project === undefined)
     return { kind: "mate", projectId: facts.mate!.projectId, stays: undefined };
-  const plan = projectDeletionPlan(project, mate);
-  if (mate === undefined) return { kind: "project", appId: project.appId, plan };
+  if (mate === undefined) return { kind: "project", appId: project.appId };
   const { placements: others, births } = otherHolders(project, mate.projectId);
   if (others.length > 0 || births.length > 0) {
-    const otherMates =
-      births.length > 0 || others.some((placement) => MATE_KINDS.has(placement.kind));
     return {
       kind: "mate",
       projectId: mate.projectId,
-      stays: `${project.name} stays, with its code${otherMates ? " and its other Mates" : ""}.`,
+      stays: `${project.name} stays, with its code and its other Mates.`,
     };
   }
-  const last = `${mate.name} is the last Mate of ${project.name}.`;
-  if (!project.deleteApp)
+  if (!project.deleteApp) {
+    const review = deletionReview({
+      project,
+      mate,
+      holdings: undefined,
+      choice: everythingStays(project),
+    });
     return {
       kind: "last-mate-only",
       projectId: mate.projectId,
-      stays: `${last} ${project.name} stays, with ${keptWith(project)}: only an Owner or an Admin can delete a project.`,
+      stays: `${mate.name} is the last Mate of ${project.name}. ${project.name} stays, with ${listed(["its code", ...review.mateStaysParts])}: only an Owner or an Admin can delete a project.`,
     };
-  if (plan.refusal !== undefined)
-    return {
-      kind: "last-mate-only",
-      projectId: mate.projectId,
-      stays: `${last} ${project.name} stays: ${plan.refusal.charAt(0).toLowerCase()}${plan.refusal.slice(1)}`,
-    };
-  return { kind: "last-choice", projectId: mate.projectId, appId: project.appId, plan };
-}
-
-/** The last Mate's choice, in words: its description and what each of its two choices takes. */
-export function lastChoiceWords(
-  project: DeletionProject,
-  plan: ProjectDeletionPlan,
-  mate: string,
-): {
-  readonly description: string;
-  readonly only: { readonly title: string; readonly line: string; readonly where: string };
-  readonly whole: {
-    readonly title: string;
-    readonly line: string;
-    readonly next: string;
-    readonly press: string;
-  };
-} {
-  return {
-    description: `${mate} is the last Mate of ${project.name}. Choose what goes.`,
-    only: {
-      title: `Only ${mate}`,
-      line: `${project.name} stays, with ${keptWith(project)}. Start a new Mate in it any time.`,
-      where: keptWhere(project).line,
-    },
-    whole: {
-      title: `${mate} and the whole project`,
-      line: `${listed([
-        project.name,
-        "its code",
-        ...(plan.stages.length === 0 ? [] : ["Stage"]),
-      ])} go. This can't be undone.`,
-      next: "The next page lists what goes and what stays, step by step, and asks you to confirm each part. Nothing is deleted before its last press.",
-      press: "Continue",
-    },
-  };
-}
-
-/** Where a project waits after its last Mate goes alone. */
-export function keptWhere(project: DeletionProject): {
-  readonly place: "menu" | "git";
-  readonly line: string;
-} {
-  const placed = (tier: "stage" | "production") => {
-    const hidden = project.hidden.includes(tier);
-    return (
-      project.environments.some(
-        (environment) => environment.kind === "zerops" && environment.tier === tier,
-      ) || hidden
-    );
-  };
-  const tiers = [
-    ...(placed("stage") ? ["Stage"] : []),
-    ...(placed("production") ? ["Production"] : []),
-  ];
-  return tiers.length > 0
-    ? {
-        place: "menu",
-        line: `It stays in the menu with its ${listed(tiers)}; its row's menu deletes the rest any time.`,
-      }
-    : {
-        place: "git",
-        line: "It leaves the menu and waits under Git, Kept code: add a Mate to it or delete it there any time.",
-      };
+  }
+  return { kind: "project", appId: project.appId, mate };
 }
 
 const DELETE_PROJECT_WHO = "Only an Owner or an Admin can delete a project.";
@@ -366,7 +171,7 @@ export function deletionPageState(input: {
   | {
       readonly kind: "form";
       readonly project: DeletionProject;
-      readonly offer: Extract<DeletionOffer, { kind: "last-choice" | "project" }>;
+      readonly offer: Extract<DeletionOffer, { kind: "project" }>;
     } {
   if (!input.structureRead) return { kind: "reading" };
   if (input.project === undefined) return { kind: "gone" };
@@ -395,7 +200,12 @@ export function deletionProjectOf(
   return {
     appId: app.id,
     name: app.name,
-    placements: app.projects.map(({ projectId, kind, name }) => ({ projectId, kind, name })),
+    placements: app.projects.map(({ projectId, kind, name, can }) => ({
+      projectId,
+      kind,
+      name,
+      deletable: hqOffer(can, "delete_project").kind === "allowed",
+    })),
     births: (app.births ?? []).map((birth) => birth.projectId ?? null),
     deleteApp: hqOffer(structure?.can, "delete_app").kind === "allowed",
     environments: (app.environments ?? []).map((environment): DeletionEnvironment => {
@@ -417,225 +227,412 @@ export function deletionProjectOf(
   };
 }
 
-/** What HQ holds of the project: its repositories by name, and how many changes are open. */
+/** What HQ holds of the project. */
 export interface ApplicationHoldings {
-  readonly repos: ReadonlyArray<string>;
+  readonly repos: ReadonlyArray<{ readonly name: string; readonly canKeep: boolean }>;
   readonly openChanges: number;
 }
 
-/** HQ's detail of the project, once it said both its repositories and its changes. */
 export function applicationHoldings(detail: {
-  readonly repos: ReadonlyArray<{ readonly name: string }> | undefined;
+  readonly repos:
+    | ReadonlyArray<{ readonly name: string; readonly canKeep?: { readonly allow: boolean } }>
+    | undefined;
   readonly changes: ReadonlyArray<{ readonly state: string }> | undefined;
 }): ApplicationHoldings | undefined {
   if (detail.repos === undefined || detail.changes === undefined) return undefined;
   return {
-    repos: detail.repos.map((repo) => repo.name),
+    repos: detail.repos.map((repo) => ({ name: repo.name, canKeep: repo.canKeep?.allow === true })),
     openChanges: detail.changes.filter((change) => change.state === "open").length,
   };
 }
 
-/** What the person slid and typed in the project's dialog. */
-export interface DeletionConfirmation {
-  /** The Stages and Productions slid, by project id. */
-  readonly slid: ReadonlySet<string>;
-  /** Each Production's name as typed, by project id. */
-  readonly productionTyped: Readonly<Record<string, string>>;
+export interface DeletionChoice {
+  readonly fates: Readonly<Record<string, "goes" | "stays">>;
+  readonly names: Readonly<Record<string, string>>;
+  readonly projectName: string;
+  /** A stopped operation's code selection, including repositories read after the form opens. */
+  readonly codeAgain?: { readonly hasStep: boolean; readonly keeps: ReadonlyArray<string> };
 }
 
-export interface ProjectDeletionWords {
-  /** Each thing that goes; `undefined` until HQ said what the project holds. */
-  readonly goes: ReadonlyArray<string> | undefined;
-  readonly stays: ReadonlyArray<string>;
-  /** "Delete shop" */
-  readonly submit: string;
+export interface DeletionRow {
+  readonly kind: "mate" | "plain" | "stage" | "production" | "code" | "setup";
+  readonly id: string;
+  readonly title: string;
+  readonly badge: string;
+  readonly fate: "goes" | "stays";
+  readonly switchable: boolean;
+  readonly line: string;
+  readonly summary: string;
+  readonly askName?: string;
+  readonly warning?: string;
 }
 
-/** What deleting the whole project takes and leaves, by what the person slid. */
-export function projectDeletionWords(input: {
-  readonly name: string;
-  readonly plan: ProjectDeletionPlan;
-  readonly holdings: ApplicationHoldings | undefined;
-  /** Its last Mate, which goes first; its services as `deleteMateServiceCount`. */
-  readonly mate?: { readonly name: string; readonly services: number | undefined } | undefined;
-  readonly slid: ReadonlySet<string>;
-}): ProjectDeletionWords {
-  const { name, plan, holdings, mate, slid } = input;
-  const code = holdings?.repos.filter((repo) => repo !== RECIPE_REPO) ?? [];
+type DeletionStartBody =
+  | { readonly kind: "start-mate-deletion"; readonly projectId: string; readonly keptGit?: "keep" }
+  | {
+      readonly kind: "start-app-deletion";
+      readonly appId: string;
+      readonly stages: ReadonlyArray<string>;
+      readonly mate?: string;
+      readonly plains?: ReadonlyArray<string>;
+      readonly productions?: ReadonlyArray<string>;
+      readonly keepRepos?: ReadonlyArray<string>;
+      readonly names?: Readonly<Record<string, string>>;
+    };
+
+/** Start with all project parts staying, as the Mate's own deletion does. */
+export function everythingStays(project: DeletionProject): DeletionChoice {
+  const ids = [
+    ...project.placements
+      .filter((placement) => placement.kind === "plain")
+      .map((placement) => placement.projectId),
+    ...project.environments.flatMap((environment) =>
+      environment.kind === "zerops" ? [environment.projectId] : [],
+    ),
+  ];
+  return { fates: Object.fromEntries(ids.map((id) => [id, "stays"])), names: {}, projectName: "" };
+}
+
+/** A failed deletion's recorded steps are the only source of its next choice. */
+export function deletionChoiceAgain(
+  project: DeletionProject,
+  holdings: ApplicationHoldings | undefined,
+): DeletionChoice {
+  const steps: NonNullable<DeletionProject["steps"]> = project.steps ?? [];
+  const named = new Set(
+    steps.flatMap((step) => (step.projectId === undefined ? [] : [step.projectId])),
+  );
+  const code = steps.find((step) => step.part === "code");
+  const keeps = new Set(code?.keeps ?? []);
+  const choice = everythingStays(project);
+  const fates: Record<string, "goes" | "stays"> = { ...choice.fates };
+  for (const id of Object.keys(fates)) fates[id] = named.has(id) ? "goes" : "stays";
+  for (const repo of holdings?.repos ?? [])
+    fates[repo.name] = code !== undefined && !keeps.has(repo.name) ? "goes" : "stays";
   return {
-    goes:
-      holdings === undefined
-        ? undefined
-        : [
-            ...(mate === undefined ? [] : [lastMateGoes(mate.name, mate.services)]),
-            ...(code.length === 0
-              ? []
-              : [
-                  code.length === 1
-                    ? `Repository ${code[0]!}, with its history`
-                    : `Repositories ${listed(code)}, with their history`,
-                ]),
-            ...(holdings.repos.includes(RECIPE_REPO) ? ["Its setup files"] : []),
-            ...(holdings.openChanges === 0
-              ? []
-              : [
-                  holdings.openChanges === 1
-                    ? "1 open change"
-                    : `${String(holdings.openChanges)} open changes`,
-                ]),
-            ...plan.stages.map(
-              (stage) => `Stage ${stage.name} goes from Zerops, with everything in it`,
-            ),
-            ...plan.productions.flatMap((production) =>
-              slid.has(production.projectId)
-                ? [`Production ${production.name} goes from Zerops, with its services and data`]
-                : [],
-            ),
-          ],
-    stays: [
-      ...plan.productions.flatMap((production) =>
-        slid.has(production.projectId) ? [] : [productionStaysWords(production.name)],
-      ),
-      ...plan.stays,
-    ],
-    submit: `Delete ${name}`,
+    fates,
+    names: {},
+    projectName: "",
+    codeAgain: { hasStep: code !== undefined, keeps: code?.keeps ?? [] },
   };
 }
 
-/**
- * A Production's own block in the project's dialog: what cannot be undone, the field its Zerops
- * project's name is typed in to unlock its slide, and the slide's words.
- */
-export function productionDeletionWords(name: string): {
-  readonly warning: string;
-  readonly slide: string;
-  readonly slid: string;
-  readonly whose: string;
-} {
+/** One answer for every row, the result, the holds and the exact start. */
+export function deletionReview(input: {
+  readonly project: DeletionProject;
+  readonly mate?:
+    | { readonly projectId: string; readonly name: string; readonly services?: number | undefined }
+    | undefined;
+  readonly holdings: ApplicationHoldings | undefined;
+  readonly choice: DeletionChoice;
+}) {
+  const { project, mate, holdings, choice } = input;
+  const rows: DeletionRow[] = [];
+  if (mate !== undefined)
+    rows.push({
+      kind: "mate",
+      id: mate.projectId,
+      title: mate.name,
+      badge: "Mate",
+      fate: "goes",
+      switchable: false,
+      line: `Goes first, with its conversations and its workspace in Zerops${mate.services === undefined || mate.services === 0 ? "" : mate.services === 1 ? " and its 1 service" : ` and its ${String(mate.services)} services`}`,
+      summary: lastMateGoes(mate.name, mate.services),
+    });
+  const addPart = (part: {
+    kind: "plain" | "stage" | "production";
+    id: string;
+    name: string | undefined;
+    deletable: boolean;
+    madeByMate: boolean;
+  }) => {
+    const { kind, id, deletable, madeByMate } = part;
+    const name = part.name?.trim() ? part.name : undefined;
+    const title =
+      name === undefined
+        ? kind === "plain"
+          ? "A Zerops project"
+          : kind === "stage"
+            ? "A Stage"
+            : "A Production"
+        : `${kind === "plain" ? "Zerops project" : kind === "stage" ? "Stage" : "Production"} ${name}`;
+    const switchable =
+      kind === "production" && !madeByMate ? true : deletable && name !== undefined;
+    const defaultFate = kind === "stage" && switchable ? "goes" : "stays";
+    const fate = switchable ? (choice.fates[id] ?? defaultFate) : "stays";
+    const askName =
+      fate === "goes" &&
+      name !== undefined &&
+      (kind === "plain" || (kind === "production" && madeByMate))
+        ? name
+        : undefined;
+    const letsGo = kind === "production" && !madeByMate && fate === "goes";
+    const line = !switchable
+      ? name === undefined
+        ? "You have no access to it."
+        : "You are not an Admin of it."
+      : letsGo
+        ? "Leaves this project. It keeps running in Zerops: Mate did not make it."
+        : fate === "stays"
+          ? kind === "stage"
+            ? "Stays in this project"
+            : "Stays in this project and keeps running"
+          : kind === "production"
+            ? "Goes from Zerops, with its services and data"
+            : "Goes from Zerops, with everything in it";
+    const summary =
+      fate === "stays"
+        ? title
+        : letsGo
+          ? `${title} stays in Zerops and keeps running. Mate lets go of it.`
+          : `${title} ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
+    rows.push({
+      kind,
+      id,
+      title,
+      badge: kind === "plain" ? "Zerops project" : kind === "stage" ? "Stage" : "Production",
+      fate,
+      switchable,
+      line,
+      summary,
+      ...(askName === undefined ? {} : { askName }),
+      ...(askName !== undefined && kind === "production"
+        ? { warning: productionDeletionWords(askName).warning }
+        : {}),
+    });
+  };
+  for (const plain of project.placements.filter((placement) => placement.kind === "plain"))
+    addPart({
+      kind: "plain",
+      id: plain.projectId,
+      name: plain.name,
+      deletable: plain.deletable,
+      madeByMate: false,
+    });
+  for (const tier of ["stage", "production"] as const) {
+    for (const env of project.environments)
+      if (env.kind === "zerops" && env.tier === tier)
+        addPart({
+          kind: tier,
+          id: env.projectId,
+          name: env.name,
+          deletable: env.deletable,
+          madeByMate: env.madeByMate,
+        });
+    const hiddenParts: DeletionProject["hidden"] = project.hidden;
+    hiddenParts.forEach((hidden, index) => {
+      if (hidden === tier)
+        addPart({
+          kind: tier,
+          id: `hidden:${tier}:${String(index)}`,
+          name: undefined,
+          deletable: false,
+          madeByMate: true,
+        });
+    });
+  }
+  const parts = rows.filter(
+    (row) => row.kind === "plain" || row.kind === "stage" || row.kind === "production",
+  );
+  const partStays = parts.some((row) => row.fate === "stays");
+  const repos = holdings?.repos.filter((repo) => repo.name !== RECIPE_REPO) ?? [];
+  for (const repo of repos) {
+    const switchable = !partStays && repo.canKeep;
+    const recorded = choice.codeAgain;
+    const defaultFate =
+      recorded !== undefined && (!recorded.hasStep || recorded.keeps.includes(repo.name))
+        ? "stays"
+        : "goes";
+    const fate = partStays
+      ? "stays"
+      : switchable
+        ? (choice.fates[repo.name] ?? defaultFate)
+        : "goes";
+    rows.push({
+      kind: "code",
+      id: repo.name,
+      title: repo.name,
+      badge: "Repository",
+      fate,
+      switchable,
+      line: partStays
+        ? "Stays while the project keeps something in Zerops."
+        : fate === "goes"
+          ? "Goes with its history and branches"
+          : "Stays, with its history and branches",
+      summary:
+        fate === "goes" ? `Repository ${repo.name}, with its history` : `Repository ${repo.name}`,
+    });
+  }
+  if (holdings?.repos.some((repo) => repo.name === RECIPE_REPO)) {
+    const repoStays = rows.some((row) => row.kind === "code" && row.fate === "stays");
+    const fate = partStays || repoStays ? "stays" : "goes";
+    rows.push({
+      kind: "setup",
+      id: RECIPE_REPO,
+      title: "Setup files",
+      badge: "Setup files",
+      fate,
+      switchable: false,
+      line:
+        fate === "stays"
+          ? "Stay with the project."
+          : "Go with the project: they describe its Stages and Productions",
+      summary: "Its setup files",
+    });
+  }
+  const stayedParts = parts.filter((row) => row.fate === "stays");
+  const keptKinds = [
+    ...(stayedParts.some((row) => row.kind === "plain") ? ["Zerops project"] : []),
+    ...(stayedParts.some((row) => row.kind === "stage") ? ["Stage"] : []),
+    ...(stayedParts.some((row) => row.kind === "production") ? ["Production"] : []),
+  ];
+  const mateStaysParts = [
+    ...(keptKinds.includes("Zerops project") ? ["Zerops project"] : []),
+    ...(keptKinds.includes("Stage") ||
+    project.environments.some((env) => env.kind === "git" && env.tier === "stage")
+      ? ["Stage"]
+      : []),
+    ...(keptKinds.includes("Production") ||
+    project.environments.some((env) => env.kind === "git" && env.tier === "production")
+      ? ["Production"]
+      : []),
+  ];
+  const codeStays = rows.some(
+    (row) => (row.kind === "code" || row.kind === "setup") && row.fate === "stays",
+  );
+  const place: "menu" | "git" | "gone" = partStays
+    ? "menu"
+    : codeStays || holdings === undefined
+      ? "git"
+      : "gone";
+  const becomes = {
+    place,
+    parts: keptKinds,
+    line:
+      place === "menu"
+        ? `It stays in the menu with its ${listed(keptKinds)}; its row's menu deletes the rest any time.`
+        : place === "git"
+          ? "It leaves the menu and waits under Git, Kept code: add a Mate to it or delete it there any time."
+          : "Nothing of it stays. This can't be undone.",
+  };
+  const gone = rows.filter((row) => row.fate === "goes");
+  const goneRepos = gone.filter((row) => row.kind === "code" || row.kind === "setup");
+  const stays = rows.filter((row) => row.fate === "stays").map((row) => row.summary);
+  stays.push(
+    ...project.environments.flatMap((env) =>
+      env.kind === "git" && env.tier === "production"
+        ? [`Production on Git branch ${env.branch}. Nothing to delete in Zerops.`]
+        : [],
+    ),
+    "Anything on GitHub",
+  );
+  const goes = holdings === undefined ? undefined : gone.map((row) => row.summary);
+  if (
+    goes !== undefined &&
+    holdings !== undefined &&
+    holdings.openChanges > 0 &&
+    goneRepos.length > 0
+  )
+    goes.push(
+      goneRepos.length === holdings.repos.length
+        ? `${String(holdings.openChanges)} open change${holdings.openChanges === 1 ? "" : "s"}`
+        : "Open changes in the repositories that go",
+    );
+  const holders = otherHolders(project, mate?.projectId);
+  const asked = gone.find(
+    (row) =>
+      row.askName !== undefined && !deleteMateConfirmed(choice.names[row.id] ?? "", row.askName),
+  );
+  const missing =
+    holders.placements.length > 0 || holders.births.length > 0
+      ? "A Mate still works on this project. Delete it first."
+      : holdings === undefined
+        ? "Reading what HQ holds."
+        : gone.length === 0
+          ? "Nothing is set to go."
+          : asked?.askName !== undefined
+            ? `Type ${asked.askName} to confirm it goes.`
+            : null;
+  const names = Object.fromEntries(
+    [
+      ...project.placements,
+      ...project.environments.flatMap((env) => (env.kind === "zerops" ? [env] : [])),
+    ].flatMap(({ projectId, name }) => {
+      const trimmed = name?.trim();
+      return trimmed !== undefined && trimmed.length > 0 && trimmed.length <= 100
+        ? [[projectId, trimmed]]
+        : [];
+    }),
+  );
+  const selected = (kind: DeletionRow["kind"]) =>
+    gone.filter((row) => row.kind === kind).map((row) => row.id);
+  const plains = selected("plain"),
+    stages = selected("stage"),
+    productions = selected("production");
+  const keepRepos = partStays
+    ? []
+    : rows
+        .filter((row) => row.kind === "code" && row.fate === "stays")
+        .map((row) => row.id)
+        .sort();
+  const onlyMate =
+    mate !== undefined && gone.length === 1 && gone[0]?.kind === "mate" && (partStays || codeStays);
+  const start: DeletionStartBody | undefined =
+    missing !== null
+      ? undefined
+      : onlyMate
+        ? { kind: "start-mate-deletion", projectId: mate.projectId, keptGit: "keep" }
+        : {
+            kind: "start-app-deletion",
+            appId: project.appId,
+            stages,
+            ...(mate === undefined ? {} : { mate: mate.projectId }),
+            ...(plains.length === 0 ? {} : { plains }),
+            ...(productions.length === 0 ? {} : { productions }),
+            ...(keepRepos.length === 0 ? {} : { keepRepos }),
+            ...(Object.keys(names).length === 0 ? {} : { names }),
+          };
+  return {
+    rows,
+    becomes,
+    mateStaysParts,
+    goes,
+    stays,
+    missing,
+    ready: missing === null && deleteMateConfirmed(choice.projectName, project.name),
+    start,
+    submit: `Delete ${project.name}`,
+  };
+}
+
+/** The warning for deleting a Production Mate made. */
+export function productionDeletionWords(name: string) {
   return {
     warning: `Deleting Production ${name} takes it offline at once. Its services and data go from Zerops; Zerops keeps its backups for 7 days and then destroys them. Nobody can bring it back after that.`,
-    slide: `Slide to delete Production ${name}`,
-    slid: `Production ${name} will be deleted`,
-    whose: "the Production's",
   };
 }
 
-/** A Production goes only while its own typed name and slide both confirm it. */
-export function productionConfirmed(typed: string, name: string, slid: boolean): boolean {
-  return slid && deleteMateConfirmed(typed, name);
-}
-
-/** Whether every Stage is slid and the project's name is confirmed; also the parts confirmed. */
-export function projectDeletionReady(
-  plan: ProjectDeletionPlan,
-  confirmation: DeletionConfirmation,
-  confirmed: boolean,
-  holdingsRead: boolean,
-): {
-  readonly ready: boolean;
-  readonly missing: string | null;
-  readonly slid: ReadonlySet<string>;
-} {
-  const slid = new Set([
-    ...plan.stages
-      .filter((stage) => confirmation.slid.has(stage.projectId))
-      .map((stage) => stage.projectId),
-    ...plan.productions
-      .filter((production) =>
-        productionConfirmed(
-          confirmation.productionTyped[production.projectId] ?? "",
-          production.name,
-          confirmation.slid.has(production.projectId),
-        ),
-      )
-      .map((production) => production.projectId),
-  ]);
-  if (plan.refusal !== undefined) return { ready: false, missing: plan.refusal, slid };
-  if (plan.stages.some((stage) => !slid.has(stage.projectId)))
-    return { ready: false, missing: "Slide each Stage to confirm.", slid };
-  if (!holdingsRead) return { ready: false, missing: "Reading what HQ holds.", slid };
-  return { ready: confirmed, missing: null, slid };
-}
-
-/** The three page steps reflect Stage confirmation and the final readiness answer. */
-export function deletionStepStates(
-  plan: ProjectDeletionPlan,
-  confirmation: DeletionConfirmation,
-  ready: boolean,
-): readonly ["done" | "current", "done" | "todo", "done" | "current" | "todo"] {
-  const stagesSlid = plan.stages.every((stage) => confirmation.slid.has(stage.projectId));
-  return [
-    stagesSlid ? "done" : "current",
-    stagesSlid ? "done" : "todo",
-    ready ? "done" : stagesSlid ? "current" : "todo",
-  ];
-}
-
-/** One start, entirely from the offer rendered at the press and the person's choice. */
+/** One operation, from the review or a Mate's own dialog. */
 export function deletionStart(input: {
   readonly orgId: string;
   readonly id: string;
   readonly offer: DeletionOffer;
-  readonly choice:
-    | { readonly kind: "mate" }
-    | ({ readonly kind: "project" } & DeletionConfirmation);
-}):
-  | {
-      readonly kind: "start-mate-deletion";
-      readonly orgId: string;
-      readonly projectId: string;
-      readonly id: string;
-      readonly keptGit?: "keep";
-    }
-  | {
-      readonly kind: "start-app-deletion";
-      readonly orgId: string;
-      readonly appId: string;
-      readonly id: string;
-      readonly stages: ReadonlyArray<string>;
-      readonly mate?: string;
-      readonly productions?: ReadonlyArray<string>;
-      readonly names?: Readonly<Record<string, string>>;
-    }
-  | undefined {
-  const { orgId, id, offer, choice } = input;
+  readonly review?: ReturnType<typeof deletionReview> | undefined;
+}): (DeletionStartBody & { readonly orgId: string; readonly id: string }) | undefined {
+  const { orgId, id, offer, review } = input;
   if (offer.kind === "standing") return undefined;
-  if (
-    offer.kind === "mate" ||
-    offer.kind === "last-mate-only" ||
-    (offer.kind === "last-choice" && choice.kind === "mate")
-  ) {
+  if (offer.kind === "mate" || offer.kind === "last-mate-only")
     return {
       kind: "start-mate-deletion",
       orgId,
       id,
       projectId: offer.projectId,
-      ...(offer.kind === "mate" ? {} : { keptGit: "keep" as const }),
+      ...(offer.kind === "last-mate-only" ? { keptGit: "keep" as const } : {}),
     };
-  }
-  if (choice.kind !== "project") return undefined;
-  const productions = offer.plan.productions.flatMap((production) =>
-    productionConfirmed(
-      choice.productionTyped[production.projectId] ?? "",
-      production.name,
-      choice.slid.has(production.projectId),
-    )
-      ? [production.projectId]
-      : [],
-  );
-  return {
-    kind: "start-app-deletion",
-    orgId,
-    appId: offer.appId,
-    id,
-    stages: offer.plan.stages.map((stage) => stage.projectId),
-    ...(offer.kind === "last-choice" ? { mate: offer.projectId } : {}),
-    ...(productions.length === 0 ? {} : { productions }),
-    ...(Object.keys(offer.plan.names).length === 0 ? {} : { names: offer.plan.names }),
-  };
+  return review?.ready && review.start !== undefined ? { ...review.start, orgId, id } : undefined;
 }
 
-/** HQ permits reuse of an id only for the same start body. */
 export function sameDeletionStart(
   left: NonNullable<ReturnType<typeof deletionStart>>,
   right: NonNullable<ReturnType<typeof deletionStart>>,
@@ -648,14 +645,16 @@ export function sameDeletionStart(
       left.appId === right.appId &&
       left.mate === right.mate &&
       JSON.stringify(left.stages) === JSON.stringify(right.stages) &&
-      JSON.stringify(left.productions ?? []) === JSON.stringify(right.productions ?? [])
+      JSON.stringify(left.plains ?? []) === JSON.stringify(right.plains ?? []) &&
+      JSON.stringify(left.productions ?? []) === JSON.stringify(right.productions ?? []) &&
+      JSON.stringify(left.keepRepos ?? []) === JSON.stringify(right.keepRepos ?? [])
     );
   return false;
 }
 
 /** One part of HQ's deletion of the project, as its dialog lists it. */
 export interface DeletionPart {
-  readonly part: "mate" | "stage" | "production" | "kept" | "code";
+  readonly part: "mate" | "plain" | "stage" | "production" | "kept" | "code";
   /** "Stage shop-stage", "Quinn", "Its code". */
   readonly label: string;
   /**
@@ -685,6 +684,14 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
     switch (step.part) {
       case "mate":
         return [{ part: "mate", label: named ?? "Its Mate", state }];
+      case "plain":
+        return [
+          {
+            part: "plain",
+            label: named === undefined ? "A Zerops project" : `Zerops project ${named}`,
+            state,
+          },
+        ];
       case "stage":
         return [
           { part: "stage", label: named === undefined ? "A Stage" : `Stage ${named}`, state },
@@ -699,7 +706,13 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
           },
         ];
       case "code":
-        return [{ part: "code", label: "Its code", state }];
+        return [
+          {
+            part: "code",
+            label: step.keeps?.length ? `Its code, keeping ${listed(step.keeps)}` : "Its code",
+            state,
+          },
+        ];
       default:
         return [];
     }
@@ -793,41 +806,15 @@ export function deletionStandingWords(
   };
 }
 
-/** Code and setup files the project deletion removes. */
-export function deletionCodeRows(
-  holdings: ApplicationHoldings,
-): ReadonlyArray<{ readonly repo: string; readonly title: string; readonly line: string }> {
-  return [
-    ...holdings.repos
-      .filter((repo) => repo !== RECIPE_REPO)
-      .map((repo) => ({ repo, title: repo, line: "Goes with its history and branches" })),
-    ...(holdings.repos.includes(RECIPE_REPO)
-      ? [
-          {
-            repo: RECIPE_REPO,
-            title: "Setup files",
-            line: "Go with the project: they describe its Stages and Productions",
-          },
-        ]
-      : []),
-  ];
-}
-
-/** Words for the deletion page and its three steps. */
+/** Words for the deletion page. */
 export function deletionPageWords(name: string) {
   return {
     title: `Delete ${name}`,
     line: "Nothing is deleted until you press Delete at the end.",
-    steps: ["What goes from Zerops", "Code", "Confirm"] as const,
-    stepLines: [
-      "Slide each Stage. A Production stays unless you delete it too.",
-      "The project's code and setup files go with it.",
-      "Check the summary, then type the project's name.",
-    ] as const,
     running:
       "You can leave this page. HQ finishes the deletion, and every device shows how far it got.",
     runningTitle: `Deleting ${name}`,
-    nothing: "Nothing in Zerops: it has no Mate, Stage or Production left.",
+    nothing: "Nothing in Zerops.",
     reading: "Reading the project from HQ…",
     gone: "This project is gone.",
     back: "Back",
@@ -835,72 +822,9 @@ export function deletionPageWords(name: string) {
     cancel: "Cancel",
     again: "Delete again",
     waitingFor: "waiting for",
-    deleteProduction: "Delete it too…",
-    keepProduction: "Keep it",
     goes: "Goes",
     stays: "Stays",
     holdingsReading: "Reading what HQ holds",
     whose: "the project's",
   };
-}
-
-/** One thing in Zerops the project's deletion page lists under its first step. */
-export interface DeletionGoesRow {
-  readonly kind: "mate" | "stage" | "production";
-  readonly id: string;
-  readonly title: string;
-  readonly badge: string;
-  readonly line: string;
-  readonly goes: boolean;
-  readonly slide?: { readonly label: string; readonly confirmed: string };
-}
-
-/**
- * What the first step lists: its last Mate, each Stage (slid to go), each Production that may go
- * (it stays until its name is typed and it is slid).
- */
-export function deletionGoesRows(input: {
-  readonly plan: ProjectDeletionPlan;
-  readonly mate?:
-    | { readonly projectId: string; readonly name: string; readonly services: number | undefined }
-    | undefined;
-  readonly slid: ReadonlySet<string>;
-}): ReadonlyArray<DeletionGoesRow> {
-  const { plan, mate, slid } = input;
-  return [
-    ...(mate === undefined
-      ? []
-      : [
-          {
-            kind: "mate" as const,
-            id: mate.projectId,
-            title: mate.name,
-            badge: "Mate",
-            line: `Goes first, with its conversations and its workspace in Zerops${mate.services === undefined || mate.services === 0 ? "" : mate.services === 1 ? " and its 1 service" : ` and its ${String(mate.services)} services`}`,
-            goes: true,
-          },
-        ]),
-    ...plan.stages.map((stage) => ({
-      kind: "stage" as const,
-      id: stage.projectId,
-      title: stage.name,
-      badge: "Stage",
-      line: "Goes from Zerops, with everything in it",
-      goes: true,
-      slide: {
-        label: `Slide to delete Stage ${stage.name}`,
-        confirmed: `Stage ${stage.name} will be deleted`,
-      },
-    })),
-    ...plan.productions.map((production) => ({
-      kind: "production" as const,
-      id: production.projectId,
-      title: production.name,
-      badge: "Production",
-      line: slid.has(production.projectId)
-        ? "Goes from Zerops, with its services and data"
-        : "Stays in Zerops and keeps running. Mate lets go of it.",
-      goes: slid.has(production.projectId),
-    })),
-  ];
 }

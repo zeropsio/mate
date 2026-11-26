@@ -53,7 +53,6 @@ import { PutLiveHost } from "../components/zerops/PutLiveHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
-import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
 import { Button } from "../components/ui/button";
 import { Failure } from "../components/ui/failure";
 import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
@@ -370,7 +369,6 @@ function SignedInRootRouteView() {
           <ZeropsNewProjectHost />
           <ChiefSetupHost />
           <AddressesSheetHost />
-          <ZeropsDeleteApplicationHost />
           <PutLiveHost />
           <PipelineDialogHost />
         </CommandPalette>
