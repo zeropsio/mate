@@ -1614,6 +1614,13 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
   return path;
 };
 
+const DOOR_BUILD_KEY = "clientBuild";
+
+function doorBuildOf(raw: string | undefined): string | undefined {
+  const build = raw?.trim();
+  return build !== undefined && /^[A-Za-z0-9._+-]{1,64}$/u.test(build) ? build : undefined;
+}
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
@@ -1628,6 +1635,8 @@ export function makeHqApi(input: {
   readonly accessToken: (ask?: ZeropsAccessAsk) => Promise<ZeropsAccess>;
   /** The organisation this client signs in to. */
   readonly orgId: string;
+  /** The build this client names itself by to HQ's door; none: the door is told none. */
+  readonly [DOOR_BUILD_KEY]?: string;
   /** The instant, for a session's renewal and an operation's press; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
@@ -1652,6 +1661,7 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
+  const build = doorBuildOf(input[DOOR_BUILD_KEY]);
   /** The stream opened ahead, until the first open has asked for it. */
   let openedAhead = input.openedAhead;
   /** The session HQ issued, or the door exchange under way that will issue it. */
@@ -1696,6 +1706,7 @@ export function makeHqApi(input: {
             accessToken: access.token,
             expiresAt: access.expiresAt,
             orgId: input.orgId,
+            ...(build === undefined ? {} : { [DOOR_BUILD_KEY]: build }),
           }),
           signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
         }),

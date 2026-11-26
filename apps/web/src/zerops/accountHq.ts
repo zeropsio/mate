@@ -25,6 +25,7 @@ import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
 import { hqStreamAhead } from "@t3tools/client-runtime/data/hqStreamAhead";
+import { APP_COMMIT, APP_VERSION } from "../branding";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -76,6 +77,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
   const ahead = hqStreamAhead(hq.address, clientId);
   const api = makeBrowserHqApi({
     address: hq.address,
+    clientBuild: APP_COMMIT ? `${APP_VERSION}+${APP_COMMIT.slice(0, 7)}` : APP_VERSION,
     kept: {
       read: () => {
         if (!isCurrent()) throw accountChanged();

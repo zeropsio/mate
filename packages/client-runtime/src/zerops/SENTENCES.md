@@ -1,4 +1,4 @@
-next: ZV189
+next: ZV190
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -157,3 +157,4 @@ next: ZV189
 - ZV186 — Every open kept-code question has a group on the Git overview, the listed project's own or one made from the question when the project is not listed; breaks: an Owner cannot answer a question about a project whose changes HQ does not offer them
 - ZV187 — A kept, asked or deleting project's code is said in one sentence that names the project and what is kept, and a project in use has none; breaks: the banner of a project that holds only its setup says its code is billed
 - ZV188 — A release's creation HQ refused is told apart from one Zerops failed or left unresolved, by HQ's job state alone; breaks: a person is told Zerops could not create a service HQ never asked Zerops for.
+- ZV189 — HQ's door is told the client's build at each sign-in and each renewal, and a build that is empty or is no plain version is left out of the request; breaks: HQ's operator cannot tell which web build a person runs, or a malformed build string changes the body of every sign-in
