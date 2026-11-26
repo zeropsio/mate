@@ -1190,65 +1190,43 @@ const CODEX_SIGNED_OUT: CrewAskAvailability = new Map([
   [CODEX_LOGIN.instanceId, { kind: "needs-sign-in", signInKind: "not-authorized" }],
 ]);
 
-/** Antigravity signed in, and not yet a crewmate's agent: it has no crew profile. */
-const ANTIGRAVITY_LOGIN: ServerProvider = {
-  ...crewLogin("antigravity", "antigravity", "Antigravity", [["gemini-4", "Gemini 4"]]),
-  threadProfile: undefined,
-};
-
-const CREW = {
-  title: "Set up a crew for the checkout",
-  why: "The payment API and the checkout page can be built at once, and a reviewer keeps both to the goal.",
-  goal: "Rebuild the checkout so a guest can pay without an account.\n\n## Binding decisions\n- Payments go through the existing provider.\n\n## Done when\n- A guest pays on the preview and gets a receipt.",
-  crew: [
-    {
-      name: "Lead",
-      role: "lead",
-      part: "Plans the checkout and reviews each part.",
-      agent: "claude-code",
-      model: "claude-opus-5-5",
-      effort: "high",
-    },
-    {
-      name: "Sol",
-      role: "builder",
-      part: "Builds the payment API.",
-      agent: "codex",
-      model: "gpt-6-sol",
-    },
-    {
-      name: "Ivo",
-      role: "builder",
-      part: "Builds the checkout page.",
-      agent: "claude-code",
-      model: "claude-sonnet-5-5",
-    },
-    { name: "Vera", role: "reviewer", part: "Reviews each finished part against the goal." },
-  ],
-};
-const CREW_ASK = parseCrewAsk(JSON.stringify(CREW))!;
-/** The same crew with a second opinion on Antigravity, which can't run a crewmate yet. */
-const CREW_ASK_ANTIGRAVITY = parseCrewAsk(
+const CREW_ASK = parseCrewAsk(
   JSON.stringify({
-    ...CREW,
+    title: "Set up a crew for the checkout",
+    why: "The payment API and the checkout page can be built at once, and a reviewer keeps both to the goal.",
+    goal: "Rebuild the checkout so a guest can pay without an account.\n\n## Binding decisions\n- Payments go through the existing provider.\n\n## Done when\n- A guest pays on the preview and gets a receipt.",
     crew: [
-      ...CREW.crew,
       {
-        name: "Argon",
-        role: "reviewer",
-        part: "Gives a second opinion on the payment API.",
-        agent: "antigravity",
-        model: "gemini-4",
+        name: "Lead",
+        role: "lead",
+        part: "Plans the checkout and reviews each part.",
+        agent: "claude-code",
+        model: "claude-opus-5-5",
+        effort: "high",
       },
+      {
+        name: "Sol",
+        role: "builder",
+        part: "Builds the payment API.",
+        agent: "codex",
+        model: "gpt-6-sol",
+      },
+      {
+        name: "Ivo",
+        role: "builder",
+        part: "Builds the checkout page.",
+        agent: "claude-code",
+        model: "claude-sonnet-5-5",
+      },
+      { name: "Vera", role: "reviewer", part: "Reviews each finished part against the goal." },
     ],
   }),
 )!;
 
-type CrewAskState = "ready" | "signIn" | "noCrew" | "applied" | "off";
+type CrewAskState = "ready" | "signIn" | "applied" | "off";
 const CREW_ASK_STATES: ReadonlyArray<readonly [CrewAskState, string]> = [
   ["ready", "Waiting"],
   ["signIn", "Not signed in to Codex"],
-  ["noCrew", "Antigravity can't join"],
   ["applied", "Crew set up"],
   ["off", "Crews off"],
 ];
@@ -1265,13 +1243,13 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
       name="Set up a crew"
     >
       <CrewAskCardView
-        ask={state === "noCrew" ? CREW_ASK_ANTIGRAVITY : CREW_ASK}
+        ask={CREW_ASK}
         mate={{ name: MATE, tint: "sky" }}
         onOpenCrew={() => undefined}
         onSetUp={() => undefined}
         onSignIn={() => undefined}
         availability={state === "signIn" ? CODEX_SIGNED_OUT : undefined}
-        providers={[CLAUDE_LOGIN, CODEX_LOGIN, ANTIGRAVITY_LOGIN]}
+        providers={[CLAUDE_LOGIN, CODEX_LOGIN]}
         status={status}
       />
     </Specimen>

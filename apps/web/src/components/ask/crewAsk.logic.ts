@@ -1,9 +1,9 @@
 /**
  * A crew a Mate sets up in its answer, as a `crew-ask` fence: the goal it works to and who is on
  * it — each crewmate's name, role and part, and the agent, model and effort it runs on. The card
- * reads that crew on this Mate's own sign-ins: a crewmate whose agent can't run it here (no
- * sign-in, no crew rules, or no crew tools for a lead) runs on one that can, and the card says
- * why. Its press opens the Crew tab's setup filled in with it, to change and start there.
+ * reads that crew on this Mate's own sign-ins: an agent it isn't signed in to runs on one it is,
+ * and the card says so. Its press opens the Crew tab's setup filled in with it, to change and
+ * start there.
  */
 import { isZeropsInstanceRunnable } from "@t3tools/client-runtime/data";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
@@ -134,40 +134,13 @@ function agentName(agent: string): string {
   return agent === "opencode" ? "OpenCode" : agent;
 }
 
-/**
- * Why a crewmate can't run on the agent the Mate named. The crew's own rules decide the first two,
- * as its engine refuses them: an agent with no crew profile (`threadProfile`) would work without
- * the crew's rules, and a lead needs an agent that hosts the crew tools.
- */
-export type CrewAskMissingReason =
-  /** It runs here, but never as a crewmate (Cursor, Antigravity). */
-  | "crew"
-  /** It runs crewmates, but can't host the crew tools a lead needs (Codex). */
-  | "lead"
-  /** Mate signs people in to it, and nobody here is. */
-  | "sign-in"
-  /** This Mate has no such agent, and Mate signs nobody in to it. */
-  | "unavailable";
-
-/** An agent the Mate named that a crewmate can't run on here, and why. */
+/** An agent the Mate named that this Mate isn't signed in to. */
 export interface CrewAskMissingAgent {
   readonly name: string;
   /** Its driver, for its mark. */
   readonly driver: string;
-  readonly reason: CrewAskMissingReason;
   /** The agent Mate signs people in to; `undefined` for one it signs nobody in to (OpenCode). */
   readonly agentId: ZeropsAgentId | undefined;
-}
-
-function missingReason(
-  driver: string,
-  lead: boolean,
-  providers: ReadonlyArray<ServerProvider>,
-): CrewAskMissingReason {
-  const offered = providers.find((provider) => provider.driver === driver);
-  if (offered !== undefined && offered.threadProfile === undefined) return "crew";
-  if (lead && offered?.threadProfile?.tools === false) return "lead";
-  return agentIdForDriverKind(driver) === undefined ? "unavailable" : "sign-in";
 }
 
 /** Each login's sign-in as the model picker reads it (`resolveZeropsProviderAvailability`). */
@@ -179,9 +152,9 @@ export type CrewAskAvailability =
  * What a crewmate runs on among this Mate's sign-ins: the login of the agent the Mate named, the
  * model it named there (by id or name), and the effort that model offers (by id or name). A login
  * counts once it may run as the model picker says (`isZeropsInstanceRunnable`): an agent installed
- * but signed out is one it isn't signed in to. A crewmate whose agent can't take it runs on its
- * first login that may (a lead's hosts the crew tools), and `missing` names that agent and why;
- * `login` is `null` only where no login may.
+ * but signed out is one it isn't signed in to. Such an agent runs on its first login that may (a
+ * lead's hosts the crew tools), and `missing` names that agent; `login` is `null` only where no
+ * login may.
  */
 export interface CrewAskRunsOn {
   readonly login: {
@@ -222,7 +195,6 @@ export function crewAskRunsOn(
           : {
               name: agentName(crewmate.agent),
               driver,
-              reason: missingReason(driver, crewmate.kind === "lead", providers),
               agentId: agentIdForDriverKind(driver),
             },
     };
@@ -278,8 +250,8 @@ export function crewAskRunsOnWords(runsOn: CrewAskRunsOn): string | null {
 }
 
 /**
- * Each agent the Mate named that its crewmates can't run on, once per reason, with the crewmates
- * who wanted it and the login they start on instead.
+ * Each agent the Mate named that this Mate isn't signed in to, once, with the crewmates who
+ * wanted it and the login they start on instead.
  */
 export function crewAskMissing(
   rows: ReadonlyArray<{ readonly crewmate: CrewAskCrewmate; readonly runsOn: CrewAskRunsOn }>,
@@ -294,45 +266,26 @@ export function crewAskMissing(
   >();
   for (const { crewmate, runsOn } of rows) {
     if (runsOn.missing === null) continue;
-    const key = `${runsOn.missing.driver}:${runsOn.missing.reason}`;
-    const entry = byAgent.get(key) ?? {
+    const entry = byAgent.get(runsOn.missing.driver) ?? {
       agent: runsOn.missing,
       crewmates: [],
       instead: runsOn.login?.label ?? null,
     };
     entry.crewmates.push(crewmate.name);
-    byAgent.set(key, entry);
+    byAgent.set(runsOn.missing.driver, entry);
   }
   return [...byAgent.values()];
 }
 
-/**
- * "Sign in to Codex first, or Sol and Ivo start on Claude Code."; "Antigravity can't run a
- * crewmate yet, so Argon starts on Claude Code."
- */
+/** "Sign in to Codex first, or Sol and Ivo start on Claude Code." */
 export function crewAskMissingWords(
   missing: ReturnType<typeof crewAskMissing>[number],
   mate: string,
 ): string {
-  const { name, reason } = missing.agent;
   const who = namesWords(missing.crewmates);
   const start = missing.crewmates.length === 1 ? "starts" : "start";
-  const why = {
-    crew: `${name} can't run a crewmate yet`,
-    lead: `${name} can't lead a crew`,
-    "sign-in": `${mate} isn't signed in to ${name}`,
-    unavailable: `${mate} has no ${name}`,
-  }[reason];
-  if (missing.instead === null) return `${why}.`;
-  return reason === "sign-in"
-    ? `Sign in to ${name} first, or ${who} ${start} on ${missing.instead}.`
-    : `${why}, so ${who} ${start} on ${missing.instead}.`;
+  if (missing.instead === null) return `${mate} isn't signed in to ${missing.agent.name}.`;
+  return missing.agent.agentId === undefined
+    ? `${mate} has no ${missing.agent.name}, so ${who} ${start} on ${missing.instead}.`
+    : `Sign in to ${missing.agent.name} first, or ${who} ${start} on ${missing.instead}.`;
 }
-
-/** What a crewmate's row says of the agent it can't run on. */
-export const CREW_ASK_MISSING_BADGE: Readonly<Record<CrewAskMissingReason, string>> = {
-  crew: "Can't join crews",
-  lead: "Can't lead",
-  "sign-in": "Not signed in",
-  unavailable: "Not available",
-};
