@@ -26,7 +26,7 @@ const scope = (id: string, keys: ReadonlyArray<string>): VaultScope => ({
 });
 
 // witness: apps/web/src/components/zerops/vault/vault.logic.ts | sent?.key === key && sent.scopeId === scope.id ? null : keyProblem → false ? null : keyProblem
-it("MN+1: The add card never reads the key it has sent to a vault as already there, while the vault shows that write before it ends, and still reads any other key, or the same key in another vault, against what each holds; breaks: adding a key to a message says it already exists while it saves, then puts it in the message anyway", () => {
+it("MN107: The add card never reads the key it has sent to a vault as already there, while the vault shows that write before it ends, and still reads any other key, or the same key in another vault, against what each holds; breaks: adding a key to a message says it already exists while it saves, then puts it in the message anyway", () => {
   const holding = scope("fia", ["email"]);
   const other = scope("api", ["email"]);
   const rows = [

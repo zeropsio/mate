@@ -651,7 +651,7 @@ export function deletionReview(input: {
 /** The warning for deleting a Production Mate made. */
 export function productionDeletionWords(name: string) {
   return {
-    warning: `Deleting Production ${name} takes it offline at once. Its services and data go from Zerops; Zerops keeps its backups for 7 days and then destroys them. Nobody can bring it back after that.`,
+    warning: `Deleting Production ${name} takes it offline at once and can't be undone.`,
   };
 }
 
