@@ -299,7 +299,13 @@ export function GitRepoFrame({
 }) {
   const about = home.state === "known" ? home.answer.about : null;
   return (
-    <RepositoryUpkeep key={`${appId}:${repo}`} appId={appId} project={project} repo={repo}>
+    <RepositoryUpkeep
+      key={`${appId}:${repo}`}
+      appId={appId}
+      project={project}
+      repo={repo}
+      homeStorage={about?.storage}
+    >
       {({ menu, status, storage }) => (
         <div className="flex min-w-0 flex-col gap-12">
           <GitRepoHeading

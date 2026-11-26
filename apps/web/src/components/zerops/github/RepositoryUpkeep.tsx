@@ -2,6 +2,7 @@
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useNavigate } from "@tanstack/react-router";
@@ -17,6 +18,7 @@ import {
 import { Fragment, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Dialog, DialogPopup as StoragePopup } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/components/ui/menu";
@@ -79,11 +81,13 @@ export function RepositoryUpkeep({
   appId,
   project,
   repo,
+  homeStorage,
   children,
 }: {
   readonly appId: string;
   readonly project: string;
   readonly repo: string;
+  readonly homeStorage?: GitHomeAbout["storage"];
   readonly children: (slots: Slots) => ReactNode;
 }) {
   const entry = useHqAppDetail(appId).repos?.find((each) => each.name === repo);
@@ -118,6 +122,7 @@ export function RepositoryUpkeep({
         ...(git.send === undefined ? {} : { sendDisconnect: git.send.disconnect }),
       }}
       storage={storage}
+      homeStorage={homeStorage}
       pressState={pressState}
       onSetUpGithub={() => {
         void navigate({ to: "/settings/automation" });
@@ -129,12 +134,11 @@ export function RepositoryUpkeep({
 }
 
 type Panel = "fix" | "disconnect" | "token" | "unfollow" | "limit" | "delete" | null;
-const PANEL_LABELS: Record<Exclude<Panel, null>, (repo: string) => string> = {
+const PANEL_LABELS: Record<Exclude<Panel, null | "limit">, (repo: string) => string> = {
   fix: () => "How to fix diverged mains",
   disconnect: (repo) => `Disconnect ${repo}`,
   token: (repo) => `Replace the token for ${repo}`,
   unfollow: (repo) => `Stop following for ${repo}`,
-  limit: () => "Storage limit",
   delete: (repo) => `Delete ${repo} from Mate`,
 };
 
@@ -152,6 +156,7 @@ export function RepositoryUpkeepView({
   dependencies,
   actions,
   storage,
+  homeStorage,
   pressState,
   onSetUpGithub,
   children,
@@ -168,6 +173,7 @@ export function RepositoryUpkeepView({
   readonly dependencies: ReadonlyArray<string>;
   readonly actions: RepoRowActions;
   readonly storage: ReturnType<typeof useRepoStorage>;
+  readonly homeStorage?: GitHomeAbout["storage"];
   readonly pressState: PressState;
   readonly onSetUpGithub: () => void;
   readonly children: (slots: Slots) => ReactNode;
@@ -182,11 +188,13 @@ export function RepositoryUpkeepView({
   const [panel, setPanel] = useState<Panel>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [limitPending, setLimitPending] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const more = useRef<HTMLButtonElement>(null);
-  const open = (next: Exclude<Panel, null>, from: HTMLElement | null) => {
+  const limitFocus = useRef<HTMLElement>(null);
+  const open = (next: Exclude<Panel, null | "limit">, from: HTMLElement | null) => {
     opener.current = from ?? more.current;
     setAnchor(more.current ?? from);
     setPanel(next);
@@ -282,7 +290,7 @@ export function RepositoryUpkeepView({
         );
       case "limit":
         return (
-          <MenuItem onClick={() => open("limit", null)}>
+          <MenuItem onClick={() => setPanel("limit")}>
             <HardDriveIcon aria-hidden="true" />
             Storage limit…
           </MenuItem>
@@ -323,12 +331,14 @@ export function RepositoryUpkeepView({
         onOpenChange={(open) => {
           if (!open && !busy) setPanel(null);
         }}
-        open={panel !== null}
+        open={panel !== null && panel !== "limit"}
       >
         <PopoverPopup
           align="end"
           anchor={anchor}
-          aria-label={panel === null ? undefined : PANEL_LABELS[panel](entry.name)}
+          aria-label={
+            panel === null || panel === "limit" ? undefined : PANEL_LABELS[panel](entry.name)
+          }
           finalFocus={opener}
           width="md"
         >
@@ -409,11 +419,30 @@ export function RepositoryUpkeepView({
               }}
               repo={entry.name}
             />
-          ) : panel === "limit" && storage.set !== undefined ? (
-            <StorageLimit view={storage.view} set={storage.set} onDone={() => setPanel(null)} />
           ) : null}
         </PopoverPopup>
       </Popover>
+      <Dialog
+        open={panel === "limit"}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !limitPending) setPanel(null);
+        }}
+      >
+        <StoragePopup initialFocus={limitFocus}>
+          {panel === "limit" && storage.set !== undefined ? (
+            <StorageLimit
+              repo={entry.name}
+              storage={homeStorage}
+              view={storage.view}
+              set={storage.set}
+              pending={limitPending}
+              setPending={setLimitPending}
+              focusRef={limitFocus}
+              onDone={() => setPanel(null)}
+            />
+          ) : null}
+        </StoragePopup>
+      </Dialog>
       <RepositoryConnectDialog
         appId={project}
         project={projectName}

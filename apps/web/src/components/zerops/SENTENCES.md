@@ -1,4 +1,4 @@
-next: MN90
+next: MN91
 
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
@@ -86,4 +86,4 @@ next: MN90
 - MN88 — A Production that stays is a part the project's deletion lets go of: it reads letting go while its part runs and let go once done, the project's line says letting go of it, a failed deletion lists it as let go apart from what is gone and as still here while it stands; breaks: a Production the person kept reads Deleting or Gone, or a deletion Zerops stopped at its deploy token names every part but that one.
 - MN87 — What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.
 - MN89 — A repository's Changes tab says its changes are not read until the overview has read them, lists only the open ones, keeps the last read ones marked as such when their read failed, and says none is open only when the read is complete; breaks: a repository whose changes were never read says no change is open
-- MN+1 — A repository's menu groups what it offers as the way out to its host, the remote's verbs, the storage limit and Delete, in that order, and holds no group nothing is offered in; breaks: a separator stands at the menu's start or end, or Delete stands among the remote's verbs
+- MN90 — A repository's menu groups what it offers as the way out to its host, the remote's verbs, the storage limit and Delete, in that order, and holds no group nothing is offered in; breaks: a separator stands at the menu's start or end, or Delete stands among the remote's verbs

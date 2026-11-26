@@ -143,7 +143,7 @@ it("MN82: A repository's upkeep menu offers each verb only to who may change rem
 });
 
 // witness: apps/web/src/components/zerops/github/repoUpkeep.logic.ts | .filter((group) => group.length > 0) → .map((group) => group)
-it("MN+1: A repository's menu groups what it offers as the way out to its host, the remote's verbs, the storage limit and Delete, in that order, and holds no group nothing is offered in; breaks: a separator stands at the menu's start or end, or Delete stands among the remote's verbs", () => {
+it("MN90: A repository's menu groups what it offers as the way out to its host, the remote's verbs, the storage limit and Delete, in that order, and holds no group nothing is offered in; breaks: a separator stands at the menu's start or end, or Delete stands among the remote's verbs", () => {
   const rows: Array<{ entries: RepositoryUpkeepEntry[]; groups: RepositoryUpkeepEntry[][] }> = [
     {
       entries: ["open", "change", "token", "disconnect", "limit", "delete"],
