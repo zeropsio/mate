@@ -148,6 +148,25 @@ export type OpenCodeProviderFields = Omit<ProviderReadinessFields, "models"> & {
 };
 
 /**
+ * Whether a Mate's sign-in offers OpenCode: an instance it lists, enabled. OpenCode comes with
+ * every Mate's container (the platform's `zcp@1` image), so it is offered from the moment it is
+ * listed — before its first check, which reports it not installed until it has run — and
+ * withdrawn only once a check found its CLI missing (not installed, with an error).
+ */
+export function openCodeOffered(
+  providers:
+    | ReadonlyArray<Pick<ProviderReadinessFields, "driver" | "enabled" | "installed" | "status">>
+    | undefined,
+): boolean {
+  return (providers ?? []).some(
+    (provider) =>
+      provider.driver === "opencode" &&
+      provider.enabled &&
+      (provider.installed || provider.status !== "error"),
+  );
+}
+
+/**
  * Whether a Mate's OpenCode runs on a model key the person set: ready to run, and serving a model
  * of a key-signed provider. That key is a sign-in the person made, as an agent's own sign-in is;
  * OpenCode on its free models alone is not, until the person chooses them (`openCodeChosen`).
