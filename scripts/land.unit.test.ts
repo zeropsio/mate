@@ -3,7 +3,7 @@ import { numberLocalEntries } from "./check-sentences.ts";
 import { landingArguments } from "./land.ts";
 
 // witness: scripts/check-sentences.ts | return new Map(entries.map((entry, index) => [sentenceKey(entry), `${prefix}${start + index}`])); → return new Map(entries.map((entry, index) => [sentenceKey(entry), `${prefix}${start + index + 1}`]));
-it("GA+2: A landing numbers a branch's lane-local sentence from the list's next number without requiring a declared delta", () => {
+it("GA2: A landing numbers a branch's lane-local sentence from the list's next number without requiring a declared delta", () => {
   expect(() => landingArguments([])).not.toThrow();
   expect(() => landingArguments(["--unknown"])).toThrow();
   expect([

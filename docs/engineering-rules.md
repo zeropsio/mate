@@ -107,15 +107,13 @@ each break is caught once, at the cheapest level that can see it.
 
 ## 5. Verify and deliver
 
-- **Run the repository's gate** (its `AGENTS.md` names it) once, to the end, before pushing. `main`
-  feeds production: a red gate is never passed by `--no-verify`, `--force`, or a skipped or disabled
-  check.
-- **Exercise the change** through the behaviour it changes before it reaches production: locally,
-  on a standing test environment (never one made per change), or on the shared pre-production
-  environment when it changes HQ together with the Mate or the web, is irreversible, or is a box
-  change. The live check runs the kept live journeys of what it changes, which belong to no single
-  repository, and adds a journey only for behaviour none of them covers. Write what was done and
-  seen in the commit or the pull request. A passed check is not repeated because later work landed.
+- **Run the repository's gate** (its `AGENTS.md` names it) once, to the end, before pushing. The
+  gate runs every check its required CI jobs run for the files the change touches, from one list of
+  checks. `main` feeds production: a red gate is never passed by `--no-verify`, `--force`, or a
+  skipped or disabled check.
+- **Three layers of verification.** The author exercises the changed behaviour once at the end of
+  the work and writes what was seen. The gate holds the whole change. Live journeys run after a
+  release and nightly; their result holds nothing.
 - **A refusal is not routed around.** No other identity, credential, organisation or target than
   the task gave: stop the dependent step and ask.
 - **When something that is not your code fails** (accounts, APIs, credentials, infrastructure,

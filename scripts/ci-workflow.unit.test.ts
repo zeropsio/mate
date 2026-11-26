@@ -2,7 +2,7 @@ import { expect, it } from "vite-plus/test";
 import { invalidCiSteps } from "./gate-changed.ts";
 
 // witness: scripts/gate-changed.ts | if (step.run === undefined) return []; → if (step.run !== undefined) return [];
-it("GA+1: A required CI job cannot run a command outside the landing gate's stage table", () => {
+it("GA1: A required CI job cannot run a command outside the landing gate's stage table", () => {
   const workflow = `jobs:
   check:
     steps:
