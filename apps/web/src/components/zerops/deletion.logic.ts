@@ -324,22 +324,32 @@ export function deletionPageState(input: {
   readonly mate: { readonly projectId: string; readonly name: string } | undefined;
   readonly past?: string | undefined;
 }):
-  | { readonly kind: "reading" | "gone" }
-  | { readonly kind: "refused"; readonly line: string }
-  | { readonly kind: "standing"; readonly offer: Extract<DeletionOffer, { kind: "standing" }> }
+  | { readonly kind: "reading" }
+  | { readonly kind: "gone" }
+  | { readonly kind: "refused"; readonly project: DeletionProject; readonly line: string }
+  | {
+      readonly kind: "standing";
+      readonly project: DeletionProject;
+      readonly offer: Extract<DeletionOffer, { kind: "standing" }>;
+    }
   | {
       readonly kind: "form";
+      readonly project: DeletionProject;
       readonly offer: Extract<DeletionOffer, { kind: "last-choice" | "project" }>;
     } {
   if (!input.structureRead) return { kind: "reading" };
   if (input.project === undefined) return { kind: "gone" };
   const offer = deletionOffer({ project: input.project, mate: input.mate, past: input.past });
-  if (offer.kind === "standing") return { kind: "standing", offer };
+  if (offer.kind === "standing") return { kind: "standing", project: input.project, offer };
   if (offer.kind === "mate" || offer.kind === "last-mate-only")
-    return { kind: "refused", line: offer.stays ?? "" };
+    return { kind: "refused", project: input.project, line: offer.stays ?? "" };
   if (offer.kind === "project" && !input.project.deleteApp)
-    return { kind: "refused", line: "Only an Owner or an Admin can delete a project." };
-  return { kind: "form", offer };
+    return {
+      kind: "refused",
+      project: input.project,
+      line: "Only an Owner or an Admin can delete a project.",
+    };
+  return { kind: "form", project: input.project, offer };
 }
 
 /** HQ's structure of the project, as `deletionOffer` reads it; `undefined` where it holds none. */
