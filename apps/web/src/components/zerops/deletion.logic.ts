@@ -335,6 +335,19 @@ export function keptWhere(project: DeletionProject): {
 
 const DELETE_PROJECT_WHO = "Only an Owner or an Admin can delete a project.";
 
+/** The Mate named by a failed deletion's start, or the Mate the page's address names. */
+export function deletionPageMate(input: {
+  readonly project: DeletionProject | undefined;
+  readonly address: string | undefined;
+}): string | undefined {
+  const { project, address } = input;
+  if (project?.deletion.kind !== "failed") return address;
+  const mate = project.steps?.find(
+    ({ part, projectId }) => part === "mate" && projectId !== undefined,
+  );
+  return mate?.projectId ?? address;
+}
+
 /** The page renders this answer, including an existing operation for every reader. */
 export function deletionPageState(input: {
   readonly structureRead: boolean;

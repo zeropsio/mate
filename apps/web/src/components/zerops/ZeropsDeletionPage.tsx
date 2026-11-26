@@ -53,6 +53,7 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import { MateFace } from "./primitives";
 import {
   applicationHoldings,
+  deletionPageMate,
   deletionPageState,
   deletionProjectOf,
   deletionStart,
@@ -531,7 +532,7 @@ function WaitingPerson({ orgId, userId }: { readonly orgId: string; readonly use
 /** Reads the page's facts and writes only the operation the person presses. */
 export function ZeropsDeletionPageContainer({
   appId,
-  mateId,
+  mateId: address,
 }: {
   readonly appId: string;
   readonly mateId: string | undefined;
@@ -546,8 +547,9 @@ export function ZeropsDeletionPageContainer({
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const { listing } = useZeropsCandidates();
   const candidates = heldCandidates(listing).rows;
-  const candidate = candidates.find((row) => row.project.id === mateId);
   const project = deletionProjectOf(structure, appId, deletion);
+  const mateId = deletionPageMate({ project, address });
+  const candidate = candidates.find((row) => row.project.id === mateId);
   const placement = project?.placements.find((item) => item.projectId === mateId);
   const mateName =
     candidate === undefined
