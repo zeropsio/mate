@@ -185,7 +185,6 @@ import {
 } from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects/ProjectPeople";
-import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "./mateActions/useMateActions";
@@ -228,7 +227,7 @@ import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters
 import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
 import { useLoadFill } from "~/lib/loadFills";
 
-import { applicationContents, groupIsEmpty } from "./projects/emptyApps.logic";
+import { groupIsEmpty } from "./projects/emptyApps.logic";
 import { projectDeleteActions } from "./projects/projectDelete";
 import {
   type ZeropsRowAction,
@@ -1095,7 +1094,6 @@ export function ZeropsProjectsContent({
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
-    | { readonly kind: "delete-group"; readonly group: Pick<CanonicalGroup, "groupId" | "name"> }
     | { readonly kind: "mirror-code"; readonly group: Pick<CanonicalGroup, "groupId" | "name"> }
     | null
   >(null);
@@ -2336,9 +2334,12 @@ export function ZeropsProjectsContent({
         : projectDeleteActions({
             group: canonicalGroup,
             offer: orgOffer("delete_app").kind,
-            contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
-            openEmpty: () => {
-              setRowDialog({ kind: "delete-group", group });
+            openDeletion: () => {
+              void navigate({
+                to: "/projects/$projectKey/delete",
+                params: { projectKey: group.groupId },
+                search: {},
+              });
             },
           })),
     ];
@@ -2661,20 +2662,6 @@ export function ZeropsProjectsContent({
           }}
         />
       )}
-      {rowDialog?.kind === "delete-group" ? (
-        <ZeropsDeleteProjectDialog
-          group={rowDialog.group}
-          contents={applicationContents(
-            hqStructure,
-            activeOrganization?.id,
-            rowDialog.group.groupId,
-          )}
-          key={`delete-group:${rowDialog.group.groupId}`}
-          onClose={() => {
-            setRowDialog(null);
-          }}
-        />
-      ) : null}
       {placeVault.drawer}
       {rowDialog?.kind === "mirror-code" ? (
         <GitMirrorDialog

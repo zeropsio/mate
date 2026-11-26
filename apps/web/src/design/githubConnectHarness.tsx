@@ -33,7 +33,6 @@ import { RepositoryUpkeepView } from "~/components/zerops/github/RepositoryUpkee
 import { GitRepoHeading, GitRepoFacts } from "~/components/zerops/gitBrowser/GitRepoFrame";
 import { GitStorageFigure } from "~/components/zerops/gitBrowser/GitStorageFigure";
 import { Button } from "~/components/ui/button";
-import { GitHubIcon } from "~/components/Icons";
 import type {
   GitMirrorAppEntry,
   GitMirrorApps,
@@ -267,8 +266,8 @@ function Rows() {
 
 /** The same page view, with HQ's offers and repository facts supplied by this flow. */
 function Upkeep({ kind }: { readonly kind: string }) {
-  const reader = kind === "reader";
-  const empty = kind === "empty";
+  const reader = kind === "reader" || kind === "reader-empty";
+  const empty = kind === "empty" || kind === "reader-empty";
   const current = empty
     ? entry("tea-shop")
     : kind === "following"
@@ -300,22 +299,63 @@ function Upkeep({ kind }: { readonly kind: string }) {
     via: null,
     appName: null,
   } as const;
-  const opened = useRef(false);
+  const figure = {
+    usedBytes: 110592,
+    limitBytes: 5368709120,
+    large: false,
+    routeBodyLimitBytes: null,
+  };
+  const opened = useRef({ menu: false, limit: false, save: false });
   useEffect(() => {
-    if (kind !== "token" && kind !== "empty") return;
-    const trigger = document.querySelector<HTMLButtonElement>(
-      `[aria-label="More for ${current.name}"]`,
-    );
-    if (trigger === null) return;
-    // Base UI sets aria-expanded when its trigger is ready. Open the recorded flow at that event.
+    const storage = kind.startsWith("storage");
+    if (kind !== "token" && kind !== "empty" && kind !== "reader" && !storage) return;
+    // Drive the same trigger and menu item a person uses, as each becomes available.
     const show = () => {
-      if (opened.current || trigger.getAttribute("aria-expanded") === null) return;
-      opened.current = true;
-      observer.disconnect();
-      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      const trigger = document.querySelector<HTMLButtonElement>(
+        `[aria-label="More for ${current.name}"]`,
+      );
+      if (
+        !opened.current.menu &&
+        trigger !== null &&
+        trigger.getAttribute("aria-expanded") !== null
+      ) {
+        opened.current.menu = true;
+        trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      }
+      if (storage && !opened.current.limit) {
+        const item = Array.from(
+          document.querySelectorAll<HTMLElement>('[data-slot="menu-item"]'),
+        ).find((each) => each.textContent?.includes("Storage limit"));
+        if (item) {
+          opened.current.limit = true;
+          item.click();
+        }
+      }
+      if ((kind === "storage-refused" || kind === "storage-saving") && !opened.current.save) {
+        const save = Array.from(
+          document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+        ).find((each) => each.textContent === "Save limit");
+        if (save) {
+          opened.current.save = true;
+          save.click();
+        }
+      }
+      if (
+        opened.current.menu &&
+        (!storage ||
+          (opened.current.limit &&
+            ((kind !== "storage-refused" && kind !== "storage-saving") || opened.current.save)))
+      ) {
+        observer.disconnect();
+      }
     };
     const observer = new MutationObserver(show);
-    observer.observe(trigger, { attributes: true, attributeFilter: ["aria-expanded"] });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-expanded"],
+    });
     show();
     return () => observer.disconnect();
   }, [kind, current.name]);
@@ -336,13 +376,23 @@ function Upkeep({ kind }: { readonly kind: string }) {
           ? {}
           : { sendDisconnect: never, replaceToken: never, unfollow: never, deleteRepository: never }
       }
+      homeStorage={figure}
       storage={{
-        view: {
-          state: "known",
-          answer: { capGiB: 5, usedBytes: 110592, limitBytes: 5368709120 },
-          busy: false,
-          failed: false,
-        },
+        view:
+          kind === "storage-reading"
+            ? { state: "unread", busy: true }
+            : kind === "storage-read-refused"
+              ? { state: "refused", reason: "role", words: "HQ refused the storage read." }
+              : kind === "storage-read-failed"
+                ? { state: "failed", words: "HQ couldn't read the storage limit." }
+                : kind === "storage-withheld"
+                  ? { state: "withheld" }
+                  : {
+                      state: "known",
+                      answer: { capGiB: 5, usedBytes: 110592, limitBytes: 5368709120 },
+                      busy: false,
+                      failed: false,
+                    },
         offer: reader ? { kind: "refused", reason: "role" } : { kind: "allowed" },
         set: reader
           ? undefined
@@ -375,18 +425,6 @@ function Upkeep({ kind }: { readonly kind: string }) {
             repo={current.name}
             actions={
               <div className="flex items-center gap-2">
-                {current.remote?.url.startsWith("https://github.com/") ? (
-                  <Button
-                    render={
-                      <a href="https://github.com/octo-dev/tea" target="_blank" rel="noreferrer" />
-                    }
-                    size="sm"
-                    variant="secondary"
-                  >
-                    <GitHubIcon aria-hidden="true" />
-                    Open on GitHub
-                  </Button>
-                ) : null}
                 <Button size="sm" variant="secondary">
                   Clone
                 </Button>
@@ -396,7 +434,7 @@ function Upkeep({ kind }: { readonly kind: string }) {
           />
           <GitRepoFacts
             about={null}
-            storage={<GitStorageFigure storage={undefined} view={storage} />}
+            storage={<GitStorageFigure storage={figure} view={storage} />}
           />
           {status}
         </section>

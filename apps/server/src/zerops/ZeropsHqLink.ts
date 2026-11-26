@@ -125,6 +125,8 @@ import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./hqOverview/zeropsHqOverview.ts";
+import { readFileJson, watchFiles } from "./fileWatch.ts";
+import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
@@ -170,7 +172,10 @@ export interface LinkSocket {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
 }
 
-export type ConnectLinkSocket = (url: string) => LinkSocket;
+export type ConnectLinkSocket = (
+  url: string,
+  headers: Readonly<Record<string, string>>,
+) => LinkSocket;
 
 /** How a link closed: HQ's code and reason, or none where the socket failed without one. */
 export interface LinkClose {
@@ -285,6 +290,8 @@ interface ZeropsHqLinkOptions {
   readonly hqOrigin: string;
   /** The label HQ shows the link by: this container's service. */
   readonly serviceId: string;
+  /** The version the dial names; none: no version header. */
+  readonly serverVersion?: string;
   /** This container's public origin, told to HQ in the hello; none: the Mate does not link. */
   readonly publicOrigin: string | undefined;
   /** The project's key as it stands now, read afresh for every dial; none while there is none. */
@@ -395,8 +402,25 @@ export const lookupIpv6 =
       return callback(null, usable, 6);
     });
 
+export const dialHeadersOf = (
+  version: string | undefined,
+  service: string,
+): Readonly<Record<string, string>> => {
+  const headers: Record<string, string> = {};
+  for (const [name, value] of [
+    ["X-Mate-Version", version],
+    ["X-Mate-Service", service],
+  ] as const) {
+    const trimmed = value?.trim();
+    if (trimmed !== undefined && /^[A-Za-z0-9._+-]{1,64}$/u.test(trimmed)) {
+      headers[name] = trimmed;
+    }
+  }
+  return headers;
+};
+
 /** The link's socket (`ws`) uses only IPv6, including for an address supplied directly. */
-const connectLinkSocket: ConnectLinkSocket = (url) => {
+const connectLinkSocket: ConnectLinkSocket = (url, headers) => {
   const host = new URL(url).hostname;
   const address = host.startsWith("[") ? host.slice(1, -1) : host;
   if (NodeNet.isIP(address) !== 0 && !nativeIpv6(address)) {
@@ -406,6 +430,7 @@ const connectLinkSocket: ConnectLinkSocket = (url) => {
   const socketOptions = {
     lookup: lookupIpv6(NodeDns.lookup),
     autoSelectFamily: false,
+    headers,
   };
   return new NodeWS.WebSocket(url, socketOptions) as unknown as LinkSocket;
 };
@@ -465,7 +490,16 @@ type HandshakeSignals = {
 type Link = Effect.Effect<LinkClose | undefined>;
 
 /** An overview's sections, each sent whole when it changed. */
-const SECTIONS = ["identity", "main", "threads", "logins", "crew", "conversations"] as const;
+const SECTIONS = [
+  "identity",
+  "main",
+  "threads",
+  "logins",
+  "crew",
+  "conversations",
+  "standUp",
+  "connections",
+] as const;
 
 /**
  * The sections of `overview` whose JSON differs from what `sent` holds, which then holds them as
@@ -565,7 +599,9 @@ export const makeZeropsHqLink = (
       const pingInterval = yield* Deferred.make<number>();
       let lastInboundAt = clock.monotonicTimeNanosUnsafe();
       const socket = yield* Effect.acquireRelease(
-        Effect.sync(() => options.connect(url)),
+        Effect.sync(() =>
+          options.connect(url, dialHeadersOf(options.serverVersion, options.serviceId)),
+        ),
         (socket) =>
           Effect.flatMap(options.toldToStop ?? Effect.succeed(false), (toldToStop) =>
             Effect.sync(() => {
@@ -1116,6 +1152,13 @@ interface OverviewSources {
   readonly domainEvents: Stream.Stream<unknown>;
   /** An engine Mate's own rows, sent beside the threads' shell fields; none on a V1 Mate. */
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
+  /** The registry's current open roles and refusals, and when they change. */
+  readonly connections?: Pick<ZeropsConnections["Service"], "counts" | "changes">;
+  /** zcp's own status file, read again whenever it changes. */
+  readonly zcpStatus?: {
+    readonly read: Effect.Effect<ZcpStatus | null>;
+    readonly changes: Stream.Stream<unknown>;
+  };
   /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
   readonly engine?: { readonly protocol: number };
   /** Whether its service holds the press's setup marker, read locally at each look; none off Zerops. */
@@ -1176,6 +1219,10 @@ const mateOverviewFeed = (
         ...(sources.conversations === undefined
           ? {}
           : { conversations: yield* sources.conversations }),
+        ...(sources.connections === undefined
+          ? {}
+          : { connections: yield* sources.connections.counts }),
+        ...(sources.zcpStatus === undefined ? {} : { zcpStatus: yield* sources.zcpStatus.read }),
       });
     }).pipe(Effect.option);
     return {
@@ -1184,6 +1231,8 @@ const mateOverviewFeed = (
         [
           sources.domainEvents,
           ...(sources.providers === undefined ? [] : [sources.providers.changes]),
+          ...(sources.zcpStatus === undefined ? [] : [sources.zcpStatus.changes]),
+          ...(sources.connections === undefined ? [] : [sources.connections.changes]),
           Stream.fromPubSub(crewMoved),
           sources.agentAuth.changes,
           sources.agentLogin.changes,
@@ -1236,6 +1285,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         Effect.map(attention.current, ({ source }) => source),
       );
       const descriptor = yield* (yield* ServerEnvironment).getDescriptor;
+      const statusFile = zerops.statusFile;
       const feed = yield* mateOverviewFeed({
         providers: {
           latest: providers.providers,
@@ -1257,8 +1307,19 @@ export const layer = (crew: OverviewSources["crew"]) =>
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
+        connections,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
+        ...(statusFile === undefined || statusFile.length === 0
+          ? {}
+          : {
+              zcpStatus: {
+                read: readFileJson(fs, statusFile).pipe(
+                  Effect.map((raw) => parseZcpStatus(raw) ?? null),
+                ),
+                changes: Stream.fromEffectRepeat((yield* watchFiles([statusFile])).next),
+              },
+            }),
         setupMarker: readServiceVariableKeys(zerops.envStorePath).pipe(
           Effect.map(hasSetupMarker),
           Effect.provideService(FileSystem.FileSystem, fs),
@@ -1274,6 +1335,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
         serviceId: zerops.serviceId ?? zerops.hostname ?? "",
+        serverVersion: descriptor.serverVersion,
         publicOrigin: zerops.publicOrigin,
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),

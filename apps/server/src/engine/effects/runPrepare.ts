@@ -10,10 +10,14 @@
  * @module engine/effects/runPrepare
  */
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
+import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import type { Principal, RunTrigger } from "@t3tools/contracts";
 
 import { OWNER_RETRY } from "../outbox/EffectOutbox.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
+import { WorkWhere as WorkWherePort } from "../ports.ts";
 import { makeAdmit } from "./admission.ts";
 import { failed, ok } from "./shared.ts";
 
@@ -22,27 +26,44 @@ interface Payload {
   readonly instanceId: string | null;
   readonly principal: Principal;
   readonly trigger: RunTrigger;
+  readonly where?: { readonly lease?: string };
 }
 
 export const makeRunPrepare = Effect.gen(function* () {
   const admit = yield* makeAdmit;
+  const port = yield* Effect.serviceOption(WorkWherePort);
   return {
     kind: "run.prepare",
     run: (row) =>
-      Effect.gen(function* () {
-        // Admission's outcome is its own: refused or broken, the run never goes without it.
-        const refused = yield* admit(row.payload as Payload);
-        // Asked again while the patient policy has tries left; its last try refuses here, with the
-        // refusal's mark, never as a bare failure (which `decide` would let run).
-        if (refused?.undetermined === true && row.attempt < OWNER_RETRY.maxAttempts)
-          return { _tag: "Retry", reason: refused.words, patient: true } as const;
-        if (refused !== null)
-          return failed(refused.words, {
-            refused: true,
-            ...(refused.admission === undefined ? {} : { admission: refused.admission }),
-            ...(refused.undetermined === true || refused.forNow === true ? { forNow: true } : {}),
-          });
-        return ok();
-      }),
+      Effect.scoped(
+        Effect.gen(function* () {
+          const payload = row.payload as Payload;
+          const read =
+            payload.where !== undefined && Option.isSome(port)
+              ? yield* port.value.read(payload.where).pipe(
+                  Effect.catchCause((cause) =>
+                    Cause.hasInterrupts(cause)
+                      ? Effect.failCause(cause)
+                      : Effect.as(Effect.logWarning("Work where read failed"), null),
+                  ),
+                  Effect.forkScoped({ startImmediately: true }),
+                )
+              : null;
+          // Admission's outcome is its own: refused or broken, the run never goes without it.
+          const refused = yield* admit(payload);
+          // Asked again while the patient policy has tries left; its last try refuses here, with the
+          // refusal's mark, never as a bare failure (which `decide` would let run).
+          if (refused?.undetermined === true && row.attempt < OWNER_RETRY.maxAttempts)
+            return { _tag: "Retry", reason: refused.words, patient: true } as const;
+          if (refused !== null)
+            return failed(refused.words, {
+              refused: true,
+              ...(refused.admission === undefined ? {} : { admission: refused.admission }),
+              ...(refused.undetermined === true || refused.forNow === true ? { forNow: true } : {}),
+            });
+          const where = read === null ? null : yield* Fiber.join(read);
+          return where === null ? ok() : ok({ where });
+        }),
+      ),
   } satisfies EffectHandler;
 });

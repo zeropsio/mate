@@ -83,13 +83,21 @@ import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers } from "~/zerops/useHqOffers";
 import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import { toastManager } from "~/lib/toasts";
 import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
 import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
 import { CHANGE_FACE_VERB, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../ZeropsDeleteMateDialog";
 import { mateDeletionLine } from "../SidebarMateRow.logic";
-import { deletionOffer, deletionProjectOf, deletionStart } from "../deletion.logic";
+import {
+  deletionOffer,
+  deletionProjectOf,
+  deletionStart,
+  keptWhere,
+  sameDeletionStart,
+  type DeletionProject,
+} from "../deletion.logic";
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import {
   adoptedBirthDeleteBody,
@@ -326,7 +334,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const writing = useRef(new Set<string>());
   // A move's start id by its project and body, until HQ answered it.
   const moveAttempts = useRef(new Map<string, MoveAttempt>());
-  const deletionRequests = useRef(new Map<string, string>());
+  const deletionRequests = useRef(new Map<string, NonNullable<ReturnType<typeof deletionStart>>>());
   const choiceRead = useRef({ orgId: activeOrganization?.id, attempt: 0 });
   useEffect(() => {
     if (choiceRead.current.orgId === activeOrganization?.id) return;
@@ -776,6 +784,52 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [groupTree.groups, linkTarget, openMate, router, visibilities],
   );
 
+  const tellKept = useCallback(
+    (project: DeletionProject, where: ReturnType<typeof keptWhere>) => {
+      if (where.place !== "git") return;
+      toastManager.add({
+        type: "info",
+        title: project.name,
+        description: where.line,
+        actionProps: {
+          children: "Open in Git",
+          onClick: () => void router.navigate({ to: "/git", search: { appId: project.appId } }),
+        },
+      });
+    },
+    [router],
+  );
+
+  const openProjectDeletion = useCallback(
+    (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
+      useDeleteApplicationDialog.getState().open({
+        appId: project.appId,
+        mate: {
+          projectId: candidate.project.id,
+          name: projectNameInApp(candidate.project),
+          services: deleteMateServiceCount(candidate),
+          owner: colleagueOf(candidate),
+          leave: (where) => {
+            leaveDeleted(candidate);
+            if (where !== undefined) tellKept(project, where);
+          },
+        },
+      });
+    },
+    [colleagueOf, leaveDeleted, tellKept],
+  );
+
+  const openDeletionPage = useCallback(
+    (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
+      void router.navigate({
+        to: "/projects/$projectKey/delete",
+        params: { projectKey: project.appId },
+        search: { mate: candidate.project.id },
+      });
+    },
+    [router],
+  );
+
   /**
    * Deletes the Mate with one start at HQ (`start-mate-deletion`), on the person's access token,
    * with a fresh operation id: HQ deletes its project, its key with it, and releases its records. The dialog stays open until HQ answers
@@ -785,7 +839,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
    * nothing more runs in this tab.
    */
   const deleteMate = useCallback(
-    (candidate: ZeropsCandidatePresentation, last: boolean) => {
+    (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
       const projectId = candidate.project.id;
       const key = candidate.key;
@@ -793,23 +847,29 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
       if (!isCurrent()) return;
+      const orgId = activeOrganization.id;
+      const previous = deletionRequests.current.get(projectId);
+      const shownId = candidate.project.hq?.operation?.id;
+      const { offer, project } = deletionOfferFor(candidate);
+      let start = deletionStart({
+        orgId,
+        id: previous !== undefined && previous.id !== shownId ? previous.id : randomUUID(),
+        offer,
+        choice: { kind: "mate" },
+      });
+      if (start === undefined) {
+        if (project !== undefined) {
+          replyToDialog(null);
+          openDeletionPage(candidate, project);
+        }
+        return;
+      }
+      if (previous !== undefined && !sameDeletionStart(previous, start))
+        start = { ...start, id: randomUUID() };
+      deletionRequests.current.set(projectId, start);
       writing.current.add(key);
       setBusyKey(key);
-      const orgId = activeOrganization.id;
       setPress({ pending: true, error: null });
-      // One id per start this tab makes: sent again only until HQ took it. A deletion HQ shows
-      // failed ended whatever start it took, so a Delete after it starts anew.
-      const ended = mateDeletionOfProject(candidate.project).kind === "failed";
-      const id = (ended ? undefined : deletionRequests.current.get(projectId)) ?? randomUUID();
-      deletionRequests.current.set(projectId, id);
-      // The last Mate of its project keeps the project's code: HQ asks nobody about it.
-      const start = deletionStart({
-        orgId,
-        id,
-        mate: { projectId },
-        choice: { kind: "mate", last },
-      });
-      if (start === undefined) return;
       void (async () => {
         const { progress, evidence } = await operations.submit(start);
         const trouble = writeTrouble(progress, evidence);
@@ -825,7 +885,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             if (!isCurrent()) return;
             setPress(UNPRESSED);
             replyToDialog(null);
-            leaveDeleted(candidate);
+            if (start.kind === "start-mate-deletion") {
+              leaveDeleted(candidate);
+              if (start.keptGit === "keep" && project !== undefined)
+                tellKept(project, keptWhere(project));
+            }
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -833,13 +897,21 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           },
         );
     },
-    [activeOrganization, operations, leaveDeleted, captureDialogReply],
+    [
+      activeOrganization,
+      operations,
+      leaveDeleted,
+      captureDialogReply,
+      deletionOfferFor,
+      openDeletionPage,
+      tellKept,
+    ],
   );
 
   /**
    * A Mate's Delete, as `deletionOffer` answers it: the Mate's own dialog, saying what of its project
    * stays; or — the last Mate of a project the person may delete whole, or one HQ is deleting — the
-   * project's, which offers the Mate alone or the whole project and shows HQ's deletion of it.
+   * project's choice, or the addressable page for a project deletion already standing.
    */
   const openDelete = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
@@ -849,21 +921,10 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         setDialog({ kind: "delete", candidate });
         return;
       }
-      useDeleteApplicationDialog.getState().open({
-        appId: project.appId,
-        name: project.name,
-        mate: {
-          projectId: candidate.project.id,
-          name: projectNameInApp(candidate.project),
-          services: deleteMateServiceCount(candidate),
-          owner: colleagueOf(candidate),
-          leave: () => {
-            leaveDeleted(candidate);
-          },
-        },
-      });
+      if (offer.kind === "last-choice") openProjectDeletion(candidate, project);
+      else openDeletionPage(candidate, project);
     },
-    [colleagueOf, deletionOfferFor, leaveDeleted, setDialog],
+    [deletionOfferFor, openDeletionPage, openProjectDeletion, setDialog],
   );
 
   /**
@@ -1523,7 +1584,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
           onConfirm={() => {
-            deleteMate(dialog.candidate, mateOffer?.kind === "last-mate-only");
+            deleteMate(dialog.candidate);
           }}
           onOpenChange={(open) => {
             if (!open) close();
@@ -1582,7 +1643,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             body: deletingBirth.adopted
               ? adoptedBirthDeleteBody(openBirthLeft(births, deletingBirth.birthId))
               : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
-            label: `Type ${deletingBirth.name} to confirm`,
             submit: `Delete ${deletingBirth.name}`,
             pending: "Deleting…",
           }}

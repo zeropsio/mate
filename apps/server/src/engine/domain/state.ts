@@ -87,6 +87,8 @@ export interface RunRecord {
   readonly preparedFor: string | null;
   /** Admission asks made for this run: one more each time it is asked for another instance. */
   readonly prepareAsks: number;
+  /** What this run's latest admission read for the agent. */
+  readonly where?: string;
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;
   /** The turn's interaction mode: `plan` asks the agent for a plan. */

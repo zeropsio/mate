@@ -340,7 +340,12 @@ export const menuTree: Projection<string, MenuTree> = {
         ...mates.filter((member) => !heldOutChief(member, viewer)),
       ];
       const hiddenEnvironments = app.hiddenEnvironments ?? [];
-      if (members.length === 0 && hiddenEnvironments.length === 0) return [];
+      if (
+        members.length === 0 &&
+        hiddenEnvironments.length === 0 &&
+        app.operation?.kind !== "app_deletion"
+      )
+        return [];
       return [
         {
           id,

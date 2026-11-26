@@ -5,7 +5,7 @@ import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { useCodeStandings } from "../../zerops/useCodeStandings";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
-import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
+import { useNavigate } from "@tanstack/react-router";
 import { codeStandingLine, projectDeleteOffered } from "@t3tools/client-runtime/zerops";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/components/zerops/projectPartsShown";
@@ -961,6 +961,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const addMateOffer = useAddMateOffer();
   const orgOffer = useOrgOffers();
   const codeStandings = useCodeStandings();
+  const navigate = useNavigate();
   const addMateGate = useNewMateGate();
   const addMateDoor = useAddMateDoor();
   const treeRef = useRef<HTMLElement>(null);
@@ -2106,7 +2107,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               name={projectName}
               onDragStart={dragOf}
               onOpen={() => {
-                (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
+                if (codeStandings(id).offers.review)
+                  void navigate({
+                    to: "/projects/$projectKey/delete",
+                    params: { projectKey: id },
+                    search: {},
+                  });
+                else (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
               }}
               review={review}
               sites={sites}
@@ -2357,9 +2364,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         ? {
             name: group.name,
             act: () => {
-              useDeleteApplicationDialog
-                .getState()
-                .open({ appId: group.groupId, name: group.name });
+              void navigate({
+                to: "/projects/$projectKey/delete",
+                params: { projectKey: group.groupId },
+                search: {},
+              });
             },
           }
         : undefined,

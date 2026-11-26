@@ -1,7 +1,8 @@
 /** The organization Git overview renders the shared project and repository decisions. */
 import {
-  gitChangesSummary,
+  gitOverviewView as overviewView,
   gitOverviewGroups,
+  gitStandingNotice,
   codeStandingLine,
   codeStandingSentence,
 } from "@t3tools/client-runtime/zerops";
@@ -9,34 +10,49 @@ import { formatStorageBytes } from "@t3tools/client-runtime/zerops/gitBrowse/hom
 import { hqKeptGitQuestions, type KeptGitQuestionView } from "@t3tools/client-runtime/data";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
+import { FolderGit2Icon, SearchIcon } from "lucide-react";
+import { isChief } from "@t3tools/client-runtime/zerops/chief";
+import { shownHqMateIdentitiesAtom, type HqMateIdentity } from "@t3tools/client-runtime/data";
+import { Badge } from "../ui/badge";
+import { EmptyState } from "../ui/empty";
+import { Failure } from "../ui/failure";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { LogoTile } from "../ui/logo-tile";
+import { Section } from "../ui/section";
+import { Skeleton } from "../ui/skeleton";
+import { Tab, TabLabel, TabPress, TabStrip } from "../ui/tab-strip";
+import ProjectCard, {
+  GitRepositoryRows,
+  GitSetup,
+  GitStandingBadge,
+  gitGroupFacts,
+  type GitGroup,
+  type GitLinks,
+} from "./GitProjectCard";
 import { useContext, useMemo, useState } from "react";
-import { Button, InlineButton } from "../ui/button";
+import { Button } from "../ui/button";
 import { Card } from "../ui/card";
-import { List } from "../ui/list";
 import { Loading } from "../ui/loading";
 import { PageHeader } from "../ui/page-header";
-import { Separator } from "../ui/separator";
 import { Text } from "../ui/text";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { appBasePath } from "~/basePath";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useAddMate } from "~/zerops/newMate";
 import { useCodeStandings, type CodeStandingView } from "~/zerops/useCodeStandings";
-import { useHqStructure } from "~/zerops/useHqOffers";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { gitPageState, repositoryWhere, type GitPageState } from "./ZeropsGitPage.logic";
-import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
+import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { useAccountOrgId, useProjection } from "~/zerops/accountData";
 import { KeptCodeQuestion, useKeptCodeAnswer } from "./KeptCodeQuestion";
 import { CodeStandingActions, CodeStandingBanner } from "./CodeStandingActions";
-import { GitBrowserLink } from "./gitBrowser/GitBrowserLink";
+import { GitBrowserLink, useGitLinkProps } from "./gitBrowser/GitBrowserLink";
 import { InPhoneBar } from "./system/PhoneBar";
 import {
   WorkspaceBreadcrumb,
@@ -46,42 +62,29 @@ import {
 
 const NO_QUESTIONS = Atom.make<ReadonlyArray<KeptGitQuestionView>>([]);
 
-function Reading() {
+function Reading({ count = 3 }: { readonly count?: number }) {
   return (
-    <Loading
-      count={4}
-      data-zerops-surface="git-reading"
-      label="Repositories and changes"
-      shape="page"
-    />
+    <Loading label="Projects and their repositories" data-zerops-surface="git-reading">
+      <div className="flex flex-col gap-4">
+        {Array.from({ length: count }, (_, index) => (
+          <Card key={index} variant="sheet">
+            <div className="flex flex-col gap-4 px-5 py-4">
+              <Skeleton className="h-5 w-56" shape="pill" surface="card" />
+              {Array.from({ length: count - index }, (_, row) => (
+                <div className="flex items-center gap-3" key={row}>
+                  <Skeleton className="size-5.5" surface="card" />
+                  <Skeleton className="h-4 w-32" shape="pill" surface="card" />
+                  <Skeleton className="ms-24 h-4 w-40" shape="pill" surface="card" />
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </Loading>
   );
 }
 
-function ReadTrouble({
-  failure,
-  onAgain,
-}: {
-  readonly failure: string | null;
-  readonly onAgain?: (() => void) | undefined;
-}) {
-  if (failure === null) return null;
-  return (
-    <div className="flex flex-col gap-2" data-zerops-surface="git-read-trouble">
-      <p className="text-body text-status-failed" role="alert">
-        {failure}
-      </p>
-      {onAgain === undefined ? null : (
-        <div>
-          <Button variant="ghost" size="sm" onClick={onAgain}>
-            Read again
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type GitGroup = ReturnType<typeof gitOverviewGroups>["used"][number];
 type OverviewProps = {
   readonly state: GitPageState;
   readonly standingOf: (appId: string) => CodeStandingView;
@@ -90,320 +93,296 @@ type OverviewProps = {
     | ((view: KeptGitQuestionView, answer: "keep" | "delete") => Promise<void>)
     | undefined;
   readonly visible?: boolean;
-  readonly only?: string | undefined;
   readonly onAgain?: (() => void) | undefined;
   readonly onAddMate?: ((appId: string) => void) | undefined;
   readonly onDelete?: ((appId: string) => void) | undefined;
   readonly onReview?: ((appId: string) => void) | undefined;
+  readonly onOpenProject?: ((appId: string) => void) | undefined;
+  readonly chiefByApp?:
+    | ReadonlyMap<string, { readonly identity?: HqMateIdentity | undefined }>
+    | undefined;
   readonly repositoryHref?: ((appId: string, repo: string, view?: "changes") => string) | undefined;
   readonly onOpenRepository?: ((appId: string, repo: string, view?: "changes") => void) | undefined;
 };
 
-function ProjectGroup({
+export function ZeropsGitOverview(props: OverviewProps) {
+  const { state, visible = true, standingOf, questions = [] } = props;
+  const [tab, setTab] = useState<"all" | "open" | "kept">("all");
+  const [query, setQuery] = useState("");
+  if (!visible) return null;
+  const apps = state.kind === "read" ? state.apps : [];
+  const openQuestions = questions.map(({ question }) => question);
+  const overview = gitOverviewGroups(apps, (id) => standingOf(id).standing, openQuestions);
+  const shown = overviewView(overview, tab, query, state.kind === "read" ? state.refusals : []);
+  const card = (group: GitGroup) => {
+    const question = questions.find(({ question }) => question.appId === group.appId);
+    return (
+      <ProjectCard
+        key={group.appId}
+        group={group}
+        view={standingOf(group.appId)}
+        question={question}
+        answer={
+          question === undefined || props.answer === undefined
+            ? undefined
+            : (choice) => props.answer!(question, choice)
+        }
+        chief={props.chiefByApp?.get(group.appId)}
+        repositoryHref={props.repositoryHref}
+        onOpenRepository={props.onOpenRepository}
+        onOpenProject={
+          props.onOpenProject === undefined ? undefined : () => props.onOpenProject!(group.appId)
+        }
+        onAddMate={() => props.onAddMate?.(group.appId)}
+        onDelete={() => props.onDelete?.(group.appId)}
+        onReview={() => props.onReview?.(group.appId)}
+      />
+    );
+  };
+  const failure = state.kind === "refused" ? null : state.failure;
+  const reading =
+    (state.kind === "unread" && failure === null) ||
+    (state.kind === "read" && state.reading === true);
+  const empty =
+    state.kind === "read" &&
+    overview.projects === 0 &&
+    shown.refusalCount === 0 &&
+    !reading &&
+    failure === null;
+  const nothing =
+    shown.waiting.length + shown.projects.length + shown.kept.length + shown.refusals.length === 0;
+  const tabs = [
+    { id: "all" as const, label: "All projects" },
+    { id: "open" as const, label: "Open changes", count: overview.openChanges },
+    { id: "kept" as const, label: "Kept code", count: overview.keptCount },
+  ];
+  return (
+    <div className="flex flex-col gap-8" data-zerops-surface="git-overview">
+      <InPhoneBar>
+        <PageHeader
+          title="Git"
+          line="Your organisation's code, by project."
+          actions={
+            state.kind === "unread" || state.kind === "refused" || empty ? undefined : (
+              <InputGroup className="w-72">
+                <InputGroupAddon>
+                  <SearchIcon aria-hidden />
+                </InputGroupAddon>
+                <InputGroupInput
+                  type="search"
+                  size="sm"
+                  aria-label="Find a project or repository"
+                  placeholder="Find a project or repository"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </InputGroup>
+            )
+          }
+        />
+      </InPhoneBar>
+      {state.kind === "refused" ? (
+        <Failure
+          size="page"
+          cause={state.reason}
+          mark={
+            <LogoTile size="xl">
+              <FolderGit2Icon />
+            </LogoTile>
+          }
+        />
+      ) : empty ? (
+        <EmptyState
+          size="page"
+          title="No code yet"
+          mark={
+            <LogoTile size="xl">
+              <FolderGit2Icon />
+            </LogoTile>
+          }
+          action={
+            <Button size="sm" variant="secondary" render={<a href={`${appBasePath()}/zerops`} />}>
+              Open Projects
+            </Button>
+          }
+        >
+          A project's repositories appear here once its first Mate is set up.
+        </EmptyState>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-4">
+            <TabStrip
+              activeId={tab}
+              items={tabs}
+              onSelect={(id) => {
+                if (id === "all" || id === "open" || id === "kept") setTab(id);
+              }}
+            >
+              {tabs.map((item) => (
+                <Tab key={item.id} tabId={item.id} active={tab === item.id} size="md">
+                  <TabPress onClick={() => setTab(item.id)} aria-pressed={tab === item.id}>
+                    <TabLabel>{item.label}</TabLabel>
+                    {item.count === undefined || item.count === 0 ? null : (
+                      <Badge count tone={item.id === "open" ? "info" : "neutral"}>
+                        {item.count}
+                      </Badge>
+                    )}
+                  </TabPress>
+                </Tab>
+              ))}
+            </TabStrip>
+            {state.kind === "read" ? (
+              <Text variant="meta">
+                {overview.repositories}{" "}
+                {overview.repositories === 1 ? "repository" : "repositories"}
+                {overview.size.complete ? ` · ${formatStorageBytes(overview.size.bytes)}` : ""}
+              </Text>
+            ) : null}
+          </div>
+          {failure === null ? null : (
+            <Failure
+              cause={failure}
+              action={
+                <Button size="sm" variant="secondary" onClick={props.onAgain}>
+                  Read again
+                </Button>
+              }
+            >
+              {state.kind === "read" &&
+              state.apps.some((app) => app.repositories.some((repo) => repo.coverage !== "unread"))
+                ? "Showing the last read list."
+                : undefined}
+            </Failure>
+          )}
+          {shown.waiting.length === 0 ? null : (
+            <Section title="Waiting on you" count={shown.waiting.length}>
+              <div className="flex flex-col gap-4">{shown.waiting.map(card)}</div>
+            </Section>
+          )}
+          {shown.projects.length + shown.refusals.length === 0 ? null : (
+            <Section
+              title={tab === "open" ? "With open changes" : "Projects"}
+              count={shown.projects.length + shown.refusals.length}
+            >
+              <div className="flex flex-col gap-4">
+                {shown.projects.map(card)}
+                {shown.refusals.map(({ appId, name, reason }) => (
+                  <Card key={appId} variant="sheet">
+                    <div className="flex flex-col gap-1 px-5 py-4">
+                      <Text variant="headline">{name}</Text>
+                      <Failure size="line" cause={reason} />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </Section>
+          )}
+          {shown.kept.length === 0 ? null : (
+            <Section
+              title="Kept code"
+              count={shown.kept.length}
+              line="Nobody works on these projects. Add a Mate to start again, or delete what you no longer need."
+              action={
+                overview.keptSize.complete ? (
+                  <Text variant="meta">
+                    {formatStorageBytes(overview.keptSize.bytes)} billed as storage
+                  </Text>
+                ) : undefined
+              }
+            >
+              <div className="flex flex-col gap-4">{shown.kept.map(card)}</div>
+            </Section>
+          )}
+          {nothing && !reading && failure === null ? (
+            <EmptyState size="line">
+              {query.trim() !== ""
+                ? `No project or repository matches “${query.trim()}”.`
+                : tab === "open"
+                  ? "No open changes."
+                  : tab === "kept"
+                    ? "No kept code."
+                    : null}
+            </EmptyState>
+          ) : null}
+          {reading ? <Reading count={overview.projects === 0 ? 3 : 1} /> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+const STANDING_CARD = {
+  off: { variant: "wash" as const },
+  attention: { variant: "wash" as const, tone: "attention" as const },
+  busy: { variant: "wash" as const, tone: "busy" as const },
+  failed: { variant: "flat" as const, tone: "failed" as const },
+  ok: { variant: "wash" as const },
+};
+
+/** A project's code and its standing, using the same rows and offers as the overview. */
+export function ProjectCode({
+  appId,
+  name,
   group,
-  standingOf,
-  questions,
+  state,
+  view,
+  question,
   answer,
+  onAgain,
+  onOpenProject,
   onAddMate,
   onDelete,
   onReview,
   repositoryHref,
   onOpenRepository,
-  only,
-}: Omit<OverviewProps, "state"> & { readonly group: GitGroup }) {
-  const standingView = standingOf(group.appId);
-  const { standing } = group;
-  const question = questions?.find(({ question }) => question.appId === group.appId);
-  const line = codeStandingLine(standing);
-  const setupOpen = group.setup?.changes.filter(({ pull }) => pull.state === "open").length ?? 0;
-  const link = (repo: string, label: React.ReactNode, view?: "changes") =>
-    repositoryHref === undefined ? (
-      label
-    ) : (
-      <InlineButton
-        tone="plain"
-        render={<a href={repositoryHref(group.appId, repo, view)} />}
-        onClick={(event) => {
-          if (
-            onOpenRepository === undefined ||
-            event.button !== 0 ||
-            event.ctrlKey ||
-            event.metaKey ||
-            event.altKey ||
-            event.shiftKey
-          )
-            return;
-          event.preventDefault();
-          onOpenRepository(group.appId, repo, view);
-        }}
-      >
-        {label}
-      </InlineButton>
-    );
-  return (
-    <Card variant="flat">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            {only === undefined ? (
-              <Text render={<h3 />} variant="label">
-                {group.name}
-              </Text>
-            ) : null}
-            {group.setup === undefined ? null : (
-              <Text variant="note">
-                {link("group", <>Setup{setupOpen > 0 ? ` · ${String(setupOpen)} open` : ""}</>)}
-              </Text>
-            )}
-            {only === undefined && group.listed ? (
-              <Text variant="note">
-                {group.repositoryCount}{" "}
-                {group.repositoryCount === 1 ? "repository" : "repositories"}
-                {group.size.complete ? ` · ${formatStorageBytes(group.size.bytes)}` : ""}
-              </Text>
-            ) : null}
-          </div>
-          {only === undefined &&
-          question === undefined &&
-          line !== undefined &&
-          (line.notice || standing.kind === "unread") ? (
-            <Text variant="description">{line.words}</Text>
-          ) : null}
-          {question === undefined ? null : (
-            <KeptCodeQuestion
-              key={`${question.question.appId}:${question.question.askedAt}`}
-              view={question}
-              answer={answer === undefined ? undefined : (choice) => answer(question, choice)}
-            />
-          )}
-        </div>
-        {only === undefined && question === undefined ? (
-          <CodeStandingActions
-            name={group.name}
-            view={standingView}
-            onAddMate={() => onAddMate?.(group.appId)}
-            onDelete={() => onDelete?.(group.appId)}
-            onReview={() => onReview?.(group.appId)}
-          />
-        ) : null}
-      </div>
-      {group.repositories.length > 0 ? (
-        <>
-          <Separator />
-          <List>
-            {group.repositories.map((repository) => {
-              const where = repositoryWhere(repository.facts);
-              const summary = gitChangesSummary(repository.changes);
-              const facts = [
-                where,
-                repository.facts === undefined
-                  ? undefined
-                  : `updated ${formatRelativeTimeLabel(repository.facts.updatedAt)}`,
-                repository.facts?.usedBytes === undefined
-                  ? undefined
-                  : formatStorageBytes(repository.facts.usedBytes),
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <div
-                  className="flex flex-col gap-1 px-4 py-3"
-                  key={repository.name}
-                  data-zerops-git-app={group.appId}
-                  data-zerops-git-repository={repository.name}
-                >
-                  <Text variant="label">{link(repository.name, repository.name)}</Text>
-                  <Text variant="note">
-                    {facts}
-                    {summary === undefined ? null : (
-                      <>
-                        {facts === "" ? null : " · "}
-                        {link(repository.name, summary, "changes")}
-                      </>
-                    )}
-                    {repository.coverage === "unread"
-                      ? `${facts === "" && summary === undefined ? "" : " · "}Changes not read yet.`
-                      : null}
-                  </Text>
-                </div>
-              );
-            })}
-          </List>
-        </>
-      ) : group.listed && group.repositoryCount === 0 ? (
-        <>
-          <Separator />
-          <div className="px-4 py-3">
-            <Text variant="note">
-              {only === undefined
-                ? "No code repository yet."
-                : `${group.name} has no code repository yet.`}
-            </Text>
-          </div>
-        </>
-      ) : null}
-    </Card>
-  );
-}
-
-export function ZeropsGitOverview(props: OverviewProps) {
-  const { state, visible = true, onAgain, standingOf, questions = [], only } = props;
-  const [openOnly, setOpenOnly] = useState(false);
-  if (!visible) return null;
-  const apps =
-    state.kind === "read"
-      ? only === undefined
-        ? state.apps
-        : state.apps.filter((app) => app.appId === only)
-      : [];
-  const openQuestions = questions
-    .map(({ question }) => question)
-    .filter((question) => only === undefined || question.appId === only);
-  const all = gitOverviewGroups(apps, (id) => standingOf(id).standing, false, openQuestions);
-  const filtering = openOnly && all.openChanges > 0;
-  const groups = filtering
-    ? gitOverviewGroups(apps, (id) => standingOf(id).standing, true, openQuestions)
-    : all;
-  const groupProps = {
-    standingOf,
-    questions,
-    answer: props.answer,
-    onAddMate: props.onAddMate,
-    onDelete: props.onDelete,
-    onReview: props.onReview,
-    repositoryHref: props.repositoryHref,
-    onOpenRepository: props.onOpenRepository,
-    only,
-  };
-  if (only !== undefined)
-    return (
-      <div className="flex flex-col gap-4" data-zerops-surface="git-overview">
-        {state.kind === "refused" ? (
-          <p
-            className="text-body text-status-failed"
-            role="alert"
-            data-zerops-surface="git-refused"
-          >
-            {state.reason}
-          </p>
-        ) : (
-          <ReadTrouble failure={state.failure} onAgain={onAgain} />
-        )}
-        {[...all.used, ...all.kept].map((group) => (
-          <ProjectGroup key={group.appId} group={group} {...groupProps} />
-        ))}
-        {(state.kind === "unread" && state.failure === null) ||
-        (state.kind === "read" && state.reading) ? (
-          <Reading />
-        ) : null}
-      </div>
-    );
-  return (
-    <div className="flex flex-col gap-5" data-zerops-surface="git-overview">
-      {state.kind === "refused" ? (
-        <p className="text-body text-status-failed" role="alert" data-zerops-surface="git-refused">
-          {state.reason}
-        </p>
-      ) : (
-        <ReadTrouble failure={state.failure} onAgain={onAgain} />
-      )}
-      {state.kind === "read" &&
-      state.failure !== null &&
-      state.apps.some((app) => app.repositories.some((repo) => repo.coverage !== "unread")) ? (
-        <Text render={<p />} variant="note">
-          Showing the last read changes.
-        </Text>
-      ) : null}
-      {state.kind === "read" &&
-        state.refusals?.map(({ appId, name, reason }) => (
-          <Text render={<p />} variant="description" key={appId} role="status">
-            {name}: {reason}
-          </Text>
-        ))}
-      {all.projects > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Text variant="description">
-            {all.projects} {all.projects === 1 ? "project" : "projects"} · {all.repositories}{" "}
-            {all.repositories === 1 ? "repository" : "repositories"} · {all.openChanges} open{" "}
-            {all.openChanges === 1 ? "change" : "changes"}
-          </Text>
-          {all.openChanges > 0 ? (
-            <InlineButton aria-pressed={filtering} onClick={() => setOpenOnly(!filtering)}>
-              {filtering ? "show all" : "show only these"}
-            </InlineButton>
-          ) : null}
-        </div>
-      ) : null}
-      {groups.used.length > 0 ? (
-        <section aria-label="Projects" className="flex flex-col gap-3">
-          {groups.used.map((group) => (
-            <ProjectGroup key={group.appId} group={group} {...groupProps} />
-          ))}
-        </section>
-      ) : null}
-      {groups.kept.length > 0 ? (
-        <section className="flex flex-col gap-3" aria-label="Kept code">
-          <div className="flex flex-col gap-1">
-            <Text render={<h2 />} variant="label">
-              Kept code
-            </Text>
-            <Text variant="description">
-              Nobody works on these projects. Their code is billed as storage.
-            </Text>
-          </div>
-          {groups.kept.map((group) => (
-            <ProjectGroup key={group.appId} group={group} {...groupProps} />
-          ))}
-        </section>
-      ) : null}
-      {state.kind === "read" &&
-      all.projects === 0 &&
-      groups.kept.length === 0 &&
-      !state.reading &&
-      state.failure === null ? (
-        <div className="flex flex-col gap-2" data-zerops-surface="git-empty">
-          <Text render={<p />} variant="description">
-            No code yet. A project's repositories appear here once its first Mate is set up.
-          </Text>
-          <div>
-            <Button render={<a href={`${appBasePath()}/zerops`} />} size="sm" variant="link">
-              Open Projects
-            </Button>
-          </div>
-        </div>
-      ) : null}
-      {(state.kind === "unread" && state.failure === null) ||
-      (state.kind === "read" && state.reading) ? (
-        <Reading />
-      ) : null}
-    </div>
-  );
-}
-
-/** The project's code has the same project door and standing wherever it is opened. */
-export function ProjectCodeHeading({
-  appId,
-  name,
-  view,
-  sentence,
-  onOpenProject,
-  onAddMate,
-  onDelete,
-  onReview,
-}: {
+}: GitLinks & {
   readonly appId: string;
   readonly name: string;
+  readonly group?: GitGroup | undefined;
+  readonly state: GitPageState;
   readonly view: CodeStandingView;
-  readonly sentence: string | undefined;
+  readonly question?: KeptGitQuestionView | undefined;
+  readonly answer?: ((choice: "keep" | "delete") => Promise<void>) | undefined;
+  readonly onAgain?: (() => void) | undefined;
   readonly onOpenProject?: (() => void) | undefined;
   readonly onAddMate?: (() => void) | undefined;
   readonly onDelete?: (() => void) | undefined;
   readonly onReview?: (() => void) | undefined;
 }) {
+  const standing = group?.standing ?? view.standing;
+  const line =
+    codeStandingSentence(name, standing) ??
+    (standing.kind === "unread" ? codeStandingLine(standing)?.words : undefined);
+  const notice = gitStandingNotice(standing);
+  const banner = (presses?: React.ReactNode, lines?: React.ReactNode) => (
+    <Card size="md" {...STANDING_CARD[notice?.tone ?? "off"]}>
+      <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
+        <div className="flex min-w-0 max-w-2xl flex-col gap-1">
+          {line === undefined ? null : <Text variant="description">{line}</Text>}
+          {lines}
+          {view.stopped === undefined ? null : <Failure size="line" cause={view.stopped} />}
+        </div>
+        {question === undefined ? (
+          <CodeStandingActions
+            name={name}
+            view={view}
+            emphasis
+            onAddMate={onAddMate}
+            onDelete={onDelete}
+            onReview={onReview}
+          />
+        ) : (
+          presses
+        )}
+      </div>
+    </Card>
+  );
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-8">
       <PageHeader
         title={name}
+        tag={<GitStandingBadge standing={standing} />}
+        line={group?.listed ? gitGroupFacts(group) : undefined}
         trail={
           <InPhoneBar>
             <WorkspaceBreadcrumb ariaLabel="Project code">
@@ -418,42 +397,82 @@ export function ProjectCodeHeading({
           </InPhoneBar>
         }
         actions={
-          view.standing.kind === "in-use" ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              render={<a href={`${appBasePath()}/group/${encodeURIComponent(appId)}/flow`} />}
-              onClick={(event) => {
-                if (
-                  onOpenProject === undefined ||
-                  event.button !== 0 ||
-                  event.ctrlKey ||
-                  event.metaKey ||
-                  event.altKey ||
-                  event.shiftKey
-                )
-                  return;
-                event.preventDefault();
-                onOpenProject();
-              }}
-            >
-              Open {name}
-            </Button>
-          ) : undefined
+          <>
+            {group === undefined ? null : (
+              <GitSetup
+                group={group}
+                repositoryHref={repositoryHref}
+                onOpenRepository={onOpenRepository}
+              />
+            )}
+            {standing.kind !== "in-use" ? null : (
+              <Button
+                variant="secondary"
+                size="sm"
+                render={<a href={`${appBasePath()}/group/${encodeURIComponent(appId)}/flow`} />}
+                onClick={(event) => {
+                  if (
+                    onOpenProject === undefined ||
+                    event.button !== 0 ||
+                    event.ctrlKey ||
+                    event.metaKey ||
+                    event.altKey ||
+                    event.shiftKey
+                  )
+                    return;
+                  event.preventDefault();
+                  onOpenProject();
+                }}
+              >
+                Open {name}
+              </Button>
+            )}
+          </>
         }
       />
-      {sentence === undefined ? null : (
+      {state.kind === "refused" ? (
+        <Failure size="page" cause={state.reason} />
+      ) : (
         <>
-          <Text render={<p />} variant="description">
-            {sentence}
-          </Text>
-          <CodeStandingActions
-            name={name}
-            view={view}
-            onAddMate={onAddMate}
-            onDelete={onDelete}
-            onReview={onReview}
-          />
+          {state.failure === null ? null : (
+            <Failure
+              cause={state.failure}
+              action={
+                <Button size="sm" variant="secondary" onClick={onAgain}>
+                  Read again
+                </Button>
+              }
+            />
+          )}
+          {standing.kind === "in-use" ? null : question === undefined ? (
+            banner()
+          ) : (
+            <KeptCodeQuestion view={question} answer={answer}>
+              {({ presses, lines }) => banner(presses, lines)}
+            </KeptCodeQuestion>
+          )}
+          {group === undefined ? (
+            state.failure === null ? (
+              <Loading shape="rows" count={3} label="Repositories" />
+            ) : null
+          ) : (
+            <Section title="Repositories" count={group.repositoryCount}>
+              {group.repositories.length === 0 ? (
+                <EmptyState size="line">
+                  {name} has no code repository. Its setup files are under Setup.
+                </EmptyState>
+              ) : (
+                <Card variant="sheet">
+                  <GitRepositoryRows
+                    appId={appId}
+                    repositories={group.repositories}
+                    repositoryHref={repositoryHref}
+                    onOpenRepository={onOpenRepository}
+                  />
+                </Card>
+              )}
+            </Section>
+          )}
         </>
       )}
     </div>
@@ -461,21 +480,42 @@ export function ProjectCodeHeading({
 }
 
 export function ProjectCodeGone() {
+  const git = useGitLinkProps({});
   return (
-    <div className="flex flex-col items-start gap-2">
-      <InPhoneBar>
-        <WorkspaceBreadcrumb ariaLabel="Project code">
-          <WorkspaceBreadcrumbItem>
-            <GitBrowserLink to={{}} tone="muted">
-              Git
-            </GitBrowserLink>
-          </WorkspaceBreadcrumbItem>
-        </WorkspaceBreadcrumb>
-      </InPhoneBar>
-      <Text render={<p />} variant="description">
-        This project is not here: it was deleted or your access was removed.
-      </Text>
-      <GitBrowserLink to={{}}>Back to Git</GitBrowserLink>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Project"
+        placeholder
+        trail={
+          <InPhoneBar>
+            <WorkspaceBreadcrumb ariaLabel="Project code">
+              <WorkspaceBreadcrumbItem>
+                <GitBrowserLink to={{}} tone="muted">
+                  Git
+                </GitBrowserLink>
+              </WorkspaceBreadcrumbItem>
+              <WorkspaceBreadcrumbSeparator />
+              <WorkspaceBreadcrumbItem current>Project</WorkspaceBreadcrumbItem>
+            </WorkspaceBreadcrumb>
+          </InPhoneBar>
+        }
+      />
+      <EmptyState
+        size="page"
+        title="This project is not here"
+        mark={
+          <LogoTile size="xl">
+            <FolderGit2Icon />
+          </LogoTile>
+        }
+        action={
+          <Button variant="secondary" render={<a {...git} />}>
+            Back to Git
+          </Button>
+        }
+      >
+        It was deleted or your access was removed.
+      </EmptyState>
     </div>
   );
 }
@@ -491,9 +531,21 @@ export function ZeropsGitPage() {
   const orgId = useAccountOrgId();
   const questions = useProjection(hqKeptGitQuestions, orgId, NO_QUESTIONS);
   const answer = useKeptCodeAnswer();
-  const structure = useHqStructure();
   const addMate = useAddMate();
   const inventory = useContext(InventoryContext);
+  const identities = useAtomValue(shownHqMateIdentitiesAtom);
+  const chiefByApp = useMemo(() => {
+    const chiefs = new Map<string, { identity?: HqMateIdentity | undefined }>();
+    for (const project of inventory?.projects ?? []) {
+      if (
+        project.hq?.appId != null &&
+        (project.hq.kind === "mate" || project.hq.kind === "devstage") &&
+        isChief(project)
+      )
+        chiefs.set(project.hq.appId, { identity: identities[project.id] });
+    }
+    return chiefs;
+  }, [inventory?.projects, identities]);
   const accountTrouble = useAccountTrouble();
   const navigate = useNavigate();
   const search = useSearch({ from: "/git" });
@@ -537,6 +589,17 @@ export function ZeropsGitPage() {
     mateName: (projectId) => mateNames.get(projectId),
   });
   const selectedStanding = search.appId === undefined ? undefined : standingOf(search.appId);
+  const projectGroup =
+    search.appId === undefined
+      ? undefined
+      : gitOverviewGroups(
+          projectState.kind === "read" ? projectState.apps : [],
+          (id) => standingOf(id).standing,
+          questions
+            .map(({ question }) => question)
+            .filter((question) => question.appId === search.appId),
+        ).groups.find((group) => group.appId === search.appId);
+  const projectQuestion = questions.find(({ question }) => question.appId === search.appId);
   const sentence =
     selectedStanding === undefined
       ? undefined
@@ -552,37 +615,41 @@ export function ZeropsGitPage() {
     });
   };
   const deleteGroup = (appId: string) => {
-    const group = registry.registry.groups.find(({ groupId }) => groupId === appId);
-    const app = structure?.apps.find(({ id }) => id === appId);
-    if (group !== undefined && app !== undefined)
-      useDeleteApplicationDialog.getState().open({ appId: app.id, name: app.name });
+    void navigate({
+      to: "/projects/$projectKey/delete",
+      params: { projectKey: appId },
+      search: {},
+    });
   };
 
   return (
-    <ZeropsHostedFrame bar={false} width="full">
-      {detailOpen || projectOpen ? null : (
-        <InPhoneBar>
-          <PageHeader
-            actions={
-              <Button variant="ghost" size="sm" onClick={readAgain}>
-                Read again
-              </Button>
-            }
-            data-zerops-surface="git-header"
-            line="Your organisation's code, by project."
-            title="Git"
-          />
-        </InPhoneBar>
-      )}
+    <ZeropsHostedFrame bar={false} width={detailOpen ? "full" : "wide"}>
       {projectOpen && search.appId !== undefined && selectedStanding !== undefined ? (
-        !registry.loading && selectedApp === undefined ? (
+        !registry.loading && selectedApp === undefined && projectGroup === undefined ? (
           <ProjectCodeGone />
         ) : (
-          <ProjectCodeHeading
+          <ProjectCode
             appId={search.appId}
-            name={selectedApp?.name ?? "Project"}
+            name={selectedApp?.name ?? projectGroup?.name ?? "Project"}
+            group={projectGroup}
+            state={projectState}
             view={selectedStanding}
-            sentence={sentence}
+            question={projectQuestion}
+            answer={
+              projectQuestion === undefined || answer === undefined
+                ? undefined
+                : (choice) => answer(projectQuestion, choice)
+            }
+            onAgain={readAgain}
+            repositoryHref={(appId, repo, view) =>
+              `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...(view === undefined ? {} : { view }) })}`
+            }
+            onOpenRepository={(appId, repo, view) => {
+              void navigate({
+                to: "/git",
+                search: { appId, repo, ...(view === undefined ? {} : { view }) },
+              });
+            }}
             onOpenProject={() => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId: search.appId! } });
             }}
@@ -636,32 +703,32 @@ export function ZeropsGitPage() {
           }}
         />
       ) : null}
-      <div hidden={detailOpen || (projectOpen && !registry.loading && selectedApp === undefined)}>
-        <div className="flex flex-col gap-4">
-          <ZeropsGitOverview
-            key={activeOrganization?.id ?? "unscoped"}
-            visible={!detailOpen}
-            only={projectOpen ? search.appId : undefined}
-            onAgain={readAgain}
-            standingOf={standingOf}
-            questions={questions}
-            answer={answer}
-            onAddMate={addMate}
-            onDelete={deleteGroup}
-            onReview={deleteGroup}
-            repositoryHref={(appId, repo, view) =>
-              `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...(view === undefined ? {} : { view }) })}`
-            }
-            onOpenRepository={(appId, repo, view) => {
-              void navigate({
-                to: "/git",
-                search: { appId, repo, ...(view === undefined ? {} : { view }) },
-              });
-            }}
-            state={projectOpen ? projectState : state}
-          />
-        </div>
-      </div>
+      {detailOpen || projectOpen ? null : (
+        <ZeropsGitOverview
+          key={activeOrganization?.id ?? "unscoped"}
+          onAgain={readAgain}
+          standingOf={standingOf}
+          chiefByApp={chiefByApp}
+          onOpenProject={(appId) => {
+            void navigate({ to: "/git", search: { appId } });
+          }}
+          questions={questions}
+          answer={answer}
+          onAddMate={addMate}
+          onDelete={deleteGroup}
+          onReview={deleteGroup}
+          repositoryHref={(appId, repo, view) =>
+            `${appBasePath()}/git?${new URLSearchParams({ appId, repo, ...(view === undefined ? {} : { view }) })}`
+          }
+          onOpenRepository={(appId, repo, view) => {
+            void navigate({
+              to: "/git",
+              search: { appId, repo, ...(view === undefined ? {} : { view }) },
+            });
+          }}
+          state={state}
+        />
+      )}
     </ZeropsHostedFrame>
   );
 }

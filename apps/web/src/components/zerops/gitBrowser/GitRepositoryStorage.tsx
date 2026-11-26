@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Text } from "~/components/ui/text";
+import { Meter } from "~/components/ui/meter";
 
 /** One HQ repository's storage, under its heading, with its limit's control where one is offered. */
 export function GitRepositoryStorage({
@@ -15,20 +16,30 @@ export function GitRepositoryStorage({
 }) {
   const said = repositoryStorage(storage);
   return (
-    <Text className="flex flex-col gap-1" render={<div />} variant="note">
+    <div className="flex min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Tooltip>
-          <TooltipTrigger render={<span tabIndex={0} />}>{said.line}</TooltipTrigger>
-          <TooltipPopup>{said.hint}</TooltipPopup>
-        </Tooltip>
+        <Text variant="note">
+          <Tooltip>
+            <TooltipTrigger render={<span tabIndex={0} />}>{said.line}</TooltipTrigger>
+            <TooltipPopup>{said.hint}</TooltipPopup>
+          </Tooltip>
+        </Text>
         {control}
       </div>
+      {storage?.usedBytes == null ? null : (
+        <Meter
+          size="sm"
+          tone="neutral"
+          label="Storage used"
+          value={storage.usedBytes / storage.limitBytes}
+        />
+      )}
       {said.large ? (
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="neutral">Large repository</Badge>
-          <span>Starting a new workspace may take longer.</span>
+          <Text variant="note">Starting a new workspace may take longer.</Text>
         </div>
       ) : null}
-    </Text>
+    </div>
   );
 }

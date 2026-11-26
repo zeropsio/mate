@@ -23,8 +23,10 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import { type AdmissionLive, type TicketFrame, ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
 
 export interface ConnectionIdentity {
@@ -52,6 +54,14 @@ export type ConnectionSubject = { readonly session: string } | { readonly everyo
  * refused (`fenced`): the link then closes and HQ answers it not-connected.
  */
 export type TicketAnswer = "open" | "fenced";
+export interface ConnectionCounts {
+  readonly roles: ReadonlyArray<MateTicketRole>;
+  readonly refused: ReadonlyArray<{
+    readonly code: "ticket_refused" | "extension_refused";
+    readonly count: number;
+    readonly lastAtMs: number;
+  }>;
+}
 /** How long a grant that ran out, or runs out soon, still holds once the link to HQ returns. */
 const RELINK_GRACE_MS = 60_000;
 
@@ -96,6 +106,9 @@ export class ZeropsConnections extends Context.Service<
      * a session in that move is held on one side of it.
      */
     readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
+    /** Open roles and refusals, read under the registry's lock, and when either changes. */
+    readonly counts: Effect.Effect<ConnectionCounts>;
+    readonly changes: Stream.Stream<void>;
     readonly close: (id: string) => Effect.Effect<void>;
     /**
      * Whether the Mate's link to HQ is up (`ZeropsHqLink`'s state), down until first told. A
@@ -122,6 +135,22 @@ export const make = Effect.gen(function* () {
   const tickets = yield* ZeropsTicketDoor;
   const lock = yield* Semaphore.make(1);
   const connections = new Map<string, ConnectionInput>();
+  const refusals = new Map<
+    ConnectionCounts["refused"][number]["code"],
+    { count: number; lastAtMs: number }
+  >();
+  const changed = yield* PubSub.unbounded<void>();
+  const countRefusal = Effect.fnUntraced(function* (
+    code: ConnectionCounts["refused"][number]["code"],
+    lastAtMs: number,
+  ) {
+    refusals.set(code, { count: (refusals.get(code)?.count ?? 0) + 1, lastAtMs });
+    yield* PubSub.publish(changed, undefined);
+  });
+  const refuseAdmission = Effect.gen(function* () {
+    yield* countRefusal("ticket_refused", yield* Clock.currentTimeMillis);
+    return Option.none<ConnectionIdentity>();
+  });
   /** Tickets taken and not yet answered; a closed session drops its own, a refused key all. */
   const pending = new Set<TicketFrame>();
   /** The HQ link's state as last told; down until the link first says otherwise. */
@@ -144,7 +173,7 @@ export const make = Effect.gen(function* () {
     });
   const remove = Effect.fn("ZeropsConnections.remove")(function* (id: string) {
     const connection = connections.get(id);
-    connections.delete(id);
+    if (connections.delete(id)) yield* PubSub.publish(changed, undefined);
     if (connection !== undefined) yield* connection.close;
   });
   const removeWhere = Effect.fn("ZeropsConnections.removeWhere")(function* (
@@ -214,15 +243,15 @@ export const make = Effect.gen(function* () {
     admit: (firstFrame, close) =>
       Effect.gen(function* () {
         const ticket = yield* tickets.consume(firstFrame);
-        if (Option.isNone(ticket)) return Option.none<ConnectionIdentity>();
+        if (Option.isNone(ticket)) return yield* refuseAdmission;
         const { ticket: id, userId, sessionId } = ticket.value.identity;
         const { role, grantSeconds, heardAtMs } = ticket.value;
         // HQ names no role only where Zerops did not answer it: such a ticket extends, never opens.
-        if (role === undefined || connections.has(id)) return Option.none<ConnectionIdentity>();
+        if (role === undefined || connections.has(id)) return yield* refuseAdmission;
         const connectionId = yield* crypto.uuidV4().pipe(Effect.orDie);
         // Read after the last wait, with no yield before it is registered: a key refused by now
         // ends everyone, whose end waits on this lock and then finds nothing of it to close.
-        if (!ticket.value.live()) return Option.none<ConnectionIdentity>();
+        if (!ticket.value.live()) return yield* refuseAdmission;
         connections.set(id, {
           connectionId,
           id,
@@ -232,6 +261,7 @@ export const make = Effect.gen(function* () {
           deadlineMs: heardAtMs + grantSeconds * 1000,
           close,
         });
+        yield* PubSub.publish(changed, undefined);
         yield* rearm;
         yield* Effect.logInfo("connection admitted", { connectionId, role });
         return Option.some({ ticket: id, connectionId, userId, sessionId, role });
@@ -268,11 +298,13 @@ export const make = Effect.gen(function* () {
           consumed === undefined ||
           deadlineMs === undefined
         ) {
+          yield* countRefusal("extension_refused", now);
           yield* Effect.logInfo("connection extension refused", { connectionId, refused });
           return Option.none<number>();
         }
         if (consumed.role !== undefined) connection.role = consumed.role;
         connection.deadlineMs = deadlineMs;
+        if (consumed.role !== undefined) yield* PubSub.publish(changed, undefined);
         yield* rearm;
         yield* Effect.logInfo("connection extended", {
           connectionId,
@@ -291,9 +323,16 @@ export const make = Effect.gen(function* () {
         }),
       );
     }),
+    counts: lock.withPermits(1)(
+      Effect.sync(() => ({
+        roles: Array.from(connections.values(), (connection) => connection.role),
+        refused: Array.from(refusals, ([code, value]) => ({ code, ...value })),
+      })),
+    ),
+    changes: Stream.fromPubSub(changed),
     close: (id) =>
       Effect.sync(() => {
-        connections.delete(id);
+        if (connections.delete(id)) PubSub.publishUnsafe(changed, undefined);
       }),
     linked: (up) =>
       Effect.gen(function* () {

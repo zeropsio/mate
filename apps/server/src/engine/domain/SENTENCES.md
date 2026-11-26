@@ -1,4 +1,4 @@
-next: ED140
+next: ED142
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -131,3 +131,5 @@ next: ED140
 - ED137 — The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief
 - ED138 — A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.
 - ED139 — Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.
+- ED140 — Where the work stands goes in front of a run's message between its own tags, alone when the message has no words, and never in front of a slash command or a maintenance run; breaks: a slash command turns into prose the model answers, or a compaction carries a block
+- ED141 — A run's send carries the where text its admission read, on each send of that run and on no other run's, and a run whose read said nothing sends its message as it is; breaks: after a compaction or an idle close the agent asks zcp where it is before it can act, or the next message repeats a stale block

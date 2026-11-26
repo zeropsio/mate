@@ -12,6 +12,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import { shownProjectName } from "@t3tools/client-runtime/data";
 import type { MateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import { toneIdForKind, viewerThreadKind, type ThreadStatus } from "@t3tools/shared/threadStatus";
@@ -245,7 +246,7 @@ export function hqChatMateNames(
 ): ReadonlyMap<string, string> {
   return new Map([
     ...relayedMates(structure).flatMap(({ projectId, name, app }) =>
-      name === "" ? [] : [[projectId, nameUnderApp(name, app)] as const],
+      name === "" ? [] : [[projectId, nameUnderApp(shownProjectName(name), app)] as const],
     ),
     ...listed
       .filter(hasMate)

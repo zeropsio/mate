@@ -18,7 +18,6 @@ import {
 } from "~/components/chat/runTray";
 import { cn } from "~/lib/utils";
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import {
   type MateMessageItem,
   mateMessageNoticeHeading,
@@ -29,6 +28,7 @@ import {
 import { createContext, type ReactNode, use, useCallback, useState } from "react";
 
 import { mateActivityAtom } from "../../zerops/mateActivityAtoms";
+import { useMateLook } from "../../zerops/useMateLook";
 import { useOpenMate } from "../../zerops/useOpenMate";
 import ChatMarkdown from "../ChatMarkdown";
 import type { AwaitedMateAnswer } from "../chat/MessagesTimeline.logic";
@@ -49,15 +49,6 @@ export function OpenMateProvider({ children }: { readonly children: ReactNode })
   const openMate = useOpenMate();
   const open = useCallback((projectId: string) => openMate({ projectId }), [openMate]);
   return <OpenMateContext value={open}>{children}</OpenMateContext>;
-}
-
-/** A Mate's face and hue as the menu wears them; a neutral one where this account names none. */
-function useMateLook(projectId: string) {
-  const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
-  return {
-    tint: identity?.tint ?? "slate",
-    ...(identity === undefined ? {} : { shape: identity.shape }),
-  };
 }
 
 /**

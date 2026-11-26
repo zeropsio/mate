@@ -925,6 +925,8 @@ export const ConversationRow = Schema.Struct({
       end: Schema.NullOr(RunEnd),
       endedAt: Schema.NullOr(Millis),
       turnState: Schema.optionalKey(RunTurnState),
+      /** Since when the engine marked this run as no longer answering: a mark, never an end. Absent while it answers, once it ended, and from an older server. */
+      unresponsiveSince: Schema.optionalKey(Millis),
     }),
   ),
   /**

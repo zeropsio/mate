@@ -40,7 +40,6 @@ const RELEASE = {
 /** HQ calls besides the door and the calls whose Zerops writes HQ makes on the person's token. */
 const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> = [
   (api) => api.mateTicket("p1"),
-  (api) => api.deleteApp("app-1"),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),
   (api) => api.release("app-1", RELEASE),
@@ -162,6 +161,48 @@ it("ZV100: HQ's door is handed the person's Zerops access token with its expiry,
     { accessToken: "access-1", expiresAt: "2026-11-04T14:00:00.000Z", orgId: ORG },
     { accessToken: "access-2", expiresAt: "2026-11-04T19:50:00.000Z", orgId: ORG },
   ]);
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | /^[A-Za-z0-9._+-]{1,64}$/u.test(build) → true
+it("ZV189: HQ's door is told the client's build at each sign-in and each renewal, and a build that is empty or is no plain version is left out of the request; breaks: HQ's operator cannot tell which web build a person runs, or a malformed build string changes the body of every sign-in", async () => {
+  const cases = [
+    { input: "0.0.21+f1325c7", expected: "0.0.21+f1325c7" },
+    { input: "  ", expected: undefined },
+    { input: "web build!", expected: undefined },
+    { input: undefined, expected: undefined },
+    { input: "  1.2.3+abc  ", expected: "1.2.3+abc" },
+    { input: "a".repeat(64), expected: "a".repeat(64) },
+    { input: "a".repeat(65), expected: undefined },
+  ];
+  for (const { input, expected } of cases) {
+    let clock = Date.parse("2026-11-04T08:00:00.000Z");
+    const doorBodies: unknown[] = [];
+    const api = makeHqApi({
+      address: ADDRESS,
+      orgId: ORG,
+      ...(input === undefined ? {} : { clientBuild: input }),
+      now: () => clock,
+      openSocket: noSocket,
+      accessToken: async () => ({ token: "access", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      fetch: async (url, init) => {
+        if (new URL(url).pathname === "/api/door") {
+          doorBodies.push(JSON.parse(String(init?.body)));
+          return answer(200, { session: "session-1", expiresAt: iso(clock + 6 * HOUR) });
+        }
+        return answer(200, { apps: [], ungrouped: [] });
+      },
+    });
+    await api.structure();
+    clock += 5 * HOUR + 50 * 60_000;
+    await api.structure();
+    const body = {
+      accessToken: "access",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      orgId: ORG,
+      ...(expected === undefined ? {} : { clientBuild: expected }),
+    };
+    expect(doorBodies).toEqual([body, body]);
+  }
 });
 
 const key = { orgId: "org", appId: "app" };

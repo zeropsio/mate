@@ -11,8 +11,7 @@
  * person may delete whole never opens it: its Delete offers the choice of the Mate alone or the
  * whole project (`ZeropsDeleteApplicationDialog`).
  */
-import { Text } from "~/components/ui/text";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { Failure } from "~/components/ui/failure";
@@ -26,9 +25,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDialog.logic";
+import { ZeropsConfirmName } from "./ZeropsConfirmName";
 
 export function ZeropsDeleteMateForm({
   name,
@@ -51,7 +49,6 @@ export function ZeropsDeleteMateForm({
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
-  const id = useId();
   const [typed, setTyped] = useState("");
   const confirmed = deleteMateConfirmed(typed, name);
 
@@ -81,22 +78,15 @@ export function ZeropsDeleteMateForm({
           />
         )}
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-name`}>{words.label}</Label>
-          <Input
-            aria-describedby={`${id}-reason`}
-            autoComplete="off"
+          <ZeropsConfirmName
             autoFocus
-            id={`${id}-name`}
-            onChange={(event) => {
-              setTyped(event.target.value);
-            }}
-            readOnly={pending}
-            spellCheck={false}
-            value={typed}
+            name={name}
+            onTyped={setTyped}
+            pending={pending}
+            typed={typed}
+            whose="the Mate's"
           />
-          <Text className="min-h-4" id={`${id}-reason`} render={<p />} role="alert" variant="error">
-            {error}
-          </Text>
+          {error === null ? null : <Failure cause={error} role="alert" size="line" />}
         </div>
       </DialogPanel>
       <DialogFooter>

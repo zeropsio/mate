@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
+import type { RunPreparedValue } from "./decide.effects.ts";
 import { answerHeard, asksAfter, outlivedBy } from "./mateAsks.ts";
 import {
   KEPT_ENDED_RUNS,
@@ -652,7 +653,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       const effect = state.effects[event.effectId];
       const prepared =
         effect?.kind === "run.prepare"
-          ? withRun(state, effect.runId, (run) => ({ ...run, prepare: "done" }))
+          ? withRun(state, effect.runId, (run) => {
+              const where =
+                event.outcome.kind === "ok"
+                  ? (event.outcome.value as RunPreparedValue | undefined)?.where
+                  : undefined;
+              const { where: _previous, ...rest } = run;
+              return { ...rest, prepare: "done", ...(where === undefined ? {} : { where }) };
+            })
           : state;
       return {
         ...prepared,

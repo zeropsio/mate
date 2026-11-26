@@ -1,4 +1,4 @@
-next: AD87
+next: AD92
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -85,4 +85,9 @@ next: AD87
 - AD83 — The person's membership read before Zerops answered the registration of the organization's memberships (the session's own `/user/info`) is read again once that registration lists it with another role, whichever of the two lands first, so a demotion landing between them reads No access although its frame never comes; breaks: a person demoted while the page loads keeps their old role, and HQ keeps showing them the Mates it showed before
 - AD84 — A detail asked to be read again as its read answers, before that read has ended, is read again at once; breaks: the ask starts no read, so the detail stands unanswered until its deadline passes ten seconds later and shows a failed read before its retry reads it
 - AD85 — A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said
+- AD87 — The support page goes to HQ's console only with a code HQ issued, and says in one sentence each why it does not: no support access, signed out, or HQ not answering; breaks: a person who is not listed is sent to a sign-in that fails with no words, or an HQ outage reads as "no access"
+- AD88 — The exchange is asked for with the session's bearer and no body, and its answer's code is taken as it is; breaks: the request carries something HQ does not read, or a malformed answer is posted to HQ
 - AD86 — A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists
+- AD89 — A Mate that did not open is reported to HQ once per project and kind until that project opens, only for an unreachable descriptor, a failed identity exchange or a spent opening deadline, and never for a refusal the page explains; breaks: one unreachable Mate spends the session's allowance in a minute, or a version refusal is counted as an outage
+- AD90 — A report HQ refuses, cannot take or has no account for changes nothing: no error reaches the caller and nothing is retried; breaks: a rate-limited or unreachable HQ breaks opening a Mate, or reports loop
+- AD91 — The report's request names the project, the kind and this client's build, and nothing else; breaks: a browser's text or address reaches the operator's history

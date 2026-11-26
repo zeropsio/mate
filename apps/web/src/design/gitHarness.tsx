@@ -1,55 +1,42 @@
-/** The Git overview's states, on literal reads and without an account. */
+/** The Git overview and project code, using the real components over literal reads. */
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   codeStandingOffers,
-  codeStandingSentence,
   gitOverview,
+  gitOverviewGroups,
   type CodeStanding,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import { KEPT_GIT_UNCONFIRMED, type KeptGitQuestionView } from "@t3tools/client-runtime/data";
-import { Page } from "~/components/ui/page";
-import { PageHeader } from "~/components/ui/page-header";
-import { Button } from "~/components/ui/button";
 import {
-  ZeropsGitOverview,
-  ProjectCodeHeading,
-  ProjectCodeGone,
-} from "~/components/zerops/ZeropsGitPage";
+  KEPT_GIT_UNCONFIRMED,
+  type HqMateIdentity,
+  type KeptGitQuestionView,
+} from "@t3tools/client-runtime/data";
+import { Page } from "~/components/ui/page";
+import { ProjectCode, ProjectCodeGone, ZeropsGitOverview } from "~/components/zerops/ZeropsGitPage";
 import { KeptCodeLine } from "~/components/zerops/KeptGitQuestions";
 import type { GitPageState } from "~/components/zerops/ZeropsGitPage.logic";
-import { RepositoryPageEnd } from "~/components/zerops/ZeropsRepositoryBrowser";
-import { CodeStandingBanner } from "~/components/zerops/CodeStandingActions";
-import {
-  GitRepoFacts,
-  GitRepoHeading,
-  GitRepoTabs,
-} from "~/components/zerops/gitBrowser/GitRepoFrame";
-import { GitRepositoryStorage } from "~/components/zerops/gitBrowser/GitRepositoryStorage";
-import { GitRepoChanges } from "~/components/zerops/gitBrowser/GitRepoChanges";
-import { GitBrowserLink } from "~/components/zerops/gitBrowser/GitBrowserLink";
-import type { GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const stateName = params.get("state") ?? "default";
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
-const repo = (name: string, follows?: string, usedBytes?: number) => ({
+const repo = (name: string, usedBytes: number, follows?: string) => ({
   name,
   updatedAt: ago(7),
+  usedBytes,
   ...(follows === undefined ? {} : { follows }),
-  ...(usedBytes === undefined ? {} : { usedBytes }),
 });
-const pull = (repository: string, number: number): FlowPullRequest => ({
+const pull = (repository: string, number: number, conflict = false): FlowPullRequest => ({
   repository,
   number,
   title: "Improve checkout",
   kind: "code",
   mateProjectId: "m1",
   url: undefined,
-  mergeability: "mergeable",
+  mergeability: conflict ? "conflicting" : "mergeable",
   behind: false,
   merged: false,
   mergedAt: undefined,
@@ -65,75 +52,70 @@ const used = [
     appId: "store",
     name: "Acme Store",
     repositories: [
-      repo("group"),
-      repo("storefront", "https://github.com/acme/storefront.git"),
-      repo("api"),
+      repo("group", 512),
+      repo("storefront", 12_400_000, "https://github.com/acme/storefront.git"),
+      repo("api", 3_500_000),
+      repo("admin", 942_000),
     ],
-    changes: [pull("storefront", 1), pull("group", 2)],
+    changes: [pull("storefront", 1), pull("storefront", 2, true)],
+  },
+  {
+    appId: "harbor",
+    name: "Harbor Radio",
+    repositories: [
+      repo("group", 512),
+      repo("stream", 50_500_000, "https://github.com/harbor-radio/stream.git"),
+      repo("site", 2_200_000),
+    ],
+    changes: [pull("stream", 3)],
   },
   {
     appId: "docs",
     name: "Documentation",
-    repositories: [repo("group"), repo("docs")],
+    repositories: [repo("group", 512), repo("docs", 655_360)],
     changes: [],
   },
-  { appId: "site", name: "Website", repositories: [repo("group"), repo("web")], changes: [] },
+  {
+    appId: "chief",
+    name: "Chief · Ada",
+    repositories: [repo("group", 512), repo("chief", 184_320)],
+    changes: [],
+  },
 ];
 const kept = [
   {
     appId: "archive",
     name: "Archive",
-    repositories: [repo("group"), repo("archive")],
+    repositories: [
+      repo("group", 512),
+      repo("archive", 25_800_000, "https://github.com/acme/archive.git"),
+      repo("legacy-api", 8_700_000),
+    ],
     changes: [],
   },
-  { appId: "dmx", name: "DMX", repositories: [repo("group")], changes: [] },
-  { appId: "old", name: "Old site", repositories: [repo("group"), repo("site")], changes: [] },
+  { appId: "dmx", name: "DMX", repositories: [repo("group", 24_576)], changes: [] },
 ];
+const old = {
+  appId: "old",
+  name: "Old site",
+  repositories: [repo("group", 512), repo("site", 3_355_443)],
+  changes: [],
+};
 const deleting = [
   {
     appId: "deleting",
-    name: "Deleting project",
-    repositories: [repo("group"), repo("app")],
+    name: "Pilot",
+    repositories: [repo("group", 512), repo("pilot", 5_800_000)],
     changes: [],
   },
   {
     appId: "failed",
-    name: "Stopped project",
-    repositories: [repo("group"), repo("app")],
+    name: "Experiments",
+    repositories: [repo("group", 512), repo("lab", 12_600_000, "https://github.com/acme/lab.git")],
     changes: [],
   },
 ];
-const attention = [
-  { appId: "unknown", name: "Checking project", repositories: [repo("group")], changes: [] },
-  { appId: "leaving", name: "Leaving project", repositories: [repo("group")], changes: [] },
-  { appId: "off", name: "Waiting project", repositories: [repo("group")], changes: [] },
-  { appId: "waiting", name: "Deletion waiting", repositories: [repo("group")], changes: [] },
-];
-const sized = [
-  {
-    appId: "store",
-    name: "Acme Store",
-    changes: [],
-    repositories: [
-      repo("group", undefined, 512),
-      repo("api", undefined, 2048),
-      repo("storefront", "https://github.com/acme/storefront.git", 111462),
-    ],
-  },
-  {
-    appId: "docs",
-    name: "Documentation",
-    changes: [],
-    repositories: [repo("group", undefined, 1024), repo("docs")],
-  },
-  {
-    appId: "archive",
-    name: "Archive",
-    changes: [],
-    repositories: [repo("group", undefined, 512), repo("archive", undefined, 2048)],
-  },
-];
-const asking = stateName.startsWith("asked");
+const asking = stateName.startsWith("asked") || stateName === "project-asked";
 const unlisted = stateName === "asked-unlisted";
 const question: KeptGitQuestionView = {
   question: {
@@ -153,43 +135,35 @@ const question: KeptGitQuestionView = {
         : null,
 };
 const source =
-  stateName === "sizes"
-    ? sized
-    : asking
-      ? unlisted
-        ? []
-        : kept.filter(({ appId }) => appId === "old")
-      : stateName === "kept" ||
-          stateName === "kept-reader" ||
-          stateName === "project-kept" ||
-          stateName === "project-empty" ||
-          stateName === "project-asked" ||
-          stateName.startsWith("repository-banner")
-        ? kept
-        : stateName === "deleting" || stateName === "project-deleting"
-          ? deleting
-          : stateName === "attention" || stateName === "project-unread"
-            ? attention
-            : stateName === "empty"
-              ? []
-              : stateName === "reading"
-                ? used.slice(0, 1)
-                : used;
+  stateName === "empty"
+    ? []
+    : stateName === "reading"
+      ? used.slice(0, 1)
+      : stateName === "deleting" || stateName === "project-deleting"
+        ? [...used, ...deleting, ...kept]
+        : asking && !unlisted
+          ? [...used, old, ...kept]
+          : [...used, ...kept];
 const apps = gitOverview({ apps: source, mateName: () => undefined });
 const state: GitPageState =
-  stateName === "unread" || unlisted
+  stateName === "unread" || stateName === "project-unread"
     ? { kind: "unread", failure: null }
     : stateName === "refused"
       ? { kind: "refused", reason: "HQ did not offer changes to this account." }
       : {
           kind: "read",
           apps,
-          failure: stateName === "attention" ? "HQ could not refresh changes." : null,
+          failure:
+            stateName === "read-failure" ? "Couldn't read the latest changes from HQ." : null,
           ...(stateName === "reading" ? { reading: true } : {}),
-          ...(stateName === "attention"
+          ...(stateName === "unreadable"
             ? {
                 refusals: [
-                  { appId: "private", name: "Private project", reason: "HQ refused access." },
+                  {
+                    appId: "private",
+                    name: "Payments",
+                    reason: "HQ does not offer you this project's changes.",
+                  },
                 ],
               }
             : {}),
@@ -198,48 +172,60 @@ const standingOf = (id: string) => {
   const standing: CodeStanding =
     id === "unknown"
       ? { kind: "unread" }
-      : id === "leaving"
-        ? { kind: "in-use", mate: false, leaving: true }
-        : id === "off"
-          ? { kind: "kept", holds: "code" }
-          : id === "waiting"
-            ? { kind: "deleting", placed: false, phase: "waiting" }
-            : id === "archive"
-              ? { kind: "kept", holds: "code" }
-              : id === "dmx"
-                ? { kind: "kept", holds: "setup" }
-                : id === "old"
-                  ? stateName === "kept-reader"
-                    ? { kind: "kept", holds: "code" }
-                    : { kind: "asked" }
-                  : id === "deleting" || id === "failed"
-                    ? {
-                        kind: "deleting",
-                        placed: false,
-                        phase: id === "failed" ? "failed" : "going",
-                      }
-                    : { kind: "in-use", mate: true, leaving: false };
-  const reader = stateName === "kept-reader" || stateName === "repository-banner-reader";
+      : id === "old" || id === "missing"
+        ? { kind: "asked" }
+        : id === "archive" || id === "dmx"
+          ? { kind: "kept", holds: id === "archive" ? "code" : "setup" }
+          : id === "deleting" || id === "failed"
+            ? { kind: "deleting", placed: false, phase: id === "failed" ? "failed" : "going" }
+            : { kind: "in-use", mate: true, leaving: false };
+  const reader = stateName === "reader" || stateName === "project-reader";
   return {
     standing,
     offers: codeStandingOffers(standing, {
-      deleteApp: id === "off" ? "unknown" : reader ? "refused" : "allowed",
-      addMate: id === "off" ? "off" : reader ? "none" : "offered",
+      deleteApp: reader ? "refused" : "allowed",
+      addMate: reader ? "none" : "offered",
     }),
-    ...(id === "off" ? { addMateWhy: "Ask an Owner or Admin to let you add Mates." } : {}),
+    ...(id === "failed"
+      ? { stopped: "HQ stopped deleting Experiments: GitHub refused to let go of acme/lab." }
+      : {}),
   };
 };
+const identity: HqMateIdentity = {
+  projectId: "chief-project",
+  fullName: "Ada",
+  name: "Ada",
+  tint: "amber",
+  shape: "hexagon",
+  project: "Chief · Ada",
+  projectUrl: "#",
+};
+const chiefByApp = new Map([["chief", { identity }]]);
+const repositoryHref = (appId: string, name: string, view?: "changes") =>
+  `/git?${new URLSearchParams({ appId, repo: name, ...(view === undefined ? {} : { view }) })}`;
 
 function Harness() {
   useEffect(() => {
-    if (stateName === "open-only")
-      document.querySelector<HTMLButtonElement>('[aria-pressed="false"]')?.click();
+    if (stateName === "open-changes" || stateName === "kept-tab") {
+      const label = stateName === "open-changes" ? "Open changes" : "Kept code";
+      [...document.querySelectorAll<HTMLButtonElement>('[data-slot="tab-press"]')]
+        .find((button) => button.textContent?.includes(label))
+        ?.click();
+    }
+    if (stateName === "search" || stateName === "search-none") {
+      const input = document.querySelector<HTMLInputElement>(
+        'input[aria-label="Find a project or repository"]',
+      );
+      if (input !== null) {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+          input,
+          stateName === "search" ? "store" : "billing",
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
     if (stateName === "asked-confirm")
-      [
-        ...document.querySelectorAll<HTMLButtonElement>(
-          '[data-zerops-surface="kept-code-question"] button',
-        ),
-      ]
+      [...document.querySelectorAll<HTMLButtonElement>('[data-git-project="old"] button')]
         .find((button) => button.textContent?.includes("Delete code"))
         ?.click();
   }, []);
@@ -256,9 +242,9 @@ function Harness() {
       </main>
     );
   const projectId =
-    stateName === "project-kept"
+    stateName === "project-kept" || stateName === "project-reader"
       ? "archive"
-      : stateName === "project-empty"
+      : stateName === "project-setup"
         ? "dmx"
         : stateName === "project-asked"
           ? "old"
@@ -267,169 +253,49 @@ function Harness() {
             : stateName === "project-unread"
               ? "unknown"
               : "store";
-  const projectName =
-    [...used, ...kept, ...deleting, ...attention].find((app) => app.appId === projectId)?.name ??
-    "Project";
-  const projectView = standingOf(projectId);
-  const about: GitHomeAbout = {
-    remote: { provider: "github", url: "https://github.com/acme/archive" },
-    mirror: { syncedAt: ago(1), divergedSince: null, governance: null },
-    updatedAt: ago(7),
-    branchCount: 4,
-    tagCount: 2,
-    storage: {
-      usedBytes: 12345678,
-      limitBytes: 1073741824,
-      large: false,
-      routeBodyLimitBytes: null,
-    },
-  };
-  const overview = (
-    <ZeropsGitOverview
-      state={state}
-      standingOf={standingOf}
-      questions={
-        asking ||
-        stateName === "kept" ||
-        stateName === "project-asked" ||
-        stateName === "project-kept"
-          ? [question]
-          : []
-      }
-      answer={async () => {}}
-      onAgain={() => {}}
-      only={
-        stateName.startsWith("project-") && stateName !== "project-gone" ? projectId : undefined
-      }
-      repositoryHref={(appId, name, view) =>
-        `/git?${new URLSearchParams({ appId, repo: name, ...(view === undefined ? {} : { view }) })}`
-      }
-      onAddMate={() => {}}
-      onDelete={() => {}}
-      onReview={() => {}}
-    />
-  );
-  let content;
-  if (stateName === "project-gone") content = <ProjectCodeGone />;
-  else if (["repository-gone", "repository-reading", "repository-no-access"].includes(stateName))
-    content = (
-      <div className="flex flex-col gap-4">
-        <GitRepoHeading appId="store" project="Acme Store" repo="missing" />
-        <RepositoryPageEnd
-          state={
-            stateName === "repository-gone"
-              ? { kind: "gone" }
-              : stateName === "repository-reading"
-                ? { kind: "reading" }
-                : { kind: "no-access", reason: "You do not have access to this repository." }
-          }
-          onBack={() => {}}
-        />
-      </div>
-    );
-  else if (stateName.startsWith("repository-banner")) {
-    const id =
-      stateName === "repository-banner-setup"
-        ? "dmx"
-        : stateName === "repository-banner-asked"
-          ? "old"
-          : stateName === "repository-banner-deleting"
-            ? "failed"
-            : "archive";
-    const name =
-      id === "dmx"
-        ? "DMX"
-        : id === "old"
-          ? "Old site"
-          : id === "failed"
-            ? "Stopped project"
-            : "Archive";
-    const view = standingOf(id);
-    content = (
-      <div className="flex flex-col gap-3">
-        <GitRepoHeading appId={id} project={name} repo="archive" />
-        <GitRepoFacts about={about} storage={<GitRepositoryStorage storage={about.storage} />} />
-        <CodeStandingBanner
-          name={name}
-          view={view}
-          sentence={codeStandingSentence(name, view.standing)}
-          onAddMate={() => {}}
-          onDelete={() => {}}
-          onReview={() => {}}
-          answer={<GitBrowserLink to={{ appId: id }}>Answer on Git</GitBrowserLink>}
-        />
-        <GitRepoTabs
-          view="home"
-          openChanges={2}
-          onTab={() => {}}
-          picker={
-            <Button size="sm" variant="secondary">
-              main
-            </Button>
-          }
-        />
-      </div>
-    );
-  } else if (stateName.startsWith("repository-changes-")) {
-    const existing = apps
-      .find((app) => app.appId === "store")!
-      .repositories.find((repo) => repo.name === "storefront")!;
-    const repository =
-      stateName === "repository-changes-open"
-        ? existing
-        : {
-            ...existing,
-            changes: stateName === "repository-changes-failed" ? existing.changes : [],
-            coverage:
-              stateName === "repository-changes-failed"
-                ? ("failed" as const)
-                : stateName === "repository-changes-unread"
-                  ? ("unread" as const)
-                  : ("complete" as const),
-          };
-    content = (
-      <div className="flex flex-col gap-4">
-        <GitRepoHeading appId="store" project="Acme Store" repo="storefront" />
-        <GitRepoChanges
-          appId="store"
-          project="Acme Store"
-          repo="storefront"
-          search={{}}
-          repository={repository}
-          changesFailure={
-            stateName === "repository-changes-failed" ? "HQ could not refresh changes." : undefined
-          }
-          onReadChanges={() => {}}
-          onOpenChange={() => {}}
-        />
-      </div>
-    );
-  } else if (stateName.startsWith("project-"))
-    content = (
-      <>
-        <ProjectCodeHeading
-          appId={projectId}
-          name={projectName}
-          view={projectView}
-          sentence={codeStandingSentence(projectName, projectView.standing)}
-          onAddMate={() => {}}
-          onDelete={() => {}}
-        />
-        {overview}
-      </>
-    );
-  else
-    content = (
-      <>
-        <PageHeader title="Git" line="Your organisation's code, by project." />
-        {overview}
-      </>
+  const name =
+    [...used, ...kept, old, ...deleting].find((app) => app.appId === projectId)?.name ??
+    "Checking project";
+  const group = gitOverviewGroups(
+    state.kind === "read" ? state.apps.filter((app) => app.appId === projectId) : [],
+    (id) => standingOf(id).standing,
+    asking ? [question.question] : [],
+  ).groups.find((item) => item.appId === projectId);
+  const content =
+    stateName === "project-gone" ? (
+      <ProjectCodeGone />
+    ) : stateName.startsWith("project") ? (
+      <ProjectCode
+        appId={projectId}
+        name={name}
+        group={group}
+        state={state}
+        view={standingOf(projectId)}
+        question={asking ? question : undefined}
+        answer={async () => {}}
+        repositoryHref={repositoryHref}
+        onAddMate={() => {}}
+        onDelete={() => {}}
+        onReview={() => {}}
+      />
+    ) : (
+      <ZeropsGitOverview
+        state={state}
+        standingOf={standingOf}
+        chiefByApp={chiefByApp}
+        questions={asking ? [question] : []}
+        answer={async () => {}}
+        onAgain={() => {}}
+        repositoryHref={repositoryHref}
+        onAddMate={() => {}}
+        onDelete={() => {}}
+        onReview={() => {}}
+      />
     );
   return (
     <main className="min-h-screen bg-background text-foreground" style={{ marginLeft: 435 }}>
-      <Page width="full">{content}</Page>
+      <Page width="wide">{content}</Page>
     </main>
   );
 }
-
 createRoot(document.getElementById("design")!).render(<Harness />);

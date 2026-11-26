@@ -76,7 +76,7 @@ import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { watchFiles, type WatchFiles } from "./fileWatch.ts";
+import { readFileJson, watchFiles, type WatchFiles } from "./fileWatch.ts";
 import { ZeropsGitCredential } from "./ZeropsGitCredential.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -997,18 +997,6 @@ const standUpWaitOf = (hq: HqStanding): StandUpWait | undefined => {
 };
 
 /* ------------------------------------------------------------ the live reads */
-
-const readFileJson = (fs: FileSystem.FileSystem, path: string) =>
-  fs.readFileString(path).pipe(
-    Effect.map((text): unknown => {
-      try {
-        return JSON.parse(text);
-      } catch {
-        return undefined;
-      }
-    }),
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
 
 /**
  * Whether a process zcp named is provably gone, as zcp's own liveness reads it (the work

@@ -331,7 +331,7 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
   expect(shop?.projects.map(({ projectId, name }) => [projectId, name])).toEqual([
     ["ada", "Ada"],
     ["stage", "shop-stage"],
-    ["prod", "Unknown"],
+    ["prod", undefined],
   ]);
   expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["lone-in-zerops"]);
   expect(shop?.contents).toEqual({ empty: false, deletingProjectIds: ["stage", "gone", "ada"] });

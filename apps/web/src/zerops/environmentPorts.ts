@@ -12,7 +12,7 @@ import {
   type SupervisorConnectionState,
   type ZeropsMateConnectionRegistration,
 } from "@t3tools/client-runtime/connection";
-import { mateContainerReads } from "@t3tools/client-runtime/data";
+import { mateContainerReads, webFailureKindOf } from "@t3tools/client-runtime/data";
 import type {
   AccountEnvironmentPorts,
   DoorCredential,
@@ -34,7 +34,7 @@ import { AsyncResult, type AtomRegistry } from "effect/reactivity";
 
 import { appBasePath } from "~/basePath";
 import { environmentCatalog } from "~/connection/catalog";
-import { primeMateTicket } from "~/connection/platform";
+import { primeMateTicket, reportMateNotOpened, reportMateOpened } from "~/connection/platform";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { hqMatesAtom, hqProjectOrRemembered } from "~/state/zerops";
@@ -246,6 +246,13 @@ export function webEnvironmentPorts(registry: AtomRegistry.AtomRegistry): Accoun
             servedApp: servedApp(),
           },
         );
+        const mate = { orgId: request.organizationId, projectId: request.projectId };
+        if (answer.ok) {
+          reportMateOpened(mate);
+        } else {
+          const kind = webFailureKindOf(answer.failure);
+          if (kind !== null) reportMateNotOpened(mate, kind);
+        }
         return answer.ok
           ? { ...answer, credential: mateCredential(registry, answer.credential) }
           : answer;

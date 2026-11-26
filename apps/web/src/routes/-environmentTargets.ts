@@ -46,6 +46,7 @@ import { Atom } from "effect/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useReducer, useState } from "react";
 
 import { useEnvironments } from "../state/environments";
+import { reportMateNotOpened } from "../connection/platform";
 import { environmentShell } from "../state/shell";
 import { hqProjectAtom } from "../state/zerops";
 import { useClientSettings } from "../hooks/useSettings";
@@ -383,6 +384,10 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     routeDeadlineRuns(waiting, stopped) ? routeKey : null,
     STILL_READING_PATIENCE_MS,
   );
+  useEffect(() => {
+    if (overdue && orgId !== null && projectId !== null)
+      reportMateNotOpened({ orgId, projectId }, "opening-deadline");
+  }, [overdue, orgId, projectId]);
   const pastDeadline = overdue ? targetOf(true) : null;
   const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, stopped);
   // The absence the route says on HQ's answer, held while the route stays on this environment.

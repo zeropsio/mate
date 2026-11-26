@@ -1,6 +1,7 @@
 import {
   hqKeptGitQuestions,
   hqOperationOf,
+  operationFailureWords,
   type KeptGitQuestionView,
 } from "@t3tools/client-runtime/data";
 import {
@@ -21,6 +22,7 @@ export interface CodeStandingView {
   readonly standing: CodeStanding;
   readonly offers: CodeStandingOffers;
   readonly addMateWhy?: string | undefined;
+  readonly stopped?: string | undefined;
 }
 
 /** One wiring of HQ's facts and existing doors to the code-standing decision. */
@@ -33,6 +35,7 @@ export function useCodeStandings(): (appId: string) => CodeStandingView {
   return useCallback(
     (appId) => {
       const app = structure?.apps.find(({ id }) => id === appId);
+      const deletion = hqOperationOf(app?.operation, "app_deletion");
       const births = app?.births?.length ?? 0;
       const standing =
         app === undefined
@@ -48,14 +51,19 @@ export function useCodeStandings(): (appId: string) => CodeStandingView {
                 births,
               contents: app.contents,
               asked: questions.some(({ question }) => question.appId === appId),
-              deletion: hqOperationOf(app.operation, "app_deletion").kind,
+              deletion: deletion.kind,
             });
       const door = addMateDoor(appId);
       const offers = codeStandingOffers(standing, {
         deleteApp: orgOffers("delete_app").kind,
         addMate: door.kind === "unknown" ? "none" : door.kind,
       });
-      return { standing, offers, ...(door.kind === "off" ? { addMateWhy: door.why } : {}) };
+      return {
+        standing,
+        offers,
+        ...(door.kind === "off" ? { addMateWhy: door.why } : {}),
+        ...(deletion.kind === "failed" ? { stopped: operationFailureWords(deletion.failure) } : {}),
+      };
     },
     [structure, questions, orgOffers, addMateDoor],
   );

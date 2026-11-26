@@ -282,6 +282,9 @@ export const conversationRowOf = (
             end: latest.end,
             endedAt: latest.endedAt,
             turnState: turnStateOf(latest),
+            ...(latest.endedAt === null && latest.unresponsiveSince !== null
+              ? { unresponsiveSince: latest.unresponsiveSince }
+              : {}),
           },
     subject: said === null ? null : saidLineOf(said),
     ...(saidBy === undefined ? {} : { subjectFrom: saidBy }),

@@ -1,9 +1,11 @@
 /**
  * A repository's top folder and README at the commit its branch, tag or commit names now.
  */
+import { BookOpenIcon } from "lucide-react";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Failure } from "~/components/ui/failure";
 import { useGitBrowse } from "~/zerops/useGitBrowse";
 import type { GitRepoPageProps } from "./GitBrowseView";
 import { GitAtCommit, GitNotRead } from "./GitAtCommit";
@@ -38,36 +40,41 @@ function HomeAt({
   return (
     <>
       <section aria-label="Source" className="flex min-w-0 flex-col gap-2">
-        <Card variant="flat">
-          <div className="flex min-w-0 flex-col gap-3 p-4">
-            {top.state === "known" && top.failed ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-body text-status-failed" role="alert">
-                  HQ could not read this repository again. Showing the last read source.
-                </p>
+        <div className="flex min-w-0 flex-col gap-3">
+          {top.state === "known" && top.failed ? (
+            <Failure
+              size="line"
+              role="alert"
+              cause="HQ could not read this repository again. Showing the last read source."
+              action={
                 <Button variant="ghost" size="sm" disabled={top.busy} onClick={again}>
                   Read again
                 </Button>
-              </div>
-            ) : null}
-            {top.state === "known" ? (
-              <GitDirectoryList
-                entries={top.answer.entries}
-                truncated={top.answer.truncated}
-                hrefOf={(entry) => hrefOf(atCommit(entryTarget(entry)))}
-                onOpen={(entry) => navigate(atCommit(entryTarget(entry)))}
-              />
-            ) : (
-              <GitNotRead view={top} subject="The source" at={{ appId, repo }} onAgain={again} />
-            )}
-          </div>
-        </Card>
+              }
+            />
+          ) : null}
+          {top.state === "known" ? (
+            <GitDirectoryList
+              entries={top.answer.entries}
+              truncated={top.answer.truncated}
+              hrefOf={(entry) => hrefOf(atCommit(entryTarget(entry)))}
+              onOpen={(entry) => navigate(atCommit(entryTarget(entry)))}
+            />
+          ) : (
+            <GitNotRead view={top} subject="The source" at={{ appId, repo }} onAgain={again} />
+          )}
+        </div>
       </section>
       {readme === null ? null : (
         <section aria-label="README" className="flex min-w-0 flex-col gap-2">
-          <Card variant="flat">
-            <div className="flex min-w-0 flex-col gap-3 p-4">
-              <h2 className="font-mono text-caption text-muted-foreground">{readme.path}</h2>
+          <Card size="md" variant="sheet">
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <BookOpenIcon aria-hidden="true" className="size-4" />
+                <Text render={<h2 />} variant="heading">
+                  {readme.path}
+                </Text>
+              </div>
               <RepoMarkdown
                 appId={appId}
                 repo={repo}
@@ -93,7 +100,7 @@ function HomeAt({
 export function GitRepoHome(props: GitRepoPageProps) {
   const { appId, repo, home, onHomeAgain } = props;
   return (
-    <div className="flex min-w-0 flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-5">
       <GitAtCommit at={{ appId, repo }} home={home} onHomeAgain={onHomeAgain}>
         {(answer, sha) => <HomeAt {...props} home={answer} sha={sha} />}
       </GitAtCommit>

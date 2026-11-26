@@ -1,8 +1,7 @@
-/** HQ owns application deletion; its answer or its explicit facts decide the end. */
+/** HQ owns answers to kept-code questions and their reflection in facts. */
 import type { KeptGitAnswer } from "@t3tools/contracts";
 import { removedForViewer } from "../model.ts";
 import type { OperationKind } from "./kind.ts";
-import { shownInFacts } from "./shownInFacts.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -11,21 +10,8 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly answer: KeptGitAnswer["answer"];
     };
-    readonly "delete-app": {
-      readonly orgId: string;
-      readonly appId: string;
-    };
   }
 }
-
-export const deleteApp: OperationKind<"delete-app"> = {
-  kind: "delete-app",
-  executor: "hq",
-  ...shownInFacts(
-    (intent) => intent.appId,
-    (read, intent) => removedForViewer(read.fact("hqApp", intent.appId)),
-  ),
-};
 
 export const answerKeptGit: OperationKind<"answer-kept-git"> = {
   kind: "answer-kept-git",

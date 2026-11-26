@@ -34,7 +34,11 @@ import {
 } from "../environments/primary/target";
 import { isHostedStaticApp } from "../hostedPairing";
 import { browserPlatformSignals } from "../zerops/browserSignals";
-import { mateTicketIssuer } from "@t3tools/client-runtime/data";
+import {
+  mateTicketIssuer,
+  webFailureReporter,
+  type WebFailureKind,
+} from "@t3tools/client-runtime/data";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { appBasePath } from "../basePath";
 import { environmentIdFromAddress } from "../routes/-environmentRoute";
@@ -108,14 +112,29 @@ function clientMetadata() {
   });
 }
 
-/** The open account's HQ API per organisation, for Mate tickets; none while no account is open. */
-let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket"> | null = () => null;
+/** The open account's HQ API per organisation; none while no account is open. */
+let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket" | "webFailure"> | null = () => null;
 
 /**
  * The web's one Mate ticket issuer: every connection attempt's, and the account door's ticket
  * asked for ahead (`primeMateTicket`).
  */
 const mateTickets = mateTicketIssuer((orgId) => mateTicketHq(orgId));
+const webFailures = webFailureReporter((orgId) => mateTicketHq(orgId));
+
+export function reportMateNotOpened(
+  mate: { readonly orgId: string; readonly projectId: string },
+  kind: WebFailureKind,
+): void {
+  webFailures.failed(mate, kind);
+}
+
+export function reportMateOpened(mate: {
+  readonly orgId: string;
+  readonly projectId: string;
+}): void {
+  webFailures.opened(mate);
+}
 
 /**
  * Asks HQ for the Mate's next connection ticket now, beside the descriptor read the door makes

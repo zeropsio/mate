@@ -19,7 +19,7 @@ it("MN45: A waiting rename, deletion or setup draws End only where HQ offers thi
     [{ ...waiting, endable: true }, intent],
     [waiting, undefined],
     [{ ...waiting, yours: true }, undefined],
-    [{ kind: "going" }, undefined],
+    [{ kind: "going", id: "op" }, undefined],
     [{ kind: "none" }, undefined],
   ];
   for (const [standing, expected] of cases) {
@@ -38,7 +38,7 @@ it("MN72: A waiting restart, move, deletion or approved effect on a project draw
     [{ ...unknown, endable: true }, intent],
     [unknown, undefined],
     [waiting, undefined],
-    [{ kind: "going" }, undefined],
+    [{ kind: "going", id: "op" }, undefined],
   ];
   for (const [standing, expected] of cases) {
     expect(
