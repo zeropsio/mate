@@ -5,10 +5,10 @@
  *
  * A project owns its code: HQ's repositories with their history, its changes and its releases go
  * with it. HQ runs its deletion as one operation (`app_deletion`) on the person's token, in a fixed
- * order: its last Mate first where it has one, then each Stage, then each Production the person
- * slid, then its code, so a stop anywhere leaves the most valuable things whole. Only a Production
- * Mate made, of a person who administers it, may go; any other stays in Zerops and Mate lets go of
- * it. Nothing on GitHub is touched. HQ decides every start again; this only chooses what to show.
+ * order: Productions that stay first, then its last Mate where it has one, each Stage, each
+ * Production the person slid, and its code. Only a Production Mate made, of a person who
+ * administers it, may go; any other stays in Zerops and Mate lets go of it. Nothing on GitHub is
+ * touched. HQ decides every start again; this only chooses what to show.
  *
  * Pure.
  */
@@ -546,7 +546,7 @@ export function sameDeletionStart(
 
 /** One part of HQ's deletion of the project, as its dialog lists it. */
 export interface DeletionPart {
-  readonly part: "mate" | "stage" | "production" | "code";
+  readonly part: "mate" | "stage" | "production" | "kept" | "code";
   /** "Stage shop-stage", "Quinn", "Its code". */
   readonly label: string;
   /**
@@ -581,9 +581,10 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
           { part: "stage", label: named === undefined ? "A Stage" : `Stage ${named}`, state },
         ];
       case "production":
+      case "kept_production":
         return [
           {
-            part: "production",
+            part: step.part === "production" ? "production" : "kept",
             label: named === undefined ? "A Production" : `Production ${named}`,
             state,
           },
@@ -594,6 +595,22 @@ export function deletionParts(project: DeletionProject): ReadonlyArray<DeletionP
         return [];
     }
   });
+}
+
+/** How one part's state reads in the deletion's list. */
+export function partStateWords(part: DeletionPart): string {
+  switch (part.state) {
+    case "gone":
+      return part.part === "kept" ? "Let go" : "Gone";
+    case "deleting":
+      return part.part === "kept" ? "Letting go" : "Deleting";
+    case "pending":
+      return "Waiting its turn";
+    case "stopped":
+      return "Stopped here";
+    case "here":
+      return "Still here";
+  }
 }
 
 const lowerFirst = (label: string) =>
@@ -621,7 +638,10 @@ export function deletionStandingWords(
     parts.find((part) => part.state === "pending");
   if (deletion.kind === "going")
     return {
-      line: at === undefined ? "Deleting…" : `Deleting ${lowerFirst(at.label)}…`,
+      line:
+        at === undefined
+          ? "Deleting…"
+          : `${at.part === "kept" ? "Letting go of" : "Deleting"} ${lowerFirst(at.label)}…`,
       failed: false,
       details: null,
       parts,
@@ -633,7 +653,8 @@ export function deletionStandingWords(
       details: null,
       parts,
     };
-  const gone = parts.filter((part) => part.state === "gone");
+  const gone = parts.filter((part) => part.state === "gone" && part.part !== "kept");
+  const letGo = parts.filter((part) => part.state === "gone" && part.part === "kept");
   const standing = parts.filter((part) => part.state !== "gone");
   const goneLabel = (part: DeletionPart) =>
     part.part === "mate" ? `${lowerFirst(part.label)}'s workspace` : lowerFirst(part.label);
@@ -641,6 +662,9 @@ export function deletionStandingWords(
     line: [
       `${project.name} was not deleted · ${asSentence(operationFailureWords(deletion.failure))}`,
       ...(gone.length === 0 ? [] : [`Gone: ${listed(gone.map(goneLabel))}.`]),
+      ...(letGo.length === 0
+        ? []
+        : [`Let go: ${listed(letGo.map((part) => lowerFirst(part.label)))}.`]),
       ...(standing.length === 0
         ? []
         : [`Still here: ${listed(standing.map((part) => lowerFirst(part.label)))}.`]),

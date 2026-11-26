@@ -6,7 +6,9 @@ import {
   deletionOffer,
   deletionProjectOf,
   deletionParts,
+  deletionStandingWords,
   deletionStart,
+  partStateWords,
   sameDeletionStart,
   projectDeletionPlan,
   projectDeletionReady,
@@ -338,6 +340,130 @@ it("MN86: A project's deletion lists a part as deleting only while it runs: wait
     "Production production-name",
     "A Stage",
   ]);
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | return part.part === "kept" ? "Let go" : "Gone"; → return "Gone";
+it("MN88: A Production that stays is a part the project's deletion lets go of: it reads letting go while its part runs and let go once done, the project's line says letting go of it, a failed deletion lists it as let go apart from what is gone and as still here while it stands; breaks: a Production the person kept reads Deleting or Gone, or a deletion Zerops stopped at its deploy token names every part but that one.", () => {
+  const steps = [
+    { part: "kept_production", projectId: "Z_LIVE", name: "acme-live", state: "deleting" },
+    { part: "mate", projectId: "Z_RYE", name: "Rye", state: "pending" },
+    { part: "code", state: "pending" },
+  ];
+  const tokenExpired = { step: "token", code: "token_expired", origin: "hq", at: AT };
+  const tokenRefused = { step: "token", code: "token_delete_refused", origin: "hq", at: AT };
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly steps: NonNullable<DeletionProject["steps"]>;
+    readonly operation: Partial<HqOperation>;
+    readonly parts: ReadonlyArray<readonly [string, string]>;
+    readonly words: ReadonlyArray<string>;
+    readonly line: string;
+  }> = [
+    {
+      name: "letting go",
+      steps,
+      operation: {},
+      parts: [
+        ["kept", "Production acme-live"],
+        ["mate", "Rye"],
+        ["code", "Its code"],
+      ],
+      words: ["Letting go", "Waiting its turn", "Waiting its turn"],
+      line: "Letting go of Production acme-live…",
+    },
+    {
+      name: "waiting at the token",
+      steps,
+      operation: { failure: tokenExpired, continueBy: "u-theo" },
+      parts: [
+        ["kept", "Production acme-live"],
+        ["mate", "Rye"],
+        ["code", "Its code"],
+      ],
+      words: ["Stopped here", "Waiting its turn", "Waiting its turn"],
+      line: "Deleting stopped at Production acme-live",
+    },
+    {
+      name: "the token was refused",
+      steps,
+      operation: { failure: tokenRefused },
+      parts: [
+        ["kept", "Production acme-live"],
+        ["mate", "Rye"],
+        ["code", "Its code"],
+      ],
+      words: ["Still here", "Still here", "Still here"],
+      line: "bakery was not deleted · Only an organization owner can delete this production's deploy token. Still here: Production acme-live, Rye and its code.",
+    },
+    {
+      name: "a Stage is also still here after the token was refused",
+      steps: [
+        steps[0]!,
+        steps[1]!,
+        { part: "stage", name: "acme-stage", state: "pending" },
+        steps[2]!,
+      ],
+      operation: { failure: tokenRefused },
+      parts: [
+        ["kept", "Production acme-live"],
+        ["mate", "Rye"],
+        ["stage", "Stage acme-stage"],
+        ["code", "Its code"],
+      ],
+      words: ["Still here", "Still here", "Still here", "Still here"],
+      line: "bakery was not deleted · Only an organization owner can delete this production's deploy token. Still here: Production acme-live, Rye, Stage acme-stage and its code.",
+    },
+    {
+      name: "a later part was refused",
+      steps: [
+        { part: "kept_production", name: "acme-live", state: "gone" },
+        { part: "mate", name: "Rye", state: "gone" },
+        { part: "stage", name: "acme-stage", state: "deleting" },
+        { part: "code", state: "pending" },
+      ],
+      operation: { failure: zeropsRefusal },
+      parts: [
+        ["kept", "Production acme-live"],
+        ["mate", "Rye"],
+        ["stage", "Stage acme-stage"],
+        ["code", "Its code"],
+      ],
+      words: ["Let go", "Gone", "Still here", "Still here"],
+      line: "bakery was not deleted · Zerops refused: Forbidden. Gone: Rye's workspace. Let go: Production acme-live. Still here: Stage acme-stage and its code.",
+    },
+    {
+      name: "an unnamed Production",
+      steps: [{ part: "kept_production", projectId: "Z_RYE", state: "deleting" }],
+      operation: {},
+      parts: [["kept", "A Production"]],
+      words: ["Letting go"],
+      line: "Letting go of a Production…",
+    },
+    {
+      name: "a Production chosen for deletion",
+      steps: [{ part: "production", name: "acme-live", state: "deleting" }],
+      operation: {},
+      parts: [["production", "Production acme-live"]],
+      words: ["Deleting"],
+      line: "Deleting Production acme-live…",
+    },
+  ];
+  for (const row of cases) {
+    const operation = deletion(row.operation);
+    if (operation.kind !== "going" && operation.kind !== "waiting" && operation.kind !== "failed")
+      throw new Error(`Unexpected deletion state in ${row.name}: ${operation.kind}`);
+    const project = bakery({ steps: row.steps, deletion: operation });
+    const parts = deletionParts(project);
+    expect(
+      parts.map((part) => [part.part, part.label]),
+      row.name,
+    ).toEqual(row.parts);
+    expect(parts.map(partStateWords), row.name).toEqual(row.words);
+    expect(deletionStandingWords(project, operation).line, row.name).toBe(row.line);
+  }
+  expect(partStateWords({ part: "kept", label: "A Production", state: "pending" })).toBe(
+    "Waiting its turn",
+  );
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | madeByMate: environment.deleteProjectOnRemoval === true, → madeByMate: false,

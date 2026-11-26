@@ -50,6 +50,7 @@ import {
   deletionStandingWords,
   deletionStart,
   lastChoiceWords,
+  partStateWords,
   productionDeletionWords,
   productionConfirmed,
   sameDeletionStart,
@@ -78,14 +79,6 @@ export type DeletionChoice =
 /** The Mate the dialog is about, as its words name it. */
 type DeletionMate = Pick<DeleteApplicationMate, "name" | "services" | "owner">;
 
-const PART_WORDS: Readonly<Record<DeletionPart["state"], string>> = {
-  gone: "Gone",
-  deleting: "Deleting",
-  pending: "Waiting its turn",
-  stopped: "Stopped here",
-  here: "Still here",
-};
-
 /** HQ's parts of its deletion, each with how it stands. */
 function DeletionParts({ parts }: { readonly parts: ReadonlyArray<DeletionPart> }) {
   if (parts.length === 0) return null;
@@ -95,7 +88,7 @@ function DeletionParts({ parts }: { readonly parts: ReadonlyArray<DeletionPart> 
         <li className="flex justify-between gap-3" key={`${part.part}:${part.label}`}>
           <span className="min-w-0 truncate">{part.label}</span>
           <span className={cn(part.state === "gone" ? "text-muted-foreground" : "text-foreground")}>
-            {PART_WORDS[part.state]}
+            {partStateWords(part)}
           </span>
         </li>
       ))}
