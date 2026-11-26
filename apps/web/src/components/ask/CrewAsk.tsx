@@ -1,9 +1,10 @@
 /**
  * A Mate's crew ask (`crew-ask` fence) as its card, read as the setup it opens reads: the goal,
  * then who's on it, each crewmate with its part and, at the row's end, the agent's mark and the
- * model it runs on among this Mate's sign-ins. An agent the Mate isn't signed in to is a warning on
- * its row, a line saying what its crewmates start on instead and a press to sign in, after which
- * the rows follow. The main press opens the Crew tab's setup filled in with the crew, to change
+ * model it runs on among this Mate's sign-ins. An agent a crewmate can't run on here — one nobody
+ * is signed in to, one that can't run a crewmate, or can't lead — is a warning on its row saying
+ * why and a line saying what its crewmates start on instead; one that lacks only a sign-in offers
+ * a press to sign in, after which the rows follow. The main press opens the Crew tab's setup filled in with the crew, to change
  * and start there. Once the Mate's crew stands, it says so and opens the crew instead.
  */
 import {
@@ -42,6 +43,7 @@ import {
   type CrewAsk,
   type CrewAskAvailability,
   type CrewAskRunsOn,
+  CREW_ASK_MISSING_BADGE,
   crewAskGoalLead,
   crewAskMissing,
   crewAskMissingWords,
@@ -172,12 +174,15 @@ export function CrewAskCardView({
     [ask, availability, providers],
   );
   const missing = crewAskMissing(rows);
-  // One press per agent this viewer can sign this Mate in to here; the rows follow the sign-in.
+  // One press per agent this viewer can sign this Mate in to here, where a sign-in is what it
+  // lacks; the rows follow the sign-in.
   const signIns =
     onSignIn === null
       ? []
       : missing.flatMap(({ agent }) =>
-          agent.agentId === undefined ? [] : [{ agentId: agent.agentId, name: agent.name }],
+          agent.reason !== "sign-in" || agent.agentId === undefined
+            ? []
+            : [{ agentId: agent.agentId, name: agent.name }],
         );
 
   const state: AskState =
@@ -294,7 +299,7 @@ export function CrewAskCardView({
 
 /**
  * What a crewmate runs on, at its row's end: the agent's mark and the model and effort it sets
- * there, or, for an agent this Mate isn't signed in to, that agent's mark in a warning.
+ * there, or, for an agent it can't run on here, that agent's mark in a warning saying why.
  */
 function RunsOn({ runsOn }: { readonly runsOn: CrewAskRunsOn }) {
   if (runsOn.missing !== null) {
@@ -302,7 +307,7 @@ function RunsOn({ runsOn }: { readonly runsOn: CrewAskRunsOn }) {
     return (
       <Badge tone="warning">
         {Mark === undefined ? null : <Mark />}
-        {runsOn.missing.agentId === undefined ? "Not available" : "Not signed in"}
+        {CREW_ASK_MISSING_BADGE[runsOn.missing.reason]}
       </Badge>
     );
   }
