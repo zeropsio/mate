@@ -57,6 +57,7 @@ export type GitPageState =
     };
 
 export function gitPageState(input: {
+  readonly now?: number | undefined;
   /** The organization's applications are known: HQ's structure has answered. */
   readonly appsKnown: boolean;
   /** Why the structure, permission facts or changes could not be read. */
@@ -116,7 +117,7 @@ export function gitPageState(input: {
     };
   return {
     kind: "read",
-    apps: gitOverview({ apps: read, mateName: input.mateName }),
+    apps: gitOverview({ apps: read, mateName: input.mateName, now: input.now }),
     failure,
     ...(waiting ? { reading: true } : {}),
     ...(refusals.length > 0 ? { refusals } : {}),

@@ -343,11 +343,12 @@ function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
 function flowPullRequestOf(
   pull: FlowPullRequest,
   mate: GroupFlowMate | undefined,
+  now: number | undefined,
 ): GroupFlowPullRequest {
   return {
     pull,
     blocked: pullRequestBlocked(pull),
-    state: changeState(pull),
+    state: changeState(pull, now),
     review: changeShowsReview(pull, mate),
   };
 }
@@ -650,10 +651,12 @@ function fromAttention(kind: GroupNextStepKind, item: ProjectAttentionItem): Gro
 }
 
 /** One project's flow, from what the surfaces already read for it. */
-export function groupFlow(input: GroupFlowInput): GroupFlow {
+export function groupFlow(input: GroupFlowInput, now?: number): GroupFlow {
   const open = [...input.pullRequests].sort(byNewest);
   const mates = new Map(input.mates.map((mate) => [mate.projectId, mate] as const));
-  const pullRequests = open.map((pull) => flowPullRequestOf(pull, mates.get(pull.mateProjectId)));
+  const pullRequests = open.map((pull) =>
+    flowPullRequestOf(pull, mates.get(pull.mateProjectId), now),
+  );
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const main: GroupFlowMain = {
     head: input.mainHead === undefined ? undefined : shortCommit(input.mainHead),

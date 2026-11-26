@@ -54,6 +54,7 @@ export function ZeropsGitSurface({
   /** Where a comment on a changed line goes: the conversation's composer. */
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
 }) {
+  const now = useNowMs();
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
   const { trouble } = useFlowVerbs();
@@ -147,6 +148,7 @@ export function ZeropsGitSurface({
             changes:
               projectFlow?.changesKnown === true
                 ? pageChanges({
+                    now,
                     flow: groupFlow,
                     read: projectFlow,
                     standingOf: standingHere,
@@ -156,7 +158,7 @@ export function ZeropsGitSurface({
             mate: { projectId: mateProjectId, tint },
             waits,
           }),
-    [groupFlow, mateProjectId, project, projectFlow, standingHere, tint, waits],
+    [groupFlow, mateProjectId, now, project, projectFlow, standingHere, tint, waits],
   );
   const landedWords = useCallback(
     (change: FlowPullRequest) =>
@@ -176,7 +178,6 @@ export function ZeropsGitSurface({
       (entry) => entry.remote?.via === "app" && entry.remote.invalidSince !== null,
     ),
   );
-  const now = useNowMs();
   const orgName = session?.activeOrganization?.name;
   const github = useCallback(
     (repository: string) => {

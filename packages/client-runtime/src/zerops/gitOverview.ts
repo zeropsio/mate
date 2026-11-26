@@ -55,6 +55,7 @@ function byName(left: string, right: string): number {
  * dropped it would be quieter than HQ.
  */
 export function gitOverview(input: {
+  readonly now?: number | undefined;
   readonly apps: ReadonlyArray<{
     readonly appId: string;
     readonly name: string;
@@ -92,7 +93,7 @@ export function gitOverview(input: {
         changes.push({
           pull,
           line: mate === undefined ? number : `${number} · ${mate}`,
-          status: changeState(pull),
+          status: changeState(pull, input.now),
         });
       }
       return {

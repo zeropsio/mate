@@ -87,6 +87,7 @@ export function gitWorkRows(
         readonly standing?: ChangeStandingRead | undefined;
       }
     | undefined,
+  now?: number,
 ): ReadonlyArray<GitWorkRow> {
   const verdict = block.verdict;
   // Trouble is proved before HQ answers; the changes still are not told.
@@ -108,7 +109,7 @@ export function gitWorkRows(
           at: pull.mergedAt ?? pull.updatedAt,
         },
       ];
-    return [openRow(pull, change.standing)];
+    return [openRow(pull, change.standing, now)];
   }
   const uncommitted = block.changed.length;
   const onDisk =
@@ -167,15 +168,16 @@ export function gitWorkRows(
     ];
   // Still open, but the checkout says nothing of a review (it is no repository now): the change as
   // HQ tells it — its review is still the way to it.
-  return [openRow(pull, change.standing)];
+  return [openRow(pull, change.standing, now)];
 }
 
 /** An open change as HQ tells it: where it stands, for the person looking where nothing stops it. */
 function openRow(
   pull: FlowPullRequest,
   read: ChangeStandingRead | undefined,
+  now?: number,
 ): Extract<GitWorkRow, { readonly kind: "change" }> {
-  const open = openChangeWords(pull, read);
+  const open = openChangeWords(pull, read, now);
   const standing = rowStanding(pull, read);
   return {
     kind: "change",

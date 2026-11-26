@@ -57,6 +57,7 @@ import {
   ARRIVING_ON_GITHUB,
   GITHUB_CHECKS_FAILED,
   githubChecksFailed,
+  reviewBuildVerdict,
   REVIEW_LABEL,
   waitsForGithub,
 } from "./reviewVerdict.ts";
@@ -400,6 +401,8 @@ function gitVerdict(input: {
   readonly mergeability: MergeabilityKind;
   /** GitHub's checks failed on the change's latest push (`githubChecksFailed`). */
   readonly checksFailed: boolean;
+  readonly reviewBuild: ReturnType<typeof reviewBuildVerdict>;
+  readonly checksGivenUp?: true | undefined;
   readonly githubHandoff: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
@@ -428,7 +431,14 @@ function gitVerdict(input: {
       // there — held to it by a test that reads them all. The words are the
       // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...inReview(input.mergeability, input.baseBranch, input.checksFailed, input.githubHandoff),
+        ...inReview(
+          input.mergeability,
+          input.baseBranch,
+          input.checksFailed,
+          input.githubHandoff,
+          input.reviewBuild,
+          input.checksGivenUp,
+        ),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -481,14 +491,27 @@ function inReview(
   baseBranch: string,
   checksFailed: boolean,
   githubHandoff: boolean,
+  build: ReturnType<typeof reviewBuildVerdict>,
+  givenUp?: true,
 ): Omit<GitVerdict, "ask"> {
   switch (mergeability) {
     case "mergeable":
       if (githubHandoff) return { tone: "busy", text: ARRIVING_ON_GITHUB };
+      if (build?.state === "awaiting" || build?.state === "failing")
+        return {
+          tone: build.state === "awaiting" && !checksFailed ? "busy" : "attention",
+          text: `${build.word}${checksFailed ? ` · ${GITHUB_CHECKS_FAILED}` : ""}`,
+        };
       // Never "Ready to merge" over failed checks: its row and its review say the same.
       return checksFailed
-        ? { tone: "attention", text: GITHUB_CHECKS_FAILED }
-        : { tone: "off", text: "Ready to merge" };
+        ? {
+            tone: "attention",
+            text: `${GITHUB_CHECKS_FAILED}${givenUp === true && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
+          }
+        : {
+            tone: "off",
+            text: build === undefined ? "Ready to merge" : `Ready to merge · ${build.word}`,
+          };
     case "empty":
       return { tone: "off", text: "Nothing to merge" };
     case "checking":
@@ -592,6 +615,7 @@ function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAct
 export function gitBlock(input: {
   readonly checkout: GitCheckoutState;
   readonly changes: GitChangeState;
+  readonly now?: number | undefined;
   readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "name" | "tier" | "sources">>;
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
@@ -633,6 +657,8 @@ export function gitBlock(input: {
     // Read only in review, which has a change.
     mergeability: change?.mergeability ?? "checking",
     checksFailed: change !== undefined && githubChecksFailed(change),
+    reviewBuild: reviewBuildVerdict(change?.reviewBuild, input.now, change?.checksGivenUp),
+    checksGivenUp: change?.checksGivenUp,
     githubHandoff: change !== undefined && waitsForGithub(change),
     baseBranch,
     trouble,

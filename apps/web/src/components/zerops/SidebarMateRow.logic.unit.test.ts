@@ -7,7 +7,13 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import { mateRestartSaid } from "../../zerops/mateMoments.logic.ts";
-import { mateRowLife, mateRowSecond, sidebarMateVerbs } from "./SidebarMateRow.logic.ts";
+import {
+  mateRowLife,
+  mateRowSecond,
+  sidebarMateVerbs,
+  mateAutomation,
+  mateAutomatedLine,
+} from "./SidebarMateRow.logic.ts";
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | return mateDeleting(project.status, mateGoing(mateDeletionOfProject(project))) → return mateDeleting(project.status, false)
 it("MN63: A listed Mate's life, the one its menu row, its find in the jump box and its face on a folded group wear, is deleting while HQ's deletion of it runs or Zerops lists its project DELETING, before anything of its coming up; breaks: a Mate HQ is deleting wears its conversation's face, or its coming up's, in the jump box and a folded group", () => {
@@ -106,4 +112,52 @@ it("MN74: A Mate's row menu keeps the Continue and End HQ offers on its waiting 
   expect(
     sidebarMateVerbs(entries).flatMap((entry) => ("separator" in entry ? [] : [entry.id])),
   ).toEqual(offered);
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | ...(task.reviewBuild === undefined ? {} : { reviewBuild: task.reviewBuild }), → ...(task.reviewBuild === undefined ? { reviewBuild: task.reviewBuild } : {}),
+it("MN113: A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row", () => {
+  const at = "2026-11-26T20:00:00Z";
+  const until = "2026-11-26T20:30:00Z";
+  const head = "a".repeat(40);
+  const rows = [
+    [{ state: "awaiting", head, at, until }, Date.parse(until), undefined, "Awaiting Review build"],
+    [
+      { state: "awaiting", head, at, until },
+      Date.parse(until) + 1,
+      undefined,
+      "up for review · Review build unavailable (no result arrived)",
+    ],
+    [{ state: "failing", head, at }, Date.parse(until), true, "Review build failed · over to you"],
+    [
+      { state: "passing", head, at },
+      Date.parse(until),
+      undefined,
+      "up for review · Review build passed",
+    ],
+  ] as const;
+  for (const [reviewBuild, now, checksGivenUp, expected] of rows) {
+    const automated = mateAutomation({
+      automated: true,
+      task: { title: "Fix checkout", done: true, reviewBuild, checksGivenUp },
+    });
+    expect(automated).toBeDefined();
+    expect(mateAutomatedLine(automated!, "idle", { now }).text).toBe(`Fix checkout · ${expected}`);
+  }
+  const both = mateAutomation(
+    {
+      automated: true,
+      task: {
+        title: "Fix checkout",
+        done: true,
+        reviewBuild: { state: "passing", head, at },
+        checksGivenUp: true,
+        pullRequest: { number: 7, state: "open", checks: "failing" },
+      },
+    },
+    undefined,
+    2,
+  );
+  expect(mateAutomatedLine(both!, "idle", { now: Date.parse(until) }).text).toBe(
+    "Fix checkout · PR #7 checks failing · Review build passed · over to you",
+  );
 });

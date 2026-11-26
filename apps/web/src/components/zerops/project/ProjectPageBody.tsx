@@ -412,6 +412,7 @@ function ProjectWaits<T>({
   readonly waits: ReadonlyArray<CardWait>;
   readonly standingOf: StandingHere;
 }) {
+  const nowMs = useNowMs();
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
@@ -450,7 +451,7 @@ function ProjectWaits<T>({
                 const word =
                   pull === undefined
                     ? (read.comment ?? read.word)
-                    : changeStateFor(pull, read)?.word;
+                    : changeStateFor(pull, read, nowMs)?.word;
                 return {
                   line: changeRowLine(
                     wait.mate.name,

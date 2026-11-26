@@ -1,3 +1,4 @@
+import { useNowMs } from "~/zerops/useNowMs";
 /**
  * A change's address in a conversation, drawn as the change it names.
  *
@@ -72,6 +73,7 @@ export function ZeropsChangeLinkChip({
   readonly inferred?: boolean;
   readonly children: ReactNode;
 }) {
+  const nowMs = useNowMs();
   const openInApp = useContext(AppLinkContext);
   const writtenAt = useContext(ChangeChipMomentContext);
   const hqAddress = useHqAddress();
@@ -144,7 +146,7 @@ export function ZeropsChangeLinkChip({
   const openState =
     pull === undefined || pull.merged || closed
       ? undefined
-      : changeStateFor(pull, standingOf(appId, pull));
+      : changeStateFor(pull, standingOf(appId, pull), nowMs);
   const state =
     pull === undefined
       ? undefined

@@ -1,4 +1,4 @@
-next: ZV194
+next: ZV199
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -162,3 +162,8 @@ next: ZV194
 - ZV191 — A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match
 - ZV192 — A project's standing badge is neutral for kept code, a warning for an open question, informational while deletion is going, and dangerous when deletion needs a person or failed; breaks: a question looks like ordinary kept code
 - ZV193 — A zcp commit-deploy version reads its 12-hex commit for display and matching, while other names keep their existing meaning
+- ZV194 — A Review build's take turns unavailable only after its deadline by the reader's clock, and each result keeps its own state and reason; breaks: a dead service leaves a change awaiting forever or a failed build reads passing
+- ZV195 — The review leaves Merge available and plain while a Review build awaits, fails or is unavailable, recommends it when the build passes, and retains GitHub's checks; breaks: an awaiting build reads ready or Merge is recommended over a failed build
+- ZV196 — A change read from navigation alone carries its Review build and given-up decision into its row; breaks: a failed build without a GitHub pull request reads ready
+- ZV197 — The Git tab reads the Review build of the change at the reader's clock; breaks: it says ready while the build is awaiting or failed, or keeps awaiting past its deadline
+- ZV198 — A project's flow reads an awaiting Review build at its caller's clock; breaks: a project keeps awaiting after the deadline with no new event

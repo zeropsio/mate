@@ -5,6 +5,7 @@ import {
   changeMergeVerdict,
   changeReview,
   mergeCheckWait,
+  reviewBuildVerdict,
   releaseReview,
 } from "./reviewVerdict.ts";
 
@@ -117,4 +118,84 @@ it("ZV152: A change carried by another's landing reads merged as part of it, nev
   expect(carried.verdict.title).toContain("#12");
   expect(carried.verdict.why).toContain("#12");
   expect(carried.primary).toBeUndefined();
+});
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | now > Date.parse(build.until) → now < Date.parse(build.until)
+it("ZV194: A Review build's take turns unavailable only after its deadline by the reader's clock, and each result keeps its own state and reason; breaks: a dead service leaves a change awaiting forever or a failed build reads passing", () => {
+  const at = "2026-11-26T20:00:00Z";
+  const until = "2026-11-26T20:30:00Z";
+  const deadline = Date.parse(until);
+  const taken = { head: HEAD, at, until, state: "awaiting" } as const;
+  const rows = [
+    [taken, deadline, undefined, "awaiting", "Awaiting Review build"],
+    [taken, deadline + 1, undefined, "unavailable", "Review build unavailable (no result arrived)"],
+    [
+      { head: HEAD, at, state: "failing" },
+      deadline,
+      true,
+      "failing",
+      "Review build failed · over to you",
+    ],
+    [
+      { head: HEAD, at, state: "unavailable", reason: "stage moved" },
+      deadline,
+      undefined,
+      "unavailable",
+      "Review build unavailable (stage moved)",
+    ],
+    [{ head: HEAD, at, state: "passing" }, deadline, undefined, "passing", "Review build passed"],
+    [
+      { head: HEAD, at, state: "passing" },
+      deadline,
+      true,
+      "passing",
+      "Review build passed · over to you",
+    ],
+  ] as const;
+  for (const [build, now, givenUp, state, word] of rows) {
+    expect(reviewBuildVerdict(build, now, givenUp)).toEqual({ state, word });
+  }
+  expect(reviewBuildVerdict(undefined, deadline)).toBeUndefined();
+});
+
+// witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (reviewBuild?.state === "awaiting" || reviewBuild?.state === "failing") { → if (reviewBuild?.state === "failing") {
+it("ZV195: The review leaves Merge available and plain while a Review build awaits, fails or is unavailable, recommends it when the build passes, and retains GitHub's checks; breaks: an awaiting build reads ready or Merge is recommended over a failed build", () => {
+  const at = "2026-11-26T20:00:00Z";
+  const pullRequest = {
+    state: "open",
+    checks: "passing",
+    url: "https://example.test/pull/7",
+  } as const;
+  const rows = [
+    ["awaiting", "Awaiting Review build", true],
+    ["failing", "Review build failed", true],
+    ["unavailable", "Ready to merge", true],
+    ["passing", "Ready to merge", false],
+  ] as const;
+  for (const [state, title, plain] of rows) {
+    const model = reviewOf(
+      { ...openChange, pullRequest, reviewBuild: { state, at, head: HEAD } },
+      "read",
+      { merge: true, close: false },
+    );
+    expect(model.verdict.title).toBe(title);
+    expect(model.primary?.enabled).toBe(true);
+    expect(model.primary?.plain === true).toBe(plain);
+    expect(model.primary?.safe).toBe(!plain);
+    expect(model.githubChecks?.state).toBe("passing");
+  }
+  const both = reviewOf(
+    {
+      ...openChange,
+      pullRequest: { ...pullRequest, checks: "failing" },
+      reviewBuild: { state: "failing", at, head: HEAD },
+      checksGivenUp: true,
+    },
+    "read",
+    { merge: true, close: false },
+  );
+  expect(both.verdict.title).toBe("Review build failed · over to you");
+  expect(both.githubChecks?.words).toBe("GitHub's checks failed on its latest push");
+  expect(both.verdict.fix?.verb).toBe("fix them");
+  expect(both.primary?.plain).toBe(true);
 });

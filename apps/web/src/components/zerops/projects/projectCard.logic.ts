@@ -1034,6 +1034,7 @@ export function setupChangeWords(reach: RecipeReach | undefined): string {
  * project's detail is read.
  */
 export function cardChanges(input: {
+  readonly now?: number | undefined;
   readonly open: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Newest first, as the flow lists them. */
@@ -1064,7 +1065,7 @@ export function cardChanges(input: {
     .map((pull): CardChange => {
       const setup = setupChangeWaits(pull);
       const read = input.standingOf?.(pull);
-      const state = openChangeWords(pull, read);
+      const state = openChangeWords(pull, read, input.now);
       const standing = rowStanding(pull, read);
       return {
         pull,

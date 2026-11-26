@@ -1,3 +1,4 @@
+import { useNowMs } from "~/zerops/useNowMs";
 import { Failure } from "~/components/ui/failure";
 import { keyRenewPress } from "~/zerops/renewDeployKey.logic";
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
@@ -1176,6 +1177,7 @@ export function ZeropsStopPane({
   readonly enablingServiceId?: string | null;
   readonly routeTrouble?: string | null;
 }) {
+  const nowMs = useNowMs();
   const [allReleases, setAllReleases] = useState(false);
   // The part of the vault its drawer opens at: a part's row of the aside's card; else its top.
   const [vaultPart, setVaultPart] = useState<string | undefined>(undefined);
@@ -1295,7 +1297,7 @@ export function ZeropsStopPane({
     // A merged change waiting for a release is calm: its row says no word. An open one says
     // where it stands.
     const read = open ? standingOf?.(pull) : undefined;
-    const words = open ? (changeStateFor(pull, read)?.word ?? "Open") : undefined;
+    const words = open ? (changeStateFor(pull, read, nowMs)?.word ?? "Open") : undefined;
     return (
       <ChangeRow
         standing={rowStanding(pull, read)}

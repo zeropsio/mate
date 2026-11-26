@@ -1,7 +1,13 @@
 import { COMPARE_COUNT_MAX } from "@t3tools/shared/hqChanges";
 import { expect, it } from "vite-plus/test";
 
-import { type FlowVerb, flowVerbKey, releaseContentsSummary } from "./projectFlow.ts";
+import {
+  type FlowVerb,
+  flowVerbKey,
+  releaseContentsSummary,
+  flowAppChanges,
+  changeState,
+} from "./projectFlow.ts";
 import type { Moved } from "./releaseCompare.ts";
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts | return `${verb.kind} ${verb.groupId}/${verb.projectId}/${verb.service}`; → return `redeploy ${verb.groupId}/${verb.projectId}/${verb.service}`;
@@ -53,4 +59,41 @@ it("ZV143: A release's contents count each change once however many services tak
     },
   ]);
   expect([counted.total, counted.atLeast]).toEqual([COMPARE_COUNT_MAX + 2, true]);
+});
+
+// witness: packages/client-runtime/src/zerops/projectFlow.ts | ...(change.reviewBuild !== undefined ? { reviewBuild: change.reviewBuild } : {}), → ...(change.reviewBuild === undefined ? { reviewBuild: change.reviewBuild } : {}),
+it("ZV196: A change read from navigation alone carries its Review build and given-up decision into its row; breaks: a failed build without a GitHub pull request reads ready", () => {
+  const build = { head: "a".repeat(40), at: "2026-11-26T20:00:00Z", state: "failing" } as const;
+  const result = flowAppChanges({
+    appId: "app",
+    hqAddress: "https://hq.example.test",
+    detail: undefined,
+    open: [
+      {
+        repo: "web",
+        number: 7,
+        mateProjectId: "mate",
+        title: "Add invoices",
+        state: "open",
+        hasHead: true,
+        updatedAt: "2026-11-26T20:00:00Z",
+        mergeability: "clean",
+        ready: true,
+        reviewBuild: build,
+        checksGivenUp: true,
+      },
+    ],
+  });
+  expect(result.pullRequests[0]?.reviewBuild).toEqual(build);
+  expect(result.pullRequests[0]?.checksGivenUp).toBe(true);
+  expect(changeState(result.pullRequests[0]!, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
+    "Review build failed · over to you",
+  );
+  const both = {
+    ...result.pullRequests[0]!,
+    pullRequest: { state: "open", checks: "failing" },
+  };
+  expect(changeState(both, Date.parse("2026-11-26T20:10:00Z"))?.word).toBe(
+    "Review build failed · over to you · GitHub's checks failed",
+  );
 });

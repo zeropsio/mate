@@ -1,3 +1,4 @@
+import { useNowMs } from "~/zerops/useNowMs";
 /**
  * The Code page, connected: where the Mate's work is — two sources joined where the person
  * already is — above what changed in its code (`CodeChanges`).
@@ -295,6 +296,7 @@ function KnownGitTab({
   /** What the tab says while it lists no repository (`gitEmptyLine`). */
   readonly emptyLine: string;
 }) {
+  const nowMs = useNowMs();
   const environmentId = props.threadRef?.environmentId;
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
   const [generation, setGeneration] = useState(0);
@@ -330,6 +332,7 @@ function KnownGitTab({
             ? undefined
             : mateChangeIn(props.changes, props.mateProjectId, repository, leases);
         const block = gitBlock({
+          now: nowMs,
           checkout: checkouts.get(repository) ?? {
             repository,
             read: false,
@@ -365,6 +368,7 @@ function KnownGitTab({
                   landedWords: change.merged ? landedWords?.(change) : undefined,
                   standing: change.merged ? undefined : standingOf?.(change),
                 },
+            nowMs,
           ),
           github: github?.(block.hqRepository),
           checking: remotes.get(repository)?.checking,
@@ -372,6 +376,7 @@ function KnownGitTab({
       }),
     [
       checkouts,
+      nowMs,
       leases,
       props.changes,
       github,

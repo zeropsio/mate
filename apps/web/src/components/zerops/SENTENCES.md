@@ -1,4 +1,4 @@
-next: MN113
+next: MN114
 
 - MN111 — a finished deletion lands where what stays lives: kept code in Git, a project with a Zerops part on its page, or the projects when nothing stays; breaks: the person sees a fresh deletion form for what they kept.
 - MN112 — an unreadable Stage keeps the project in the menu, as does an unreadable Production, and an environment named by both its placement and its details is shown once; breaks: the page says a project is gone while a Stage or Production stays.
@@ -81,7 +81,7 @@ next: MN113
 - MN74 — A Mate's row menu keeps the Continue and End HQ offers on its waiting restart or move; breaks: an Owner sees no way to end a restart that holds the Mate
 - MN75 — A new Mate HQ says is coming offers no Try now unless its container failed at Zerops, and turns failed with HQ's reason for each refusal code HQ put on its birth, a code this build does not know in its details, its way out its birth's Delete; breaks: Try now on a Mate with no server does nothing, a refused Mate waits as coming forever or offers a Delete HQ does not, or a failed container loses its stop and start
 - MN76 — A new Mate whose hello HQ refused stops its arrival's row on the step that waited for that hello, failed, and nowhere else; breaks: the failed page still spins on Starting under its failed headline
-- MN78 — A change that waits on the person reads "Ready for your review" on the project's line and under "Waiting on you" only where nothing stops it: one whose GitHub checks failed, or that anything else stops, keeps that word.
+- MN78 — A change that waits on the person reads "Ready for your review" on the project's line and under "Waiting on you" only when its Review build is passing, unavailable or absent and nothing else stops it; awaiting or failing keeps that word, and a result keeps its label.
 - MN79 — A repository's row says where its code also lives from its remote on any host, else what it follows, else that it is only in Mate; breaks: a repository on another host than GitHub reads as only in Mate
 - MN80 — The menu says how many kept-code questions are open in one line and none when there is none; breaks: the menu offers the answer in a second place, or says nothing while a question waits
 - MN82 — A repository's upkeep menu offers each verb only to who may change remotes and only where the repository's remote makes it mean something, the storage limit to who may set it, and Delete to whom HQ allows it, and is absent when nothing is offered; breaks: a person who may not change remotes is offered Disconnect, or a repository with no remote has no way to be connected from its page
@@ -107,3 +107,4 @@ next: MN113
 - MN106 — The name block says exactly one state: nothing typed, not the same yet, matching but held by what else is missing, or matching; breaks: the block reads Matches while Delete is closed, or the hold is said twice.
 - MN108 — the live warning says only that it goes offline at once for good; breaks: the warning promises backups for services without them
 - MN109 — End on a Mate's row names the project for a project's deletion, and the Mate for its own deletion or restart; breaks: a person ends the whole project deletion thinking only the Mate's ends.
+- MN113 — A task's row reads its own change's Review build and the given-up decision even without a pull request, and an overdue take becomes unavailable by the reader's clock; breaks: a failed build reads up for review or never reaches its task row

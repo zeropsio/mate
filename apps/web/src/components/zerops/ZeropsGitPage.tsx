@@ -1,3 +1,4 @@
+import { useNowMs } from "~/zerops/useNowMs";
 /** The organization Git overview renders the shared project and repository decisions. */
 import {
   gitOverviewView as overviewView,
@@ -521,6 +522,7 @@ export function ProjectCodeGone() {
 }
 
 export function ZeropsGitPage() {
+  const nowMs = useNowMs();
   const { activeOrganization } = useZeropsSession();
   const retryAccount = useAccountDataOptional()?.retry;
   const flow = useProjectFlows("every");
@@ -571,6 +573,7 @@ export function ZeropsGitPage() {
     [flow.flows, flow.releaseFailures, offersOf, registry.registry.groups],
   );
   const state = gitPageState({
+    now: nowMs,
     appsKnown: !registry.loading,
     apps,
     failure: flow.readFailure ?? inventory?.error ?? undefined,
@@ -583,6 +586,7 @@ export function ZeropsGitPage() {
   const detailOpen = search.appId !== undefined && search.repo !== undefined;
   const projectOpen = search.appId !== undefined && search.repo === undefined;
   const projectState = gitPageState({
+    now: nowMs,
     appsKnown: !registry.loading,
     apps: selectedApp === undefined ? [] : [selectedApp],
     failure: flow.readFailure ?? inventory?.error ?? undefined,

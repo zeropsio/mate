@@ -3,8 +3,8 @@ import { changeStateFor } from "@t3tools/client-runtime/zerops";
 
 import { waitingWords } from "./system/projectLine.logic";
 
-// witness: apps/web/src/components/zerops/system/projectLine.logic.ts | word === READY_TO_MERGE → true
-it('MN78: A change that waits on the person reads "Ready for your review" on the project\'s line and under "Waiting on you" only where nothing stops it: one whose GitHub checks failed, or that anything else stops, keeps that word.', () => {
+// witness: apps/web/src/components/zerops/system/projectLine.logic.ts | word?.startsWith(READY_TO_MERGE) === true → false
+it('MN78: A change that waits on the person reads "Ready for your review" on the project\'s line and under "Waiting on you" only when its Review build is passing, unavailable or absent and nothing else stops it; awaiting or failing keeps that word, and a result keeps its label.', () => {
   const passing = {
     number: 1,
     title: "Add a feature",
@@ -20,6 +20,14 @@ it('MN78: A change that waits on the person reads "Ready for your review" on the
   const rows = [
     [changeStateFor(passing, standing)?.word, false, "Ready for your review"],
     [changeStateFor(failing, standing)?.word, false, "GitHub's checks failed"],
+    ["Awaiting Review build", false, "Awaiting Review build"],
+    ["Review build failed", false, "Review build failed"],
+    ["Ready to merge · Review build passed", false, "Ready for your review · Review build passed"],
+    [
+      "Ready to merge · Review build unavailable (no result arrived)",
+      false,
+      "Ready for your review · Review build unavailable (no result arrived)",
+    ],
     ["Conflicts with main", false, "Conflicts with main"],
     ["Draft", false, "Draft"],
     ["Sam R. commented", false, "Sam R. commented"],

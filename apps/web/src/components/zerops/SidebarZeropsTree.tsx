@@ -1474,6 +1474,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         deployments,
         pending: group?.pending ?? [],
       }),
+      minuteMs,
     );
     // Production and its stages are the project's places: its globe opens them, with every
     // address its Mates have, and what goes wrong with them rises to its row (`ProjectSites`).
@@ -3731,6 +3732,7 @@ function useMateRowState<T extends RosterCandidate>({
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({
+    now: nowMs,
     view,
     askLine,
     deletion,

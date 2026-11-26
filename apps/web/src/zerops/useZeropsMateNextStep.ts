@@ -32,6 +32,7 @@ import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useChangeStandingOf } from "./useChangeStandingOf";
 import { useMateWorkingOn } from "./mateFixing";
 import { useZeropsMateDirectory } from "./useZeropsMates";
+import { useNowMs } from "./useNowMs";
 
 export type ZeropsMateNextStep =
   /**
@@ -77,6 +78,7 @@ export function useZeropsMateNextStep(
   /** The branch of the lease the conversation is bound to: its change is offered first. */
   boundBranch?: string,
 ): ZeropsMateNextStep {
+  const now = useNowMs();
   const inventory = useZeropsInventory();
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
   const mates = useZeropsMateDirectory();
@@ -99,6 +101,7 @@ export function useZeropsMateNextStep(
   if (before !== null || groupId === undefined || appChanges === undefined)
     return before ?? UNKNOWN;
   const step = mateNextStep({
+    now,
     pullRequests: appChanges.pullRequests,
     mateProjectId: projectId,
     mateName: projectId === undefined ? undefined : mateNames.get(projectId),

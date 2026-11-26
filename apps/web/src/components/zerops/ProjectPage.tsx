@@ -370,6 +370,7 @@ function useProjectPageFacts(
   return {
     brought: liveBrought(flow),
     changes: pageChanges({
+      now: nowMs,
       flow: groupFlow,
       read: flow,
       standingOf: (pull) => standingOf(groupId, pull),

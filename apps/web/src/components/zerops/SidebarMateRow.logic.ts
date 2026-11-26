@@ -1,3 +1,5 @@
+import { reviewBuildVerdict } from "@t3tools/client-runtime/zerops/reviewVerdict";
+import type { HqReviewBuild } from "@t3tools/shared/hqChanges";
 import { mateSignInWait } from "@t3tools/client-runtime/zerops/mateAccess";
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
@@ -1166,6 +1168,8 @@ export interface MateAutomationLine {
     readonly stopping?: true | undefined;
     /** Its Mate finished it; its change waits for review. */
     readonly done?: true | undefined;
+    readonly reviewBuild?: HqReviewBuild | undefined;
+    readonly checksGivenUp?: true | undefined;
     readonly pullRequest?: MateTaskPullRequest | undefined;
   } | null;
   /** Free (`task` null), the task it had last, once it ended; absent: it never had one. */
@@ -1221,7 +1225,7 @@ export function mateAutomatedLine(
    * A row's: at work on a task it says so after the task — "#12 Fix the checkout total · working"
    * — the time it has worked standing in the row's clock.
    */
-  options: { readonly saysWorking?: boolean } = {},
+  options: { readonly saysWorking?: boolean; readonly now?: number } = {},
 ): Extract<MateRowSecond, { kind: "task" }> {
   const { task } = automated;
   if (task === null) {
@@ -1244,6 +1248,25 @@ export function mateAutomatedLine(
   if (task.stopping === true)
     return { kind: "task", text: line(statusWords("stopping")), on: false };
   const review = state === "needs" || state === "unread";
+  const build = reviewBuildVerdict(task.reviewBuild, options.now, task.checksGivenUp);
+  if (build !== undefined && task.waiting !== true && !(working && task.done !== true)) {
+    const waiting = build.state === "awaiting" || build.state === "failing";
+    const github = task.pullRequest?.checks === "failing" ? pullRequest : undefined;
+    const prefix = waiting
+      ? (github ?? (task.pullRequest === undefined ? null : pullRequestName(task.pullRequest)))
+      : (pullRequest ?? statusWords("review"));
+    return {
+      kind: "task",
+      text: line([prefix, build.word].filter((word) => word !== null).join(" · ")),
+      on: build.state === "failing" || review,
+    };
+  }
+  if (task.checksGivenUp === true && task.waiting !== true && !(working && task.done !== true))
+    return {
+      kind: "task",
+      text: line([pullRequest, "over to you"].filter((word) => word !== null).join(" · ")),
+      on: true,
+    };
   // Several of its changes wait for review, one per task: how many, at rest.
   const inReview = automated.inReview ?? 0;
   if (inReview > 1 && task.waiting !== true && !(working && task.done !== true))
@@ -1288,6 +1311,8 @@ export function mateAutomation(
               readonly waiting?: true | undefined;
               readonly stopping?: true | undefined;
               readonly done?: true | undefined;
+              readonly reviewBuild?: HqReviewBuild | undefined;
+              readonly checksGivenUp?: true | undefined;
               readonly pullRequest?: MateTaskPullRequest | undefined;
               readonly ended?: MateLastTask["ended"] | undefined;
               readonly endedAt?: string | undefined;
@@ -1317,6 +1342,8 @@ export function mateAutomation(
             ...(task.waiting === true ? { waiting: true } : {}),
             ...(task.stopping === true ? { stopping: true } : {}),
             ...(task.done === true ? { done: true } : {}),
+            ...(task.reviewBuild === undefined ? {} : { reviewBuild: task.reviewBuild }),
+            ...(task.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
             ...(task.pullRequest === undefined
               ? {}
               : {
@@ -1456,6 +1483,7 @@ export function mateStopLine(stop: MateStopStanding | undefined): MateRowSecond 
 }
 
 export function mateRowSecond(input: {
+  readonly now?: number | undefined;
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
   /** How its deletion stands (`mateDeletionOf`); absent: nothing deletes it. */
@@ -1504,7 +1532,10 @@ export function mateRowSecond(input: {
   const { view, askLine, change, automated } = input;
   // A row says an automated Mate at work works, its clock how long.
   const automatedRowLine = (line: MateAutomationLine, state: MateRowState) =>
-    mateAutomatedLine(line, state, { saysWorking: true });
+    mateAutomatedLine(line, state, {
+      saysWorking: true,
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
   if (view.coming !== undefined) return { kind: "coming" };
   const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;

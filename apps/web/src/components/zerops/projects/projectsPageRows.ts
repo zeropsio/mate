@@ -11,6 +11,7 @@ import { groupFlow, hasMate, type CanonicalGroupTreeView } from "@t3tools/client
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { sameValue } from "~/lib/sameValue";
+import { useNowMs } from "~/zerops/useNowMs";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 import { groupNameUnread } from "../ZeropsGroupTree.logic";
 import {
@@ -28,6 +29,7 @@ import type { ProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlow
 
 type Row = ProjectsFlowGroup<ZeropsCandidatePresentation>;
 interface ProjectsRowsInput {
+  readonly now?: number | undefined;
   readonly groups: CanonicalGroupTreeView<ZeropsCandidatePresentation>["groups"];
   readonly flows: ProjectFlows;
   readonly deployments: ReturnType<typeof useStopDeploymentsShown>;
@@ -83,6 +85,7 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
           deployments: input.deployments,
           pending: group.pending,
         }),
+        input.now,
       );
       const statuses = environments.flatMap(({ item }, index) => {
         const name = members[index]?.mate?.name;
@@ -160,9 +163,13 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
 
 export function useProjectsPageRows(input: ProjectsRowsInput): ReadonlyArray<Row> {
   const { groups, flows, deployments, lines } = input;
+  const awaiting = [...flows.flows.values()].some((flow) =>
+    flow.pullRequests.some((pull) => pull.reviewBuild?.state === "awaiting"),
+  );
+  const now = useNowMs(awaiting);
   const atom = useMemo(
-    () => projectsRowsAtom({ groups, flows, deployments, lines }),
-    [groups, flows, deployments, lines],
+    () => projectsRowsAtom({ groups, flows, deployments, lines, now }),
+    [groups, flows, deployments, lines, now],
   );
   return useAtomValue(atom);
 }

@@ -146,6 +146,7 @@ export type MateNextStep =
 const NONE: MateNextStep = { kind: "none" };
 
 export function mateNextStep(input: {
+  readonly now?: number | undefined;
   /** The project's open changes, as its flow reads them; `undefined` before it is read. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest> | undefined;
   /** The Zerops project of the Mate whose conversation this is. */
@@ -340,10 +341,18 @@ function heldTitle(input: {
  */
 function notMerging(
   pull: FlowPullRequest,
-  mate: { readonly mateName: string | undefined; readonly yours?: boolean },
+  mate: {
+    readonly mateName: string | undefined;
+    readonly yours?: boolean;
+    readonly now?: number | undefined;
+  },
 ): MateNextStepVerdict {
-  const { verdict } = changeMergeVerdict({ pull, mateName: mate.mateName ?? "This Mate" });
-  const title = changeState(pull)?.word ?? verdict.title;
+  const { verdict } = changeMergeVerdict({
+    pull,
+    mateName: mate.mateName ?? "This Mate",
+    ...(mate.now === undefined ? {} : { now: mate.now }),
+  });
+  const title = changeState(pull, mate.now)?.word ?? verdict.title;
   if (verdict.fix === undefined || mate.yours === false || mate.mateName === undefined) {
     return { title };
   }

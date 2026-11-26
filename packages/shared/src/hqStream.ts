@@ -282,6 +282,9 @@ export const HqNavigationMateTask = Schema.Struct({
    * merged or closed. Absent: at work, waiting, stopping, or ended (`ended`).
    */
   done: Schema.optionalKey(Schema.Literal(true)),
+  /** The current change’s Review build and whether its checks need a person. */
+  reviewBuild: HqChange.fields.reviewBuild,
+  checksGivenUp: HqChange.fields.checksGivenUp,
   /** The pull request its change is mirrored to on GitHub; absent where none. */
   pullRequest: Schema.optionalKey(HqPullRequest),
   /**

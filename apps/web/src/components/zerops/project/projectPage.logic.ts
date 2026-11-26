@@ -36,6 +36,7 @@ export const CHANGES_HELD = 40;
  * it went — "Merged · waits for production", "Live in v0.1.3".
  */
 export function pageChanges(input: {
+  readonly now?: number | undefined;
   readonly flow: Pick<GroupFlow, "pullRequests" | "stages" | "production">;
   readonly read: ZeropsProjectFlow | undefined;
   /** Where each open change stands for the person looking (`useChangeStandingOf`). */
@@ -43,6 +44,7 @@ export function pageChanges(input: {
 }): ReadonlyArray<CardChange> {
   const { flow, read } = input;
   return cardChanges({
+    now: input.now,
     standingOf: input.standingOf,
     open: flow.pullRequests.map((change) => change.pull),
     merged: read?.merged ?? [],

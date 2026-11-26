@@ -26,11 +26,12 @@ export type RowStanding = Exclude<ChangeStanding["kind"], "to-merge">;
 export function openChangeWords(
   pull: Parameters<typeof changeState>[0],
   standing?: ChangeStandingRead,
+  now?: number,
 ): {
   readonly words: string;
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
 } {
-  const state = changeStateFor(pull, standing);
+  const state = changeStateFor(pull, standing, now);
   return { words: state?.word ?? "Open", tone: state?.tone ?? "off" };
 }
 

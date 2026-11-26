@@ -44,6 +44,7 @@ import {
   ARRIVING_ON_GITHUB,
   GITHUB_CHECKS_FAILED,
   githubChecksFailed,
+  reviewBuildVerdict,
   waitsForGithub,
 } from "./reviewVerdict.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
@@ -153,6 +154,7 @@ export interface FlowPullRequest {
   readonly corePush?: HqCorePush | undefined;
   /** HQ's Review build for this change. */
   readonly reviewBuild?: HqChange["reviewBuild"];
+  readonly checksGivenUp?: true | undefined;
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
   readonly mergeRoute?: HqChange["mergeRoute"];
@@ -281,6 +283,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.reviewBuild === undefined ? {} : { reviewBuild: change.reviewBuild }),
+    ...(change.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
     ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
@@ -351,6 +354,8 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
         : `${change.repo} #${String(change.number)}`,
     updatedAt: change.updatedAt,
     ready: change.ready,
+    ...(change.reviewBuild !== undefined ? { reviewBuild: change.reviewBuild } : {}),
+    ...(change.checksGivenUp === true ? { checksGivenUp: true as const } : {}),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
     ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
@@ -723,19 +728,24 @@ export const READY_TO_MERGE = "Ready to merge";
  * and "not read yet" looked identical. Grey, because no signal is not a good
  * signal — the same quiet its own page gives it.
  */
-export function changeState(pull: {
-  readonly number: number;
-  readonly mergeability: MergeabilityKind;
-  readonly ready?: boolean | undefined;
-  readonly mateGone?: true | undefined;
-  readonly kind: FlowPullRequestKind;
-  readonly title: string;
-  readonly state?: string | undefined;
-  readonly mergeRoute?: HqChange["mergeRoute"];
-  readonly pullRequest?:
-    | { readonly state: string; readonly checks?: string | undefined }
-    | undefined;
-}): ChangeState | undefined {
+export function changeState(
+  pull: {
+    readonly number: number;
+    readonly mergeability: MergeabilityKind;
+    readonly ready?: boolean | undefined;
+    readonly mateGone?: true | undefined;
+    readonly reviewBuild?: HqChange["reviewBuild"];
+    readonly checksGivenUp?: true | undefined;
+    readonly kind: FlowPullRequestKind;
+    readonly title: string;
+    readonly state?: string | undefined;
+    readonly mergeRoute?: HqChange["mergeRoute"];
+    readonly pullRequest?:
+      | { readonly state: string; readonly checks?: string | undefined }
+      | undefined;
+  },
+  now?: number,
+): ChangeState | undefined {
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
   // Nobody carries it on until a person closes it or hands it to another Mate.
@@ -751,12 +761,25 @@ export function changeState(pull: {
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   if (waitsForGithub(pull)) return { word: ARRIVING_ON_GITHUB, tone: "busy" };
+  const build = reviewBuildVerdict(pull.reviewBuild, now, pull.checksGivenUp);
+  if (build?.state === "awaiting" || build?.state === "failing")
+    return {
+      word: `${build.word}${githubChecksFailed(pull) ? ` · ${GITHUB_CHECKS_FAILED}` : ""}`,
+      tone: build.state === "awaiting" && !githubChecksFailed(pull) ? "busy" : "attention",
+    };
   // GitHub's checks failed on its latest push: its review says so in the same amber
   // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
-  if (githubChecksFailed(pull)) return { word: GITHUB_CHECKS_FAILED, tone: "attention" };
+  if (githubChecksFailed(pull))
+    return {
+      word: `${GITHUB_CHECKS_FAILED}${pull.checksGivenUp === true && build === undefined ? " · over to you" : ""}${build === undefined ? "" : ` · ${build.word}`}`,
+      tone: "attention",
+    };
   // Behind `main` and still merging cleanly reads as ready, as its review does: `main` moves every
   // few minutes, and a row asking for it to catch up only ever fell behind again.
-  return { word: READY_TO_MERGE, tone: "off" };
+  return {
+    word: build === undefined ? READY_TO_MERGE : `${READY_TO_MERGE} · ${build.word}`,
+    tone: "off",
+  };
 }
 
 /**
@@ -774,17 +797,21 @@ export function changeStateFor(
         readonly act?: ChangeAct | undefined;
       }
     | undefined,
+  now?: number,
 ): ChangeState | undefined {
   // What is being done to it now comes first: a merge on its way is no longer "Ready to merge".
   if (standing?.act !== undefined) {
     const { word, tone } = changeActWords(standing.act, pull.number);
     return { word, tone };
   }
-  const state = changeState(pull);
+  const state = changeState(pull, now);
   // A comment its person has not read is the news of a change nothing stops: it is theirs again.
-  return standing === undefined || state?.word !== READY_TO_MERGE
+  return standing === undefined || !state?.word.startsWith(READY_TO_MERGE)
     ? state
-    : { word: standing.comment ?? standing.word, tone: state.tone };
+    : {
+        word: `${standing.comment ?? standing.word}${state.word.slice(READY_TO_MERGE.length)}`,
+        tone: state.tone,
+      };
 }
 
 /** What a release would carry, as much of it as a hover has room for. */

@@ -143,7 +143,11 @@ export const lineChangeKey = (pull: Pick<FlowPullRequest, "repository" | "number
 
 /** A waiting change's words on its row and bead, preserving anything that stops it. */
 export function waitingWords(word: string | undefined, setup: boolean): string {
-  return word === READY_TO_MERGE || setup ? "Ready for your review" : (word ?? "Open");
+  return word?.startsWith(READY_TO_MERGE) === true
+    ? `Ready for your review${word.slice(READY_TO_MERGE.length)}`
+    : setup
+      ? "Ready for your review"
+      : (word ?? "Open");
 }
 
 /**
