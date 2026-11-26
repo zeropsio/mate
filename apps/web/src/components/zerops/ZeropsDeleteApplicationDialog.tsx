@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { randomUUID } from "~/lib/utils";
 import { applicationOperationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useHqStructure } from "~/zerops/useHqOffers";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -201,6 +202,7 @@ function ZeropsDeleteApplicationDialog({
     if (previous !== null && !sameDeletionStart(previous, start))
       start = { ...start, id: randomUUID() };
     startId.current = start;
+    const isCurrent = captureAccountLifetime();
     setPressing(true);
     setError(null);
     void operations
@@ -209,12 +211,12 @@ function ZeropsDeleteApplicationDialog({
         ({ progress, evidence }) => {
           const trouble = writeTrouble(progress, evidence);
           if (trouble !== null) throw new Error(trouble);
-          if (!active.current) return;
-          setPressing(false);
+          if (!isCurrent()) return;
           if (start.kind === "start-mate-deletion") {
             mate.leave(start.keptGit === "keep" ? keptWhere(project) : undefined);
-            onClose();
+            if (active.current) onClose();
           }
+          if (active.current) setPressing(false);
         },
         (cause: unknown) => {
           if (!active.current) return;
@@ -267,7 +269,7 @@ function ZeropsDeleteApplicationDialog({
 export function ZeropsDeleteApplicationHost() {
   const request = useDeleteApplicationDialog((state) => state.request);
   const close = useDeleteApplicationDialog((state) => state.close);
-  if (request === null || request.mate === undefined) return null;
+  if (request === null) return null;
   return (
     <ZeropsDeleteApplicationDialog
       appId={request.appId}

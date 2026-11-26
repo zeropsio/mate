@@ -2340,6 +2340,13 @@ export function ZeropsProjectsContent({
             openEmpty: () => {
               setRowDialog({ kind: "delete-group", group });
             },
+            openDeletion: () => {
+              void navigate({
+                to: "/projects/$projectKey/delete",
+                params: { projectKey: group.groupId },
+                search: {},
+              });
+            },
           })),
     ];
     // On the project's own page every other verb has its one place there: the stage it lacks,

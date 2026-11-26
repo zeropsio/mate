@@ -42,7 +42,6 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { appBasePath } from "~/basePath";
 import { useAddMate } from "~/zerops/newMate";
 import { useCodeStandings, type CodeStandingView } from "~/zerops/useCodeStandings";
-import { useHqStructure } from "~/zerops/useHqOffers";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -50,7 +49,6 @@ import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
-import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useAccountOrgId, useProjection } from "~/zerops/accountData";
 import { KeptCodeQuestion, useKeptCodeAnswer } from "./KeptCodeQuestion";
 import { CodeStandingActions, CodeStandingBanner } from "./CodeStandingActions";
@@ -533,7 +531,6 @@ export function ZeropsGitPage() {
   const orgId = useAccountOrgId();
   const questions = useProjection(hqKeptGitQuestions, orgId, NO_QUESTIONS);
   const answer = useKeptCodeAnswer();
-  const structure = useHqStructure();
   const addMate = useAddMate();
   const inventory = useContext(InventoryContext);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
@@ -618,10 +615,11 @@ export function ZeropsGitPage() {
     });
   };
   const deleteGroup = (appId: string) => {
-    const group = registry.registry.groups.find(({ groupId }) => groupId === appId);
-    const app = structure?.apps.find(({ id }) => id === appId);
-    if (group !== undefined && app !== undefined)
-      useDeleteApplicationDialog.getState().open({ appId: app.id, name: app.name });
+    void navigate({
+      to: "/projects/$projectKey/delete",
+      params: { projectKey: appId },
+      search: {},
+    });
   };
 
   return (

@@ -804,7 +804,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
       useDeleteApplicationDialog.getState().open({
         appId: project.appId,
-        name: project.name,
         mate: {
           projectId: candidate.project.id,
           name: projectNameInApp(candidate.project),
@@ -818,6 +817,17 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       });
     },
     [colleagueOf, leaveDeleted, tellKept],
+  );
+
+  const openDeletionPage = useCallback(
+    (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
+      void router.navigate({
+        to: "/projects/$projectKey/delete",
+        params: { projectKey: project.appId },
+        search: { mate: candidate.project.id },
+      });
+    },
+    [router],
   );
 
   /**
@@ -850,7 +860,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       if (start === undefined) {
         if (project !== undefined) {
           replyToDialog(null);
-          openProjectDeletion(candidate, project);
+          openDeletionPage(candidate, project);
         }
         return;
       }
@@ -893,7 +903,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       leaveDeleted,
       captureDialogReply,
       deletionOfferFor,
-      openProjectDeletion,
+      openDeletionPage,
       tellKept,
     ],
   );
@@ -901,7 +911,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   /**
    * A Mate's Delete, as `deletionOffer` answers it: the Mate's own dialog, saying what of its project
    * stays; or — the last Mate of a project the person may delete whole, or one HQ is deleting — the
-   * project's, which offers the Mate alone or the whole project and shows HQ's deletion of it.
+   * project's choice, or the addressable page for a project deletion already standing.
    */
   const openDelete = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
@@ -911,9 +921,10 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         setDialog({ kind: "delete", candidate });
         return;
       }
-      openProjectDeletion(candidate, project);
+      if (offer.kind === "last-choice") openProjectDeletion(candidate, project);
+      else openDeletionPage(candidate, project);
     },
-    [deletionOfferFor, openProjectDeletion, setDialog],
+    [deletionOfferFor, openDeletionPage, openProjectDeletion, setDialog],
   );
 
   /**

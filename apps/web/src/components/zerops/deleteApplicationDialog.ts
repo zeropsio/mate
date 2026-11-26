@@ -1,8 +1,7 @@
 /**
  * Which project's Delete dialog is open (`ZeropsDeleteApplicationDialog`): one at a time, opened
- * from the menu row of a project without a Mate, or by the Delete of a project's last Mate the
- * person may delete with its project (`deletionOffer`'s `last-choice`). Closed by the person, or
- * once HQ deleted the project. Its start runs at HQ: closing it stops nothing.
+ * by the Delete of a project's last Mate when the person may delete it with its project
+ * (`deletionOffer`'s `last-choice`). Its start runs at HQ: closing it stops nothing.
  */
 import { create } from "zustand";
 
@@ -26,9 +25,7 @@ interface DeleteApplicationRequest {
   /** One per opening: a project opened again is a new dialog. */
   readonly id: string;
   readonly appId: string;
-  /** Its name, as HQ holds it: the dialog asks for it typed. */
-  readonly name: string;
-  readonly mate?: DeleteApplicationMate | undefined;
+  readonly mate: DeleteApplicationMate;
 }
 
 interface DeleteApplicationDialogState {

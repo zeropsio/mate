@@ -413,8 +413,6 @@ export interface DeletionConfirmation {
 }
 
 export interface ProjectDeletionWords {
-  /** "Delete shop?" */
-  readonly title: string;
   /** Each thing that goes; `undefined` until HQ said what the project holds. */
   readonly goes: ReadonlyArray<string> | undefined;
   readonly stays: ReadonlyArray<string>;
@@ -434,7 +432,6 @@ export function projectDeletionWords(input: {
   const { name, plan, holdings, mate, slid } = input;
   const code = holdings?.repos.filter((repo) => repo !== RECIPE_REPO) ?? [];
   return {
-    title: `Delete ${name}?`,
     goes:
       holdings === undefined
         ? undefined

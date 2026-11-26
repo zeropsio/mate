@@ -1,13 +1,11 @@
 /**
  * A project's *Delete* on the projects page, where it has no Mate (`deleteOffered`): one HQ says holds nothing opens the page's own dialog (`openEmpty`); one
- * holding code or changes opens the menu's dialog that lists what goes with it and deletes it with
- * its code (`useDeleteApplicationDialog`), the same dialog and the same deletion as the menu's.
+ * holding code or changes opens the project deletion page.
  */
 import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
-import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { deleteOffered } from "./emptyApps.logic";
 
@@ -17,6 +15,7 @@ export function projectDeleteActions(input: {
   readonly offer: HqOfferState["kind"];
   readonly contents: HqAppContents | undefined;
   readonly openEmpty: () => void;
+  readonly openDeletion: () => void;
 }): ReadonlyArray<ZeropsMenuEntry> {
   const { group } = input;
   const offered = deleteOffered(group, input.offer !== "refused", input.contents);
@@ -30,7 +29,7 @@ export function projectDeleteActions(input: {
       disabled: input.offer !== "allowed",
       onSelect: () => {
         if (offered === "empty") input.openEmpty();
-        else useDeleteApplicationDialog.getState().open({ appId: group.groupId, name: group.name });
+        else input.openDeletion();
       },
     },
   ];
