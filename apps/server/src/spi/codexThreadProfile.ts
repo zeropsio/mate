@@ -4,10 +4,12 @@
  *
  * The third of the files the ported zone may import from `spi/`; like the
  * other two it imports nothing from `provider/**`. From a thread's profile
- * it builds what the Codex driver runs that thread with. Codex asks no
- * per-call approval for MCP tools and has no hook, so the gate is Codex's
- * own approval request: every command and file change is answered by the
- * profile's `decideTool`.
+ * it builds what the Codex driver runs that thread with. Codex has no hook,
+ * so the gate is Codex's own approval request: every command and file change
+ * is answered by the profile's `decideTool`. zcp's MCP server stays off, as
+ * this file answers no MCP approval, and the profile's tools are served as
+ * an MCP server of the thread's own, which Codex calls unasked: the crew
+ * allows its own tools to every crewmate.
  *
  * @module codexThreadProfile
  */
@@ -17,9 +19,11 @@ import * as NodePath from "node:path";
 import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
+import type * as Scope from "effect/Scope";
 import type * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { DECIDE_TOOL_TIMEOUT } from "./claudeThreadProfile.ts";
+import { THREAD_TOOLS_SERVER } from "./mcpToolTitle.ts";
 import {
   type InstallSlot,
   threadProfileFor,
@@ -28,6 +32,7 @@ import {
   type ThreadToolProfile,
   type ToolDecision,
 } from "./threadToolPolicy.ts";
+import { serveThreadTools, type ThreadToolsStdioServer } from "./threadToolsMcp.ts";
 
 /** Codex's answer to an approval request of a gated thread. */
 export type CodexGateDecision = "accept" | "decline";
@@ -226,19 +231,31 @@ export function codexProfileModelSelection(
   return { instanceId, model, ...(options.length > 0 ? { options } : {}) };
 }
 
+/** A served tools server as Codex's config names an MCP server, called with no approval asked. */
+const unaskedMcpServer = (server: ThreadToolsStdioServer): Record<string, unknown> => ({
+  [`mcp_servers.${server.name}.command`]: server.command,
+  [`mcp_servers.${server.name}.args`]: [...server.args],
+  [`mcp_servers.${server.name}.env`]: Object.fromEntries(
+    server.env.map(({ name, value }) => [name, value]),
+  ),
+  [`mcp_servers.${server.name}.default_tools_approval_mode`]: "approve",
+});
+
 /**
  * What a thread with this profile runs with on Codex: an approval policy
  * that sends commands and file changes to the gate (the reviewer stated,
  * since an omitted one stays as the thread last had it), zcp's MCP server
- * off and the context window as the compaction limit for this thread
- * alone, the session context as the thread's developer instructions, after
- * the project's guidance when Codex would not read it itself, and a
- * read-only sandbox for a thread that only reads.
+ * off, the profile's tools as served for this session, and the context
+ * window as the compaction limit, for this thread alone, the session
+ * context as the thread's developer instructions, after the project's
+ * guidance when Codex would not read it itself, and a read-only sandbox for
+ * a thread that only reads.
  * Codex has no spend cap, so `maxBudgetUsd` has nothing to become.
  */
 export function codexThreadSetup(
   profile: ThreadToolProfile,
   projectGuidance?: string,
+  tools?: ThreadToolsStdioServer,
 ): CodexThreadSetup {
   return {
     thread: {
@@ -250,6 +267,7 @@ export function codexThreadSetup(
         .join("\n\n"),
       config: {
         [`mcp_servers.${ZCP_MCP_SERVER}.enabled`]: false,
+        ...(tools === undefined ? {} : unaskedMcpServer(tools)),
         model_auto_compact_token_limit: profile.contextWindow,
       },
     },
@@ -305,20 +323,31 @@ const readProjectGuidance = (
   );
 };
 
-/** What a session starts with: no setup and the thread's own model unless it has a profile. */
+/**
+ * What a session starts with, in the session's scope: no setup and the thread's own model unless
+ * it has a profile, whose tools are served for the session.
+ */
 export const codexThreadStart = (
   policies: Option.Option<InstallSlot<ThreadToolPolicy>>,
   thread: ThreadRef,
   selection: ModelSelection | undefined,
-): Effect.Effect<{
-  readonly setup: CodexThreadSetup | undefined;
-  readonly modelSelection: ModelSelection | undefined;
-}> =>
+): Effect.Effect<
+  {
+    readonly setup: CodexThreadSetup | undefined;
+    readonly modelSelection: ModelSelection | undefined;
+  },
+  never,
+  Scope.Scope
+> =>
   Effect.gen(function* () {
     const profile = yield* threadProfileFor(policies, thread);
     const guidance = yield* readProjectGuidance(profile);
+    const tools =
+      profile === undefined || profile.tools.length === 0
+        ? undefined
+        : yield* serveThreadTools(THREAD_TOOLS_SERVER, profile.tools);
     return {
-      setup: profile ? codexThreadSetup(profile, guidance) : undefined,
+      setup: profile ? codexThreadSetup(profile, guidance, tools) : undefined,
       modelSelection: codexProfileModelSelection(profile, thread.instanceId, selection),
     };
   });

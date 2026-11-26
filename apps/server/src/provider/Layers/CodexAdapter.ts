@@ -1851,8 +1851,14 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           yield* Effect.suspend(() => stopSessionInternal(existing));
         }
 
-        // A thread with a tool profile runs gated, on the profile's model;
-        // every other thread gets exactly the options below.
+        const sessionScope = yield* Scope.make("sequential");
+        let sessionScopeTransferred = false;
+        yield* Effect.addFinalizer(() =>
+          sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
+        );
+        // A thread with a tool profile runs gated, on the profile's model, its
+        // tools served for the session; every other thread gets exactly the
+        // options below.
         const thread = yield* codexThreadStart(
           threadPolicies,
           {
@@ -1861,7 +1867,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             ...(input.cwd ? { cwd: input.cwd } : {}),
           },
           input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
-        );
+        ).pipe(Effect.provideService(Scope.Scope, sessionScope));
         const serviceTier = getCodexServiceTierOptionValue(thread.modelSelection);
         const contextWindow = getCodexContextWindowOptionValue(
           thread.modelSelection,
@@ -1885,11 +1891,6 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(contextWindow ? { contextWindow } : {}),
           ...(thread.setup ? { threadSetup: thread.setup } : { persona: readPersona }),
         };
-        const sessionScope = yield* Scope.make("sequential");
-        let sessionScopeTransferred = false;
-        yield* Effect.addFinalizer(() =>
-          sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
-        );
         // Codex reports a usage-limit stop as OpenAI's own sentence, which on a
         // Business workspace blames credits for a window that ran out. The
         // snapshot naming that window arrives in its own notification, before or
@@ -2290,7 +2291,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     capabilities: {
       sessionModelSwitch: "in-session",
       inSessionModelOptions: ["reasoningEffort", "serviceTier", "fastMode"],
-      threadProfile: { tools: false, reportsSpend: false },
+      threadProfile: { tools: true, reportsSpend: false },
     },
     startSession,
     sendTurn,

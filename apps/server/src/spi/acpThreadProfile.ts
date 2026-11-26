@@ -169,17 +169,66 @@ const mcpToolName = (title: string | null | undefined): string | undefined => {
 };
 
 /**
+ * An MCP call its input names whole, as Antigravity asks for a configured server's tool
+ * (`call_mcp_tool`, of kind `execute`): its server, tool and arguments (measured, agy 1.5.18).
+ */
+const namedMcpCall = (
+  rawInput: unknown,
+): { readonly server: string; readonly tool: string; readonly input: unknown } | undefined =>
+  isRecord(rawInput) &&
+  typeof rawInput.ServerName === "string" &&
+  typeof rawInput.ToolName === "string"
+    ? { server: rawInput.ServerName, tool: rawInput.ToolName, input: rawInput.Arguments ?? {} }
+    : undefined;
+
+/** The object a fenced JSON block of a call's content holds. */
+const fencedJsonOf = (content: AcpToolCall["content"]): Record<string, unknown> | undefined => {
+  for (const entry of content ?? []) {
+    if (entry.type !== "content" || entry.content.type !== "text") continue;
+    const body = /^```json\n([\s\S]*)\n```$/u.exec(entry.content.text.trim())?.[1];
+    if (body === undefined) continue;
+    try {
+      const value: unknown = JSON.parse(body);
+      if (isRecord(value)) return value;
+    } catch {
+      // Not JSON: no arguments read from it.
+    }
+  }
+  return undefined;
+};
+
+/**
+ * The arguments an MCP call named by its title gets: its input without the summary Antigravity
+ * adds to every call and drops before it (`toolSummary`), or, where it carries no input, the
+ * fenced JSON its content shows, as Cursor asks (measured, agy 1.5.18, cursor-agent 2026.10.22).
+ */
+const mcpInputOf = (toolCall: AcpToolCall): Record<string, unknown> => {
+  const input = toolCall.rawInput;
+  if (!isRecord(input)) return fencedJsonOf(toolCall.content) ?? {};
+  const { toolSummary: _summary, ...rest } = input;
+  return rest;
+};
+
+/**
  * The calls one permission request makes, shaped as Claude's tools: a
  * command is a `Bash` call, an edit, deletion or move an `Edit` of every
  * file it names, a read a `Read`, a search a `Grep`, a fetch a `WebFetch`,
- * and a call of no kind an MCP tool by its title. `undefined` when the
- * request names nothing the gate can judge, which declines it; an empty list
- * is a call that needs no gate (thinking).
+ * and an MCP call the tool its input names or, in a call of no kind of its
+ * own, its title. `undefined` when the request names nothing the gate can
+ * judge, which declines it; an empty list is a call that needs no gate
+ * (thinking).
  */
 export const acpGateCalls = (
   toolCall: AcpToolCall,
   cwd: string,
 ): ReadonlyArray<AcpGateCall> | undefined => {
+  const named = namedMcpCall(toolCall.rawInput);
+  if (named !== undefined) {
+    const toolName = mcpToolName(`${named.server}: ${named.tool}`);
+    return toolName === undefined || !isRecord(named.input)
+      ? undefined
+      : [{ toolName, input: named.input }];
+  }
   const paths = pathsOf(toolCall, cwd);
   const each = (toolName: string) =>
     paths.length === 0
@@ -217,9 +266,7 @@ export const acpGateCalls = (
       return undefined;
     default: {
       const toolName = mcpToolName(toolCall.title);
-      return toolName === undefined
-        ? undefined
-        : [{ toolName, input: isRecord(toolCall.rawInput) ? toolCall.rawInput : {} }];
+      return toolName === undefined ? undefined : [{ toolName, input: mcpInputOf(toolCall) }];
     }
   }
 };
