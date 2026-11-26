@@ -452,6 +452,8 @@ export const HqNavigationChange = Schema.Struct({
   mergeAsk: HqChange.fields.mergeAsk,
   /** The other open changes of its repository it merges after; absent where none. */
   buildsOn: HqChange.fields.buildsOn,
+  reviewBuild: HqChange.fields.reviewBuild,
+  checksGivenUp: HqChange.fields.checksGivenUp,
 });
 export type HqNavigationChange = typeof HqNavigationChange.Type;
 export const HqNavigationChanges = Schema.Array(HqNavigationChange);

@@ -217,6 +217,35 @@ export const HqLastComment = Schema.Struct({
 });
 export type HqLastComment = typeof HqLastComment.Type;
 
+/** One stage-backed setup's result in the Review build. */
+export const HqReviewBuildPart = Schema.Struct({
+  setup: Schema.String,
+  stage: Schema.String,
+  outcome: Schema.Literals(["ok", "failed", "unavailable"]),
+  phase: Schema.optionalKey(Schema.Literals(["build", "deploy", "health"])),
+  appVersionId: Schema.optionalKey(Schema.String),
+  reason: Schema.optionalKey(Schema.String),
+  probe: Schema.optionalKey(
+    Schema.Struct({
+      url: Schema.String,
+      status: Schema.optionalKey(Schema.Int),
+      at: Instant,
+    }),
+  ),
+});
+export type HqReviewBuildPart = typeof HqReviewBuildPart.Type;
+
+/** HQ's current-head reading of the Review build reported by the Mate. */
+export const HqReviewBuild = Schema.Struct({
+  state: Schema.Literals(["awaiting", "passing", "failing", "unavailable"]),
+  head: Sha,
+  at: Instant,
+  until: Schema.optionalKey(Instant),
+  reason: Schema.optionalKey(Schema.String),
+  parts: Schema.optionalKey(Schema.Array(HqReviewBuildPart)),
+});
+export type HqReviewBuild = typeof HqReviewBuild.Type;
+
 export const HqChange = Schema.Struct({
   recipeValidation: Schema.optionalKey(HqRecipeValidation),
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -326,6 +355,10 @@ export const HqChange = Schema.Struct({
    * GitHub's does not: nothing is pushed there until either side moves. Absent while they follow.
    */
   mirrorDivergedSince: Schema.optionalKey(HqTargetTimestamp),
+  /** Present while HQ holds a Review build for this open code change's current head. */
+  reviewBuild: Schema.optionalKey(HqReviewBuild),
+  /** The Mate has given up repairing checks; a person is needed. */
+  checksGivenUp: Schema.optionalKey(Schema.Literal(true)),
   /** The last receipt zcp wrote on it, whole; `null` for a single-part application's change. */
   receipt: Schema.NullOr(ChangeReceipt),
 });
@@ -695,6 +728,8 @@ export const MateChange = Schema.Struct({
   behind: Schema.optionalKey(Schema.Boolean),
   /** On an open change: its last push, edit of its words, or comment. Absent as `ready` is. */
   updatedAt: Schema.optionalKey(Instant),
+  reviewBuild: HqChange.fields.reviewBuild,
+  checksGivenUp: HqChange.fields.checksGivenUp,
 });
 export type MateChange = typeof MateChange.Type;
 
