@@ -728,7 +728,7 @@ export default function Sidebar() {
     askNewProject();
   }, [askNewProject, isMobile, setOpenMobile]);
 
-  // The left menu's add button asks for a Mate on a named project: the New Mate
+  // A project's menu asks for a Mate in that project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
   // "Add stage": the projects page's own form, opened there; "Put it live": its sheet, here.
@@ -770,26 +770,17 @@ export default function Sidebar() {
     [isMobile, router, setOpenMobile],
   );
 
-  // The + asks for a Mate in one of the organization's projects, over whatever is on screen: only
-  // those HQ offers a new Mate in, as the menu's own rows do.
+  // Keep the disabled + only where it already explained that no project takes a Mate.
   const zeropsMenuProjects = useMenuProjects();
   const addMateOffer = useAddMateOffer();
-  const zeropsMateProjects = useMemo(
-    () => zeropsMenuProjects.filter((project) => addMateOffer(project.id).kind === "allowed"),
-    [addMateOffer, zeropsMenuProjects],
-  );
-  // No project takes a Mate from this person, who works with one: the + says whom to ask.
   const addMateDoor = useAddMateDoor();
-  const zeropsAddMateWhy = zeropsMenuProjects
-    .map((project) => addMateDoor(project.id))
-    .find((door) => door.kind === "off")?.why;
-  const onZeropsNewMate = useCallback(
-    (groupId: string) => {
-      if (isMobile) setOpenMobile(false);
-      addMate(groupId);
-    },
-    [addMate, isMobile, setOpenMobile],
-  );
+  const zeropsAddMateWhy = zeropsMenuProjects.some(
+    (project) => addMateOffer(project.id).kind === "allowed",
+  )
+    ? undefined
+    : zeropsMenuProjects
+        .map((project) => addMateDoor(project.id))
+        .find((door) => door.kind === "off")?.why;
   const addAutomatedMates = useAddAutomatedMates();
   const onZeropsNewAutomatedMates = useCallback(
     (groupId: string) => {
@@ -1753,10 +1744,7 @@ export default function Sidebar() {
   );
   const zeropsCreate = zeropsSignedIn ? (
     <SidebarCreateButton
-      onNewMate={onZeropsNewMate}
-      onNewAutomatedMates={onZeropsNewAutomatedMates}
       onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
-      projects={zeropsMateProjects}
       why={zeropsAddMateWhy}
     />
   ) : null;

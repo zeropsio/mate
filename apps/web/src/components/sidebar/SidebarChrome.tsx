@@ -29,15 +29,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "../ui/sidebar";
-import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
-  MenuTrigger,
-} from "../ui/menu";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
@@ -62,7 +53,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   status?: ReactNode;
   /**
    * The row's two quiet squares, on its end edge 16 px in from the divider: search, and + for a
-   * new Mate or project. Absent where the menu offers neither.
+   * new project. Absent where the menu does not offer it.
    */
   actions?: ReactNode;
 }) {
@@ -119,31 +110,20 @@ export function SidebarOverviewLink({ current }: { readonly current: boolean }) 
   );
 }
 
-/** A project New Mate may be asked in: its id (the group) and its name. */
+/** A project the menu names: its id (the group) and its name. */
 export interface SidebarCreateProject {
   readonly id: string;
   readonly name: string;
 }
 
 /**
- * The top row's +: a small menu with New Mate and New project, the menu's own
- * flows (`useAddMate`, `useAskNewProject`). New Mate asks in a project: where
- * there is one, at once; with several, it lists them. It holds only what the
- * viewer's role may make — no `onNewProject` where it may not create projects —
- * its name says what it holds, and with nothing to make it is not drawn. With New
- * project alone it is no menu: it asks for one at once.
+ * The top row's + opens New project at once. Where the viewer may not create a project it is
+ * absent, except for the existing disabled door explaining why no Mate may be added anywhere.
  */
 export function SidebarCreateButton({
-  projects,
-  onNewMate,
-  onNewAutomatedMates,
   onNewProject,
   why,
 }: {
-  readonly projects: ReadonlyArray<SidebarCreateProject>;
-  readonly onNewMate: (projectId: string) => void;
-  /** *Automated Mates…* in a project, where this HQ makes them. */
-  readonly onNewAutomatedMates?: ((projectId: string) => void) | undefined;
   /** New project, where the viewer's role creates projects. */
   readonly onNewProject?: (() => void) | undefined;
   /**
@@ -152,14 +132,7 @@ export function SidebarCreateButton({
    */
   readonly why?: string | undefined;
 }) {
-  const [only] = projects;
-  const label =
-    only === undefined
-      ? "New project"
-      : onNewProject === undefined
-        ? "New Mate"
-        : "New Mate or project";
-  if (only === undefined && onNewProject === undefined) {
+  if (onNewProject === undefined) {
     if (why === undefined) return null;
     return (
       <Tooltip>
@@ -180,112 +153,24 @@ export function SidebarCreateButton({
       </Tooltip>
     );
   }
-  // New project alone is made at once: a menu holding only what the button is named for is a
-  // second press that decides nothing.
-  if (only === undefined && onNewProject !== undefined)
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-label={label}
-              data-zerops-create="project"
-              data-zerops-surface="sidebar-create"
-              onClick={onNewProject}
-              size="icon-md"
-              variant="sidebar"
-            />
-          }
-        >
-          <CirclePlusIcon aria-hidden="true" className="size-5" />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">{label}</TooltipPopup>
-      </Tooltip>
-    );
   return (
-    <Menu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label={label}
-                  data-zerops-surface="sidebar-create"
-                  size="icon-md"
-                  variant="sidebar"
-                />
-              }
-            />
-          }
-        >
-          <CirclePlusIcon aria-hidden="true" className="size-5" />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">{label}</TooltipPopup>
-      </Tooltip>
-      <MenuPopup align="end" width="sm">
-        <CreateInProject label="New Mate" kind="mate" onPick={onNewMate} projects={projects} />
-        {onNewAutomatedMates === undefined ? null : (
-          <CreateInProject
-            label="Automated Mates…"
-            kind="automated"
-            onPick={onNewAutomatedMates}
-            projects={projects}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            aria-label="New project"
+            data-zerops-create="project"
+            data-zerops-surface="sidebar-create"
+            onClick={onNewProject}
+            size="icon-md"
+            variant="sidebar"
           />
-        )}
-        {onNewProject === undefined ? null : (
-          <MenuItem data-zerops-create="project" onClick={onNewProject}>
-            New project
-          </MenuItem>
-        )}
-      </MenuPopup>
-    </Menu>
-  );
-}
-
-/** One thing Add makes in a project: at once where there is one, else a list of them. */
-function CreateInProject({
-  label,
-  kind,
-  projects,
-  onPick,
-}: {
-  readonly label: string;
-  readonly kind: "mate" | "automated";
-  readonly projects: ReadonlyArray<SidebarCreateProject>;
-  readonly onPick: (projectId: string) => void;
-}) {
-  const [only] = projects;
-  if (only === undefined) return null;
-  if (projects.length === 1)
-    return (
-      <MenuItem
-        data-zerops-create={kind}
-        onClick={() => {
-          onPick(only.id);
-        }}
+        }
       >
-        {label}
-      </MenuItem>
-    );
-  return (
-    <MenuSub>
-      <MenuSubTrigger data-zerops-create={kind}>{label}</MenuSubTrigger>
-      <MenuSubPopup>
-        {projects.map((project) => (
-          <MenuItem
-            data-zerops-automated-in={kind === "automated" ? project.id : undefined}
-            data-zerops-create-in={kind === "mate" ? project.id : undefined}
-            key={project.id}
-            onClick={() => {
-              onPick(project.id);
-            }}
-          >
-            {project.name}
-          </MenuItem>
-        ))}
-      </MenuSubPopup>
-    </MenuSub>
+        <CirclePlusIcon aria-hidden="true" className="size-5" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">New project</TooltipPopup>
+    </Tooltip>
   );
 }
 

@@ -1417,11 +1417,7 @@ function SidebarFrame({
           <>
             <SidebarScopeButton onScope={() => menuActions.push("scope")} scope="everyone" />
             <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
-            <SidebarCreateButton
-              onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
-              onNewProject={() => menuActions.push("new project")}
-              projects={HARNESS_PROJECTS}
-            />
+            <SidebarCreateButton onNewProject={() => menuActions.push("new project")} />
           </>
         }
       />
@@ -1809,13 +1805,7 @@ function RailFrame({
           organizations={[ORGANIZATION]}
         />
       }
-      create={
-        <SidebarCreateButton
-          onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
-          onNewProject={() => menuActions.push("new project")}
-          projects={HARNESS_PROJECTS}
-        />
-      }
+      create={<SidebarCreateButton onNewProject={() => menuActions.push("new project")} />}
       find={
         <>
           <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
