@@ -19,12 +19,14 @@ import type {
   ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
+import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/data";
 import { type CrewAskSeat, crewFromAsk } from "@t3tools/shared/crewTemplates";
 import { createContext, type ReactNode, use, useMemo } from "react";
 
 import { useServerConfigs } from "~/state/entities";
 import { openCrewTab, openCrewView } from "~/zerops/crew/crewTab";
 import { useCrew } from "~/zerops/crew/useCrew";
+import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { PROVIDER_ICON_BY_PROVIDER } from "../chat/providerIconUtils";
 import { Badge } from "../ui/badge";
@@ -38,6 +40,7 @@ import { AskCard, AskFooter } from "./AskCard";
 import type { AskState } from "./ask.logic";
 import {
   type CrewAsk,
+  type CrewAskAvailability,
   type CrewAskRunsOn,
   crewAskGoalLead,
   crewAskMissing,
@@ -87,11 +90,25 @@ function CrewAskCard({
   const { environmentId } = threadRef;
   const whoLivesHere = useZeropsMate(environmentId);
   const providers = useServerConfigs().get(environmentId)?.providers ?? NO_PROVIDERS;
+  const agentAuth = useZeropsAgentAuth(environmentId);
+  // Which logins may run, as the model picker reads them: an installed agent signed out may not.
+  const availability = useMemo(
+    () =>
+      resolveZeropsProviderAvailability({
+        entries: providers.map((provider) => ({
+          instanceId: provider.instanceId,
+          driverKind: provider.driver,
+        })),
+        agentAuth,
+      }),
+    [agentAuth, providers],
+  );
   const status = useCrew(environmentId).status;
   const signIn = use(CrewAskSignInContext);
   return (
     <CrewAskCardView
       ask={ask}
+      availability={availability}
       mate={whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined}
       onOpenCrew={() => openCrewTab(threadRef, { setUp: false })}
       onSignIn={signIn}
@@ -115,6 +132,7 @@ export function CrewAskCardView({
   ask,
   mate,
   providers,
+  availability,
   status,
   onSetUp,
   onOpenCrew,
@@ -123,6 +141,8 @@ export function CrewAskCardView({
   readonly ask: CrewAsk;
   readonly mate: { readonly name: string; readonly tint: MateTintId } | undefined;
   readonly providers: ReadonlyArray<ServerProvider>;
+  /** Which of them may run, by their sign-in; `undefined` where nothing gates them. */
+  readonly availability: CrewAskAvailability;
   readonly status: CrewStatus | null;
   /** Opens the setup filled in with the crew, each crewmate on what it runs on here. */
   readonly onSetUp: (seats: ReadonlyArray<CrewAskSeat>) => void;
@@ -144,8 +164,12 @@ export function CrewAskCardView({
   );
 
   const rows = useMemo(
-    () => ask.crew.map((crewmate) => ({ crewmate, runsOn: crewAskRunsOn(crewmate, providers) })),
-    [ask, providers],
+    () =>
+      ask.crew.map((crewmate) => ({
+        crewmate,
+        runsOn: crewAskRunsOn(crewmate, providers, availability),
+      })),
+    [ask, availability, providers],
   );
   const missing = crewAskMissing(rows);
   // One press per agent this viewer can sign this Mate in to here; the rows follow the sign-in.
@@ -197,7 +221,7 @@ export function CrewAskCardView({
               ? {
                   label: "Set up crew…",
                   disabled: status === null,
-                  onPress: () => onSetUp(crewAskSeats(ask, providers)),
+                  onPress: () => onSetUp(crewAskSeats(ask, providers, availability)),
                 }
               : null
           }

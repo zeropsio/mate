@@ -41,7 +41,7 @@ import {
 } from "~/components/ask/AskCard";
 import { AskRevealed } from "~/components/ask/AskSecret";
 import { CrewAskCardView } from "~/components/ask/CrewAsk";
-import { parseCrewAsk } from "~/components/ask/crewAsk.logic";
+import { type CrewAskAvailability, parseCrewAsk } from "~/components/ask/crewAsk.logic";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
@@ -1185,6 +1185,10 @@ const CLAUDE_LOGIN = crewLogin("claudeAgent", "claudeAgent", "Claude Code", [
   ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
 ]);
 const CODEX_LOGIN = crewLogin("codex", "codex", "Codex", [["gpt-6-sol", "GPT-6 Sol"]]);
+/** Codex installed on the Mate but nobody signed in to it, as the agents' sign-in feed reads it. */
+const CODEX_SIGNED_OUT: CrewAskAvailability = new Map([
+  [CODEX_LOGIN.instanceId, { kind: "needs-sign-in", signInKind: "not-authorized" }],
+]);
 
 const CREW_ASK = parseCrewAsk(
   JSON.stringify({
@@ -1244,7 +1248,8 @@ function CrewSetUp({ density }: { readonly density: AskDensity }) {
         onOpenCrew={() => undefined}
         onSetUp={() => undefined}
         onSignIn={() => undefined}
-        providers={state === "signIn" ? [CLAUDE_LOGIN] : [CLAUDE_LOGIN, CODEX_LOGIN]}
+        availability={state === "signIn" ? CODEX_SIGNED_OUT : undefined}
+        providers={[CLAUDE_LOGIN, CODEX_LOGIN]}
         status={status}
       />
     </Specimen>

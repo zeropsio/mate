@@ -5,11 +5,14 @@
  * and the card says so. Its press opens the Crew tab's setup filled in with it, to change and
  * start there.
  */
+import { isZeropsInstanceRunnable } from "@t3tools/client-runtime/data";
+import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { ZEROPS_AGENT_NAMES } from "@t3tools/client-runtime/zerops/agentSignIn";
 import {
   agentIdForDriverKind,
   isZeropsAgentId,
   type CrewMemberKind,
+  type ProviderInstanceId,
   type ServerProvider,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
@@ -140,11 +143,18 @@ export interface CrewAskMissingAgent {
   readonly agentId: ZeropsAgentId | undefined;
 }
 
+/** Each login's sign-in as the model picker reads it (`resolveZeropsProviderAvailability`). */
+export type CrewAskAvailability =
+  | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
+  | undefined;
+
 /**
  * What a crewmate runs on among this Mate's sign-ins: the login of the agent the Mate named, the
- * model it named there (by id or name), and the effort that model offers (by id or name). An agent
- * it isn't signed in to runs on its first login that may (a lead's hosts the crew tools), and
- * `missing` names that agent; `login` is `null` only where no login may.
+ * model it named there (by id or name), and the effort that model offers (by id or name). A login
+ * counts once it may run as the model picker says (`isZeropsInstanceRunnable`): an agent installed
+ * but signed out is one it isn't signed in to. Such an agent runs on its first login that may (a
+ * lead's hosts the crew tools), and `missing` names that agent; `login` is `null` only where no
+ * login may.
  */
 export interface CrewAskRunsOn {
   readonly login: {
@@ -161,10 +171,14 @@ export interface CrewAskRunsOn {
 export function crewAskRunsOn(
   crewmate: CrewAskCrewmate,
   providers: ReadonlyArray<ServerProvider>,
+  availability: CrewAskAvailability,
 ): CrewAskRunsOn {
   const driverOfLogin = (id: string) =>
     providers.find((provider) => provider.instanceId === id)?.driver;
-  const logins = crewLoginOptions(providers, crewmate.kind === "lead");
+  const logins = crewLoginOptions(
+    providers.filter((provider) => isZeropsInstanceRunnable(availability, provider.instanceId)),
+    crewmate.kind === "lead",
+  );
   const driver = crewmate.agent === undefined ? undefined : driverOf(crewmate.agent);
   const named =
     driver === undefined ? undefined : logins.find((login) => driverOfLogin(login.id) === driver);
@@ -212,9 +226,10 @@ export function crewAskRunsOn(
 export function crewAskSeats(
   ask: CrewAsk,
   providers: ReadonlyArray<ServerProvider>,
+  availability: CrewAskAvailability,
 ): ReadonlyArray<CrewAskSeat> {
   return ask.crew.map((crewmate) => {
-    const runsOn = crewAskRunsOn(crewmate, providers);
+    const runsOn = crewAskRunsOn(crewmate, providers, availability);
     return {
       name: crewmate.name,
       kind: crewmate.kind,
