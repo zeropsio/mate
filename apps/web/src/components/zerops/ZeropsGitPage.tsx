@@ -1,6 +1,7 @@
 /** The organization Git overview renders the shared project and repository decisions. */
 import {
-  gitChangesSummary,
+  gitChangesStatus,
+  gitOverviewView,
   gitOverviewGroups,
   codeStandingLine,
   codeStandingSentence,
@@ -81,7 +82,7 @@ function ReadTrouble({
   );
 }
 
-type GitGroup = ReturnType<typeof gitOverviewGroups>["used"][number];
+type GitGroup = ReturnType<typeof gitOverviewGroups>["groups"][number];
 type OverviewProps = {
   readonly state: GitPageState;
   readonly standingOf: (appId: string) => CodeStandingView;
@@ -193,7 +194,11 @@ function ProjectGroup({
           <List>
             {group.repositories.map((repository) => {
               const where = repositoryWhere(repository.facts);
-              const summary = gitChangesSummary(repository.changes);
+              const status = gitChangesStatus(repository.changes);
+              const summary =
+                status === undefined
+                  ? undefined
+                  : `${String(status.open)} open ${status.open === 1 ? "change" : "changes"}${status.words ? ` · ${status.words}` : ""}`;
               const facts = [
                 where,
                 repository.facts === undefined
@@ -259,11 +264,9 @@ export function ZeropsGitOverview(props: OverviewProps) {
   const openQuestions = questions
     .map(({ question }) => question)
     .filter((question) => only === undefined || question.appId === only);
-  const all = gitOverviewGroups(apps, (id) => standingOf(id).standing, false, openQuestions);
+  const all = gitOverviewGroups(apps, (id) => standingOf(id).standing, openQuestions);
   const filtering = openOnly && all.openChanges > 0;
-  const groups = filtering
-    ? gitOverviewGroups(apps, (id) => standingOf(id).standing, true, openQuestions)
-    : all;
+  const groups = filtering ? gitOverviewView(all, "open", "") : gitOverviewView(all, "all", "");
   const groupProps = {
     standingOf,
     questions,
@@ -289,7 +292,7 @@ export function ZeropsGitOverview(props: OverviewProps) {
         ) : (
           <ReadTrouble failure={state.failure} onAgain={onAgain} />
         )}
-        {[...all.used, ...all.kept].map((group) => (
+        {all.groups.map((group) => (
           <ProjectGroup key={group.appId} group={group} {...groupProps} />
         ))}
         {(state.kind === "unread" && state.failure === null) ||
@@ -334,14 +337,14 @@ export function ZeropsGitOverview(props: OverviewProps) {
           ) : null}
         </div>
       ) : null}
-      {groups.used.length > 0 ? (
+      {groups.projects.length > 0 ? (
         <section aria-label="Projects" className="flex flex-col gap-3">
-          {groups.used.map((group) => (
+          {groups.projects.map((group) => (
             <ProjectGroup key={group.appId} group={group} {...groupProps} />
           ))}
         </section>
       ) : null}
-      {groups.kept.length > 0 ? (
+      {groups.waiting.length + groups.kept.length > 0 ? (
         <section className="flex flex-col gap-3" aria-label="Kept code">
           <div className="flex flex-col gap-1">
             <Text render={<h2 />} variant="label">
@@ -351,7 +354,7 @@ export function ZeropsGitOverview(props: OverviewProps) {
               Nobody works on these projects. Their code is billed as storage.
             </Text>
           </div>
-          {groups.kept.map((group) => (
+          {[...groups.waiting, ...groups.kept].map((group) => (
             <ProjectGroup key={group.appId} group={group} {...groupProps} />
           ))}
         </section>

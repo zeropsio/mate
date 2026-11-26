@@ -1,5 +1,11 @@
 import { expect, it } from "vite-plus/test";
-import { codeSize, gitChangesSummary, gitOverview, gitOverviewGroups } from "./gitOverview.ts";
+import {
+  codeSize,
+  gitChangesStatus,
+  gitOverview,
+  gitOverviewGroups,
+  gitOverviewView,
+} from "./gitOverview.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { CodeStanding } from "./codeStanding.ts";
 
@@ -54,7 +60,7 @@ it("ZV185: A project's code size is the sum of its repositories' sizes, its setu
       },
     ],
   });
-  expect(gitOverviewGroups(apps, standingOf, false).used[0]?.size).toEqual({
+  expect(gitOverviewGroups(apps, standingOf).groups[0]?.size).toEqual({
     bytes: 3584,
     complete: true,
   });
@@ -75,10 +81,10 @@ it("ZV186: Every open kept-code question has a group on the Git overview, the li
     { appId: "b", appName: "B" },
     { appId: "c", appName: "gamma" },
   ];
-  const groups = gitOverviewGroups(apps, standing, false, questions);
-  expect(groups.used.map(({ name }) => name)).toEqual(["A"]);
+  const groups = gitOverviewGroups(apps, standing, questions);
+  expect(gitOverviewView(groups, "all", "").projects.map(({ name }) => name)).toEqual(["A"]);
   expect(
-    groups.kept.map(({ name, standing, repositories }) => [
+    gitOverviewView(groups, "all", "").waiting.map(({ name, standing, repositories }) => [
       name,
       standing.kind,
       repositories.length,
@@ -87,70 +93,160 @@ it("ZV186: Every open kept-code question has a group on the Git overview, the li
     ["B", "asked", 1],
     ["gamma", "asked", 0],
   ]);
-  expect(gitOverviewGroups(apps, standing, false, []).kept.map(({ name }) => name)).toEqual(["B"]);
-  expect(gitOverviewGroups(apps, standing, true, questions).kept.map(({ name }) => name)).toEqual([
-    "B",
-    "gamma",
-  ]);
+  expect(
+    gitOverviewView(gitOverviewGroups(apps, standing, []), "all", "").waiting.map(
+      ({ name }) => name,
+    ),
+  ).toEqual(["B"]);
 });
 
-// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.name !== "group" → repository.name !== ""
-it("ZV183: The Git overview lists each project once with its code repositories as rows and its setup repository as the group's link, puts kept, asked and placeless deleting projects in their own section, and showing only open changes hides a repository without one but never one whose changes are not read, while the counts stay those of the whole list; breaks: a project's setup repository is counted as code, or a repository with unread changes disappears under the filter", () => {
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | standing.phase !== "going" → standing.phase === "going"
+it("ZV183: The Git overview lists each project once with its code repositories as rows and its setup repository as the project's link, and places it by its standing: under Waiting when its question or a deletion that is not going waits on a person, under Kept code when it is kept or going with nothing placed, else under Projects; breaks: a project's setup repository is counted as code, or a deletion that stopped is listed as a project in use", () => {
   const apps = gitOverview({
     mateName: () => undefined,
     apps: [
-      { appId: "c", name: "C", repositories: [repo("group")], changes: [] },
       {
         appId: "a",
         name: "A",
-        repositories: [repo("quiet"), repo("group"), repo("active")],
+        repositories: [repo("group"), repo("active"), repo("quiet")],
         changes: [pull("group", 1), pull("active", 2), pull("active", 3)],
       },
-      { appId: "b", name: "B", repositories: [repo("unread")], changes: [], coverage: "unread" },
+      { appId: "b", name: "B", repositories: [repo("old")], changes: [] },
+      { appId: "c", name: "C", repositories: [], changes: [] },
+      { appId: "d", name: "D", repositories: [repo("d1")], changes: [] },
+      { appId: "e", name: "E", repositories: [], changes: [] },
+      { appId: "f", name: "F", repositories: [repo("f1")], changes: [] },
+      { appId: "g", name: "G", repositories: [], changes: [] },
     ],
   });
-  const all = gitOverviewGroups(apps, standingOf, false);
+  const standing = (id: string): CodeStanding => {
+    if (id === "a") return { kind: "in-use", mate: true, leaving: false };
+    if (id === "b") return { kind: "kept", holds: "code" };
+    if (id === "c") return { kind: "asked" };
+    return {
+      kind: "deleting",
+      placed: id === "d" || id === "f",
+      phase: id === "d" ? "failed" : id === "g" ? "needs" : "going",
+    };
+  };
+  const overview = gitOverviewGroups(apps, standing);
+  const view = gitOverviewView(overview, "all", "");
+  expect(view.waiting.map(({ name }) => name)).toEqual(["C", "D", "G"]);
   expect(
-    all.used.map(({ name, repositories, setup }) => [
+    view.projects.map(({ name, repositories, setup }) => [
       name,
       repositories.map(({ name }) => name),
       setup?.changes.length,
     ]),
-  ).toEqual([["A", ["active", "quiet"], 1]]);
-  expect(
-    all.kept.map(({ name, repositories }) => [name, repositories.map(({ name }) => name)]),
   ).toEqual([
-    ["B", ["unread"]],
-    ["C", []],
+    ["A", ["active", "quiet"], 1],
+    ["F", ["f1"], undefined],
   ]);
-  expect([all.projects, all.repositories, all.openChanges, all.incomplete]).toEqual([
-    3,
-    3,
-    3,
-    true,
-  ]);
-  const open = gitOverviewGroups(apps, standingOf, true);
-  expect(
-    open.used.map(({ name, repositories }) => [name, repositories.map(({ name }) => name)]),
-  ).toEqual([["A", ["active"]]]);
-  expect(
-    open.kept.map(({ name, repositories }) => [name, repositories.map(({ name }) => name)]),
-  ).toEqual([["B", ["unread"]]]);
-  expect([open.projects, open.repositories, open.openChanges]).toEqual([3, 3, 3]);
+  expect(view.kept.map(({ name }) => name)).toEqual(["B", "E"]);
+  expect([
+    overview.projects,
+    overview.repositories,
+    overview.openChanges,
+    overview.keptCount,
+  ]).toEqual([7, 5, 3, 4]);
 });
 
-// witness: packages/client-runtime/src/zerops/gitOverview.ts | `${String(count)} ${word}` → word
-it("ZV184: A repository's open changes are said as their count and each status with how many hold it, and nothing where none is open; breaks: a repository with a conflicting change reads the same as one ready to merge", () => {
-  const ready = pull("app", 3);
-  const conflict = pull("app", 2, "conflicting");
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | open.some(({ status }) => status?.tone === tone) → open[0]?.status?.tone === tone
+it("ZV184: A repository's open changes are said as their count, each status with how many hold it, and the tone of the worst of them, and nothing where none is open; breaks: a repository with a conflicting change among ready ones reads as calm as one ready to merge", () => {
   const row = (change: FlowPullRequest) => ({
     pull: change,
     line: "",
     status: changeState(change),
   });
-  expect(gitChangesSummary([])).toBeUndefined();
-  expect(gitChangesSummary([row(ready)])).toBe("1 open change · Ready to merge");
-  expect(gitChangesSummary([row(ready), row(pull("app", 1)), row(conflict)])).toBe(
-    "3 open changes · 2 Ready to merge, 1 Conflicts with main",
-  );
+  expect(gitChangesStatus([])).toBeUndefined();
+  expect(gitChangesStatus([row(pull("app", 3))])).toEqual({
+    open: 1,
+    words: "Ready to merge",
+    tone: "off",
+  });
+  expect(
+    gitChangesStatus([
+      row(pull("app", 3)),
+      row(pull("app", 2)),
+      row(pull("app", 1, "conflicting")),
+    ]),
+  ).toEqual({ open: 3, words: "2 Ready to merge, 1 Conflicts with main", tone: "attention" });
+});
+
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.open → repository.changes.length > 0
+it("ZV+1: The Open changes tab keeps every project with an open change, cut to its repositories that have one or whose changes are not read, and the Kept code tab keeps exactly the projects nothing is placed in, while the counts stay those of the whole list; breaks: a repository with unread changes disappears under Open changes, or a kept project with an open change is missing from it", () => {
+  const apps = gitOverview({
+    mateName: () => undefined,
+    apps: [
+      {
+        appId: "a",
+        name: "A",
+        repositories: [repo("active"), repo("quiet")],
+        changes: [pull("active", 1)],
+      },
+      { appId: "b", name: "B", repositories: [repo("old")], changes: [pull("old", 2)] },
+      { appId: "c", name: "C", repositories: [repo("unread")], changes: [], coverage: "unread" },
+      { appId: "d", name: "D", repositories: [repo("group")], changes: [pull("group", 3)] },
+      { appId: "e", name: "E", repositories: [], changes: [] },
+    ],
+  });
+  const standing = (id: string): CodeStanding =>
+    id === "e"
+      ? { kind: "asked" }
+      : id === "b" || id === "c"
+        ? { kind: "kept", holds: "code" }
+        : { kind: "in-use", mate: true, leaving: false };
+  const overview = gitOverviewGroups(apps, standing);
+  const open = gitOverviewView(overview, "open", "");
+  expect(
+    open.projects.map(({ name, repositories }) => [name, repositories.map(({ name }) => name)]),
+  ).toEqual([
+    ["A", ["active"]],
+    ["B", ["old"]],
+    ["C", ["unread"]],
+    ["D", []],
+  ]);
+  expect([open.waiting, open.kept]).toEqual([[], []]);
+  const kept = gitOverviewView(overview, "kept", "");
+  expect(kept.waiting.map(({ name }) => name)).toEqual(["E"]);
+  expect(kept.kept.map(({ name }) => name)).toEqual(["B", "C"]);
+  expect(kept.projects).toEqual([]);
+  expect([overview.openChanges, overview.keptCount]).toEqual([3, 3]);
+});
+
+// witness: packages/client-runtime/src/zerops/gitOverview.ts | repository.name.toLocaleLowerCase().includes(needle) → group.name.toLocaleLowerCase().includes(needle)
+it("ZV+2: A search keeps a project whose name matches with all its repositories, else only its repositories whose names match, whatever the letters' case, and drops a project with neither; breaks: searching a repository's name hides it because its project's name does not match", () => {
+  const apps = gitOverview({
+    mateName: () => undefined,
+    apps: [
+      {
+        appId: "a",
+        name: "Acme Store",
+        repositories: [repo("storefront"), repo("api")],
+        changes: [],
+      },
+      {
+        appId: "d",
+        name: "Docs",
+        repositories: [repo("handbook"), repo("store-notes")],
+        changes: [],
+      },
+    ],
+  });
+  const overview = gitOverviewGroups(apps, () => ({ kind: "in-use", mate: true, leaving: false }));
+  const rows = (query: string) =>
+    gitOverviewView(overview, "all", query).projects.map(({ name, repositories }) => [
+      name,
+      repositories.map(({ name }) => name),
+    ]);
+  expect(rows("STORE")).toEqual([
+    ["Acme Store", ["api", "storefront"]],
+    ["Docs", ["store-notes"]],
+  ]);
+  expect(rows("api")).toEqual([["Acme Store", ["api"]]]);
+  expect(rows("zzz")).toEqual([]);
+  expect(rows("  ")).toEqual([
+    ["Acme Store", ["api", "storefront"]],
+    ["Docs", ["handbook", "store-notes"]],
+  ]);
 });

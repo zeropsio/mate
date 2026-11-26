@@ -125,7 +125,6 @@ export function codeSize(repositories: ReadonlyArray<{ readonly usedBytes?: numb
 export function gitOverviewGroups(
   apps: ReadonlyArray<GitOverviewApp>,
   standingOf: (appId: string) => CodeStanding,
-  openOnly: boolean,
   questions: ReadonlyArray<{ readonly appId: string; readonly appName: string }> = [],
 ) {
   const listed = new Set(apps.map((app) => app.appId));
@@ -153,24 +152,15 @@ export function gitOverviewGroups(
         : { bytes: 0, complete: false };
       return { ...app, standing, setup, repositories, repositoryCount: repositories.length, size };
     });
-  const shown = groups.flatMap((group) => {
-    const repositories = openOnly
-      ? group.repositories.filter((repository) => repository.open)
-      : group.repositories;
-    const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
-    return openOnly && repositories.length === 0 && !setupOpen && group.standing.kind !== "asked"
-      ? []
-      : [{ ...group, repositories }];
+  const kept = groups.filter(({ standing }) => nothingPlaced(standing));
+  const sum = (items: typeof groups) => ({
+    bytes: items.reduce((total, group) => total + group.size.bytes, 0),
+    complete: items.every((group) => group.size.complete),
   });
-  const isKept = ({ standing }: (typeof groups)[number]) =>
-    standing.kind === "kept" ||
-    standing.kind === "asked" ||
-    (standing.kind === "deleting" && !standing.placed);
   return {
-    used: shown.filter((group) => !isKept(group)),
-    kept: shown.filter(isKept),
-    projects: apps.length,
-    repositories: groups.reduce((count, group) => count + group.repositories.length, 0),
+    groups,
+    projects: groups.length,
+    repositories: groups.reduce((count, group) => count + group.repositoryCount, 0),
     openChanges: apps.reduce(
       (count, app) =>
         count +
@@ -181,21 +171,85 @@ export function gitOverviewGroups(
         ),
       0,
     ),
+    keptCount: kept.length,
+    size: sum(groups),
+    keptSize: sum(kept),
     incomplete: apps.some((app) =>
       app.repositories.some((repository) => repository.coverage !== "complete"),
     ),
   };
 }
 
-/** Open-change count and status words, in the changes' newest-first order. */
-export function gitChangesSummary(changes: ReadonlyArray<GitOverviewChange>): string | undefined {
+function nothingPlaced(standing: CodeStanding): boolean {
+  return (
+    standing.kind === "kept" ||
+    standing.kind === "asked" ||
+    (standing.kind === "deleting" && !standing.placed)
+  );
+}
+
+export function gitOverviewView(
+  overview: ReturnType<typeof gitOverviewGroups>,
+  tab: "all" | "open" | "kept",
+  query: string,
+) {
+  const needle = query.trim().toLocaleLowerCase();
+  const groups = overview.groups.flatMap((group) => {
+    if (tab === "kept" && !nothingPlaced(group.standing)) return [];
+    const repositories =
+      tab === "open"
+        ? group.repositories.filter((repository) => repository.open)
+        : group.repositories;
+    const setupOpen = group.setup?.changes.some(({ pull }) => pull.state === "open") === true;
+    if (tab === "open" && repositories.length === 0 && !setupOpen) return [];
+    if (needle === "" || group.name.toLocaleLowerCase().includes(needle))
+      return [{ ...group, repositories }];
+    const matches = repositories.filter((repository) =>
+      repository.name.toLocaleLowerCase().includes(needle),
+    );
+    return matches.length === 0 ? [] : [{ ...group, repositories: matches }];
+  });
+  return {
+    waiting:
+      tab === "open"
+        ? []
+        : groups.filter(
+            ({ standing }) =>
+              standing.kind === "asked" ||
+              (standing.kind === "deleting" && standing.phase !== "going"),
+          ),
+    kept:
+      tab === "open"
+        ? []
+        : groups.filter(
+            ({ standing }) =>
+              standing.kind === "kept" ||
+              (standing.kind === "deleting" && standing.phase === "going" && !standing.placed),
+          ),
+    projects:
+      tab === "kept"
+        ? []
+        : groups.filter(
+            ({ standing }) =>
+              tab === "open" ||
+              standing.kind === "in-use" ||
+              standing.kind === "unread" ||
+              (standing.kind === "deleting" && standing.phase === "going" && standing.placed),
+          ),
+  };
+}
+
+/** Open-change words and the most serious tone, in newest-first order. */
+export function gitChangesStatus(changes: ReadonlyArray<GitOverviewChange>) {
   const open = changes.filter(({ pull }) => pull.state === "open");
   if (open.length === 0) return undefined;
   const counts = new Map<string, number>();
   for (const { status } of open)
     if (status !== undefined) counts.set(status.word, (counts.get(status.word) ?? 0) + 1);
-  const statuses = [...counts]
+  const words = [...counts]
     .map(([word, count]) => (open.length === 1 ? word : `${String(count)} ${word}`))
     .join(", ");
-  return `${String(open.length)} open ${open.length === 1 ? "change" : "changes"}${statuses ? ` · ${statuses}` : ""}`;
+  const tones = ["failed", "attention", "busy", "ok", "off"] as const;
+  const tone = tones.find((tone) => open.some(({ status }) => status?.tone === tone)) ?? "off";
+  return { open: open.length, words, tone };
 }
