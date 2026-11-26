@@ -34,6 +34,7 @@ import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 import { parse as parseYaml } from "yaml";
 
 const webTestRoot = "apps/web/test";
+const gateDefinition = "scripts/gate-changed.ts";
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 const packageManifest = (path: string) =>
@@ -170,6 +171,7 @@ export function meaningfulChanges(
       previous.set(path, old.stdout);
     }
     if (
+      path === gateDefinition ||
       !oldFiles.has(path) ||
       (!sourceFile.test(path) && !path.endsWith(".css") && path !== "apps/web/index.html") ||
       !NodeFS.existsSync(NodePath.join(root, path))
@@ -857,7 +859,7 @@ function diffHash(
  */
 function selectionInputs(root: string): string[] {
   return [
-    "scripts/gate-changed.ts",
+    gateDefinition,
     "scripts/gate-input-scopes.ts",
     "scripts/gate-file-inputs.ts",
     "scripts/gate-timing-reporter.ts",
@@ -1769,7 +1771,7 @@ export function selectGateSteps(
     existing,
     paths,
     tests,
-    touched,
+    inputs,
     build = true,
     landing = false,
     unitReplays = [],
@@ -1779,8 +1781,8 @@ export function selectGateSteps(
     readonly paths: ReadonlyArray<string>;
     /** Test suites and test machinery run only when asked (`--tests`); T1, lint, typecheck and build always. */
     readonly tests: boolean;
-    /** The input-scoped stages (`stageInputSets`) whose input set holds one of `paths`. */
-    readonly touched: ReadonlySet<string>;
+    /** The files each input-scoped stage reads (`stageInputSets`). */
+    readonly inputs: StageInputSets;
     /** `false` (`--no-build`) drops only the two builds: the landing's gate runs them. */
     readonly build?: boolean;
     /**
@@ -1794,11 +1796,18 @@ export function selectGateSteps(
   },
 ) {
   const { workspace, units, related } = graph;
+  // The gate defines every stage's command, even when none of its data inputs changed.
+  const gateChanged = paths.includes(gateDefinition);
+  const touched = new Set(
+    [...inputs]
+      .filter(([, files]) => gateChanged || paths.some((path) => files.has(path)))
+      .map(([name]) => name),
+  );
   const context: StageContext = {
     root: graph.root,
     comparison,
     existing,
-    packages: typecheckPackages(paths, workspace),
+    packages: gateChanged ? workspace : typecheckPackages(paths, workspace),
     landing,
     ci: false,
     unitReplays,
@@ -2086,11 +2095,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     existing,
     paths: meaningful.paths,
     tests,
-    touched: new Set(
-      [...inputSets]
-        .filter(([, files]) => meaningful.paths.some((path) => files.has(path)))
-        .map(([name]) => name),
-    ),
+    inputs: inputSets,
     build,
     landing: args.includes("--landing"),
     // Every change against the base counts, a comment-only owner edit too.
