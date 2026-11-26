@@ -26,7 +26,6 @@ jobs:
     concurrency:
       group: release-web
       cancel-in-progress: false
-      queue: max
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
