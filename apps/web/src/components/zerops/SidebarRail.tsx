@@ -369,7 +369,7 @@ function RailFace({ mate, kid = false }: { readonly mate: RailMate; readonly kid
  * ground a face's rings are cut in (`--menu-ground`) follows its light.
  */
 const RAIL_LOOK = {
-  tile: "flex w-18 flex-col items-center gap-1 rounded-card px-1 py-1.5 text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
+  tile: "flex w-17 flex-col items-center gap-1 rounded-card px-0.5 py-1.5 text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
   kid: "grid h-10 w-11 place-items-center rounded-control transition-colors duration-150 ease-out-strong group-hover/rail:bg-(--menu-rail-hover) group-hover/rail:[--menu-ground:var(--menu-rail-hover)] group-data-current/rail:bg-sidebar-row-active group-data-current/rail:[--menu-ground:var(--color-sidebar-row-active)] motion-reduce:transition-none",
   open: "grid size-8 place-items-center rounded-control text-sidebar-muted-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-hover/rail:text-sidebar-foreground motion-reduce:transition-none",
 } as const;
@@ -461,7 +461,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={projectName.length > 0 ? projectName : undefined}
-        className="flex w-18 flex-none flex-col items-center gap-0.5 rounded-card"
+        className="flex w-17 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -493,7 +493,7 @@ function RailTileView({
       <div
         aria-current={tile.current ? "true" : undefined}
         aria-label={mate.projectName.length > 0 ? mate.projectName : undefined}
-        className="flex w-18 flex-none flex-col items-center gap-0.5 rounded-card"
+        className="flex w-17 flex-none flex-col items-center gap-0.5 rounded-card"
         data-zerops-surface="sidebar-rail-project"
         role="group"
       >
@@ -525,7 +525,7 @@ function RailTileView({
       aria-current={tile.holdsCurrent ? "true" : undefined}
       aria-label={name}
       // Open, the project's Mates stand on its group's ground, which their faces cut out of.
-      className="flex w-18 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
+      className="flex w-17 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
       data-rail-open={tile.open ? "" : undefined}
       data-zerops-surface="sidebar-rail-project"
       role="group"
@@ -675,7 +675,7 @@ export function SidebarRail({
   readonly onOpenMenu: () => void;
 }) {
   const head = (
-    <div className="flex flex-none justify-center px-1.5">
+    <div className="flex flex-none justify-center gap-0.5 px-1">
       <div className="relative grid">
         <Tooltip>
           <TooltipTrigger
@@ -722,7 +722,7 @@ export function SidebarRail({
         )}
         {find === undefined ? null : (
           // Straight under Overview and the +, as the design stacks the two rows.
-          <div className={cn("flex flex-none justify-center px-1.5", showMark && "-mt-3")}>
+          <div className={cn("flex flex-none justify-center gap-0.5 px-1", showMark && "-mt-3")}>
             {find}
           </div>
         )}

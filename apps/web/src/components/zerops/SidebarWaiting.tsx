@@ -7,6 +7,7 @@
  *
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
+import { cn } from "~/lib/utils";
 import { fadeFillIn } from "~/lib/loadFills";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
@@ -172,20 +173,19 @@ export function SidebarWaitingCount({
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
   readonly verbs: WaitingVerbs;
-  /** Where it stands: before the headline's squares (a 22 px red pill), or on a rail tile's corner (20 px). */
+  /** Where it stands: beside the headline's Overview, or on the rail's Overview's corner. */
   readonly seat: "head" | "rail";
 }) {
   const words = waitingCountWords(items);
   return (
-    // Its seat: on a rail tile's corner, the menu's ground around it cutting it out of the tile;
-    // or beside Overview, an 18 px circle in the theme's own red, the one every other count in
-    // the app wears, so it reads from across the screen.
+    // An 18 px circle in the theme's own red, the one every other count in the app wears, so it
+    // reads from across the screen. Its seat: beside Overview in the open menu; on the rail's
+    // Overview's corner, the menu's ground around it cutting it out of the square.
     <span
-      className={
-        seat === "rail"
-          ? "absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5"
-          : "ms-2 grid flex-none *:grid *:h-4.5 *:min-w-4.5 *:place-items-center *:rounded-full *:bg-destructive! *:px-1.25 *:text-2xs *:leading-3.5 *:font-bold *:text-fill-ink! *:tabular-nums *:transition-[background-color,scale] *:duration-150 *:ease-out-strong pointer-fine:*:hover:bg-destructive/90! *:data-popup-open:bg-destructive/90! motion-safe:*:active:scale-96"
-      }
+      className={cn(
+        "grid flex-none *:grid *:h-4.5 *:min-w-4.5 *:place-items-center *:rounded-full *:bg-destructive! *:px-1.25 *:text-2xs *:leading-3.5 *:font-bold *:text-fill-ink! *:tabular-nums *:transition-[background-color,scale] *:duration-150 *:ease-out-strong pointer-fine:*:hover:bg-destructive/90! *:data-popup-open:bg-destructive/90! motion-safe:*:active:scale-96",
+        seat === "rail" ? "absolute -top-1.5 -right-1.5 rounded-full bg-sidebar p-0.5" : "ms-2",
+      )}
     >
       <SidebarWaitingPopover
         items={items}
@@ -199,8 +199,8 @@ export function SidebarWaitingCount({
             // fades in where it stands (`fadeFillIn`).
             ref={fadeFillIn}
             shape="round"
-            // The headline's pill draws its own red (its seat's); the rail's is the kit's.
-            {...(seat === "rail" ? { size: "2xs", variant: "warning" } : { variant: "bare" })}
+            // Its seat draws its red.
+            variant="bare"
           />
         }
         verbs={verbs}
