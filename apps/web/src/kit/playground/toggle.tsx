@@ -9,7 +9,7 @@ export default definePlayground({
   name: "Toggle",
   imports: 'import { Toggle } from "~/components/ui/toggle";',
   controls: {
-    variant: { kind: "enum", options: ["default", "ghost", "outline", "segmented"] },
+    variant: { kind: "enum", options: ["default", "ghost", "outline", "segmented", "toolbar"] },
     size: { kind: "enum", options: ["xs", "sm", "compact", "default", "lg"] },
     pressed: { kind: "boolean" },
     disabled: { kind: "boolean" },

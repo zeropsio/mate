@@ -17,6 +17,7 @@ import { githubName } from "../gitMirror.logic";
 import { OriginGithubSheet, type OriginGithubProps } from "./OriginGithubSheet";
 import { type OriginAskSaid, originAddress, originAskQuestion } from "./originAsk.logic";
 import type { OriginAskActivityPayload } from "@t3tools/client-runtime/data";
+import { Text } from "~/components/ui/text";
 
 export interface OriginAskCardProps {
   readonly ask: Pick<OriginAskActivityPayload, "url" | "repo" | "reason">;
@@ -81,11 +82,11 @@ export function OriginAskCard({ ask, state, mateName, github, onAnswer }: Origin
           why={ask.reason === null ? null : { who: mateName, words: ask.reason }}
         >
           {waiting ? (
-            <p className="text-body text-muted-foreground">
+            <Text render={<p />} variant="description">
               {repository === null
                 ? `${address} isn't on GitHub, so ${mateName} keeps the code in Mate and only reads from it.`
                 : `On GitHub, ${mateName} pushes its branches there and its changes open there for review. In Mate, it keeps the code here and only reads from GitHub.`}
-            </p>
+            </Text>
           ) : null}
           {refusal === null ? null : <Refusal words={refusal} />}
         </AskCard>
@@ -108,12 +109,9 @@ export function OriginAskCard({ ask, state, mateName, github, onAnswer }: Origin
 
 function Refusal({ words }: { readonly words: string }) {
   return (
-    <p
-      className="flex items-center gap-1.5 text-caption leading-4 text-destructive-foreground"
-      role="alert"
-    >
+    <Text className="flex items-center gap-1.5" render={<p />} variant="error" role="alert">
       <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
       {words}
-    </p>
+    </Text>
   );
 }

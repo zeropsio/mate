@@ -1,5 +1,6 @@
 "use client";
 
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -145,7 +146,7 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
     <TabStripCompactContext.Provider value={compact}>
       <div className="flex min-w-0 flex-1 items-center gap-1" data-slot="tab-strip" ref={rootRef}>
         <ScrollArea
-          className={cn("w-auto min-w-0", dragRegion && "drag-region")}
+          className={cn("w-auto min-w-0", dragRegion && DRAG_REGION_CLASS_NAME)}
           data-slot="tab-strip-list"
           hideScrollbars
           radius="none"
@@ -155,7 +156,10 @@ function TabStrip({ items, activeId, onSelect, action, children, dragRegion }: T
           <div className="flex h-full w-max min-w-full items-center gap-1">{children}</div>
         </ScrollArea>
         <div
-          className={cn("flex flex-auto shrink-0 items-center gap-1", dragRegion && "drag-region")}
+          className={cn(
+            "flex flex-auto shrink-0 items-center gap-1",
+            dragRegion && DRAG_REGION_CLASS_NAME,
+          )}
           data-slot="tab-strip-end"
         >
           {action === undefined || action === null ? null : (
@@ -224,15 +228,19 @@ interface TabProps extends useRender.ComponentProps<"div">, VariantProps<typeof 
   readonly active: boolean;
 }
 
-/** One tab: filled while open, quiet otherwise, lit under the pointer. */
+/**
+ * One tab: on the picked ground (`bg-item-picked`) while open, quiet otherwise, lit
+ * (`bg-item-hover`) under the pointer. A page's own views (`size="md"`) are tabs too: a switch
+ * between what one page shows (open changes or all of them, a filter) is a strip of `Tab`s.
+ */
 function Tab({ className, render, tabId, active, size, children, ...props }: TabProps) {
   const folded = useContext(TabStripCompactContext) && !active;
   const defaultProps = {
     className: cn(
       tabVariants({ size }),
       active
-        ? "bg-accent text-foreground"
-        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        ? "bg-item-picked text-foreground"
+        : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
       className,
     ),
     "data-slot": "tab",

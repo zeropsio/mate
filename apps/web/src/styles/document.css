@@ -1,0 +1,72 @@
+/* The document's own elements, the platform's scroll bars and the code the highlighters draw:
+   no component renders them, so no class can reach them. */
+
+body {
+  /* The theme's token, not a literal stack, so Settings -> Appearance reaches all text. */
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background-image: var(--surface-grain);
+  background-repeat: repeat;
+  background-size: var(--surface-grain-size);
+}
+
+html,
+body {
+  min-height: calc(100svh + env(safe-area-inset-top));
+  overscroll-behavior: none;
+  /* A tap shows the control's own pressed look, not the browser's grey box over it, and two
+     quick taps are two taps, never a zoom; a pinch still zooms. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+  padding-top: max(env(safe-area-inset-top), 0px);
+  padding-right: var(--desktop-window-right-resize-inset);
+}
+
+pre,
+code {
+  font-family: var(--font-mono);
+}
+
+/* Code blocks in chat carry the size preference, inside the highlighter's own markup (Shiki's
+   `.shiki`). Inline code stays relative to its sentence; a plain block holding a block's place
+   until Shiki colours it takes the size on its pre too, so the conversation does not move when
+   the colours land. */
+.chat-markdown .chat-markdown-shiki .shiki,
+.chat-markdown pre:has(> code),
+.chat-markdown pre code {
+  font-size: var(--font-size-code, inherit);
+}
+
+/* Scroll bars: the platform's pseudo-elements. A box scrolling both ways meets its two bars in a
+   corner the platform paints white unless told otherwise. */
+::-webkit-scrollbar {
+  width: var(--app-scrollbar-width);
+  height: var(--app-scrollbar-width);
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border-radius: var(--radius-mark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}

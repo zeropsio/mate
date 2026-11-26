@@ -63,9 +63,12 @@ import {
 } from "./projectPeople.logic";
 import { Badge, type BadgeTone } from "~/components/ui/badge";
 import { Loading } from "~/components/ui/loading";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { Failure } from "~/components/ui/failure";
 import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 /**
  * A creation form's *Project access*: the host draws the draft (`ProjectAccessDraft`), which says
@@ -152,7 +155,7 @@ export function ProjectAccessChips({
       aria-label={label}
       className={heading ? CARD_SECTION : rows ? "grid gap-1.5" : "grid gap-1.5 pb-3"}
     >
-      {heading ? <SectionLabel level={3}>{label}</SectionLabel> : null}
+      {heading ? <SectionHeader level={3} size="panel" title={label} /> : null}
       {view.kind === "reading" ? (
         <Loading count={2} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
@@ -194,7 +197,7 @@ export function ProjectAccessChips({
  * dialog (`data-sections="bare"`), it stands there with no rule, named by the dialog's title.
  */
 export const CARD_SECTION =
-  "mt-4 grid gap-1 border-t border-border/60 px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-zerops-section-label]]:hidden";
+  "mt-4 grid gap-1 border-t border-rule px-1.5 pt-4 [[data-sections=bare]>&]:mt-0 [[data-sections=bare]>&]:border-t-0 [[data-sections=bare]>&]:pt-0 [[data-sections=bare]>&>[data-slot=section-header]]:hidden";
 
 /**
  * Who reaches a project, as people chips: as many columns of at least 168 px as fit (232 px for
@@ -204,13 +207,10 @@ export const ACCESS_CHIPS = "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(168p
 export const ACCESS_CHIPS_WIDE =
   "mt-0.5 grid grid-cols-[repeat(auto-fill,minmax(232px,1fr))] gap-2";
 
-/**
- * A chip: a pill lifted off its card, its face and words, a ⋮ where it has a menu. A quiet press's
- * hover on it is a step over the lift.
- */
+/** A chip: a pill lifted off its card, its face and words, a ⋮ where it has a menu. */
 export function accessChip(menu: boolean): string {
   return cn(
-    "grid h-12 grid-cols-[minmax(0,1fr)] items-center rounded-full bg-foreground/4 px-1.5 [--accent:color-mix(in_oklab,var(--foreground)_6%,transparent)]",
+    "grid h-12 grid-cols-[minmax(0,1fr)] items-center rounded-full bg-foreground/4 px-1.5",
     menu && "grid-cols-[minmax(0,1fr)_auto] pe-1",
   );
 }
@@ -225,10 +225,10 @@ export const ACCESS_CHIP_NAME =
 /** A line of a chip's hover card. */
 const HOVER_LINE = "text-caption leading-4 text-muted-foreground";
 
-/** An access picker's parts, in its popover: the search, the list, the foot under a hairline. */
+/** An access picker's parts, in its popover: the search, the list, the foot (under a Separator). */
 export const PICK_SEARCH = "px-3 pt-3 pb-2";
 export const PICK_LIST = "grid max-h-72 overflow-y-auto px-1.5 pb-1.5";
-export const PICK_FOOT = "grid border-t border-border px-3 pt-2.5 pb-3";
+export const PICK_FOOT = "grid px-3 pt-2.5 pb-3";
 
 /** The level a chip holds, as a small badge: an icon and a word. */
 const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
@@ -618,9 +618,11 @@ export function AddAccessPicker({
           ))}
         </ul>
       )}
-      <dl
+      <Text
+        className="grid gap-1 px-3 pt-2"
+        render={<dl />}
+        variant="note"
         aria-label="What Read and Full give"
-        className="grid gap-1 px-3 pt-2 text-caption text-muted-foreground"
       >
         {(["read", "full"] as const).map((level) => (
           <div key={level}>
@@ -630,7 +632,8 @@ export function AddAccessPicker({
             <dd className="inline">{ACCESS_LEVEL_LINES[level]}</dd>
           </div>
         ))}
-      </dl>
+      </Text>
+      <Separator />
       <div className={PICK_FOOT}>
         <Button disabled={picks.length === 0} onClick={() => onAdd(picks)} size="sm">
           {picks.length > 1 ? `Add ${picks.length} people` : "Add people"}
@@ -672,12 +675,12 @@ export function AccessDraftFold({
           {open ? "Done" : "Change who can open it"}
         </Button>
       </div>
-      <p className="text-body text-muted-foreground text-pretty" data-zerops-access="line">
+      <Text render={<p />} variant="description" data-zerops-access="line">
         {summary.line}
         {summary.changes === null ? null : (
           <span className="text-foreground"> · {summary.changes}</span>
         )}
-      </p>
+      </Text>
       {open ? (
         <div className="pt-2" id={listId}>
           {children}

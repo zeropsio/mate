@@ -35,6 +35,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 
 import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { MateFace } from "../primitives";
 import {
   crewPlanCard,
@@ -48,6 +49,7 @@ import { cn } from "~/lib/utils";
 import { CrewPress, CrewTextButton, CrewTip } from "./CrewParts";
 import { CREW_ORIGIN } from "./CrewRows.logic";
 import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
+import { List } from "~/components/ui/list";
 
 /** The plan's presses; each `null` where the viewer may not press it (D6). */
 interface CrewPlanPresses {
@@ -138,34 +140,38 @@ export function CrewLeadPlanBlock({
     <div className="flex flex-col" data-crew-plan>
       {words === null ? null : <p className="text-line leading-4.5 text-foreground">{words}</p>}
       {/* The lead's plan: one line per task in a quiet tray, over the row's whole-row press. */}
-      <div className="relative z-1 mt-2.5 flex flex-col rounded-card bg-well px-3 py-1 ring-1 ring-foreground/8">
-        {plan.rows.map((row) => (
-          <div
-            // Its face, its owner, what it is, its ×; a hairline between lines.
-            className={cn(
-              "group/tray-row relative grid grid-cols-[16px_132px_minmax(0,1fr)_20px] gap-x-2 not-first:border-t not-first:border-foreground/8",
-              row.after === null
-                ? "min-h-8 items-center not-first:min-h-8.25"
-                : "items-start py-1.75",
-            )}
-            key={row.taskId}
-          >
-            <span className={row.after === null ? "flex" : "flex pt-px"}>
-              {row.owner.tint === null ? null : (
-                <MateFace size={16} state="idle" tint={row.owner.tint} />
-              )}
-            </span>
-            <span className="truncate font-medium text-line leading-4.5">{row.owner.name}</span>
-            <span className="flex min-w-0 flex-col">
-              <span className="text-line leading-4.5 text-foreground/76">{row.title}</span>
-              {row.after === null ? null : (
-                <span className="text-line leading-4.5 text-muted-foreground">{row.after}</span>
-              )}
-            </span>
-            <LeaveOut busy={busy} onPress={presses.leaveOut(row.taskId)} title={row.title} />
-          </div>
-        ))}
-      </div>
+      <Card className="relative z-1 mt-2.5" variant="well">
+        <div className="flex flex-col px-3 py-1">
+          <List className="flex flex-col">
+            {plan.rows.map((row) => (
+              <div
+                // Its face, its owner, what it is, its ×; a hairline between lines.
+                className={cn(
+                  "group/tray-row relative grid grid-cols-[16px_132px_minmax(0,1fr)_20px] gap-x-2",
+                  row.after === null
+                    ? "min-h-8 items-center not-first:min-h-8.25"
+                    : "items-start py-1.75",
+                )}
+                key={row.taskId}
+              >
+                <span className={row.after === null ? "flex" : "flex pt-px"}>
+                  {row.owner.tint === null ? null : (
+                    <MateFace size={16} state="idle" tint={row.owner.tint} />
+                  )}
+                </span>
+                <span className="truncate font-medium text-line leading-4.5">{row.owner.name}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-line leading-4.5 text-foreground/76">{row.title}</span>
+                  {row.after === null ? null : (
+                    <span className="text-line leading-4.5 text-muted-foreground">{row.after}</span>
+                  )}
+                </span>
+                <LeaveOut busy={busy} onPress={presses.leaveOut(row.taskId)} title={row.title} />
+              </div>
+            ))}
+          </List>
+        </div>
+      </Card>
       {/* What Start lets the crew do is said before it, and only where it is offered. */}
       {presses.start === null ? null : (
         <p className="mt-2.5 text-line leading-4.5 text-muted-foreground">
@@ -227,7 +233,7 @@ function LeaveOut({
           size="icon-2xs"
           variant="ghost-muted"
         >
-          <XIcon aria-hidden="true" className="size-3.5" />
+          <XIcon aria-hidden="true" />
         </Button>
       </CrewTip>
     </span>

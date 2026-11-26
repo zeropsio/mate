@@ -21,8 +21,21 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
+
+export const readFileJson = (fs: FileSystem.FileSystem, path: string) =>
+  fs.readFileString(path).pipe(
+    Effect.map((text): unknown => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return undefined;
+      }
+    }),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
 
 export interface FileWatch {
   /** Resumes at the first change since the watch was armed or `next` last resumed; changes in between are one. */

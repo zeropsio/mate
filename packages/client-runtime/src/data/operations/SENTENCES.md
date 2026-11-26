@@ -1,4 +1,4 @@
-next: OP64
+next: OP65
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -19,7 +19,7 @@ next: OP64
 - OP60 — A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again
-- OP34 — Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself
+- OP34 — Deleting an application with its code sends HQ one start under one id naming its last Mate, exactly its reviewed stages and its confirmed productions, and the web deletes no Mate, stage or production project itself
 - OP35 — A colleague's merge ends a pending Close without claiming it was closed
 - OP36 — A release HQ records as refused ends failed, in HQ's words
 - OP37 — A Git production release waits for HQ's ready preflight
@@ -36,3 +36,4 @@ next: OP64
 - OP61 — A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable
 - OP62 — A lost End answer counts as ended only when HQ shows that operation ended or no longer shows it, never while it runs on; breaks: an End that lost to the maker's Continue is reported done while the operation keeps acting
 - OP63 — A lost answer to ending a production's removal is adopted only once HQ shows that removal ended or no longer shows it; breaks: an End HQ never took reads as done while the application stays held
+- OP64 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.

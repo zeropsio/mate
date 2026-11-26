@@ -98,9 +98,9 @@ function ColourPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Light</TableHead>
-                    <TableHead>Dark</TableHead>
+                    <TableHead className="w-2/5">Role</TableHead>
+                    <TableHead className="w-3/10">Light</TableHead>
+                    <TableHead className="w-3/10">Dark</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -109,7 +109,7 @@ function ColourPage() {
                       <TableCell>
                         <span className="flex flex-col">
                           <code className="font-mono font-medium text-caption">{role}</code>
-                          <code className="font-mono text-caption text-muted-foreground">
+                          <code className="whitespace-normal font-mono text-caption text-muted-foreground">
                             {WEB_THEME_ROLE_TOKENS[role].join(", ") || "native clients only"}
                           </code>
                         </span>
@@ -133,10 +133,10 @@ function ColourPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Tone</TableHead>
-                <TableHead>Part</TableHead>
-                <TableHead>Light</TableHead>
-                <TableHead>Dark</TableHead>
+                <TableHead className="w-1/5">Tone</TableHead>
+                <TableHead className="w-1/5">Part</TableHead>
+                <TableHead className="w-3/10">Light</TableHead>
+                <TableHead className="w-3/10">Dark</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -171,9 +171,9 @@ function ColourPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Mark</TableHead>
-                <TableHead>Light</TableHead>
-                <TableHead>Dark</TableHead>
+                <TableHead className="w-2/5">Mark</TableHead>
+                <TableHead className="w-3/10">Light</TableHead>
+                <TableHead className="w-3/10">Dark</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -267,7 +267,10 @@ function SpacingPage() {
             <span className="w-16 shrink-0 text-caption text-muted-foreground">
               {Number.isInteger(step) ? "" : "half-step"}
             </span>
-            <span className={`h-4 shrink-0 rounded-mark bg-primary/50 ${SPACING_WIDTH[step]}`} />
+            {/* The bars share one column, so the classes after them line up. */}
+            <span className="flex w-16 shrink-0">
+              <span className={`h-4 rounded-mark bg-primary/50 ${SPACING_WIDTH[step]}`} />
+            </span>
             <code className="font-mono text-caption text-muted-foreground">
               gap-{step} p-{step} m-{step}
             </code>

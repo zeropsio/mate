@@ -32,12 +32,19 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { EmptyState } from "../ui/empty";
+import { ChartAxis } from "../ui/chart";
+import { Meter } from "../ui/meter";
+import { ShareBar } from "../ui/share-bar";
 import { Skeleton } from "../ui/skeleton";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { PAGE_BARS, SpendBars } from "../zerops/projects/ProjectSpend";
 import { formatUsd, joinSpend, moneyParts } from "../zerops/projects/projectSpend.logic";
 import { SettingsPageContainer } from "./settingsLayout";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** Projects listed before "Show all": the ones that cost most this month. */
 const PROJECTS_SHOWN = 8;
@@ -109,14 +116,16 @@ function OrganizationBillingPage({
       />
       <SpendingSection billing={billing} daily={daily} />
       <ProjectsSection billing={billing} />
-      <section className="flex flex-col items-start justify-between gap-3 rounded-card bg-muted/50 px-5 py-4 sm:flex-row sm:items-center">
-        <p className="text-muted-foreground text-body">
-          Invoices, payment cards, automatic top-up and billing details are in HQ.
-        </p>
-        <HqButton href={hq} variant="secondary">
-          Open billing in HQ
-        </HqButton>
-      </section>
+      <Card render={<section />} variant="inset">
+        <div className="flex flex-col items-start justify-between gap-3 px-5 py-4 sm:flex-row sm:items-center">
+          <Text render={<p />} variant="description">
+            Invoices, payment cards, automatic top-up and billing details are in HQ.
+          </Text>
+          <HqButton href={hq} variant="secondary">
+            Open billing in HQ
+          </HqButton>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -176,11 +185,18 @@ function BalanceCard({
 }): JSX.Element {
   const balance = billing.balance;
   const total = billing.total;
+  const stops = billing.soonest !== null && billing.tone !== "quiet";
+  // The split shows nothing of an empty balance: the strip opens only for what it holds.
+  const strip =
+    balance !== null &&
+    total !== null &&
+    (total > 0 || billing.verification === "unverified" || stops);
   return (
-    <section
+    <Card
       aria-label="Balance"
-      className="overflow-hidden rounded-card border border-border/70 bg-card"
+      className="overflow-hidden"
       data-zerops-surface="billing-balance"
+      render={<section />}
     >
       <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -190,40 +206,43 @@ function BalanceCard({
           ) : (
             <Figure size="hero" usd={total} />
           )}
-          <p className="min-h-5 text-muted-foreground text-body">
+          <Text className="min-h-5" render={<p />} variant="description">
             <Keeps billing={billing} />
-          </p>
+          </Text>
         </div>
         {addCredit ? (
           <HqButton href={hq} variant="primary">
             Top up in HQ
           </HqButton>
         ) : (
-          <p className="max-w-56 text-muted-foreground text-body sm:text-right">
+          <Text className="max-w-56 sm:text-right" render={<p />} variant="description">
             Owners and members who manage billing top up. Ask an owner.
-          </p>
+          </Text>
         )}
       </div>
-      {balance === null || total === null ? null : (
-        <div className="flex flex-col gap-3 border-border/70 border-t px-6 py-5">
-          <Split credit={balance.credit} promo={balance.promoCredit} />
-          {billing.verification === "unverified" ? (
-            <Alert variant="success">
-              <AlertDescription>
-                A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
-                it, and higher limits.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {billing.soonest === null || billing.tone === "quiet" ? null : (
-            <SoonestStop
-              hoursLeft={billing.soonest.hoursLeft}
-              projectId={billing.soonest.projectId}
-            />
-          )}
-        </div>
+      {balance === null || !strip ? null : (
+        <>
+          <Separator />
+          <div className="flex flex-col gap-3 px-6 py-5">
+            <Split credit={balance.credit} promo={balance.promoCredit} />
+            {billing.verification === "unverified" ? (
+              <Alert variant="success">
+                <AlertDescription>
+                  A first top-up of $10 verifies {organizationName}: $50 of promo credit comes with
+                  it, and higher limits.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {!stops || billing.soonest === null ? null : (
+              <SoonestStop
+                hoursLeft={billing.soonest.hoursLeft}
+                projectId={billing.soonest.projectId}
+              />
+            )}
+          </div>
+        </>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -261,48 +280,21 @@ function daysWords(days: number): string {
 
 /** How the balance splits between topped-up credit and promo credit, which Zerops spends alike. */
 function Split({ credit, promo }: { readonly credit: number; readonly promo: number }) {
-  const total = Math.max(0, credit) + Math.max(0, promo);
-  const creditShare = total > 0 ? (Math.max(0, credit) / total) * 100 : 0;
   return (
-    <div className="flex flex-col gap-3">
-      <div aria-hidden="true" className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        {total > 0 ? (
-          <>
-            <span className="h-full bg-spend-compute" style={{ width: `${creditShare}%` }} />
-            <span
-              className="h-full bg-spend-compute/55"
-              style={{ width: `${100 - creditShare}%` }}
-            />
-          </>
-        ) : null}
-      </div>
-      <dl className="flex flex-wrap gap-x-8 gap-y-2 text-body">
-        <SplitPart dot="bg-spend-compute" label="Topped up" usd={credit} />
-        <SplitPart dot="bg-spend-compute/55" label="Promo credit" usd={promo} />
-      </dl>
-    </div>
+    <ShareBar
+      format={formatUsd}
+      label="Balance"
+      legend
+      parts={[
+        { label: "Topped up", value: Math.max(0, credit), color: "var(--color-spend-compute)" },
+        { label: "Promo credit", value: Math.max(0, promo), color: PROMO_COLOR },
+      ]}
+    />
   );
 }
 
-function SplitPart({
-  label,
-  usd,
-  dot,
-}: {
-  readonly label: string;
-  readonly usd: number;
-  readonly dot: string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <dt className="flex items-center gap-2 text-muted-foreground">
-        <span aria-hidden="true" className={cn("size-2 rounded-full", dot)} />
-        {label}
-      </dt>
-      <dd className="text-foreground tabular-nums">{formatUsd(usd)}</dd>
-    </div>
-  );
-}
+/** Promo credit is the same money as topped-up credit, a step lighter. */
+const PROMO_COLOR = "color-mix(in oklab, var(--color-spend-compute) 55%, transparent)";
 
 /** The project Zerops will stop soonest: its own name, and when, in Zerops's hours. */
 function SoonestStop({
@@ -379,12 +371,14 @@ function SpendingSection({
           {cost.kind === "known" ? (
             <>
               <Figure size="title" usd={cost.value.organization[period]} />
-              <p className="text-muted-foreground text-caption">
+              <Text render={<p />} variant="note">
                 {periodWords(period, cost.value.organization)}
-              </p>
+              </Text>
             </>
           ) : cost.kind === "refused" ? (
-            <p className="text-muted-foreground text-body">Spending isn't shared with you.</p>
+            <Text render={<p />} variant="description">
+              Spending isn't shared with you.
+            </Text>
           ) : (
             <>
               <Skeleton className="h-9 w-40" />
@@ -419,10 +413,7 @@ function SpendingSection({
               <SpendBars geometry={PAGE_BARS} series={series} />
               <AverageLine averageUsd={series.averageUsd} maxUsd={series.maxUsd} />
             </div>
-            <figcaption className="flex justify-between text-caption text-muted-foreground">
-              <span>30 days ago</span>
-              <span>Today</span>
-            </figcaption>
+            <ChartAxis labels={["30 days ago", "Today"]} />
           </>
         )}
       </figure>
@@ -481,17 +472,17 @@ function ProjectsSection({
       <div className="flex items-baseline justify-between gap-4 px-1">
         <h2 className="font-medium text-muted-foreground text-body">This month by project</h2>
         {projects.length === 0 ? null : (
-          <span className="text-muted-foreground text-caption tabular-nums">
+          <Text variant="meta">
             {projects.length} {projects.length === 1 ? "project" : "projects"}
-          </span>
+          </Text>
         )}
       </div>
       {projects.length === 0 ? (
-        <p className="px-1 text-muted-foreground text-body">
+        <Text className="px-1" render={<p />} variant="description">
           Nothing has cost anything this month.
-        </p>
+        </Text>
       ) : (
-        <ol className="flex flex-col divide-y divide-border/60">
+        <List className="flex flex-col" render={<ol />}>
           {shown.map(([projectId, period]) => (
             <ProjectRow
               key={projectId}
@@ -501,7 +492,7 @@ function ProjectsSection({
               usd={period.thisMonth}
             />
           ))}
-        </ol>
+        </List>
       )}
       {projects.length > PROJECTS_SHOWN ? (
         <div className="px-1">
@@ -540,21 +531,18 @@ function ProjectRow({
       >
         {project?.name ?? "A project no longer listed"}
       </span>
-      <span
-        aria-hidden="true"
-        className="hidden h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-muted sm:block"
-      >
-        <span
-          className="block h-full rounded-full bg-spend-compute"
-          style={{ width: `${top > 0 ? Math.max(2, (usd / top) * 100) : 0}%` }}
-        />
-      </span>
+      <Meter
+        className="hidden w-32 shrink-0 sm:block"
+        color="var(--color-spend-compute)"
+        size="md"
+        value={top > 0 ? Math.max(0.02, usd / top) : 0}
+      />
       <span className="w-20 shrink-0 text-right text-foreground text-body tabular-nums">
         {formatUsd(usd)}
       </span>
-      <span className="w-9 shrink-0 text-right text-muted-foreground text-caption tabular-nums">
+      <Text className="w-9 shrink-0 text-right" variant="meta">
         {share < 1 ? "<1%" : `${String(share)}%`}
-      </span>
+      </Text>
     </li>
   );
 }

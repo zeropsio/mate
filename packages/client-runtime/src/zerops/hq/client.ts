@@ -213,7 +213,7 @@ export interface HqStructure {
   readonly ungrouped: ReadonlyArray<
     {
       readonly projectId: string;
-      readonly name: string;
+      readonly name?: string | undefined;
       readonly mate: HqMate;
       /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
       readonly operation?: HqOperation;
@@ -233,7 +233,7 @@ export interface HqStructure {
     readonly projects: ReadonlyArray<
       {
         readonly projectId: string;
-        readonly name: string;
+        readonly name?: string | undefined;
         readonly kind: string;
         readonly mate: HqMate | null | undefined;
         /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
@@ -374,6 +374,21 @@ export const HqOperation = Schema.Struct({
   projects: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({ projectId: Schema.String, result: Schema.optionalKey(Schema.String) }),
+    ),
+  ),
+  /**
+   * An application's deletion's parts in the order it runs them (`mate`, each `stage`, each
+   * `production`, then `code`), each by its project where it has one, and how it stands:
+   * `pending`, `deleting` or `gone`. Read as strings, as `kind` and `phase` are.
+   */
+  steps: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        part: Schema.String,
+        projectId: Schema.optionalKey(Schema.String),
+        name: Schema.optionalKey(Schema.String),
+        state: Schema.String,
+      }),
     ),
   ),
 });
@@ -673,6 +688,8 @@ export interface RepoGovernanceEntry {
   readonly governance: HqRepoGovernance | null;
 }
 
+export type WebFailureKind = "descriptor-unreachable" | "identity-failed" | "opening-deadline";
+
 export interface HqApi {
   readonly gitTargetWrite: (
     requestId: string,
@@ -727,6 +744,12 @@ export interface HqApi {
   ) => Promise<HqSocket>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
+  /** One use of the person's session to open the support console. */
+  readonly supportExchange: () => Promise<{ readonly exchange: string }>;
+  readonly webFailure: (report: {
+    readonly projectId: string;
+    readonly kind: WebFailureKind;
+  }) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
@@ -774,13 +797,20 @@ export interface HqApi {
   ) => Promise<void>;
   /**
    * Starts an application's deletion with its code with the person's access token (`POST
-   * /api/apps/{appId}/deletion`): HQ deletes each of `stages` (the stage projects the person
-   * reviewed) from Zerops, then the application with its code; it refuses a list that differs from
-   * its own (`held_changed`). `id` as `startMateDeletion`'s.
+   * /api/apps/{appId}/deletion`): HQ deletes its last Mate's project first where `mate` names it,
+   * then each of `stages` (the stage projects the person reviewed) and each of `productions` (the
+   * production projects the person confirmed) from Zerops, then the application with its code; it
+   * refuses a list that differs from its own (`held_changed`) and a Mate it holds that `mate` does
+   * not name (`app_has_mate`). `id` as `startMateDeletion`'s.
    */
   readonly startAppDeletion: (
     appId: string,
-    start: { readonly id: string; readonly stages: ReadonlyArray<string> },
+    start: {
+      readonly id: string;
+      readonly stages: ReadonlyArray<string>;
+      readonly mate?: string;
+      readonly productions?: ReadonlyArray<string>;
+    },
   ) => Promise<void>;
   /** Starts a stage's or a production's addition to the application (`HqEnvironmentStart`). */
   readonly startEnvironment: (appId: string, start: HqEnvironmentStart) => Promise<void>;
@@ -1376,6 +1406,8 @@ const unreadable = (what: string) => () =>
   new HqError({ kind: "refused", code: "unreadable", message: hqDisagreesOn(what) });
 
 const readChangeMetadata = decoded(ChangeMetadataResponse, "a change's record");
+const HqSupportExchange = Schema.Struct({ exchange: Schema.String });
+const readSupportExchange = decoded(HqSupportExchange, "a support exchange");
 const readChangeCommits = decoded(ChangeCommitsResponse, "a change's commits");
 const readChangeVerdict = decoded(ChangeDetailResponse, "a change's review");
 const readIntakeView = decoded(HqIntakeView, "GitHub issues as tasks");
@@ -1593,6 +1625,13 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
   return path;
 };
 
+const DOOR_BUILD_KEY = "clientBuild";
+
+function doorBuildOf(raw: string | undefined): string | undefined {
+  const build = raw?.trim();
+  return build !== undefined && /^[A-Za-z0-9._+-]{1,64}$/u.test(build) ? build : undefined;
+}
+
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
@@ -1607,6 +1646,8 @@ export function makeHqApi(input: {
   readonly accessToken: (ask?: ZeropsAccessAsk) => Promise<ZeropsAccess>;
   /** The organisation this client signs in to. */
   readonly orgId: string;
+  /** The build this client names itself by to HQ's door; none: the door is told none. */
+  readonly [DOOR_BUILD_KEY]?: string;
   /** The instant, for a session's renewal and an operation's press; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
@@ -1631,6 +1672,7 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
+  const build = doorBuildOf(input[DOOR_BUILD_KEY]);
   /** The stream opened ahead, until the first open has asked for it. */
   let openedAhead = input.openedAhead;
   /** The session HQ issued, or the door exchange under way that will issue it. */
@@ -1675,6 +1717,7 @@ export function makeHqApi(input: {
             accessToken: access.token,
             expiresAt: access.expiresAt,
             orgId: input.orgId,
+            ...(build === undefined ? {} : { [DOOR_BUILD_KEY]: build }),
           }),
           signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
         }),
@@ -1735,19 +1778,23 @@ export function makeHqApi(input: {
    * A call as the session's holder. A session HQ no longer takes is forgotten and renewed once —
    * another tab's kept one, else through the door — and the call made again; HQ refusing the
    * renewal too, or a session from its door it never took, ends the call with that refusal. A call
-   * HQ refused for its session wrote nothing, so a write is made again as safely as a read.
+   * HQ refused for its session wrote nothing, so a write is made again as safely as a read. A
+   * best-effort report uses only an existing session and never renews or replays the call.
    */
   const authorized = async (
     path: string,
     init: RequestInit = {},
     write = false,
     browse = false,
+    sessionPolicy: "normal" | "no-retry" | "existing-once" = "normal",
   ): Promise<Response> => {
     let renewed = false;
     for (;;) {
-      const held = session ?? restore() ?? enter();
+      const held = session ?? restore() ?? (sessionPolicy === "existing-once" ? null : enter());
+      if (held === null)
+        throw new HqError({ kind: "refused", code: "no_session", message: "HQ has no session." });
       const token = await held;
-      if (!unproven.has(held)) await renewIfDue(token);
+      if (sessionPolicy !== "existing-once" && !unproven.has(held)) await renewIfDue(token);
       try {
         // The HQ session alone: Git browsing names it in its own header.
         const headers: Record<string, string> = browse
@@ -1768,9 +1815,10 @@ export function makeHqApi(input: {
         unproven.delete(held);
         return response;
       } catch (cause) {
+        if (sessionPolicy === "existing-once") throw cause;
         if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
         drop(held, token);
-        if (renewed || unproven.has(held)) throw cause;
+        if (sessionPolicy === "no-retry" || renewed || unproven.has(held)) throw cause;
         renewed = true;
       }
     }
@@ -2035,7 +2083,7 @@ export function makeHqApi(input: {
         signIn: "Sign in with your Zerops account to delete this project.",
         inFlight: "This project is already being deleted.",
         heldChanged:
-          "Its stages changed since you reviewed them. Close this and press Delete again to see what goes now.",
+          "Its Stages changed since you reviewed them. Review what goes now, then press Delete.",
       }),
     startEnvironment: (appId, start) =>
       startOperation(`/api/apps/${encodeURIComponent(appId)}/environments`, start, {
@@ -2198,6 +2246,33 @@ export function makeHqApi(input: {
         `/api/mates/${encodeURIComponent(projectId)}`,
         { method: "PATCH", body: JSON.stringify(change) },
         true,
+      );
+    },
+    // A session refusal is the page's answer; never ask for a second exchange.
+    supportExchange: async () =>
+      readSupportExchange(
+        await authorized(
+          "/api/operator-support/exchanges",
+          { method: "POST" },
+          true,
+          false,
+          "no-retry",
+        ),
+      ),
+    webFailure: async (report) => {
+      await authorized(
+        "/api/web-failure",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            projectId: report.projectId,
+            kind: report.kind,
+            ...(build === undefined ? {} : { build }),
+          }),
+        },
+        true,
+        false,
+        "existing-once",
       );
     },
     deleteApp: (appId) =>

@@ -1,4 +1,9 @@
-import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
@@ -6,6 +11,7 @@ import { projectThreadAwareness } from "./agentAwareness.ts";
 import { hqOffer } from "./hqOffers.ts";
 import { leaseMayBeOf } from "./hqChanges.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
+import { standsInForSignIn } from "./openCodeKeyProviders.ts";
 import { conversationOfBranch, type ZeropsConversationCandidate } from "./primaryConversation.ts";
 import { THEME_COLOR_ROLES, ZEROPS_THEME, type ThemeColorRole } from "./themePalettes.ts";
 import { contrastRatio, parseThemeColor } from "./themePreview.ts";
@@ -17,6 +23,7 @@ import {
   attachPermission,
   changePermission,
   createAppPermission,
+  deleteProjectPermission,
   deployPermission,
   detachPermission,
   mateRecordPermission,
@@ -305,6 +312,8 @@ function decide(call: PermissionCall, facts: PermissionFacts): Decision {
       return releasePermission(facts, call.projectIds, call.production, call.mergers);
     case "detachPermission":
       return detachPermission(facts, call.projectId, call.held);
+    case "deleteProjectPermission":
+      return deleteProjectPermission(facts, call.projectId);
   }
 }
 
@@ -479,4 +488,28 @@ it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits
       want,
     ]);
   }
+});
+
+// witness: packages/shared/src/openCodeKeyProviders.ts | (provider.driver !== "opencode" || → (true ||
+it("SH11: OpenCode stands in for a person's sign-in only on a model key they set or once they chose it as the Mate's default model, never on its free models alone; breaks: a new Mate starts on a free model before its person signs in", () => {
+  const ready = (driver: string, models: ReadonlyArray<string>) => ({
+    instanceId: ProviderInstanceId.make(driver),
+    driver: ProviderDriverKind.make(driver),
+    enabled: true,
+    installed: true,
+    availability: "available" as const,
+    status: "ready" as const,
+    auth: { status: "authenticated" as const },
+    models: models.map((slug) => ({ slug })),
+  });
+  const free = ready("opencode", ["opencode/beam-free", "opencode/big-pickle"]);
+  const keyed = ready("opencode", ["opencode/beam-free", "nebius/some-model"]);
+  const chosen = { instanceId: ProviderInstanceId.make("opencode") };
+  const other = { instanceId: ProviderInstanceId.make("claudeAgent") };
+  expect([
+    standsInForSignIn(free, null),
+    standsInForSignIn(free, other),
+    standsInForSignIn(free, chosen),
+    standsInForSignIn(keyed, null),
+  ]).toEqual([false, false, true, true]);
 });

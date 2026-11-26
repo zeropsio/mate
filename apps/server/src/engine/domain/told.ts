@@ -22,6 +22,22 @@ import { isSlashCommand } from "@t3tools/shared/userAsk";
 const OPEN = "<zerops-update>";
 const CLOSE = "</zerops-update>";
 
+/** A slash command must reach the provider first, and maintenance carries no orientation. */
+export const hearsWhere = (run: {
+  readonly maintenance: boolean;
+  readonly text: string;
+}): boolean => !run.maintenance && !isSlashCommand(run.text);
+
+/** The run's own read precedes its message without changing the person's record. */
+export const whereWith = (
+  told: string,
+  run: { readonly maintenance: boolean; readonly text: string; readonly where?: string },
+): string => {
+  if (run.where === undefined || !hearsWhere(run)) return told;
+  const block = `<zerops-where>\n${run.where}\n</zerops-where>`;
+  return told.trim().length === 0 ? block : `${block}\n\n${told}`;
+};
+
 /**
  * What the agent hears after a person's message that goes into its running turn. A driver
  * surfaces such a message beside its next tool result, and an agent may answer it in its

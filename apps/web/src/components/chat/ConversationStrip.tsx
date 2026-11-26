@@ -67,6 +67,8 @@ import {
   type LineStage,
 } from "./ConversationStrip.logic";
 import { LineMotion } from "./ConversationStripMotion";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** Between two faces of the crew (`gap-0.5`). */
 const CREW_GAP_PX = 2;
@@ -133,7 +135,7 @@ function MateChatsMenu({
         >
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
         </MenuTrigger>
-        <MenuPopup align="start" className="w-72">
+        <MenuPopup align="start" width="md">
           <MenuRadioGroup
             onValueChange={(value: string) => {
               const chat = chats.chats.find((each) => each.threadId === value);
@@ -146,7 +148,9 @@ function MateChatsMenu({
                 <span className="flex min-w-0 items-baseline gap-2">
                   <span className="min-w-0 truncate">{chat.title}</span>
                   {chat.main ? (
-                    <span className="shrink-0 text-caption text-muted-foreground">main</span>
+                    <Text className="shrink-0" variant="note">
+                      main
+                    </Text>
                   ) : null}
                 </span>
               </MenuRadioItem>
@@ -237,9 +241,9 @@ function MatePill({
     [asMark, mate.cues, mate.known, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
-    <span className="max-w-48 shrink-0 truncate text-emphasis font-semibold text-foreground">
+    <Text className="max-w-48 shrink-0" truncate variant="headline">
       {mate.name}
-    </span>
+    </Text>
   );
   const press = (
     <Button
@@ -414,12 +418,9 @@ function SeatName({ name, leaving }: { readonly name: string; readonly leaving: 
       data-conversation-label={leaving ? "leaving" : "open"}
     >
       <span className="min-w-0 overflow-hidden" data-conversation-name="">
-        <span
-          className="block truncate text-body leading-5 font-medium text-foreground"
-          data-conversation-name-text=""
-        >
+        <Text className="block" truncate variant="heading" data-conversation-name-text="">
           {name}
-        </span>
+        </Text>
       </span>
       <ChevronDownIcon
         aria-hidden="true"
@@ -679,10 +680,11 @@ export function ConversationStripView({
       />
       {crew === null ? null : (
         <>
-          <span
+          <Separator
             aria-hidden="true"
-            className="h-4 w-px shrink-0 bg-border"
+            className="h-4 shrink-0"
             data-conversation-divider
+            orientation="vertical"
           />
           <div
             aria-label="Crew"

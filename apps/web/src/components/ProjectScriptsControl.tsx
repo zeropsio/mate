@@ -208,7 +208,7 @@ export default function ProjectScriptsControl({
                     openEditDialog(script);
                   }}
                 >
-                  <SettingsIcon className="size-3.5" />
+                  <SettingsIcon />
                 </Button>
               </span>
             </span>
@@ -217,7 +217,7 @@ export default function ProjectScriptsControl({
       })}
       {importMenuItems}
       <MenuItem density={presentation === "menu" ? "touch" : "default"} onClick={openAddDialog}>
-        <PlusIcon className="size-4" />
+        <PlusIcon />
         <MenuItemLabel>Add action</MenuItemLabel>
       </MenuItem>
     </>
@@ -257,7 +257,7 @@ export default function ProjectScriptsControl({
               density={presentation === "menu" ? "touch" : "default"}
               onClick={openAddDialog}
             >
-              <PlusIcon className="size-4" />
+              <PlusIcon />
               <MenuItemLabel>Add project action…</MenuItemLabel>
             </MenuItem>
           )}
@@ -317,7 +317,7 @@ export default function ProjectScriptsControl({
           <MenuPopup align="end">
             {importMenuItems}
             <MenuItem onClick={openAddDialog}>
-              <PlusIcon className="size-4" />
+              <PlusIcon />
               Add action
             </MenuItem>
           </MenuPopup>

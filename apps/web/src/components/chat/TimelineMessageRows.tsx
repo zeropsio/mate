@@ -35,9 +35,9 @@ import { TimelineRowCtx } from "./timelineContext";
 import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
-
-/** A picture sent with a message: its frame over the bubble. */
-const MESSAGE_IMAGE_FRAME = "overflow-hidden rounded-card border border-border/80 bg-background/70";
+import { Text } from "~/components/ui/text";
+import { MessageBubble } from "~/components/ui/message-bubble";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 /**
  * A message waiting for the running turn: a dashed user bubble with icon
@@ -62,7 +62,7 @@ export function QueuedMessageTimelineRow({
   });
   return (
     <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
-      <div className="max-w-[80%] rounded-card border border-dashed border-border p-3 text-message-foreground/80">
+      <MessageBubble className="max-w-4/5" queued>
         {text.length > 0 ? (
           <UserMessageBody
             text={text}
@@ -104,7 +104,7 @@ export function QueuedMessageTimelineRow({
                   <span
                     className={cn(
                       "min-w-0 truncate leading-6",
-                      state.line.tone === "error" && "text-destructive",
+                      state.line.tone === "error" && "text-status-failed-text",
                     )}
                     data-queued-line={state.line.tone}
                   />
@@ -165,7 +165,7 @@ export function QueuedMessageTimelineRow({
             </Tooltip>
           </div>
         </div>
-      </div>
+      </MessageBubble>
     </div>
   );
 }
@@ -256,8 +256,8 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
       <div className="group flex flex-row-reverse items-end gap-2">
         {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
-        <div
-          className="relative max-w-4/5 rounded-card bg-message px-3.5 py-2.5 text-prose text-message-foreground"
+        <MessageBubble
+          className="relative max-w-4/5"
           data-message-aside={row.aside ? "true" : undefined}
         >
           <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>
@@ -270,9 +270,9 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                   // picture would clip the press's focus ring too.
                   <div key={image.id} className="grid">
                     {state?._tag === "Failure" ? (
-                      <div className={MESSAGE_IMAGE_FRAME}>
+                      <PictureFrame>
                         <ImageUnavailable reason={state.reason} />
-                      </div>
+                      </PictureFrame>
                     ) : image.previewUrl ? (
                       <Button
                         className="block size-full cursor-zoom-in"
@@ -280,7 +280,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                         onClick={() => expandImage(image)}
                         variant="bare"
                       >
-                        <span className={cn("block h-full", MESSAGE_IMAGE_FRAME)}>
+                        <PictureFrame className="h-full">
                           <AssetImage
                             loading="lazy"
                             decoding="async"
@@ -289,17 +289,14 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
                             className="block max-h-[220px] w-full object-contain"
                             style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
                           />
-                        </span>
+                        </PictureFrame>
                       </Button>
                     ) : (
-                      <div
-                        className={cn(
-                          "flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs",
-                          MESSAGE_IMAGE_FRAME,
-                        )}
-                      >
-                        {image.name}
-                      </div>
+                      <PictureFrame>
+                        <span className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                          {image.name}
+                        </span>
+                      </PictureFrame>
                     )}
                   </div>
                 );
@@ -331,7 +328,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
               markdownCwd={ctx.markdownCwd}
             />
           )}
-        </div>
+        </MessageBubble>
         {row.receipt ? (
           <span className="flex shrink-0 pb-1.5">
             <MessageReceipt
@@ -345,9 +342,7 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
         <div className="flex shrink-0 items-center pb-1 text-caption tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
           <div className="flex shrink-0 items-center gap-2">
             <Tooltip>
-              <TooltipTrigger
-                render={<p className="text-muted-foreground text-caption tabular-nums" />}
-              >
+              <TooltipTrigger render={<Text render={<p />} variant="meta" />}>
                 {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
               </TooltipTrigger>
               <TooltipPopup>
@@ -487,9 +482,7 @@ function MateProse({
         >
           {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
           <Tooltip>
-            <TooltipTrigger
-              render={<p className="text-muted-foreground text-caption tabular-nums" />}
-            >
+            <TooltipTrigger render={<Text render={<p />} variant="meta" />}>
               {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
             </TooltipTrigger>
             <TooltipPopup>

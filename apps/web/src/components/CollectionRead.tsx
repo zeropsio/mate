@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CollectionPresentation } from "../state/query";
 import { Loading } from "./ui/loading";
+import { Text } from "~/components/ui/text";
 
 export function CollectionRead<A>({
   presentation,
@@ -15,10 +16,10 @@ export function CollectionRead<A>({
   return (
     <>
       {presentation.message ? (
-        <p role="status" className="px-4 py-3 text-caption text-muted-foreground">
+        <Text className="px-4 py-3" render={<p />} variant="note" role="status">
           {presentation.message}
           {presentation.retained && showItems ? " Showing last-known data." : null}
-        </p>
+        </Text>
       ) : null}
       {presentation.state === "loading" && !showItems ? (
         // On its way with nothing kept: lines where its rows will be.
@@ -26,7 +27,9 @@ export function CollectionRead<A>({
       ) : null}
       {showItems || presentation.state === "ready" ? (
         !showItems && emptyLabel ? (
-          <p className="px-4 py-3 text-caption text-muted-foreground">{emptyLabel}</p>
+          <Text className="px-4 py-3" render={<p />} variant="note">
+            {emptyLabel}
+          </Text>
         ) : (
           children(presentation.items)
         )

@@ -12,6 +12,9 @@ import { useMemo } from "react";
 
 import { cn } from "~/lib/utils";
 import { pageBlocks, textBlocks, type PageBlock } from "./pageStructure.logic";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 type Page = NonNullable<ZeropsBrowserRead["page"]>;
 
@@ -58,9 +61,15 @@ function Block({ block }: { readonly block: PageBlock }) {
       );
     case "image":
       return (
-        <p className="flex h-24 w-40 max-w-full items-center justify-center rounded-control bg-foreground/8 px-2 text-center text-muted-foreground text-caption">
-          {block.text}
-        </p>
+        <PictureFrame
+          className="flex h-24 w-40 max-w-full items-center justify-center"
+          render={<p />}
+          size="control"
+        >
+          <span className="px-2 text-center">
+            <Text variant="note">{block.text}</Text>
+          </span>
+        </PictureFrame>
       );
     case "item":
       return (
@@ -71,9 +80,9 @@ function Block({ block }: { readonly block: PageBlock }) {
       );
     case "code":
       return (
-        <p className="w-fit max-w-full truncate rounded-mark bg-foreground/8 px-1.5 font-mono text-foreground/80 text-caption">
+        <Text chip className="w-fit max-w-full" render={<p />} truncate variant="code">
           {block.text}
-        </p>
+        </Text>
       );
   }
 }
@@ -120,18 +129,19 @@ function Answers({ answers }: { readonly answers: ZeropsBrowserRead["answers"] }
     return { key: `${answer.asked}:${occurrence}`, answer };
   });
   return (
-    <span className="flex size-full flex-col gap-2 overflow-hidden p-4" data-check-answers>
-      {keyed.map(({ key, answer }) => (
-        <span
-          key={key}
-          className="flex min-w-0 items-baseline justify-between gap-3 border-border/60 border-b pb-2"
-        >
-          <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
-            {answer.asked}
-          </code>
-          <span className="shrink-0 font-medium text-foreground text-body">{answer.answer}</span>
-        </span>
-      ))}
+    <span className="flex size-full flex-col overflow-hidden px-4 py-2" data-check-answers>
+      <List render={<span />}>
+        {keyed.map(({ key, answer }) => (
+          <span key={key} className="flex min-w-0 items-baseline justify-between gap-3 py-2">
+            <code className="min-w-0 truncate font-mono text-line text-muted-foreground">
+              {answer.asked}
+            </code>
+            <Text className="shrink-0" variant="heading">
+              {answer.answer}
+            </Text>
+          </span>
+        ))}
+      </List>
     </span>
   );
 }
@@ -154,9 +164,9 @@ export function CheckRead({
     return size === "stage" ? (
       <Answers answers={read.answers} />
     ) : (
-      <span className="truncate px-1 text-muted-foreground text-caption" data-check-answers>
+      <Text className="px-1" truncate variant="note" data-check-answers>
         {read.answers[0]!.answer}
-      </span>
+      </Text>
     );
   }
   if (size !== "stage") return null;
@@ -174,7 +184,7 @@ export function CheckRead({
         {failure ??
           (findings === null ? "Checked" : findings.charAt(0).toUpperCase() + findings.slice(1))}
       </span>
-      <span className="text-line text-muted-foreground">Read its errors, console and requests</span>
+      <Text variant="remark">Read its errors, console and requests</Text>
     </span>
   );
 }

@@ -36,6 +36,7 @@ import { GitPathCrumbs } from "./GitPathCrumbs";
 import { GitTreeSidebar } from "./GitTreeSidebar";
 import { GitWhen } from "./GitWhen";
 import type { RepoPathTarget } from "./RepoMarkdown";
+import { Text } from "~/components/ui/text";
 
 /** Newest commit's shade first: the file's newest lines stand out, its oldest fade. */
 const AGE_SHADES: Readonly<Record<number, string>> = {
@@ -356,11 +357,11 @@ function BlameAt({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="me-auto text-caption text-muted-foreground">
+        <Text className="me-auto" variant="note">
           {answer.content === null || why !== null
             ? fileSize(answer.size)
             : `${lines(lineCount(answer.content))} · ${fileSize(answer.size)}`}
-        </span>
+        </Text>
         <Toggle
           className="shrink-0"
           variant="ghost"
@@ -387,7 +388,9 @@ function BlameAt({
         ) : null}
       </div>
       {why !== null ? (
-        <p className="text-body text-muted-foreground">{why}</p>
+        <Text render={<p />} variant="description">
+          {why}
+        </Text>
       ) : blame.view.state !== "known" ? (
         <GitNotRead
           view={blame.view}
@@ -445,7 +448,9 @@ export function GitBlameView(props: GitRepoPageProps) {
                     onOpen={(target) => navigate(at(target))}
                   />
                   {path === "" ? (
-                    <p className="text-body text-muted-foreground">Open a file to see its blame.</p>
+                    <Text render={<p />} variant="description">
+                      Open a file to see its blame.
+                    </Text>
                   ) : (
                     <BlameAt
                       key={`${sha}:${path}`}

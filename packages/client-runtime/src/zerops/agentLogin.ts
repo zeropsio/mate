@@ -13,6 +13,7 @@
  */
 import type { AtomCommandResult } from "../state/runtime.ts";
 import type {
+  ModelSelection,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentLoginPhase,
@@ -21,10 +22,12 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
-  isAgentWithoutSignInReady,
-  type ProviderReadinessFields,
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
+import {
+  standsInForSignIn,
+  type OpenCodeProviderFields,
+} from "@t3tools/shared/openCodeKeyProviders";
 
 import {
   knownPresentation,
@@ -227,6 +230,8 @@ export function zeropsAgentSignInRequired(
   snapshot: ZeropsAgentAuthSnapshot,
   /** The environment's provider instances (`ServerConfig.providers`); undefined while unread. */
   providers: ReadonlyArray<OtherAgentFields> | undefined,
+  /** The Mate's default model (its settings' `defaultModelSelection`): `zeropsOtherAgentReady`. */
+  defaultModel: Pick<ModelSelection, "instanceId"> | null | undefined,
 ): boolean {
   return (
     snapshot.available &&
@@ -236,23 +241,25 @@ export function zeropsAgentSignInRequired(
       if (kind === "registering") return loginInFlight(agent.login?.phase);
       return kind === "not-authorized" || kind === "reconnect" || kind === "needs-reauth";
     }) &&
-    !zeropsOtherAgentReady(providers)
+    !zeropsOtherAgentReady(providers, defaultModel)
   );
 }
 
 /** What `zeropsOtherAgentReady` reads of a provider instance (`ServerProvider`). */
-export type OtherAgentFields = ProviderReadinessFields;
+export type OtherAgentFields = OpenCodeProviderFields;
 
 /**
- * Whether the Mate can run an agent Mate never signs anybody in to — Cursor, OpenCode, Grok,
- * Antigravity: an instance ready by the one test the server's stand-up uses too
- * (`isAgentWithoutSignInReady`), its sign-in read as signed in. Claude Code and Codex never count
+ * Whether the Mate can run an agent Mate never signs anybody in to — OpenCode, on a key the person
+ * set or on its free models they chose: an instance that stands in for the sign-in by the one test
+ * the server's stand-up uses too (`standsInForSignIn`). The agents people sign in to never count
  * here: the feed speaks for them, whatever their driver's probe says.
  */
 export function zeropsOtherAgentReady(
   providers: ReadonlyArray<OtherAgentFields> | undefined,
+  /** The Mate's default model (its settings' `defaultModelSelection`). */
+  defaultModel: Pick<ModelSelection, "instanceId"> | null | undefined,
 ): boolean {
-  return (providers ?? []).some(isAgentWithoutSignInReady);
+  return (providers ?? []).some((provider) => standsInForSignIn(provider, defaultModel));
 }
 
 /** A login that has not ended: its credential is not a sign-in until it does. */

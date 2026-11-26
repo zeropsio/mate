@@ -1,23 +1,17 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { MessageBubble } from "~/components/ui/message-bubble";
 import { cn } from "~/lib/utils";
 
 // ---------------------------------------------------------------------------
 // A bubble
 // ---------------------------------------------------------------------------
 
-/**
- * The log is a ledger (the owner's board, 2026-11-10: "one quiet log, one loud
- * now"): what the Mate did and thought are rows on the tray, no box around
- * any of them, told apart by the mark each wears in the Mate's column — a
- * stack of equal boxes let nothing lead. What it said to the person is the
- * one bubble in it, in its tint, 12 px in and 8 px down; the person's own
- * words keep their bubble on their side.
- */
-export const BUBBLE_SHAPE = "rounded-card";
-export const BUBBLE_PAD = "px-3.5 py-2.5";
-/** The Mate's words: one round of 12 px, hugging what it says. */
-const SPEECH_SHAPE = "w-fit max-w-full rounded-card";
-export const SPEECH_PAD = "px-3 py-2 leading-5";
+// The log is a ledger (the owner's board, 2026-11-10: "one quiet log, one loud
+// now"): what the Mate did and thought are rows on the tray, no box around
+// any of them, told apart by the mark each wears in the Mate's column — a
+// stack of equal boxes let nothing lead. What it said to the person is the
+// one bubble in it, the kit's Mate's message in its tint; the person's own
+// words keep their bubble on their side.
 
 /**
  * The chat's two sizes, by weight (K14): what anyone said — the person's
@@ -33,16 +27,21 @@ export const ROW = "text-prose leading-5";
 /** How a bubble reads: its words to the person, a thought, a thing it did — and in what state. */
 type BubbleTone = "speech" | "thought" | "tool";
 
-const BUBBLE_TONE: Record<BubbleTone, string> = {
-  // Its words to the person: its own tint, lightly — the log's one bubble; who is speaking shows at
-  // a glance. A crewmate speaks in its own (`--run-speaker-tint`). What says "more" over its cut
-  // words fades into its ground (`--run-item-ground`).
-  speech: `bg-(--run-speaker-tint)/17 [--run-item-ground:color-mix(in_oklab,var(--run-speaker-tint)_17%,var(--run-tray))] text-foreground overflow-hidden ${SPEECH_SHAPE}`,
+const BUBBLE_TONE: Record<Exclude<BubbleTone, "speech">, string> = {
   // Talking to itself: plain words on the tray, quiet.
   thought: "w-full text-muted-foreground [--run-item-ground:var(--run-tray)]",
   // A thing it did: a row on the tray.
   tool: "w-full text-foreground",
 };
+
+/**
+ * Its words to the person: the Mate's message in its own tint (`--mate-tint`, the run's speaker's),
+ * the log's one bubble; who is speaking shows at a glance. What says "more" over its cut words fades
+ * into its ground (`--run-item-ground`): the tint over the tray.
+ */
+const SPEECH_GROUND = {
+  "--run-item-ground": "color-mix(in oklab, var(--mate-tint) 17%, var(--run-tray))",
+} as CSSProperties;
 
 /**
  * A line's box in the Mate's column: a row as wide as the column, or the
@@ -59,11 +58,24 @@ export function Bubble({
   readonly tone: BubbleTone;
   /** What the bubble stands for, for the page's own tests and probes. */
   readonly kind: string;
-  /** Its words' size: said at the prose size, thought at the quiet one. */
+  /** Its words' size, for a row or a thought: said at the prose size, thought at the quiet one. */
   readonly size?: typeof WORDS | typeof META | typeof ROW;
   readonly className?: string;
   readonly children: ReactNode;
 }) {
+  if (tone === "speech") {
+    return (
+      <MessageBubble
+        className={className}
+        data-chat-bubble={tone}
+        data-chat-kind={kind}
+        speaker="mate"
+        style={SPEECH_GROUND}
+      >
+        {children}
+      </MessageBubble>
+    );
+  }
   return (
     <div
       className={cn("min-w-0", size, BUBBLE_TONE[tone], className)}

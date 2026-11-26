@@ -1,16 +1,18 @@
 import { useState } from "react";
 
+import { Badge } from "~/components/ui/badge";
 import { Label } from "~/components/ui/label";
 import {
   Radio,
   RadioCard,
   RadioGroup,
+  RadioRow,
   RadioSwatch,
   RadioSwatchGroup,
 } from "~/components/ui/radio-group";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function Choices({ disabled = false }: { readonly disabled?: boolean }) {
   return (
@@ -48,13 +50,25 @@ const REGIONS = [
   { value: "sea1", name: "US West", city: "Seattle", latency: "" },
 ] as const;
 
+const REPOSITORIES = [
+  { value: "acme/storefront", line: "Private · connected now", badge: null },
+  { value: "acme/storefront-api", line: "Private · name matches", badge: "Suggested" },
+  { value: "acme/marketing", line: "Another project holds it", badge: null },
+] as const;
+
+const EFFORTS = [
+  { value: "low", name: "Low", meta: null },
+  { value: "medium", name: "Medium", meta: "Default" },
+  { value: "high", name: "High", meta: null },
+] as const;
+
 const TINTS = ["coral", "amber", "olive", "sky", "violet", "rose", "sand", "slate"] as const;
 type Tint = (typeof TINTS)[number];
 
 function Swatches() {
   const [tint, setTint] = useState<Tint>("sky");
   return (
-    <div className="w-80">
+    <div className="w-full max-w-80">
       <RadioSwatchGroup
         aria-label="Color"
         className="flex justify-between"
@@ -96,19 +110,27 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/radio-group.tsx",
   render: () => (
-    <div className="flex flex-col gap-8">
-      <SpecimenGrid>
-        <Specimen label='<RadioGroup defaultValue="team">'>
-          <Choices />
-        </Specimen>
-        <Specimen label="<RadioGroup disabled>">
-          <Choices disabled />
-        </Specimen>
-      </SpecimenGrid>
-      <SpecimenBlock title="Cards">
-        <SpecimenGrid>
-          <Specimen label='<RadioGroup layout="columns"> <RadioCard title>'>
-            <div className="w-136">
+    <Specimens>
+      <SpecimenBlock title="Choices">
+        <SpecimenGrid size="md">
+          <Specimen label='<RadioGroup defaultValue="team">' note="One item disabled">
+            <Choices />
+          </Specimen>
+          <Specimen label="<RadioGroup disabled>">
+            <Choices disabled />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="A choice with words of its own, laid out in columns or a row."
+        title="Cards"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen
+            label='<RadioGroup layout="columns"> · <RadioCard title>'
+            note="Roles, the owner's disabled"
+          >
+            <div className="w-full max-w-136">
               <RadioGroup aria-label="Role" defaultValue="developer" layout="columns">
                 {ROLES.map((role) => (
                   <RadioCard
@@ -123,8 +145,8 @@ export default defineKitSection({
               </RadioGroup>
             </div>
           </Specimen>
-          <Specimen label='<RadioGroup layout="row"> <RadioCard align="center">'>
-            <div className="w-116">
+          <Specimen label='<RadioGroup layout="row"> · <RadioCard align="center">' note="Regions">
+            <div className="w-full max-w-116">
               <RadioGroup aria-label="Region" defaultValue="prg1" layout="row">
                 {REGIONS.map((region) => (
                   <RadioCard
@@ -142,13 +164,58 @@ export default defineKitSection({
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
+      <SpecimenBlock
+        note="A choice from a list too long or too wordy for cards: the radio leads, the row presses."
+        title="Rows"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen
+            label='<RadioGroup layout="list"> · <RadioRow title line badges>'
+            note="A repository to connect, one taken"
+          >
+            <div className="w-full max-w-96">
+              <RadioGroup aria-label="Repository" defaultValue="acme/storefront" layout="list">
+                {REPOSITORIES.map((repository) => (
+                  <RadioRow
+                    badges={
+                      repository.badge === null ? undefined : (
+                        <Badge tone="info">{repository.badge}</Badge>
+                      )
+                    }
+                    disabled={repository.value === "acme/marketing"}
+                    key={repository.value}
+                    line={repository.line}
+                    title={repository.value}
+                    value={repository.value}
+                  />
+                ))}
+              </RadioGroup>
+            </div>
+          </Specimen>
+          <Specimen label='<RadioRow size="xs" meta>' note="An effort, in a popup">
+            <div className="w-full max-w-64">
+              <RadioGroup aria-label="Effort" defaultValue="medium" layout="list">
+                {EFFORTS.map((effort) => (
+                  <RadioRow
+                    key={effort.value}
+                    meta={effort.meta ?? undefined}
+                    size="xs"
+                    title={effort.name}
+                    value={effort.value}
+                  />
+                ))}
+              </RadioGroup>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
       <SpecimenBlock title="Swatches">
-        <SpecimenGrid>
-          <Specimen label="<RadioSwatchGroup options value> <RadioSwatch>">
+        <SpecimenGrid size="lg">
+          <Specimen label="<RadioSwatchGroup options value> · <RadioSwatch>" note="A Mate's colour">
             <Swatches />
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   ),
 });

@@ -353,6 +353,80 @@ export const checkOffScaleBudget = (
   return { counts, messages };
 };
 
+/**
+ * The web client's stylesheets: the foundation the kit stands on (theme, tokens, base, the
+ * document, rendered markdown, fonts, the boot frame's geometry), the Mate face's drawing, and the
+ * few rules no utility can say. A surface draws with the kit's components and utilities in its own
+ * code, never with a stylesheet of class rules (the owner, 2026-11-25: "why is there still 13k LoC
+ * of some shit?"), so this list only shrinks. A surface's keyframes go in `styles/motion-*.css`,
+ * which holds `@keyframes` and nothing else.
+ */
+export const WEB_STYLESHEETS: ReadonlySet<string> = new Set([
+  "apps/web/src/index.css",
+  "apps/web/src/fonts.css",
+  "apps/web/src/sidebarGeometry.css",
+  "apps/web/src/styles/foundation.css",
+  "apps/web/src/styles/tokens.css",
+  "apps/web/src/styles/base.css",
+  "apps/web/src/styles/document.css",
+  "apps/web/src/styles/chat-markdown.css",
+  "apps/web/src/styles/registered-properties.css",
+  "apps/web/src/styles/mate-face.css",
+  "apps/web/src/styles/run-card.css",
+  "apps/web/src/styles/run-shimmer.css",
+  "apps/web/src/components/MateMark.css",
+  "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+]);
+
+const WEB_MOTION_STYLESHEET = /^apps\/web\/src\/styles\/motion-[a-z-]+\.css$/u;
+
+/** What is left of a stylesheet once its comments and `@keyframes` blocks are taken out. */
+const withoutKeyframes = (source: string): string => {
+  const text = stripComments(source);
+  let rest = "";
+  let index = 0;
+  while (index < text.length) {
+    const start = text.indexOf("@keyframes", index);
+    if (start === -1) {
+      rest += text.slice(index);
+      break;
+    }
+    rest += text.slice(index, start);
+    const open = text.indexOf("{", start);
+    if (open === -1) {
+      rest += text.slice(start);
+      break;
+    }
+    let depth = 0;
+    let end = open;
+    for (; end < text.length; end += 1) {
+      if (text[end] === "{") depth += 1;
+      else if (text[end] === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    index = end + 1;
+  }
+  return rest.trim();
+};
+
+/** Names every web stylesheet outside the list, and every motion stylesheet holding more than keyframes. */
+export const checkWebStylesheets = (
+  sources: ReadonlyArray<{ readonly path: string; readonly source: string }>,
+): ReadonlyArray<string> =>
+  sources.flatMap(({ path, source }) => {
+    if (!path.startsWith(WEB_CSS_PREFIX) || WEB_STYLESHEETS.has(path)) return [];
+    if (WEB_MOTION_STYLESHEET.test(path)) {
+      return withoutKeyframes(source) === ""
+        ? []
+        : [`${path}: a motion stylesheet holds @keyframes only; draw the rest with utilities.`];
+    }
+    return [
+      `${path}: a new stylesheet. Draw the surface with the kit's components and utilities in its own code; keyframes go in styles/motion-*.css.`,
+    ];
+  });
+
 /** Reconciles pre-scanned CSS declarations against the CSS scope of the shared ledger. */
 export const reconcileCssTokenFindings = ({
   directory,
@@ -400,9 +474,10 @@ export const checkCssTokens = Effect.fn("checkCssTokens")(function* ({
   const findings = sources.flatMap(scanCssSource);
   const colours = reconcileCssTokenFindings({ directory, findings });
   const scale = checkOffScaleBudget(sources, budget);
-  const problemCount = colours.problemCount + scale.messages.length;
+  const stylesheets = checkWebStylesheets(sources);
+  const problemCount = colours.problemCount + scale.messages.length + stylesheets.length;
   return {
-    report: [colours.report, ...scale.messages].join("\n"),
+    report: [colours.report, ...scale.messages, ...stylesheets].join("\n"),
     problemCount,
     exitCode: problemCount === 0 ? 0 : 1,
   } satisfies CssTokenCheckResult;

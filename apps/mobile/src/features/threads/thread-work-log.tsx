@@ -28,7 +28,7 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { AppText as Text } from "../../components/AppText";
-import { ZeropsMark } from "../../components/ZeropsMark";
+import { MateMark } from "../../components/MateMark";
 import { cn } from "../../lib/cn";
 import { THREAD_WORK_ROW_MIN_HEIGHT, type deriveThreadWorkLogSizing } from "../../lib/layout";
 import {
@@ -77,8 +77,8 @@ function WorkLogIcon(props: {
 }) {
   const colorClassName = props.highlighted ? "accent-foreground" : props.colorClassName;
   if (props.icon === "t3-code") {
-    // The app's own tools carry the product mark (the fork draws Zerops', not T3's).
-    return <ZeropsMark height={10} />;
+    // The app's own tools carry the product mark: Mate's face, not T3's.
+    return <MateMark height={10} />;
   }
   return (
     <SymbolView

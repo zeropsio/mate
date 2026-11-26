@@ -4,6 +4,7 @@ import { cn } from "~/lib/utils";
 
 import { AskDock } from "../ask/AskCard";
 import { ComposerAskMark } from "./ComposerAsk";
+import { Text } from "~/components/ui/text";
 
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
@@ -77,13 +78,7 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
   return (
     <AskDock
       // Someone else's agent: whom it waits on stands where its decisions would.
-      actions={
-        waitingLabel === undefined ? (
-          actions
-        ) : (
-          <span className="text-line text-muted-foreground">{waitingLabel}</span>
-        )
-      }
+      actions={waitingLabel === undefined ? actions : <Text variant="remark">{waitingLabel}</Text>}
       face={face ?? <ComposerAskMark />}
       kind="approval"
       label={fallbackLabel}

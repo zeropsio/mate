@@ -67,7 +67,7 @@ export function ZeropsProjectMenu({
       <MenuTrigger render={<Button aria-label={label} size="icon-md" variant="ghost" />}>
         <EllipsisIcon className="size-4" />
       </MenuTrigger>
-      <MenuPopup align="end" className="min-w-48 max-w-[24rem]">
+      <MenuPopup align="end" width="fit">
         <StopPublicAccessStatus access={publicAccess} />
         {routes === undefined ||
         (publicAccess.bound && publicAccess.state !== "ready" && routes.length === 0) ? null : (

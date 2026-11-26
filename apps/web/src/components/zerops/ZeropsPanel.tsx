@@ -59,6 +59,7 @@ import { MicroLabel } from "./primitives";
 import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsPanel({
   threadRef,
@@ -154,9 +155,9 @@ export function ZeropsPanel({
     ) ?? false;
   const agents =
     mateIdentity?.automated === true ? (
-      <p className="text-body text-muted-foreground" data-zerops-surface="automated-mate-agents">
+      <Text render={<p />} variant="description" data-zerops-surface="automated-mate-agents">
         {automatedAgentsLine(mateIdentity.name, automatedKey)}
-      </p>
+      </Text>
     ) : agentAuthCard === null ? (
       agentAuthUnknown === null ? null : (
         <ZeropsAgentAuthUnknown message={agentAuthUnknown} />

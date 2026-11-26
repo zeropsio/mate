@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 
 import { type SlowRpcAckRequest, useSlowRpcAckRequests } from "../rpc/requestLatencyState";
 import { toastManager } from "~/lib/toasts";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): string {
   const count = requests.length;
@@ -15,19 +17,18 @@ function describeSlowRequests(requests: ReadonlyArray<SlowRpcAckRequest>): strin
 
 function SlowRequestDetails({ requests }: { requests: ReadonlyArray<SlowRpcAckRequest> }) {
   return (
-    <ul className="space-y-2.5 text-caption text-muted-foreground">
-      {requests.map((request) => (
-        <li
-          className="min-w-0 border-border/50 border-b pb-2 last:border-b-0 last:pb-0"
-          key={request.requestId}
-        >
-          <div className="wrap-break-word font-medium text-foreground">{request.tag}</div>
-          <div className="mt-0.5 text-3xs opacity-75">
-            Started {new Date(request.startedAt).toLocaleTimeString()}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <Text render={<div />} variant="note">
+      <List render={<ul />}>
+        {requests.map((request) => (
+          <li className="min-w-0 py-2.5 first:pt-0 last:pb-0" key={request.requestId}>
+            <div className="wrap-break-word font-medium text-foreground">{request.tag}</div>
+            <div className="mt-0.5 text-3xs opacity-75">
+              Started {new Date(request.startedAt).toLocaleTimeString()}
+            </div>
+          </li>
+        ))}
+      </List>
+    </Text>
   );
 }
 

@@ -22,6 +22,8 @@ import {
   type ProcessStepState,
   type StepGlyphState,
 } from "../primitives";
+import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 /** A segment's mark is every step list's: `StepGlyph`. */
 const SEGMENT_GLYPH: Record<ProcessStepState, StepGlyphState> = {
@@ -111,7 +113,7 @@ export function PipelineSegments({
               {step.label}
             </span>
             {footnote !== undefined ? (
-              <span className="text-muted-foreground text-caption tabular-nums">{footnote}</span>
+              <Text variant="meta">{footnote}</Text>
             ) : (
               <span className="sr-only">{step.stateLabel}</span>
             )}
@@ -134,18 +136,14 @@ export function CheckChips({
       {steps.map((step) => {
         const { Icon, className } = STEP_GLYPH[step.state];
         return (
-          <li
-            className="inline-flex min-w-0 items-center gap-1 rounded-control bg-muted/60 px-1.5 py-0.5 text-foreground text-caption"
-            data-zerops-process-state={step.state}
-            key={step.id}
-          >
-            <Icon aria-hidden="true" className={cn("size-3 shrink-0", className)} />
+          <Badge data-zerops-process-state={step.state} key={step.id} render={<li />}>
+            <Icon aria-hidden="true" className={cn("size-3", className)} />
             <span className="truncate">{step.label}</span>
             <span className="sr-only">{step.stateLabel}</span>
             {step.note !== undefined ? (
-              <span className="shrink-0 text-muted-foreground tabular-nums">{step.note}</span>
+              <span className="text-muted-foreground tabular-nums">{step.note}</span>
             ) : null}
-          </li>
+          </Badge>
         );
       })}
     </ul>

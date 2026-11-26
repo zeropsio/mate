@@ -24,6 +24,7 @@
  * 0.15.145?" installed 0.15.146, the version an hour-old check knew); where
  * no check can say, it asks about the newest version.
  */
+import { Text } from "~/components/ui/text";
 import { useCallback, type ReactNode } from "react";
 
 import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
@@ -189,9 +190,9 @@ export function ZeropsMateUpdateControl({
         <MateUpdateLine line={line} verb={verb} />
         {mateUpdate.notice && !automaticBusy ? <span>{mateUpdate.notice}</span> : null}
         {state.phase === "failed" && effectiveUpdate?.automatic?.phase !== "postponed" ? (
-          <span className="text-status-failed-text" data-zerops-surface="mate-update-error">
+          <Text data-zerops-surface="mate-update-error" variant="error">
             {state.message}
-          </span>
+          </Text>
         ) : null}
       </>
     ),

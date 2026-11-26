@@ -1,4 +1,5 @@
 import { EmptyState } from "../ui/empty";
+import { Card } from "~/components/ui/card";
 
 /**
  * The menu at an account's first run (`useAccountFirstRun`): nothing to list yet, so one dashed
@@ -7,11 +8,10 @@ import { EmptyState } from "../ui/empty";
  */
 export function SidebarFirstRunHint() {
   return (
-    <div
-      className="mx-0.5 mt-1 rounded-card border border-dashed border-sidebar-border px-1"
-      data-zerops-surface="sidebar-first-run"
-    >
-      <EmptyState size="row">Your projects and their Mates appear here.</EmptyState>
-    </div>
+    <Card className="mx-0.5 mt-1" data-zerops-surface="sidebar-first-run" variant="slot">
+      <div className="px-1">
+        <EmptyState size="row">Your projects and their Mates appear here.</EmptyState>
+      </div>
+    </Card>
   );
 }

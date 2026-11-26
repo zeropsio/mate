@@ -12,6 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { Failure } from "~/components/ui/failure";
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import {
   MOTION,
@@ -78,7 +79,7 @@ import { appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";
-import { BeadMark, CutText, GrowsInPlace, SectionAction, SectionLabel } from "../system";
+import { BeadMark, CutText, GrowsInPlace, SectionAction } from "../system";
 import { goClass } from "../system/ChangeRow";
 import { cn } from "~/lib/utils";
 import { mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
@@ -105,6 +106,10 @@ import {
   type Board,
 } from "./taskBoard.logic";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 /** Where the organization's connections are set: Settings › Automation. */
 const AUTOMATION_SETTINGS = "/settings/automation" as const;
@@ -269,9 +274,9 @@ export function ProjectAutomationRowView({
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="flex shrink-0 items-center">{pool.slice(0, 5).map(face)}</span>
-        <span className="min-w-0 truncate text-line text-muted-foreground">
+        <Text className="min-w-0" truncate variant="remark">
           {automationSummary(pool)}
-        </span>
+        </Text>
       </div>
     </SetupRow>
   );
@@ -820,8 +825,9 @@ function AutomationBody({
           </span>
         )}
       </div>
+      <Separator />
       <GrowsInPlace>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] border-t border-border/60 px-2 pt-1.5 pb-2 [[data-flush]_&]:px-3.5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] px-2 pt-1.5 pb-2 [[data-flush]_&]:px-3.5">
           {board === undefined ? null : (
             <TaskBoardView
               all={all}
@@ -853,12 +859,10 @@ function LedgerGroup({
   return (
     // The page's label 15 px over its first row's words, 32 px under the last group's.
     <div
-      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-zerops-section-label]]:px-2.5"
+      className="col-span-full grid min-w-0 grid-cols-subgrid pt-1.5 *:col-span-full [&+&]:mt-3 [&>[data-slot=section-header]]:px-2.5"
       data-zerops-board={name}
     >
-      <SectionLabel action={action} count={count} level={3}>
-        {name}
-      </SectionLabel>
+      <SectionHeader action={action} count={count} level={3} size="panel" title={name} />
       {children}
     </div>
   );
@@ -866,7 +870,7 @@ function LedgerGroup({
 
 function Placeholders({ count }: { readonly count: number }) {
   return (
-    <ul aria-hidden="true" className={ROWS}>
+    <List aria-hidden="true" className={ROWS} render={<ul />}>
       {Array.from({ length: count }, (_, at) => (
         <li className={ROW} key={at}>
           <Row className={PRESS} columns>
@@ -874,7 +878,7 @@ function Placeholders({ count }: { readonly count: number }) {
           </Row>
         </li>
       ))}
-    </ul>
+    </List>
   );
 }
 
@@ -1075,9 +1079,7 @@ function TaskBoardView({
     return (
       // The board's read failed: HQ's words, and the way to read again.
       <div className={LINE}>
-        <span className="min-w-0 flex-1 text-body leading-5 text-status-failed-text" role="alert">
-          {read.words}
-        </span>
+        <Failure cause={read.words} className="min-w-0 flex-1" role="alert" size="line" />
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
           Try again
         </Button>
@@ -1110,10 +1112,10 @@ function TaskBoardView({
   const { atWork, queued, recent } = read.board;
   if (atWork.length + queued.length + recent.length === 0)
     return waitsFor === undefined ? null : (
-      <p className="m-0 px-2.5 pt-2 pb-1.5 text-body leading-5 text-muted-foreground">
+      <Text className="m-0 px-2.5 pt-2 pb-1.5" render={<p />} variant="description">
         No tasks yet. {waitsFor.length === 1 ? `${waitsFor[0] ?? "It"} takes` : "They take"} one as
         soon as there is somewhere to take it from.
-      </p>
+      </Text>
     );
   const faces = new Map(pool.map((mate) => [mate.projectId, mate]));
   const finished = all ? recent : recent.slice(0, RECENT_SHOWN);
@@ -1121,7 +1123,7 @@ function TaskBoardView({
     <div className={LEDGER} data-zerops-surface="project-automation-board" ref={ledger}>
       {atWork.length === 0 ? null : (
         <LedgerGroup count={atWork.length} name="At work">
-          <ul className={ROWS}>
+          <List className={ROWS} render={<ul />}>
             {atWork.map((row) => {
               const mate = row.mate === null ? undefined : faces.get(row.mate.projectId);
               const name = mate?.name ?? row.mate?.name ?? null;
@@ -1188,12 +1190,12 @@ function TaskBoardView({
                 </li>
               );
             })}
-          </ul>
+          </List>
         </LedgerGroup>
       )}
       {queued.length === 0 ? null : (
         <LedgerGroup count={queued.length} name="Queued">
-          <ul className={ROWS}>
+          <List className={ROWS} render={<ul />}>
             {queued.map((row) => {
               const press = board.stop?.pressOf(row.id) ?? RESTS;
               const stopping = press.kind === "working";
@@ -1244,12 +1246,12 @@ function TaskBoardView({
                 </li>
               );
             })}
-          </ul>
+          </List>
         </LedgerGroup>
       )}
       {recent.length === 0 ? null : (
         <LedgerGroup count={recent.length} name="Finished">
-          <ul className={ROWS}>
+          <List className={ROWS} render={<ul />}>
             {finished.map((row) => {
               const mate = row.mateId === null ? undefined : faces.get(row.mateId);
               const review = row.outcome === "review" ? row.change : null;
@@ -1343,7 +1345,7 @@ function TaskBoardView({
                 </li>
               );
             })}
-          </ul>
+          </List>
           {recent.length > RECENT_SHOWN ? (
             // Finished past its first few: opened in place, on the titles' edge.
             <div className={MORE}>
@@ -1425,11 +1427,11 @@ function SourcesView({
         name="Takes tasks from"
       >
         {!none ? (
-          <ul className={ROWS}>
+          <List className={ROWS} render={<ul />}>
             {rows.map((row) => (
               <SourceRowView admin={admin} key={row.key} row={row} />
             ))}
-          </ul>
+          </List>
         ) : sources.reading ? (
           <div className={LINE}>
             <WaitLine text="Reading…" />
@@ -1561,14 +1563,14 @@ const WIDE = "@max-[760px]/automation:hidden";
  */
 const LEDGER =
   "relative grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto_auto] @max-[520px]/automation:grid-cols-[auto_minmax(0,1fr)_auto]";
-const ROWS = "m-0 grid min-w-0 list-none grid-cols-subgrid p-0";
+const ROWS = "grid min-w-0 grid-cols-subgrid";
 
 /**
  * A row: the Changes ledger's own, 40 px, a hairline over each but the first. It holds its ground
  * while any of it is pointed at: its Stop and its Review stand over it.
  */
 const ROW =
-  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center border-t border-border/60 [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] first:border-t-transparent [&:hover>[data-press]]:bg-foreground/5";
+  "group/pa relative col-span-full grid min-w-0 grid-cols-subgrid items-center [--change-gap:10px] [--row-pad-x:10px] [--row-pad-y:6px] [&:hover>[data-press]]:bg-item-hover";
 const PRESS = "row-start-1 min-h-10 items-center";
 
 /** A row's mark: a Mate's face, a queued task's place, a finished one's bead, a source's icon. */

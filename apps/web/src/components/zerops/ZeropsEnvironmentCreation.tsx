@@ -15,8 +15,9 @@ import type { ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 /** The steps an `environment` operation goes through, as a person names them. */
 const STEPS = [
@@ -91,10 +92,11 @@ export function ZeropsEnvironmentCreation({
   const keyOnly = kind === "deploy_key";
   const at = keyOnly ? 0 : (PHASE_STEP[phase] ?? 0);
   return (
-    <section
-      className="space-y-3 rounded-card border border-border/55 bg-card/20 px-4 py-4"
-      data-zerops-surface="environment-creation"
+    <Card
       data-zerops-creation-outcome={standing.kind}
+      data-zerops-surface="environment-creation"
+      render={<section />}
+      size="md"
     >
       <h2 className="text-body font-semibold text-foreground">
         {standing.kind === "failed" ? `${name} didn’t come up` : `Setting up ${name}`}
@@ -112,15 +114,15 @@ export function ZeropsEnvironmentCreation({
             ? {
                 state: "failed",
                 cause: operationFailureWords(standing.failure),
-                details: <FailureDetails standing={standing} />,
+                details: operationFailureDetails(standing.failure),
               }
             : undefined
         }
       />
       {standing.kind === "waiting" ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           {standing.yours ? standing.line : waitingFor}
-        </p>
+        </Text>
       ) : null}
       <div className="flex justify-end gap-2">
         {standing.kind === "waiting" && onContinue !== undefined ? (
@@ -140,15 +142,6 @@ export function ZeropsEnvironmentCreation({
           </Button>
         ) : null}
       </div>
-    </section>
+    </Card>
   );
-}
-
-function FailureDetails({
-  standing,
-}: {
-  readonly standing: Extract<HqOperationStanding, { readonly kind: "failed" }>;
-}) {
-  const details = operationFailureDetails(standing.failure);
-  return details === null ? null : <ZeropsAnswerDetails text={details} />;
 }

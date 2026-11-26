@@ -1,3 +1,5 @@
+import { Badge } from "~/components/ui/badge";
+import { Skeleton } from "~/components/ui/skeleton";
 import type { OperationSubject } from "./subject";
 
 /**
@@ -22,12 +24,9 @@ export function OperationSubjectLine({
     >
       {subject.kind === "named" ? (
         <>
-          <span
-            className="me-1.5 inline-flex rounded-control bg-muted px-1.5 font-medium text-foreground"
-            data-zerops-subject-chip
-          >
+          <Badge className="me-1.5" data-zerops-subject-chip>
             {subject.host}
-          </span>
+          </Badge>
           {subject.serverName !== undefined ? (
             <span className="me-1.5 text-foreground">{subject.serverName}</span>
           ) : null}
@@ -38,10 +37,11 @@ export function OperationSubjectLine({
           ) : null}
         </>
       ) : running ? (
-        <span
+        <Skeleton
           aria-hidden="true"
-          className="inline-block h-3 w-28 rounded-mark bg-muted align-middle"
+          className="inline-block h-3 w-28 align-middle"
           data-zerops-subject-placeholder
+          still
         />
       ) : (
         <span className="text-muted-foreground">{subject.text}</span>

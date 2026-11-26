@@ -12,6 +12,8 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { KEEP_HIDDEN } from "./ask.logic";
 import type { AskDensity } from "./AskCard";
+import { Text } from "~/components/ui/text";
+import { CopyLine } from "~/components/ui/copy-line";
 
 /** No browser or password manager offers to save or fill what is typed here, shown or masked. */
 const NOT_A_PASSWORD = {
@@ -94,7 +96,7 @@ export function AskSecretField(props: AskSecretFieldProps) {
   const { keepHidden: hidden } = props;
   const keepHidden =
     hidden === undefined ? null : (
-      <span className="flex shrink-0 items-center gap-2 text-caption text-muted-foreground">
+      <Text className="flex shrink-0 items-center gap-2" variant="note">
         <Checkbox
           aria-labelledby={hiddenId}
           checked={hidden.already || hidden.value}
@@ -102,12 +104,9 @@ export function AskSecretField(props: AskSecretFieldProps) {
           onCheckedChange={(checked) => hidden.onChange(checked === true)}
         />
         <span id={hiddenId}>{KEEP_HIDDEN}</span>
-      </span>
+      </Text>
     );
-  const hint =
-    props.hint === undefined ? null : (
-      <span className="text-caption text-muted-foreground">{props.hint}</span>
-    );
+  const hint = props.hint === undefined ? null : <Text variant="note">{props.hint}</Text>;
   if (compact) {
     return (
       // The field keeps a width to type in; Keep hidden goes under it where both do not fit.
@@ -119,9 +118,9 @@ export function AskSecretField(props: AskSecretFieldProps) {
   }
   return (
     <div className="grid min-w-0 gap-1.5">
-      <label className="text-caption text-muted-foreground" htmlFor={id}>
+      <Text render={<label htmlFor={id} />} variant="label">
         {props.label}
-      </label>
+      </Text>
       {field}
       {hint}
       {keepHidden}
@@ -146,7 +145,6 @@ export function AskRevealed({
   readonly seconds?: number;
 }) {
   const [left, setLeft] = useState(seconds);
-  const [copied, setCopied] = useState(false);
   const hide = useEffectEvent(onHide);
   useEffect(() => {
     const started = Date.now();
@@ -166,28 +164,12 @@ export function AskRevealed({
       document.removeEventListener("visibilitychange", leave);
     };
   }, [seconds]);
-  useEffect(() => {
-    if (!copied) return;
-    const reset = window.setTimeout(() => setCopied(false), 1600);
-    return () => window.clearTimeout(reset);
-  }, [copied]);
   return (
     <div className="grid min-w-0 gap-1.5" data-ask-revealed>
-      <div className="flex min-w-0 items-center gap-2">
-        <code className="min-w-0 flex-1 break-all rounded-control bg-muted px-2.5 py-1.5 font-mono text-body">
-          {value}
-        </code>
-        <Button
-          onClick={() => void navigator.clipboard.writeText(value).then(() => setCopied(true))}
-          size="sm"
-          variant="secondary"
-        >
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      </div>
-      <p className="text-caption text-muted-foreground" aria-live="off">
+      <CopyLine label="the value" value={value} wrap />
+      <Text render={<p />} variant="note" aria-live="off">
         Hides in {left} s or when you leave
-      </p>
+      </Text>
     </div>
   );
 }

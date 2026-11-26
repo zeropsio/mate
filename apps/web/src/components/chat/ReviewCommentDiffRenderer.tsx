@@ -1,3 +1,4 @@
+import { CodeBlock } from "~/components/ui/code-block";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { FileDiff } from "@pierre/diffs/react";
 import { getRenderablePatch, resolveFileDiffPath } from "../../lib/diffRendering";
@@ -33,11 +34,7 @@ export default function ReviewCommentDiffRenderer({
     );
   }
   if (renderablePatch?.kind === "raw") {
-    return (
-      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">
-        {renderablePatch.text}
-      </pre>
-    );
+    return <CodeBlock wrap={false}>{renderablePatch.text}</CodeBlock>;
   }
   return null;
 }

@@ -193,7 +193,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
             projectExpanded ? "" : "-rotate-90"
           }`}
         />
-        <FolderIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />
+        <FolderIcon aria-hidden className="text-sidebar-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-start text-body font-semibold text-sidebar-foreground">
           {projectDisplayName}
         </span>
@@ -246,10 +246,7 @@ function SidebarProjectBranch<TThread extends SidebarProjectTreeThread>(props: {
                         memberExpanded ? "" : "-rotate-90"
                       }`}
                     />
-                    <ServerIcon
-                      aria-hidden
-                      className="size-3.5 shrink-0 text-sidebar-muted-foreground"
-                    />
+                    <ServerIcon aria-hidden className="text-sidebar-muted-foreground" />
                     <span className="min-w-0 flex-1 text-start">
                       <span className="block truncate text-body font-medium text-sidebar-foreground">
                         {memberDisplayName}

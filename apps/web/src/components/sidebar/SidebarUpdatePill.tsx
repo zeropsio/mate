@@ -129,8 +129,7 @@ function SidebarUpdateArchitectureWarningContent() {
   if (!visible || !description) return null;
 
   return (
-    <Alert variant="warning">
-      <TriangleAlertIcon />
+    <Alert icon={<TriangleAlertIcon />} variant="warning">
       <AlertTitle>Intel build on Apple Silicon</AlertTitle>
       <AlertDescription>{description}</AlertDescription>
     </Alert>

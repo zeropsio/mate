@@ -3,7 +3,6 @@
 import {
   AlertTriangleIcon,
   ArrowUpCircleIcon,
-  CopyIcon,
   DownloadIcon,
   PlusIcon,
   Trash2Icon,
@@ -29,8 +28,9 @@ import {
   toCustomModelSetting,
 } from "@t3tools/shared/model";
 import { cn } from "../../lib/utils";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { CopyLine } from "../ui/copy-line";
 import { normalizeProviderAccentColor } from "../../providerInstances";
+import { PanelBar } from "../ui/panel-bar";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -47,10 +47,8 @@ import { Checkbox } from "../ui/checkbox";
 import { DraftInput } from "../ui/draft-input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Row } from "../ui/row";
-import { ScrollArea } from "../ui/scroll-area";
 import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DriverOption } from "./providerDriverMeta";
 import { Tab, TabStrip } from "../ui/tab-strip";
@@ -67,6 +65,9 @@ import {
   getProviderVersionLabel,
   type ProviderStatusKey,
 } from "./providerStatus";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { Separator } from "~/components/ui/separator";
 
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -272,16 +273,16 @@ function ProviderEnvironmentSection(props: {
             ])
           }
         >
-          <PlusIcon className="size-3" />
+          <PlusIcon />
           Add
         </Button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           Add variables to pass API keys, base URLs, or other per-instance CLI settings.
-        </p>
+        </Text>
       ) : (
-        <div className="overflow-hidden rounded-control border border-border/70">
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -347,7 +348,7 @@ function ProviderEnvironmentSection(props: {
                         onClick={() => removeVariable(variable.id)}
                         aria-label={`Remove environment variable ${variable.name || index + 1}`}
                       >
-                        <XIcon className="size-3.5" />
+                        <XIcon />
                       </Button>
                     </div>
                   </TableCell>
@@ -355,11 +356,11 @@ function ProviderEnvironmentSection(props: {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </Card>
       )}
-      <span className="text-caption text-muted-foreground">
+      <Text variant="note">
         Sensitive values are stored separately and are not returned to the app after saving.
-      </span>
+      </Text>
     </div>
   );
 }
@@ -481,24 +482,6 @@ export function ProviderInstanceCard({
   const displayName =
     instance.displayName?.trim() || driverOption?.label || String(instance.driver);
   const accentColor = normalizeProviderAccentColor(instance.accentColor);
-  const { copyToClipboard } = useCopyToClipboard<{ providerName: string }>({
-    onCopy: ({ providerName }) => {
-      toastManager.add({
-        type: "success",
-        title: `${providerName} update command copied`,
-        description: "Run it in a terminal when you are ready to update.",
-      });
-    },
-    onError: (error, { providerName }) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: `Could not copy ${providerName} update command`,
-          description: error.message,
-        }),
-      );
-    },
-  });
 
   // Narrow `instance.driver` for callers that key on the closed
   // `ProviderDriverKind` union (e.g. `normalizeModelSlug`'s alias table). Custom
@@ -601,11 +584,15 @@ export function ProviderInstanceCard({
   const titleHeadNode = (
     <>
       {titleIconNode}
-      <h3 className="truncate text-body font-medium text-foreground">{displayName}</h3>
+      <Text render={<h3 />} truncate variant="heading">
+        {displayName}
+      </Text>
       {String(instanceId) !== String(instance.driver) ? (
-        <code className="truncate rounded-mark bg-muted/60 px-1 py-0.5 text-caption text-muted-foreground">
-          {instanceId}
-        </code>
+        <Text truncate variant="meta">
+          <Text chip render={<code />} variant="code">
+            {instanceId}
+          </Text>
+        </Text>
       ) : null}
       {driverOption?.badgeLabel ? (
         <Badge tone="warning" size="sm" className="shrink-0">
@@ -633,7 +620,7 @@ export function ProviderInstanceCard({
                   onClick={() => setDeleting(true)}
                   aria-label={`Delete provider instance ${instanceId}`}
                 >
-                  <Trash2Icon className="size-3" />
+                  <Trash2Icon />
                 </Button>
               }
             />
@@ -668,12 +655,14 @@ export function ProviderInstanceCard({
   );
 
   const versionCodeNode = versionLabel ? (
-    <code className="text-caption text-muted-foreground">{versionLabel}</code>
+    <Text render={<code />} variant="meta">
+      {versionLabel}
+    </Text>
   ) : null;
 
   if (mode === "list") {
     return (
-      <div className="group relative flex min-h-16 items-center gap-1.5 border-b border-border/60 py-1 ps-1 pe-3 last:border-b-0">
+      <div className="group relative flex min-h-16 items-center gap-1.5 py-1 ps-1 pe-3">
         <div
           className={cn(
             "min-w-0 flex-1 transition-opacity",
@@ -713,7 +702,7 @@ export function ProviderInstanceCard({
         inert={readOnly}
         aria-disabled={readOnly || undefined}
         className={cn(
-          "flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4 py-3",
+          "flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-rule px-4 py-3",
           readOnly && "opacity-50 select-none",
         )}
       >
@@ -773,40 +762,13 @@ export function ProviderInstanceCard({
                     ) : null}
                     {onRunVersionAction && updateCommand ? (
                       <div className="flex items-center gap-2 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        <Separator aria-hidden className="flex-1" />
                         or, update manually using
-                        <span aria-hidden className="h-px flex-1 bg-border" />
+                        <Separator aria-hidden className="flex-1" />
                       </div>
                     ) : null}
                     {updateCommand ? (
-                      <div className="flex min-w-0 items-center gap-1 rounded-control border border-border/70 bg-muted/40 py-0.5 pr-0.5 pl-2">
-                        <ScrollArea radius="none" scrollFade className="h-8 min-w-0 flex-1">
-                          <code className="flex h-full w-max items-center whitespace-nowrap pr-3 font-mono text-2xs text-foreground">
-                            {updateCommand}
-                          </code>
-                        </ScrollArea>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                type="button"
-                                size="icon-sm"
-                                variant="ghost"
-                                className="shrink-0"
-                                onClick={() =>
-                                  copyToClipboard(updateCommand, {
-                                    providerName: displayName,
-                                  })
-                                }
-                                aria-label="Copy update command"
-                              >
-                                <CopyIcon className="size-3" />
-                              </Button>
-                            }
-                          />
-                          <TooltipPopup side="top">Copy command</TooltipPopup>
-                        </Tooltip>
-                      </div>
+                      <CopyLine label="the update command" value={updateCommand} wrap />
                     ) : null}
                   </div>
                 </PopoverPopup>
@@ -815,15 +777,19 @@ export function ProviderInstanceCard({
             {titleTailNode}
           </div>
           {showEditorStatus ? (
-            <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-caption text-muted-foreground">
+            <Text
+              className="flex min-w-0 flex-wrap items-center gap-x-1.5"
+              render={<p />}
+              variant="note"
+            >
               <span>{summary.headline}</span>
               {summary.detail ? <span>· {summary.detail}</span> : null}
-            </p>
+            </Text>
           ) : null}
         </div>
       </div>
 
-      <div className="flex h-11 shrink-0 items-center border-b border-border/70 px-2">
+      <PanelBar size="lg">
         <TabStrip
           activeId={visibleTab}
           items={[
@@ -855,7 +821,7 @@ export function ProviderInstanceCard({
             Configuration
           </Tab>
         </TabStrip>
-      </div>
+      </PanelBar>
 
       <div
         inert={readOnly}
@@ -875,7 +841,7 @@ export function ProviderInstanceCard({
             </div>
           ) : null}
 
-          {setup ? <div className="border-b border-border/60 px-4 py-3">{setup}</div> : null}
+          {setup ? <div className="border-b border-rule px-4 py-3">{setup}</div> : null}
 
           <div>
             <label htmlFor={`provider-instance-${instanceId}-display-name`} className="block">
@@ -888,9 +854,9 @@ export function ProviderInstanceCard({
                 placeholder={driverOption?.label ?? "Instance label"}
                 spellCheck={false}
               />
-              <span className="mt-1 block text-caption text-muted-foreground">
+              <Text className="mt-1 block" variant="note">
                 Optional label shown in the provider list.
-              </span>
+              </Text>
             </label>
           </div>
 
@@ -923,12 +889,12 @@ export function ProviderInstanceCard({
 
           {driverOption === undefined ? (
             <div>
-              <p className="text-caption text-muted-foreground">
+              <Text render={<p />} variant="note">
                 This instance uses a driver (
                 <code className="text-foreground">{String(instance.driver)}</code>) that is not
                 shipped with the current build. Configuration values are preserved but cannot be
                 edited here.
-              </p>
+              </Text>
             </div>
           ) : null}
         </div>

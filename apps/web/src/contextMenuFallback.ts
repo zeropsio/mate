@@ -327,8 +327,8 @@ export function showContextMenuFallback<T extends string>(
         button.className = isDisabled
           ? `${rowBase} pointer-events-none cursor-not-allowed text-muted-foreground opacity-64`
           : isLeafDestructive
-            ? `${rowBase} text-destructive-foreground hover:bg-destructive/10 hover:text-destructive-foreground`
-            : `${rowBase} text-foreground hover:bg-accent hover:text-accent-foreground`;
+            ? `${rowBase} text-destructive-foreground hover:bg-item-hover`
+            : `${rowBase} text-foreground hover:bg-item-hover`;
         button.style.cssText =
           "display:flex;width:100%;min-height:1.75rem;align-items:center;gap:0.5rem;border:0;border-radius:var(--radius-control);background:transparent;padding:0.25rem 0.5rem;color:var(--contrast-foreground);font-family:var(--font-sans,system-ui,sans-serif);font-size:0.875rem;line-height:1.25rem;text-align:left;cursor:default;";
         if (isLeafDestructive) {
@@ -385,20 +385,10 @@ export function showContextMenuFallback<T extends string>(
         if (!isDisabled) {
           let isHovered = false;
           let isFocused = false;
+          // Menu's highlighted item: the item's hover ground, a destructive one keeping its red.
           const updateHighlight = () => {
-            const isHighlighted = isHovered || isFocused;
-            button.style.background = isHighlighted
-              ? isLeafDestructive
-                ? "color-mix(in srgb, var(--destructive) 10%, transparent)"
-                : "var(--accent)"
-              : "transparent";
-            button.style.color = isHighlighted
-              ? isLeafDestructive
-                ? "var(--destructive-foreground)"
-                : "var(--contrast-accent-foreground)"
-              : isLeafDestructive
-                ? "var(--destructive-foreground)"
-                : "var(--contrast-foreground)";
+            button.style.background =
+              isHovered || isFocused ? "var(--zerops-item-hover)" : "transparent";
           };
           button.addEventListener("mouseenter", () => {
             button.focus({ preventScroll: true });

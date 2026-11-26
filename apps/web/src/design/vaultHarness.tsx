@@ -5,7 +5,8 @@
  * The real `VaultPanelBody` in the real `RightPanelTabs`, over the fixture view
  * (`vaultFixture.ts`). `?state=` — `ready` (the default), `unread` (reading), `failed` (what it
  * kept, under the failure), `failed-empty` (a read that failed before any answer), `live` (nothing
- * waits), `apps` (two apps with values of their own), `mate` (the Mate's own vault holds values).
+ * waits), `apps` (two apps with values of their own), `mate` (the Mate's own vault holds values),
+ * `composer` (the message box's key card over a message: *Add to message* puts the key in it).
  * `?actor=environment` draws it without a Mate (restart buttons). Writes answer after
  * 600 ms; `?fail=1` refuses each with `projectEnvDuplicateKey`. `?theme=dark` for dark.
  *
@@ -13,13 +14,23 @@
  * route imports this module.
  */
 import type { VaultView } from "@t3tools/client-runtime/data";
-import { StrictMode } from "react";
+import { KeyRoundIcon } from "lucide-react";
+import { StrictMode, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import {
+  ComposerPromptEditor,
+  ComposerVaultKeysContext,
+  type ComposerPromptEditorHandle,
+} from "~/components/ComposerPromptEditor";
 import { RightPanelPage } from "~/components/RightPanelPage";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import type { RightPanelSurface } from "~/rightPanelStore";
+import { Button } from "~/components/ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
+import { VaultAddCard } from "~/components/zerops/vault/VaultEditors";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
+import { vaultName } from "~/components/zerops/vault/vault.logic";
 import {
   VAULT_FIXTURE,
   VAULT_MATE_FIXTURE,
@@ -68,7 +79,90 @@ const TEN_TABS: RightPanelSurface[] = [
   { id: "agents", kind: "agents" },
 ];
 
+const TYPED = "Here is the key for the checkout's payments: ";
+
+/** The message box with its key card open, as the person's key button opens it in Fen's conversation. */
+function ComposerKeyHarness() {
+  const editorRef = useRef<ComposerPromptEditorHandle>(null);
+  const [value, setValue] = useState(TYPED);
+  const [cursor, setCursor] = useState(TYPED.length);
+  const [open, setOpen] = useState(true);
+  const scopes = useMemo(
+    () => [
+      ...VAULT_MATE_FIXTURE.scopes.filter((scope) => scope.editable && scope.kind === "mate"),
+      ...VAULT_MATE_FIXTURE.scopes.filter((scope) => scope.editable && scope.kind !== "mate"),
+    ],
+    [],
+  );
+  const [keys, setKeys] = useState<ReadonlyMap<string, string>>(
+    () =>
+      new Map(
+        scopes.flatMap((scope) =>
+          scope.values.map((held) => [held.key, vaultName(scope, "Fen")] as const),
+        ),
+      ),
+  );
+  return (
+    <div
+      className="flex h-screen items-end justify-center bg-background p-10 text-foreground"
+      data-harness-state="composer"
+    >
+      <div className="w-190 rounded-sheet border border-border bg-card px-4 pt-4 pb-3 shadow-lg/5">
+        <ComposerVaultKeysContext value={keys}>
+          <ComposerPromptEditor
+            editorRef={editorRef}
+            value={value}
+            cursor={cursor}
+            terminalContexts={[]}
+            skills={[]}
+            disabled={false}
+            placeholder="Ask Fen…"
+            onRemoveTerminalContext={noop}
+            onChange={(next, nextCursor) => {
+              setValue(next);
+              setCursor(nextCursor);
+            }}
+            onPaste={noop}
+          />
+        </ComposerVaultKeysContext>
+        <div className="flex justify-end">
+          <Popover onOpenChange={setOpen} open={open}>
+            <PopoverTrigger
+              render={
+                <Button aria-label="Add a value to the vault" size="icon-sm" variant="ghost" />
+              }
+            >
+              <KeyRoundIcon aria-hidden="true" />
+            </PopoverTrigger>
+            <PopoverPopup align="end" padding="none" side="top" sideOffset={8} width="lg">
+              <VaultAddCard
+                busy={false}
+                forMessage
+                framed={false}
+                mateName="Fen"
+                onAdd={(scope, change) => {
+                  setKeys((held) => new Map([...held, [change.key, vaultName(scope, "Fen")]]));
+                  const before = value[cursor - 1];
+                  const lead = before === undefined || /\s/.test(before) ? "" : " ";
+                  const text = `${lead}$${change.key} `;
+                  setValue(`${value.slice(0, cursor)}${text}${value.slice(cursor)}`);
+                  setCursor(cursor + text.length);
+                  setOpen(false);
+                }}
+                onCancel={() => setOpen(false)}
+                refusal={null}
+                scopes={scopes}
+              />
+            </PopoverPopup>
+          </Popover>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Harness() {
+  if (STATE === "composer") return <ComposerKeyHarness />;
   return (
     <div className="flex h-screen bg-background text-foreground">
       <div className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU }} />

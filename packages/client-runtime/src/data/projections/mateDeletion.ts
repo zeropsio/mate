@@ -17,6 +17,7 @@ import { hqOperationOf } from "./hqOperation.ts";
 
 /** HQ's kind of a Mate's deletion. */
 const MATE_DELETION = "mate_deletion";
+const APP_DELETION = "app_deletion";
 
 export type MateDeletion =
   /** Nothing deletes it. */
@@ -51,7 +52,8 @@ const NONE: MateDeletion = { kind: "none" };
 const DELETING: MateDeletion = { kind: "deleting" };
 
 export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
-  const deletion = hqOperationOf(evidence.operation, MATE_DELETION);
+  const kind = evidence.operation?.kind === APP_DELETION ? APP_DELETION : MATE_DELETION;
+  const deletion = hqOperationOf(evidence.operation, kind);
   // Its wait for its maker's fresh token outlives Zerops deleting the project, as the steps after
   // it (the key's retirement) do.
   if (deletion.kind === "waiting") return deletion;
@@ -59,8 +61,9 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
   // A Mate's deletion ends at no decision of the person's.
   if (deletion.kind === "none" || deletion.kind === "needs") return NONE;
+  if (kind === APP_DELETION && deletion.kind === "failed") return NONE;
   if (deletion.kind === "going") return DELETING;
-  return deletion;
+  return { kind: "failed", failure: deletion.failure };
 }
 
 /** A Mate's deletion from its project as the listing joins HQ's placement onto it. */

@@ -27,6 +27,7 @@ import { GitWhen } from "./GitWhen";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { GitReadStopped, type GitReadStop } from "./GitAtCommit";
 import { pickerSections, type PickerChange, type PickerRow } from "./GitRefPicker.logic";
+import { Text } from "~/components/ui/text";
 
 const FILTER_DEBOUNCE_MS = 200;
 type ListKind = "branch" | "tag";
@@ -144,6 +145,9 @@ export function GitRefPicker({
         <ChevronDownIcon aria-hidden="true" />
       </ComboboxTrigger>
       <ComboboxPopup align="start" className="flex w-96 flex-col">
+        <Text className="px-3 pt-2.5" render={<p />} variant="note">
+          Browsing source does not switch a Mate’s checkout.
+        </Text>
         <div className="px-3 pt-2.5">
           <ToggleGroup
             aria-label="List"
@@ -170,9 +174,9 @@ export function GitRefPicker({
         <ComboboxList>
           {sections.map((section) => (
             <Fragment key={section.name}>
-              <div className="px-2 pt-2 pb-1 text-caption font-medium text-muted-foreground">
+              <Text className="px-2 pt-2 pb-1" render={<div />} variant="label">
                 {section.name}
-              </div>
+              </Text>
               {section.rows.map((row) => (
                 <ComboboxItem
                   hideIndicator
@@ -188,7 +192,7 @@ export function GitRefPicker({
                       </span>
                     )}
                     {row.commit === undefined ? null : (
-                      <span className="truncate text-caption text-muted-foreground">
+                      <Text truncate variant="note">
                         {row.commit.subject ?? "Commit metadata pending"}
                         {row.commit.committedAt === null ? null : (
                           <>
@@ -199,7 +203,7 @@ export function GitRefPicker({
                             </GitWhen>
                           </>
                         )}
-                      </span>
+                      </Text>
                     )}
                   </span>
                   {row.outsideMate ? <Badge>outside Mate</Badge> : null}

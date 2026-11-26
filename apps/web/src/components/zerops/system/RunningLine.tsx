@@ -11,8 +11,11 @@ import { CheckIcon } from "lucide-react";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { Badge } from "../../ui/badge";
+import { Card } from "../../ui/card";
 import { GrowsInPlace } from "./GrowsInPlace";
-import { SectionLabel } from "./SectionLabel";
+
+import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /**
  * How long a line has run, counted here from when the platform says it began. `short` where a
@@ -58,11 +61,7 @@ function RunningTrail({ trail }: { readonly trail: NonNullable<Line["trail"]> })
           ) : part.state === "busy" ? (
             <Badge aria-label="Under way" dot tone="info" />
           ) : (
-            <span
-              aria-label="To come"
-              className="size-2 shrink-0 rounded-full border border-muted-foreground/60"
-              role="img"
-            />
+            <Badge aria-label="To come" dot hollow />
           )}
           <span className="truncate">{part.label}</span>
         </span>
@@ -88,20 +87,22 @@ export function RunningLine({
   const trail = line.trail === undefined || line.waiting ? undefined : line.trail;
   if (within === "step")
     return (
-      <span
-        className="inline-flex min-w-0 items-center text-caption text-muted-foreground"
+      <Text
+        className="inline-flex min-w-0 items-center"
+        variant="note"
         data-waiting={line.waiting ? "" : undefined}
         data-zerops-primitive="running-line"
       >
         {trail === undefined ? <span>{words}</span> : <RunningTrail trail={trail} />}
-      </span>
+      </Text>
     );
   return (
     // One line where it has the room; in a narrow column the build's parts go under its words,
     // and its clock stays at the first line's end.
     <span className="@container block min-w-0" data-zerops-primitive="running-line">
-      <span
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground @md:grid-cols-[auto_minmax(0,1fr)_auto]"
+      <Text
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 @md:grid-cols-[auto_minmax(0,1fr)_auto]"
+        variant="note"
         data-waiting={line.waiting ? "" : undefined}
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -118,7 +119,7 @@ export function RunningLine({
         <span className="col-start-2 row-start-1 justify-self-end text-muted-foreground @md:col-start-3">
           <RunningClock since={line.since} />
         </span>
-      </span>
+      </Text>
     </span>
   );
 }
@@ -131,16 +132,18 @@ export function RunningNow({ lines }: { readonly lines: ReadonlyArray<Line> }) {
   return (
     <GrowsInPlace>
       {lines.length === 0 ? null : (
-        // As far from the group under it as the column's groups stand from each other.
-        <section className="mb-8 min-w-0" data-zerops-surface="running-now">
-          <SectionLabel>Running now</SectionLabel>
-          <ul className="m-0 flex list-none flex-col gap-1.5 rounded-card border border-border bg-card px-3 py-2.5">
-            {lines.map((line) => (
-              <li className="min-w-0" key={line.id}>
-                <RunningLine line={line} />
-              </li>
-            ))}
-          </ul>
+        // As far from the group under it as the column's groups stand from each other (`Page`).
+        <section className="mb-12 grid min-w-0 gap-2" data-zerops-surface="running-now">
+          <SectionHeader title="Running now" />
+          <Card>
+            <ul className="m-0 flex list-none flex-col gap-1.5 px-3 py-2.5">
+              {lines.map((line) => (
+                <li className="min-w-0" key={line.id}>
+                  <RunningLine line={line} />
+                </li>
+              ))}
+            </ul>
+          </Card>
         </section>
       )}
     </GrowsInPlace>

@@ -21,6 +21,7 @@ import {
   type ArrivalSignIn,
   type ArrivalWelcome as Welcome,
 } from "./arrival.logic";
+import { Text } from "~/components/ui/text";
 
 interface Decided {
   readonly orgId: string;
@@ -86,15 +87,19 @@ export function ArrivalWelcome({
         data-zerops-surface="arrival-welcome"
       >
         <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="text-body font-medium text-foreground">{welcome.line}</p>
+          <Text render={<p />} variant="heading">
+            {welcome.line}
+          </Text>
           {welcome.detail === null ? null : (
-            <p className="text-body text-muted-foreground">{welcome.detail}</p>
+            <Text render={<p />} variant="description">
+              {welcome.detail}
+            </Text>
           )}
         </div>
         {start === null ? null : start.kind === "waits" ? (
-          <p className="text-body text-muted-foreground" data-welcome-start="waits">
+          <Text render={<p />} variant="description" data-welcome-start="waits">
             {start.line}
-          </p>
+          </Text>
         ) : (
           <Button onClick={() => onStart(start.groupId)} size="sm">
             {start.label}

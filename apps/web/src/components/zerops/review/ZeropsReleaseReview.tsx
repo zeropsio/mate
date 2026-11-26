@@ -189,6 +189,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { GitBrowserLink, gitCodeLink } from "../gitBrowser/GitBrowserLink";
 import { changeTitle } from "../projects/projectHistory.logic";
+import { Text } from "~/components/ui/text";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
@@ -1040,7 +1041,7 @@ function OutsideCommitsList({
   }
   return (
     <>
-      <p className="mt-1.5 text-body text-muted-foreground">
+      <Text className="mt-1.5" render={<p />} variant="description">
         {outsideCommitsWords(outside.count, outside.atLeast)}
         {list.state === "closed" ? (
           <>
@@ -1050,7 +1051,7 @@ function OutsideCommitsList({
             </Button>
           </>
         ) : null}
-      </p>
+      </Text>
       {list.state === "reading" ? (
         <Loading className="mt-1.5" label="Comparing in HQ" shape="words" />
       ) : null}
@@ -1061,7 +1062,11 @@ function OutsideCommitsList({
         <ReviewReleaseRows appId={appId} onOpen={onOpen} rows={list.rows} />
       ) : null}
       {list.state === "known" && list.rows.length < outside.count ? (
-        <p className="mt-1.5 text-body text-muted-foreground">{`The newest ${String(list.rows.length)} are shown.`}</p>
+        <Text
+          className="mt-1.5"
+          render={<p />}
+          variant="description"
+        >{`The newest ${String(list.rows.length)} are shown.`}</Text>
       ) : null}
     </>
   );
@@ -1504,16 +1509,18 @@ export function ReleaseVersionField({
           value={version.value}
         />
       </div>
-      <p className="text-body text-muted-foreground" id={`${versionId}-help`}>
+      <Text render={<p />} variant="description" id={`${versionId}-help`}>
         {error ??
           // The next patch, said only while the field holds something else.
           (`v${version.value}` === version.nextPatch
             ? "Must be newer than every release."
             : `Must be newer than every release. Next patch is ${version.nextPatch}.`)}
-      </p>
+      </Text>
       {version.suggestions.map((suggestion) => (
-        <p
-          className="flex flex-wrap items-center gap-2 text-body text-muted-foreground"
+        <Text
+          className="flex flex-wrap items-center gap-2"
+          render={<p />}
+          variant="description"
           key={suggestion.source}
         >
           Your code names {suggestion.tag}.
@@ -1525,7 +1532,7 @@ export function ReleaseVersionField({
           >
             Use it
           </Button>
-        </p>
+        </Text>
       ))}
     </div>
   );
@@ -1851,7 +1858,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               {" · "}
               <InlineButton render={<a href={open.url} rel="noreferrer" target="_blank" />}>
                 {open.host}
-                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
               </InlineButton>
             </>
           ) : null}
@@ -1905,7 +1912,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
             />
           )}
           {untold.length === 0 ? null : (
-            <p className="mt-1.5 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+            <Text className="mt-1.5" render={<p />} variant="description">
+              {cannotTellWhatRuns(untold)}.
+            </Text>
           )}
         </ReviewSection>
       )}
@@ -1921,8 +1930,10 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           <GrowsInPlace>
             {busy === undefined ? null : (
               // What else production is doing, where that explains a wait: one calm sentence.
-              <p
-                className="mb-2.5 text-body text-muted-foreground"
+              <Text
+                className="mb-2.5"
+                render={<p />}
+                variant="description"
                 data-zerops-surface="release-production-busy"
               >
                 <b className="font-medium text-foreground">Production is busy:</b> {busy.words} ·{" "}
@@ -1931,7 +1942,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
                 {platform?.waits === true
                   ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
                   : null}
-              </p>
+              </Text>
             )}
             {/* One list from reading to done. Unread, it holds a step per service the release
                 lists, by its name, and production answering: HQ's plan then says each one's line
@@ -1963,7 +1974,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
             />
           </GrowsInPlace>
           {answerNote === undefined ? null : (
-            <p className="mt-1.5 text-body text-muted-foreground">{answerNote}</p>
+            <Text className="mt-1.5" render={<p />} variant="description">
+              {answerNote}
+            </Text>
           )}
         </ReviewSection>
       )}
@@ -2138,10 +2151,10 @@ function GitReleaseView(
               )}
             </p>
             {repo.remote == null ? null : (
-              <p className="mt-1.5 text-body text-muted-foreground">
+              <Text className="mt-1.5" render={<p />} variant="description">
                 {gitWhereLine("production", props.git.attachment.target, repo.remote.url)}
                 {repo.expiry === undefined ? null : <> · {repo.expiry}</>}
-              </p>
+              </Text>
             )}
           </div>
         ))}
@@ -2533,7 +2546,7 @@ function RollbackListSection({
           again={list.again}
         />
       ) : (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           {rollbackListNote(side, list)}
           {list.state === "unrecorded" && list.compare !== undefined ? (
             <>
@@ -2543,7 +2556,7 @@ function RollbackListSection({
               </Button>
             </>
           ) : null}
-        </p>
+        </Text>
       )}
       {children}
     </ReviewSection>
@@ -2627,7 +2640,9 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         title="Leaves production"
       >
         {untold.length === 0 ? null : (
-          <p className="mt-1.5 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+          <Text className="mt-1.5" render={<p />} variant="description">
+            {cannotTellWhatRuns(untold)}.
+          </Text>
         )}
       </RollbackListSection>
       <RollbackListSection

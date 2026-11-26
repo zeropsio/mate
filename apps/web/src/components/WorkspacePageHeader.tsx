@@ -1,3 +1,4 @@
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import type { ComponentPropsWithoutRef } from "react";
 
 import { cn } from "../lib/utils";
@@ -17,7 +18,7 @@ export function WorkspacePageHeader({
     <header
       className={cn(
         "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-3 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) transition-[padding-left] duration-200 ease-out-strong motion-reduce:transition-none",
-        electron && "drag-region",
+        electron && DRAG_REGION_CLASS_NAME,
         reserveNativeControls && "wco:pr-(--workspace-native-controls-inset)",
         COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         className,

@@ -74,9 +74,7 @@ export function DetailRow({
           <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground" />}>
             {word}
           </TooltipTrigger>
-          <TooltipPopup className="max-w-md" side="bottom">
-            {word}
-          </TooltipPopup>
+          <TooltipPopup side="bottom">{word}</TooltipPopup>
         </Tooltip>
       ) : (
         <span className="shrink-0 text-muted-foreground">{word}</span>

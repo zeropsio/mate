@@ -32,6 +32,7 @@ import {
   gatherCalls,
   type RunMotion,
 } from "./runChatLine";
+import { Text } from "~/components/ui/text";
 
 /**
  * The slot's rows, a card of calls keyed by the first call it ever held: one
@@ -420,7 +421,11 @@ export function LiveSlot({
                 )
               )}
               {more > 0 && burst === null ? (
-                <li className="ps-9 text-body leading-5 text-muted-foreground">{`+${more} more running`}</li>
+                <Text
+                  className="ps-9"
+                  render={<li />}
+                  variant="description"
+                >{`+${more} more running`}</Text>
               ) : null}
             </ol>
           </ChatShownContext>

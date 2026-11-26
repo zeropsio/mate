@@ -12,6 +12,7 @@ import {
   type ThreadSortInput,
 } from "../lib/threadSort";
 import type { SidebarThreadSummary, Thread } from "../types";
+import type { DotTone } from "./ui/dot";
 import { cn } from "../lib/utils";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
@@ -177,22 +178,22 @@ export function buildBulkTitleRegenerationContextMenuItem(input: {
 
 interface ThreadStatusToneClasses {
   readonly textClass: string;
-  readonly dotClass: string;
+  readonly dot: DotTone;
 }
 
 /**
- * The hue each status tone wears, a pill's text and dot and a row's text, in the status grammar's
+ * The hue each status tone wears, a pill's text and `Dot` and a row's text, in the status grammar's
  * five tones: what needs the person (an approval, a question, a plan to read) is attention, work
  * under way is busy, what broke is failed, what is done is ok.
  */
 export const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneClasses> = {
-  attention: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
-  input: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
-  active: { textClass: "text-status-busy-text", dotClass: "bg-status-busy" },
-  danger: { textClass: "text-status-failed-text", dotClass: "bg-status-failed" },
-  plan: { textClass: "text-status-attention-text", dotClass: "bg-status-attention" },
-  success: { textClass: "text-status-ok-text", dotClass: "bg-status-ok" },
-  neutral: { textClass: "text-muted-foreground", dotClass: "bg-muted-foreground/40" },
+  attention: { textClass: "text-status-attention-text", dot: "warning" },
+  input: { textClass: "text-status-attention-text", dot: "warning" },
+  active: { textClass: "text-status-busy-text", dot: "info" },
+  danger: { textClass: "text-status-failed-text", dot: "danger" },
+  plan: { textClass: "text-status-attention-text", dot: "warning" },
+  success: { textClass: "text-status-ok-text", dot: "success" },
+  neutral: { textClass: "text-muted-foreground", dot: "neutral" },
 };
 
 /** The text colour a status wears on its sidebar row, for glyphs that stand for it elsewhere. */

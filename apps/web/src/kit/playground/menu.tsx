@@ -13,15 +13,20 @@ export default definePlayground({
   controls: {
     side: { kind: "enum", options: ["bottom", "top", "right", "left"] },
     align: { kind: "enum", options: ["start", "center", "end"] },
+    width: {
+      kind: "enum",
+      options: ["auto", "fit", "sm", "md", "lg", "anchor"],
+      note: "auto for verbs; sm, md, lg hold one width",
+    },
     destructive: { kind: "boolean", note: "a row that deletes" },
   },
-  initial: { side: "bottom", align: "center", destructive: true },
-  render: ({ side, align, destructive }) => (
+  initial: { side: "bottom", align: "center", width: "auto", destructive: true },
+  render: ({ side, align, width, destructive }) => (
     <Menu>
       <MenuTrigger render={<Button aria-label="Project menu" size="icon-md" variant="secondary" />}>
         <MoreHorizontalIcon />
       </MenuTrigger>
-      <MenuPopup align={align} side={side}>
+      <MenuPopup align={align} side={side} width={width}>
         <MenuItem>
           <PencilIcon />
           Rename
@@ -39,7 +44,7 @@ export default definePlayground({
       </MenuPopup>
     </Menu>
   ),
-  jsx: ({ side, align, destructive }) =>
+  jsx: ({ side, align, width, destructive }) =>
     jsxElement(
       "Menu",
       {},
@@ -49,7 +54,7 @@ export default definePlayground({
         "</MenuTrigger>",
         jsxElement(
           "MenuPopup",
-          { side, align },
+          { side, align, width },
           [
             "<MenuItem>Rename</MenuItem>",
             "<MenuItem>Duplicate</MenuItem>",
@@ -57,7 +62,7 @@ export default definePlayground({
               ? ["<MenuSeparator />", '<MenuItem variant="destructive">Delete</MenuItem>']
               : []),
           ].join("\n"),
-          { side: "bottom", align: "center" },
+          { side: "bottom", align: "center", width: "auto" },
         ),
       ].join("\n"),
     ),

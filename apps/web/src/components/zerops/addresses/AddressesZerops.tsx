@@ -203,7 +203,7 @@ function HostLink({
           ) : null}
         </KitRealName>
       </span>
-      <ArrowUpRightIcon aria-hidden="true" className="size-3.25 shrink-0 opacity-60" />
+      <ArrowUpRightIcon aria-hidden="true" className="opacity-60" />
     </InlineButton>
   );
 }

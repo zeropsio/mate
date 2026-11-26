@@ -4,7 +4,9 @@ import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topol
 import { useState } from "react";
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
 import type { RightPanelSurface } from "../rightPanelStore";
+import { PanelBar } from "./ui/panel-bar";
 import { Button, InlineButton } from "./ui/button";
+import { Text } from "~/components/ui/text";
 
 /**
  * What tells the version a service runs from the next: when it went live. The
@@ -93,12 +95,9 @@ function ServiceBrowserPanel({
       aria-label={`${service} preview`}
     >
       {/* The panel's one row above the page: where it is, reload, and the way out to a tab. */}
-      <div
-        className="flex h-9 shrink-0 items-center gap-1 border-b ps-3 pe-1.5"
-        data-site-address-row
-      >
+      <PanelBar data-site-address-row>
         <GlobeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="flex min-w-0 flex-1 px-1 text-caption">
+        <span className="flex min-w-0 flex-1 text-caption">
           <InlineButton
             tone="muted"
             className="max-w-full"
@@ -130,7 +129,7 @@ function ServiceBrowserPanel({
           <ExternalLinkIcon />
           Open in new tab
         </Button>
-      </div>
+      </PanelBar>
       <iframe
         key={previewKey(version, revision)}
         title={`${service} live preview`}
@@ -196,12 +195,12 @@ export function ServiceBrowserPanels({
             }
           />
         ) : (
-          <p className="p-4 text-body text-muted-foreground">
+          <Text className="p-4" render={<p />} variant="description">
             Preview is available only for known service domains.{" "}
             <InlineButton render={<a href={surface.url} rel="noreferrer" target="_blank" />}>
               Open in new tab
             </InlineButton>
-          </p>
+          </Text>
         )}
       </div>
     );

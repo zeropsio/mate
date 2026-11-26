@@ -30,6 +30,7 @@ import { Textarea } from "../ui/textarea";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 export function PersonaTemplatesSettings() {
   const read = useOrgPersonaTemplates();
@@ -150,11 +151,11 @@ export function PersonaTemplatesView({
         ) : null
       }
     >
-      <p className="px-3 text-caption text-muted-foreground">
+      <Text className="px-3" render={<p />} variant="note">
         Starting points for each Mate&rsquo;s persona. A Mate keeps its own copy, so changing a
         template here changes no Mate.
         {read.mayWrite ? null : " Owners and Admins edit these."}
-      </p>
+      </Text>
       {editorProps !== null && !editorInRow ? <TemplateEditor {...editorProps} /> : null}
       {read.state === "loading" ? (
         <div className="px-3">
@@ -213,9 +214,9 @@ export function PersonaTemplatesView({
               >
                 {open === template.id ? (
                   <div className="flex flex-col gap-2 px-3 pb-2">
-                    <p className="whitespace-pre-wrap text-body text-muted-foreground">
+                    <Text className="whitespace-pre-wrap" render={<p />} variant="description">
                       {template.instructions}
-                    </p>
+                    </Text>
                     {!mayWrite ? null : confirming === template.id ? (
                       <TemplateDeletion
                         template={template}
@@ -404,9 +405,9 @@ function TemplateEditor({
           disabled={pending}
           onChange={(event) => onChange({ ...draft, instructions: event.currentTarget.value })}
         />
-        <span className="text-caption text-muted-foreground" data-persona-instructions-count="">
+        <Text variant="meta" data-persona-instructions-count="">
           {count(draft.instructions.trim().length)} / {count(MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH)}
-        </span>
+        </Text>
         {over ? <FieldError match>{problem}</FieldError> : null}
       </Field>
       {deleted ? (

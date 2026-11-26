@@ -3,12 +3,10 @@
  *
  * Before one is chosen it is a screen of its own (`ZeropsOrganizationChoice`): the person can do
  * nothing else until they pick, so neither the menu nor a bar stands around it — Mate's mark, as on
- * the sign-in, and every membership in one card, the first focused. Once chosen it is a control in
- * the top bar — a fact to glance at and a thing to switch, never a section to read — so the pages
- * under it can spend their room on environments.
+ * the sign-in, and every membership in one card, the first focused.
  */
 
-import { Building2Icon, ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -18,18 +16,19 @@ import {
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button, InlineButton } from "../ui/button";
+import { LogoTile } from "../ui/logo-tile";
 import { Row } from "../ui/row";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { ZeropsLandingShell } from "./landing/ZeropsLandingShell";
+import { Text } from "~/components/ui/text";
 
 /** While the organization chosen last is read back: in the app's frame, a line. */
 export function ZeropsOrganizationWait() {
   return (
-    <div className="flex items-center gap-2 text-body text-muted-foreground">
+    <Text className="flex items-center gap-2" render={<div />} variant="description">
       <Spinner size="md" />
       Restoring your Zerops organization…
-    </div>
+    </Text>
   );
 }
 
@@ -89,9 +88,9 @@ export function ZeropsOrganizationChoice({
         title="No organization yet"
       >
         <div className="space-y-4 text-center">
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             Ask an organization's owner to invite {email ?? "this account"}, then reload this page.
-          </p>
+          </Text>
           <Button onClick={() => window.location.reload()} variant="secondary">
             Reload
           </Button>
@@ -112,14 +111,7 @@ export function ZeropsOrganizationChoice({
             <Row
               autoFocus={index === 0}
               data-zerops-organization-choice
-              lead={
-                <span
-                  aria-hidden="true"
-                  className="flex size-8 items-center justify-center rounded-control bg-muted text-body font-semibold text-foreground"
-                >
-                  {organization.name.trim().charAt(0).toLocaleUpperCase()}
-                </span>
-              }
+              lead={<LogoTile>{organization.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>}
               line={zeropsOrganizationRoleLabel(organization)}
               meta={<ChevronRightIcon aria-hidden="true" className="size-4" />}
               onClick={() => {
@@ -133,53 +125,5 @@ export function ZeropsOrganizationChoice({
         ))}
       </ul>
     </ZeropsLandingShell>
-  );
-}
-
-/** The chosen organization, switchable in place. Lives in the top bar. */
-export function ZeropsOrganizationSwitcher({
-  activeOrganization,
-  organizations,
-  onSelect,
-}: {
-  readonly activeOrganization: ZeropsOrganization;
-  readonly organizations: ReadonlyArray<ZeropsOrganization>;
-  readonly onSelect: (membershipId: string) => void;
-}) {
-  return (
-    <Select
-      value={activeOrganization.membershipId}
-      onValueChange={(membershipId) => {
-        if (membershipId) onSelect(membershipId);
-      }}
-    >
-      <SelectTrigger
-        aria-label="Active Zerops organization"
-        className="w-auto max-w-72 min-w-0"
-        size="sm"
-      >
-        <Building2Icon className="size-4 shrink-0 text-muted-foreground" />
-        <SelectValue>
-          <span className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate">{activeOrganization.name}</span>
-            <span className="hidden shrink-0 text-caption text-muted-foreground sm:inline">
-              {zeropsOrganizationRoleLabel(activeOrganization)}
-            </span>
-          </span>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectPopup align="end" alignItemWithTrigger={false}>
-        {organizations.map((organization) => (
-          <SelectItem key={organization.membershipId} value={organization.membershipId}>
-            <span className="flex min-w-0 items-baseline justify-between gap-4">
-              <span className="truncate">{organization.name}</span>
-              <span className="shrink-0 text-caption text-muted-foreground">
-                {zeropsOrganizationRoleLabel(organization)}
-              </span>
-            </span>
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
   );
 }

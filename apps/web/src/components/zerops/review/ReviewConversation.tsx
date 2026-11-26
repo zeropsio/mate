@@ -19,6 +19,7 @@
  * (`reaches`), its Mate's owner gets one press that hands the Mate what others said since its last
  * push (`answer`), and a person who may only read reads so where the box would be (`readOnly`).
  */
+import { Failure } from "~/components/ui/failure";
 import {
   changeAskLabel,
   changeConversationCount,
@@ -37,6 +38,8 @@ import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
+import { ComposerFrame } from "~/components/ui/composer-frame";
+import { Text } from "~/components/ui/text";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -120,12 +123,14 @@ export function ReviewConversation({
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
       ) : readOnly ? (
-        <p className="mt-1.5 text-body text-muted-foreground">
+        <Text className="mt-1.5" render={<p />} variant="description">
           You have Read access, so you can read this conversation.
-        </p>
+        </Text>
       ) : null}
       {commentable && asker === undefined && reaches !== undefined ? (
-        <p className="mt-1.5 text-body text-muted-foreground">{reaches} sees this on the change.</p>
+        <Text className="mt-1.5" render={<p />} variant="description">
+          {reaches} sees this on the change.
+        </Text>
       ) : null}
     </ReviewSection>
   );
@@ -267,7 +272,7 @@ function SayBox({
   return (
     <>
       {/* The one box: a quiet line that grows as it is written in, its two verbs at its end. */}
-      <div className="flex items-end gap-1.5 rounded-card bg-card py-1.25 ps-3 pe-1.25 inset-ring-1 inset-ring-foreground/12 transition-shadow duration-150 ease-out-strong focus-within:inset-ring-foreground/22 focus-within:ring-3 focus-within:ring-ring/24">
+      <ComposerFrame size="card">
         <Textarea
           aria-label="Say something on this change"
           className="flex-1"
@@ -310,19 +315,19 @@ function SayBox({
             {changeAskLabel(asker.name)}
           </SayVerb>
         )}
-      </div>
+      </ComposerFrame>
       {trouble === null ? null : (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">{trouble}</p>
+        <Failure cause={trouble} className="mt-1.5" role="alert" size="line" />
       )}
       {waiting ? (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
+        <Text className="mt-1.5" render={<p />} role="status" variant="description">
           Sends once HQ has read the conversation.
-        </p>
+        </Text>
       ) : null}
       {pending?.reconnecting === true ? (
-        <p className="mt-1.5 text-body leading-4.5 text-status-failed-text">
+        <Text className="mt-1.5" render={<p />} role="status" variant="description">
           HQ is reconnecting. Your comment shows here once HQ has it.
-        </p>
+        </Text>
       ) : null}
     </>
   );

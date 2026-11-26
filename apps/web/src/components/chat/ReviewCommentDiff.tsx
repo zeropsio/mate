@@ -1,8 +1,10 @@
+import { CodeBlock } from "~/components/ui/code-block";
 import { CatchBoundary } from "@tanstack/react-router";
 import { createContext, lazy, Suspense, use, useMemo, useState, type ReactNode } from "react";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { Button } from "../ui/button";
 import { ReviewCommentDiffLoading } from "./ReviewCommentDiffLoading";
+import { Text } from "~/components/ui/text";
 
 const loadDiffRenderer = () => import("./ReviewCommentDiffRenderer");
 
@@ -13,9 +15,9 @@ function DiffFailure() {
   if (!failure) return null;
   return (
     <div className="space-y-2">
-      <div role="alert" className="text-caption text-muted-foreground">
+      <Text render={<div />} variant="note" role="alert">
         Could not load diff.
-      </div>
+      </Text>
       {failure.rawPatch}
       <Button variant="secondary" size="sm" onClick={failure.retry}>
         Retry diff
@@ -36,11 +38,7 @@ export function ReviewCommentDiff({
   const [renderer, setRenderer] = useState(() => ({ component: lazy(loadRenderer), attempt: 0 }));
   const Renderer = renderer.component;
   const rawPatch = useMemo(
-    () => (
-      <pre className="overflow-x-auto rounded-control bg-muted/40 p-2 text-caption">
-        {comment.diff}
-      </pre>
-    ),
+    () => <CodeBlock wrap={false}>{comment.diff}</CodeBlock>,
     [comment.diff],
   );
   const failure = useMemo(

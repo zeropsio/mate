@@ -8,7 +8,7 @@ import { variantsOf } from "../specimenLabel";
 type RadioLayout = NonNullable<ComponentProps<typeof RadioGroup>["layout"]>;
 type CardAlign = NonNullable<ComponentProps<typeof RadioCard>["align"]>;
 
-const LAYOUTS = variantsOf<RadioLayout>({ stack: true, columns: true, row: true });
+const LAYOUTS = variantsOf<RadioLayout>({ stack: true, list: true, columns: true, row: true });
 const ALIGNS = variantsOf<CardAlign>({ start: true, center: true });
 
 const ROLES = [
@@ -26,7 +26,7 @@ export default definePlayground({
     layout: {
       kind: "enum",
       options: LAYOUTS,
-      note: "columns two to a row; row for like tiles side by side",
+      note: "columns two to a row; row for like tiles side by side; list is RadioRow's",
     },
     align: { kind: "enum", options: ALIGNS, note: "center for a row of like tiles" },
     ownerDisabled: { kind: "boolean", note: "a role this person cannot give" },

@@ -1,4 +1,5 @@
 import { defineKitSection } from "../kitSection";
+import { SpecimenBlock, Specimens } from "../Specimen";
 import { ChosenFailure } from "../states/Chosen";
 
 export default defineKitSection({
@@ -9,5 +10,14 @@ export default defineKitSection({
   group: "Chosen",
   kind: "Feedback",
   source: "apps/web/src/components/ui/failure.tsx",
-  render: () => <ChosenFailure />,
+  render: () => (
+    <Specimens>
+      <SpecimenBlock
+        note="Inline in the place that failed, as a line where it stands, or a whole page."
+        title="Where it fails"
+      >
+        <ChosenFailure />
+      </SpecimenBlock>
+    </Specimens>
+  ),
 });

@@ -11,8 +11,8 @@ import {
 
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "../../lib/utils";
-import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
+import { Page, type PageWidth } from "../ui/page";
 import { Row } from "../ui/row";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -92,7 +92,7 @@ export function PolicyTooltip({ children }: { readonly children: string }) {
         delay={200}
         render={
           <Button size="icon-sm" variant="ghost" aria-label="Background policy details">
-            <InfoIcon className="size-3.5" />
+            <InfoIcon />
           </Button>
         }
       />
@@ -227,7 +227,7 @@ export function SettingResetButton({
               onClick();
             }}
           >
-            <Undo2Icon className="size-3" />
+            <Undo2Icon />
           </Button>
         }
       />
@@ -243,12 +243,10 @@ export function SettingResetButton({
  */
 export function SettingsPageContainer({
   children,
-  className,
-  width = "readable",
+  width = "page",
 }: {
   children: ReactNode;
-  className?: string;
-  width?: WorkspacePageWidth;
+  width?: PageWidth;
 }) {
   const navigate = useNavigate();
   const hash = useLocation({ select: (location) => location.hash });
@@ -265,10 +263,10 @@ export function SettingsPageContainer({
         className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem] max-sm:[&_.text-2xs]:text-caption max-sm:[&_.text-3xs]:text-caption"
         data-settings-page-scroll
       >
-        {/* On a phone the page's gutter is its rows' own inset: their words start 16 px in. */}
-        <WorkspacePageContainer width={width} className={cn("gap-12 max-sm:px-1", className)}>
+        {/* Its rows carry their own inset: on a phone their words start 16 px in. */}
+        <Page inset="rows" width={width}>
           {children}
-        </WorkspacePageContainer>
+        </Page>
       </div>
     </SettingsSearchTargetProvider>
   );

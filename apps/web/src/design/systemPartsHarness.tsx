@@ -19,6 +19,7 @@ import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
 import { MenuItem } from "~/components/ui/menu";
+import { PageHeader } from "~/components/ui/page-header";
 import { MateFace } from "~/components/zerops/primitives";
 import { pull } from "~/components/zerops/projects/flowTestFixtures";
 import type {
@@ -35,10 +36,9 @@ import {
   MateRowTime,
   NextBlock,
   NextRelease,
-  PageHeader,
+  PageTrail,
   PlaceLine,
   SectionAction,
-  SectionLabel,
   ServiceList,
   ServiceRow,
   type Crumb,
@@ -46,6 +46,7 @@ import {
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import type { AppRouter } from "~/router";
 import "../index.css";
+import { SectionHeader } from "~/components/ui/section";
 
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
@@ -259,15 +260,22 @@ function Harness() {
       className="flex min-h-screen flex-col gap-10 bg-background p-8 text-foreground"
       style={{ width: 1786 - 435 }}
     >
-      <Part title="SectionLabel">
+      <Part title="SectionHeader, quiet">
         <Surface label="page section" width={640}>
-          <SectionLabel>Places</SectionLabel>
-          <SectionLabel count={5}>Waiting on you</SectionLabel>
-          <SectionLabel action={<SectionAction>All history</SectionAction>}>Changes</SectionLabel>
-          <SectionLabel action={<SectionAction>Add a service</SectionAction>} count={2}>
-            Services
-          </SectionLabel>
-          <SectionLabel count="v0.1.3, released by Dana K. 7d ago">Live now</SectionLabel>
+          <SectionHeader size="panel" title="Places" />
+          <SectionHeader count={5} size="panel" title="Waiting on you" />
+          <SectionHeader
+            action={<SectionAction>All history</SectionAction>}
+            size="panel"
+            title="Changes"
+          />
+          <SectionHeader
+            action={<SectionAction>Add a service</SectionAction>}
+            count={2}
+            size="panel"
+            title="Services"
+          />
+          <SectionHeader count="v0.1.3, released by Dana K. 7d ago" size="panel" title="Live now" />
         </Surface>
       </Part>
 
@@ -286,7 +294,7 @@ function Harness() {
             }
             summary={<span className="text-muted-foreground">teashop.example ↗</span>}
             title="Tea Shop"
-            trail={TRAIL.slice(0, 1).concat({ label: "Tea Shop" })}
+            trail={<PageTrail trail={TRAIL.slice(0, 1).concat({ label: "Tea Shop" })} />}
           />
         </Surface>
         <Surface label="place page (header PlaceLine as summary)" width={1100}>
@@ -303,11 +311,11 @@ function Harness() {
               />
             }
             title="Production"
-            trail={TRAIL}
+            trail={<PageTrail trail={TRAIL} />}
           />
         </Surface>
         <Surface label="title unread" width={1100}>
-          <PageHeader title={undefined} trail={TRAIL.slice(0, 1)} />
+          <PageHeader title={undefined} trail={<PageTrail trail={TRAIL.slice(0, 1)} />} />
         </Surface>
       </Part>
 
@@ -358,7 +366,7 @@ function Harness() {
             <NextRelease ready={undefined} release={offer({ offered: false })} />
           </Surface>
           <Surface label="block (place page) · NextBlock for Stage" width={720}>
-            <SectionLabel>Next release</SectionLabel>
+            <SectionHeader size="panel" title="Next release" />
             <NextRelease
               density="block"
               ready={{ ...READY, changeCount: undefined, count: 2 }}
@@ -379,7 +387,7 @@ function Harness() {
                 />
               </ChangeList>
             </NextRelease>
-            <SectionLabel>Next on stage</SectionLabel>
+            <SectionHeader size="panel" title="Next on stage" />
             <NextBlock facts={["2 commits"]} title="2 changes to approve for Stage">
               <ChangeList>
                 <ChangeRow

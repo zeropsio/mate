@@ -20,6 +20,7 @@ import {
   isListedMateProject,
   listedProjectAtom,
   projectGoneAtom,
+  shownProjectName,
   shownProjectsAtom,
   type MenuMate,
   type MenuTree,
@@ -133,7 +134,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
     const placed = placedMenuRows({
       organizationId,
       placements,
-      names: placedNames(structure),
+      names: new Map([...placedNames(structure)].map(([id, name]) => [id, shownProjectName(name)])),
       projects,
       candidates,
       gone,

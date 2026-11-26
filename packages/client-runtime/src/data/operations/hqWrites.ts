@@ -79,13 +79,17 @@ declare module "../model.ts" {
     };
     /**
      * An application's deletion with its code, which HQ runs as its operation `id` on the person's
-     * token: `stages`, the stage projects the person reviewed, go from Zerops first.
+     * token: its last Mate's project `mate` where it has one, then `stages`, the stage projects
+     * the person reviewed, then `productions`, the production projects the person confirmed, go
+     * from Zerops before its code.
      */
     readonly "start-app-deletion": {
       readonly orgId: string;
       readonly appId: string;
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
+      readonly mate?: string;
+      readonly productions?: ReadonlyArray<string>;
     };
     /**
      * A stage or a production added to the application, which HQ runs as its `environment`
@@ -268,8 +272,8 @@ const endOperation = shown(
 );
 
 /**
- * HQ's answer is its end: its operation runs on without the tab. Navigation showing the project's
- * deletion open, or the project no longer placed, adopts a lost answer.
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing this operation's id on the project, whatever its state, or the project
+ * no longer placed, adopts a lost answer.
  */
 const startMateDeletion = shown(
   "start-mate-deletion",
@@ -278,7 +282,7 @@ const startMateDeletion = shown(
     const placement = read.fact("placement", intent.projectId);
     if (removedForViewer(placement)) return true;
     const operation = placement.kind === "known" ? placement.value.operation : undefined;
-    return operation?.kind === "mate_deletion" && operation.failure === undefined;
+    return operation?.id === intent.id;
   },
 );
 
@@ -320,8 +324,8 @@ const startProductionRemoval = shown(
 );
 
 /**
- * HQ's answer is its end. Navigation showing the application's deletion open, or the application
- * gone, adopts a lost answer.
+ * HQ's answer is its end. Navigation showing this operation's id on the application, whatever its state, or the
+ * application gone, adopts a lost answer.
  */
 const startAppDeletion = shown(
   "start-app-deletion",
@@ -330,7 +334,7 @@ const startAppDeletion = shown(
     const app = read.fact("hqApp", intent.appId);
     if (removedForViewer(app)) return true;
     const operation = app.kind === "known" ? app.value.operation : undefined;
-    return operation?.kind === "app_deletion" && operation.failure === undefined;
+    return operation?.id === intent.id;
   },
 );
 

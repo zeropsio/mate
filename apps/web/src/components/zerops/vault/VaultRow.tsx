@@ -3,6 +3,8 @@
  * read-only rows. Drawn from props only; the panel (`VaultPanel.tsx`) holds which row is open and
  * what is in flight.
  */
+import { Alert } from "~/components/ui/alert";
+import { Failure } from "~/components/ui/failure";
 import type {
   VaultImpact,
   VaultRevealed,
@@ -30,6 +32,7 @@ import { useState, type ReactNode } from "react";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Input } from "../../ui/input";
 import { MiddleTruncate } from "../../ui/middle-truncate";
@@ -50,6 +53,8 @@ import {
   type VaultShow,
 } from "./vaultGroups.logic";
 import { VaultStepUp } from "./VaultStepUp";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** What one row is doing now, as the panel knows it. */
 export type VaultRowActivity =
@@ -149,10 +154,7 @@ interface VaultRowProps {
  * under the pointer and while open, flashed when it is found.
  */
 export const VAULT_ROW_CLASS =
-  "relative transition-colors duration-150 ease-out-strong not-data-open:hover:bg-foreground/4 data-open:bg-foreground/3 data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
-
-/** A group's rows, parted by a hairline. */
-export const VAULT_ROWS_CLASS = "divide-y divide-border/70";
+  "relative transition-colors duration-150 ease-out-strong hover:bg-item-hover data-open:bg-item-hover data-flash:motion-safe:animate-vault-flash motion-reduce:transition-none";
 
 /**
  * A row's body opens by its grid row, so what is under it travels with it; its words fade in
@@ -217,7 +219,7 @@ export function VaultRow(props: VaultRowProps) {
           ) : null}
           {activity.kind === "refused" ? (
             <span
-              className="flex min-w-0 items-center gap-1.25 text-destructive-foreground"
+              className="flex min-w-0 items-center gap-1.25 text-status-failed-text"
               role="alert"
             >
               <TriangleAlertIcon aria-hidden="true" className="size-3 shrink-0" />
@@ -231,12 +233,9 @@ export function VaultRow(props: VaultRowProps) {
         <ChevronDownIcon aria-hidden="true" className={VAULT_CHEVRON_CLASS} />
       </CollapsibleTrigger>
       {activity.kind === "settled" && activity.line !== null && !open ? (
-        <p
-          className="px-3.5 pb-2.5 -mt-1 text-caption leading-4 text-muted-foreground"
-          data-vault-impact
-        >
+        <Text className="px-3.5 pb-2.5 -mt-1" render={<p />} variant="note" data-vault-impact>
           {activity.line}
-        </p>
+        </Text>
       ) : null}
       <div className={VAULT_ROW_BODY_CLASS} data-open={open ? "" : undefined} inert={!open}>
         <div className={VAULT_ROW_WORDS_CLASS} data-open={open ? "" : undefined}>
@@ -293,12 +292,9 @@ function VaultShown({ show }: { readonly show: VaultShow }) {
           {placeParts(show.parts).map(({ part, at }) =>
             part.ref ? (
               // A `${name}` inside a value: a quiet chip in the line.
-              <span
-                className="mx-px inline-block rounded-mark bg-foreground/7 px-1.25 align-[1px] font-mono text-2xs leading-4.25"
-                key={at}
-              >
+              <Text chip className="mx-px inline-block align-[1px]" key={at} variant="code">
                 {part.text}
-              </span>
+              </Text>
             ) : (
               <span key={at}>{part.text}</span>
             ),
@@ -450,11 +446,7 @@ function RowBody(props: VaultRowProps) {
               : `Hidden from everyone, ${props.mateName ?? "your Mate"} included. Your apps still get it.`}
           </p>
         ) : null}
-        {revealRefusal === null ? null : (
-          <p className="text-destructive-foreground" role="alert">
-            {revealRefusal}
-          </p>
-        )}
+        {revealRefusal === null ? null : <Failure cause={revealRefusal} role="alert" size="line" />}
         {stepUp ? <VaultStepUp onConfirmed={() => void show()} /> : null}
         <p>
           {usedByWords(value, scope, props.mateName)}
@@ -487,7 +479,8 @@ function RowBody(props: VaultRowProps) {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-0.5 border-t border-border/60 pt-2">
+      <Separator />
+      <div className="flex flex-wrap items-center gap-0.5">
         {reference === null ? null : <CopyReference label={reference.own} text={reference.own} />}
         <span className="grow" />
         {!masked ? null : (
@@ -503,46 +496,47 @@ function RowBody(props: VaultRowProps) {
       </div>
 
       {locking ? (
-        <div
-          aria-label={`Hide ${props.label}`}
-          className="grid gap-2.5 rounded-control bg-muted/60 px-3 py-2.5 text-line leading-4.75"
-          role="alertdialog"
-        >
-          <p>
-            {mates
-              ? `Nobody reads it back once it's hidden. You can still show it to yourself here, and ${props.mateName ?? "your Mate"} still gets it.`
-              : `Nobody reads it back once it's hidden, ${props.mateName ?? "your Mate"} included. You can still show it to yourself here, and your apps still get it.`}
-          </p>
-          <div className="flex justify-end gap-1.5">
-            <Button onClick={() => setLocking(false)} size="sm" variant="ghost">
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setLocking(false);
-                props.onWrite({
-                  kind: "update",
-                  id: value.id,
-                  key: value.key,
-                  value: value.value ?? "",
-                  sensitive: true,
-                });
-              }}
-              size="sm"
-            >
-              Hide it
-            </Button>
+        <Card aria-label={`Hide ${props.label}`} role="alertdialog" variant="inset">
+          <div className="grid gap-2.5 px-3 py-2.5 text-line leading-4.75">
+            <p>
+              {mates
+                ? `Nobody reads it back once it's hidden. You can still show it to yourself here, and ${props.mateName ?? "your Mate"} still gets it.`
+                : `Nobody reads it back once it's hidden, ${props.mateName ?? "your Mate"} included. You can still show it to yourself here, and your apps still get it.`}
+            </p>
+            <div className="flex justify-end gap-1.5">
+              <Button onClick={() => setLocking(false)} size="sm" variant="ghost">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setLocking(false);
+                  props.onWrite({
+                    kind: "update",
+                    id: value.id,
+                    key: value.key,
+                    value: value.value ?? "",
+                    sensitive: true,
+                  });
+                }}
+                size="sm"
+              >
+                Hide it
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       ) : null}
 
       {guard ? (
-        <div
+        <Alert
           aria-label={`Remove ${value.key}`}
-          className="grid gap-2.5 rounded-control bg-warning-surface px-3 py-2.5 text-line leading-4.75"
+          controlAlignment="first-line"
+          icon={<TriangleAlertIcon aria-hidden="true" />}
           role="alertdialog"
+          surface="tint"
+          variant="warning"
         >
-          <p>
+          <p className="m-0">
             <VaultWords
               parts={removeGuardWords(
                 value.key,
@@ -551,12 +545,12 @@ function RowBody(props: VaultRowProps) {
             />
           </p>
           {breaks.length === 0 ? null : (
-            <p data-vault-remove-breaks>
+            <p className="m-0" data-vault-remove-breaks>
               Removing it breaks {namesWords(breaks.map((service) => service.hostname))} until it's
               replaced, so nothing restarts {breaks.length === 1 ? "it" : "them"} now.
             </p>
           )}
-          <div className="flex justify-end gap-1.5">
+          <div className="mt-2 flex justify-end gap-1.5">
             <Button onClick={remove} size="sm" variant="destructive">
               Remove anyway
             </Button>
@@ -564,7 +558,7 @@ function RowBody(props: VaultRowProps) {
               Cancel
             </Button>
           </div>
-        </div>
+        </Alert>
       ) : null}
     </div>
   );
@@ -617,7 +611,10 @@ function VaultManagedRow({
       data-vault-row={value.key}
     >
       <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
-      <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
+      <Text
+        className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1"
+        variant="remark"
+      >
         <span className="min-w-0 truncate" data-vault-shown={shown === null ? undefined : ""}>
           {hidden && shown === null ? <VaultDots /> : (shown ?? value.value)}
         </span>
@@ -634,16 +631,16 @@ function VaultManagedRow({
           </Tip>
         ) : null}
         <CopyReference text={reference} />
-      </span>
+      </Text>
       {refusal === null ? null : (
-        <p className="w-full pb-1.5 text-caption text-destructive-foreground" role="alert">
+        <Text className="w-full pb-1.5" render={<p />} variant="error" role="alert">
           {refusal}
-        </p>
+        </Text>
       )}
       {stepUp ? (
-        <div className="w-full pb-1.5 text-caption text-muted-foreground">
+        <Text className="w-full pb-1.5" render={<div />} variant="note">
           <VaultStepUp onConfirmed={() => void show()} />
-        </div>
+        </Text>
       ) : null}
     </div>
   );

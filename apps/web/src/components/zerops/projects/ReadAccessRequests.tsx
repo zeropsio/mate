@@ -21,10 +21,12 @@ import { useReadAccessRequests } from "~/zerops/useReadAccessRequests";
 import { AccessOperationRow } from "../../settings/AccessOperationRow";
 import { Button } from "../../ui/button";
 import { environmentTitle } from "../place/place.logic";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { CELL_WORDS, type AccessTableView } from "./accessTable.logic";
 import { CARD_SECTION } from "./ProjectAccessChips";
 import { Failure } from "~/components/ui/failure";
+import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 export function ReadAccessRequests({
   view,
@@ -198,7 +200,7 @@ function askLines(
           {place.label}: Zerops doesn’t show you this place.
         </span>
         {asked ? (
-          <span className="text-body text-muted-foreground">Read access asked</span>
+          <Text variant="description">Read access asked</Text>
         ) : (
           <Button
             disabled={asks.busy.has(place.projectId)}
@@ -237,16 +239,16 @@ function ReadAccessSection({
     return (
       <section
         aria-labelledby="pp-read-access"
-        className="grid min-w-0 gap-1"
+        className="grid min-w-0 gap-2"
         data-zerops-surface="read-access"
       >
-        <SectionLabel id="pp-read-access">Read access</SectionLabel>
+        <SectionHeader id="pp-read-access" title="Read access" />
         {body}
       </section>
     );
   return (
     <section aria-label="Read access" className={CARD_SECTION} data-zerops-surface="read-access">
-      <SectionLabel level={3}>Read access</SectionLabel>
+      <SectionHeader level={3} size="panel" title="Read access" />
       {body}
     </section>
   );

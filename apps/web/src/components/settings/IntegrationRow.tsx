@@ -15,12 +15,14 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
 import { useSettingsSearchTarget } from "./settingsLayout";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** The rows, as one card with a hairline between each. */
 export function IntegrationList({ children }: { readonly children: ReactNode }) {
   return (
     <Card variant="flat">
-      <ul className="divide-y divide-border">{children}</ul>
+      <List render={<ul />}>{children}</List>
     </Card>
   );
 }
@@ -116,7 +118,9 @@ export function IntegrationRow({
           {mark}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-body font-medium text-foreground">{name}</p>
+          <Text render={<p />} variant="heading">
+            {name}
+          </Text>
           <p className="truncate text-caption text-muted-foreground max-sm:line-clamp-2 max-sm:whitespace-normal">
             {line}
           </p>
@@ -170,8 +174,12 @@ export function IntegrationSetting({
           {mark}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-body font-medium text-foreground">{name}</p>
-          <p className="text-caption text-muted-foreground">{line}</p>
+          <Text render={<p />} variant="heading">
+            {name}
+          </Text>
+          <Text render={<p />} variant="note">
+            {line}
+          </Text>
         </div>
         <div className="flex shrink-0 justify-end max-sm:has-[input]:w-full max-sm:has-[input]:justify-start max-sm:has-[input]:ps-8">
           {control}

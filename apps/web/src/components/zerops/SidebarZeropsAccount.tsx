@@ -78,6 +78,7 @@ import {
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+import { Text } from "~/components/ui/text";
 
 type AccountMenuControl = "rail" | "menu";
 const AccountMenuContext = createContext<{
@@ -164,7 +165,7 @@ export function SidebarZeropsAccount({
   const [heldAtFirst] = useState(namePending);
   const nameHeld = heldAtFirst && !menuFilled;
   const menu = (
-    <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
+    <MenuPopup align={collapsed ? "start" : "end"} side="top" width="md">
       <SidebarZeropsAccountMenu
         account={account}
         activeOrganization={activeOrganization}
@@ -325,15 +326,15 @@ export function SidebarZeropsAccountMenu({
           size={32}
         />
         <div className="min-w-0">
-          <p className="truncate text-body font-medium text-foreground">
+          <Text render={<p />} truncate variant="heading">
             {account.fullName ?? account.name}
-          </p>
+          </Text>
           {/* What they are in the organization the list shows, as the prototype
               said it; the address where no organization is known yet. */}
           {(sidebarAccountRoleLine(activeOrganization) ?? account.email) === null ? null : (
-            <p className="truncate text-caption text-muted-foreground">
+            <Text render={<p />} truncate variant="note">
               {sidebarAccountRoleLine(activeOrganization) ?? account.email}
-            </p>
+            </Text>
           )}
         </div>
       </div>
@@ -431,7 +432,7 @@ export function SidebarZeropsAccountMenu({
         <MenuItem data-zerops-account-chief="" onClick={chief.onSetUp}>
           {chief.icon}
           <span className="min-w-0 flex-1 truncate">Set up Chief</span>
-          <span className="text-caption text-muted-foreground">One Mate for every project</span>
+          <Text variant="note">One Mate for every project</Text>
         </MenuItem>
       )}
       {SIDEBAR_ACCOUNT_DESTINATIONS.filter(
@@ -459,7 +460,7 @@ export function SidebarZeropsAccountMenu({
       >
         <Building2Icon />
         <span className="min-w-0 flex-1 truncate">Zerops HQ</span>
-        <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
+        <ArrowUpRightIcon className="text-muted-foreground" />
       </MenuItem>
 
       <MenuSeparator />

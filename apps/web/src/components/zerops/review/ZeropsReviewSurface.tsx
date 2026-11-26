@@ -68,7 +68,7 @@ import {
 } from "../gitBrowser/GitBrowserLink";
 import { MateFace } from "../primitives";
 import { InPhoneBar } from "../system/PhoneBar";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { ZeropsDeployAnswer, type DeployWhereRow } from "../ZeropsDeployAnswer";
 import {
   changeFileLetter,
@@ -81,6 +81,10 @@ import {
   tryItWords,
 } from "./ZeropsReview.logic";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
+import { List } from "~/components/ui/list";
+import { SectionHeader } from "~/components/ui/section";
 
 /** The keys that press the primary, as this platform writes them. */
 const PRESS_KEYS =
@@ -382,7 +386,7 @@ export function ZeropsReviewSurface({
             size="icon-sm"
             variant="ghost-muted"
           >
-            <XIcon aria-hidden="true" className="size-4" />
+            <XIcon aria-hidden="true" />
           </Button>
         </div>
       )}
@@ -655,7 +659,7 @@ export function ZeropsReviewSurface({
 const KIND =
   "flex h-7 min-w-0 flex-1 items-center gap-2 text-body leading-4.5 text-muted-foreground *:[svg]:size-3.75 *:[svg]:flex-none";
 /** The head: the title, its one line, and why where that is not all. */
-const HEAD_SHEET = "grid flex-none gap-1 border-b border-border px-6 pt-1.5 pb-4 max-sm:px-4";
+const HEAD_SHEET = "grid flex-none gap-1 border-b border-rule px-6 pt-1.5 pb-4 max-sm:px-4";
 const HEAD_PAGE = "grid flex-none gap-1 pb-4";
 /**
  * A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
@@ -699,7 +703,7 @@ const BODY_PAGE =
  * it: the one button never stands alone, and nothing stands above it.
  */
 const FOOT_SHEET =
-  "mt-auto flex flex-none flex-col gap-2.5 border-t border-border bg-card px-6 pt-4 pb-5 max-sm:px-4";
+  "mt-auto flex flex-none flex-col gap-2.5 border-t border-rule bg-card px-6 pt-4 pb-5 max-sm:px-4";
 /** On the page it is a card that stays in view, clear of a phone's home bar. */
 const FOOT_PAGE =
   "sticky bottom-[max(16px,env(safe-area-inset-bottom))] z-1 -mx-2 mt-7 flex flex-none flex-col gap-2.5 rounded-card bg-card px-4 pt-3 pb-3.5 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/10";
@@ -837,7 +841,7 @@ export interface ReviewFoldState {
 }
 
 /**
- * One section: its label (the kit's `SectionLabel`) with what it counts beside it and its state or
+ * One section: its label (the kit's quiet `SectionHeader`) with what it counts beside it and its state or
  * press at the line's end, and what it holds. Folded, its label is the press that opens it —
  * "Files · 4 changed · +163 −12 ⌄" — and what it holds stays drawn, hidden, so nothing it read or
  * was typed into it is lost while it is shut.
@@ -867,9 +871,7 @@ export function ReviewSection({
         open={fold.open}
         render={<section className={SECTION} />}
       >
-        <SectionLabel action={action} count={count} folds level={3}>
-          {title}
-        </SectionLabel>
+        <SectionHeader action={action} count={count} folds level={3} size="panel" title={title} />
         <CollapsiblePanel className="mt-3" keepMounted>
           {children}
         </CollapsiblePanel>
@@ -879,9 +881,13 @@ export function ReviewSection({
   return (
     <section className={SECTION}>
       {titleShown || action !== undefined ? (
-        <SectionLabel action={action} count={titleShown ? count : undefined} level={3}>
-          {titleShown ? title : <span className="sr-only">{title}</span>}
-        </SectionLabel>
+        <SectionHeader
+          action={action}
+          count={titleShown ? count : undefined}
+          level={3}
+          size="panel"
+          title={titleShown ? title : <span className="sr-only">{title}</span>}
+        />
       ) : (
         <h3 className="sr-only">{title}</h3>
       )}
@@ -896,7 +902,7 @@ export function ReviewSection({
  * next line where it is too long for its own.
  */
 const SECTION =
-  "has-[>[data-zerops-section-label]:only-child]:hidden [&>[data-zerops-section-label]]:mb-1.5 [&>[data-zerops-section-label]:has([data-section-state])]:flex-wrap [&>[data-zerops-section-label]:has([data-section-state])]:gap-y-0.5";
+  "has-[>[data-slot=section-header]:only-child]:hidden [&>[data-slot=section-header]]:mb-1.5 [&>[data-slot=section-header]:has([data-section-state])]:flex-wrap [&>[data-slot=section-header]:has([data-section-state])]:gap-y-0.5";
 
 /** A fold of the review's own, shut until it is opened. */
 export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
@@ -947,7 +953,9 @@ export function ReviewTry({
         })}
       </div>
       {everything ? (
-        <p className="mt-1.5 text-body text-muted-foreground">{tryItEverything(mateName)}</p>
+        <Text className="mt-1.5" render={<p />} variant="description">
+          {tryItEverything(mateName)}
+        </Text>
       ) : null}
     </ReviewSection>
   );
@@ -999,22 +1007,6 @@ export function ReviewSkeleton({ lines }: { readonly lines: number }) {
         />
       ))}
     </div>
-  );
-}
-
-/** `+42 −3`, each in its colour. */
-export function ReviewSize({
-  additions,
-  deletions,
-}: {
-  readonly additions: string;
-  readonly deletions: string;
-}) {
-  return (
-    <>
-      <span className="text-diff-addition-foreground">{additions}</span>{" "}
-      <span className="text-diff-deletion-foreground">{deletions}</span>
-    </>
   );
 }
 
@@ -1099,34 +1091,36 @@ export function ReviewFiles({
   }
   return (
     <div className={FILES}>
-      {files.map((file) => {
-        const expanded = open.has(file.path);
-        const { dir, name } = changeFileParts(file.path);
-        const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
-        return (
-          <FileRow
-            diff={expanded ? diffOf(file.path) : undefined}
-            dir={dir}
-            expanded={expanded}
-            file={file}
-            key={file.path}
-            letter={letter}
-            name={name}
-            onRetry={onRetry}
-            // A file the change deletes is in none of its commits any more.
-            open={letter === "D" ? undefined : fileAt?.(file.path)}
-            onToggle={() => {
-              if (!expanded) onOpen?.(file.path);
-              setOpen((current) => {
-                const next = new Set(current);
-                if (next.has(file.path)) next.delete(file.path);
-                else next.add(file.path);
-                return next;
-              });
-            }}
-          />
-        );
-      })}
+      <List>
+        {files.map((file) => {
+          const expanded = open.has(file.path);
+          const { dir, name } = changeFileParts(file.path);
+          const letter = file.status === "unknown" ? undefined : changeFileLetter(file.status);
+          return (
+            <FileRow
+              diff={expanded ? diffOf(file.path) : undefined}
+              dir={dir}
+              expanded={expanded}
+              file={file}
+              key={file.path}
+              letter={letter}
+              name={name}
+              onRetry={onRetry}
+              // A file the change deletes is in none of its commits any more.
+              open={letter === "D" ? undefined : fileAt?.(file.path)}
+              onToggle={() => {
+                if (!expanded) onOpen?.(file.path);
+                setOpen((current) => {
+                  const next = new Set(current);
+                  if (next.has(file.path)) next.delete(file.path);
+                  else next.add(file.path);
+                  return next;
+                });
+              }}
+            />
+          );
+        })}
+      </List>
     </div>
   );
 }
@@ -1154,21 +1148,15 @@ function FileRow({
 }) {
   return (
     // A file's row opens its diff under it: the kit's disclosure, its row the review's own.
-    <Collapsible onOpenChange={onToggle} open={expanded}>
-      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-foreground/4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+    <Collapsible onOpenChange={onToggle} open={expanded} render={<List />}>
+      <CollapsibleTrigger className="grid h-9 w-full grid-cols-[16px_minmax(0,1fr)_auto_16px] items-center gap-x-2.5 px-3 text-start font-mono text-line leading-none outline-none transition-colors duration-150 hover:bg-item-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <span className={STATUS[letter ?? ""] ?? STATUS[""]}>{letter}</span>
         <span className="truncate">
           <span className="text-muted-foreground">{dir}</span>
           {name}
         </span>
-        <span className="font-sans text-body/none whitespace-nowrap text-muted-foreground tabular-nums">
-          {file.additions > 0 ? (
-            <span className="text-diff-addition-foreground">+{file.additions}</span>
-          ) : null}
-          {file.additions > 0 && file.deletions > 0 ? " " : null}
-          {file.deletions > 0 ? (
-            <span className="text-diff-deletion-foreground">−{file.deletions}</span>
-          ) : null}
+        <span className="font-sans text-body/none">
+          <DiffStat additions={file.additions} deletions={file.deletions} />
         </span>
         <span className="flex text-muted-foreground transition-[rotate] duration-200 ease-out-strong in-aria-expanded:rotate-180 motion-reduce:transition-none">
           <ChevronDownIcon aria-hidden="true" className="size-3.5" />
@@ -1299,16 +1287,16 @@ export function ReviewDiff({
 }
 
 /** The files, each a 36 px row; a file's diff opens in place under it, its long lines wrapped. */
-const FILES =
-  "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12 *:not-first:border-t *:not-first:border-foreground/12 *:*:not-first:border-t *:*:not-first:border-foreground/12";
+const FILES = "overflow-hidden rounded-card inset-ring-1 inset-ring-foreground/12";
 /** A file's status letter: added green, deleted red, the rest quiet. */
 const STATUS: Record<string, string> = {
   "": "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-muted-foreground inset-ring-1 inset-ring-foreground/12",
   A: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-addition-foreground inset-ring-1 inset-ring-diff-addition-foreground/40",
   D: "flex size-4 items-center justify-center rounded-mark font-sans text-caption font-medium text-diff-deletion-foreground inset-ring-1 inset-ring-diff-deletion-foreground/40",
 };
-/** A file's diff, open under its row: numbered lines on a faint ground, mono. */
-const DIFF = "bg-foreground/2 py-1.5 font-mono text-caption leading-4.75 [tab-size:4]";
+/** A file's diff, open under its row: numbered lines on the code ground, at the person's code size. */
+const DIFF =
+  "bg-code py-1.5 font-mono text-(length:--font-size-code,var(--text-line)) leading-5 text-code-foreground [tab-size:4]";
 /**
  * A long line wraps inside its own column and hangs under its code: the number and the sign keep
  * theirs, so the gutter stays one straight edge.
@@ -1499,7 +1487,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+        <ChevronLeftIcon aria-hidden="true" />
       </Button>
       <span aria-live="polite" className="px-1 text-line text-muted-foreground tabular-nums">
         {queue.words}
@@ -1512,7 +1500,7 @@ function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
         size="icon-sm"
         variant="ghost-muted"
       >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
+        <ChevronRightIcon aria-hidden="true" />
       </Button>
     </>
   );

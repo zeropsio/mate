@@ -2,10 +2,11 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import type { KitGround, KitView, KitZoom } from "../kitAppearance";
 
+/** Each ground, and the ground a corner mark is cut out of on it (`--mark-ground`). */
 const GROUND_CLASS: Readonly<Record<KitGround, string>> = {
   page: "bg-background text-foreground",
-  card: "bg-card text-card-foreground",
-  menu: "bg-sidebar text-sidebar-foreground",
+  card: "bg-card text-card-foreground [--mark-ground:var(--color-card)]",
+  menu: "bg-sidebar text-sidebar-foreground [--mark-ground:var(--color-sidebar)]",
 };
 
 /** Every box in the canvas drawn with a hairline, to read its layout. */
@@ -68,7 +69,7 @@ export function KitStage({
     );
   }
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-4" data-kit-stage="">
+    <div className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/40 p-6" data-kit-stage="">
       <KitCanvas ground={ground} outline={outline} viewport={viewport} zoom={zoom} fill>
         {children}
       </KitCanvas>
@@ -147,7 +148,7 @@ function BothFrames({
   const width = viewport === undefined ? undefined : (viewport * zoom) / 100;
   return (
     <div
-      className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-auto bg-muted/40 p-4"
+      className="flex min-h-0 min-w-0 flex-1 gap-6 overflow-auto bg-muted/40 p-6"
       data-kit-stage=""
     >
       {(["light", "dark"] as const).map((appearance, index) => (

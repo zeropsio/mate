@@ -28,7 +28,6 @@ import type { DraftId } from "../composerDraftStore";
 import type { DiffRenderMode } from "../diffPanelStore";
 import { getDiffCollapseIconClassName, resolveFileDiffPath } from "../lib/diffRendering";
 import { cn } from "~/lib/utils";
-import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { diffChoiceCount, type DiffChoice } from "./DiffPanel.logic";
 import { AnnotatableCodeView } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -45,7 +44,11 @@ import {
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MatePanelColumn } from "./zerops/MatePanelPlaces";
-import { SectionLabel } from "./zerops/system";
+
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { DiffStat } from "~/components/ui/diff-stat";
+import { SectionHeader } from "~/components/ui/section";
 
 /** One file of "What changed", folded unless opened. */
 export interface CodeFile {
@@ -134,9 +137,9 @@ export function CodeChangesToolbar({
                       >
                         <span className="flex w-full items-center gap-3">
                           <span>{choice.label}</span>
-                          <span className="ml-auto text-caption tabular-nums text-muted-foreground">
+                          <Text className="ml-auto" variant="meta">
                             {diffChoiceCount(choice)}
-                          </span>
+                          </Text>
                         </span>
                       </DropdownMenuRadioItem>
                     ))}
@@ -151,12 +154,9 @@ export function CodeChangesToolbar({
       {shown === null ? null : (
         <div className="ms-auto flex shrink-0 items-center gap-1">
           {stat === null ? null : (
-            <DiffStatLabel
-              additions={stat.additions}
-              deletions={stat.deletions}
-              className="mr-1 text-2xs"
-              layout="inline"
-            />
+            <Text className="me-1" variant="meta">
+              <DiffStat additions={stat.additions} compact deletions={stat.deletions} />
+            </Text>
           )}
           {refresh === null ? null : (
             <Tooltip>
@@ -277,8 +277,10 @@ export function CodeCompare({
   readonly children: ReactNode;
 }) {
   return (
-    <div
-      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-caption text-muted-foreground"
+    <Text
+      className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden"
+      render={<div />}
+      variant="note"
       aria-label={`Comparing ${head} against ${base}`}
     >
       <Tooltip>
@@ -289,7 +291,7 @@ export function CodeCompare({
         <TooltipPopup side="top">{`${head} → ${base}`}</TooltipPopup>
       </Tooltip>
       {children}
-    </div>
+    </Text>
   );
 }
 
@@ -306,16 +308,15 @@ export function CodeChangesEmpty({
   readonly alert?: boolean;
 }) {
   return (
-    <div
-      className="flex flex-col items-start gap-0.5 rounded-card border border-dashed border-border px-4 py-3.5 text-body"
-      role={alert ? "alert" : undefined}
-    >
-      <p className="text-foreground">{title}</p>
-      {line === undefined || line === null ? null : (
-        <p className={alert ? "text-error/80" : "text-muted-foreground"}>{line}</p>
-      )}
-      {action}
-    </div>
+    <Card role={alert ? "alert" : undefined} variant="slot">
+      <div className="flex flex-col items-start gap-0.5 px-4 py-3.5 text-body">
+        <p className="text-foreground">{title}</p>
+        {line === undefined || line === null ? null : (
+          <p className={alert ? "text-status-failed-text" : "text-muted-foreground"}>{line}</p>
+        )}
+        {action}
+      </div>
+    </Card>
   );
 }
 
@@ -425,7 +426,7 @@ export function CodePage({
                 data-code-section="changes"
                 ref={setChanges}
               >
-                <SectionLabel>What changed</SectionLabel>
+                <SectionHeader size="panel" title="What changed" />
                 {toolbar}
                 {notices}
                 {commits}

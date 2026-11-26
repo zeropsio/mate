@@ -12,7 +12,7 @@ export function WorkspaceBreadcrumb({ ariaLabel, children, className }: Workspac
   return (
     <nav aria-label={ariaLabel} className={cn("min-w-0", className)}>
       {/* Keep the flexible container draggable in Electron. Interactive
-          descendants are excluded by the shared .drag-region CSS rules. */}
+          descendants are excluded by the drag region's own classes (`DRAG_REGION_CLASS_NAME`). */}
       <ol className="m-0 flex min-w-0 list-none items-center gap-2 p-0 text-body sm:gap-3">
         {children}
       </ol>

@@ -8,6 +8,7 @@
  * narrow column wraps: a change's row is as tall as it needs. No time is said here: the release's
  * own row says when.
  */
+import { EmptyState } from "~/components/ui/empty";
 import {
   groupHistory,
   historyEarlier,
@@ -25,12 +26,10 @@ import { changeTitle } from "./projects/projectHistory.logic";
 import type { HistoryChange, HistoryNames } from "./ZeropsHistoryView";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 const NOWHERE: ReadonlyMap<string, string> = new Map();
 const NO_TAGS: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
-
-/** One sentence in the changes' place: the read under way, or a release that carried none. */
-const SENTENCE = "m-0 text-body text-muted-foreground";
 
 /**
  * Props: `what` (HQ's comparison of the release, `undefined` before it is asked); `changed` (the
@@ -65,7 +64,7 @@ export function ZeropsReleaseCarried({
         ) : what?.state === "reading" ? (
           <Loading count={3} label="Commit messages" shape="lines" />
         ) : changed.length === 0 ? (
-          <p className={SENTENCE}>No commits.</p>
+          <EmptyState size="line">No commits.</EmptyState>
         ) : (
           changed.map((read) => (
             <Repository
@@ -114,7 +113,9 @@ function Repository({
         ))}
       </ul>
       {earlier === undefined ? null : (
-        <p className="m-0 pt-1 text-caption text-muted-foreground">{earlier}</p>
+        <Text className="m-0 pt-1" render={<p />} variant="note">
+          {earlier}
+        </Text>
       )}
     </div>
   );
@@ -174,7 +175,9 @@ function Change({
         </span>
       </span>
       {who === undefined ? null : (
-        <span className="truncate text-caption text-muted-foreground">{who}</span>
+        <Text truncate variant="note">
+          {who}
+        </Text>
       )}
     </li>
   );

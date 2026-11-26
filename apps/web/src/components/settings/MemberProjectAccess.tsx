@@ -11,10 +11,12 @@ import { useMemo, useState } from "react";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { LogoTile } from "../ui/logo-tile";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { EmptyState } from "../ui/empty";
 import { Radio, RadioGroup } from "../ui/radio-group";
+import { Row } from "../ui/row";
 import {
   ACCESS_CHIP_NAME,
   ACCESS_CHIP_TEXT,
@@ -36,6 +38,7 @@ import {
   type ProjectChipAction,
 } from "./teamMember.logic";
 import { SectionHeader } from "../ui/section";
+import { Separator } from "~/components/ui/separator";
 
 const PICK_WORDS: Readonly<Record<GivenLevel, string>> = {
   read: "Read",
@@ -113,13 +116,9 @@ export function MemberProjectAccess({
               key={chip.projectId}
             >
               <span className={ACCESS_CHIP_WHO}>
-                {/* A project's face: a folder on a muted 32 px disc. */}
-                <span
-                  aria-hidden="true"
-                  className="inline-flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground"
-                >
-                  <FolderIcon className="size-4" />
-                </span>
+                <LogoTile>
+                  <FolderIcon />
+                </LogoTile>
                 <span className={ACCESS_CHIP_TEXT}>
                   <span className={ACCESS_CHIP_NAME} data-part="name">
                     {chip.label}
@@ -203,40 +202,42 @@ function ProjectPicker({
             return (
               // A project: its name, then its levels on the same line (a list row would put them
               // under the name in a popover this narrow); a finger's level is the row's height.
-              <li
-                className={cn(
-                  "grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-control px-2 py-1.5 max-sm:min-h-11 max-sm:py-0",
-                  level !== undefined && "bg-foreground/4",
-                )}
+              <Row
+                control={
+                  <RadioGroup
+                    aria-label={`Access to ${project.label}`}
+                    className="flex-row"
+                    onValueChange={(value) =>
+                      setPicks((held) => ({
+                        ...held,
+                        [project.projectId]: value === UNSET ? undefined : (value as GivenLevel),
+                      }))
+                    }
+                    value={level ?? UNSET}
+                  >
+                    {[...levels, UNSET].map((option) => (
+                      <label
+                        className="ms-2.5 inline-flex cursor-pointer items-center gap-1.5 text-caption max-sm:min-h-11"
+                        key={option}
+                      >
+                        <Radio value={option} />
+                        <span>{option === UNSET ? "Unset" : PICK_WORDS[option as GivenLevel]}</span>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                }
+                controlStays
                 key={project.projectId}
-              >
-                <span className="truncate text-body leading-4.5 font-medium">{project.label}</span>
-                <RadioGroup
-                  aria-label={`Access to ${project.label}`}
-                  className="flex-row"
-                  onValueChange={(value) =>
-                    setPicks((held) => ({
-                      ...held,
-                      [project.projectId]: value === UNSET ? undefined : (value as GivenLevel),
-                    }))
-                  }
-                  value={level ?? UNSET}
-                >
-                  {[...levels, UNSET].map((option) => (
-                    <label
-                      className="ms-2.5 inline-flex cursor-pointer items-center gap-1.5 text-caption max-sm:min-h-11"
-                      key={option}
-                    >
-                      <Radio value={option} />
-                      <span>{option === UNSET ? "Unset" : PICK_WORDS[option as GivenLevel]}</span>
-                    </label>
-                  ))}
-                </RadioGroup>
-              </li>
+                picked={level !== undefined}
+                render={<li />}
+                size="sm"
+                title={project.label}
+              />
             );
           })}
         </ul>
       )}
+      <Separator />
       <div className={PICK_FOOT}>
         <Button disabled={count === 0} onClick={() => onAdd(picks)} size="sm">
           {count > 1 ? `Add ${count} projects` : "Add projects"}

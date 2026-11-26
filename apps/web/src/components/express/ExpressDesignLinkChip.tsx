@@ -12,6 +12,9 @@ import { Row } from "../ui/row";
 import { ExpressMark } from "./ExpressMark";
 import { expressDesignId } from "./expressOpen";
 import { ExpressHistoryContext } from "./useExpressHistory";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { PictureFrame } from "~/components/ui/picture-frame";
 
 /** A card's picture: 36 px at twice the pixels. */
 const CARD_PICTURE = { width: 72, height: 72 } as const;
@@ -58,7 +61,7 @@ function ExpressDesignCard({
   // The design's own id, its last characters: two unnamed designs never read the same.
   const shortId = documentId.slice(-7);
   return (
-    <span className="my-1 flex w-fit max-w-full rounded-card border border-border bg-card shadow-xs/5">
+    <Card className="my-1 w-fit max-w-full flex-row" render={<span />}>
       <Row
         className="group/express"
         data-express-design-chip
@@ -67,11 +70,9 @@ function ExpressDesignCard({
             <ExpressMark className="size-8 rounded-control" />
           ) : (
             <>
-              <img
-                alt=""
-                className="size-8 rounded-control border border-border object-cover"
-                src={preview}
-              />
+              <PictureFrame className="size-8" size="control">
+                <img alt="" className="size-full object-cover" src={preview} />
+              </PictureFrame>
               <ExpressMark className="absolute -right-1 -bottom-1 size-4 rounded-mark ring-2 ring-card" />
             </>
           )
@@ -79,7 +80,7 @@ function ExpressDesignCard({
         line={
           words === undefined ? (
             <>
-              Open in the side panel · <span className="font-mono">{shortId}</span>
+              Open in the side panel · <Text variant="code">{shortId}</Text>
             </>
           ) : (
             "Open in the side panel"
@@ -113,6 +114,6 @@ function ExpressDesignCard({
         }
         title={words ?? "Adobe Express design"}
       />
-    </span>
+    </Card>
   );
 }

@@ -14,6 +14,7 @@
  * from the sidebar context, so the same page needs no prop to say which.
  */
 
+import { DRAG_REGION_CLASS_NAME } from "~/lib/windowControlsOverlay";
 import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
@@ -22,13 +23,9 @@ import { isElectron } from "../../../env";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { MateLockup } from "../../MateLockup";
+import { Page, pageWidthClass, type PageWidth } from "../../ui/page";
 import { ScrollArea } from "../../ui/scroll-area";
 import { SidebarInset, useOptionalSidebar } from "../../ui/sidebar";
-import {
-  WorkspacePageContainer,
-  workspacePageWidthClass,
-  type WorkspacePageWidth,
-} from "../../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../../WorkspacePageHeader";
 import { PhoneBarContext } from "../system/PhoneBar";
 
@@ -62,7 +59,7 @@ export function ZeropsHostedFrame({
   readonly tall?: boolean;
   /** One quiet line at the foot of a centred page — the byline. */
   readonly footer?: ReactNode;
-  readonly width?: WorkspacePageWidth;
+  readonly width?: PageWidth;
   readonly children: ReactNode;
 }) {
   const standalone = useOptionalSidebar() === null;
@@ -88,8 +85,8 @@ export function ZeropsHostedFrame({
               className={cn(
                 "mx-auto flex h-full w-full min-w-0 items-center gap-3",
                 // Beside the menu's button the header already steps in; the page's gutter ends it.
-                phone ? "pr-4" : "px-5 sm:px-6",
-                workspacePageWidthClass(width),
+                phone ? "pr-4" : "px-4 sm:px-6",
+                pageWidthClass(width),
               )}
             >
               {standalone ? (
@@ -114,7 +111,7 @@ export function ZeropsHostedFrame({
         ) : isElectron ? (
           <div
             aria-hidden="true"
-            className="drag-region h-[var(--workspace-topbar-height)] shrink-0"
+            className={cn(DRAG_REGION_CLASS_NAME, "h-[var(--workspace-topbar-height)] shrink-0")}
           />
         ) : null}
 
@@ -137,10 +134,10 @@ export function ZeropsHostedFrame({
         ) : (
           <PhoneBarContext value={phone && !bar ? phoneBar : undefined}>
             <ScrollArea className="min-h-0 flex-1">
-              {/* A phone's gutter is 16 px, and under the bar the page starts at once. */}
-              <WorkspacePageContainer className={cn("px-4", phone && "pt-2")} width={width}>
+              {/* Under a phone's bar the page starts at once. */}
+              <Page belowBar={phone} width={width}>
                 {children}
-              </WorkspacePageContainer>
+              </Page>
             </ScrollArea>
           </PhoneBarContext>
         )}

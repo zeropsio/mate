@@ -1,9 +1,18 @@
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "~/components/ui/collapsible";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Kbd } from "~/components/ui/kbd";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import {
   SidebarContent,
   SidebarGroup,
@@ -21,8 +30,18 @@ import {
   type NavEntry,
   type NavGroupName,
 } from "./kitPages";
+import { useKitWords } from "./kitWords";
 
 const entryDomId = (entry: NavEntry) => `kit-nav-${entry.key.replaceAll(":", "-")}`;
+
+/** Whether the entry shows whole inside the list's scrolling box. */
+function wholeInView(element: HTMLElement): boolean {
+  const box = element.closest<HTMLElement>("[data-slot='scroll-area-viewport']");
+  if (box === null) return true;
+  const outer = box.getBoundingClientRect();
+  const inner = element.getBoundingClientRect();
+  return inner.top >= outer.top && inner.bottom <= outer.bottom;
+}
 
 /** Whether a key press lands in a field the person is typing into. */
 const typingIn = (target: EventTarget | null) =>
@@ -46,7 +65,9 @@ function Highlighted({ label, query }: { readonly label: string; readonly query:
 
 /**
  * The kit's navigation: a search over every page, flow and flow state (`/` or ⌘K to reach it,
- * ↑/↓ and Enter to open, Esc to clear), then its groups, each folding, with its count.
+ * ↑/↓ and Enter to open, Esc to clear), then its groups, each folding, with its count. A component
+ * is found by its name, by its job in plain words ("a divider", "a copyable command") or by what
+ * its doc comments and kit page say, best answers first, each with its kind beside it.
  */
 export function KitNav({
   entries,
@@ -64,9 +85,12 @@ export function KitNav({
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const [folded, setFolded] = useState<ReadonlySet<NavGroupName>>(() => new Set());
+  const [reaching, setReaching] = useState(false);
   const field = useRef<HTMLInputElement | null>(null);
   const searching = query.trim() !== "";
-  const results = useMemo(() => searchNavEntries(entries, query), [entries, query]);
+  // The doc words are read once the search is reached for, so the kit opens without them.
+  const docs = useKitWords(entries, reaching || searching);
+  const results = useMemo(() => searchNavEntries(entries, query, docs), [entries, query, docs]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -80,11 +104,18 @@ export function KitNav({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // The page opened from elsewhere (an address, a quick link) is brought into the list's view.
-  useEffect(() => {
+  // The open page's entry stands in the middle of the list: at once as the kit opens, gliding
+  // there when another page opens and its entry is out of view, left alone when it shows whole.
+  const placed = useRef(false);
+  useLayoutEffect(() => {
     const active = entries.find((entry) => isNavEntryActive(entry, page, state));
-    if (active === undefined) return;
-    document.getElementById(entryDomId(active))?.scrollIntoView({ block: "nearest" });
+    const element = active === undefined ? null : document.getElementById(entryDomId(active));
+    if (element === null) return;
+    const first = !placed.current;
+    placed.current = true;
+    if (!first && wholeInView(element)) return;
+    const still = first || prefersReducedMotion();
+    element.scrollIntoView({ block: "center", behavior: still ? "instant" : "smooth" });
   }, [entries, page, state]);
 
   const cursorEntry = searching ? results[Math.min(cursor, results.length - 1)] : undefined;
@@ -100,6 +131,8 @@ export function KitNav({
   const renderEntry = (entry: NavEntry) => {
     const active = searching ? entry === cursorEntry : isNavEntryActive(entry, page, state);
     const current = isNavEntryActive(entry, page, state);
+    // While searching, a flow's state says its flow, and a component its kind.
+    const context = entry.context ?? (entry.group === "Components" ? entry.sub : undefined);
     return (
       <SidebarMenuItem id={entryDomId(entry)} key={entry.key}>
         <SidebarMenuButton
@@ -119,11 +152,12 @@ export function KitNav({
         >
           <span>
             <Highlighted label={entry.label} query={query} />
-            {searching && entry.context !== undefined ? (
-              <span className="text-sidebar-muted-foreground">
+            {searching && context !== undefined ? (
+              // In the name's own ink: a step quieter would fall under 4.5:1 on the menu's ground.
+              <>
                 {" · "}
-                <Highlighted label={entry.context} query={query} />
-              </span>
+                <Highlighted label={context} query={query} />
+              </>
             ) : null}
           </span>
         </SidebarMenuButton>
@@ -131,8 +165,18 @@ export function KitNav({
     );
   };
 
-  /** A group's entries in runs under their kind or area; a flow's states indented under it. */
-  const renderRuns = (shown: readonly NavEntry[]) => {
+  /**
+   * A group's entries in runs under their kind or area; a flow's states indented under it. Found
+   * components stand in one run, best answer first, each saying its kind.
+   */
+  const renderRuns = (group: NavGroupName, shown: readonly NavEntry[]) => {
+    if (searching && group === "Components") {
+      return (
+        <div className="flex flex-col gap-0.5 pb-2">
+          <SidebarMenu>{shown.map(renderEntry)}</SidebarMenu>
+        </div>
+      );
+    }
     const runs: Array<{ sub: string | undefined; entries: NavEntry[] }> = [];
     for (const entry of shown) {
       const last = runs.at(-1);
@@ -147,7 +191,9 @@ export function KitNav({
           </h3>
         )}
         <SidebarMenu>
-          {searching ? run.entries.map(renderEntry) : nestStates(run.entries, renderEntry)}
+          {searching
+            ? run.entries.map(renderEntry)
+            : nestStates(run.entries, renderEntry, page ?? "overview")}
         </SidebarMenu>
       </div>
     ));
@@ -162,9 +208,8 @@ export function KitNav({
   return (
     <>
       <SidebarHeader>
-        <div className="flex items-baseline justify-between gap-2 px-2 pt-2 pb-1">
+        <div className="px-2 pt-2 pb-1">
           <span className="font-semibold text-emphasis text-sidebar-foreground">Mate kit</span>
-          <span className="text-caption text-sidebar-muted-foreground">Components and flows</span>
         </div>
         <InputGroup>
           <InputGroupAddon>
@@ -172,6 +217,7 @@ export function KitNav({
           </InputGroupAddon>
           <InputGroupInput
             aria-label="Search the kit"
+            onFocus={() => setReaching(true)}
             onChange={(event) => {
               setQuery(event.currentTarget.value);
               setCursor(0);
@@ -196,7 +242,7 @@ export function KitNav({
                 open(cursorEntry);
               }
             }}
-            placeholder="Search components and flows"
+            placeholder="Search by name or job"
             ref={field}
             size="sm"
             type="search"
@@ -237,7 +283,7 @@ export function KitNav({
                     });
                   }}
                 >
-                  {renderRuns(shown)}
+                  {renderRuns(group, shown)}
                 </NavGroup>
               </SidebarGroup>
             ),
@@ -248,10 +294,14 @@ export function KitNav({
   );
 }
 
-/** A flow followed by its states: the states indented under it as their own list. */
+/**
+ * A flow followed by its states, indented under it as their own list while it is the open page;
+ * the other flows fold theirs away, and the search still finds every state.
+ */
 function nestStates(
   entries: readonly NavEntry[],
   render: (entry: NavEntry) => ReactNode,
+  open: string,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
   for (let index = 0; index < entries.length; index += 1) {
@@ -266,7 +316,7 @@ function nestStates(
     nodes.push(
       <Fragment key={entry.key}>
         {render(entry)}
-        {children.length === 0 ? null : (
+        {children.length === 0 || entry.page !== open ? null : (
           <li className="ms-3 border-sidebar-border border-s ps-1">
             <SidebarMenu>{children.map(render)}</SidebarMenu>
           </li>

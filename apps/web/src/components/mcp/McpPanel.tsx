@@ -10,6 +10,7 @@
  * `McpPanelBody` draws a list it is given and reports what the person does; `McpPanel` feeds it
  * from the Mate (`useMcpServers`). The harness (`/design-mcp.html`) draws the body over a fixture.
  */
+import { Failure } from "~/components/ui/failure";
 import {
   mcpAgentCannot,
   type EnvironmentId,
@@ -31,6 +32,7 @@ import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
+import { LogoTile } from "../ui/logo-tile";
 import { ScrollArea } from "../ui/scroll-area";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
@@ -72,6 +74,10 @@ import {
   type McpActionResult,
   type McpSignInResult,
 } from "./useMcpServers";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Fact, Facts } from "~/components/ui/facts";
 
 export const MCP_WORDS = {
   builtIn: "Built in",
@@ -278,12 +284,13 @@ export function McpPanelBody(props: {
         </RightPanelPageEdge>
 
         {state.error === null ? null : (
-          <p className="text-line leading-4.5 text-destructive-foreground" role="alert">
-            {MCP_WORDS.readFailed} {state.error}{" "}
-            <InlineButton onClick={props.onRetry} tone="muted">
-              {MCP_WORDS.tryAgain}
-            </InlineButton>
-          </p>
+          <Failure
+            action={<InlineButton onClick={props.onRetry}>{MCP_WORDS.tryAgain}</InlineButton>}
+            cause={MCP_WORDS.readFailed}
+            details={state.error}
+            role="alert"
+            size="line"
+          />
         )}
 
         {adding && state.list !== null ? (
@@ -306,38 +313,40 @@ export function McpPanelBody(props: {
 
         {shown.map((group) => (
           <section className="flex flex-col gap-2" data-mcp-group={group.id} key={group.id}>
-            <h3 className="flex items-center gap-2 font-medium text-caption text-muted-foreground">
+            <Text className="flex items-center gap-2" render={<h3 />} variant="label">
               {MCP_WORDS.groups[group.id]}
               <span className="tabular-nums" data-mcp-group-count>
                 {group.count}
               </span>
-            </h3>
-            <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-card border border-border bg-card">
-              {group.id === "waiting"
-                ? proposals.map((proposal) => (
-                    <ProposalRowView
-                      key={`proposal:${proposal.id}`}
-                      mate={mate}
-                      onOpenChange={(next) => toggleOpen(`proposal:${proposal.id}`, next)}
-                      open={open.has(`proposal:${proposal.id}`)}
-                      proposal={proposal}
-                    />
-                  ))
-                : null}
-              {(groups.find((found) => found.id === group.id)?.rows ?? []).map((row) => (
-                <ToolRow
-                  act={act}
-                  agents={state.list?.agents ?? []}
-                  key={row.name}
-                  observe={row.managed ? props.observe : undefined}
-                  onOpenChange={(next) => toggleOpen(row.name, next)}
-                  onRefresh={props.onRetry}
-                  open={open.has(row.name)}
-                  row={row}
-                  signIn={props.signIn}
-                />
-              ))}
-            </ul>
+            </Text>
+            <Card className="overflow-hidden">
+              <List className="flex flex-col" render={<ul />}>
+                {group.id === "waiting"
+                  ? proposals.map((proposal) => (
+                      <ProposalRowView
+                        key={`proposal:${proposal.id}`}
+                        mate={mate}
+                        onOpenChange={(next) => toggleOpen(`proposal:${proposal.id}`, next)}
+                        open={open.has(`proposal:${proposal.id}`)}
+                        proposal={proposal}
+                      />
+                    ))
+                  : null}
+                {(groups.find((found) => found.id === group.id)?.rows ?? []).map((row) => (
+                  <ToolRow
+                    act={act}
+                    agents={state.list?.agents ?? []}
+                    key={row.name}
+                    observe={row.managed ? props.observe : undefined}
+                    onOpenChange={(next) => toggleOpen(row.name, next)}
+                    onRefresh={props.onRetry}
+                    open={open.has(row.name)}
+                    row={row}
+                    signIn={props.signIn}
+                  />
+                ))}
+              </List>
+            </Card>
           </section>
         ))}
       </div>
@@ -349,14 +358,7 @@ export function McpPanelBody(props: {
 
 /** The neutral tile: colour belongs to state, never to what a tool is. */
 function Tile({ letters }: { readonly letters: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-7 shrink-0 items-center justify-center rounded-control border border-border bg-muted font-medium text-muted-foreground text-caption"
-    >
-      {letters}
-    </span>
-  );
+  return <LogoTile>{letters}</LogoTile>;
 }
 
 /** Each installed agent as its own icon with a dot for its state; the words in its tooltip. */
@@ -408,8 +410,8 @@ function RowHead(props: {
   return (
     <div
       className={cn(
-        "group/tool relative grid grid-cols-[28px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-accent/40",
-        props.open && "bg-accent/30",
+        "group/tool relative grid grid-cols-[32px_minmax(0,1fr)_auto_14px] items-center gap-x-3 px-3 py-2.5 transition-colors duration-150 hover:bg-item-hover",
+        props.open && "bg-item-hover",
       )}
     >
       <CollapsibleTrigger
@@ -419,9 +421,9 @@ function RowHead(props: {
       {props.tile}
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="flex h-5 min-w-0 items-center gap-2">{props.title}</span>
-        <span className="flex h-4.5 min-w-0 items-center gap-2 text-caption text-muted-foreground">
+        <Text className="flex h-4.5 min-w-0 items-center gap-2" variant="meta">
           {props.meta}
-        </span>
+        </Text>
       </span>
       <span className="relative flex min-w-22 items-center justify-end" data-mcp-right>
         {props.right}
@@ -597,9 +599,9 @@ function ToolRow(props: {
   const rightColumn =
     right.kind === "state" ? (
       <Badge dot tone={STATUS_BADGE_TONE[right.tone]}>
-        <span className="text-caption text-muted-foreground" data-mcp-state-words>
+        <Text variant="meta" data-mcp-state-words>
           {right.words}
-        </span>
+        </Text>
       </Badge>
     ) : (
       <Button
@@ -643,7 +645,7 @@ function ToolRow(props: {
                     "min-w-0 truncate",
                     row.note?.kind === "error" &&
                       row.cannot.length === 0 &&
-                      "text-destructive-foreground",
+                      "text-status-failed-text",
                   )}
                   data-mcp-note={row.note?.kind}
                 >
@@ -665,9 +667,9 @@ function ToolRow(props: {
               >
                 {row.name}
               </span>
-              <span className="min-w-0 shrink-[2] truncate text-caption text-muted-foreground">
+              <Text className="min-w-0 shrink-[2]" truncate variant="note">
                 {row.runs}
-              </span>
+              </Text>
               {row.managed ? <Badge className="shrink-0">{MCP_WORDS.builtIn}</Badge> : null}
             </>
           }
@@ -683,12 +685,12 @@ function ToolRow(props: {
             />
 
             {signing === null ? null : signing.landing === "mate" ? (
-              <p className="text-caption text-muted-foreground" data-mcp-signing="mate">
+              <Text render={<p />} variant="note" data-mcp-signing="mate">
                 {MCP_WORDS.signInMate}{" "}
                 <InlineButton onClick={() => void openSignInPage(null, signing.url)} tone="muted">
                   {MCP_WORDS.signInOpenAgain}
                 </InlineButton>
-              </p>
+              </Text>
             ) : (
               <form
                 className="flex flex-col gap-1.5"
@@ -698,7 +700,7 @@ function ToolRow(props: {
                   void finishSignIn(signing);
                 }}
               >
-                <span className="text-caption text-muted-foreground">{MCP_WORDS.signInPaste}</span>
+                <Text variant="note">{MCP_WORDS.signInPaste}</Text>
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <Input
@@ -760,11 +762,11 @@ function ToolRow(props: {
                     value={editing}
                   />
                 </FieldLine>
-                <span className="text-caption text-muted-foreground">{MCP_WORDS.editHint}</span>
+                <Text variant="note">{MCP_WORDS.editHint}</Text>
                 {editError === null ? null : (
-                  <span className="text-caption text-destructive-foreground" role="alert">
+                  <Text variant="error" role="alert">
                     {editError}
-                  </span>
+                  </Text>
                 )}
                 <div className="flex items-center gap-2">
                   <Button disabled={pending !== null} size="sm" type="submit" variant="primary">
@@ -793,9 +795,9 @@ function ToolRow(props: {
               run={run}
             />
             {failure === null ? null : (
-              <p className="text-caption text-destructive-foreground" role="alert">
+              <Text render={<p />} variant="error" role="alert">
                 {failure}
-              </p>
+              </Text>
             )}
           </div>
         </CollapsiblePanel>
@@ -805,15 +807,6 @@ function ToolRow(props: {
 }
 
 /** One label column down every open row, so values line up across the tab. */
-function Fact(props: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <>
-      <dt className="text-caption leading-5 text-muted-foreground">{props.label}</dt>
-      <dd className="m-0 min-w-0 text-caption leading-5">{props.children}</dd>
-    </>
-  );
-}
-
 const TOOLS_SHOWN = 6;
 
 /** A tool's name, its description on hover where the server gave one. */
@@ -859,7 +852,7 @@ function ToolFacts(props: {
   const unmarked = row.tools.filter((tool) => tool.mark === null);
   const error = row.note?.kind === "error" ? row.note.text : null;
   return (
-    <dl className="grid grid-cols-[92px_minmax(0,1fr)] gap-x-3 gap-y-1.5" data-mcp-facts>
+    <Facts data-mcp-facts>
       {reads.length > 0 ? (
         <Fact label={MCP_WORDS.reads}>
           <ToolNames tools={reads} />
@@ -881,7 +874,7 @@ function ToolFacts(props: {
       ) : null}
       {error === null ? null : (
         <Fact label={MCP_WORDS.error}>
-          <span className="whitespace-pre-wrap break-words font-mono text-destructive-foreground">
+          <span className="whitespace-pre-wrap break-words font-mono text-status-failed-text">
             {error}
           </span>
         </Fact>
@@ -890,9 +883,9 @@ function ToolFacts(props: {
         <Fact label={MCP_WORDS.observes}>{props.observe}</Fact>
       ) : null}
       <Fact label={row.config.kind === "command" ? MCP_WORDS.runs : MCP_WORDS.connectsTo}>
-        <span className="break-all font-mono">
+        <Text className="break-all" variant="code">
           {row.config.kind === "command" ? row.config.line : row.config.url}
-        </span>
+        </Text>
       </Fact>
       {row.signInLabel === null && !row.actions.signOut ? null : (
         <Fact label={MCP_WORDS.signsIn}>
@@ -911,10 +904,10 @@ function ToolFacts(props: {
         <Fact label={row.secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}>
           <span className="flex flex-col" data-mcp-secrets>
             {row.secrets.names.map((name) => (
-              <span className="flex min-w-0 gap-2 font-mono" key={name}>
+              <Text className="flex min-w-0 gap-2" variant="code" key={name}>
                 <span className="min-w-0 truncate">{name}</span>
                 <span className="shrink-0 text-muted-foreground">{MCP_SECRET_MASK}</span>
-              </span>
+              </Text>
             ))}
           </span>
         </Fact>
@@ -926,7 +919,7 @@ function ToolFacts(props: {
       )}
       {row.managed ? <Fact label={MCP_WORDS.comesWith}>{MCP_WORDS.everyMate}</Fact> : null}
       {row.origin === "repo" ? <Fact label={MCP_WORDS.keptIn}>{MCP_WORDS.fromRepo}</Fact> : null}
-    </dl>
+    </Facts>
   );
 }
 
@@ -1050,9 +1043,9 @@ function FieldLine(props: {
       </span>
       {props.children}
       {props.error === undefined ? null : (
-        <span className="text-caption text-destructive-foreground" role="alert">
+        <Text variant="error" role="alert">
           {props.error}
-        </span>
+        </Text>
       )}
     </label>
   );
@@ -1146,7 +1139,9 @@ function SignInFields(props: {
               {props.redirects.map((redirect) => (
                 <span className="flex min-w-0 gap-2" key={redirect.agent}>
                   <span className="shrink-0">{redirect.agent}</span>
-                  <span className="min-w-0 break-all font-mono">{redirect.url}</span>
+                  <Text className="min-w-0 break-all" variant="code">
+                    {redirect.url}
+                  </Text>
                 </span>
               ))}
             </div>
@@ -1154,9 +1149,9 @@ function SignInFields(props: {
         </>
       ) : null}
       {props.error === undefined ? null : (
-        <span className="text-caption text-destructive-foreground" role="alert">
+        <Text variant="error" role="alert">
           {props.error}
-        </span>
+        </Text>
       )}
     </div>
   );
@@ -1265,7 +1260,9 @@ function McpAddCard(props: {
         title={MCP_WORDS.addTitle(props.mate)}
         where={{ scope: "mate", detail: null }}
       >
-        <p className="text-caption text-muted-foreground">{MCP_WORDS.addLine}</p>
+        <Text render={<p />} variant="note">
+          {MCP_WORDS.addLine}
+        </Text>
         <FieldLine error={errors.target} label={MCP_WORDS.where}>
           <Input
             autoCapitalize="off"
@@ -1283,9 +1280,9 @@ function McpAddCard(props: {
           />
         </FieldLine>
         {reach.words === null ? null : (
-          <span className="text-caption text-muted-foreground" data-mcp-reach>
+          <Text variant="note" data-mcp-reach>
             {reach.words}
-          </span>
+          </Text>
         )}
         <FieldLine error={errors.name} label={MCP_WORDS.name}>
           <Input
@@ -1320,14 +1317,14 @@ function McpAddCard(props: {
           />
         )}
         {cannot.length === 0 ? null : (
-          <p className="text-caption text-muted-foreground" data-mcp-add-cannot>
+          <Text render={<p />} variant="note" data-mcp-add-cannot>
             {cannot.join(" ")}
-          </p>
+          </Text>
         )}
         {failure === null ? null : (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {failure}
-          </p>
+          </Text>
         )}
       </AskCard>
     </form>

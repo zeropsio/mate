@@ -6,7 +6,7 @@ import { Button } from "~/components/ui/button";
 import { FailureDetails } from "~/components/ui/failure";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, SpecimenMatrix, Specimens } from "../Specimen";
 import { variantsOf } from "../specimenLabel";
 
 type AlertVariant = NonNullable<ComponentProps<typeof Alert>["variant"]>;
@@ -19,21 +19,27 @@ const VARIANTS = variantsOf<AlertVariant>({
   success: true,
   warning: true,
 });
-const SURFACES = variantsOf<AlertSurface>({ default: true, glass: true, bare: true, tint: true });
+const SURFACES = variantsOf<AlertSurface>({
+  default: true,
+  glass: true,
+  bare: true,
+  tint: true,
+  band: true,
+});
 
 function AlertSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Variants × surfaces">
+    <Specimens>
+      <SpecimenBlock title="Variants and surfaces">
         <SpecimenMatrix
           rowProp="variant"
           rows={VARIANTS}
           columnProp="surface"
           columns={SURFACES}
+          stretch
           render={(variant, surface) => (
-            <div className="w-96">
-              <Alert surface={surface} variant={variant}>
-                <InfoIcon />
+            <div className="w-full">
+              <Alert icon={<InfoIcon />} surface={surface} variant={variant}>
                 <AlertTitle>The deploy finished</AlertTitle>
                 <AlertDescription>storefront runs the build from 18:02.</AlertDescription>
                 <AlertAction>
@@ -47,11 +53,13 @@ function AlertSpecimens() {
         />
       </SpecimenBlock>
       <SpecimenBlock title="Layouts and content">
-        <SpecimenGrid>
-          <Specimen label='layout="centered"'>
-            <div className="w-80">
-              <Alert layout="centered" variant="info">
-                <InfoIcon />
+        <SpecimenGrid size="lg">
+          <Specimen
+            label='layout="centered" variant="info"'
+            note="Nothing there yet, and the way to start"
+          >
+            <div className="w-full max-w-80">
+              <Alert icon={<InfoIcon />} layout="centered" variant="info">
                 <AlertTitle>Nothing deployed yet</AlertTitle>
                 <AlertDescription>Push to main and the first build starts.</AlertDescription>
                 <AlertAction>
@@ -60,10 +68,12 @@ function AlertSpecimens() {
               </Alert>
             </div>
           </Specimen>
-          <Specimen label='controlAlignment="first-line", long text'>
-            <div className="w-96">
-              <Alert controlAlignment="first-line" variant="error">
-                <CircleAlertIcon />
+          <Specimen
+            label='controlAlignment="first-line" variant="error"'
+            note="Long words, its action on the first line"
+          >
+            <div className="w-full max-w-96">
+              <Alert controlAlignment="first-line" icon={<CircleAlertIcon />} variant="error">
                 <AlertTitle>The build failed</AlertTitle>
                 <AlertDescription>
                   npm could not resolve a peer dependency of the storefront: @medusajs/ui wants
@@ -77,10 +87,17 @@ function AlertSpecimens() {
               </Alert>
             </div>
           </Specimen>
-          <Specimen label='surface="tint" variant="warning": what HQ found, Details folded'>
-            <div className="w-96">
-              <Alert controlAlignment="first-line" surface="tint" variant="warning">
-                <TriangleAlertIcon />
+          <Specimen
+            label='surface="tint" variant="warning" · <FailureDetails>'
+            note="What HQ found, its details folded"
+          >
+            <div className="w-full max-w-96">
+              <Alert
+                controlAlignment="first-line"
+                icon={<TriangleAlertIcon />}
+                surface="tint"
+                variant="warning"
+              >
                 <AlertTitle>zerops.yaml names a build base that does not exist.</AlertTitle>
                 <AlertDescription>
                   <p className="m-0">Next, for Nova: pick nodejs@22 and push again.</p>
@@ -94,8 +111,8 @@ function AlertSpecimens() {
               </Alert>
             </div>
           </Specimen>
-          <Specimen label='surface="tint" variant="error", its fix the action'>
-            <div className="w-96">
+          <Specimen label='surface="tint" variant="error"' note="Its fix is the action">
+            <div className="w-full max-w-96">
               <Alert controlAlignment="first-line" surface="tint" variant="error">
                 <AlertTitle>It no longer merges cleanly</AlertTitle>
                 <AlertAction>
@@ -106,8 +123,28 @@ function AlertSpecimens() {
               </Alert>
             </div>
           </Specimen>
-          <Specimen label="no icon, description only">
-            <div className="w-80">
+          <Specimen
+            label='surface="band" variant="warning"'
+            note="Across the top of what it is about"
+          >
+            <div className="w-full max-w-96 overflow-hidden rounded-card border bg-popover">
+              <Alert icon={<TriangleAlertIcon />} surface="band" variant="warning">
+                <AlertTitle>Codex isn't signed in</AlertTitle>
+                <AlertDescription>Sign in on its setup page, then pick it again.</AlertDescription>
+              </Alert>
+              <div className="h-24" />
+            </div>
+          </Specimen>
+          <Specimen label='surface="band" edge="bottom" variant="error"' note="At a card's foot">
+            <div className="w-full max-w-96 overflow-hidden rounded-card border bg-card">
+              <div className="h-24" />
+              <Alert edge="bottom" icon={<CircleAlertIcon />} surface="band" variant="error">
+                The machine's readings stopped: the server stopped answering.
+              </Alert>
+            </div>
+          </Specimen>
+          <Specimen label="<AlertDescription>" note="No icon, a description only">
+            <div className="w-full max-w-80">
               <Alert>
                 <AlertDescription>
                   The preview sleeps after an hour without visits.
@@ -117,7 +154,7 @@ function AlertSpecimens() {
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

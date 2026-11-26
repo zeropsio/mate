@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ZeropsRouteImport } from './routes/zerops'
 import { Route as UsageRouteImport } from './routes/usage'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as KitRouteImport } from './routes/kit'
@@ -37,6 +38,7 @@ import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$proje
 import { Route as ChatChiefRouteImport } from './routes/_chat.chief'
 import { Route as SettingsTeamInviteRouteImport } from './routes/settings.team_.invite'
 import { Route as SettingsTeamClientUserIdRouteImport } from './routes/settings.team_.$clientUserId'
+import { Route as ProjectsProjectKeyDeleteRouteImport } from './routes/projects.$projectKey_.delete'
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
@@ -54,6 +56,11 @@ const ZeropsRoute = ZeropsRouteImport.update({
 const UsageRoute = UsageRouteImport.update({
   id: '/usage',
   path: '/usage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -186,6 +193,12 @@ const SettingsTeamClientUserIdRoute =
     path: '/team/$clientUserId',
     getParentRoute: () => SettingsRoute,
   } as any)
+const ProjectsProjectKeyDeleteRoute =
+  ProjectsProjectKeyDeleteRouteImport.update({
+    id: '/projects/$projectKey_/delete',
+    path: '/projects/$projectKey/delete',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ChatMateProjectIdRoute = ChatMateProjectIdRouteImport.update({
   id: '/mate/$projectId',
   path: '/mate/$projectId',
@@ -238,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
@@ -260,6 +274,7 @@ export interface FileRoutesByFullPath {
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/projects/$projectKey/delete': typeof ProjectsProjectKeyDeleteRoute
   '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
@@ -274,6 +289,7 @@ export interface FileRoutesByTo {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/chief': typeof ChatChiefRoute
@@ -297,6 +313,7 @@ export interface FileRoutesByTo {
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/projects/$projectKey/delete': typeof ProjectsProjectKeyDeleteRoute
   '/settings/team/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team/invite': typeof SettingsTeamInviteRoute
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
@@ -313,6 +330,7 @@ export interface FileRoutesById {
   '/kit': typeof KitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
   '/_chat/chief': typeof ChatChiefRoute
@@ -336,6 +354,7 @@ export interface FileRoutesById {
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/_chat/mate/$projectId': typeof ChatMateProjectIdRoute
+  '/projects/$projectKey_/delete': typeof ProjectsProjectKeyDeleteRoute
   '/settings/team_/$clientUserId': typeof SettingsTeamClientUserIdRoute
   '/settings/team_/invite': typeof SettingsTeamInviteRoute
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
@@ -353,6 +372,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/chief'
@@ -375,6 +395,7 @@ export interface FileRouteTypes {
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/mate/$projectId'
+    | '/projects/$projectKey/delete'
     | '/settings/team/$clientUserId'
     | '/settings/team/invite'
     | '/group/$groupId/$projectId'
@@ -389,6 +410,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/chief'
@@ -412,6 +434,7 @@ export interface FileRouteTypes {
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/mate/$projectId'
+    | '/projects/$projectKey/delete'
     | '/settings/team/$clientUserId'
     | '/settings/team/invite'
     | '/group/$groupId/$projectId'
@@ -427,6 +450,7 @@ export interface FileRouteTypes {
     | '/kit'
     | '/pair'
     | '/settings'
+    | '/support'
     | '/usage'
     | '/zerops'
     | '/_chat/chief'
@@ -450,6 +474,7 @@ export interface FileRouteTypes {
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/_chat/mate/$projectId'
+    | '/projects/$projectKey_/delete'
     | '/settings/team_/$clientUserId'
     | '/settings/team_/invite'
     | '/_chat/group/$groupId/$projectId'
@@ -466,10 +491,12 @@ export interface RootRouteChildren {
   KitRoute: typeof KitRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  SupportRoute: typeof SupportRoute
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
+  ProjectsProjectKeyDeleteRoute: typeof ProjectsProjectKeyDeleteRoute
   ServiceStackServiceIdDeployAppVersionIdRoute: typeof ServiceStackServiceIdDeployAppVersionIdRoute
 }
 
@@ -487,6 +514,13 @@ declare module '@tanstack/react-router' {
       path: '/usage'
       fullPath: '/usage'
       preLoaderRoute: typeof UsageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -671,6 +705,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsTeamClientUserIdRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/projects/$projectKey_/delete': {
+      id: '/projects/$projectKey_/delete'
+      path: '/projects/$projectKey/delete'
+      fullPath: '/projects/$projectKey/delete'
+      preLoaderRoute: typeof ProjectsProjectKeyDeleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/mate/$projectId': {
       id: '/_chat/mate/$projectId'
       path: '/mate/$projectId'
@@ -806,10 +847,12 @@ const rootRouteChildren: RootRouteChildren = {
   KitRoute: KitRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  SupportRoute: SupportRoute,
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsNewRoute: ZeropsNewRoute,
+  ProjectsProjectKeyDeleteRoute: ProjectsProjectKeyDeleteRoute,
   ServiceStackServiceIdDeployAppVersionIdRoute:
     ServiceStackServiceIdDeployAppVersionIdRoute,
 }

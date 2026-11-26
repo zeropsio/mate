@@ -10,6 +10,7 @@ import { useCreditForecast } from "~/zerops/useCreditForecast";
 import { useCreditOffers } from "~/zerops/usePlatformCapabilities";
 
 import { InlineButton } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 const CREDIT_FORECAST_LINE =
   "Zerops needs credit on this organization before it makes another project.";
@@ -23,7 +24,7 @@ export function ZeropsCreditForecast({ organizationId }: { readonly organization
 export function CreditForecastLine({ organizationId }: { readonly organizationId: string }) {
   const { addCredit } = useCreditOffers();
   return (
-    <p className="text-body text-muted-foreground" data-zerops-credit-forecast="">
+    <Text render={<p />} variant="description" data-zerops-credit-forecast="">
       {CREDIT_FORECAST_LINE}{" "}
       {addCredit ? (
         <InlineButton
@@ -34,6 +35,6 @@ export function CreditForecastLine({ organizationId }: { readonly organizationId
       ) : (
         "Ask an owner to add credit."
       )}
-    </p>
+    </Text>
   );
 }

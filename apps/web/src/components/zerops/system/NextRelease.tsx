@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { REVIEW_RELEASE_LABEL } from "~/zerops/review";
 import type { CardReady } from "../projects/projectCard.logic";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
@@ -106,21 +107,21 @@ export function NextBlock({
   readonly children?: ReactNode;
 }) {
   const line = (
-    <div
-      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-primary/10 px-3 py-2 text-body"
-      data-zerops-next-release={state ?? ""}
-    >
-      {lead}
-      <span className="min-w-0 font-medium text-foreground">{title}</span>
-      {facts.map((fact) => (
-        <span className="min-w-0 text-muted-foreground" key={fact}>
-          {fact}
-        </span>
-      ))}
-      {verb === undefined || verb === null ? null : (
-        <span className="ms-auto flex shrink-0">{verb}</span>
-      )}
-    </div>
+    // The next release, the one next step: the kit's wash card, in the primary's tint.
+    <Card data-zerops-next-release={state ?? ""} variant="wash">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 px-3 py-2 text-body">
+        {lead}
+        <span className="min-w-0 font-medium text-foreground">{title}</span>
+        {facts.map((fact) => (
+          <span className="min-w-0 text-muted-foreground" key={fact}>
+            {fact}
+          </span>
+        ))}
+        {verb === undefined || verb === null ? null : (
+          <span className="ms-auto flex shrink-0">{verb}</span>
+        )}
+      </div>
+    </Card>
   );
   const block =
     variant === undefined ? children !== undefined && children !== null : variant === "block";

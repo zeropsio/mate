@@ -6,6 +6,8 @@
  * beside them, marked so) or what is not committed alone — under where the Mate's work is (`top`).
  * `CodePage` draws it; this reads it.
  */
+import { Failure } from "~/components/ui/failure";
+import { CodeBlock } from "~/components/ui/code-block";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
@@ -16,7 +18,6 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { type DraftId } from "../composerDraftStore";
 import { openDiffFile } from "../diffFileActions";
-import { cn } from "~/lib/utils";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
 import { useTheme } from "../hooks/useTheme";
 import {
@@ -60,6 +61,8 @@ import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
 import { filterBaseRefChoices } from "../lib/baseRefChoices";
 import { createGitDiffFileContentsLoader } from "../lib/diffFileContents";
+import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -563,15 +566,12 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
     <CodeChangesEmpty line="Every change is committed and on main." title="Nothing outside main." />
   ) : files.length > 0 ? null : raw !== null ? (
     <div className="flex min-w-0 flex-col gap-2">
-      <p className="text-2xs text-muted-foreground/75">Showing the raw patch.</p>
-      <pre
-        className={cn(
-          "max-h-[72vh] rounded-control border border-border/70 bg-background/70 p-3 font-mono text-2xs leading-relaxed text-muted-foreground/90",
-          wordWrap ? "overflow-auto whitespace-pre-wrap wrap-break-word" : "overflow-auto",
-        )}
-      >
+      <Text render={<p />} variant="note">
+        Showing the raw patch.
+      </Text>
+      <CodeBlock height="pane" wrap={wordWrap}>
         {raw}
-      </pre>
+      </CodeBlock>
     </div>
   ) : previewError ? (
     // A read that failed is not a diff with nothing in it: it says so, and reads again.
@@ -593,16 +593,15 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
   const notices = (
     <>
       {isTruncated && files.length > 0 ? (
-        <p className="rounded-control bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
-          This diff was truncated because it exceeded the preview limit. The changes shown are
-          incomplete.
-        </p>
+        <Card variant="inset">
+          <p className="px-3 py-1.5 text-2xs text-muted-foreground">
+            This diff was truncated because it exceeded the preview limit. The changes shown are
+            incomplete.
+          </p>
+        </Card>
       ) : null}
       {previewError && files.length > 0 ? (
-        <div className="flex items-center gap-2">
-          <p className="text-2xs text-error/80">{previewError}</p>
-          {tryAgain}
-        </div>
+        <Failure action={tryAgain} cause={previewError} size="line" />
       ) : null}
     </>
   );

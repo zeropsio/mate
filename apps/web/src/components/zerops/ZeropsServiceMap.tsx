@@ -47,18 +47,24 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
+import { Meter } from "~/components/ui/meter";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
-import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
+import { LivenessLine, MateFace, MicroLabel, STATUS_BADGE_TONE } from "./primitives";
 import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { placeServiceRows } from "./place/place.logic";
-import { SectionLabel } from "./system/SectionLabel";
+
 import { ServiceList, ServiceMeters, ServiceRow } from "./system/ServiceRow";
 import { Badge } from "~/components/ui/badge";
+import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {
   error: "failed",
@@ -472,9 +478,9 @@ function ServiceRoutes({
       ))}
       {production.map((link) =>
         link.url === undefined ? (
-          <li className="text-caption text-muted-foreground" key={link.label}>
+          <Text render={<li />} variant="note" key={link.label}>
             Production · {link.label}
-          </li>
+          </Text>
         ) : (
           <RouteLink href={link.url} key={link.label} label={`Production · ${link.label}`} />
         ),
@@ -490,9 +496,9 @@ function PoolWorkspaces({ workspaces }: { workspaces: ReadonlyArray<PoolWorkspac
     <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-pool-workspaces>
       {workspaces.map((workspace) =>
         workspace.url === undefined ? (
-          <li className="text-caption text-muted-foreground" key={workspace.key}>
+          <Text render={<li />} variant="note" key={workspace.key}>
             {`${workspace.label} · ${workspace.why ?? ""}`}
-          </li>
+          </Text>
         ) : (
           <RouteLink
             href={workspace.url}
@@ -511,12 +517,9 @@ function MetricRange({ metric }: { metric: ZeropsServiceMetric }) {
   const unit = metric.unit === undefined ? "" : ` ${metric.unit}`;
   const mode = metric.cpuMode === undefined ? "" : ` · ${metric.cpuMode}`;
   return (
-    <span
-      className="shrink-0 text-caption text-muted-foreground tabular-nums"
-      data-zerops-service-metric-range
-    >
+    <Text className="shrink-0" variant="meta" data-zerops-service-metric-range>
       {`${metric.range}${unit}${mode}`}
-    </span>
+    </Text>
   );
 }
 
@@ -548,13 +551,7 @@ function MetricRow({ metric }: { metric: ZeropsServiceMetric }) {
           <MetricRange metric={metric} />
         </div>
         {metric.fraction === undefined ? null : (
-          <div aria-hidden="true" className="mt-1 h-0.5 w-full rounded-full bg-border">
-            <div
-              className="h-full rounded-full bg-info"
-              data-zerops-service-metric-fill
-              style={{ width: `${Math.round(metric.fraction * 100)}%` }}
-            />
-          </div>
+          <Meter className="mt-1" tone="info" value={metric.fraction} />
         )}
       </div>
     </div>
@@ -578,16 +575,18 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <ServiceName className="flex-1" row={row} />
         <ArrowUpRightIcon
           aria-hidden="true"
-          className="size-3.5 shrink-0 self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
+          className="self-center text-muted-foreground transition-[translate] duration-150 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
         />
       </InlineButton>
       {row.meta.length === 0 ? null : (
-        <p
-          className="mt-0.5 min-w-0 max-w-full break-words text-caption text-muted-foreground"
+        <Text
+          className="mt-0.5 min-w-0 max-w-full break-words"
+          render={<p />}
+          variant="note"
           data-zerops-service-meta
         >
           {row.meta.map(factText).join(" · ")}
-        </p>
+        </Text>
       )}
       {row.workspaces === undefined ? (
         <ServiceRoutes routes={row.service.routes} row={row} />
@@ -598,14 +597,14 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
       )}
       {row.metrics.length === 0 ? null : (
-        <div
-          className="mt-3 flex flex-col gap-2 border-t border-border/60 pt-3"
-          data-zerops-service-metrics
-        >
-          {row.metrics.map((metric) => (
-            <MetricRow key={metric.id} metric={metric} />
-          ))}
-        </div>
+        <>
+          <Separator className="mt-3" />
+          <div className="mt-3 flex flex-col gap-2" data-zerops-service-metrics>
+            {row.metrics.map((metric) => (
+              <MetricRow key={metric.id} metric={metric} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -646,20 +645,23 @@ function StageLine({
   usageRead: boolean;
 }) {
   return (
-    <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
-      <ServiceHeader
-        aside={undefined}
-        portLabel={portLabel}
-        folded={folded}
-        routes={routes}
-        service={stage}
-        statusLabel={label}
-        statusNeedsWord={needsWord}
-        title={title}
-        tone={tone}
-      />
-      <Meters row={meters} usageRead={usageRead} />
-    </div>
+    <>
+      <Separator className="mt-2" />
+      <div className="mt-2" data-zerops-service-stage>
+        <ServiceHeader
+          aside={undefined}
+          portLabel={portLabel}
+          folded={folded}
+          routes={routes}
+          service={stage}
+          statusLabel={label}
+          statusNeedsWord={needsWord}
+          title={title}
+          tone={tone}
+        />
+        <Meters row={meters} usageRead={usageRead} />
+      </div>
+    </>
   );
 }
 
@@ -703,7 +705,8 @@ function ControlPlaneRow({
   const versioned = mate !== undefined && mateUpdate !== undefined && mateUpdate !== null;
   return (
     <li data-zerops-service-row="control-plane" data-zerops-service-id={row.service.serviceId}>
-      <MintPanel className="overflow-hidden border border-status-ok/20">
+      {/* The Mate's own home: the card in the running tone's wash. */}
+      <Card className="overflow-hidden" render={<section />} tone="ok" variant="wash">
         <div className="flex min-w-0 flex-col px-3.5 pt-3 pb-3.5">
           <div className="flex min-w-0 items-center justify-between gap-2.5">
             <Popover>
@@ -739,9 +742,9 @@ function ControlPlaneRow({
                     ) : null}
                   </span>
                   {versioned ? null : (
-                    <span className="min-w-0 truncate text-caption text-muted-foreground">
+                    <Text className="min-w-0" truncate variant="note">
                       {mate === undefined ? row.service.hostname : `${mate.name} lives here`}
-                    </span>
+                    </Text>
                   )}
                 </span>
               </PopoverTrigger>
@@ -754,12 +757,14 @@ function ControlPlaneRow({
           {versioned ? (
             // The Mate's version and its update, under its title — outside the hover pop's
             // trigger, so a hand on Update never opens the pop.
-            <div
-              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ps-8.5 text-caption text-muted-foreground"
+            <Text
+              className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 ps-8.5"
+              render={<div />}
+              variant="note"
               data-zerops-mate-update
             >
               {mateUpdate}
-            </div>
+            </Text>
           ) : null}
           {row.restNote === undefined ? null : (
             <p
@@ -777,7 +782,7 @@ function ControlPlaneRow({
             {agents}
           </div>
         ) : null}
-      </MintPanel>
+      </Card>
     </li>
   );
 }
@@ -906,7 +911,7 @@ export function ZeropsServiceMap({
           2026-11-09) — its card, the agents it signs in to and its version. */}
       {view.isEmpty || homes.length === 0 ? null : (
         <section className="flex min-w-0 flex-col gap-2" data-zerops-surface="panel-home">
-          <SectionLabel level={3}>{homeLabel}</SectionLabel>
+          <SectionHeader level={3} size="panel" title={homeLabel} />
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {homes.map((row) => (
               <ControlPlaneRow
@@ -922,7 +927,7 @@ export function ZeropsServiceMap({
         </section>
       )}
       <section className="flex min-w-0 flex-col gap-2" data-zerops-surface="panel-services">
-        <SectionLabel
+        <SectionHeader
           level={3}
           // Calm says itself in a word; only a state that is not calm wears a badge.
           count={
@@ -948,13 +953,13 @@ export function ZeropsServiceMap({
                 // A tool at work on these services is the section's state, at the label's end and
                 // in its type: alone under the label it took the panel's base size and read as a
                 // heading.
-                <span className="text-caption text-muted-foreground">
+                <Text variant="note">
                   <Badge
                     dot
                     data-zerops-running-tool={view.runningTool}
                     tone="info"
                   >{`${view.runningTool} running`}</Badge>
-                </span>
+                </Text>
               )}
               {/* The Mate's own Zerops project, where these services run: the way out to it. */}
               <Button
@@ -969,17 +974,16 @@ export function ZeropsServiceMap({
               </Button>
             </span>
           }
-        >
-          {servicesLabel}
-        </SectionLabel>
+          size="panel"
+          title={servicesLabel}
+        />
         {view.isEmpty || services.length === 0 ? (
-          <p
-            className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
-            data-zerops-map-empty
-          >
-            No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something
-            and it appears.
-          </p>
+          <Card data-zerops-map-empty render={<p />} size="md" variant="slot">
+            <EmptyState size="line">
+              No services yet. What {mate?.name ?? "the Mate"} builds runs here — ask for something
+              and it appears.
+            </EmptyState>
+          </Card>
         ) : (
           <ServiceList label={servicesLabel}>
             {services.map((service) => (
@@ -1003,9 +1007,9 @@ export function ZeropsServiceMap({
         )}
       </section>
       {view.warnings.map((warning) => (
-        <p className="text-muted-foreground text-caption" key={warning}>
+        <Text render={<p />} variant="note" key={warning}>
           {warning}
-        </p>
+        </Text>
       ))}
     </div>
   );

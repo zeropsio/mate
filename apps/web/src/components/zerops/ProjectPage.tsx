@@ -71,7 +71,8 @@ import { fixProblemOf, type ProductionChip } from "./SidebarProductionChip.logic
 import { placeLabel } from "./projects/projectCard.logic";
 import { HiddenEnvironmentAsks } from "./projects/ReadAccessRequests";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
-import { PageHeader, usePageTrail } from "./system";
+import { PageHeader } from "../ui/page-header";
+import { PageTrail, usePageTrail } from "./system";
 import {
   NO_ROUTE_ENVIRONMENTS,
   NO_ROUTE_NAVIGATION,
@@ -126,7 +127,7 @@ export function ZeropsGroupDetailPage({
     [addMate, groupId],
   );
   return (
-    <ZeropsHostedFrame bar={false} width="full">
+    <ZeropsHostedFrame bar={false} width="page">
       <ZeropsProjectsContent project={project} search={NO_SEARCH} />
       {mirroring && groupName !== undefined ? (
         <GitMirrorDialog
@@ -191,12 +192,7 @@ function ProjectPage<T>({
         {/* Each code repository and where its code goes: once it has one. */}
         {groupName === undefined || flow === undefined || (repos ?? []).length === 0 ? null : (
           <SetupRow label="Code" rows surface="project-repositories">
-            <ProjectRepositories
-              environments={flow.environments}
-              groupId={groupId}
-              groupName={groupName}
-              repos={repos}
-            />
+            <ProjectRepositories groupId={groupId} groupName={groupName} repos={repos} />
           </SetupRow>
         )}
         {/* Standing on the page, Automation needs no row to open it. */}
@@ -427,7 +423,7 @@ function UnreadGroupDetail({
   // environments already read stand.
   return (
     <div className={PAGE} data-zerops-surface="project-page">
-      <PageHeader title={groupName} trail={trail} />
+      <PageHeader title={groupName} trail={<PageTrail trail={trail} />} />
       <div className={PAGE_COLS}>
         <div className={PAGE_MAIN}>
           {undrawn ? (
@@ -490,11 +486,9 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
       {repos !== undefined && repos.length > 0 ? (
         <Button
           onClick={() => {
-            // The Git page opens one repository by app and name; with several, its overview.
-            const only = repos.length === 1 ? repos[0] : undefined;
             void navigate({
               to: "/git",
-              search: only === undefined ? {} : { appId: groupId, repo: only.name },
+              search: { appId: groupId },
             });
           }}
           size="sm"

@@ -16,9 +16,11 @@ import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
 
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { Button } from "../ui/button";
+import { PanelBar } from "../ui/panel-bar";
 import { GitBrowserLink, gitCommitLink } from "./gitBrowser/GitBrowserLink";
 import { commitChangesState, type CommitChangesState } from "./ZeropsGitCommitChanges.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { Text } from "~/components/ui/text";
 
 const ZeropsGitCommitCode = lazy(appChunk(() => import("./ZeropsGitCommitCode")));
 
@@ -89,7 +91,7 @@ export function ZeropsGitCommitView({
       className="flex min-h-0 flex-1 flex-col"
       data-zerops-surface="git-commit-changes"
     >
-      <header className="flex min-w-0 shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
+      <PanelBar render={<header />}>
         <Button aria-label="Back to commits" onClick={onBack} size="icon-sm" variant="ghost">
           <ArrowLeftIcon />
         </Button>
@@ -97,7 +99,7 @@ export function ZeropsGitCommitView({
         <span className="min-w-0 flex-1 truncate text-caption text-foreground">
           {commit.subject}
         </span>
-      </header>
+      </PanelBar>
       {state.kind === "loading" ? (
         loading
       ) : state.kind === "changes" ? (
@@ -112,7 +114,11 @@ export function ZeropsGitCommitView({
           />
         </Suspense>
       ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-caption text-muted-foreground">
+        <Text
+          className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center"
+          render={<div />}
+          variant="note"
+        >
           {state.kind === "empty" ? (
             <p>This commit changed no files.</p>
           ) : state.kind === "absent" ? (
@@ -139,7 +145,7 @@ export function ZeropsGitCommitView({
               </Button>
             </>
           )}
-        </div>
+        </Text>
       )}
     </section>
   );

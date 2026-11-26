@@ -26,6 +26,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 import { MateFace } from "./primitives";
+import { Text } from "~/components/ui/text";
 
 /** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
 function PreviewLink({ url }: { readonly url: string }) {
@@ -35,7 +36,7 @@ function PreviewLink({ url }: { readonly url: string }) {
         data-zerops-surface="mate-preview"
         render={<a href={url} rel="noreferrer" target="_blank" />}
       >
-        <ExternalLinkIcon aria-hidden="true" className="size-3" />
+        <ExternalLinkIcon aria-hidden="true" />
         Preview
       </InlineButton>
     </span>
@@ -105,14 +106,14 @@ const ROW_SURFACE_CLASS =
 const LAYOUT = {
   card: {
     surface: CARD_SURFACE_CLASS,
-    opens: "hover:bg-accent/40",
+    opens: "hover:bg-item-hover",
     lineOne: "",
     name: "",
     time: "",
   },
   row: {
     surface: ROW_SURFACE_CLASS,
-    opens: "hover:bg-accent/60",
+    opens: "hover:bg-item-hover",
     // A row sits in a narrow step: the name never gives way, and its time and
     // Preview follow it — wrapping under it rather than cutting it to an
     // initial — with or without a Preview, at every width.
@@ -244,28 +245,35 @@ export function ZeropsMateCard({
           {layout === "row" ? <CardMenu className="-my-1 ms-auto" menu={menu} /> : null}
         </div>
         {line === undefined || line === null ? null : (
-          <div
-            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
+          <Text
+            className="flex min-w-0 items-center gap-1.5"
+            render={<div />}
+            variant="note"
             data-zerops-surface="mate-line"
           >
             {line}
-          </div>
+          </Text>
         )}
         {layout === "row" || snippet === undefined || snippet.length === 0 ? null : (
-          <div
-            className="min-w-0 truncate text-caption leading-4 text-muted-foreground"
+          <Text
+            className="min-w-0"
+            render={<div />}
+            truncate
+            variant="note"
             data-zerops-surface="mate-snippet"
           >
             {snippet}
-          </div>
+          </Text>
         )}
         {updateLine === undefined || updateLine === null ? null : (
-          <div
-            className="flex min-w-0 items-center gap-1.5 text-caption leading-4 text-muted-foreground"
+          <Text
+            className="flex min-w-0 items-center gap-1.5"
+            render={<div />}
+            variant="note"
             data-zerops-surface="mate-update-line"
           >
             {updateLine}
-          </div>
+          </Text>
         )}
       </div>
       {action === undefined || action === null ? null : (

@@ -6,9 +6,11 @@ import type { GitBrowseView as GitBrowseState } from "@t3tools/client-runtime/da
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { ReactNode } from "react";
 import { EmptyState } from "~/components/ui/empty";
+import { Failure } from "~/components/ui/failure";
 import { Button } from "~/components/ui/button";
 import { GitBrowserLink, type GitRepoAt } from "./GitBrowserLink";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** Missing commit facts are pending, not evidence of an empty branch. */
 export function GitNoCommit({ pending }: { readonly pending?: boolean | undefined }) {
@@ -23,9 +25,9 @@ export function GitNoCommit({ pending }: { readonly pending?: boolean | undefine
 function GitReading({ busy, subject }: { readonly busy: boolean; readonly subject: string }) {
   if (busy) return <Loading count={3} label={subject} shape="lines" />;
   return (
-    <p className="text-body text-muted-foreground" role="status">
+    <Text render={<p />} variant="description" role="status">
       Waiting for HQ…
-    </p>
+    </Text>
   );
 }
 
@@ -113,17 +115,18 @@ export function GitHomeAgain({
   readonly home: { readonly busy: boolean; readonly failed: boolean };
   readonly onHomeAgain: () => void;
 }) {
+  if (!home.failed) return null;
   return (
-    <span className="flex flex-wrap items-center gap-3">
-      {home.failed ? (
-        <span className="text-status-failed" role="alert">
-          HQ could not read this again. Showing the last read.
-        </span>
-      ) : null}
-      <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
-        Read again
-      </Button>
-    </span>
+    <Failure
+      size="line"
+      role="alert"
+      cause="HQ could not read this again. Showing the last read."
+      action={
+        <Button variant="ghost" size="sm" disabled={home.busy} onClick={onHomeAgain}>
+          Read again
+        </Button>
+      }
+    />
   );
 }
 
@@ -141,10 +144,7 @@ export function GitAtCommit({
 }) {
   if (home.state === "known")
     return home.answer.sha === null ? (
-      <div className="flex flex-wrap items-center gap-3 text-body text-muted-foreground">
-        <GitNoCommit pending={home.answer.pending} />
-        <GitHomeAgain home={home} onHomeAgain={onHomeAgain} />
-      </div>
+      <GitNoCommit pending={home.answer.pending} />
     ) : (
       children(home.answer, home.answer.sha)
     );

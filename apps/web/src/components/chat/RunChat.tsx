@@ -725,7 +725,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           };
   return (
     // One container for the card's head, its chat and what the Mate does now: the Mate's column
-    // keeps one gap for them all. Its words wear its tint (`--run-speaker-tint`). Keyed, so the scroll
+    // keeps one gap for them all. Its words wear its tint (`--mate-tint`). Keyed, so the scroll
     // the person watched is the one that folds away.
     <CarriedOpenContext value={carriedOpen}>
       <ResultPicturesContext value={resultPictures}>
@@ -744,7 +744,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
           style={
             {
-              "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
+              "--mate-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
               ...(waitCap === null ? {} : { maxHeight: `${waitCap}px` }),
             } as CSSProperties
           }
@@ -767,7 +767,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               }}
               now={row.live ? now : null}
               outcome={settled ? outcome : null}
-              settledHere={watchedLive && motionAllowed}
+              // Only once it ended: a card that came in live drew "Working" from nothing beside
+              // its standing clock, a blink as the card arrived.
+              settledHere={watchedLive && settled && motionAllowed}
               status={row.status}
             />
           )}
@@ -779,7 +781,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               // hairline sets it off. Settling, it folds shut into the line, the newest lines the
               // last to go under a soft edge (`foldAway`), its room over the work with it.
               className={cn(
-                "mt-2.5 [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-b [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-foreground/8 [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:pb-4",
+                "mt-2.5 [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-b [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:border-rule [&:not([hidden]):has(+[data-run-slot]:not([hidden]))]:pb-4",
                 fold === "folding" &&
                   "mt-0 flex flex-col justify-end overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,currentColor_24px)] *:flex-none",
               )}

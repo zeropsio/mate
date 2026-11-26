@@ -17,6 +17,8 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 export function StopTierStops({
   projectId,
@@ -50,15 +52,15 @@ export function StopTierStops({
   };
   return (
     <>
-      <ul className="flex flex-col" data-zerops-surface="stop-tier-stops">
+      <List className="flex flex-col" data-zerops-surface="stop-tier-stops" render={<ul />}>
         {rows.map((row) => (
           <li className={rowClassName} data-zerops-tier-stop={row.hostname} key={row.hostname}>
             <span className="flex min-w-0 flex-col">
-              <span className="min-w-0 truncate text-body text-muted-foreground">
+              <Text className="min-w-0" truncate variant="description">
                 {row.hostname} · {row.line}
-              </span>
+              </Text>
               {trouble?.hostname === row.hostname ? (
-                <span className="text-caption text-status-failed-text">{trouble.text}</span>
+                <Text variant="error">{trouble.text}</Text>
               ) : null}
             </span>
             {row.deletable === undefined ? (
@@ -75,7 +77,7 @@ export function StopTierStops({
             )}
           </li>
         ))}
-      </ul>
+      </List>
       <AlertDialog
         onOpenChange={(open) => {
           if (!open) setAsking(null);

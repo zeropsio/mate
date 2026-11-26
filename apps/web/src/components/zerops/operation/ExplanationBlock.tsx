@@ -9,8 +9,9 @@ import type { JSX } from "react";
 
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
-import { cn } from "~/lib/utils";
+import { LogView } from "~/components/ui/code-block";
 import { isErrorLogLine } from "./explanation";
+import { Text } from "~/components/ui/text";
 
 type Explanation = NonNullable<ZeropsOperation["explanation"]>;
 
@@ -29,23 +30,14 @@ const VISIBLE_TAIL_LINES = 6;
 
 function LogLines({ lines }: { readonly lines: ReadonlyArray<{ key: string; line: string }> }) {
   return (
-    <ol className="space-y-0.5 overflow-x-auto rounded-control bg-muted/60 px-2 py-1.5 font-mono text-caption leading-relaxed">
-      {lines.map(({ key, line }) => {
-        const error = isErrorLogLine(line);
-        return (
-          <li
-            className={cn(
-              "whitespace-pre-wrap break-words",
-              error ? "text-destructive-foreground" : "text-muted-foreground",
-            )}
-            data-zerops-explanation-line={error ? "error" : "plain"}
-            key={key}
-          >
-            {line}
-          </li>
-        );
-      })}
-    </ol>
+    <LogView
+      label="The failing step's last lines"
+      lines={lines.map(({ key, line }) => ({
+        id: key,
+        text: line,
+        tone: isErrorLogLine(line) ? "failed" : "quiet",
+      }))}
+    />
   );
 }
 
@@ -61,14 +53,14 @@ export function ExplanationBlock({
     <div className="space-y-1.5" data-zerops-operation-explanation>
       <p className="text-line text-foreground">{explanation.reason}</p>
       {earlier.length > 0 ? (
-        <details className="text-muted-foreground text-caption">
+        <Text render={<details />} variant="note">
           <summary className="w-fit cursor-pointer list-none select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
             Earlier lines
           </summary>
           <div className="mt-1">
             <LogLines lines={earlier} />
           </div>
-        </details>
+        </Text>
       ) : null}
       {visible.length > 0 ? <LogLines lines={visible} /> : null}
     </div>

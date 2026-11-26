@@ -61,6 +61,7 @@ import {
   isProviderUpdateActive,
   type ProviderSettingsUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
+import { PanelBar } from "../ui/panel-bar";
 import { Spinner } from "../ui/spinner";
 import { Badge, type BadgeTone } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -110,6 +111,10 @@ import {
 import { Loading } from "../ui/loading";
 import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
 import { matesWithoutOpenMate } from "./NoOpenMate.logic";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 /** An environment's connection as its tab's dot: work under way while it connects. */
 const CONNECTION_TONE: Readonly<Record<EnvironmentConnectionPhase, BadgeTone>> = {
@@ -225,7 +230,7 @@ interface ProviderSettingsTarget {
 
 export function ProviderSettingsPanel(target: ProviderSettingsTarget) {
   return (
-    <SettingsPageContainer className="gap-8">
+    <SettingsPageContainer>
       <ProviderSettingsPanelContent
         key={`${target.environmentId ?? ""}:${target.instanceId ?? ""}`}
         {...target}
@@ -274,11 +279,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
   const deviceTabs =
     !onlyPrimaryDevice && options.length > 0 ? (
       <>
-        <div
-          aria-label="Devices"
-          className="flex h-11 min-w-0 items-center border-b border-border/70 px-3 sm:px-4"
-          role="group"
-        >
+        <PanelBar aria-label="Devices" role="group" size="lg">
           <TabStrip
             activeId={effectiveEnvironmentId}
             items={options.map((environment) => ({
@@ -325,10 +326,10 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
               );
             })}
           </TabStrip>
-        </div>
-        <p className="px-3 pt-2 text-caption text-muted-foreground sm:px-4">
+        </PanelBar>
+        <Text className="px-3 pt-2 sm:px-4" render={<p />} variant="note">
           Only Mates the app is connected to.
-        </p>
+        </Text>
       </>
     ) : null;
 
@@ -924,9 +925,9 @@ export function EnvironmentProviderSettings({
         headerAction={
           <div className="flex min-w-0 items-center gap-2">
             {readOnly ? (
-              <span className="min-w-0 truncate text-caption text-muted-foreground">
+              <Text className="min-w-0" truncate variant="meta">
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
-              </span>
+              </Text>
             ) : (
               <>
                 <Tooltip>
@@ -981,21 +982,16 @@ export function EnvironmentProviderSettings({
           />
         ) : null}
         <div className="space-y-1">
-          <div className="overflow-hidden rounded-card border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
-            <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
-              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-2xs font-medium text-muted-foreground">
-                <span>Provider</span>
-                <span>On</span>
-              </div>
-              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+          <Card className="overflow-hidden lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+            <div className="border-b border-rule lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
+              <PanelBar className="justify-between">
+                <span className="text-2xs font-medium text-muted-foreground">Provider</span>
+                <span className="text-2xs font-medium text-muted-foreground">On</span>
+              </PanelBar>
+              <List className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
                 {rows.map((row) => renderProviderInstance(row, "list"))}
-              </div>
-              <div
-                className={cn(
-                  "flex min-h-10 shrink-0 items-center justify-between px-3",
-                  rows.length > 0 && "border-t border-border/60",
-                )}
-              >
+              </List>
+              <PanelBar className="justify-between" edge={rows.length > 0 ? "top" : "none"}>
                 <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
                 {!readOnly ? (
                   <Tooltip>
@@ -1019,23 +1015,23 @@ export function EnvironmentProviderSettings({
                     <TooltipPopup side="top">Refresh provider status</TooltipPopup>
                   </Tooltip>
                 ) : null}
-              </div>
+              </PanelBar>
             </div>
 
             <div className="min-w-0 lg:min-h-0">
               {selectedRow ? (
                 renderProviderInstance(selectedRow, "editor")
               ) : (
-                <div className="p-6 text-body text-muted-foreground">
+                <Text className="p-6" render={<div />} variant="description">
                   {editorEmpty === "missing"
                     ? "This provider instance is no longer available on this device."
                     : editorEmpty === "none"
                       ? "No providers configured."
                       : null}
-                </div>
+                </Text>
               )}
             </div>
-          </div>
+          </Card>
 
           <UsageProviderSettings
             key={environmentId}
@@ -1045,14 +1041,11 @@ export function EnvironmentProviderSettings({
             readOnly={readOnly}
           />
 
+          <Separator className="mt-2" />
           <div
             inert={readOnly}
             aria-disabled={readOnly || undefined}
-            className={
-              readOnly
-                ? "mt-2 border-t border-border/70 opacity-50 select-none"
-                : "mt-2 border-t border-border/70"
-            }
+            className={readOnly ? "opacity-50 select-none" : undefined}
           >
             <Collapsible open={advancedVisible} onOpenChange={setAdvancedOpen}>
               <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-caption text-muted-foreground hover:text-foreground sm:px-4">
@@ -1119,7 +1112,7 @@ export function EnvironmentProviderSettings({
                           <NumberFieldIncrement aria-label="Increase provider health check interval" />
                         </NumberFieldGroup>
                       </NumberField>
-                      <span className="text-caption text-muted-foreground">seconds</span>
+                      <Text variant="note">seconds</Text>
                     </div>
                   }
                 />

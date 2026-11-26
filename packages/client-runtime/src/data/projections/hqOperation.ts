@@ -24,7 +24,7 @@ export type HqOperationStanding =
   /** None of this kind is shown: nothing runs, or the newest one ended done. */
   | { readonly kind: "none" }
   /** HQ runs it: the target offers nothing that would start it again. */
-  | { readonly kind: "going" }
+  | { readonly kind: "going"; readonly id: string }
   /**
    * It stopped open and HQ names its maker: it waits for their Continue of `id`
    * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
@@ -42,7 +42,7 @@ export type HqOperationStanding =
    * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
    * including who stopped it and Zerops' answer where it refused.
    */
-  | { readonly kind: "failed"; readonly failure: HqOperationFailure }
+  | { readonly kind: "failed"; readonly id: string; readonly failure: HqOperationFailure }
   /**
    * It ended at a decision its target's person has not made (`needs`: a Put it live's
    * `release_review`): nothing runs, and the decision is offered.
@@ -50,7 +50,6 @@ export type HqOperationStanding =
   | { readonly kind: "needs"; readonly needs: string };
 
 const NONE: HqOperationStanding = { kind: "none" };
-const GOING: HqOperationStanding = { kind: "going" };
 
 /** How the operation of `kind` that HQ shows on a target stands, for the person HQ read it for. */
 export function hqOperationOf(
@@ -59,7 +58,9 @@ export function hqOperationOf(
 ): HqOperationStanding {
   if (operation?.kind !== kind) return NONE;
   if (operation.failure === undefined)
-    return operation.needs === undefined ? GOING : { kind: "needs", needs: operation.needs };
+    return operation.needs === undefined
+      ? { kind: "going", id: operation.id }
+      : { kind: "needs", needs: operation.needs };
   // HQ names its maker exactly while the operation waits for them, whatever it waits on, and
   // offers its Continue only to that maker while the right it decides again is theirs.
   if (operation.continueBy !== undefined)
@@ -71,5 +72,5 @@ export function hqOperationOf(
       ...waitingWords(operation.failure.code),
       ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
-  return { kind: "failed", failure: operation.failure };
+  return { kind: "failed", id: operation.id, failure: operation.failure };
 }

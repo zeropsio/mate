@@ -1,7 +1,10 @@
 import { changeKindTag, type GitOverviewChange } from "@t3tools/client-runtime/zerops";
 import { Button } from "../ui/button";
-import { STATUS_BADGE_TONE } from "./primitives";
-import { Badge } from "~/components/ui/badge";
+import { MateFace, STATUS_BADGE_TONE } from "./primitives";
+import { Dot } from "~/components/ui/dot";
+import { Row } from "~/components/ui/row";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { useMateLook } from "~/zerops/useMateLook";
 
 /** The same projected change and review action in the overview and repository detail. */
 export function ZeropsGitChangeRow({
@@ -15,35 +18,35 @@ export function ZeropsGitChangeRow({
   readonly repo: string;
   readonly onOpen?: (() => void) | undefined;
 }) {
+  const look = useMateLook(pull.mateProjectId);
   return (
-    <div className="flex min-w-0 items-center gap-3 py-2">
-      <div className="min-w-0 flex-1">
-        {/* A phone reads a change's title whole, on two lines where one cuts it. */}
-        <p
-          className="truncate text-body max-sm:line-clamp-2 max-sm:whitespace-normal"
-          data-zerops-surface="pull-request-title"
-        >
-          {pull.title}
-        </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-foreground">
+    <Row
+      lead={<MateFace size={32} state="idle" {...look} />}
+      title={<span data-zerops-surface="pull-request-title">{pull.title}</span>}
+      line={
+        <span className="flex items-center gap-1.5">
           <span>{line}</span>
-          <span>{changeKindTag(pull)}</span>
+          <span>· {changeKindTag(pull)}</span>
           {status === undefined ? null : (
-            <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
+            <>
+              <Dot tone={STATUS_BADGE_TONE[status.tone]} />
               {status.word}
-            </Badge>
+            </>
           )}
-        </div>
-      </div>
-      <Button
-        variant="secondary"
-        size="xs"
-        disabled={onOpen === undefined}
-        aria-label={`Review ${project} / ${repo} #${pull.number}`}
-        onClick={onOpen}
-      >
-        Review
-      </Button>
-    </div>
+        </span>
+      }
+      meta={pull.updatedAt === undefined ? undefined : formatRelativeTimeLabel(pull.updatedAt)}
+      control={
+        <Button
+          variant="secondary"
+          size="xs"
+          disabled={onOpen === undefined}
+          aria-label={`Review ${project} / ${repo} #${pull.number}`}
+          onClick={onOpen}
+        >
+          Review
+        </Button>
+      }
+    />
   );
 }

@@ -9,16 +9,14 @@
 import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
 import {
   ArrowUpRightIcon,
-  CheckIcon,
   ChevronDownIcon,
-  CopyIcon,
   LaptopIcon,
   LinkIcon,
   MoonIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { zeropsTokenManagementUrl } from "@t3tools/client-runtime/zerops/gui";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -29,55 +27,13 @@ import { MicroLabel } from "./primitives";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { Button, InlineButton } from "../ui/button";
 import { Card } from "../ui/card";
+import { CopyLine } from "../ui/copy-line";
+import { LogoTile } from "../ui/logo-tile";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { StepNumber } from "../ui/step-number";
 import { Badge } from "~/components/ui/badge";
 import { cn } from "~/lib/utils";
-
-/** How long a copy button says so. */
-const COPIED_MS = 2_000;
-
-/**
- * One command for the Mac's Terminal, its copy button inside the field: mono words to select
- * whole, on the muted ground, or on the page's where it stands in an inset card.
- */
-export function MacCommand({
-  command,
-  inset = false,
-}: {
-  readonly command: string;
-  readonly inset?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <span
-      className={cn(
-        "flex min-h-9 min-w-0 items-center gap-1 rounded-control ps-3 pe-1",
-        inset ? "bg-background" : "bg-muted",
-      )}
-    >
-      <code className="min-w-0 flex-1 font-mono text-caption text-foreground wrap-anywhere select-all">
-        {command}
-      </code>
-      <Button
-        aria-label={copied ? "Copied" : "Copy the command"}
-        onClick={() => {
-          void navigator.clipboard.writeText(command).then(
-            () => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), COPIED_MS);
-            },
-            () => undefined,
-          );
-        }}
-        size="icon-sm"
-        variant="ghost"
-      >
-        {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-      </Button>
-    </span>
-  );
-}
+import { Text } from "~/components/ui/text";
 
 /** One numbered step of what the person does on the Mac: its words, then its command or more. */
 function macStep({
@@ -97,7 +53,7 @@ function macStep({
       <span className="pt-0.5 text-body text-foreground">{words}</span>
       {command === undefined ? null : (
         <span className="col-start-2">
-          <MacCommand command={command} />
+          <CopyLine label="the command" value={command} wrap />
         </span>
       )}
       {more === undefined ? null : <span className="col-start-2">{more}</span>}
@@ -105,17 +61,12 @@ function macStep({
   );
 }
 
-/** A command that readies the Mac itself, not one of the Mate's own, in the inset card. */
-function SetupCommand({ command }: { readonly command: string }) {
-  return <MacCommand command={command} inset />;
-}
-
 /** A page to install from, opened beside the app. */
 function InstallLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
   return (
     <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
       {children}
-      <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+      <ArrowUpRightIcon aria-hidden="true" />
     </InlineButton>
   );
 }
@@ -155,7 +106,7 @@ function macReady() {
             <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
             <span>then</span>
           </span>
-          <SetupCommand command="brew install wireguard-tools" />
+          <CopyLine label="the command" value="brew install wireguard-tools" wrap />
         </li>
         <li className="flex flex-col gap-1.5">
           <span className={READY_NAME_CLASS}>Node.js 22.12 or newer</span>
@@ -174,7 +125,7 @@ function macReady() {
           <span className={READY_HOW_CLASS}>
             <span>For the smooth live view and building apps.</span>
           </span>
-          <SetupCommand command="xcode-select --install" />
+          <CopyLine label="the command" value="xcode-select --install" wrap />
         </li>
       </ul>
     </Card>
@@ -259,7 +210,7 @@ function macSteps({
           </CollapsibleTrigger>
           <CollapsiblePanel>
             <div className="pt-2.5">
-              <MacCommand command={pair} />
+              <CopyLine label="the command" value={pair} wrap />
             </div>
           </CollapsiblePanel>
         </Collapsible>
@@ -279,11 +230,8 @@ function macGlyph(status: MacWaitKind) {
           ? RefreshCwIcon
           : undefined;
   return (
-    <span
-      aria-hidden="true"
-      className="relative mb-4 grid size-14 place-items-center rounded-card bg-muted text-muted-foreground"
-    >
-      <LaptopIcon className="size-7" strokeWidth={1.5} />
+    <LogoTile className="relative mb-4" size="xl">
+      <LaptopIcon strokeWidth={1.5} />
       {Badge === undefined ? null : (
         <span
           className={cn(
@@ -294,7 +242,7 @@ function macGlyph(status: MacWaitKind) {
           <Badge className="size-3.25" />
         </span>
       )}
-    </span>
+    </LogoTile>
   );
 }
 
@@ -329,12 +277,16 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
           "remove",
           "under-press",
         )}
-        <p className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-body text-muted-foreground">
+        <Text
+          className="mt-3.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5"
+          render={<p />}
+          variant="description"
+        >
           Mac gone, or not answering?
           <Button onClick={forget} size="sm" variant="destructive">
             Forget it here
           </Button>
-        </p>
+        </Text>
       </CollapsiblePanel>
     </Collapsible>
   );
@@ -449,9 +401,9 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         >
           {macGlyph(wait.kind)}
           <h3 className="text-emphasis leading-5.5 font-semibold text-foreground">{wait.title}</h3>
-          <p className="mt-1 text-body text-pretty text-muted-foreground" data-zerops-mac-line>
+          <Text className="mt-1" render={<p />} variant="description" data-zerops-mac-line>
             {wait.line}
-          </p>
+          </Text>
           {steps}
           {view === "unavailable" ? (
             <div className="mt-5">
@@ -463,9 +415,9 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         </div>
       )}
       {line !== null ? (
-        <p className="px-1 text-muted-foreground text-caption" data-zerops-mac-line>
+        <Text className="px-1" render={<p />} variant="note" data-zerops-mac-line>
           {line}
-        </p>
+        </Text>
       ) : null}
       {frame !== undefined ? (
         <LiveFrameViewer

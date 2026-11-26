@@ -2,7 +2,7 @@
  * Deleting a Mate, in words and rules: what its dialog says, when the name is typed, and where the
  * viewer stands once it is gone.
  *
- * A Mate is its environment — one Zerops project — so deleting it takes that project off Zerops
+ * A Mate is its workspace — one Zerops project — so deleting it takes that project off Zerops
  * with its services and whatever is in them, and its conversations, which live in its container,
  * go with it. The dialog says so in one paragraph and asks for the Mate's name, typed, before its
  * button deletes anything: nothing about this can be undone.
@@ -20,8 +20,6 @@ export interface DeleteMateWords {
   readonly title: string;
   /** The one paragraph: what goes, and that it does not come back. */
   readonly body: string;
-  /** The field's label: "Type Quinn to confirm". */
-  readonly label: string;
   /** The button: "Delete Quinn". */
   readonly submit: string;
   /** The button while the platform answers. */
@@ -54,6 +52,14 @@ function whatGoesWithIt(services: number | undefined): string {
   return `with its ${services} services and everything in them`;
 }
 
+/**
+ * The last Mate in its project's Delete, the first line of what goes: deleting the project deletes
+ * it first, with its conversations and its workspace.
+ */
+export function lastMateGoes(name: string, services: number | undefined): string {
+  return `${name}, its conversations, and its workspace ${whatGoesWithIt(services)}`;
+}
+
 export function deleteMateWords(input: {
   /** The Mate's name. */
   readonly name: string;
@@ -63,16 +69,18 @@ export function deleteMateWords(input: {
   readonly services: number | undefined;
   /** Whose Mate it is, where that is a colleague — "Ada's Mate", as its row says it. */
   readonly owner: string | undefined;
+  /** What stays of its project (`deletionOffer`), its last sentence; absent: it stands in none. */
+  readonly stays?: string | undefined;
 }): DeleteMateWords {
-  const { name, environment, owner } = input;
+  const { name, environment, owner, stays } = input;
   const whose = owner === undefined ? "" : `${name} is ${owner}'s Mate. `;
   return {
     title: `Delete ${name}?`,
     body:
-      `${whose}The environment ${environment} goes from Zerops ${whatGoesWithIt(input.services)}, ` +
+      `${whose}The workspace ${environment} goes from Zerops ${whatGoesWithIt(input.services)}, ` +
       `and ${name}'s conversations go with it. Anything ${name} hasn't pushed is lost. ` +
-      "This can't be undone.",
-    label: `Type ${name} to confirm`,
+      "This can't be undone." +
+      (stays === undefined ? "" : ` ${stays}`),
     submit: `Delete ${name}`,
     pending: MATE_DELETING_WORD,
   };
@@ -90,6 +98,41 @@ export function deleteMateVerb(name: string): string {
 export function deleteMateConfirmed(typed: string, name: string): boolean {
   const trimmed = typed.trim();
   return trimmed.length > 0 && trimmed === name;
+}
+
+/**
+ * The field that asks a name typed before something is deleted: what it asks in words, the
+ * label it is pressed by (`Type {name} to confirm`, or `to unlock` a Production's slide), and
+ * under it whether what is typed matches, or how it does not. The rule is
+ * `deleteMateConfirmed`'s: spelled the same, spaces around it aside.
+ */
+export function confirmNameWords(input: {
+  readonly name: string;
+  /** Whose name it is: "the Mate's", "the project's", "the Production's". */
+  readonly whose: string;
+  readonly verb: "confirm" | "unlock";
+  readonly typed: string;
+}): {
+  readonly ask: string;
+  readonly label: string;
+  readonly copyLabel: string;
+  readonly matches: boolean;
+  readonly match: string;
+  readonly hint: string | null;
+} {
+  const matches = deleteMateConfirmed(input.typed, input.name);
+  return {
+    ask: `To ${input.verb}, type ${input.whose} name exactly as shown`,
+    label: `Type ${input.name} to ${input.verb}`,
+    copyLabel: `the name ${input.name}`,
+    matches,
+    match: "Matches",
+    hint: matches
+      ? null
+      : input.typed.trim() === ""
+        ? "Capitals, spaces and dashes count."
+        : "Not the same yet: capitals, spaces and dashes count.",
+  };
 }
 
 /** Where the viewer stands once the platform took the Mate. */

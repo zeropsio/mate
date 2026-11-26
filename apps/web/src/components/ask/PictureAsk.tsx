@@ -28,6 +28,9 @@ import {
   pictureAskSteps,
   pictureAsksPassed,
 } from "./pictureAsk.logic";
+import { Text } from "~/components/ui/text";
+import { PictureFrame } from "~/components/ui/picture-frame";
+import { Fact, Facts } from "~/components/ui/facts";
 
 interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
@@ -300,14 +303,13 @@ function PictureFacts({
   return (
     <div className="flex min-w-0 items-start gap-3">
       {picture}
-      <dl className="grid min-w-0 flex-1 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
+      <Facts className="flex-1">
         {rows.map((row) => (
-          <div className="contents" key={row.label}>
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
-          </div>
+          <Fact key={row.label} label={row.label}>
+            {row.value}
+          </Fact>
         ))}
-      </dl>
+      </Facts>
     </div>
   );
 }
@@ -325,7 +327,11 @@ function PictureWords({
   const [copied, setCopied] = useState(false);
   return (
     <figure className="grid min-w-0 gap-1">
-      <figcaption className="flex min-h-7 items-center justify-between gap-3 text-caption text-muted-foreground">
+      <Text
+        className="flex min-h-7 items-center justify-between gap-3"
+        render={<figcaption />}
+        variant="note"
+      >
         {label}
         {copy ? (
           <Button
@@ -344,7 +350,7 @@ function PictureWords({
             {copied ? "Copied" : "Copy"}
           </Button>
         ) : null}
-      </figcaption>
+      </Text>
       <div className="whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
         {words}
       </div>
@@ -371,16 +377,13 @@ function AskPicture({
     rendition: size === "sm" ? { width: 64, height: 64 } : { width: 144, height: 144 },
   });
   return (
-    <span
-      className={
-        size === "sm"
-          ? "inline-block size-8 shrink-0 overflow-hidden rounded-control bg-muted"
-          : "inline-block size-18 shrink-0 overflow-hidden rounded-control bg-muted"
-      }
+    <PictureFrame
+      className={size === "sm" ? "inline-block size-8 shrink-0" : "inline-block size-18 shrink-0"}
+      size="control"
     >
       {url === undefined ? null : (
         <img alt={fileNameOf(path)} className="size-full object-cover" src={url} />
       )}
-    </span>
+    </PictureFrame>
   );
 }

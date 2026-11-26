@@ -15,6 +15,7 @@ import {
 import { Atom } from "effect/reactivity";
 import { useMemo, useState } from "react";
 
+import { ChartReadout, ChartReadoutRow } from "~/components/ui/chart";
 import { Skeleton } from "~/components/ui/skeleton";
 import {
   Tooltip,
@@ -37,6 +38,7 @@ import {
   type SpendSeries,
   type SpendState,
 } from "./projectSpend.logic";
+import { Text } from "~/components/ui/text";
 
 const READING_COMPUTE = Atom.make<ComputeSpendRead>({ kind: "reading" });
 const READING_TOKENS = Atom.make<AgentUsageRead>({ kind: "reading" });
@@ -135,17 +137,18 @@ export function SpendBars({
           const row = payload === undefined ? undefined : series.days[payload];
           return row === undefined ? null : (
             <TooltipPopup side="top">
-              <span className="flex min-w-36 flex-col gap-0.5 py-0.5 tabular-nums">
-                <span className="font-medium text-foreground">
-                  {tooltipDay(row.day, today ?? "")}
-                </span>
-                <span className="flex justify-between gap-4 text-muted-foreground">
-                  Compute <span className="text-foreground">{formatUsd(row.computeUsd)}</span>
-                </span>
-                <span className="flex justify-between gap-4 text-muted-foreground">
-                  Model tokens <span className="text-foreground">{formatUsd(row.tokensUsd)}</span>
-                </span>
-              </span>
+              <ChartReadout title={tooltipDay(row.day, today ?? "")}>
+                <ChartReadoutRow
+                  color="var(--color-spend-compute)"
+                  label="Compute"
+                  value={formatUsd(row.computeUsd)}
+                />
+                <ChartReadoutRow
+                  color="var(--color-spend-tokens)"
+                  label="Model tokens"
+                  value={formatUsd(row.tokensUsd)}
+                />
+              </ChartReadout>
             </TooltipPopup>
           );
         }}
@@ -220,14 +223,14 @@ export function ProjectSpendRowView({ state }: { readonly state: SpendState }) {
   return (
     <SetupRow label="Spend" surface="project-spend">
       {series.totalUsd === 0 ? (
-        <p className="text-line text-muted-foreground">No spend in the last 30 days</p>
+        <Text render={<p />} variant="remark">
+          No spend in the last 30 days
+        </Text>
       ) : (
         <>
           <p className="flex h-7 min-w-0 flex-wrap items-baseline gap-x-2">
             <Money usd={series.totalUsd} />
-            <span className="text-caption text-muted-foreground">
-              {spendDaily(series.averageUsd, series.days.length)}
-            </span>
+            <Text variant="meta">{spendDaily(series.averageUsd, series.days.length)}</Text>
           </p>
           <SpendBars geometry={ROW_BARS} series={series} />
         </>

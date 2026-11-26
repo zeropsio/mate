@@ -4,11 +4,12 @@
  * opens, saying why. A colleague's read-along footer and a held footer draw none: that viewer
  * cannot act on the agent.
  */
-import { CircleAlertIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
+import { CircleAlertIcon, TriangleAlertIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
+import { Dot } from "../ui/dot";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import type { ProviderAvailability } from "./providerAvailability.logic";
@@ -30,12 +31,9 @@ export function AvailabilityDot({
   const tone = availability.tone === "error" ? "danger" : "warning";
   if (!corner)
     return <Badge aria-label={availability.title} className="me-2 align-middle" dot tone={tone} />;
-  // On an icon's top-right corner, ringed by the control's ground: a mark on a thing, not a label.
-  return (
-    <span className="absolute -top-1 -right-1 flex rounded-full ring-2 ring-(--contrast-input)">
-      <Badge aria-label={availability.title} dot tone={tone} />
-    </span>
-  );
+  // On an icon's top-right corner, cut out of the control's ground (its parent's `--mark-ground`):
+  // a mark on a thing, not a label.
+  return <Dot aria-label={availability.title} corner="top-end" tone={tone} />;
 }
 
 /**
@@ -53,30 +51,31 @@ export function AvailabilityNote({
   readonly children?: ReactNode;
 }) {
   return (
-    <div
-      className="flex shrink-0 items-start gap-2 border-b border-border/70 px-3 py-2 text-caption leading-snug"
+    <Alert
+      className="shrink-0"
       data-agent-availability=""
+      icon={
+        availability.tone === "error" ? (
+          <CircleAlertIcon aria-hidden="true" />
+        ) : (
+          <TriangleAlertIcon aria-hidden="true" />
+        )
+      }
+      role="note"
+      surface="band"
+      variant={availability.tone === "error" ? "error" : "warning"}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-1.5 size-1.5 shrink-0 rounded-full",
-          availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{availability.title}</p>
-        {availability.message === null ? null : (
-          <p className="text-muted-foreground">{availability.message}</p>
-        )}
-        {onOpenSetup === null ? null : (
-          <InlineButton className="mt-0.5" onClick={onOpenSetup}>
-            Open coding agent setup
-          </InlineButton>
-        )}
-        {children}
-      </div>
-    </div>
+      <AlertTitle>{availability.title}</AlertTitle>
+      {availability.message === null ? null : (
+        <AlertDescription>{availability.message}</AlertDescription>
+      )}
+      {onOpenSetup === null ? null : (
+        <p className="m-0 mt-0.5">
+          <InlineButton onClick={onOpenSetup}>Open coding agent setup</InlineButton>
+        </p>
+      )}
+      {children}
+    </Alert>
   );
 }
 

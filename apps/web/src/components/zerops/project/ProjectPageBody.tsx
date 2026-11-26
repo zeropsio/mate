@@ -31,6 +31,7 @@ import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
 
+import { PageHeader } from "../../ui/page-header";
 import { Button, InlineButton } from "../../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../../ui/dialog";
 import { Skeleton } from "../../ui/skeleton";
@@ -70,13 +71,12 @@ import {
   lineMarkOf,
   NextRelease,
   nextReleaseView,
-  PageHeader,
+  PageTrail,
   PlaceLine,
   ProjectLine,
   projectLine,
   projectLineFull,
   SectionAction,
-  SectionLabel,
   usePageTrail,
   waitingWords,
   type LineCopy,
@@ -123,6 +123,9 @@ import {
   PAGE_SIDE,
   PAGE_WORDS,
 } from "./pageLayout";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
+import { SectionHeader } from "~/components/ui/section";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -255,7 +258,7 @@ export function ProjectPageBody<T>({
           ) : undefined
         }
         title={group.name}
-        trail={trail}
+        trail={<PageTrail trail={trail} />}
       />
       <div className={PAGE_COLS}>
         <div className={PAGE_MAIN}>
@@ -285,7 +288,7 @@ export function ProjectPageBody<T>({
               className={PAGE_GROUP}
               data-zerops-project-automation=""
             >
-              <SectionLabel>Automation</SectionLabel>
+              <SectionHeader title="Automation" />
               <Card>{setup.automation}</Card>
             </section>
           ) : null}
@@ -415,9 +418,7 @@ function ProjectWaits<T>({
   // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
   return (
     <section aria-labelledby="pp-waits" className={PAGE_GROUP} data-zerops-surface="project-waits">
-      <SectionLabel count={waits.length} id="pp-waits">
-        Waiting on you
-      </SectionLabel>
+      <SectionHeader count={waits.length} id="pp-waits" title="Waiting on you" />
       <Card>
         {/* A card of rows: their hover runs to its edge less a hair. */}
         <div className="grid gap-0.5 p-2">
@@ -749,7 +750,7 @@ function ProjectPlaces<T>({
           className={PAGE_GROUP}
           data-zerops-surface="project-places"
         >
-          <SectionLabel id="pp-places">Places</SectionLabel>
+          <SectionHeader id="pp-places" title="Places" />
           {!facts.declared ? (
             lines.length === 0 ? (
               <PlaceCard aria-busy="true" data-zerops-places-held="">
@@ -812,7 +813,7 @@ function GoingLive({
       className={PAGE_GROUP}
       data-zerops-surface="project-going-live"
     >
-      <SectionLabel
+      <SectionHeader
         action={
           outside?.editable === true ? (
             <OutsideProductionForm
@@ -825,9 +826,8 @@ function GoingLive({
           ) : undefined
         }
         id="pp-golive"
-      >
-        {productionOutside === undefined ? "Going live" : "Production"}
-      </SectionLabel>
+        title={productionOutside === undefined ? "Going live" : "Production"}
+      />
       <Card className="overflow-hidden" data-zerops-place="production">
         {productionOutside === undefined ? (
           <div className={HERO}>
@@ -861,26 +861,31 @@ function GoingLive({
         {drawn(run) ? <div className="px-5 pb-4 empty:hidden max-sm:px-4">{run}</div> : null}
         {stage === undefined ? null : (
           // A stage, optional, under it.
-          <div
-            className="flex min-w-0 items-center justify-between gap-4 border-t border-border/60 px-5 py-3 text-line leading-5 text-muted-foreground max-sm:px-4"
-            data-zerops-place="stage"
-          >
-            <span>
-              <strong className="font-medium text-foreground">{stage.name}</strong> · optional ·{" "}
-              {STAGE_IS_FOR.toLocaleLowerCase()}
-            </span>
-            {stage.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("stage");
-                }}
-                size="sm"
-                variant="secondary"
-              >
-                {environmentDoorLabel("stage", stage.name)}
-              </Button>
-            ) : null}
-          </div>
+          <>
+            <Separator />
+            <Text
+              className="flex min-w-0 items-center justify-between gap-4 px-5 py-3 max-sm:px-4"
+              data-zerops-place="stage"
+              render={<div />}
+              variant="remark"
+            >
+              <span>
+                <strong className="font-medium text-foreground">{stage.name}</strong> · optional ·{" "}
+                {STAGE_IS_FOR.toLocaleLowerCase()}
+              </span>
+              {stage.add ? (
+                <Button
+                  onClick={() => {
+                    onAdd("stage");
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  {environmentDoorLabel("stage", stage.name)}
+                </Button>
+              ) : null}
+            </Text>
+          </>
         )}
       </Card>
     </section>
@@ -921,10 +926,7 @@ function Brought({
   const shown = all ? brought : brought.slice(0, BROUGHT_SHOWN);
   const more = brought.length - shown.length;
   return (
-    <p
-      className="text-line leading-5 text-pretty text-muted-foreground"
-      data-zerops-surface="project-brought"
-    >
+    <Text render={<p />} variant="remark" data-zerops-surface="project-brought">
       <RealName>{version}</RealName> brought: {shown.map((pull) => pull.title).join(" · ")}
       {more > 0 ? (
         <>
@@ -938,7 +940,7 @@ function Brought({
           </InlineButton>
         </>
       ) : null}
-    </p>
+    </Text>
   );
 }
 
@@ -990,9 +992,11 @@ function ProjectMates<T>({
     );
   return (
     <section aria-labelledby="pp-mates" className={PAGE_GROUP} data-zerops-step="mates">
-      <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
-        Mates
-      </SectionLabel>
+      <SectionHeader
+        count={mates.length > 1 ? mates.length : undefined}
+        id="pp-mates"
+        title="Mates"
+      />
       <MateCards>
         {mates.map(draw)}
         {setUps.map((setUp) => (
@@ -1269,13 +1273,12 @@ function ProjectChanges<T>({
       data-zerops-surface="project-changes"
       ref={section}
     >
-      <SectionLabel
+      <SectionHeader
         action={action}
         count={historyShown || only === undefined ? undefined : countOf(only)}
         id="pp-changes"
-      >
-        {historyShown ? "History" : (only?.label ?? "Changes")}
-      </SectionLabel>
+        title={historyShown ? "History" : (only?.label ?? "Changes")}
+      />
       {/* The line that pictures the changes is the card's masthead, the ledger of them stands
           under a hairline: one card, so the beads on the line are plainly the rows' own. */}
       <Card>
@@ -1311,11 +1314,9 @@ function ProjectChanges<T>({
           }}
           view={picture}
         />
+        <Separator />
         <div
-          className={cn(
-            "grid min-w-0 gap-0.5 border-t border-border/60",
-            historyShown ? "p-2" : "px-2 py-1.5",
-          )}
+          className={cn("grid min-w-0 gap-0.5", historyShown ? "p-2" : "px-2 py-1.5")}
           ref={list}
         >
           {historyShown ? (
@@ -1343,9 +1344,16 @@ function ProjectChanges<T>({
                 <div className={CHANGE_GROUP} data-group="" data-zerops-change-group="open">
                   {/* Alone in the card, the line's count right over them is their label. */}
                   {groups.length === 0 ? null : (
-                    <SectionLabel count={whole.open.length} level={3}>
-                      <MainNamed words={NOT_ON_MAIN_YET} />
-                    </SectionLabel>
+                    <SectionHeader
+                      count={whole.open.length}
+                      level={3}
+                      size="panel"
+                      title={
+                        <>
+                          <MainNamed words={NOT_ON_MAIN_YET} />
+                        </>
+                      }
+                    />
                   )}
                   <ChangeList label="Open changes" ledger look="ruled" page>
                     {open.map((change) => row(change))}
@@ -1360,9 +1368,16 @@ function ProjectChanges<T>({
                     data-zerops-change-group={lineGroupOf(group)}
                     key={group.label}
                   >
-                    <SectionLabel count={countOf(group)} level={3}>
-                      <GroupWords group={group} />
-                    </SectionLabel>
+                    <SectionHeader
+                      count={countOf(group)}
+                      level={3}
+                      size="panel"
+                      title={
+                        <>
+                          <GroupWords group={group} />
+                        </>
+                      }
+                    />
                     <ChangeList ledger look="ruled" page>
                       {group.changes.map((change) => row(change))}
                     </ChangeList>
@@ -1397,10 +1412,17 @@ function ProjectChanges<T>({
         <div className="mt-5 grid min-w-0 gap-0.5 px-2" data-zerops-changes-record="">
           {live.map((group) => (
             <div className={RECORD_GROUP} data-group="" key={group.label}>
-              <SectionLabel count={countOf(group)} level={3}>
-                <GroupWords group={group} />
-                <LiveSince at={group.release?.at} />
-              </SectionLabel>
+              <SectionHeader
+                count={countOf(group)}
+                level={3}
+                size="panel"
+                title={
+                  <>
+                    <GroupWords group={group} />
+                    <LiveSince at={group.release?.at} />
+                  </>
+                }
+              />
               <ChangeList ledger look="record" page>
                 {group.changes.map((change) => row(change))}
               </ChangeList>
@@ -1561,14 +1583,11 @@ function SetupDialog({
 /** The project's state beside its title, where it is not calm: "Not live yet" on a hollow dot. */
 function ProjectState({ children }: { readonly children: ReactNode }) {
   return (
-    <span
-      className="text-body leading-5 whitespace-nowrap text-muted-foreground"
-      data-zerops-project-state=""
-    >
+    <Text className="whitespace-nowrap" variant="description" data-zerops-project-state="">
       <Badge dot hollow tone="neutral">
         {children}
       </Badge>
-    </span>
+    </Text>
   );
 }
 
@@ -1596,7 +1615,7 @@ function PlaceCard({
  * edge; the group the picture's count led to is lit a moment.
  */
 const CHANGE_GROUP =
-  "rounded-control transition-colors duration-260 ease-out-strong data-lit:bg-primary/9 motion-reduce:transition-none [[data-group]+&]:mt-1.5 [&>[data-zerops-section-label]]:px-2.5 [&>[data-zerops-section-label]]:pt-1.5";
+  "rounded-control transition-colors duration-260 ease-out-strong data-lit:bg-primary/9 motion-reduce:transition-none [[data-group]+&]:mt-1.5 [&>[data-slot=section-header]]:px-2.5 [&>[data-slot=section-header]]:pt-1.5";
 
 /** A group of the record of what is live. */
-const RECORD_GROUP = "[[data-group]+&]:mt-1.5 [&>[data-zerops-section-label]]:px-2.5";
+const RECORD_GROUP = "[[data-group]+&]:mt-1.5 [&>[data-slot=section-header]]:px-2.5";

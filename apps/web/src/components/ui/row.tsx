@@ -36,39 +36,51 @@ const rowVariants = cva("group/row relative flex min-w-0 gap-3 text-left outline
       bar: "min-h-8 w-full gap-2 rounded-control pe-3.5",
     },
     /**
-     * The whole row opens something: `true` lights its own ground under the pointer; `band` leaves
-     * that to its list, whose one band slides to the row lit (the menu).
+     * The whole row opens or picks something: `true` lights its own ground (`bg-item-hover`) under
+     * the pointer and while `data-highlighted` (a list's arrow keys stepping through rows that keep
+     * focus on the list, a search field's results); `band` leaves that to its list, whose one band
+     * slides to the row lit (the menu).
      */
     pressable: {
-      true: "w-full cursor-pointer select-none transition-colors duration-150 hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default aria-disabled:hover:bg-transparent",
+      true: "w-full cursor-pointer select-none transition-colors duration-150 ease-out-strong not-aria-disabled:[:hover,[data-highlighted]]:bg-item-hover focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default motion-reduce:transition-none",
       band: "w-full cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default",
       false: "",
     },
-    /** Picked among its list (a take on the stage): it stands on the accent ground. */
+    /**
+     * The one picked among its list, the one it shows (the tab open, the take on stage, the
+     * conversation in view): it stands on `bg-item-picked`, and stays on it under the pointer. A
+     * choice of a value says so with its own mark instead (`RadioRow`, a check box).
+     */
     picked: {
-      true: "bg-accent/70",
+      true: "bg-item-picked",
       false: "",
     },
   },
   compoundVariants: [
-    // On the run card's tray the line lights as quietly as the card's other lines.
     {
-      size: "bar",
       pressable: true,
-      className: "hover:bg-foreground/4 focus-visible:ring-inset",
+      picked: true,
+      className: "not-aria-disabled:[:hover,[data-highlighted]]:bg-item-picked",
     },
+    // On the run card's tray the line's keyboard ring stays inside the card.
+    { size: "bar", pressable: true, className: "focus-visible:ring-inset" },
   ],
 });
 
 type RowSize = NonNullable<VariantProps<typeof rowVariants>["size"]>;
 
+/**
+ * The lead's room, and the size it gives an icon that says what the row is: 14 px in an `xs` row,
+ * 16 px in every other, in the muted ink unless the icon names an ink that means something (the
+ * primary ink of an add). An icon in a lead names no size of its own.
+ */
 const LEAD_CLASS: Record<RowSize, string> = {
-  xs: "size-4",
-  sm: "size-5",
-  md: "size-8",
-  lg: "size-9",
-  "lg-line": "size-9",
-  bar: "w-7",
+  xs: "size-4 [&>svg:not([class*='size-'])]:size-3.5",
+  sm: "size-5 [&>svg:not([class*='size-'])]:size-4",
+  md: "size-8 [&>svg:not([class*='size-'])]:size-4",
+  lg: "size-9 [&>svg:not([class*='size-'])]:size-4",
+  "lg-line": "size-9 [&>svg:not([class*='size-'])]:size-4",
+  bar: "w-7 [&>svg:not([class*='size-'])]:size-4",
 };
 
 const HEAD_CLASS: Record<RowSize, string> = {
@@ -125,6 +137,11 @@ interface RowSlotsProps
    * an input, a slider) takes the row's width under the words, every select one height.
    */
   readonly fieldUnder?: boolean;
+  /**
+   * A short control (a two-way choice) that stays on the title's line however narrow the row:
+   * the words truncate first. A person's access in a narrow picker.
+   */
+  readonly controlStays?: boolean;
 }
 
 function RowSlots({
@@ -144,6 +161,7 @@ function RowSlots({
   lineWraps = false,
   control,
   fieldUnder = false,
+  controlStays = false,
   ...props
 }: RowSlotsProps) {
   const lined = line !== undefined && line !== null && line !== false;
@@ -157,7 +175,7 @@ function RowSlots({
       // The mark stands on the title's line however many lines follow; a one-line row centres it.
       lined || rowSize === "lg" ? "items-start" : "items-center",
       // A control that leaves the words less than 12rem goes under them, at the row's end.
-      hasControl && "flex-wrap",
+      hasControl && !controlStays && "flex-wrap",
       className,
     ),
     "data-slot": "row",
@@ -166,7 +184,7 @@ function RowSlots({
         {hasLead ? (
           <span
             className={cn(
-              "relative flex shrink-0 items-center justify-center",
+              "relative flex shrink-0 items-center justify-center [&>svg:not([class*='text-'])]:text-muted-foreground",
               thumbnail ? "h-8 w-13" : LEAD_CLASS[rowSize],
             )}
             data-slot="row-lead"
@@ -175,7 +193,7 @@ function RowSlots({
           </span>
         ) : null}
         <span
-          className={cn("flex min-w-0 flex-1 flex-col", hasControl && "basis-48")}
+          className={cn("flex min-w-0 flex-1 flex-col", hasControl && !controlStays && "basis-48")}
           data-slot="row-body"
         >
           <span className={cn("flex min-w-0 items-center gap-2", HEAD_CLASS[rowSize])}>
@@ -262,9 +280,9 @@ const rowColumnsVariants = cva(
   {
     defaultVariants: { pressable: false, ground: "none" },
     variants: {
-      /** As a slotted row's: `true` lights its own ground; `band` leaves that to its list. */
+      /** As a slotted row's: `true` lights its own ground (`bg-item-hover`); `band` leaves that to its list. */
       pressable: {
-        true: "cursor-pointer transition-colors duration-150 ease-out-strong hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
+        true: "cursor-pointer transition-colors duration-150 ease-out-strong [:hover,:focus-visible,[data-highlighted]]:bg-item-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none",
         band: "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring",
         false: "",
       },

@@ -7,7 +7,7 @@ import {
 } from "~/components/ui/number-field";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const SIZES = ["sm", "default", "lg"] as const;
@@ -45,15 +45,23 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/number-field.tsx",
   render: () => (
-    <SpecimenGrid>
-      {SIZES.map((size) => (
-        <Specimen key={size} label={specimenLabel({ size, min: 0, step: 5 })}>
-          <Sample size={size} />
-        </Specimen>
-      ))}
-      <Specimen label="disabled">
-        <Sample disabled />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Sizes">
+        <SpecimenGrid size="md">
+          {SIZES.map((size) => (
+            <Specimen key={size} label={specimenLabel({ size, min: 0, step: 5 })}>
+              <Sample size={size} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="States">
+        <SpecimenGrid size="md">
+          <Specimen label="disabled">
+            <Sample disabled />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

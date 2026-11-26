@@ -19,7 +19,7 @@ import {
 import { Kbd, KbdGroup } from "~/components/ui/kbd";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 interface Item {
   readonly value: string;
@@ -88,35 +88,45 @@ function Footer() {
 function CommandSpecimens() {
   const [open, setOpen] = useState(false);
   return (
-    <SpecimenGrid>
-      <Specimen label="<CommandDialog> · <CommandDialogPopup>">
-        <Button onClick={() => setOpen(true)} variant="secondary">
-          Open the palette
-        </Button>
-        <CommandDialog onOpenChange={setOpen} open={open}>
-          <CommandDialogPopup aria-label="Command palette">
-            <Command items={GROUPS}>
-              <CommandInput placeholder="Search projects and actions" />
-              <CommandPanel>
-                <Results />
-              </CommandPanel>
-              <Footer />
-            </Command>
-          </CommandDialogPopup>
-        </CommandDialog>
-      </Specimen>
-      <Specimen label="<Command> inline (its field waits to be pressed)">
-        <div className="w-96 rounded-sheet border">
-          <Command items={GROUPS}>
-            <CommandInput placeholder="Search projects and actions" />
-            <CommandPanel>
-              <Results />
-            </CommandPanel>
-            <Footer />
-          </Command>
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="The palette over the page, or the same search inline."
+        title="Dialog and inline"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen
+            label="<CommandDialog> · <CommandDialogPopup>"
+            note="The palette; the press opens it"
+          >
+            <Button onClick={() => setOpen(true)} variant="secondary">
+              Open the palette
+            </Button>
+            <CommandDialog onOpenChange={setOpen} open={open}>
+              <CommandDialogPopup aria-label="Command palette">
+                <Command items={GROUPS}>
+                  <CommandInput placeholder="Search projects and actions" />
+                  <CommandPanel>
+                    <Results />
+                  </CommandPanel>
+                  <Footer />
+                </Command>
+              </CommandDialogPopup>
+            </CommandDialog>
+          </Specimen>
+          <Specimen label="<Command>" note="Inline, its field waiting to be pressed">
+            <div className="w-full max-w-96 rounded-sheet border">
+              <Command items={GROUPS}>
+                <CommandInput placeholder="Search projects and actions" />
+                <CommandPanel>
+                  <Results />
+                </CommandPanel>
+                <Footer />
+              </Command>
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   );
 }
 

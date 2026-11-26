@@ -1,6 +1,10 @@
 import { isWindowsPlatform } from "./utils";
 
 const WCO_CLASS_NAME = "wco";
+
+/** A frameless window's title bar drags the window; what can be pressed in it never does. */
+export const DRAG_REGION_CLASS_NAME =
+  "[-webkit-app-region:drag] [&_:is(button,input,textarea,select,a)]:[-webkit-app-region:no-drag]";
 const ELECTRON_CLASS_NAME = "electron";
 const ELECTRON_WINDOWS_CLASS_NAME = "electron-windows";
 

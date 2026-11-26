@@ -11,16 +11,22 @@ import {
 import { definePlayground, jsxElement } from "../kitPlayground";
 
 const SERVICES = [
-  { name: "storefront", runtime: "Node.js 22", state: "Running", tone: "success" },
-  { name: "db", runtime: "PostgreSQL 16", state: "Running", tone: "success" },
-  { name: "cache", runtime: "Valkey 7.2", state: "Stopped", tone: "neutral" },
-  { name: "worker", runtime: "Go 1.23", state: "Building", tone: "info" },
-  { name: "search", runtime: "Meilisearch 1.9", state: "Failed", tone: "danger" },
+  {
+    name: "storefront",
+    runtime: "Node.js 22",
+    state: "Running",
+    tone: "success",
+    memory: "412 MB",
+  },
+  { name: "db", runtime: "PostgreSQL 16", state: "Running", tone: "success", memory: "1.2 GB" },
+  { name: "cache", runtime: "Valkey 7.2", state: "Stopped", tone: "neutral", memory: "0 MB" },
+  { name: "worker", runtime: "Go 1.23", state: "Building", tone: "info", memory: "96 MB" },
+  { name: "search", runtime: "Meilisearch 1.9", state: "Failed", tone: "danger", memory: "38 MB" },
 ] as const;
 const LONG_NAME = "a-service-with-a-name-long-enough-to-wrap-or-truncate";
 
 const ROWS = ["2", "3", "5"] as const;
-const SIZES = ["sm", "md"] as const;
+const SIZES = ["sm", "md", "report"] as const;
 const SELECTED = ["none", "1", "2"] as const;
 
 export default definePlayground({
@@ -31,6 +37,8 @@ export default definePlayground({
   controls: {
     rows: { kind: "enum", options: ROWS, note: "like things, compared across the same columns" },
     state: { kind: "boolean", note: "a State column of Badges" },
+    figures: { kind: "boolean", note: 'a Memory column of figures, align="end"' },
+    mutedRuntime: { kind: "boolean", note: 'the Runtime column behind the name, tone="muted"' },
     longName: { kind: "boolean", note: "the first name long enough to wrap" },
     selected: { kind: "enum", options: SELECTED, note: 'a row with data-state="selected"' },
     sticky: {
@@ -41,18 +49,34 @@ export default definePlayground({
       kind: "boolean",
       note: "the first column stays as the rest scroll sideways under it",
     },
-    size: { kind: "enum", options: SIZES, note: "sm a dense table of facts, md people or places" },
+    size: {
+      kind: "enum",
+      options: SIZES,
+      note: "sm a dense table of facts, md people or places, report a card's report of facts",
+    },
   },
   initial: {
     rows: "3",
     state: true,
+    figures: false,
+    mutedRuntime: false,
     longName: false,
     selected: "none",
     sticky: false,
     stickyColumn: false,
     size: "sm",
   },
-  render: ({ rows, state, longName, selected, sticky, stickyColumn, size }) => (
+  render: ({
+    rows,
+    state,
+    figures,
+    mutedRuntime,
+    longName,
+    selected,
+    sticky,
+    stickyColumn,
+    size,
+  }) => (
     <div
       className={
         sticky
@@ -68,6 +92,7 @@ export default definePlayground({
             <TableHead sticky={stickyColumn}>Service</TableHead>
             <TableHead>Runtime</TableHead>
             {state ? <TableHead>State</TableHead> : null}
+            {figures ? <TableHead align="end">Memory</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -79,24 +104,26 @@ export default definePlayground({
               <TableHead scope="row" sticky={stickyColumn}>
                 {longName && index === 0 ? LONG_NAME : service.name}
               </TableHead>
-              <TableCell>{service.runtime}</TableCell>
+              <TableCell tone={mutedRuntime ? "muted" : "default"}>{service.runtime}</TableCell>
               {state ? (
                 <TableCell>
                   <Badge tone={service.tone}>{service.state}</Badge>
                 </TableCell>
               ) : null}
+              {figures ? <TableCell align="end">{service.memory}</TableCell> : null}
             </TableRow>
           ))}
         </TableBody>
       </Table>
     </div>
   ),
-  jsx: ({ rows, state, longName, selected, sticky, stickyColumn, size }) => {
+  jsx: ({ rows, state, figures, mutedRuntime, longName, selected, sticky, stickyColumn, size }) => {
     const first = stickyColumn ? "TableHead sticky" : "TableHead";
     const head = [
       `<${first}>Service</TableHead>`,
       "<TableHead>Runtime</TableHead>",
       ...(state ? ["<TableHead>State</TableHead>"] : []),
+      ...(figures ? ['<TableHead align="end">Memory</TableHead>'] : []),
     ].join("\n");
     const body = SERVICES.slice(0, Number(rows))
       .map((service, index) =>
@@ -105,12 +132,15 @@ export default definePlayground({
           { "data-state": String(index + 1) === selected ? "selected" : undefined },
           [
             `<${first} scope="row">${longName && index === 0 ? LONG_NAME : service.name}</TableHead>`,
-            `<TableCell>${service.runtime}</TableCell>`,
+            mutedRuntime
+              ? `<TableCell tone="muted">${service.runtime}</TableCell>`
+              : `<TableCell>${service.runtime}</TableCell>`,
             ...(state
               ? [
                   `<TableCell>\n  <Badge tone="${service.tone}">${service.state}</Badge>\n</TableCell>`,
                 ]
               : []),
+            ...(figures ? [`<TableCell align="end">${service.memory}</TableCell>`] : []),
           ].join("\n"),
         ),
       )

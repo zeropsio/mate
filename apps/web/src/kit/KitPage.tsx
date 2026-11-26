@@ -1,6 +1,5 @@
 import { ChevronRightIcon, SearchXIcon } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -81,20 +80,6 @@ const plainClick = (event: MouseEvent) =>
 const toolsOf = (ref: KitPageRef): KitToolSet =>
   ref.kind === "component" ? CANVAS_TOOLS : ref.kind === "flow" ? FLOW_TOOLS : DOCUMENT_TOOLS;
 
-/** The width of an element as it resizes, for a flow that fills its room. */
-function useWidth(): [(element: HTMLElement | null) => () => void, number] {
-  const [width, setWidth] = useState(0);
-  const ref = useCallback((element: HTMLElement | null) => {
-    if (element === null) return () => {};
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry !== undefined) setWidth(Math.round(entry.contentRect.width));
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width];
-}
-
 /**
  * The kit: every component the app is built from, the foundations beneath them and, where the
  * build carries the design harness, its flows. One page at a time, its whole view in the address. Static fixtures only; it reads no account, project or Mate.
@@ -160,7 +145,6 @@ function KitShell({
   readonly view: KitView;
 }) {
   const entries = useMemo(() => kitNavEntries(sections, flows), [sections, flows]);
-  const [measure, width] = useWidth();
   const ground = search.bg ?? "page";
   const zoom = search.zoom ?? 100;
   const outline = search.outline === 1;
@@ -277,7 +261,7 @@ function KitShell({
           viewport={search.viewport}
           zoom={zoom}
         />
-        <div className="flex min-h-0 flex-1 flex-col" key={kitPageKey(pageRef)} ref={measure}>
+        <div className="flex min-h-0 flex-1 flex-col" key={kitPageKey(pageRef)}>
           <KitPageView
             flowState={search.state}
             linkTo={linkTo}
@@ -304,7 +288,6 @@ function KitShell({
             sections={sections}
             stage={stage}
             view={view}
-            width={width}
           />
         </div>
       </SidebarInset>
@@ -373,7 +356,6 @@ function KitPageView({
   sections,
   flows,
   view,
-  width,
   stage,
   linkTo,
   onTabChange,
@@ -387,7 +369,6 @@ function KitPageView({
   readonly sections: readonly KitSection[];
   readonly flows: readonly KitShellFlow[];
   readonly view: KitView;
-  readonly width: number;
   readonly stage: (label: string) => (content: ReactNode) => ReactNode;
   readonly linkTo: (page: string) => KitLink;
   readonly onTabChange: (tab: ComponentTab) => void;
@@ -426,7 +407,7 @@ function KitPageView({
           flow={pageRef.flow}
           onStateChange={onFlowStateChange}
           state={flowState}
-          viewport={search.viewport ?? Math.max(width - 32, 320)}
+          viewport={search.viewport}
           // The toolbar's zoom is a percentage; the flow scales its frame by a fraction.
           zoom={(search.zoom ?? 100) / 100}
         />
@@ -491,14 +472,17 @@ function KitPane({
         return null;
     }
   })();
+  // The app's root never scrolls; the pane is the window's one scroller, as the stage is the shell's.
   return (
-    <KitCanvas
-      ground={search.bg ?? "page"}
-      outline={search.outline === 1}
-      viewport={search.viewport}
-      zoom={search.zoom ?? 100}
-    >
-      {content}
-    </KitCanvas>
+    <div className="h-svh overflow-auto">
+      <KitCanvas
+        ground={search.bg ?? "page"}
+        outline={search.outline === 1}
+        viewport={search.viewport}
+        zoom={search.zoom ?? 100}
+      >
+        {content}
+      </KitCanvas>
+    </div>
   );
 }

@@ -8,10 +8,12 @@ import type { ReactNode } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { REVIEW_RELEASE_LABEL } from "~/zerops/review";
 import type { CardReady } from "../projects/projectCard.logic";
 import { nextReleaseTitle, nextReleaseView } from "../system";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
+import { Text } from "~/components/ui/text";
 
 const NO_FACTS: ReadonlyArray<string | undefined> = [];
 
@@ -91,10 +93,8 @@ export function PlaceNextCard({
 }) {
   const line = facts.filter((fact) => fact !== undefined && fact !== "").join(" · ");
   return (
-    <div
-      className="flex min-w-0 flex-col overflow-hidden rounded-card border border-primary/20 bg-primary/[0.06]"
-      data-zerops-next-block=""
-    >
+    // The one next step on the place: the kit's wash card, in the primary's tint.
+    <Card className="min-w-0 overflow-hidden" data-zerops-next-block="" variant="wash">
       <div
         className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 px-5 py-4"
         data-zerops-next-release={state}
@@ -102,15 +102,17 @@ export function PlaceNextCard({
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2.5">
             {lead}
-            <span className="min-w-0 text-emphasis font-semibold text-foreground">{title}</span>
+            <Text className="min-w-0" variant="headline">
+              {title}
+            </Text>
           </div>
-          {line === "" ? null : <span className="text-body text-muted-foreground">{line}</span>}
+          {line === "" ? null : <Text variant="description">{line}</Text>}
         </div>
         {verb === undefined || verb === null ? null : <span className="flex shrink-0">{verb}</span>}
       </div>
       {children === undefined || children === null ? null : (
         <div className="border-t border-primary/15 px-5 pt-3 pb-2">{children}</div>
       )}
-    </div>
+    </Card>
   );
 }

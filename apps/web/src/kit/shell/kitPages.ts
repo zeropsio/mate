@@ -28,9 +28,6 @@ export type KitPageRef =
   | { readonly kind: "flow"; readonly flow: KitShellFlow }
   | { readonly kind: "missing"; readonly page: string };
 
-/** A component is a section the system offers; the tokens' section is a foundation. */
-export const isComponentSection = (section: KitSection) => section.kind !== "Foundations";
-
 export function resolveKitPage(
   page: string | undefined,
   sections: readonly KitSection[],
@@ -48,9 +45,7 @@ export function resolveKitPage(
     return flow === undefined ? { kind: "missing", page } : { kind: "flow", flow };
   }
   const section = sections.find(({ id }) => id === page);
-  if (section === undefined) return { kind: "missing", page };
-  if (section.kind === "Foundations") return { kind: "foundation", foundation: FOUNDATIONS[0] };
-  return { kind: "component", section };
+  return section === undefined ? { kind: "missing", page } : { kind: "component", section };
 }
 
 /** The page as the shell keys what it renders. */
@@ -82,6 +77,10 @@ export interface NavEntry {
   readonly label: string;
   /** Shown while searching, so a state found alone still says whose it is. */
   readonly context?: string;
+  /** A component's job in one line, which the search reads as well as its name. */
+  readonly purpose?: string;
+  /** A component's file, repository-relative: where the search reads its doc comments. */
+  readonly source?: string;
   readonly page: string;
   readonly state?: string;
   /** A flow's state sits under its flow. */
@@ -104,14 +103,15 @@ export function kitNavEntries(
       depth: 0,
     });
   }
-  const components = sections.filter(isComponentSection);
   for (const kind of KIT_KINDS) {
-    for (const section of components.filter((candidate) => candidate.kind === kind)) {
+    for (const section of sections.filter((candidate) => candidate.kind === kind)) {
       entries.push({
         key: section.id,
         group: "Components",
         sub: kind satisfies KitKind,
         label: section.title,
+        purpose: section.purpose,
+        source: section.source,
         page: section.id,
         depth: 0,
       });
@@ -157,25 +157,127 @@ export function isNavEntryActive(
   return entry.state === state;
 }
 
-/** Where a query matches an entry's label, ignoring case; `null` when it does not. */
-export function matchRange(label: string, query: string): readonly [number, number] | null {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return null;
-  const at = label.toLowerCase().indexOf(needle);
-  return at < 0 ? null : [at, at + needle.length];
+/**
+ * Words a person adds around what they look for ("a divider", "something to copy a command"): the
+ * search reads past them.
+ */
+const FILLER = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "for",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "with",
+  "my",
+  "some",
+  "something",
+  "thing",
+  "that",
+  "this",
+  "is",
+  "it",
+  "i",
+  "need",
+  "want",
+  "show",
+]);
+
+/** The words a query looks for: lowercase, filler dropped, a plural read as its singular. */
+export function queryWords(query: string): readonly string[] {
+  return query
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word !== "" && !FILLER.has(word))
+    .map((word) => (word.length > 3 && word.endsWith("s") ? word.slice(0, -1) : word));
+}
+
+/** Words of a text, each once, lowercase. */
+export function textWords(text: string): ReadonlySet<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word !== ""),
+  );
 }
 
 /**
- * Every entry whose label holds the query, with a flow's states when the flow's name holds it and
- * a kind's components when the kind's name starts with it.
+ * Whether a looked-for word is among a text's words: one that starts with it ("divider" finds
+ * "dividers"), or one it grows from ("copyable" finds "copy").
  */
-export function searchNavEntries(entries: readonly NavEntry[], query: string): readonly NavEntry[] {
+const holds = (words: ReadonlySet<string>, wanted: string) => {
+  if (words.has(wanted)) return true;
+  for (const word of words) {
+    if (word.startsWith(wanted) || (word.length >= 4 && wanted.startsWith(word))) return true;
+  }
+  return false;
+};
+
+/** Where a query matches an entry's label, ignoring case; `null` when it does not. */
+export function matchRange(label: string, query: string): readonly [number, number] | null {
+  const lower = label.toLowerCase();
+  for (const needle of [query.trim().toLowerCase(), ...queryWords(query)]) {
+    if (needle === "") continue;
+    const at = lower.indexOf(needle);
+    if (at >= 0) return [at, at + needle.length];
+  }
+  return null;
+}
+
+/**
+ * How well an entry answers a query, best first: its name holds the query (or a flow's name, or
+ * a kind's name starts with it) `0`; every word looked for is in its name or its one-line job `1`;
+ * every word is there or in its doc words (`docs`, read from its source and its kit page) `2`;
+ * `null` when it does not answer.
+ */
+function rankEntry(entry: NavEntry, query: string, docs: string | undefined): number | null {
   const needle = query.trim().toLowerCase();
-  if (needle === "") return entries;
-  return entries.filter(
-    (entry) =>
-      entry.label.toLowerCase().includes(needle) ||
-      (entry.context?.toLowerCase().includes(needle) ?? false) ||
-      (entry.sub?.toLowerCase().startsWith(needle) ?? false),
-  );
+  if (
+    entry.label.toLowerCase().includes(needle) ||
+    (entry.context?.toLowerCase().includes(needle) ?? false) ||
+    (entry.sub?.toLowerCase().startsWith(needle) ?? false)
+  )
+    return 0;
+  const wanted = queryWords(query);
+  if (wanted.length === 0) return null;
+  const named = textWords(`${entry.label} ${entry.context ?? ""}`);
+  if (wanted.every((word) => holds(named, word))) return 0;
+  const job = textWords(`${entry.label} ${entry.purpose ?? ""}`);
+  if (wanted.every((word) => holds(job, word))) return 1;
+  if (docs === undefined) return null;
+  const all = textWords(`${entry.label} ${entry.purpose ?? ""} ${docs}`);
+  return wanted.every((word) => holds(all, word)) ? 2 : null;
+}
+
+/**
+ * Every entry that answers the query, by its name, its job or its doc words (`docs`, by entry key,
+ * once loaded), each group's best answers first; a flow's states come with the flow's name.
+ */
+export function searchNavEntries(
+  entries: readonly NavEntry[],
+  query: string,
+  docs?: ReadonlyMap<string, string>,
+): readonly NavEntry[] {
+  if (query.trim() === "") return entries;
+  const ranked: Array<{ entry: NavEntry; rank: number; at: number }> = [];
+  entries.forEach((entry, at) => {
+    const rank = rankEntry(entry, query, docs?.get(entry.key));
+    if (rank !== null) ranked.push({ entry, rank, at });
+  });
+  const groupOf = (entry: NavEntry) => NAV_GROUPS.indexOf(entry.group);
+  return ranked
+    .toSorted(
+      (left, right) =>
+        groupOf(left.entry) - groupOf(right.entry) ||
+        // A flow keeps its states under it and its area's order; components rank by answer.
+        (left.entry.group === "Components" ? left.rank - right.rank : 0) ||
+        left.at - right.at,
+    )
+    .map(({ entry }) => entry);
 }

@@ -25,6 +25,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { SeriesSwatch } from "../ui/chart";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
@@ -49,6 +50,7 @@ import {
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
+import { Page } from "../ui/page";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
@@ -58,7 +60,6 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import {
@@ -88,6 +89,15 @@ import {
   saveUsagePagePreferences,
   type UsagePagePreferences,
 } from "./usagePagePreferences";
+import { Text } from "~/components/ui/text";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
 
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
@@ -427,7 +437,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
       <div className="ms-auto flex min-w-0 items-center justify-end gap-1 lg:hidden">
@@ -484,7 +494,7 @@ export function UsagePage({
           size="icon-sm"
           variant="ghost"
         >
-          <RefreshCwIcon className="size-3.5" />
+          <RefreshCwIcon />
         </Button>
       </div>
     </div>
@@ -496,33 +506,52 @@ export function UsagePage({
         <WorkspacePageHeader electron={isElectron}>{topbarContent}</WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer className="max-sm:px-4" width="wide">
-            {showingLimits ? null : (
-              <div className="flex flex-col gap-2 lg:hidden">
-                <p className="text-caption text-muted-foreground md:hidden">{windowLabel}</p>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <UsageScopeFilters
-                    scope={scope}
-                    identities={overallIndex.identities}
-                    projects={projects}
-                    dimensions={overallDimensions}
-                    canSeeOtherPeople={canSeeOtherPeople}
-                    onScopeChange={onScopeChange}
-                  />
+          <Page width="wide">
+            {/* What the page reads and how, its lines together; its sections stand apart. */}
+            <div className="flex flex-col gap-6">
+              {showingLimits ? null : (
+                <div className="flex flex-col gap-2 lg:hidden">
+                  <Text className="md:hidden" render={<p />} variant="note">
+                    {windowLabel}
+                  </Text>
+                  <div className="flex min-w-0 flex-wrap gap-2">
+                    <UsageScopeFilters
+                      scope={scope}
+                      identities={overallIndex.identities}
+                      projects={projects}
+                      dimensions={overallDimensions}
+                      canSeeOtherPeople={canSeeOtherPeople}
+                      onScopeChange={onScopeChange}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
-            <p className="text-caption text-muted-foreground">
-              {showingLimits
-                ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
-                : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
-            </p>
+              )}
+              <Text render={<p />} variant="note">
+                {showingLimits
+                  ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
+                  : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
+              </Text>
+              {showingLimits || noTotals ? null : (
+                <>
+                  {report?.coverageMore || report?.groupsMore ? (
+                    <Text render={<p />} variant="note" role="status">
+                      This report contains more sources or groups than can be shown.
+                    </Text>
+                  ) : null}
+                  {/* One reserved line: the read's state, and the month's automated spend beside it. */}
+                  <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
+                    <UsageReadStatus read={read} label="usage" onRetry={refresh} />
+                    <UsageAutomatedBudget />
+                  </div>
+                </>
+              )}
+            </div>
             {showingLimits ? (
               baseline === "unavailable" ? (
-                <p className="text-body text-muted-foreground">
+                <Text render={<p />} variant="description">
                   Subscription limits could not be read.{" "}
                   <InlineButton onClick={identityRead.refresh}>Try again</InlineButton>
-                </p>
+                </Text>
               ) : (
                 <UsageLimitsSection
                   now={limitsNow}
@@ -537,21 +566,12 @@ export function UsagePage({
               read.kind === "unavailable" ? (
                 <UsageReadStatus read={read} label="Usage" onRetry={refresh} />
               ) : (
-                <p className="text-body text-muted-foreground">{state.message}</p>
+                <Text render={<p />} variant="description">
+                  {state.message}
+                </Text>
               )
             ) : (
               <>
-                {report?.coverageMore || report?.groupsMore ? (
-                  <p role="status" className="text-caption text-muted-foreground">
-                    This report contains more sources or groups than can be shown.
-                  </p>
-                ) : null}
-                {/* One reserved line: the read's state, and the month's automated spend beside it. */}
-                <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
-                  <UsageReadStatus read={read} label="usage" onRetry={refresh} />
-                  <UsageAutomatedBudget />
-                </div>
-
                 <section className="grid min-h-80 gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
                   {settling ? (
                     <UsageSummarySkeleton />
@@ -565,7 +585,7 @@ export function UsagePage({
                               : formatUsd(merged.costUsd)
                             : formatTokens(merged.totalTokens)}
                         </span>
-                        <span className="text-caption text-muted-foreground">
+                        <Text variant="note">
                           {sessionsLabel}
                           {metric === "cost" && (
                             <>
@@ -576,11 +596,11 @@ export function UsagePage({
                           )}
                           {whoSummary}
                           {costsHidden ? ` · ${COSTS_HIDDEN}` : ""}
-                        </span>
+                        </Text>
                       </div>
 
                       {dimensions.mates.length === 1 ? (
-                        <p className="text-body text-muted-foreground">
+                        <Text render={<p />} variant="description">
                           {[
                             dimensions.mates[0]!.mateName,
                             dimensions.mates[0]!.projectName,
@@ -588,7 +608,7 @@ export function UsagePage({
                           ]
                             .filter(Boolean)
                             .join(" · ")}
-                        </p>
+                        </Text>
                       ) : null}
                       {canSeeOtherPeople && dimensions.visible.person ? (
                         <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
@@ -616,13 +636,7 @@ export function UsagePage({
                           <div key={provider} className="flex flex-col gap-1">
                             <div className="flex items-baseline justify-between gap-4">
                               <span className="flex min-w-0 items-center gap-2 text-body text-foreground">
-                                <span
-                                  aria-hidden
-                                  className="size-2 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: PROVIDER_PRESENTATION[provider].color,
-                                  }}
-                                />
+                                <SeriesSwatch color={PROVIDER_PRESENTATION[provider].color} />
                                 <ProviderMark provider={provider} className="size-4" />
                                 <span className="flex min-w-0 items-baseline gap-1.5">
                                   <span className="truncate">
@@ -641,21 +655,21 @@ export function UsagePage({
                                   : formatTokens(totals?.totalTokens ?? 0)}
                               </span>
                             </div>
-                            <span className="text-caption text-muted-foreground">
+                            <Text variant="note">
                               {metric === "cost"
                                 ? `${totals.costKnown === false ? unpriced : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
                                 : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? unpriced : formatUsageCost(totals)}`}
-                            </span>
+                            </Text>
                           </div>
                         );
                       })}
                     </div>
                   )}
                   <div className="flex min-w-0 flex-col gap-3">
-                    <h2 className="text-body font-medium text-foreground">
+                    <Text render={<h2 />} variant="heading">
                       {isPast24Hours ? "Hourly" : "Daily"}{" "}
                       {metric === "tokens" ? "processed tokens" : "priced cost"}
-                    </h2>
+                    </Text>
                     <div className="min-h-5">
                       {settling ? null : read.kind === "read" &&
                         read.stale &&
@@ -669,13 +683,13 @@ export function UsagePage({
                     </div>
                     {settling || sections.periods.kind !== "read" ? (
                       <div className="ml-16 flex flex-col gap-1" aria-hidden>
-                        <div className="h-56 rounded-control bg-muted/35" />
+                        <Skeleton className="h-56" />
                         <span className="text-3xs">&nbsp;</span>
                       </div>
                     ) : metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
-                      <p className="text-body text-muted-foreground">
+                      <Text render={<p />} variant="description">
                         Recorded tokens have no usable prices.
-                      </p>
+                      </Text>
                     ) : (
                       <UsageProviderChart
                         providers={activeProviders}
@@ -692,14 +706,16 @@ export function UsagePage({
                 </section>
 
                 <section className="flex flex-col gap-2">
-                  <h2 className="text-body font-medium text-foreground">Agent-reported costs</h2>
-                  <p className="text-caption text-muted-foreground">
+                  <Text render={<h2 />} variant="heading">
+                    Agent-reported costs
+                  </Text>
+                  <Text render={<p />} variant="note">
                     Reported by the coding agent, separately from the API-equivalent token-price
                     estimate.
-                  </p>
+                  </Text>
                   <div className="min-h-5 text-body tabular-nums">
                     {settling ? (
-                      <div className="h-5 w-36 rounded-mark bg-muted" />
+                      <Skeleton className="h-5 w-36" />
                     ) : costsHidden ? (
                       <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
@@ -718,7 +734,9 @@ export function UsagePage({
 
                 <section className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-body font-medium text-foreground">Breakdown</h2>
+                    <Text render={<h2 />} variant="heading">
+                      Breakdown
+                    </Text>
                     <div className="hidden sm:block">
                       <ToggleGroup
                         aria-label="Usage breakdown"
@@ -766,12 +784,12 @@ export function UsagePage({
                     <UsageReadStatus read={sections.models} label="model usage" onRetry={refresh} />
                   ) : null}
                   {!settling && breakdown === "model" ? (
-                    <p className="text-caption text-muted-foreground">
+                    <Text render={<p />} variant="note">
                       A turn can use several models. Each model row shows its own consumption.
-                    </p>
+                    </Text>
                   ) : null}
                   {settling ? (
-                    <div className="h-44 rounded-control bg-muted/35" />
+                    <Skeleton className="h-44" />
                   ) : breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}
@@ -786,39 +804,38 @@ export function UsagePage({
                       onScopeChange={onScopeChange}
                     />
                   ) : breakdown === "model" ? (
-                    <table className="w-full table-fixed text-body">
+                    <Table className="table-fixed" size="md">
                       <colgroup>
                         <col className="w-2/5" />
                         <col className="w-1/5" />
                         <col className="w-1/5" />
                         <col className="w-1/5" />
                       </colgroup>
-                      <thead>
-                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
-                          <th className="py-2 font-normal">Model</th>
-                          <th className="py-2 text-right font-normal">Priced cost</th>
-                          <th className="py-2 text-right font-normal">Share</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Model</TableHead>
+                          <TableHead align="end">Priced cost</TableHead>
+                          <TableHead align="end">Share</TableHead>
+                          <TableHead align="end">Tokens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {breakdownModels.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                              {sections.models.kind === "read"
-                                ? "No recorded model data."
-                                : "Model values are not available."}
-                            </td>
-                          </tr>
+                          <TableRow>
+                            <TableCell colSpan={4} tone="muted">
+                              <span className="block py-6 text-center">
+                                {sections.models.kind === "read"
+                                  ? "No recorded model data."
+                                  : "Model values are not available."}
+                              </span>
+                            </TableCell>
+                          </TableRow>
                         ) : (
                           breakdownModels.map((model) => {
                             const share = modelShare(model, dimensionMetric);
                             return (
-                              <tr
-                                key={`${model.provider}:${model.model}`}
-                                className="border-b border-border/50 transition-colors hover:bg-muted/50"
-                              >
-                                <td className="py-2 text-foreground">
+                              <TableRow key={`${model.provider}:${model.model}`}>
+                                <TableCell>
                                   <InlineButton
                                     tone="plain"
                                     className="max-w-full"
@@ -833,28 +850,28 @@ export function UsagePage({
                                       <span className="truncate">{model.model}</span>
                                     </span>
                                   </InlineButton>
-                                </td>
-                                <td className="py-2 text-right text-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end">
                                   {isModelCostUnknown(model) ? (
                                     <span className="text-muted-foreground">{unpriced}</span>
                                   ) : (
                                     formatUsageCost(model)
                                   )}
-                                </td>
-                                <td className="py-2 text-right text-muted-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end" tone="muted">
                                   {share === null ? "—" : formatPercent(share)}
-                                </td>
-                                <td className="py-2 text-right text-muted-foreground tabular-nums">
+                                </TableCell>
+                                <TableCell align="end" tone="muted">
                                   {formatTokens(model.totalTokens)}
-                                </td>
-                              </tr>
+                                </TableCell>
+                              </TableRow>
                             );
                           })
                         )}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   ) : (
-                    <table className="w-full table-fixed text-body">
+                    <Table className="table-fixed" size="md">
                       <colgroup>
                         <col className="w-2/5" />
                         {activeProviders.map((provider) => (
@@ -863,65 +880,58 @@ export function UsagePage({
                         <col style={{ width: timeValueColumnWidth }} />
                         <col style={{ width: timeValueColumnWidth }} />
                       </colgroup>
-                      <thead>
-                        <tr className="border-b border-border text-left text-caption text-muted-foreground">
-                          <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{isPast24Hours ? "Hour" : "Day"}</TableHead>
                           {activeProviders.map((provider) => (
-                            <th key={provider} className="py-2 text-right font-normal">
+                            <TableHead align="end" key={provider}>
                               {PROVIDER_PRESENTATION[provider].label} (
                               {metric === "tokens" ? "tokens" : "cost"})
-                            </th>
+                            </TableHead>
                           ))}
-                          <th className="py-2 text-right font-normal">Priced cost</th>
-                          <th className="py-2 text-right font-normal">Tokens</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                          <TableHead align="end">Priced cost</TableHead>
+                          <TableHead align="end">Tokens</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {breakdownPeriods.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={activeProviders.length + 3}
-                              className="py-6 text-center text-muted-foreground"
-                            >
-                              {sections.periods.kind === "read"
-                                ? "No recorded usage in this period."
-                                : "Period values are not available."}
-                            </td>
-                          </tr>
+                          <TableRow>
+                            <TableCell colSpan={activeProviders.length + 3} tone="muted">
+                              <span className="block py-6 text-center">
+                                {sections.periods.kind === "read"
+                                  ? "No recorded usage in this period."
+                                  : "Period values are not available."}
+                              </span>
+                            </TableCell>
+                          </TableRow>
                         ) : (
                           breakdownPeriods.map((period) => (
-                            <tr
-                              key={"hourStart" in period ? period.hourStart : period.day}
-                              className="border-b border-border/50 transition-colors hover:bg-muted/50"
-                            >
-                              <td className="py-2 text-foreground">
+                            <TableRow key={"hourStart" in period ? period.hourStart : period.day}>
+                              <TableCell>
                                 {"hourStart" in period
                                   ? formatDateTimeShort(period.hourStart, window.timeZone)
                                   : formatDayShort(period.day)}
-                              </td>
+                              </TableCell>
                               {activeProviders.map((provider) => (
-                                <td
-                                  key={provider}
-                                  className="py-2 text-right text-muted-foreground tabular-nums"
-                                >
+                                <TableCell align="end" key={provider} tone="muted">
                                   {period.byProvider.get(provider) === undefined
                                     ? "No data"
                                     : metric === "tokens"
                                       ? formatTokens(period.byProvider.get(provider)!.totalTokens)
                                       : formatUsageCost(period.byProvider.get(provider)!)}
-                                </td>
+                                </TableCell>
                               ))}
-                              <td className="py-2 text-right text-foreground tabular-nums">
+                              <TableCell align="end">
                                 {period.costKnown === false ? unpriced : formatUsageCost(period)}
-                              </td>
-                              <td className="py-2 text-right text-muted-foreground tabular-nums">
+                              </TableCell>
+                              <TableCell align="end" tone="muted">
                                 {formatTokens(period.totalTokens)}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))
                         )}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   )}
                 </section>
               </>
@@ -934,7 +944,7 @@ export function UsagePage({
                 onMate={(mate) => onScopeChange({ ...scope, mate: mate as EnvironmentId })}
               />
             ) : null}
-          </WorkspacePageContainer>
+          </Page>
         </ScrollArea>
       </div>
       {openModel === null ? null : (
@@ -985,7 +995,9 @@ function UsageTotals({
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h2 className="text-body font-medium text-foreground">Totals</h2>
+      <Text render={<h2 />} variant="heading">
+        Totals
+      </Text>
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
         {USAGE_TOTALS.map(([label, key]) => (
           <Metric
@@ -993,7 +1005,7 @@ function UsageTotals({
             label={label}
             value={
               totals === null ? (
-                <span aria-hidden className="block h-6 w-16 rounded-mark bg-muted" />
+                <Skeleton aria-hidden className="h-6 w-16" />
               ) : unknown && key !== "totalTokens" ? (
                 "Unknown"
               ) : (
@@ -1018,10 +1030,12 @@ function Metric({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="text-caption text-muted-foreground">{label}</span>
+      <Text variant="label">{label}</Text>
       <span className="text-emphasis font-medium text-foreground tabular-nums">{value}</span>
       {detail === undefined ? null : (
-        <span className="truncate text-caption text-muted-foreground tabular-nums">{detail}</span>
+        <Text truncate variant="meta">
+          {detail}
+        </Text>
       )}
     </div>
   );
@@ -1083,7 +1097,7 @@ function UsageScopeChips({
             aria-label={`Clear ${chip.dimension} filter`}
             onClick={() => onScopeChange(withoutScope(scope, chip.dimension))}
           >
-            <XIcon className="size-3" aria-hidden />
+            <XIcon aria-hidden />
           </Button>
         </span>
       </WorkspaceBreadcrumbItem>

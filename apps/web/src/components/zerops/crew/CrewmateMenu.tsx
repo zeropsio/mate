@@ -34,6 +34,7 @@ import {
   type CrewmateMenuItemId,
   type CrewmateMenuModel,
 } from "./CrewmateMenu.logic";
+import { Text } from "~/components/ui/text";
 
 /** The menu's popup, as drawn: the job's first sentence, then each press and its line. */
 export function CrewmateMenuPopup({
@@ -54,20 +55,23 @@ export function CrewmateMenuPopup({
     <MenuPopup
       align={from === "row" ? "end" : "start"}
       aria-describedby={headingId}
-      className={from === "row" ? "w-91" : "w-max max-w-100"}
+      width={from === "row" ? "lg" : "fit"}
       data-crewmate-menu
     >
-      <p className="px-2.75 pt-1.5 pb-2 text-line text-muted-foreground" id={headingId}>
+      <Text className="px-2.75 pt-1.5 pb-2" render={<p />} variant="remark" id={headingId}>
         {model.heading}
-      </p>
+      </Text>
       {model.notice === null ? null : (
-        <p
-          className="flex items-start gap-2 border-t border-border/60 px-2.75 pt-2 pb-1.5 text-line text-foreground/85"
-          data-crewmate-menu-notice
-        >
-          <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
-          {model.notice}
-        </p>
+        <>
+          <MenuSeparator />
+          <p
+            className="flex items-start gap-2 px-2.75 pt-1 pb-1.5 text-line text-foreground/85"
+            data-crewmate-menu-notice
+          >
+            <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            {model.notice}
+          </p>
+        </>
       )}
       {model.items.map((item) => (
         <Fragment key={item.id}>
@@ -80,9 +84,7 @@ export function CrewmateMenuPopup({
           >
             <span className="flex min-w-0 flex-col px-0.75 py-0.75">
               <span>{item.label}</span>
-              {item.line === null ? null : (
-                <span className="text-caption text-muted-foreground">{item.line}</span>
-              )}
+              {item.line === null ? null : <Text variant="note">{item.line}</Text>}
             </span>
           </MenuItem>
         </Fragment>

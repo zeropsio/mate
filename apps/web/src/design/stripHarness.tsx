@@ -714,7 +714,10 @@ function Frame({
         data-head-frame={state.id}
         style={{ width: state.width ?? WIDTH }}
       >
-        <WorkspacePageHeader className="relative bg-background" data-chat-header>
+        <WorkspacePageHeader
+          className="relative bg-toolbar text-toolbar-foreground"
+          data-chat-header
+        >
           <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <ConversationStripView
               chats={lineChats(chats, current, activityByThread)}

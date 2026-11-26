@@ -3,7 +3,7 @@ import type { NativeStackNavigationOptions } from "@react-navigation/native-stac
 import { Platform, View } from "react-native";
 
 import { AppText as Text } from "./AppText";
-import { ZeropsMark } from "./ZeropsMark";
+import { MateMark } from "./MateMark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
 import { NATIVE_LIQUID_GLASS_SUPPORTED } from "../native/native-glass";
@@ -39,7 +39,7 @@ export function CompactBrandTitle(
       className="flex-row items-center gap-1.5"
       style={[{ marginLeft: titleOffset }, Platform.OS === "android" && { gap: 5.25 * scale }]}
     >
-      <ZeropsMark height={Math.round(17 * scale)} />
+      <MateMark height={Math.round(17 * scale)} />
       <Text
         allowFontScaling={props.allowFontScaling}
         className="font-t3-medium text-foreground-muted"

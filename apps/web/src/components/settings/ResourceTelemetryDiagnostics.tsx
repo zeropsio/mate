@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import { CollectionRead } from "../CollectionRead";
 import { collectionPresentation } from "../../state/query";
 import { ProcessSignalActions } from "./ProcessSignalActions";
@@ -49,6 +50,7 @@ import { formatRelativeTime } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
 import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
+import { ChartPlot, ChartReadout, ChartReadoutRow, Legend, LegendItem } from "../ui/chart";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -63,6 +65,19 @@ import {
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
+import { LogoTile } from "~/components/ui/logo-tile";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
+import { List } from "~/components/ui/list";
+import { Separator } from "~/components/ui/separator";
 
 const HISTORY_WINDOWS = [
   { label: "5m", windowMs: 5 * 60_000, bucketMs: 15_000 },
@@ -250,7 +265,7 @@ function IconStat({
         className={cn(
           "mt-2.5 truncate font-mono text-title font-semibold tracking-tighter tabular-nums text-foreground",
           tone === "warning" && "text-warning-foreground",
-          tone === "danger" && "text-destructive",
+          tone === "danger" && "text-status-failed-text",
         )}
       >
         {value ?? <Skeleton aria-label={label} className="my-1.5 h-5 w-20" role="status" />}
@@ -278,9 +293,9 @@ function AggregateCard({
         <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/75">
           {label}
         </div>
-        <div className="rounded-control bg-muted/55 px-1.5 py-0.5 font-mono text-3xs tabular-nums text-muted-foreground/70">
+        <Badge>
           {aggregate.processCount} {aggregate.processCount === 1 ? "process" : "processes"}
-        </div>
+        </Badge>
       </div>
       <div className="mt-3.5 grid grid-cols-2 gap-x-4 gap-y-2.5">
         <MetricPair label="CPU" value={`${aggregate.currentCpuPercent.toFixed(1)}%`} />
@@ -310,9 +325,11 @@ function HealthSource({ label, health }: { label: string; health: ResourceTeleme
     health.status === "unavailable" &&
     Option.exists(health.lastError, (error) => error.includes("'web' mode"));
   return (
-    <div className="flex items-start justify-between gap-4 border-t border-border/50 py-3 first:border-t-0">
+    <div className="flex items-start justify-between gap-4 py-3">
       <div className="min-w-0">
-        <div className="text-body font-medium text-foreground">{label}</div>
+        <Text render={<div />} variant="heading">
+          {label}
+        </Text>
         <div className="mt-1 text-2xs leading-relaxed text-muted-foreground/65">
           {expectedInBrowser
             ? "Available when this page runs inside the desktop app."
@@ -348,7 +365,7 @@ function DetailRow({
   valueClassName?: string | undefined;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-border/50 py-2.5 first:border-t-0">
+    <div className="flex items-center justify-between gap-4 py-2.5">
       <span className="text-2xs text-muted-foreground/75">{label}</span>
       <span
         className={cn(
@@ -388,6 +405,13 @@ function HistoryWindowSelector({
   );
 }
 
+/** The history's three series: CPU in the foreground's ink, reads and writes in the first slots. */
+const HISTORY_SERIES = {
+  cpu: "color-mix(in oklab, var(--color-foreground) 65%, transparent)",
+  read: "var(--color-series-1)",
+  write: "var(--color-series-2)",
+} as const;
+
 function ResourceHistoryChart({
   buckets,
 }: {
@@ -397,68 +421,80 @@ function ResourceHistoryChart({
   const maxIo = Math.max(1, ...buckets.map((bucket) => bucket.ioReadBytes + bucket.ioWriteBytes));
 
   return (
-    <div className="border-t border-border/60 px-4 py-4 sm:px-5">
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-3xs text-muted-foreground/65">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-1.5 w-3 rounded-full bg-foreground/70" /> CPU average
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-1.5 w-3 rounded-full bg-info/70" /> I/O reads
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-1.5 w-3 rounded-full bg-warning/80" /> I/O writes
-        </span>
+    <>
+      <Separator />
+      <div className="px-4 py-4 sm:px-5">
+        <Legend className="mb-3">
+          <LegendItem color={HISTORY_SERIES.cpu} label="CPU average" />
+          <LegendItem color={HISTORY_SERIES.read} label="I/O reads" />
+          <LegendItem color={HISTORY_SERIES.write} label="I/O writes" />
+        </Legend>
+        <ChartPlot className="h-32">
+          {buckets.map((bucket) => {
+            const cpuHeight = resourceHistoryBarHeight({
+              value: bucket.avgCpuPercent,
+              max: maxCpu,
+              minimumVisiblePercent: 2,
+            });
+            const readHeight = resourceHistoryBarHeight({
+              value: bucket.ioReadBytes,
+              max: maxIo,
+              minimumVisiblePercent: 1,
+            });
+            const writeHeight = resourceHistoryBarHeight({
+              value: bucket.ioWriteBytes,
+              max: maxIo,
+              minimumVisiblePercent: 1,
+            });
+            return (
+              <Tooltip key={DateTime.formatIso(bucket.startedAt)}>
+                <TooltipTrigger
+                  render={
+                    <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
+                      <span
+                        className="block rounded-t-mark"
+                        style={{ height: `${cpuHeight}%`, backgroundColor: HISTORY_SERIES.cpu }}
+                      />
+                      <span
+                        className="block rounded-t-mark"
+                        style={{ height: `${readHeight}%`, backgroundColor: HISTORY_SERIES.read }}
+                      />
+                      <span
+                        className="block rounded-t-mark"
+                        style={{ height: `${writeHeight}%`, backgroundColor: HISTORY_SERIES.write }}
+                      />
+                    </div>
+                  }
+                />
+                <TooltipPopup side="top">
+                  <ChartReadout>
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.cpu}
+                      label="CPU average"
+                      value={`${bucket.avgCpuPercent.toFixed(1)}%`}
+                    />
+                    <ChartReadoutRow
+                      label="CPU peak"
+                      value={`${bucket.maxCpuPercent.toFixed(1)}%`}
+                    />
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.read}
+                      label="I/O reads"
+                      value={formatBytes(bucket.ioReadBytes)}
+                    />
+                    <ChartReadoutRow
+                      color={HISTORY_SERIES.write}
+                      label="I/O writes"
+                      value={formatBytes(bucket.ioWriteBytes)}
+                    />
+                  </ChartReadout>
+                </TooltipPopup>
+              </Tooltip>
+            );
+          })}
+        </ChartPlot>
       </div>
-      <div className="flex h-32 items-end gap-1 overflow-hidden rounded-control border border-border/40 bg-muted/8 px-2 pt-3 pb-2">
-        {buckets.map((bucket) => {
-          const cpuHeight = resourceHistoryBarHeight({
-            value: bucket.avgCpuPercent,
-            max: maxCpu,
-            minimumVisiblePercent: 2,
-          });
-          const readHeight = resourceHistoryBarHeight({
-            value: bucket.ioReadBytes,
-            max: maxIo,
-            minimumVisiblePercent: 1,
-          });
-          const writeHeight = resourceHistoryBarHeight({
-            value: bucket.ioWriteBytes,
-            max: maxIo,
-            minimumVisiblePercent: 1,
-          });
-          return (
-            <Tooltip key={DateTime.formatIso(bucket.startedAt)}>
-              <TooltipTrigger
-                render={
-                  <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
-                    <span
-                      className="block rounded-t-mark bg-foreground/65"
-                      style={{ height: `${cpuHeight}%` }}
-                    />
-                    <span
-                      className="block rounded-t-mark bg-info/70"
-                      style={{ height: `${readHeight}%` }}
-                    />
-                    <span
-                      className="block rounded-t-mark bg-warning/80"
-                      style={{ height: `${writeHeight}%` }}
-                    />
-                  </div>
-                }
-              />
-              <TooltipPopup side="top" className="text-left">
-                <div className="space-y-0.5">
-                  <div>CPU avg {bucket.avgCpuPercent.toFixed(1)}%</div>
-                  <div>CPU peak {bucket.maxCpuPercent.toFixed(1)}%</div>
-                  <div>Read {formatBytes(bucket.ioReadBytes)}</div>
-                  <div>Write {formatBytes(bucket.ioWriteBytes)}</div>
-                </div>
-              </TooltipPopup>
-            </Tooltip>
-          );
-        })}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -558,95 +594,108 @@ function ProcessTable({
   }, []);
 
   return (
-    <div className="border-t border-border/60">
-      <ScrollArea
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[min(68vh,48rem)] w-full max-w-full"
-      >
-        <table className="w-full min-w-[1320px] table-fixed text-left text-caption">
-          <colgroup>
-            <col className="w-[20%]" />
-            <col className="w-[10%]" />
-            <col className="w-[7%]" />
-            <col className="w-[8%]" />
-            <col className="w-[9%]" />
-            <col className="w-[9%]" />
-            <col className="w-[9%]" />
-            <col className="w-[10%]" />
-            <col className="w-[8%]" />
-            <col className="w-[6%]" />
-            <col className="w-[4%]" />
-          </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Process</th>
-              <th className="px-3 py-2 font-semibold">Category</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU Time</th>
-              <th className="px-3 py-2 text-right font-semibold">Memory</th>
-              <th className="px-3 py-2 text-right font-semibold">Read/s</th>
-              <th className="px-3 py-2 text-right font-semibold">Write/s</th>
-              <th className="px-3 py-2 text-right font-semibold">Read Total</th>
-              <th className="px-3 py-2 text-right font-semibold">Write Total</th>
-              <th className="px-3 py-2 text-right font-semibold">PID</th>
-              <th className="px-2 py-2 text-right font-semibold sm:pr-4">Kill</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {visible.map((process) => (
-              <tr key={processIdentityKey(process)} className="hover:bg-muted/20">
-                <td className="px-4 py-2 sm:pl-5">
-                  <ProcessTreeName
-                    process={process}
-                    collapsed={collapsed.has(processIdentityKey(process))}
-                    onToggle={toggle}
-                  />
-                </td>
-                <td className="truncate px-3 py-2 text-2xs text-muted-foreground">
-                  {categoryLabel(process.category)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {process.cpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatCpuTime(process.cpuTimeMs)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatBytes(process.residentBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatRate(process.ioReadBytesPerSecond)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatRate(process.ioWriteBytesPerSecond)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {formatBytes(process.ioReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  <Tooltip>
-                    <TooltipTrigger render={<span>{formatBytes(process.ioWriteBytes)}</span>} />
-                    <TooltipPopup side="top">{ioSemanticsLabel(process.ioSemantics)}</TooltipPopup>
-                  </Tooltip>
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {process.identity.pid}
-                </td>
-                <td className="px-2 py-2 text-right sm:pr-4">
-                  <ProcessActions
-                    process={process}
-                    signalingKeys={signalingKeys}
-                    onSignal={onSignal}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ScrollArea>
-    </div>
+    <>
+      <Separator />
+      <div>
+        <ScrollArea
+          chainVerticalScroll
+          scrollFade
+          hideScrollbars
+          className="max-h-[min(68vh,48rem)] w-full max-w-full"
+        >
+          <Table className="min-w-[1320px] table-fixed" size="report">
+            <colgroup>
+              <col className="w-[20%]" />
+              <col className="w-[10%]" />
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[6%]" />
+              <col className="w-[4%]" />
+            </colgroup>
+            <TableHeader sticky>
+              <TableRow>
+                <TableHead>Process</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead align="end">CPU</TableHead>
+                <TableHead align="end">CPU Time</TableHead>
+                <TableHead align="end">Memory</TableHead>
+                <TableHead align="end">Read/s</TableHead>
+                <TableHead align="end">Write/s</TableHead>
+                <TableHead align="end">Read Total</TableHead>
+                <TableHead align="end">Write Total</TableHead>
+                <TableHead align="end">PID</TableHead>
+                <TableHead align="end">Kill</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.map((process) => (
+                <TableRow key={processIdentityKey(process)}>
+                  <TableCell>
+                    <ProcessTreeName
+                      process={process}
+                      collapsed={collapsed.has(processIdentityKey(process))}
+                      onToggle={toggle}
+                    />
+                  </TableCell>
+                  <TableCell tone="muted">
+                    <span className="block truncate text-2xs">
+                      {categoryLabel(process.category)}
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{process.cpuPercent.toFixed(1)}%</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{formatCpuTime(process.cpuTimeMs)}</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{formatBytes(process.residentBytes)}</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-info-foreground">
+                      <Text variant="code">{formatRate(process.ioReadBytesPerSecond)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-warning-foreground">
+                      <Text variant="code">{formatRate(process.ioWriteBytesPerSecond)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">{formatBytes(process.ioReadBytes)}</Text>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">
+                      <Tooltip>
+                        <TooltipTrigger render={<span>{formatBytes(process.ioWriteBytes)}</span>} />
+                        <TooltipPopup side="top">
+                          {ioSemanticsLabel(process.ioSemantics)}
+                        </TooltipPopup>
+                      </Tooltip>
+                    </Text>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">{process.identity.pid}</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <ProcessActions
+                      process={process}
+                      signalingKeys={signalingKeys}
+                      onSignal={onSignal}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </div>
+    </>
   );
 }
 
@@ -656,154 +705,178 @@ function HistoryProcessTable({
   processes: ReadonlyArray<ResourceTelemetryProcessSummary>;
 }) {
   return (
-    <div className="border-t border-border/60">
-      <ScrollArea
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="max-h-[28rem] w-full max-w-full"
-      >
-        <table className="w-full min-w-[1020px] table-fixed text-left text-caption">
-          <colgroup>
-            <col className="w-[24%]" />
-            <col className="w-[11%]" />
-            <col className="w-[10%]" />
-            <col className="w-[10%]" />
-            <col className="w-[11%]" />
-            <col className="w-[11%]" />
-            <col className="w-[11%]" />
-            <col className="w-[7%]" />
-            <col className="w-[5%]" />
-          </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-border/60 bg-card text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Process</th>
-              <th className="px-3 py-2 font-semibold">Category</th>
-              <th className="px-3 py-2 text-right font-semibold">CPU Time</th>
-              <th className="px-3 py-2 text-right font-semibold">Peak CPU</th>
-              <th className="px-3 py-2 text-right font-semibold">Peak Mem</th>
-              <th className="px-3 py-2 text-right font-semibold">Read</th>
-              <th className="px-3 py-2 text-right font-semibold">Write</th>
-              <th className="px-3 py-2 text-right font-semibold">Samples</th>
-              <th className="px-3 py-2 text-right font-semibold sm:pr-5">PID</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {processes.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-5 text-caption text-muted-foreground sm:px-5">
-                  No retained process samples in this window.
-                </td>
-              </tr>
-            ) : null}
-            {processes.map((process) => (
-              <tr key={processSummaryIdentityKey(process)} className="hover:bg-muted/20">
-                <td className="px-4 py-2 sm:pl-5">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span className="block truncate font-medium text-foreground">
-                          {process.name || process.command}
-                        </span>
-                      }
-                    />
-                    <TooltipPopup side="top" variant="code">
-                      {process.command || process.name}
-                    </TooltipPopup>
-                  </Tooltip>
-                </td>
-                <td className="truncate px-3 py-2 text-2xs text-muted-foreground">
-                  {categoryLabel(process.category)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatCpuTime(process.cpuTimeMs)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {process.maxCpuPercent.toFixed(1)}%
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">
-                  {formatBytes(process.peakRssBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatBytes(process.ioReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatBytes(process.ioWriteBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  {process.sampleCount}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                  {process.identity.pid}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ScrollArea>
-    </div>
+    <>
+      <Separator />
+      <div>
+        <ScrollArea
+          chainVerticalScroll
+          scrollFade
+          hideScrollbars
+          className="max-h-[28rem] w-full max-w-full"
+        >
+          <Table className="min-w-[1020px] table-fixed" size="report">
+            <colgroup>
+              <col className="w-[24%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[7%]" />
+              <col className="w-[5%]" />
+            </colgroup>
+            <TableHeader sticky>
+              <TableRow>
+                <TableHead>Process</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead align="end">CPU Time</TableHead>
+                <TableHead align="end">Peak CPU</TableHead>
+                <TableHead align="end">Peak Mem</TableHead>
+                <TableHead align="end">Read</TableHead>
+                <TableHead align="end">Write</TableHead>
+                <TableHead align="end">Samples</TableHead>
+                <TableHead align="end">PID</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {processes.length === 0 ? (
+                <TableRow>
+                  <Text className="px-4 py-5 sm:px-5" render={<td colSpan={9} />} variant="note">
+                    No retained process samples in this window.
+                  </Text>
+                </TableRow>
+              ) : null}
+              {processes.map((process) => (
+                <TableRow key={processSummaryIdentityKey(process)}>
+                  <TableCell>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="block truncate font-medium text-foreground">
+                            {process.name || process.command}
+                          </span>
+                        }
+                      />
+                      <TooltipPopup side="top" variant="code">
+                        {process.command || process.name}
+                      </TooltipPopup>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell tone="muted">
+                    <span className="block truncate text-2xs">
+                      {categoryLabel(process.category)}
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{formatCpuTime(process.cpuTimeMs)}</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{process.maxCpuPercent.toFixed(1)}%</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <Text variant="code">{formatBytes(process.peakRssBytes)}</Text>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-info-foreground">
+                      <Text variant="code">{formatBytes(process.ioReadBytes)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end">
+                    <span className="text-warning-foreground">
+                      <Text variant="code">{formatBytes(process.ioWriteBytes)}</Text>
+                    </span>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">{process.sampleCount}</Text>
+                  </TableCell>
+                  <TableCell align="end" tone="muted">
+                    <Text variant="code">{process.identity.pid}</Text>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </div>
+    </>
   );
 }
 
 function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttributionEntry> }) {
   return (
-    <div className="border-t border-border/60">
-      <ScrollArea
-        radius="none"
-        chainVerticalScroll
-        scrollFade
-        hideScrollbars
-        className="w-full max-w-full"
-      >
-        <table className="w-full min-w-[720px] table-fixed text-left text-caption">
-          <colgroup>
-            <col className="w-[22%]" />
-            <col className="w-[28%]" />
-            <col className="w-[14%]" />
-            <col className="w-[14%]" />
-            <col className="w-[10%]" />
-            <col className="w-[12%]" />
-          </colgroup>
-          <thead className="border-b border-border/60 text-3xs uppercase tracking-widest text-muted-foreground/65">
-            <tr>
-              <th className="px-4 py-2 font-semibold sm:pl-5">Component</th>
-              <th className="px-3 py-2 font-semibold">Operation</th>
-              <th className="px-3 py-2 text-right font-semibold">Logical Read</th>
-              <th className="px-3 py-2 text-right font-semibold">Logical Write</th>
-              <th className="px-3 py-2 text-right font-semibold">Count</th>
-              <th className="px-3 py-2 text-right font-semibold sm:pr-5">Time</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border/50">
-            {entries.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-5 text-caption text-muted-foreground sm:px-5">
-                  No instrumented application I/O has been recorded yet.
-                </td>
-              </tr>
-            ) : null}
-            {entries.map((entry) => (
-              <tr key={`${entry.component}:${entry.operation}`} className="hover:bg-muted/20">
-                <td className="truncate px-4 py-2 font-medium text-foreground sm:pl-5">
-                  {entry.component}
-                </td>
-                <td className="truncate px-3 py-2 text-muted-foreground">{entry.operation}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                  {formatBytes(entry.logicalReadBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                  {formatBytes(entry.logicalWriteBytes)}
-                </td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums">{entry.count}</td>
-                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                  {(entry.durationMs / 1_000).toFixed(2)}s
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ScrollArea>
-    </div>
+    <>
+      <Separator />
+      <div>
+        <ScrollArea
+          radius="none"
+          chainVerticalScroll
+          scrollFade
+          hideScrollbars
+          className="w-full max-w-full"
+        >
+          <div className="min-w-[720px]">
+            <Table className="table-fixed" size="report">
+              <colgroup>
+                <col className="w-[22%]" />
+                <col className="w-[28%]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[10%]" />
+                <col className="w-[12%]" />
+              </colgroup>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Component</TableHead>
+                  <TableHead>Operation</TableHead>
+                  <TableHead align="end">Logical Read</TableHead>
+                  <TableHead align="end">Logical Write</TableHead>
+                  <TableHead align="end">Count</TableHead>
+                  <TableHead align="end">Time</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.length === 0 ? (
+                  <TableRow>
+                    <Text className="px-4 py-5 sm:px-5" render={<td colSpan={6} />} variant="note">
+                      No instrumented application I/O has been recorded yet.
+                    </Text>
+                  </TableRow>
+                ) : null}
+                {entries.map((entry) => (
+                  <TableRow key={`${entry.component}:${entry.operation}`}>
+                    <TableCell>
+                      <span className="block truncate">
+                        <span className="font-medium">{entry.component}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell tone="muted">
+                      <span className="block truncate">{entry.operation}</span>
+                    </TableCell>
+                    <TableCell align="end">
+                      <span className="text-info-foreground">
+                        <Text variant="code">{formatBytes(entry.logicalReadBytes)}</Text>
+                      </span>
+                    </TableCell>
+                    <TableCell align="end">
+                      <span className="text-warning-foreground">
+                        <Text variant="code">{formatBytes(entry.logicalWriteBytes)}</Text>
+                      </span>
+                    </TableCell>
+                    <TableCell align="end">
+                      <Text variant="code">{entry.count}</Text>
+                    </TableCell>
+                    <TableCell align="end" tone="muted">
+                      <Text variant="code">{(entry.durationMs / 1_000).toFixed(2)}s</Text>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </ScrollArea>
+      </div>
+    </>
   );
 }
 
@@ -965,7 +1038,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-sm/5">
+        <Card className="overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-muted/45 via-muted/20 to-transparent px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
@@ -1035,31 +1108,33 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
             />
           </div>
           {telemetry.error ? (
-            <div className="flex items-start gap-2 border-t border-destructive/20 bg-destructive/5 px-4 py-3 text-caption text-destructive sm:px-5">
-              <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-              <span>{telemetry.error}</span>
-            </div>
+            <Alert edge="bottom" icon={<AlertTriangleIcon />} surface="band" variant="error">
+              {telemetry.error}
+            </Alert>
           ) : null}
           {snapshot ? (
-            <div className="grid border-t border-border/60 bg-muted/10 md:grid-cols-3">
-              <AggregateCard
-                label="Backend + agents"
-                accentClass="bg-success/80"
-                aggregate={snapshot.groups.backend}
-              />
-              <AggregateCard
-                label="Desktop"
-                accentClass="bg-info/80"
-                aggregate={snapshot.groups.electron}
-              />
-              <AggregateCard
-                label="Monitor overhead"
-                accentClass="bg-warning/80"
-                aggregate={snapshot.groups.monitor}
-              />
-            </div>
+            <>
+              <Separator />
+              <div className="grid bg-muted/10 md:grid-cols-3">
+                <AggregateCard
+                  label="Backend + agents"
+                  accentClass="bg-success/80"
+                  aggregate={snapshot.groups.backend}
+                />
+                <AggregateCard
+                  label="Desktop"
+                  accentClass="bg-info/80"
+                  aggregate={snapshot.groups.electron}
+                />
+                <AggregateCard
+                  label="Monitor overhead"
+                  accentClass="bg-warning/80"
+                  aggregate={snapshot.groups.monitor}
+                />
+              </div>
+            </>
           ) : null}
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1074,123 +1149,127 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           ) : null
         }
       >
-        <div className="grid overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5 md:grid-cols-2 md:divide-x md:divide-border/60">
-          <div className="px-4 py-4 sm:px-5">
-            <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                <BatteryIcon className="size-3.5" />
-              </span>
-              Host state
-            </div>
-            {hasHostPowerSignal && snapshot ? (
-              <>
-                <DetailRow
-                  label="Power source"
-                  value={booleanStateLabel(snapshot.power.onBattery, {
-                    true: "Battery",
-                    false: "External power",
-                  })}
-                />
-                <DetailRow
-                  label="Low power mode"
-                  value={booleanStateLabel(snapshot.power.lowPowerMode, {
-                    true: "Enabled",
-                    false: "Disabled",
-                  })}
-                />
-                <DetailRow
-                  label="Idle"
-                  value={`${booleanStateLabel(snapshot.power.idle, {
-                    true: "Idle",
-                    false: "Active",
-                  })}${
-                    snapshot.power.idleSeconds === null
-                      ? ""
-                      : ` · ${Math.round(snapshot.power.idleSeconds)}s`
-                  }`}
-                />
-                <DetailRow
-                  label="Session"
-                  value={
-                    snapshot.power.suspended
-                      ? "Suspended"
-                      : booleanStateLabel(snapshot.power.locked, {
-                          true: "Locked",
-                          false: "Unlocked",
-                        })
-                  }
-                />
-                <DetailRow
-                  label="Thermal"
-                  value={snapshot.power.thermalState}
-                  valueClassName={
-                    snapshot.power.thermalState === "serious" ||
-                    snapshot.power.thermalState === "critical"
-                      ? "text-destructive"
-                      : undefined
-                  }
-                />
-              </>
-            ) : (
-              <div className="rounded-card border border-dashed border-border/70 bg-muted/20 px-4 py-5">
-                <div className="text-body font-medium text-foreground">
-                  Desktop host signals not connected
-                </div>
-                <p className="mt-1.5 max-w-sm text-2xs leading-relaxed text-muted-foreground/70">
-                  Power, idle, lock, and thermal state are supplied by the desktop host. Process
-                  telemetry remains fully active in this browser session.
-                </p>
+        <Card className="overflow-hidden">
+          <div className="grid md:grid-cols-2 md:divide-x md:divide-border/60">
+            <div className="px-4 py-4 sm:px-5">
+              <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                <LogoTile size="sm">
+                  <BatteryIcon />
+                </LogoTile>
+                Host state
               </div>
-            )}
-          </div>
-          <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
-            <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
-              <span className="flex size-6 items-center justify-center rounded-control bg-muted/60">
-                <GaugeIcon className="size-3.5" />
-              </span>
-              Collection health
+              {hasHostPowerSignal && snapshot ? (
+                <List>
+                  <DetailRow
+                    label="Power source"
+                    value={booleanStateLabel(snapshot.power.onBattery, {
+                      true: "Battery",
+                      false: "External power",
+                    })}
+                  />
+                  <DetailRow
+                    label="Low power mode"
+                    value={booleanStateLabel(snapshot.power.lowPowerMode, {
+                      true: "Enabled",
+                      false: "Disabled",
+                    })}
+                  />
+                  <DetailRow
+                    label="Idle"
+                    value={`${booleanStateLabel(snapshot.power.idle, {
+                      true: "Idle",
+                      false: "Active",
+                    })}${
+                      snapshot.power.idleSeconds === null
+                        ? ""
+                        : ` · ${Math.round(snapshot.power.idleSeconds)}s`
+                    }`}
+                  />
+                  <DetailRow
+                    label="Session"
+                    value={
+                      snapshot.power.suspended
+                        ? "Suspended"
+                        : booleanStateLabel(snapshot.power.locked, {
+                            true: "Locked",
+                            false: "Unlocked",
+                          })
+                    }
+                  />
+                  <DetailRow
+                    label="Thermal"
+                    value={snapshot.power.thermalState}
+                    valueClassName={
+                      snapshot.power.thermalState === "serious" ||
+                      snapshot.power.thermalState === "critical"
+                        ? "text-status-failed-text"
+                        : undefined
+                    }
+                  />
+                </List>
+              ) : (
+                <Card variant="slot">
+                  <div className="px-4 py-5">
+                    <Text render={<div />} variant="heading">
+                      Desktop host signals not connected
+                    </Text>
+                    <p className="mt-1.5 max-w-sm text-2xs leading-relaxed text-muted-foreground/70">
+                      Power, idle, lock, and thermal state are supplied by the desktop host. Process
+                      telemetry remains fully active in this browser session.
+                    </p>
+                  </div>
+                </Card>
+              )}
             </div>
-            {snapshot ? (
-              <>
-                <HealthSource label="Native process monitor" health={snapshot.health.native} />
-                <HealthSource label="Electron main process" health={snapshot.health.desktop} />
-                <DetailRow
-                  label="Collection time"
-                  value={formatDurationMicros(snapshot.health.collectionDurationMicros)}
-                />
-                <DetailRow
-                  label="Process scan"
-                  value={`${snapshot.health.retainedProcessCount}/${snapshot.health.scannedProcessCount} retained`}
-                />
-                <DetailRow
-                  label="Inaccessible"
-                  value={String(snapshot.health.inaccessibleProcessCount)}
-                  valueClassName={
-                    snapshot.health.inaccessibleProcessCount > 0
-                      ? "text-warning-foreground"
-                      : undefined
-                  }
-                />
-                <DetailRow
-                  label="Sidecar"
-                  value={Option.match(snapshot.health.sidecarVersion, {
-                    onNone: () => "Unavailable",
-                    onSome: (version) =>
-                      `${version}${Option.match(snapshot.health.sidecarPid, {
-                        onNone: () => "",
-                        onSome: (pid) => ` · PID ${pid}`,
-                      })}`,
-                  })}
-                />
-                <DetailRow label="Restarts" value={String(snapshot.health.restartCount)} />
-              </>
-            ) : (
-              <div className="py-4 text-caption text-muted-foreground">
-                Waiting for collector health.
+            <div className="border-t border-border/60 px-4 py-4 md:border-t-0 sm:px-5">
+              <div className="mb-3 flex items-center gap-2 text-3xs font-semibold uppercase tracking-widest text-muted-foreground/70">
+                <LogoTile size="sm">
+                  <GaugeIcon />
+                </LogoTile>
+                Collection health
               </div>
-            )}
+              {snapshot ? (
+                <List>
+                  <HealthSource label="Native process monitor" health={snapshot.health.native} />
+                  <HealthSource label="Electron main process" health={snapshot.health.desktop} />
+                  <DetailRow
+                    label="Collection time"
+                    value={formatDurationMicros(snapshot.health.collectionDurationMicros)}
+                  />
+                  <DetailRow
+                    label="Process scan"
+                    value={`${snapshot.health.retainedProcessCount}/${snapshot.health.scannedProcessCount} retained`}
+                  />
+                  <DetailRow
+                    label="Inaccessible"
+                    value={String(snapshot.health.inaccessibleProcessCount)}
+                    valueClassName={
+                      snapshot.health.inaccessibleProcessCount > 0
+                        ? "text-warning-foreground"
+                        : undefined
+                    }
+                  />
+                  <DetailRow
+                    label="Sidecar"
+                    value={Option.match(snapshot.health.sidecarVersion, {
+                      onNone: () => "Unavailable",
+                      onSome: (version) =>
+                        `${version}${Option.match(snapshot.health.sidecarPid, {
+                          onNone: () => "",
+                          onSome: (pid) => ` · PID ${pid}`,
+                        })}`,
+                    })}
+                  />
+                  <DetailRow label="Restarts" value={String(snapshot.health.restartCount)} />
+                </List>
+              ) : (
+                <Text className="py-4" render={<div />} variant="note">
+                  Waiting for collector health.
+                </Text>
+              )}
+            </div>
           </div>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1211,7 +1290,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           </div>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <CollectionRead
             presentation={collectionPresentation(history, (data) => data.buckets, {
               subject: "Resource history",
@@ -1229,7 +1308,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           >
             {(processes) => <HistoryProcessTable processes={processes} />}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1238,12 +1317,12 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
         headerAction={
           snapshot ? (
             <span className="text-3xs text-muted-foreground/55">
-              Identity: <span className="font-mono">PID + start time</span>
+              Identity: <Text variant="code">PID + start time</Text>
             </span>
           ) : null
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <CollectionRead
             presentation={resourceTelemetryProcessPresentation(telemetry)}
             emptyLabel="No processes"
@@ -1256,7 +1335,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
               />
             )}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
 
       <SettingsSection
@@ -1266,7 +1345,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           <span className="text-3xs text-muted-foreground/55">Logical bytes by operation</span>
         }
       >
-        <div className="overflow-hidden rounded-card border border-border/70 bg-card shadow-xs/5">
+        <Card className="overflow-hidden">
           <div className="bg-muted/15 px-4 py-3 text-2xs leading-relaxed text-muted-foreground sm:px-5">
             Native counters identify which process is reading or writing. These application-level
             counters identify known Zerops Mate operations so process spikes can be correlated with
@@ -1280,7 +1359,7 @@ export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId:
           >
             {(entries) => <AttributionTable entries={entries} />}
           </CollectionRead>
-        </div>
+        </Card>
       </SettingsSection>
     </>
   );

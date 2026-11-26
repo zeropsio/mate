@@ -122,7 +122,8 @@ export function SidebarChiefRow({
             />
             {unseen ? (
               <MateDot
-                className="top-0.5 right-0.25 ring-(--row-ground)"
+                className="top-0.5 end-0.25"
+                ground="row"
                 place="corner"
                 surface="sidebar-chief-unread"
                 tone="unread"

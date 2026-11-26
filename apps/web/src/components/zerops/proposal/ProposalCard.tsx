@@ -18,6 +18,7 @@ import { AskCard, AskFooter } from "../../ask/AskCard";
 import { MateMark } from "../../MateMark";
 import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Collapsible, CollapsibleTrigger } from "../../ui/collapsible";
 import { Spinner } from "../../ui/spinner";
 import { MateFace } from "../primitives";
@@ -33,6 +34,8 @@ import {
   type domainProposalRecords,
   type ProposalStage,
 } from "./proposal.logic";
+import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 /** The Mate a message goes to, as the menu draws it; absent while the menu does not know it. */
 export interface ProposalRecipient {
@@ -244,14 +247,14 @@ export function ProposalCard(props: ProposalCardProps) {
           chiefTarget: stage === "open" ? chiefTarget : undefined,
         })}
         {stage === "open" && (props.restarts?.notRunning.length ?? 0) > 0 ? (
-          <p className="text-caption text-muted-foreground" data-proposal-not-running>
+          <Text render={<p />} variant="note" data-proposal-not-running>
             {notRunningWords(props.restarts?.notRunning ?? [])}
-          </p>
+          </Text>
         ) : null}
         {stage === "open" && props.refusal !== undefined ? (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {props.refusal}
-          </p>
+          </Text>
         ) : null}
         {proposal.kind === "domain.add" && decided ? (
           <DomainProgress {...props} stage={stage} />
@@ -277,13 +280,15 @@ function proposalBody({
     if (access === undefined) return null;
     return (
       <div className="grid min-w-0 gap-1.5 text-caption">
-        <ul className="grid min-w-0 gap-1 rounded-control bg-muted px-3 py-2" data-proposal-access>
-          {access.lines.map((line) => (
-            <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
-              {line}
-            </li>
-          ))}
-        </ul>
+        <Card className="min-w-0" variant="inset">
+          <ul className="grid min-w-0 gap-1 px-3 py-2" data-proposal-access>
+            {access.lines.map((line) => (
+              <li className="min-w-0 wrap-anywhere text-foreground" key={line}>
+                {line}
+              </li>
+            ))}
+          </ul>
+        </Card>
         {access.dropped.length === 0 ? null : (
           <ul className="grid min-w-0 gap-0.5 text-muted-foreground" data-proposal-left-out>
             {access.dropped.map((line) => (
@@ -299,20 +304,22 @@ function proposalBody({
   if (proposal.kind === "env.set") {
     const { key, value, secret } = proposal.params;
     return (
-      <div
-        className="flex min-w-0 items-baseline gap-2 rounded-control bg-muted px-3 py-2 font-mono text-caption"
-        data-proposal-value
-      >
-        <span className="shrink-0 font-medium text-foreground">{key}</span>
-        <span className="shrink-0 text-muted-foreground">=</span>
-        {secret ? (
-          <span className="min-w-0 truncate text-muted-foreground" data-proposal-value-hidden>
-            {HIDDEN_VALUE} <span className="font-sans">hidden</span>
-          </span>
-        ) : (
-          <span className="min-w-0 break-all text-foreground">{value}</span>
-        )}
-      </div>
+      <Card className="min-w-0" variant="inset">
+        <div
+          className="flex min-w-0 items-baseline gap-2 px-3 py-2 font-mono text-caption"
+          data-proposal-value
+        >
+          <span className="shrink-0 font-medium text-foreground">{key}</span>
+          <span className="shrink-0 text-muted-foreground">=</span>
+          {secret ? (
+            <span className="min-w-0 truncate text-muted-foreground" data-proposal-value-hidden>
+              {HIDDEN_VALUE} <span className="font-sans">hidden</span>
+            </span>
+          ) : (
+            <span className="min-w-0 break-all text-foreground">{value}</span>
+          )}
+        </div>
+      </Card>
     );
   }
   if (proposal.kind === "chief.message") {
@@ -332,9 +339,9 @@ function proposalBody({
   }
   if (proposal.kind === "domain.add") {
     return (
-      <p className="text-caption text-muted-foreground" data-proposal-where>
+      <Text render={<p />} variant="note" data-proposal-where>
         {proposalWhere(proposal)}
-      </p>
+      </Text>
     );
   }
   if (proposal.kind !== "mate.message") return null;
@@ -366,12 +373,14 @@ function proposalBody({
 /** Quoted, not paraphrased: this is the text being authorised. */
 function Words({ words }: { readonly words: string }) {
   return (
-    <p
-      className="min-w-0 rounded-control bg-muted px-3 py-2 text-body whitespace-pre-wrap wrap-anywhere text-foreground"
-      data-proposal-words
-    >
-      {words}
-    </p>
+    <Card className="min-w-0" variant="inset">
+      <p
+        className="min-w-0 px-3 py-2 text-body whitespace-pre-wrap wrap-anywhere text-foreground"
+        data-proposal-words
+      >
+        {words}
+      </p>
+    </Card>
   );
 }
 
@@ -393,9 +402,9 @@ export function Attachment({ title, text }: { readonly title: string; readonly t
         <span className="min-w-0 truncate">{title}</span>
       </CollapsibleTrigger>
       {open ? (
-        <pre className="max-h-60 min-w-0 overflow-auto rounded-control bg-muted px-3 py-2 font-mono text-caption leading-4.5 whitespace-pre text-foreground">
+        <CodeBlock height="md" wrap={false}>
           {text}
-        </pre>
+        </CodeBlock>
       ) : null}
     </Collapsible>
   );
@@ -415,7 +424,7 @@ function DomainProgress(props: ProposalCardProps & { readonly stage: "done" | "u
         <p
           className={
             tone === "problem"
-              ? "flex min-w-0 items-start gap-1.5 text-body text-destructive-foreground"
+              ? "flex min-w-0 items-start gap-1.5 text-body text-status-failed-text"
               : "flex min-w-0 items-center gap-1.5 text-body text-muted-foreground"
           }
           data-proposal-domain={tone}

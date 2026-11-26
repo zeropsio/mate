@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { appTasksWaitingAtom } from "~/state/zerops";
 import { ProjectReviewMarks, type ProjectReviewTags } from "./SidebarProjectReview";
 import { tasksWaitingWords } from "./SidebarMateRow.logic";
+import { Text } from "~/components/ui/text";
 
 /** Its project's changes and release, as the row's tags draw them (`ProjectReviewTags`). */
 export type ProjectReviewData = Parameters<typeof ProjectReviewTags>[0];
@@ -65,12 +66,14 @@ export function ProjectNameMarks() {
 function ProjectTasksWaiting({ appId }: { readonly appId: string }) {
   const words = tasksWaitingWords(useAtomValue(appTasksWaitingAtom(appId)));
   return words === undefined ? null : (
-    <span
-      className="shrink-0 truncate text-caption text-muted-foreground"
+    <Text
+      className="shrink-0"
+      truncate
+      variant="note"
       data-zerops-surface="sidebar-project-tasks-waiting"
     >
       {words}
-    </span>
+    </Text>
   );
 }
 

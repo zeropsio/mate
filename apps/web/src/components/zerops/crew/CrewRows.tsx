@@ -78,6 +78,8 @@ import {
   type CrewRowSlot,
   type CrewRowThread,
 } from "./CrewRows.logic";
+import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 interface CrewRowsProps {
   readonly environmentId: EnvironmentId;
@@ -270,11 +272,10 @@ function RowLine({
     >
       {line.text}
       {line.diff === undefined ? null : (
-        <span className="tabular-nums">
+        <>
           {" · "}
-          <span className="text-diff-addition-foreground">{`+${line.diff.insertions}`}</span>{" "}
-          <span className="text-diff-deletion-foreground">{`−${line.diff.deletions}`}</span>
-        </span>
+          <DiffStat additions={line.diff.insertions} deletions={line.diff.deletions} />
+        </>
       )}
     </p>
   );
@@ -354,9 +355,9 @@ function CrewRow(
       <div className="flex min-w-0 flex-col">
         <div className="flex h-5 items-center gap-2">
           {open === null ? (
-            <span className="min-w-0 truncate font-medium text-body text-foreground">
+            <Text className="min-w-0" truncate variant="heading">
               {model.name}
-            </span>
+            </Text>
           ) : (
             <CrewTip tip={crewOpenConversationWord(model.name)}>
               {/* The row opens its crewmate's conversation: the name's press spans the whole
@@ -612,7 +613,7 @@ function AnswerBox(
           type="submit"
           variant={ready ? "primary" : "secondary"}
         >
-          <ArrowUpIcon aria-hidden="true" className="size-3.5" strokeWidth={2.4} />
+          <ArrowUpIcon aria-hidden="true" strokeWidth={2.4} />
         </Button>
       </CrewTip>
     </form>

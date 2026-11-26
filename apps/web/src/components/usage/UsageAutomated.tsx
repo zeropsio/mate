@@ -4,13 +4,13 @@
  */
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import { Link } from "@tanstack/react-router";
-import { BotIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 import { useAppTaskSource, useOrgTaskSource } from "../../zerops/useTaskSourceSettings";
 import { InlineButton } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
 import {
   automatedBudget,
   USAGE_TASKS_CUT_WORDS,
@@ -18,20 +18,9 @@ import {
   usageTaskListCut,
   type UsageTaskRow,
 } from "./usageAutomated.logic";
+import { Text } from "~/components/ui/text";
+import { TableCell, TableRow } from "~/components/ui/table";
 
-/** In place of a face: automated Mates are nobody's own. Decorative: their name stands beside it. */
-export function AutomatedMatesMark() {
-  return (
-    <span
-      aria-hidden
-      className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-background"
-    >
-      <BotIcon className="size-3" />
-    </span>
-  );
-}
-
-const ROW = "border-b border-border/50";
 /** A task's title starts a step in from its Mate's name, nested under a person or a project or not. */
 const taskIndent = (nested: boolean) => (nested ? "ps-20" : "ps-12");
 
@@ -76,11 +65,11 @@ function TaskNote({
   readonly children: ReactNode;
 }) {
   return (
-    <tr className={ROW}>
-      <td className={cn("py-2 text-caption text-muted-foreground", taskIndent(nested))} colSpan={3}>
-        {children}
-      </td>
-    </tr>
+    <TableRow>
+      <TableCell colSpan={3} tone="muted">
+        <span className={cn("block text-caption", taskIndent(nested))}>{children}</span>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -144,11 +133,13 @@ export function UsageMateTaskRowsView({
     return <TaskNote nested={nested}>Tasks are not shown to you.</TaskNote>;
   if (setting.state !== "known")
     return (
-      <tr aria-busy className={ROW}>
-        <td className={cn("py-2", taskIndent(nested))} colSpan={3}>
-          <Skeleton className="h-5 w-2/3" />
-        </td>
-      </tr>
+      <TableRow aria-busy>
+        <TableCell colSpan={3}>
+          <span className={cn("block", taskIndent(nested))}>
+            <Skeleton className="h-5 w-2/3" />
+          </span>
+        </TableCell>
+      </TableRow>
     );
   const rows = usageMateTasks({ tasks: setting.held, mateProjectId, since, until });
   // HQ lists only an application's newest ended tasks: never "none" where the period is older.
@@ -160,19 +151,21 @@ export function UsageMateTaskRowsView({
       </TaskNote>
     );
   const listed = rows.map((row) => (
-    <tr key={row.id} className={cn(ROW, "text-caption")}>
-      <td className={cn("py-2", taskIndent(nested))}>
-        <span className="flex min-w-0 items-baseline gap-2">
+    <TableRow key={row.id}>
+      <TableCell>
+        <span className={cn("flex min-w-0 items-baseline gap-2 text-caption", taskIndent(nested))}>
           <TaskTitle row={row} />
           <span className="shrink-0 text-muted-foreground">{row.state}</span>
           <span className="ms-auto shrink-0 text-muted-foreground tabular-nums">
             {row.worked === null ? "—" : `${row.worked} worked`}
           </span>
         </span>
-      </td>
-      <td className="py-2 text-right text-foreground tabular-nums">{row.cost ?? "—"}</td>
-      <td />
-    </tr>
+      </TableCell>
+      <TableCell align="end">
+        <span className="text-caption">{row.cost ?? "—"}</span>
+      </TableCell>
+      <TableCell />
+    </TableRow>
   ));
   return cut ? (
     <>
@@ -190,12 +183,15 @@ export function UsageAutomatedBudget() {
   const budget = automatedBudget(read.setting.state === "known" ? read.setting.held : null);
   if (budget === null) return null;
   return (
-    <p className="flex items-center gap-2 text-caption text-muted-foreground">
-      <AutomatedMatesMark />
+    <Text className="flex items-center gap-2" render={<p />} variant="note">
+      <PersonAvatar nobody size={16} />
       <span>
         Automated Mates spent{" "}
         <span
-          className={cn("tabular-nums", budget.reached ? "text-destructive" : "text-foreground")}
+          className={cn(
+            "tabular-nums",
+            budget.reached ? "text-status-failed-text" : "text-foreground",
+          )}
         >
           {budget.spent}
         </span>{" "}
@@ -209,6 +205,6 @@ export function UsageAutomatedBudget() {
       >
         Change
       </InlineButton>
-    </p>
+    </Text>
   );
 }

@@ -27,9 +27,11 @@ import {
 } from "./addresses.logic";
 import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import { AddressesDomains, type WebMode } from "./AddressesDomains";
-import { Confirm, CopyButton, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
+import { Confirm, Face, Tile, Trouble, type SheetContext } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
 import { AddressesZerops } from "./AddressesZerops";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 /** The project's own IPv4 as billing offers it. */
 export type OwnIpv4Offer =
@@ -104,25 +106,25 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
       <SheetHeader {...props} />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-1.5 pb-10">
         {props.place.state === "failed" ? (
-          <p className="py-6 text-muted-foreground text-body">
+          <Text className="py-6" render={<p />} variant="description">
             You can't see {props.placeName}'s addresses.
-          </p>
+          </Text>
         ) : runsNothing ? (
-          <p className="py-6 text-muted-foreground text-body">
+          <Text className="py-6" render={<p />} variant="description">
             Nothing runs in {props.placeName} yet.
-          </p>
+          </Text>
         ) : props.place.state === "reading" && props.place.domains.length === 0 ? (
-          <p className="flex items-center gap-2 py-6 text-muted-foreground text-body">
+          <Text className="flex items-center gap-2 py-6" render={<p />} variant="description">
             <Spinner aria-hidden="true" size="sm" tone="muted" />
             Reading {props.placeName}'s addresses…
-          </p>
+          </Text>
         ) : (
           <div className="grid gap-8">
             {ctx.hold ? (
-              <p className="flex items-center gap-2 text-muted-foreground text-body">
+              <Text className="flex items-center gap-2" render={<p />} variant="description">
                 <Spinner aria-hidden="true" size="sm" tone="muted" />
                 Still reading {props.placeName}'s addresses. Changes wait until it's read.
-              </p>
+              </Text>
             ) : null}
             <AddressesDomains
               ctx={ctx}
@@ -250,15 +252,15 @@ function SheetHeader({
                 onClick={() => onPlace(place.projectId)}
               >
                 {place.label}
-                {place.owner === undefined ? null : (
-                  <span className="text-muted-foreground text-caption">· {place.owner}'s</span>
-                )}
+                {place.owner === undefined ? null : <Text variant="note">· {place.owner}'s</Text>}
               </MenuItem>
             ))}
           </MenuPopup>
         </Menu>
       ) : current === projectName ? null : (
-        <span className="truncate text-muted-foreground text-body">{current}</span>
+        <Text truncate variant="description">
+          {current}
+        </Text>
       )}
       <span className="grow" />
       <Button aria-label="Close" onClick={onClose} size="icon-sm" variant="ghost">
@@ -310,29 +312,29 @@ function IpSection({
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
         {ips.v6 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.v6} />}
+            action={<CopyButton label={ips.v6} value={ips.v6} />}
             caption="Yours, included"
             data="ipv6"
             label="IPv6"
-            value={<span className="font-mono">{ips.v6}</span>}
+            value={<Text variant="code">{ips.v6}</Text>}
           />
         )}
         {ips.ownV4 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.ownV4} />}
+            action={<CopyButton label={ips.ownV4} value={ips.ownV4} />}
             caption={own}
             data="own-ipv4"
             label="Your own IPv4"
-            value={<span className="font-mono">{ips.ownV4}</span>}
+            value={<Text variant="code">{ips.ownV4}</Text>}
           />
         )}
         {ips.sharedV4 === undefined ? null : (
           <Tile
-            action={<CopyButton value={ips.sharedV4} />}
+            action={<CopyButton label={ips.sharedV4} value={ips.sharedV4} />}
             caption={SHARED_WORDS}
             data="shared-ipv4"
             label="Shared IPv4"
-            value={<span className="font-mono">{ips.sharedV4}</span>}
+            value={<Text variant="code">{ips.sharedV4}</Text>}
           />
         )}
         {ips.ownV4 !== undefined ? null : (
@@ -400,10 +402,10 @@ function IpSection({
         </Confirm>
       ) : null}
       {ips.ownV4 === undefined ? null : (
-        <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-caption">
+        <Text className="flex flex-wrap items-center gap-x-2" render={<p />} variant="note">
           Your own IPv4 renews on its own; turn it off in Zerops to stop it.
           <OpenInZerops url={zeropsUrl} />
-        </p>
+        </Text>
       )}
     </Section>
   );

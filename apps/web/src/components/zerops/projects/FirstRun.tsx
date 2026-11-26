@@ -39,6 +39,9 @@ import {
 } from "../ZeropsNewProjectForm";
 import { newProjectNext } from "../whatHappensNext.logic";
 import { firstRunWords } from "./firstRun.logic";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { StepNumber } from "~/components/ui/step-number";
 
 /** Who waits with a person who may not start a project: nobody yet, in the slate face. */
 const NOBODY: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -143,7 +146,12 @@ export function FirstRunView({
       className="@container/first-run relative isolate flex min-h-0 min-w-0 flex-auto flex-col overflow-y-auto bg-background"
       data-first-run={waits ? "wait" : "start"}
       data-zerops-surface="first-run"
-      style={{ "--first-run-tint": `var(--zerops-mate-tint-${face.tint})` } as CSSProperties}
+      style={
+        {
+          "--first-run-tint": `var(--zerops-mate-tint-${face.tint})`,
+          "--step-tint": "var(--first-run-tint)",
+        } as CSSProperties
+      }
     >
       {/* The faint dotted ground, fading out from behind the words. */}
       {waits ? null : (
@@ -251,29 +259,33 @@ function FirstRunForm({
 }) {
   const { access, forecast } = form.input;
   return (
-    // The New project form as the page's card, lifting off the ground on a shadow.
-    <NewProjectFormFrame
-      className="flex min-w-0 flex-col gap-6 rounded-sheet border border-border bg-card px-7 pt-7 pb-3 shadow-(--zerops-shadow-card) @min-[960px]/first-run:col-start-2 @min-[960px]/first-run:row-span-2 @min-[960px]/first-run:row-start-1 @min-[960px]/first-run:self-center"
-      form={form}
+    // The New project form as the page's card: the kit's sheet, a surface of its own.
+    <Card
+      className="min-w-0 @min-[960px]/first-run:col-start-2 @min-[960px]/first-run:row-span-2 @min-[960px]/first-run:row-start-1 @min-[960px]/first-run:self-center"
+      variant="sheet"
     >
-      {form.input.closed === undefined ? (
-        <>
-          <NewProjectFields className="flex flex-col gap-5" form={form}>
-            <ProjectNameField form={form} inputRef={nameField} size="xl" />
-            <FirstMateField form={form} label="Your first Mate" look="apart" size="xl" />
-            {access === undefined ? null : access(form.setUserRoles)}
-            <NewProjectLocation form={form} />
-          </NewProjectFields>
-          <div className="grid gap-2">
-            <CreateProjectButton form={form} size="lg" />
-            <NewProjectLine className="min-h-5" form={form} />
-            {forecast}
-          </div>
-        </>
-      ) : (
-        <p className="text-body text-muted-foreground">{form.input.closed}</p>
-      )}
-    </NewProjectFormFrame>
+      <NewProjectFormFrame className="flex min-w-0 flex-col gap-6 px-7 pt-7 pb-3" form={form}>
+        {form.input.closed === undefined ? (
+          <>
+            <NewProjectFields className="flex flex-col gap-5" form={form}>
+              <ProjectNameField form={form} inputRef={nameField} size="xl" />
+              <FirstMateField form={form} label="Your first Mate" size="xl" />
+              {access === undefined ? null : access(form.setUserRoles)}
+              <NewProjectLocation form={form} />
+            </NewProjectFields>
+            <div className="grid gap-2">
+              <CreateProjectButton form={form} size="lg" />
+              <NewProjectLine className="min-h-5" form={form} />
+              {forecast}
+            </div>
+          </>
+        ) : (
+          <Text render={<p />} variant="description">
+            {form.input.closed}
+          </Text>
+        )}
+      </NewProjectFormFrame>
+    </Card>
   );
 }
 
@@ -286,15 +298,10 @@ function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
       <ol className="flex flex-col gap-3.5">
         {next.steps.map((step, index) => (
           <li
-            className="relative grid grid-cols-[22px_minmax(0,1fr)] items-start gap-3 not-last:before:absolute not-last:before:top-6.5 not-last:before:-bottom-2.5 not-last:before:left-[10.5px] not-last:before:w-px not-last:before:bg-border"
+            className="relative grid grid-cols-[24px_minmax(0,1fr)] items-start gap-3 not-last:before:absolute not-last:before:top-7 not-last:before:-bottom-2.5 not-last:before:left-[11.5px] not-last:before:w-px not-last:before:bg-border"
             key={step.words}
           >
-            <span
-              aria-hidden
-              className="inline-flex size-5.5 items-center justify-center rounded-full bg-(--first-run-tint)/22 text-caption leading-none font-medium text-foreground tabular-nums"
-            >
-              {index + 1}
-            </span>
+            <StepNumber n={index + 1} tone="tint" />
             <span className="pt-px text-prose leading-5 text-pretty text-foreground">
               {step.phrase === undefined ? step.words : <SignInPhrase parts={step.phrase} />}
               {step.time === undefined ? null : (
@@ -307,7 +314,7 @@ function FirstRunNext({ form }: { readonly form: NewProjectForm }) {
         ))}
       </ol>
       {/* A last caption under the steps, on the steps' words' edge. */}
-      <p className="mt-3.5 ps-8.5 text-caption leading-4.25 text-muted-foreground">{next.note}</p>
+      <p className="mt-3.5 ps-9 text-caption leading-4.25 text-muted-foreground">{next.note}</p>
     </section>
   );
 }

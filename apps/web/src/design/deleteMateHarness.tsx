@@ -8,8 +8,12 @@
  * platform answering; `refused` — the platform's reason under the field; `colleague` — Quinn is
  * Theo's; `menu` — Fen's menu open, Quinn's deletion as HQ's navigation shows it (`&deletion=`
  * `deleting` — HQ runs it; `waiting` — it waits for its maker's Continue; `failed` — Zerops
- * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `&services=0|1|3|unread`
- * counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
+ * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `last` —
+ * Quinn is the last Mate of Acme Docs, so its Delete offers "Only Quinn" or the whole project;
+ * `whole` — the whole project chosen; `stage-slid` — its Stage slid and its name typed, Delete
+ * open; `production` — a Production Mate made, its name typed and slid too; `running` — HQ deletes it, Quinn gone, its Stage going; `waiting` — it stopped for its
+ * maker's Continue; `stopped` — Zerops refused its Stage, what is gone and what is still here;
+ * `&services=0|1|3|unread` counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
  * in the app. Open it at 1786 × 1000. `window.__deleteHarness.answer()` answers a pending press on
  * cue, and `deleteQuinn()` has HQ's navigation show Quinn's deletion running, so a frame sampler
  * can watch its row take the news.
@@ -25,17 +29,36 @@ import {
 } from "@tanstack/react-router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import { mateDeletionOf, operationFailureDetails } from "@t3tools/client-runtime/data";
+import {
+  hqOperationOf,
+  mateDeletionOf,
+  operationFailureDetails,
+} from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import { SidebarZeropsTree } from "~/components/zerops/SidebarZeropsTree";
 import { mateDeletionLine } from "~/components/zerops/SidebarMateRow.logic";
+import { ZeropsDeletionForm } from "~/components/zerops/ZeropsDeleteApplicationDialog";
+import {
+  deletionOffer,
+  deletionPageState,
+  type DeletionProject,
+} from "~/components/zerops/deletion.logic";
 import { ZeropsDeleteMateDialog } from "~/components/zerops/ZeropsDeleteMateDialog";
-import { deleteMateVerb, deleteMateWords } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
+import { ZeropsDeletionPage } from "~/components/zerops/ZeropsDeletionPage";
+import {
+  deleteMateServiceCount,
+  deleteMateVerb,
+  deleteMateWords,
+} from "~/components/zerops/ZeropsDeleteMateDialog.logic";
+import { Dialog, DialogPopup } from "~/components/ui/dialog";
+import { Page } from "~/components/ui/page";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -107,6 +130,167 @@ const FEN = mate("Fen", ["api", "db"]);
 const QUINN = mate("Quinn", QUINN_SERVICES);
 const ADA = mate("Ada", ["web"]);
 const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
+
+/** Quinn alone in Acme Docs: its Delete offers the Mate alone or the whole project. */
+const PAGE_STATES = [
+  "page",
+  "stage-slid",
+  "production",
+  "project",
+  "running",
+  "waiting",
+  "waiting-other",
+  "stopped",
+  "page-refused",
+  "page-gone",
+  "start-refused",
+  "delete-again",
+];
+const PAGE = PAGE_STATES.includes(STATE);
+const LAST = PAGE || ["last", "last-code", "last-member", "whole"].includes(STATE);
+const CODE_ONLY = STATE === "last-code" || STATE === "project";
+const ACME = "Acme Docs";
+const HOLDINGS = { repos: ["docs", RECIPE_REPO], openChanges: 2 };
+
+/** HQ's deletion of Acme Docs as its navigation shows it, in each state the dialog says. */
+const ACME_DELETIONS: Readonly<Record<string, HqOperation>> = {
+  running: {
+    id: "acme-deletion",
+    kind: "app_deletion",
+    phase: "accepted",
+    at: minutesAgo(0),
+    acceptedAt: minutesAgo(1),
+    steps: [
+      { part: "mate", projectId: "acme-docs-quinn", state: "gone" },
+      { part: "stage", projectId: "acme-docs-stage", state: "deleting" },
+      { part: "code", state: "pending" },
+    ],
+  },
+  waiting: {
+    id: "acme-deletion",
+    kind: "app_deletion",
+    phase: "accepted",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: { step: "delete_project", code: "token_expired", at: minutesAgo(2), origin: "hq" },
+    continueBy: "theo",
+    steps: [
+      { part: "mate", projectId: "acme-docs-quinn", state: "gone" },
+      { part: "stage", projectId: "acme-docs-stage", state: "deleting" },
+      { part: "code", state: "pending" },
+    ],
+  },
+  stopped: {
+    id: "acme-deletion",
+    kind: "app_deletion",
+    phase: "accepted",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: {
+      step: "delete_project",
+      code: "insufficientPermissions",
+      at: minutesAgo(2),
+      origin: "zerops",
+      zerops: { words: "Forbidden." },
+    },
+    steps: [
+      { part: "mate", projectId: "acme-docs-quinn", state: "gone" },
+      { part: "stage", projectId: "acme-docs-stage", state: "deleting" },
+      { part: "code", state: "pending" },
+    ],
+  },
+};
+const ACME_OPERATION =
+  STATE === "waiting" || STATE === "waiting-other"
+    ? { ...ACME_DELETIONS.waiting!, offers: [STATE === "waiting" ? "continue" : "end"] }
+    : STATE === "delete-again"
+      ? ACME_DELETIONS.stopped
+      : ACME_DELETIONS[STATE];
+/** Acme Docs as HQ's structure holds it: Quinn, its Stage, its Git production. */
+const ACME_PROJECT: DeletionProject = {
+  appId: "acme",
+  name: ACME,
+  placements: [
+    ...(ACME_OPERATION === undefined && STATE !== "project"
+      ? [{ projectId: QUINN.project.id, kind: "mate", name: "Quinn" }]
+      : []),
+    ...(CODE_ONLY
+      ? []
+      : [{ projectId: "acme-docs-stage", kind: "stage", name: "acme-docs-stage" }]),
+  ],
+  births: [],
+  deleteApp: STATE !== "last-member" && STATE !== "page-refused",
+  environments: CODE_ONLY
+    ? []
+    : [
+        {
+          tier: "stage",
+          kind: "zerops",
+          projectId: "acme-docs-stage",
+          name: "acme-docs-stage",
+          deletable: true,
+          madeByMate: false,
+        },
+        PAGE
+          ? {
+              tier: "production",
+              kind: "zerops",
+              projectId: "acme-docs-live",
+              name: "acme-docs-live",
+              deletable: true,
+              madeByMate: true,
+            }
+          : { tier: "production", kind: "git", branch: "release" },
+      ],
+  hidden: [],
+  deletion: hqOperationOf(ACME_OPERATION, "app_deletion"),
+  ...(ACME_OPERATION?.steps === undefined
+    ? {}
+    : {
+        steps: ACME_OPERATION.steps.map((step) =>
+          step.part === "stage" && step.projectId !== undefined
+            ? { ...step, name: step.projectId }
+            : step,
+        ),
+      }),
+};
+const ACME_OFFER = deletionOffer({
+  mate:
+    ACME_OPERATION === undefined && STATE !== "project"
+      ? { projectId: QUINN.project.id, name: QUINN.project.name }
+      : undefined,
+  project: ACME_PROJECT,
+});
+const PAGE_STATE = deletionPageState({
+  structureRead: true,
+  project: STATE === "page-gone" ? undefined : ACME_PROJECT,
+  mate:
+    STATE === "project" || STATE === "page-refused" || ACME_OPERATION !== undefined
+      ? undefined
+      : { projectId: QUINN.project.id, name: QUINN.project.name },
+  past: STATE === "delete-again" ? ACME_OPERATION?.id : undefined,
+});
+const PAGE_PLAN = PAGE_STATE.kind === "form" ? PAGE_STATE.offer.plan : undefined;
+const PAGE_STAGE = PAGE_PLAN?.stages[0];
+const PAGE_PRODUCTION = PAGE_PLAN?.productions[0];
+const PAGE_STAGE_SLID = ["stage-slid", "production", "start-refused"].includes(STATE);
+const PAGE_PRODUCTION_SLID = STATE === "production";
+const PAGE_INITIAL = {
+  confirmation: {
+    slid: new Set([
+      ...(PAGE_STAGE_SLID && PAGE_STAGE !== undefined ? [PAGE_STAGE.projectId] : []),
+      ...(PAGE_PRODUCTION_SLID && PAGE_PRODUCTION !== undefined ? [PAGE_PRODUCTION.projectId] : []),
+    ]),
+    productionTyped:
+      PAGE_PRODUCTION_SLID && PAGE_PRODUCTION !== undefined
+        ? { [PAGE_PRODUCTION.projectId]: PAGE_PRODUCTION.name }
+        : {},
+  },
+  opened: new Set(
+    PAGE_PRODUCTION_SLID && PAGE_PRODUCTION !== undefined ? [PAGE_PRODUCTION.projectId] : [],
+  ),
+  typed: PAGE_STAGE_SLID ? ACME : "",
+};
 
 /** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */
 const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
@@ -289,12 +473,14 @@ declare global {
   }
 }
 
-/** Types the name into the dialog's field as a person would: React hears the input. */
-function typeInto(value: string): void {
-  const input = document.querySelector<HTMLInputElement>(
-    '[data-zerops-surface="delete-mate-form"] input',
-  );
-  if (input === null) return;
+/** Types the name into the surface's last field as a person would: React hears the input. */
+function typeInto(form: string, value: string): void {
+  const input = [
+    ...document.querySelectorAll<HTMLInputElement>(
+      `[data-zerops-surface="${form}"] input:not([type="range"])`,
+    ),
+  ].at(-1);
+  if (input === undefined) return;
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -333,19 +519,29 @@ function Harness() {
     };
   }, [pressed]);
 
-  // The states past the first are reached the way a person reaches them: the name typed, the
-  // button pressed, the platform's refusal arriving.
+  // The whole-project card is chosen by the same press as in the dialog.
   useEffect(() => {
-    if (!dialog || STATE === "idle" || STATE === "colleague") return;
+    if (STATE !== "whole") return;
+    const choosing = window.setTimeout(() => {
+      document.querySelectorAll<HTMLElement>('[data-slot="radio-card"]')[1]?.click();
+    }, 200);
+    return () => {
+      window.clearTimeout(choosing);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dialog || LAST || STATE === "idle" || STATE === "colleague") return;
+    const form = "delete-mate-form";
     const typing = window.setTimeout(() => {
-      typeInto("Quinn");
+      typeInto(form, "Quinn");
     }, 250);
     const pressing =
       STATE === "deleting" || STATE === "refused"
         ? window.setTimeout(() => {
             document
               .querySelector<HTMLButtonElement>(
-                '[data-zerops-surface="delete-mate-form"] button[type="submit"]',
+                `[data-zerops-surface="${form}"] button[type="submit"]`,
               )
               ?.click();
           }, 450)
@@ -387,13 +583,88 @@ function Harness() {
   const owner = OWNERS.get(QUINN.project.id);
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <SidebarProvider className="block">
-        <Menu candidates={matesWith(quinnDeletion)} />
+      <SidebarProvider className="block w-auto shrink-0">
+        <Menu
+          candidates={
+            LAST
+              ? ACME_OPERATION === undefined && STATE !== "project"
+                ? [QUINN]
+                : []
+              : matesWith(quinnDeletion)
+          }
+        />
       </SidebarProvider>
-      <main className="flex min-w-0 flex-1 items-start justify-center p-10">
-        <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
-      </main>
-      {dialog && open ? (
+      {PAGE ? (
+        <main className="min-w-0 flex-1 overflow-y-auto" data-zerops-surface="delete-page">
+          <Page width="column">
+            <ZeropsDeletionPage
+              state={PAGE_STATE}
+              error={
+                STATE === "start-refused"
+                  ? hqRefusalWords({ code: "conflict", reason: "held_changed" })
+                  : null
+              }
+              holdings={HOLDINGS}
+              initial={PAGE_INITIAL}
+              mate={
+                PAGE_STATE.kind === "form" && PAGE_STATE.offer.kind === "last-choice"
+                  ? {
+                      projectId: QUINN.project.id,
+                      name: QUINN.project.name,
+                      services: deleteMateServiceCount(QUINN),
+                      tint: "sky",
+                    }
+                  : undefined
+              }
+              onAgain={() => {}}
+              onCancel={() => {}}
+              onConfirm={() => {
+                setPressed((count) => count + 1);
+                setPending(true);
+              }}
+              pending={pending}
+              waiting={
+                PAGE_STATE.kind === "standing" && PAGE_STATE.offer.deletion.kind === "waiting"
+                  ? STATE === "waiting-other"
+                    ? { person: THEO.name, press: PAGE_STATE.offer.deletion.press, onEnd: () => {} }
+                    : {
+                        person: "you",
+                        press: PAGE_STATE.offer.deletion.press,
+                        onContinue: () => {},
+                      }
+                  : undefined
+              }
+            />
+          </Page>
+        </main>
+      ) : (
+        <main className="flex min-w-0 flex-1 items-start justify-center p-10">
+          <p className="max-w-md text-body text-muted-foreground">The conversation opens here.</p>
+        </main>
+      )}
+      {!PAGE && LAST ? (
+        <Dialog onOpenChange={setOpen} open={open}>
+          <DialogPopup className="max-w-md">
+            <ZeropsDeletionForm
+              error={null}
+              mate={{
+                name: "Quinn",
+                services: deleteMateServiceCount(QUINN),
+                owner: undefined,
+              }}
+              offer={ACME_OFFER}
+              onWhole={() => setOpen(false)}
+              onCancel={() => setOpen(false)}
+              onConfirm={() => {
+                setPressed((count) => count + 1);
+                setPending(true);
+              }}
+              pending={pending}
+              project={ACME_PROJECT}
+            />
+          </DialogPopup>
+        </Dialog>
+      ) : !PAGE && dialog && open ? (
         <ZeropsDeleteMateDialog
           error={error}
           failed={failed}

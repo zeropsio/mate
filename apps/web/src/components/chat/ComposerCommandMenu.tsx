@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { COMPOSER_ATTACHED_OUTLINE, COMPOSER_ATTACHED_RAISED } from "./composerAttached";
 import {
   formatProviderSkillDisplayName,
   resolveProviderSkillSourceKind,
@@ -126,7 +128,11 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
     >
       <div
         ref={listRef}
-        className="chat-composer-drawer-surface chat-composer-drawer-attached relative flex min-h-0 w-full flex-col overflow-hidden **:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4"
+        className={cn(
+          "chat-composer-drawer-surface chat-composer-drawer-attached relative flex min-h-0 w-full flex-col overflow-hidden **:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4",
+          COMPOSER_ATTACHED_RAISED,
+          COMPOSER_ATTACHED_OUTLINE,
+        )}
         data-composer-command-drawer="true"
       >
         {props.items.length > 0 ? (

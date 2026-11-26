@@ -1,5 +1,6 @@
 "use client";
 
+import { Failure } from "~/components/ui/failure";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -26,6 +27,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CustomModelEditor } from "./CustomModelEditor";
+import { Text } from "~/components/ui/text";
 
 /**
  * Placeholder text for the "add a custom model" input, keyed by driver
@@ -199,9 +201,9 @@ export function ProviderModelsSection({
   return (
     <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
       <div className="text-caption font-medium text-foreground">Models</div>
-      <div className="mt-1 text-caption text-muted-foreground">
+      <Text className="mt-1" render={<div />} variant="note">
         {models.length} model{models.length === 1 ? "" : "s"} available.
-      </div>
+      </Text>
       <div
         ref={listRef}
         className="mt-2 max-h-40 overflow-y-auto pb-1 lg:min-h-0 lg:max-h-none lg:flex-1"
@@ -272,7 +274,7 @@ export function ProviderModelsSection({
                       >
                         <InfoIcon className="size-3" />
                       </TooltipTrigger>
-                      <TooltipPopup side="top" className="max-w-56">
+                      <TooltipPopup side="top">
                         <div className="space-y-1">
                           <code className="block text-2xs text-foreground">{model.slug}</code>
                           {capLabels.length > 0 ? (
@@ -445,14 +447,14 @@ export function ProviderModelsSection({
             spellCheck={false}
           />
           <Button className="shrink-0" variant="secondary" onClick={handleAdd}>
-            <PlusIcon className="size-3.5" />
+            <PlusIcon />
             Add
           </Button>
         </div>
       )}
 
       {driverKind !== "antigravity" && error ? (
-        <p className="mt-2 text-caption text-destructive">{error}</p>
+        <Failure cause={error} className="mt-2" role="alert" size="line" />
       ) : null}
     </div>
   );

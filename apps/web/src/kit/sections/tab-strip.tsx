@@ -5,7 +5,7 @@ import { Button } from "~/components/ui/button";
 import { Tab, TabStrip } from "~/components/ui/tab-strip";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 const PAGES = [
   "Zerops",
@@ -22,7 +22,7 @@ const PAGES = [
 function ManyTabs() {
   const [active, setActive] = useState<string>("Vault");
   return (
-    <div className="flex h-10 w-[30rem] items-center border border-border bg-background px-2">
+    <div className="flex h-10 w-full max-w-[30rem] items-center rounded-control border border-border bg-background px-2">
       <TabStrip
         action={
           <Button aria-label="Add a page" size="icon-sm" variant="ghost">
@@ -55,7 +55,7 @@ const VIEWS = ["Everything", "Mine", "Waiting on you"] as const;
 function PageViews() {
   const [active, setActive] = useState<string>("Everything");
   return (
-    <div className="flex h-10 w-[30rem] items-center">
+    <div className="flex h-10 w-full max-w-[30rem] items-center">
       <TabStrip
         activeId={active}
         items={VIEWS.map((view) => ({ id: view, label: view }))}
@@ -87,13 +87,23 @@ export default defineKitSection({
   kind: "Navigation",
   source: "apps/web/src/components/ui/tab-strip.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label={'<TabStrip action items> of <Tab size="sm"> (a panel\'s pages)'}>
-        <ManyTabs />
-      </Specimen>
-      <Specimen label={'<TabStrip> of <Tab size="md"> (a page\'s own views)'}>
-        <PageViews />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Past the strip's room the cut-off tabs fold into an N more menu; the + stays in reach."
+        title="Sizes and overflow"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen
+            label='<TabStrip action items> · <Tab size="sm">'
+            note="A panel's eight pages in 30 rem"
+          >
+            <ManyTabs />
+          </Specimen>
+          <Specimen label='<TabStrip> · <Tab size="md">' note="A page's own views">
+            <PageViews />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

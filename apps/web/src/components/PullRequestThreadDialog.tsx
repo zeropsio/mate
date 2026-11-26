@@ -1,3 +1,4 @@
+import { Failure } from "~/components/ui/failure";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
@@ -25,6 +26,8 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Spinner } from "./ui/spinner";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 interface PullRequestThreadDialogProps {
   open: boolean;
@@ -227,30 +230,32 @@ export function PullRequestThreadDialog({
           </label>
 
           {resolvedPullRequest ? (
-            <div className="rounded-card border border-border/70 bg-muted/24 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
-                  <p className="truncate text-muted-foreground text-caption">
-                    #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
-                    {resolvedPullRequest.baseBranch}
-                  </p>
+            <Card variant="inset">
+              <div className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-body">{resolvedPullRequest.title}</p>
+                    <Text render={<p />} truncate variant="note">
+                      #{resolvedPullRequest.number} · {resolvedPullRequest.headBranch} to{" "}
+                      {resolvedPullRequest.baseBranch}
+                    </Text>
+                  </div>
+                  <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
+                    {resolvedPullRequest.state}
+                  </span>
                 </div>
-                <span className={cn("shrink-0 text-caption capitalize", statusTone)}>
-                  {resolvedPullRequest.state}
-                </span>
               </div>
-            </div>
+            </Card>
           ) : null}
 
           {isResolving ? (
-            <div className="flex items-center gap-2 text-muted-foreground text-caption">
+            <Text className="flex items-center gap-2" render={<div />} variant="note">
               <Spinner size="sm" />
               Resolving {terminology.singular}...
-            </div>
+            </Text>
           ) : null}
 
-          {errorMessage ? <p className="text-destructive text-caption">{errorMessage}</p> : null}
+          {errorMessage ? <Failure cause={errorMessage} role="alert" size="line" /> : null}
         </DialogPanel>
         <DialogFooter>
           <Button type="button" variant="secondary" size="sm" onClick={() => onOpenChange(false)}>

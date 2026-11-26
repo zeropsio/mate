@@ -10,6 +10,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { RadioSwatch, RadioSwatchGroup } from "../ui/radio-group";
 import { normalizeProviderAccentColor } from "../../providerInstances";
 import { cn } from "../../lib/utils";
+import { Text } from "~/components/ui/text";
 
 function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
@@ -182,19 +183,40 @@ function ProviderCustomColorPicker(props: {
     <Popover>
       <PopoverTrigger
         render={
-          <Button aria-label={`Choose custom accent color for ${props.displayName}`} variant="bare">
+          <Button
+            aria-label={`Choose custom accent color for ${props.displayName}`}
+            className="group/custom"
+            data-checked={props.selected ? "" : undefined}
+            variant="bare"
+          >
+            {/* Drawn as the swatches beside it are (`RadioSwatch`): a 24 px disc in a 36 px press,
+                its ring shown while it is the colour, faint under the pointer. */}
             <span
-              className="flex size-6 items-center justify-center rounded-full transition-transform duration-200 hover:scale-105 active:scale-90"
-              style={{
-                backgroundColor: normalized,
-                ...(props.selected
-                  ? {
-                      boxShadow: `inset 0 0 0 2px var(--card), 0 0 0 2px ${normalized}`,
-                    }
-                  : {}),
-              }}
+              className="relative grid size-9 place-items-center motion-safe:transition-[scale] motion-safe:duration-150 motion-safe:ease-out-strong motion-safe:group-active/custom:scale-92"
+              style={{ color: normalized }}
             >
-              <PipetteIcon className="size-3 text-foreground/25" aria-hidden />
+              <svg aria-hidden="true" className="size-full" viewBox="0 0 36 36">
+                <circle
+                  className="opacity-0 transition-opacity duration-150 pointer-fine:group-hover/custom:opacity-35"
+                  cx="18"
+                  cy="18"
+                  fill="none"
+                  r="15.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <circle
+                  className="opacity-0 transition-opacity duration-150 group-data-checked/custom:opacity-100"
+                  cx="18"
+                  cy="18"
+                  fill="none"
+                  r="15.5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <circle cx="18" cy="18" fill="currentColor" r="12" />
+              </svg>
+              <PipetteIcon className="absolute size-3 text-foreground/25" aria-hidden />
             </span>
           </Button>
         }
@@ -289,7 +311,7 @@ export function ProviderAccentColorPicker(props: {
           selected={customSelected}
           onCommit={commitAccentColor}
         />
-        {/* Each swatch's disc is as wide as the custom one beside it; its press is the kit's. */}
+        {/* The swatches' presses are the kit's; the custom one beside them is drawn alike. */}
         <RadioSwatchGroup<string>
           aria-label={`Accent color for ${displayName}`}
           className="flex flex-wrap"
@@ -330,13 +352,11 @@ export function ProviderAccentColorPicker(props: {
             aria-hidden={!normalized}
             tabIndex={normalized ? 0 : -1}
           >
-            <XIcon className="size-3.5" aria-hidden />
+            <XIcon aria-hidden />
           </Button>
         </span>
       </div>
-      {description ? (
-        <span className="text-caption text-muted-foreground">{description}</span>
-      ) : null}
+      {description ? <Text variant="note">{description}</Text> : null}
     </div>
   );
 }

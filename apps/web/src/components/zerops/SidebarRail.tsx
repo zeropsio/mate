@@ -74,6 +74,7 @@ import {
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 export const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
@@ -298,7 +299,9 @@ function RailGroupTip({
             )}
           </span>
           {mate.line.length === 0 ? null : (
-            <span className="truncate text-caption text-muted-foreground">{mate.line}</span>
+            <Text truncate variant="note">
+              {mate.line}
+            </Text>
           )}
         </span>
       ))}
@@ -325,7 +328,7 @@ function RailDotMark({
   if (dot === undefined) return null;
   return (
     <MateDot
-      className={kid ? "top-0.5 right-0.5 size-2" : undefined}
+      className={kid ? "top-0.5 end-0.5" : undefined}
       place="corner"
       tint={tint}
       tone={dot}
@@ -518,11 +521,9 @@ function RailTileView({
     <div
       aria-current={tile.holdsCurrent ? "true" : undefined}
       aria-label={name}
-      className={
-        tile.open
-          ? "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card bg-rail-group pb-1.5 [--menu-ground:var(--color-rail-group)] [--menu-rail-hover:var(--color-rail-group-hover)]"
-          : "flex w-20 flex-none flex-col items-center gap-0.5 rounded-card"
-      }
+      // Open, the project's Mates stand on its group's ground, which their faces cut out of.
+      className="flex w-20 flex-none flex-col items-center gap-0.5 rounded-card data-rail-open:bg-rail-group data-rail-open:pb-1.5 data-rail-open:[--menu-ground:var(--color-rail-group)] data-rail-open:[--menu-rail-hover:var(--color-rail-group-hover)]"
+      data-rail-open={tile.open ? "" : undefined}
       data-zerops-surface="sidebar-rail-project"
       role="group"
     >

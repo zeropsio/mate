@@ -36,6 +36,7 @@ import { isPathSuggestionCurrent } from "../../../composer-logic";
 import { ComposerCommandMenu } from "../../chat/ComposerCommandMenu";
 import { Failure } from "../../ui/failure";
 import { Button } from "../../ui/button";
+import { ComposerFrame } from "../../ui/composer-frame";
 import { Textarea } from "../../ui/textarea";
 import { MateFace } from "../primitives";
 import { CrewPress, CrewTip } from "./CrewParts";
@@ -163,7 +164,7 @@ export function CrewTellComposer({
   return (
     <div className="relative mx-4 mt-4 @max-md:mt-3.5" data-crew-composer>
       {/* The composer: 48 px tall on a sheet's corners, the tab's only white surface. */}
-      <div className="flex min-h-12 items-end gap-2 rounded-sheet bg-card py-2 ps-4.5 pe-2 shadow-(--zerops-shadow-drawer) ring-1 ring-foreground/8 focus-within:ring-ring/55">
+      <ComposerFrame>
         <Textarea
           aria-label={placeholder}
           className="flex-1"
@@ -225,9 +226,9 @@ export function CrewTellComposer({
           size="icon-md"
           variant={ready ? "primary" : "secondary"}
         >
-          <ArrowUpIcon aria-hidden="true" className="size-4" strokeWidth={2.2} />
+          <ArrowUpIcon aria-hidden="true" strokeWidth={2.2} />
         </Button>
-      </div>
+      </ComposerFrame>
       {menu === null || items.length === 0 ? null : (
         <div className="absolute inset-x-0 top-full z-10 mt-1">
           <ComposerCommandMenu
@@ -271,13 +272,7 @@ export function CrewTellLocked({
   readonly className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "flex min-h-12 items-center gap-2.5 rounded-sheet bg-foreground/4 py-1.5 ps-4 pe-2 ring-1 ring-foreground/7",
-        className,
-      )}
-      data-crew-locked={lock.ownership}
-    >
+    <ComposerFrame className={className} data-crew-locked={lock.ownership} locked>
       <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
       <p className="min-w-0 flex-auto text-body leading-4.5 text-pretty text-foreground/85">
         {crewLockWords(lock.ownership)}
@@ -285,6 +280,6 @@ export function CrewTellLocked({
       {lock.ownership === "reads-along" ? null : (
         <CrewPress variant="secondary" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
       )}
-    </div>
+    </ComposerFrame>
   );
 }

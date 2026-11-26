@@ -1,3 +1,4 @@
+import { COMPOSER_ATTACHED_OUTLINE } from "./composerAttached";
 import { CheckIcon, CircleDotIcon, CircleIcon, ListTodoIcon, XIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -93,7 +94,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           onClick={onToggle}
           onPointerDown={(event) => event.preventDefault()}
         >
-          <ListTodoIcon aria-hidden className="size-3 shrink-0" />
+          <ListTodoIcon aria-hidden />
           <span>Tasks</span>
           <TaskSegments steps={steps} />
           <span
@@ -113,7 +114,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
           onClick={onDismiss}
           onPointerDown={(event) => event.preventDefault()}
         >
-          <XIcon aria-hidden className="size-2.5" />
+          <XIcon aria-hidden />
         </Button>
       </span>
     );
@@ -137,7 +138,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         onClick={onToggle}
         onPointerDown={(event) => event.preventDefault()}
       >
-        <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
+        <ListTodoIcon aria-hidden />
         <span className="shrink-0">Tasks</span>
         <span
           className="min-w-0 flex-1 truncate text-left font-medium text-foreground/80"
@@ -163,7 +164,7 @@ export const ComposerTasksBadge = memo(function ComposerTasksBadge({
         onClick={onDismiss}
         onPointerDown={(event) => event.preventDefault()}
       >
-        <XIcon aria-hidden className="size-3" />
+        <XIcon aria-hidden />
       </Button>
     </div>
   );
@@ -181,7 +182,10 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
   readonly steps: readonly ComposerTaskStep[];
 }) {
   return (
-    <div className="chat-composer-top-drawer" data-chat-composer-tasks-drawer="true">
+    <div
+      className={cn("chat-composer-top-drawer", COMPOSER_ATTACHED_OUTLINE)}
+      data-chat-composer-tasks-drawer="true"
+    >
       <div className="flex items-center gap-1 px-3 py-1.5 sm:px-4">
         <Button
           variant="ghost-muted"
@@ -191,7 +195,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           onClick={onCollapse}
           onPointerDown={(event) => event.preventDefault()}
         >
-          <ListTodoIcon aria-hidden className="size-3.5 shrink-0" />
+          <ListTodoIcon aria-hidden />
           <span className="font-medium text-foreground">Tasks</span>
           <span className="tabular-nums">
             {progress.completedSteps}/{progress.totalSteps}
@@ -205,7 +209,7 @@ export const ComposerTasksDrawer = memo(function ComposerTasksDrawer({
           onClick={onDismiss}
           onPointerDown={(event) => event.preventDefault()}
         >
-          <XIcon aria-hidden className="size-3" />
+          <XIcon aria-hidden />
         </Button>
       </div>
       <div className="space-y-px px-3 pb-4 sm:px-4" role="list">

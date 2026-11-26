@@ -13,6 +13,8 @@ import { useState, type ChangeEvent } from "react";
 
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsDataQueryProps {
   readonly pending?: boolean;
@@ -32,30 +34,29 @@ export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryPr
   };
 
   return (
-    <div
-      className="shrink-0 space-y-1 rounded-card border border-border p-2"
-      data-zerops-data-query
-    >
-      <p className="text-caption text-muted-foreground">
-        One SELECT statement · 100 rows per page · 10 second timeout. Comments and escape syntax are
-        not supported.
-      </p>
-      <Textarea
-        data-zerops-data-query-input
-        onChange={handleChange}
-        placeholder="Read-only SQL — SELECT only"
-        size="sm"
-        value={stmt}
-      />
-      <Button
-        data-zerops-data-query-submit
-        disabled={pending || stmt.trim().length === 0}
-        onClick={handleSubmit}
-        size="sm"
-        variant="secondary"
-      >
-        Run
-      </Button>
-    </div>
+    <Card className="shrink-0" data-zerops-data-query>
+      <div className="space-y-1 p-2">
+        <Text render={<p />} variant="note">
+          One SELECT statement · 100 rows per page · 10 second timeout. Comments and escape syntax
+          are not supported.
+        </Text>
+        <Textarea
+          data-zerops-data-query-input
+          onChange={handleChange}
+          placeholder="Read-only SQL — SELECT only"
+          size="sm"
+          value={stmt}
+        />
+        <Button
+          data-zerops-data-query-submit
+          disabled={pending || stmt.trim().length === 0}
+          onClick={handleSubmit}
+          size="sm"
+          variant="secondary"
+        >
+          Run
+        </Button>
+      </div>
+    </Card>
   );
 }

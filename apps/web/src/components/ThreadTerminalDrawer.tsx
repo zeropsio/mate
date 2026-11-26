@@ -1,3 +1,4 @@
+import { EmptyState } from "~/components/ui/empty";
 import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
@@ -86,6 +87,8 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
+import { Separator } from "~/components/ui/separator";
+import { Toolbar } from "~/components/ui/toolbar";
 
 interface TerminalInputTarget {
   readonly environmentId: EnvironmentId;
@@ -1674,12 +1677,16 @@ export default function ThreadTerminalDrawer({
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
         {resizeHandle}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-body text-muted-foreground">
-          <p>No terminal sessions for this thread yet.</p>
-          <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
-            {newTerminalActionLabel}
-          </Button>
-        </div>
+        <EmptyState
+          action={
+            <Button size="sm" variant="secondary" onClick={onNewTerminalAction}>
+              {newTerminalActionLabel}
+            </Button>
+          }
+          className="min-h-0"
+        >
+          No terminal sessions for this thread yet.
+        </EmptyState>
       </aside>
     );
   }
@@ -1711,7 +1718,7 @@ export default function ThreadTerminalDrawer({
                 "pointer-events-none absolute right-2 top-2 z-20 max-sm:static max-sm:flex max-sm:justify-end max-sm:bg-(--terminal-background) max-sm:px-2 max-sm:pt-2 max-sm:pb-1"
           }
         >
-          <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-control border border-border/80 bg-background shadow-xs">
+          <Toolbar aria-label="Terminal" className="pointer-events-auto">
             {/* Half a phone's width is no terminal: the splits stay off it. */}
             <span className="contents max-sm:hidden">
               <TerminalActionButton
@@ -1721,7 +1728,7 @@ export default function ThreadTerminalDrawer({
               >
                 <SquareSplitHorizontal className="size-3.25" />
               </TerminalActionButton>
-              <div className="h-4 w-px bg-border/80" />
+              <Separator className="h-4" orientation="vertical" />
               <TerminalActionButton
                 unavailable={hasReachedSplitLimit}
                 onClick={onSplitTerminalVerticalAction}
@@ -1729,19 +1736,19 @@ export default function ThreadTerminalDrawer({
               >
                 <SquareSplitVertical className="size-3.25" />
               </TerminalActionButton>
-              <div className="h-4 w-px bg-border/80" />
+              <Separator className="h-4" orientation="vertical" />
             </span>
             <TerminalActionButton onClick={onNewTerminalAction} label={newTerminalActionLabel}>
               <Plus className="size-3.25" />
             </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
+            <Separator className="h-4" orientation="vertical" />
             <TerminalActionButton
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >
               <Trash2 className="size-3.25" />
             </TerminalActionButton>
-          </div>
+          </Toolbar>
         </div>
       )}
 
@@ -1899,22 +1906,16 @@ export default function ThreadTerminalDrawer({
                   return (
                     <div key={terminalGroup.id} className="pb-0.5">
                       {showGroupHeaders && (
-                        <div
-                          className={cn(
-                            "rounded-control",
-                            isGroupActive ? "bg-accent/50" : "hover:bg-accent/40",
-                          )}
-                        >
-                          <Row
-                            size="xs"
-                            pressable="band"
-                            render={<button type="button" />}
-                            onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
-                            lead={<GroupIcon className="size-3 text-muted-foreground" />}
-                            title={groupLabel}
-                            meta={terminalCount}
-                          />
-                        </div>
+                        <Row
+                          size="xs"
+                          pressable
+                          picked={isGroupActive}
+                          render={<button type="button" />}
+                          onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
+                          lead={<GroupIcon />}
+                          title={groupLabel}
+                          meta={terminalCount}
+                        />
                       )}
 
                       <div className="flex flex-col gap-0.5">

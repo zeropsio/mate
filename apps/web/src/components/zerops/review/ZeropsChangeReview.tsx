@@ -127,7 +127,6 @@ import {
   otherOpenChanges,
   reviewBranch,
   reviewKindLine,
-  sizeWords,
   whySaid,
   type ReviewFrame,
   type ReviewKind,
@@ -151,7 +150,6 @@ import {
   ReviewSection,
   ReviewTry,
   ReviewWhere,
-  ReviewSize,
   useReviewFold,
   WHY,
   ZeropsReviewSurface,
@@ -159,6 +157,7 @@ import {
   type ReviewDiffState,
   type ReviewQueueLine,
 } from "./ZeropsReviewSurface";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 const NO_STAGES: ReadonlyArray<MergeStage> = [];
 /** No wait to wake for. */
@@ -1147,11 +1146,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     now: Math.max(props.now, lateAt),
   });
   // Files HQ has not recorded are not known, never none: no size is said of them.
-  const size = sizeWords({
-    files: read?.filesKnown === false ? undefined : read?.files.length,
-    additions: read?.files.reduce((sum, file) => sum + file.additions, 0),
-    deletions: read?.files.reduce((sum, file) => sum + file.deletions, 0),
-  });
+  const size =
+    read === undefined || read.filesKnown === false
+      ? undefined
+      : {
+          additions: read.files.reduce((sum, file) => sum + file.additions, 0),
+          deletions: read.files.reduce((sum, file) => sum + file.deletions, 0),
+        };
   // With no merge base recorded there is nothing to read a file's diff from.
   const diffOf = (path: string): ReviewDiffState =>
     read !== undefined
@@ -1445,7 +1446,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 ? pull.pullRequest
                 : { number: pull.pullRequest.number, state: pull.pullRequest.state },
             )}
-            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+            <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
           </InlineButton>
         )
       }
@@ -1628,8 +1629,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             NOT_RECORDED_ASIDE
           ) : size === undefined ? undefined : (
             <>
-              {read?.files.length} changed ·{" "}
-              <ReviewSize additions={size.additions} deletions={size.deletions} />
+              {read?.files.length} changed
+              {size.additions + size.deletions > 0 ? " · " : null}
+              <DiffStat additions={size.additions} compact deletions={size.deletions} />
             </>
           )
         }
@@ -1667,7 +1669,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
               ·{" "}
               <InlineButton render={<a href={github.url} rel="noreferrer" target="_blank" />}>
                 See them on GitHub
-                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+                <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
               </InlineButton>
             </li>
           </ul>

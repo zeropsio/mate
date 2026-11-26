@@ -39,11 +39,14 @@ import {
   spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
+import { Alert, AlertAction } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
 import { waitedWords } from "./runCard.logic";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -169,12 +172,14 @@ const unconfirmedWords = (name: string) => `${name} hasn't confirmed this messag
  */
 export function UnconfirmedMessageLine({ speakerName }: { readonly speakerName: string }) {
   return (
-    <p
-      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-caption"
+    <Text
+      className="mt-1 flex items-center justify-end pe-1.5"
+      render={<p />}
+      variant="note"
       data-unconfirmed-message-line=""
     >
       {unconfirmedWords(speakerName)}
-    </p>
+    </Text>
   );
 }
 
@@ -194,8 +199,10 @@ export function HeldMessageLine({
   readonly onWithdraw: (() => void) | null;
 }) {
   return (
-    <p
-      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-caption"
+    <Text
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5"
+      render={<p />}
+      variant="note"
       data-held-message-line=""
     >
       <span>
@@ -204,7 +211,7 @@ export function HeldMessageLine({
           : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
       </span>
       {onWithdraw === null ? null : <InlineButton onClick={onWithdraw}>Don't send</InlineButton>}
-    </p>
+    </Text>
   );
 }
 
@@ -256,21 +263,14 @@ export function Seam({
           : row.seam === "new"
             ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
             : formatDayAwareTimestamp(row.createdAt, timestampFormat);
-  const fresh = row.seam === "new";
   return (
-    <div
+    <Separator
       aria-label={label}
-      className={cn(
-        "flex items-center gap-3 text-caption",
-        fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
-      )}
       data-seam={row.seam}
-      role="separator"
+      tone={row.seam === "new" ? "info" : "default"}
     >
-      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
-      <span className="shrink-0 tabular-nums">{label}</span>
-      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
-    </div>
+      {label}
+    </Separator>
   );
 }
 
@@ -287,8 +287,10 @@ function EventShell({
   readonly timestampFormat: TimestampFormat;
 }) {
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+    <Text
+      className="flex min-h-7 min-w-0 items-center"
+      render={<div />}
+      variant="remark"
       data-conversation-event
     >
       <LineMark>{icon}</LineMark>
@@ -296,7 +298,7 @@ function EventShell({
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
       </Tooltip>
-    </div>
+    </Text>
   );
 }
 
@@ -314,14 +316,16 @@ function ReleaseEndedLine({
   readonly at: string;
   readonly timestampFormat: TimestampFormat;
 }) {
-  const tag = (name: string) => <span className="font-mono">{name}</span>;
+  const tag = (name: string) => <Text variant="code">{name}</Text>;
   return (
-    <div
-      className="flex min-h-7 min-w-0 items-center gap-3 text-caption text-muted-foreground"
+    <Text
+      className="flex min-h-7 min-w-0 items-center gap-3"
+      render={<div />}
+      variant="note"
       data-conversation-event="release"
       data-release-outcome={event.outcome}
     >
-      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
+      <Separator aria-hidden="true" className="min-w-6 flex-1" />
       <Tooltip>
         <TooltipTrigger render={<span className="min-w-0 truncate" />}>
           {event.outcome === "live" ? (
@@ -336,8 +340,8 @@ function ReleaseEndedLine({
         </TooltipTrigger>
         <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
       </Tooltip>
-      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
-    </div>
+      <Separator aria-hidden="true" className="min-w-6 flex-1" />
+    </Text>
   );
 }
 
@@ -568,7 +572,7 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
             size="icon-sm"
             variant="ghost"
           >
-            <XIcon className="size-3.5" />
+            <XIcon />
           </Button>
         )}
       </div>
@@ -848,9 +852,9 @@ export function PauseBlock({
   const actions = !resumed ? (
     <div className="flex flex-col items-center gap-4">
       {blockedByAnswer ? (
-        <p className="text-line text-muted-foreground">
+        <Text render={<p />} variant="remark">
           Respond to {speaker.name}'s pending request before continuing.
-        </p>
+        </Text>
       ) : null}
       {onContinue === null && !blockedByAnswer ? null : (
         <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
@@ -881,22 +885,9 @@ export function PauseBlock({
       </div>
     );
   }
-  return (
-    <div
-      className={cn(
-        // Resumed, the same block goes quiet — history, not a state to act
-        // on: a line like an event's — and keeps
-        // its height: newer rows may already sit under it.
-        "relative grid gap-3 rounded-card border py-3 text-center",
-        history
-          ? "border-x-0 border-transparent text-muted-foreground"
-          : "border-border bg-muted/35 px-3.5",
-      )}
-      data-conversation-pause={
-        resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused"
-      }
-      role="status"
-    >
+  const pause = resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused";
+  const words = (
+    <div className="grid gap-3">
       <div className="flex min-w-0 flex-col items-center gap-1 text-line" data-pause-head>
         <span className="font-medium">
           {history
@@ -912,9 +903,7 @@ export function PauseBlock({
         </span>
         {row.held > 0 ? (
           <Tooltip>
-            <TooltipTrigger
-              render={<span className="shrink-0 text-muted-foreground text-caption tabular-nums" />}
-            >
+            <TooltipTrigger render={<Text className="shrink-0" variant="meta" />}>
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>
             <TooltipPopup>
@@ -924,10 +913,27 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      <p className="text-line text-muted-foreground" data-pause-detail>
+      <Text render={<p />} variant="remark" data-pause-detail>
         {detail}
-      </p>
+      </Text>
+    </div>
+  );
+  // Resumed, the same block goes quiet — history, not a state to act on: a line like an
+  // event's — and keeps its height (its edge's room, its 12 px): newer rows may already sit
+  // under it.
+  return history ? (
+    <div
+      className="relative grid gap-3 border-y border-transparent py-3 text-center text-muted-foreground"
+      data-conversation-pause={pause}
+      role="status"
+    >
+      {words}
       {actions}
     </div>
+  ) : (
+    <Alert data-conversation-pause={pause} layout="centered">
+      {words}
+      {actions === null || actions === undefined ? null : <AlertAction>{actions}</AlertAction>}
+    </Alert>
   );
 }

@@ -429,12 +429,7 @@ function appShellFilesPlugin(): Plugin {
             ? [
                 {
                   fileName: file.fileName,
-                  // The app's page only: the design harness's page, beside it on a Mate's preview,
-                  // is no file the app loads.
-                  isEntry:
-                    file.isEntry &&
-                    file.facadeModuleId !==
-                      NodePath.resolve(import.meta.dirname, DESIGN_HARNESS_PAGE),
+                  isEntry: file.isEntry,
                   imports: file.imports,
                   dynamicImports: file.dynamicImports,
                   css: [...(file.viteMetadata?.importedCss ?? [])],
@@ -539,11 +534,19 @@ const ALFA_HQ_ORIGIN = "https://hq-10-8080.prg1.zerops.app";
  * answers, and an entry per harness cost it about a minute where one costs it about twenty seconds.
  *
  * The dev server always serves it. A build carries it where `VITE_DESIGN_HARNESS` asks: `beside`
- * the app (a Mate's preview, `zerops.yml`'s `preview`) or `alone` in its place (`harness`).
- * Production's build names neither and ships the app alone.
+ * the app (every hosted setup in `zerops.yml`, production's included, for the kit's flows) or
+ * `alone` in its place (`harness`). A build that names neither ships the app alone.
+ *
+ * Beside the app it is a second build into the same folder, once the app's is written: one build
+ * of both pages splits every module the two share into a chunk of its own, and the app's startup
+ * went from one script to 388. The app's files stay exactly what a build without the harness
+ * writes.
  */
 const DESIGN_HARNESS_PAGE = "design/index.html";
 const configuredDesignHarness = process.env.VITE_DESIGN_HARNESS?.trim() || undefined;
+/** Set while a `beside` build runs its harness pass (`designHarnessBesidePlugin`). */
+const DESIGN_HARNESS_PASS = "MATE_DESIGN_HARNESS_PASS";
+const designHarnessPass = process.env[DESIGN_HARNESS_PASS] === "1";
 if (
   configuredDesignHarness !== undefined &&
   !["beside", "alone"].includes(configuredDesignHarness)
@@ -556,10 +559,18 @@ const isDesignHarnessPage = (name: string) => /^design[\w-]*\.html$/u.test(name)
 
 /**
  * Answers every harness address with the harness page: the dev server rewrites the request, and a
- * build writes the page under each page's name (and as the front page, `alone`). Module imports
- * of a page (`?raw`, `?import`: the harness page's own glob) pass through.
+ * build of the harness writes the page under each page's name (and as the front page, `alone`).
+ * Module imports of a page (`?raw`, `?import`: the harness page's own glob) pass through.
  */
-function designHarnessPlugins(alone: boolean): Plugin[] {
+function designHarnessPlugins({
+  alone,
+  writesPage,
+}: {
+  /** The harness in the app's place: its page is the front page too. */
+  readonly alone: boolean;
+  /** This build bundles the harness's page; the app's pass of a `beside` build does not. */
+  readonly writesPage: boolean;
+}): Plugin[] {
   const serve: Plugin = {
     name: "mate:design-harness-serve",
     apply: "serve",
@@ -598,12 +609,49 @@ function designHarnessPlugins(alone: boolean): Plugin[] {
       },
     },
   };
-  return [serve, build];
+  return writesPage ? [serve, build] : [serve];
+}
+
+/**
+ * The harness's pass of a `beside` build: once the app's files are written, this same config builds
+ * the harness alone into the same folder, leaving the app's files and its service worker as they are.
+ */
+function designHarnessBesidePlugin(): Plugin {
+  let outDir = "";
+  let mode = "";
+  return {
+    name: "mate:design-harness-beside",
+    apply: "build",
+    configResolved(config) {
+      outDir = NodePath.resolve(config.root, config.build.outDir);
+      mode = config.mode;
+    },
+    closeBundle: {
+      order: "post",
+      sequential: true,
+      async handler() {
+        process.env[DESIGN_HARNESS_PASS] = "1";
+        try {
+          await viteBuild({
+            configFile: NodePath.join(import.meta.dirname, "vite.config.ts"),
+            mode,
+            logLevel: "warn",
+            publicDir: false,
+            build: { outDir, emptyOutDir: false, manifest: false },
+          });
+        } finally {
+          delete process.env[DESIGN_HARNESS_PASS];
+        }
+      },
+    },
+  };
 }
 
 export default defineConfig(({ command }) => {
   process.env.VITE_HQ_ORIGIN ||= command === "build" ? PRODUCTION_HQ_ORIGIN : ALFA_HQ_ORIGIN;
   const designHarness = command === "serve" ? "beside" : configuredDesignHarness;
+  /** This build writes the harness's page alone: the harness setup, or a `beside` build's second pass. */
+  const harnessBuild = command === "build" && (designHarness === "alone" || designHarnessPass);
   return {
     base,
     assetsInclude: ["**/*.wasm"],
@@ -613,8 +661,16 @@ export default defineConfig(({ command }) => {
       devCompressionPlugin(),
       realConfigChangesPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
-      ...(designHarness === undefined ? [] : designHarnessPlugins(designHarness === "alone")),
-      ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
+      ...(designHarness === undefined
+        ? []
+        : designHarnessPlugins({
+            alone: designHarness === "alone" && !designHarnessPass,
+            writesPage: harnessBuild,
+          })),
+      ...(designHarness === "beside" && !harnessBuild ? [designHarnessBesidePlugin()] : []),
+      ...(base === "/" &&
+      !harnessBuild &&
+      ["app-shell", "retire"].includes(configuredAppShellWorker)
         ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
         : []),
       // An origin root's page alone: a Mate's `/mate/` bundle opens its stream as it always did.
@@ -723,22 +779,14 @@ export default defineConfig(({ command }) => {
       manifest: true,
       sourcemap: buildSourcemap,
       rolldownOptions: {
-        ...(designHarness === undefined
-          ? {}
-          : {
-              input: [
-                ...(designHarness === "alone" ? [] : ["index.html"]),
-                DESIGN_HARNESS_PAGE,
-              ].map((page) => NodePath.resolve(import.meta.dirname, page)),
-            }),
+        ...(harnessBuild
+          ? { input: [NodePath.resolve(import.meta.dirname, DESIGN_HARNESS_PAGE)] }
+          : {}),
         // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
-        // The tag follows the actual static graph and leaves demanded surfaces outside it. Beside the
-        // harness page each entry starts on its own: one startup chunk would hold both entries and
-        // run the app's on a harness page.
-        output:
-          designHarness === undefined
-            ? { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } }
-            : {},
+        // The tag follows the actual static graph and leaves demanded surfaces outside it.
+        output: harnessBuild
+          ? {}
+          : { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } },
       },
     },
     test: {

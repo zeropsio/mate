@@ -34,6 +34,7 @@ import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { ProjectLineFull, type ProjectLineFullActs } from "./ProjectLineFull";
+import { Card } from "~/components/ui/card";
 import {
   Caption,
   LineNode,
@@ -85,7 +86,7 @@ const UNREAD: ProjectLineView = { stations: [], segments: [] };
  * compact.
  */
 const LINE =
-  "@container/line relative min-w-0 [--ln-chip:color-mix(in_oklab,var(--foreground)_9%,var(--ln-ground))] [--ln-faint:color-mix(in_oklab,var(--foreground)_20%,var(--ln-ground))] [--ln-ground:var(--ov-ground,var(--card))] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,var(--ln-ground))]";
+  "@container/line relative min-w-0 [--ln-chip:color-mix(in_oklab,var(--foreground)_9%,var(--ln-ground))] [--ln-faint:color-mix(in_oklab,var(--foreground)_20%,var(--ln-ground))] [--ln-ground:var(--card)] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,var(--ln-ground))]";
 
 /**
  * 104 px in every state as a card of its own, 98 px as the masthead of a page's Changes card: its
@@ -124,11 +125,11 @@ export function ProjectLine({
       view={view}
     />
   );
-  return (
+  const line = (
     <div
       aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className={band ? LINE : `${LINE} rounded-card border border-border/70 bg-card`}
+      className={LINE}
       data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"
       role="group"
@@ -220,6 +221,8 @@ export function ProjectLine({
       )}
     </div>
   );
+  // On a page it is a card of its own; in a band it is the band's.
+  return band ? line : <Card variant="flat">{line}</Card>;
 }
 
 /**

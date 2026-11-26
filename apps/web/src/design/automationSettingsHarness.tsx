@@ -25,6 +25,7 @@ import { OrganizationKeyView } from "~/components/settings/AutomatedMatesSetting
 import { GithubAppView } from "~/components/settings/GithubAppSettings";
 import { IntegrationList, LimitsList } from "~/components/settings/IntegrationRow";
 import { SettingsSection } from "~/components/settings/settingsLayout";
+import { Page as PageFrame } from "~/components/ui/page";
 import {
   AutomatedModelView,
   DiscordSettingsView,
@@ -241,10 +242,11 @@ function LimitsRows() {
   );
 }
 
+/** Settings' own frame (`SettingsPageContainer`), on the app's ground. */
 function Page({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-background px-8 py-10 text-foreground">
-      <div className="mx-auto max-w-4xl">{children}</div>
+    <div className="min-h-screen bg-background text-foreground">
+      <PageFrame inset="rows">{children}</PageFrame>
     </div>
   );
 }

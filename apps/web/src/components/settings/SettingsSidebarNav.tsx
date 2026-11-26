@@ -16,7 +16,7 @@ import {
 } from "../ui/sidebar";
 import { SidebarUtilityMenu } from "../sidebar/SidebarChrome";
 import { AccountVoiceLine } from "../zerops/AccountVoiceLine";
-import { SectionLabel } from "../zerops/system";
+
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { scrollToSettingsTarget } from "./settingsLayout";
 import {
@@ -30,6 +30,7 @@ import {
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 import { SETTINGS_SECTION_ICONS } from "./settingsSectionIcons";
+import { SectionHeader } from "~/components/ui/section";
 
 function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   const Icon = SETTINGS_SECTION_ICONS[to];
@@ -196,7 +197,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     searchInputRef.current?.focus();
                   }}
                 >
-                  <XIcon className="size-3" />
+                  <XIcon />
                 </Button>
               ) : (
                 // A key to press: said only where there is a keyboard to press it on.
@@ -255,9 +256,11 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                     role="group"
                   >
                     <div className="px-2.5">
-                      <SectionLabel id={`settings-nav-group-${String(index)}`}>
-                        {group.label}
-                      </SectionLabel>
+                      <SectionHeader
+                        id={`settings-nav-group-${String(index)}`}
+                        size="panel"
+                        title={group.label}
+                      />
                     </div>
                     <SidebarMenu>
                       {group.sections.map((to) => {

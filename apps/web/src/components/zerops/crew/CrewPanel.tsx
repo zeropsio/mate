@@ -43,6 +43,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMateEmptyState } from "../ZeropsMateEmptyState";
 import { CrewSectionHost } from "./CrewSectionHost";
 import { crewProposeWith, type CrewProposeWith } from "./CrewSetup.logic";
+import { Text } from "~/components/ui/text";
 
 /** The Crew tab beside one conversation. */
 export function CrewPanel({
@@ -73,7 +74,11 @@ export function CrewPanel({
   if (
     whoLivesHere.kind === "mate" &&
     agentAuth !== null &&
-    zeropsAgentSignInRequired(agentAuth, serverConfig?.providers)
+    zeropsAgentSignInRequired(
+      agentAuth,
+      serverConfig?.providers,
+      serverConfig?.settings.defaultModelSelection,
+    )
   ) {
     return (
       <div className="h-full" data-crew-panel="no-agent">
@@ -153,9 +158,9 @@ export function CrewPanelBody({
   if (crew.status === null) return null;
   if (!hasCrewSurface(crew.status) || crew.snapshot === null) {
     return (
-      <p className="p-4 text-muted-foreground text-body" data-crew-panel="off">
+      <Text className="p-4" render={<p />} variant="description" data-crew-panel="off">
         {crewRefusalSentence("unavailable", null)}
-      </p>
+      </Text>
     );
   }
   return (

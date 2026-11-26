@@ -30,7 +30,6 @@ import {
 } from "./addresses.logic";
 import {
   Confirm,
-  CopyButton,
   Face,
   GroupBody,
   RealName,
@@ -42,6 +41,8 @@ import {
   useRevealed,
   type SheetContext,
 } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
+import { Text } from "~/components/ui/text";
 
 export type DirectMode =
   | { readonly kind: "list" }
@@ -176,7 +177,7 @@ function PortRow({
       <span className="truncate font-mono text-caption">
         {port.address ?? `port ${port.publicPort}`}
       </span>
-      {port.address === undefined ? null : <CopyButton value={port.address} />}
+      {port.address === undefined ? null : <CopyButton label={port.address} value={port.address} />}
       {port.internalPort === port.publicPort && udp === "" ? null : (
         <RowMeta>
           {port.internalPort === port.publicPort ? "" : `→ port ${port.internalPort}`}
@@ -191,10 +192,10 @@ function PortRow({
         data={`port:${port.publicPort}`}
         end={
           port.face === "live" ? (
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-muted-foreground text-caption">
+            <Text className="inline-flex items-center gap-1.5 whitespace-nowrap" variant="note">
               <ShieldIcon aria-hidden="true" className="size-3.5" />
               {firewallWords(port.firewallPolicy, port.ranges)}
-            </span>
+            </Text>
           ) : (
             <Face {...face} />
           )
@@ -391,11 +392,11 @@ function PortForm({
           Add an address
         </Button>
       </div>
-      <p className="text-muted-foreground text-caption">
+      <Text render={<p />} variant="note">
         {ipType === "IP_V6"
           ? "IPv6 addresses only. A bare address means that address alone (/128)."
           : "IPv4 addresses only. A bare address means that address alone (/32)."}
-      </p>
+      </Text>
     </div>
   );
   const number = publicPort.trim() === "" ? "" : ` ${publicPort.trim()}`;
@@ -477,11 +478,11 @@ function PortForm({
         </div>
       ) : null}
       {port === undefined ? (
-        <p className="text-muted-foreground text-caption">
+        <Text render={<p />} variant="note">
           {ipType === "IP_V6" ? "An IPv6 port is reachable only from networks with IPv6. " : ""}
           {ownV4 ? "" : `IPv4 needs ${ctx.placeName}'s own IPv4. `}
           80 and 443 are kept for web addresses.
-        </p>
+        </Text>
       ) : null}
       <div className="grid gap-2">
         <Label>Who can connect</Label>
@@ -496,9 +497,7 @@ function PortForm({
             <Radio value="only" />
             <span>
               <b className="font-medium">Only these addresses</b>{" "}
-              <span className="text-muted-foreground text-caption">
-                Recommended for a database.
-              </span>
+              <Text variant="note">Recommended for a database.</Text>
             </span>
           </label>
           {who === "only" ? rangesList : null}
@@ -511,19 +510,17 @@ function PortForm({
             <Radio value="everyone" />
             <span>
               <b className="font-medium">Everyone</b>{" "}
-              <span className="text-muted-foreground text-caption">
-                Anyone on the internet can try to connect.
-              </span>
+              <Text variant="note">Anyone on the internet can try to connect.</Text>
             </span>
           </label>
         </RadioGroup>
       </div>
       {problems.length === 0 ? null : (
-        <ul className="grid gap-0.5 text-destructive-foreground text-caption" role="alert">
+        <Text className="grid gap-0.5" render={<ul />} variant="error" role="alert">
           {problems.map((problem) => (
             <li key={problem}>{problem}</li>
           ))}
-        </ul>
+        </Text>
       )}
       <Trouble text={ctx.trouble.get(key)} />
       <div className="flex flex-wrap items-center gap-2">

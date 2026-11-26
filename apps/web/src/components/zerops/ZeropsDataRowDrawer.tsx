@@ -29,6 +29,8 @@ import { ChevronLeftIcon, CopyIcon, MessageSquarePlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { MicroLabel } from "./primitives";
+import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
 
 interface ZeropsDataRowDrawerProps {
   readonly columns: ReadonlyArray<ZeropsDataConsoleColumn>;
@@ -88,9 +90,9 @@ export function ZeropsDataRowDrawer({
       </div>
 
       {addressable ? null : (
-        <p className="text-muted-foreground text-caption" data-zerops-data-row-unaddressable>
+        <Text render={<p />} variant="note" data-zerops-data-row-unaddressable>
           This row can&rsquo;t be addressed.
-        </p>
+        </Text>
       )}
 
       <dl className="space-y-2" data-zerops-data-row-fields>
@@ -98,17 +100,12 @@ export function ZeropsDataRowDrawer({
           const detail = describeCell(record[name]);
           return (
             <div className="space-y-0.5" key={name}>
-              <dt className="text-muted-foreground text-caption" data-zerops-data-row-field={name}>
+              <Text render={<dt />} variant="label" data-zerops-data-row-field={name}>
                 {name}
-              </dt>
+              </Text>
               <dd>
                 {detail.kind === "json" || detail.detail.includes("\n") ? (
-                  <pre
-                    className="overflow-x-auto whitespace-pre-wrap break-words text-caption"
-                    data-zerops-data-row-value={name}
-                  >
-                    {detail.detail}
-                  </pre>
+                  <CodeBlock data-zerops-data-row-value={name}>{detail.detail}</CodeBlock>
                 ) : (
                   <p className="break-words text-caption" data-zerops-data-row-value={name}>
                     {detail.detail}

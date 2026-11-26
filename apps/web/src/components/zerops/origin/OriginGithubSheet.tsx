@@ -23,6 +23,7 @@ import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { githubName, mirrorGateLine, waitingWords } from "../gitMirror.logic";
 import { type GithubTrip, installWay, unsealedWords } from "../github/githubConnect.logic";
 import { type OriginAsk, originAddress, originMountStep } from "./originAsk.logic";
+import { Text } from "~/components/ui/text";
 
 /** What the container reads and does for the GitHub way. */
 export interface OriginGithubProps {
@@ -118,9 +119,9 @@ export function OriginGithubSheet({
       <DialogPanel>
         <div className="grid gap-2">
           {step.kind === "reading" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               Reading your organization's GitHub app…
-            </p>
+            </Text>
           ) : step.kind === "mounted" ? (
             <>
               <p className="text-body leading-5.5 text-pretty">
@@ -128,37 +129,41 @@ export function OriginGithubSheet({
                 {through === null ? "" : ` through ${through.name}`}.
               </p>
               {gate === undefined ? null : (
-                <p className="mt-1.5 text-body text-muted-foreground">{gate}</p>
+                <Text className="mt-1.5" render={<p />} variant="description">
+                  {gate}
+                </Text>
               )}
             </>
           ) : step.kind === "taken" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               {ask.repo} already keeps its code with {gitRemoteLabel(step.url)}. Change it in the
               project's Mirror code to GitHub or GitLab.
-            </p>
+            </Text>
           ) : step.kind === "refused" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               {refusal ?? "HQ doesn't let you connect a repository of this project."}
-            </p>
+            </Text>
           ) : step.kind === "no-app" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               Your organization has no GitHub app yet.{" "}
               <InlineButton onClick={onOpenAutomation}>
                 Connect GitHub in Settings › Automation
               </InlineButton>
-            </p>
+            </Text>
           ) : step.kind === "unknown" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="mt-1.5 text-body text-muted-foreground">
+              <Text className="mt-1.5" render={<p />} variant="description">
                 HQ didn't say whether your organization has a GitHub app.
-              </p>
+              </Text>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
                 Try again
               </Button>
             </div>
           ) : step.kind === "waiting" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="mt-1.5 text-body text-muted-foreground">{waitingWords(step.account)}</p>
+              <Text className="mt-1.5" render={<p />} variant="description">
+                {waitingWords(step.account)}
+              </Text>
               {admin ? (
                 <Button onClick={onOpenAutomation} size="sm" variant="secondary">
                   Open Settings › Automation
@@ -166,30 +171,32 @@ export function OriginGithubSheet({
               ) : null}
             </div>
           ) : step.kind === "unsealed" ? (
-            <p className="mt-1.5 text-body text-muted-foreground">{unsealedWords(step.app)}</p>
+            <Text className="mt-1.5" render={<p />} variant="description">
+              {unsealedWords(step.app)}
+            </Text>
           ) : step.kind === "not-reached" ? (
             <div className="flex flex-wrap items-center gap-2">
-              <p className="mt-1.5 text-body text-muted-foreground">
+              <Text className="mt-1.5" render={<p />} variant="description">
                 {step.unanswered > 0
                   ? "GitHub didn't answer about some installations, so the repositories they reach aren't listed."
                   : step.trip.kind === "install"
                     ? `${step.trip.app.name} doesn't reach ${name} yet.`
                     : `None of your organization's GitHub apps reaches ${name} yet.`}{" "}
                 <NotReachedPress trip={step.trip} onInstall={onInstall} onMake={onMake} />
-              </p>
+              </Text>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
                 Check again
               </Button>
             </div>
           ) : (
-            <p className="mt-1.5 text-body text-muted-foreground">
+            <Text className="mt-1.5" render={<p />} variant="description">
               {step.name} reaches {step.repository}.
-            </p>
+            </Text>
           )}
           {answer === null ? null : (
-            <p className="mt-1.5 text-body text-muted-foreground" role="status">
+            <Text className="mt-1.5" render={<p />} variant="description" role="status">
               {answer}
-            </p>
+            </Text>
           )}
         </div>
       </DialogPanel>

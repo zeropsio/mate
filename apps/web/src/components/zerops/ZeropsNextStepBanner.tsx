@@ -348,8 +348,8 @@ export function ZeropsNextStepStrip({
         aria-label={strip.title}
         className={
           queue === undefined
-            ? "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
-            : "grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+            ? "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-rule border-b pt-3 pe-2.5 pb-2.5 ps-4"
+            : "grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1.5 border-rule border-b pt-3 pe-2.5 pb-2.5 ps-4"
         }
         data-composer-top="review"
       >
@@ -436,7 +436,7 @@ export function ZeropsNextStepStrip({
   return (
     <section
       aria-label={strip.title}
-      className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
+      className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-rule border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
       {mark}

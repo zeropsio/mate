@@ -1,36 +1,28 @@
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type * as React from "react";
 
-import { cn } from "~/lib/utils";
 import { Skeleton } from "../../ui/skeleton";
 import { STATUS_BADGE_TONE } from "./statusBadgeTone";
 import { Badge } from "~/components/ui/badge";
+import { Card } from "~/components/ui/card";
+
+/** The card's tone, the answer's: a service resting off wears the plain hairline. */
+const VERDICT_TONE = {
+  ok: "ok",
+  busy: "busy",
+  attention: "attention",
+  failed: "failed",
+  off: "default",
+} as const satisfies Record<ServiceStatusToneId, string>;
 
 /**
- * A panel's edge, in the colour of the answer inside it.
- *
- * Exported because a panel whose body is a *list* of answers — the worst of
- * them decides the edge — cannot use the component below and must still take
- * its border from the one table. Two tables is how a release came to wear the
- * same amber as a rebase (2026-09-19).
+ * The panel's own box inside its card, shared with the placeholder below so the two cannot
+ * drift: a skeleton eight pixels taller than the answer it stands in for is the layout shift it
+ * was put there to prevent.
  */
-const VERDICT_BORDER_CLASS: Record<ServiceStatusToneId, string> = {
-  ok: "border-status-ok/40",
-  busy: "border-status-busy/40",
-  attention: "border-status-attention/40",
-  failed: "border-status-failed/40",
-  off: "border-border",
-};
+const VERDICT_PANEL_CLASS = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3.5 py-3";
 
-/**
- * The panel's own box, shared with the placeholder below so the two cannot
- * drift: a skeleton eight pixels taller than the answer it stands in for is
- * the layout shift it was put there to prevent.
- */
-const VERDICT_PANEL_CLASS =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card border px-3 py-2.5";
-
-type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
+type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children" | "className"> & {
   /** The answer, in one sentence a person could read aloud. */
   readonly text: string;
   readonly tone: ServiceStatusToneId;
@@ -57,30 +49,28 @@ type VerdictPanelProps = Omit<React.ComponentProps<"div">, "children"> & {
  * where a test and a harness can read every state of it without a forge or a
  * container behind them.
  */
-function VerdictPanel({ children, className, detail, text, tone, ...props }: VerdictPanelProps) {
+function VerdictPanel({ children, detail, text, tone, ...props }: VerdictPanelProps) {
   return (
-    <div
-      {...props}
-      className={cn(VERDICT_PANEL_CLASS, VERDICT_BORDER_CLASS[tone], className)}
-      data-zerops-primitive="verdict-panel"
-    >
-      <span className="flex min-w-0 flex-col gap-y-0.5 text-body sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
-        <span className="min-w-0 text-foreground">
-          <Badge dot tone={STATUS_BADGE_TONE[tone]}>
-            {text}
-          </Badge>
-        </span>
-        {detail === undefined ? null : (
-          // The dot (8px) and its gap (6px) set the sentence's text 14px in.
-          <span className="min-w-0 ps-3.5 text-muted-foreground tabular-nums sm:ps-0">
-            {detail}
+    <Card {...props} data-zerops-primitive="verdict-panel" tone={VERDICT_TONE[tone]} variant="flat">
+      <div className={VERDICT_PANEL_CLASS}>
+        <span className="flex min-w-0 flex-col gap-y-0.5 text-body sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+          <span className="min-w-0 text-foreground">
+            <Badge dot tone={STATUS_BADGE_TONE[tone]}>
+              {text}
+            </Badge>
           </span>
+          {detail === undefined ? null : (
+            // The dot (8px) and its gap (6px) set the sentence's text 14px in.
+            <span className="min-w-0 ps-3.5 text-muted-foreground tabular-nums sm:ps-0">
+              {detail}
+            </span>
+          )}
+        </span>
+        {children === undefined ? null : (
+          <span className="flex shrink-0 items-center gap-2">{children}</span>
         )}
-      </span>
-      {children === undefined ? null : (
-        <span className="flex shrink-0 items-center gap-2">{children}</span>
-      )}
-    </div>
+      </div>
+    </Card>
   );
 }
 
@@ -94,19 +84,21 @@ function VerdictPanel({ children, className, detail, text, tone, ...props }: Ver
  * nothing in a box of a different height only moves the jump, so the shape is
  * the panel's own and the line inside it is the `StatusDot`'s 20 px.
  */
-function VerdictPanelWaiting({ className, ...props }: React.ComponentProps<"div">) {
+function VerdictPanelWaiting(props: Omit<React.ComponentProps<"div">, "className">) {
   return (
-    <div
+    <Card
       {...props}
       aria-hidden="true"
-      className={cn(VERDICT_PANEL_CLASS, "border-border", className)}
       data-zerops-primitive="verdict-panel-waiting"
+      variant="flat"
     >
-      <span className="flex h-5 min-w-0 items-center gap-1.5">
-        <Skeleton shape="pill" className="size-2 shrink-0" />
-        <Skeleton className="h-3 w-44 max-w-full" />
-      </span>
-    </div>
+      <div className={VERDICT_PANEL_CLASS}>
+        <span className="flex h-5 min-w-0 items-center gap-1.5">
+          <Skeleton shape="pill" className="size-2 shrink-0" />
+          <Skeleton className="h-3 w-44 max-w-full" />
+        </span>
+      </div>
+    </Card>
   );
 }
 

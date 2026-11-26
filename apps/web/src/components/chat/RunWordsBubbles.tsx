@@ -1,7 +1,7 @@
 import { use } from "react";
 
 import { useKnownMate } from "../../zerops/useZeropsMates";
-import { Bubble, META, SPEECH_PAD } from "./RunBubble";
+import { Bubble, META } from "./RunBubble";
 import { keyedByOccurrence } from "./keyedByOccurrence";
 import { TypingDots } from "./RunTypingDots";
 import { DisclosureButton, OpensMark, OpensWhole, useDisclosure } from "./RunDisclosure";
@@ -79,7 +79,7 @@ function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<Chat
  */
 export function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
   return (
-    <Bubble className={SPEECH_PAD} kind="question" tone="speech">
+    <Bubble kind="question" tone="speech">
       <OpensWhole what="question">
         {keyedByOccurrence(questions).map(({ key, value }) => (
           <p key={key} className="whitespace-pre-wrap break-words">
@@ -100,7 +100,7 @@ export function NoteBubble({ message: recorded }: { readonly message: ChatMessag
   const message = useEngineLiveMessage(recorded);
   const inSlot = use(InSlotContext);
   const bubble = (
-    <Bubble className={SPEECH_PAD} kind="note" tone="speech">
+    <Bubble kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>

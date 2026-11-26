@@ -7,7 +7,7 @@ export {
   rowStanding,
   type RowStanding,
 } from "./ChangeRow.logic";
-export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
+export { Crumbs, PageTrail, usePageTrail, type Crumb } from "./Crumbs";
 export { GrowsInPlace } from "./GrowsInPlace";
 export { MateRow, MateRowTime } from "./MateRow";
 export { NextBlock, NextRelease, type NextReleaseInput } from "./NextRelease";
@@ -17,7 +17,6 @@ export {
   readyOfFlow,
   type NextReleaseView,
 } from "./NextRelease.logic";
-export { PageHeader } from "./PageHeader";
 export { PlaceLine } from "./PlaceLine";
 export { ProjectLine } from "./ProjectLine";
 export {
@@ -33,7 +32,7 @@ export {
   type ProjectLineView,
 } from "./projectLine.logic";
 export { RunningClock, RunningLine, RunningNow } from "./RunningLine";
-export { SectionAction, SectionLabel } from "./SectionLabel";
+export { SectionAction } from "./SectionAction";
 export { ServiceList, ServiceMeters, ServiceRow } from "./ServiceRow";
 export { serviceRunsLine } from "./ServiceRow.logic";
 export { applicationStage } from "./applicationPlaces.logic";

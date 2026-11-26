@@ -166,9 +166,12 @@ function CommandCollection({ ...props }: React.ComponentProps<typeof Autocomplet
   return <AutocompleteCollection data-slot="command-collection" {...props} />;
 }
 
-// Pass `active` when the palette tracks the highlighted row itself; the
-// primitive's hover and keyboard highlight are then ignored so the two never
-// disagree, and the row shows the active surface instead.
+/**
+ * One row of the palette. The row under the cursor lights on the item's hover ground
+ * (`bg-item-hover`), as a menu's item does: it is where Enter acts, not a pick. Pass `active` when
+ * the palette tracks that row itself; the primitive's own hover and keyboard highlight are then
+ * ignored, so the two never disagree.
+ */
 function CommandItem({
   className,
   active,
@@ -177,10 +180,9 @@ function CommandItem({
   return (
     <AutocompleteItem
       className={cn(
-        "py-1.5 data-selected:bg-foreground/[0.06] data-highlighted:bg-foreground/[0.09] data-highlighted:text-foreground [&[data-highlighted][data-selected]]:bg-foreground/[0.09] [&[data-highlighted][data-selected]]:text-foreground",
-        active !== undefined &&
-          "cursor-pointer hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit data-selected:bg-transparent data-selected:text-inherit [&[data-highlighted][data-selected]]:bg-transparent [&[data-highlighted][data-selected]]:text-inherit",
-        active && "bg-accent! text-accent-foreground!",
+        "py-1.5",
+        active !== undefined && "cursor-pointer [:hover,[data-highlighted]]:bg-transparent",
+        active && "bg-item-hover!",
         className,
       )}
       data-active={active || undefined}

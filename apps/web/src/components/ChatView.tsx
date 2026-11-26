@@ -211,6 +211,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
 import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
+import { CrewAskSignInContext } from "./ask/CrewAsk";
 import { PictureAskContext, usePictureAsks } from "./ask/PictureAsk";
 import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
@@ -565,6 +566,7 @@ import {
   VaultPanelContainer,
   FilePreviewPanel,
 } from "./ConversationLazyPanels";
+import { Text } from "~/components/ui/text";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -2244,7 +2246,7 @@ function ConversationView(props: ChatViewProps) {
     attachDraftHeroTransitionGroupRef,
     attachDraftHeroComposerAnchorRef,
     captureDraftHeroComposerRect,
-  ] = useDraftHeroLayoutTransition(isDraftHeroState);
+  ] = useDraftHeroLayoutTransition(isDraftHeroState, !mateSignIn);
 
   const gitCwd = activeProject
     ? conversationCodeFolder({
@@ -7325,7 +7327,7 @@ function ConversationView(props: ChatViewProps) {
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
-          className="relative bg-background"
+          className="relative bg-toolbar text-toolbar-foreground"
         >
           {/* A phone's sheet covers the whole header, so the header stays as it is under it: its
               toggle and its actions stand where they stood as the sheet comes and goes. */}
@@ -7376,7 +7378,7 @@ function ConversationView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
+            <WorkspaceFileDropOverlay shown={isWorkspaceFileDragActive} />
             {/* Its open asks to connect a repository to GitHub, drawn or not. */}
             <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}
@@ -7513,11 +7515,11 @@ function ConversationView(props: ChatViewProps) {
                 className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)"
               >
                 <ConversationOpeningArrival onArrive={scheduleComposerFocus} />
-                {/* While the stand-up holds the composer, unseen and inert, the frame lets presses
-                    through to the stage under it; what stands above the composer still takes them. */}
                 <div
                   className={cn(
                     "relative z-10",
+                    // A held composer keeps its room unseen; that room lets presses through to
+                    // what stands under it (a sign-in's last cards), its other parts still reached.
                     zeropsArrivalHoldsComposer
                       ? "pointer-events-none *:pointer-events-auto"
                       : "pointer-events-auto",
@@ -7604,12 +7606,14 @@ function ConversationView(props: ChatViewProps) {
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <div data-over-conversation="">
                             {pendingSendNotice && (
-                              <p
+                              <Text
+                                className="px-4 py-2"
+                                render={<p />}
+                                variant="description"
                                 role="status"
-                                className="px-4 py-2 text-body text-muted-foreground"
                               >
                                 {pendingSendNotice}
-                              </p>
+                              </Text>
                             )}
                             <AgentAdmissionExplanation
                               attention={admissionPlacement.composer}
@@ -7980,7 +7984,9 @@ function ConversationView(props: ChatViewProps) {
   return (
     <ExpressHistoryContext value={expressHistory}>
       <PictureAskContext value={pictureAskScope}>
-        <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+        <CrewAskSignInContext value={zeropsSignInDialog.openFor}>
+          <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+        </CrewAskSignInContext>
       </PictureAskContext>
     </ExpressHistoryContext>
   );

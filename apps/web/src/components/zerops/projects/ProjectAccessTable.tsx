@@ -66,9 +66,12 @@ import {
 import { cn } from "~/lib/utils";
 import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 import { Loading } from "~/components/ui/loading";
-import { SectionLabel } from "../system/SectionLabel";
+
 import { EmptyState } from "~/components/ui/empty";
 import { Failure } from "~/components/ui/failure";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
+import { SectionHeader } from "~/components/ui/section";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -160,25 +163,27 @@ export function ProjectAccessTable({
 
   return (
     <section aria-label={label} className={CARD_SECTION} data-zerops-surface="access-table">
-      <SectionLabel level={3}>{label}</SectionLabel>
+      <SectionHeader level={3} size="panel" title={label} />
       {view.kind === "reading" ? (
         <Loading count={3} label="Who has access" shape="rows" />
       ) : view.kind === "unreadable" ? (
         <Failure cause={view.line} size="line" />
       ) : phone ? (
         // A phone's table: each person a row that opens to their places.
-        <ul aria-label={label} className="-mx-1.5 mt-0.5 grid text-body leading-4.5">
-          {rows.map((row) => (
-            <StackedRow
-              columns={columns}
-              handlers={handlers}
-              key={row.key}
-              linked={personPage?.(row.key) === true}
-              row={row}
-              saving={saving}
-            />
-          ))}
-        </ul>
+        <div className="-mx-1.5 mt-0.5 text-body leading-4.5">
+          <List aria-label={label} className="grid" render={<ul />}>
+            {rows.map((row) => (
+              <StackedRow
+                columns={columns}
+                handlers={handlers}
+                key={row.key}
+                linked={personPage?.(row.key) === true}
+                row={row}
+                saving={saving}
+              />
+            ))}
+          </List>
+        </div>
       ) : (
         <AccessGrid
           columns={columns}
@@ -191,9 +196,9 @@ export function ProjectAccessTable({
         />
       )}
       {view.kind === "table" && rows.length > 0 ? (
-        <p className="text-caption leading-4 text-muted-foreground">
+        <Text render={<p />} variant="note">
           Plain: what the organization gives. Highlighted: set for this place.
-        </p>
+        </Text>
       ) : null}
       {said.map(({ key, line }) => (
         <Failure cause={line} key={key} role="alert" size="line" />
@@ -272,7 +277,7 @@ function AccessGrid({
     // it holds its own screen-reader words, which would otherwise widen the page. The column a
     // place's page linked to is lit.
     <div
-      className="relative -mx-2 mt-0.5 max-w-full [&_[data-focus]]:bg-primary/7 [&_thead_th[data-focus]]:text-foreground"
+      className="relative -mx-2 mt-0.5 max-w-full [&_[data-focus]]:bg-item-picked [&_thead_th[data-focus]]:text-foreground"
       ref={scroller}
     >
       <Table aria-label={label} size="md">
@@ -404,11 +409,11 @@ function Who({ row, linked }: { readonly row: AccessRow; readonly linked: boolea
         <span className="grid min-w-45 gap-0.5 px-0.5 py-1 text-left">
           <span className="text-body leading-4.5 font-semibold">{row.name}</span>
           {row.email === null || row.email === row.name ? null : (
-            <span className="text-caption leading-4 text-muted-foreground">{row.email}</span>
+            <Text variant="note">{row.email}</Text>
           )}
-          <span className="text-caption leading-4 text-muted-foreground">
+          <Text variant="meta">
             {[row.role, ...(row.pending ? ["invited, not joined yet"] : [])].join(" · ")}
-          </span>
+          </Text>
         </span>
       </TooltipPopup>
     </Tooltip>
@@ -595,12 +600,7 @@ function StackedRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Collapsible
-      className="border-t border-border/60 first:border-t-0"
-      onOpenChange={setOpen}
-      open={open}
-      render={<li />}
-    >
+    <Collapsible onOpenChange={setOpen} open={open} render={<li />}>
       <span className="flex min-h-13 min-w-0 items-center justify-between gap-2 px-1.5">
         <CollapsibleTrigger className="grid min-w-0 flex-1 grid-cols-[24px_minmax(0,1fr)_14px] items-center gap-x-2.5 py-1.5 text-start">
           <PersonAvatar

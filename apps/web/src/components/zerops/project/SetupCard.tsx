@@ -5,9 +5,9 @@
  */
 import type { ReactNode } from "react";
 
-import { SectionLabel } from "../system";
 import { Card } from "~/components/ui/card";
 import { PAGE_GROUP, PAGE_SIDE } from "./pageLayout";
+import { SectionHeader } from "~/components/ui/section";
 
 export function SetupCard({ children }: { readonly children: ReactNode }) {
   return (
@@ -48,12 +48,14 @@ export function SetupRow({
       className={PAGE_GROUP}
       data-zerops-surface={surface}
     >
-      <SectionLabel action={action}>{label}</SectionLabel>
+      <SectionHeader action={action} title={label} />
       {empty ? (
         // A setup nobody made yet: a dashed slot saying what it is for, beside its one verb.
-        <div className="flex items-center justify-between gap-3.5 rounded-card px-4 py-3.5 outline-1 -outline-offset-1 outline-foreground/16 outline-dashed [&>p]:text-line [&>p]:leading-5 [&>p]:text-muted-foreground">
-          {children}
-        </div>
+        <Card variant="slot">
+          <div className="flex items-center justify-between gap-3.5 px-4 py-3.5 [&>p]:text-line [&>p]:leading-5 [&>p]:text-muted-foreground">
+            {children}
+          </div>
+        </Card>
       ) : (
         <Card>
           {/* A card of rows (the code repositories): the rows' own padding stands in for its. */}

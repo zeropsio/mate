@@ -1,3 +1,5 @@
+import { cn } from "~/lib/utils";
+import { COMPOSER_ATTACHED_OUTLINE, COMPOSER_ATTACHED_RAISED } from "./composerAttached";
 import { XIcon } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
@@ -110,7 +112,11 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
     <Command autoHighlight={false} mode="none">
       <div
         ref={drawerRef}
-        className="chat-composer-drawer-surface chat-composer-drawer-attached relative w-full overflow-hidden"
+        className={cn(
+          "chat-composer-drawer-surface chat-composer-drawer-attached relative w-full overflow-hidden",
+          COMPOSER_ATTACHED_RAISED,
+          COMPOSER_ATTACHED_OUTLINE,
+        )}
         data-composer-stash-drawer="true"
       >
         <div className="flex h-7 items-center justify-end px-2 pt-1">
@@ -121,7 +127,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
             onPointerDown={(event) => event.preventDefault()}
             onClick={onClose}
           >
-            <XIcon className="size-3" />
+            <XIcon />
           </Button>
         </div>
         <CommandList className="max-h-64 scroll-pb-6">
@@ -188,7 +194,7 @@ export const ComposerStashMenu = memo(function ComposerStashMenu(props: {
                         onDelete(entry);
                       }}
                     >
-                      <XIcon className="size-3.5 stroke-2 text-foreground" />
+                      <XIcon className="stroke-2 text-foreground" />
                     </Button>
                   </span>
                 </CommandItem>

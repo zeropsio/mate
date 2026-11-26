@@ -21,6 +21,7 @@ import type { GitBrowseSearch, GitRepoPageProps } from "./GitBrowseView";
 import { changeTitle, type PickerChange } from "./GitRefPicker.logic";
 import { GitWhen } from "./GitWhen";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 const ROW_HEIGHT = 55;
 const DAY_HEIGHT = 32;
@@ -78,10 +79,10 @@ export function CommitRow({
   const change = item.change;
   const title = changeTitle(item, changes);
   return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-border px-4 py-2">
+    <div className="flex min-w-0 items-center gap-3 border-b border-rule px-4 py-2">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <p className="truncate text-body text-foreground">{item.subject}</p>
-        <p className="flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
+        <Text className="flex min-w-0 flex-wrap items-center gap-x-2" render={<p />} variant="note">
           <span>{item.authorName}</span>
           <GitWhen at={item.committedAt}>{formatRelativeTimeLabel(item.committedAt)}</GitWhen>
           {change === undefined ? null : (
@@ -100,7 +101,7 @@ export function CommitRow({
               {title ?? `Change #${change.number}`}
             </InlineButton>
           )}
-        </p>
+        </Text>
       </div>
       <span className="shrink-0 font-mono text-caption">
         <RepoLink
@@ -155,14 +156,14 @@ function ListEnd({
         </div>
       )}
       {page.next === null && page.addsPath ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           History before a rename is not followed.
-        </p>
+        </Text>
       ) : null}
       {page.stopped ? (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           The history shown here stops after 10,000 commits. Clone the repository to read the rest.
-        </p>
+        </Text>
       ) : null}
       {page.next === null && page.items.length === 0 && path !== "" ? (
         <EmptyState size="line">No commits changed {path}.</EmptyState>
@@ -209,7 +210,9 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
   );
   const renderRow = (row: HistoryRow) =>
     row.kind === "day" ? (
-      <h3 className="px-4 pt-3 pb-1 text-caption font-medium text-muted-foreground">{row.day}</h3>
+      <Text className="px-4 pt-3 pb-1" render={<h3 />} variant="label">
+        {row.day}
+      </Text>
     ) : (
       <CommitRow {...props} item={row.item} changes={changes} />
     );
@@ -217,7 +220,7 @@ function HistoryAt(props: GitRepoPageProps & { readonly sha: string }) {
     <section aria-label="History" className="flex min-w-0 flex-col gap-2">
       {path === "" ? null : (
         <h2 className="min-w-0 break-all text-emphasis font-medium text-foreground">
-          History of <span className="font-mono">{path}</span>
+          History of <Text variant="code">{path}</Text>
         </h2>
       )}
       <Card variant="flat">

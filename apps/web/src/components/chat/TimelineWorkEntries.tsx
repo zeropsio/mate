@@ -1,4 +1,5 @@
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
+import { CodeBlock } from "~/components/ui/code-block";
 import { memo, use, useMemo, useState, type KeyboardEvent, type MouseEvent } from "react";
 import {
   workEntryDisplayIndicatesToolFailure,
@@ -38,6 +39,7 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { TimelineRowCtx } from "./timelineContext";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { Text } from "~/components/ui/text";
 
 type TimelineWorkEntry = Extract<MessagesTimelineRow, { kind: "work" }>["groupedEntries"][number];
 
@@ -254,9 +256,6 @@ function buildToolCallExpandedBody(
   return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
 
-const toolCallExpandedBodyClassName =
-  "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
-
 const TOOL_ACTION_ICON: Record<
   Exclude<ReturnType<typeof toolGroupAction>, "other">,
   WorkEntryIconName
@@ -355,7 +354,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
     showWarningIndicator
       ? "text-warning"
       : showDestructiveRowStyle
-        ? "text-destructive"
+        ? "text-status-failed-text"
         : workEntry.tone === "tool" || showFailedIndicator
           ? "text-icon-muted"
           : iconConfig.className,
@@ -363,7 +362,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
   const headingClass = showWarningIndicator
     ? "font-medium text-warning"
     : showDestructiveRowStyle
-      ? "font-medium text-destructive"
+      ? "font-medium text-status-failed-text"
       : workLogEntryIsToolLike(workEntry)
         ? "text-muted-foreground"
         : "text-foreground/80";
@@ -395,7 +394,7 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         isExpandedToolGroupEntry ? "py-0" : "py-px",
         expanded && "mb-1",
         canExpand &&
-          "cursor-pointer hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+          "cursor-pointer hover:bg-item-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
       )}
       {...rowToggleProps}
     >
@@ -444,11 +443,11 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       </div>
       {expanded && canExpand && expandedBody ? (
         <div
-          className="mt-1 ms-5 cursor-default border-s border-border/45 ps-3 pt-0.5"
+          className="mt-1 ms-5 cursor-default"
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          <CodeBlock height="md">{expandedBody}</CodeBlock>
         </div>
       ) : null}
       {workEntry.questionAnswer ? (
@@ -489,7 +488,9 @@ function QuestionAnswerHistory({
       ].map((questionId) => (
         <div key={questionId} className="space-y-1">
           {answer.questionTextById?.[questionId] ? (
-            <p className="text-body text-muted-foreground">{answer.questionTextById[questionId]}</p>
+            <Text render={<p />} variant="description">
+              {answer.questionTextById[questionId]}
+            </Text>
           ) : null}
           <p className="whitespace-pre-wrap text-body">
             {[answer.answers[questionId]]

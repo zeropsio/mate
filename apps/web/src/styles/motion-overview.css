@@ -13,3 +13,10 @@
     opacity: 1;
   }
 }
+
+/* A project card the overview was opened to, pulsing once (`animate-card-ring`). */
+@keyframes card-ring {
+  30% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+  }
+}

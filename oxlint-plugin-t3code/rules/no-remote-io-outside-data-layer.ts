@@ -165,6 +165,8 @@ const HQ_CLIENT_VERBS = [
   "gitTargetWrite",
   "gitTargetReceipt",
   "updateMate",
+  "supportExchange",
+  "webFailure",
   "answerKeptGit",
   "deleteApp",
   "deleteBirth",

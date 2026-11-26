@@ -20,9 +20,32 @@ function MenuTrigger({ className, children, ...props }: MenuPrimitive.Trigger.Pr
   );
 }
 
+/**
+ * How wide a menu stands, never past the viewport:
+ * - `auto` (the default): as wide as its words, from 10rem: a short list of verbs;
+ * - `fit`: as wide as its words, from 14rem to 25rem, wrapping past it: a menu whose lines run
+ *   long or vary (a reason under a verb, an address, a version, a heading over the verbs);
+ * - `sm` 14rem, `md` 18rem, `lg` 364 px: one width whatever it holds, a long name cut at its edge:
+ *   `sm` a list of names (Mates, projects, what ends soon), `md` rows with a second word or line
+ *   (chats, sites, an account and its organizations), `lg` rows that say what they do in a line
+ *   each (the crew's verbs, as wide as a Crew tab);
+ * - `anchor`: the width of the press that opens it (a picker heading a column).
+ */
+type MenuWidth = "auto" | "fit" | "sm" | "md" | "lg" | "anchor";
+
+const MENU_WIDTH: Record<MenuWidth, string> = {
+  auto: "min-w-[min(10rem,calc(100vw-2rem))]",
+  fit: "min-w-[min(14rem,calc(100vw-2rem))] max-w-[min(25rem,calc(100vw-2rem))]",
+  sm: "w-56",
+  md: "w-72",
+  lg: "w-91",
+  anchor: "w-(--anchor-width)",
+};
+
 function MenuPopup({
   children,
   className,
+  width = "auto",
   sideOffset = 4,
   align = "center",
   alignOffset,
@@ -37,6 +60,7 @@ function MenuPopup({
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
   keepMounted?: boolean;
+  width?: MenuWidth;
 }) {
   return (
     <MenuPortal keepMounted={keepMounted}>
@@ -56,8 +80,8 @@ function MenuPopup({
             // the Review panel header). Drag hit-testing ignores z-index, so
             // the topmost row would stay unhoverable without this opt-out.
             "[-webkit-app-region:no-drag]",
-            // Menus size to their content from one minimum, never past the viewport.
-            "min-w-[min(10rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)]",
+            "max-w-[calc(100vw-2rem)]",
+            MENU_WIDTH[width],
             className,
           )}
           data-slot="menu-popup"
@@ -74,6 +98,12 @@ function MenuGroup(props: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="menu-group" {...props} />;
 }
 
+/**
+ * One row of a menu. The item under the cursor, the pointer's or the arrow keys' (one at a time),
+ * lights on the item's hover ground (`bg-item-hover`), as a pressable row does anywhere: it is
+ * where the cursor is, not a pick, so it never takes the picked ground. A sub-menu's trigger keeps
+ * that ground while its sub-menu is open. `destructive` keeps its red under the cursor.
+ */
 function MenuItem({
   className,
   inset,
@@ -88,7 +118,7 @@ function MenuItem({
   return (
     <MenuPrimitive.Item
       className={cn(
-        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg]:-mx-0.5 flex min-h-8 cursor-pointer select-none items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-item-hover data-inset:ps-8 data-[variant=destructive]:text-destructive-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg:not([class*='text-'])]:text-muted-foreground data-[variant=destructive]:[&>svg:not([class*='text-'])]:text-current [&>svg]:pointer-events-none [&>svg]:shrink-0",
         variant === "ghost" &&
           buttonVariants({
             variant: "ghost",
@@ -163,7 +193,7 @@ function MenuCheckboxItem({
     <MenuPrimitive.CheckboxItem
       checked={checked}
       className={cn(
-        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-control py-1 ps-2 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center gap-2 rounded-control py-1 ps-2 text-body text-foreground outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-item-hover data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         variant === "switch"
           ? "grid-cols-[1fr_auto] gap-4 pe-1.5"
           : "grid-cols-[1rem_minmax(0,1fr)] pe-4",
@@ -212,7 +242,7 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
 
 /**
  * How a radio item says it is the chosen one:
- * - `fill`: a tint behind it;
+ * - `fill`: it stands on the picked ground (`bg-item-picked`), and stays on it under the cursor;
  * - `check`: a check in front of it, as a checkbox item does — a tint alone
  *   reads as the pointer resting there;
  * - `segment`: one choice on a `MenuSwitch`'s track, the chosen one raised.
@@ -220,9 +250,9 @@ function MenuRadioGroup(props: MenuPrimitive.RadioGroup.Props) {
 type MenuRadioItemVariant = "fill" | "check" | "segment";
 
 const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
-  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-control px-2 py-1 text-body text-foreground data-checked:bg-foreground/[0.08] data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+  fill: "[&_svg]:-mx-0.5 flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] items-center rounded-control px-2 py-1 text-body text-foreground data-checked:bg-item-picked data-highlighted:not-data-checked:bg-item-hover sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   check:
-    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-control py-1 ps-2 pe-4 text-body text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
+    "grid min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 rounded-control py-1 ps-2 pe-4 text-body text-foreground data-highlighted:bg-item-hover sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4",
   segment:
     // Half the track, two to a row (`MenuSwitch`): four choices keep their
     // words whole within the menu's width, "Creation date" never cut.
@@ -371,7 +401,7 @@ function MenuSubTrigger({
         // with theirs. Scoped away from the last child because the chevron is
         // also a direct svg — on a sub-trigger with no leading icon it is the
         // only one, and these rules would take away its `ms-auto` alignment.
-        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-accent data-popup-open:bg-accent data-inset:ps-8 data-highlighted:text-accent-foreground data-popup-open:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
+        "[&>svg:not(:last-child)]:-mx-0.5 flex min-h-8 cursor-pointer items-center gap-2 rounded-control px-2 py-1 text-body text-foreground outline-none data-disabled:cursor-not-allowed data-disabled:pointer-events-none data-highlighted:bg-item-hover data-popup-open:bg-item-hover data-inset:ps-8 data-disabled:opacity-64 sm:min-h-7 pointer-coarse:min-h-10 sm:pointer-coarse:min-h-10 [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground [&>svg:not(:last-child):not([class*='opacity-'])]:opacity-80 [&_svg]:pointer-events-none [&>svg]:shrink-0",
         density === "touch" && "min-h-10 sm:min-h-10",
         className,
       )}
@@ -396,6 +426,7 @@ function MenuSubPopup({
   align?: MenuPrimitive.Positioner.Props["align"];
   sideOffset?: MenuPrimitive.Positioner.Props["sideOffset"];
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
+  width?: MenuWidth;
 }) {
   const defaultAlignOffset = align !== "center" ? -5 : undefined;
 

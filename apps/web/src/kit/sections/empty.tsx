@@ -12,7 +12,7 @@ import {
 } from "~/components/ui/empty";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { ChosenEmpty } from "../states/Chosen";
 import { specimenLabel, variantsOf } from "../specimenLabel";
 
@@ -24,14 +24,14 @@ const MEDIA = variantsOf<EmptyMediaVariant>({ default: true, icon: true });
 
 function EmptySpecimens() {
   return (
-    <SpecimenGrid>
+    <SpecimenGrid size="lg">
       {SIZES.flatMap((size) =>
         MEDIA.map((media) => (
           <Specimen
             key={`${size}-${media}`}
             label={`${specimenLabel({ size })} · <EmptyMedia ${specimenLabel({ variant: media })}>`}
           >
-            <div className="flex w-96 rounded-card border">
+            <div className="flex w-full max-w-96 rounded-card border">
               <Empty size={size}>
                 <EmptyHeader>
                   <EmptyMedia variant={media}>
@@ -61,13 +61,16 @@ export default defineKitSection({
   kind: "Feedback",
   source: "apps/web/src/components/ui/empty.tsx",
   render: () => (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="EmptyState: a row, a section, a page">
+    <Specimens>
+      <SpecimenBlock
+        note="What will be here, and at most one way to fill it."
+        title="EmptyState: a row, a section, a page"
+      >
         <ChosenEmpty />
       </SpecimenBlock>
-      <SpecimenBlock title="Empty's parts">
+      <SpecimenBlock note="The parts a bespoke empty place is built from." title="Sizes and media">
         <EmptySpecimens />
       </SpecimenBlock>
-    </div>
+    </Specimens>
   ),
 });

@@ -33,6 +33,7 @@ import {
   RestartEvidence,
   RunAdmission,
   RunRefused,
+  WorkWhere,
   type InstanceUsage,
   type RestartFacts,
 } from "../engine/ports.ts";
@@ -254,9 +255,15 @@ export const zeropsLeaseRelease = Layer.effect(
   Effect.map(ZeropsCli, (cli) => LeaseRelease.of({ release: cli.leaseRelease })),
 );
 
+const zeropsWorkWhere = Layer.effect(
+  WorkWhere,
+  Effect.map(ZeropsCli, (cli) => WorkWhere.of({ read: cli.where })),
+);
+
 const zeropsAdapters = Layer.mergeAll(
   zeropsRunAdmission,
   zeropsLeaseRelease,
+  zeropsWorkWhere,
   Layer.effect(
     RestartEvidence,
     Effect.map(ZeropsRestartRead, (reader) =>

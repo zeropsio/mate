@@ -37,7 +37,6 @@ import { watchIntersections } from "~/lib/restingIntersections";
 import { fadeFillOver } from "~/lib/loadFills";
 import { makeRowFill } from "./cardRowFill";
 import { StopReadAgain } from "../StopReadAgain";
-import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
@@ -59,7 +58,7 @@ import { PlaceLine } from "../system/PlaceLine";
 import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
 import { PlaceDoors, usePlaceSitesDrawn } from "../place/PlaceDoors";
 import { placeSitesOf } from "../place/placeDoors.logic";
-import { SectionAction, SectionLabel } from "../system/SectionLabel";
+import { SectionAction } from "../system/SectionAction";
 import type {
   ComingBirthRow,
   ProjectsFlowGroup,
@@ -74,6 +73,11 @@ import { Row } from "~/components/ui/row";
 import { spendProjectIds } from "./projectSpend.logic";
 import { ProjectCreditLine } from "./ProjectCreditLine";
 import { Failure } from "~/components/ui/failure";
+import { CARD_ROOM, RAIL, ROW, ROW_CARD } from "./overviewLayout";
+import { Card } from "~/components/ui/card";
+import { cn } from "~/lib/utils";
+import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -157,7 +161,7 @@ function scrollingParent(element: HTMLElement): HTMLElement | null {
  * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
  * under a fade, with a round back and forward button on the side there is more. The row is as tall
  * as the window leaves under the page's head, so reading a card never scrolls the page; a card
- * taller than the row scrolls inside (`.ov-card-body`).
+ * taller than the row scrolls inside (`CardBody`).
  */
 function CardRow({
   children,
@@ -197,7 +201,7 @@ function CardRow({
       scroller === null ? document.documentElement.scrollHeight : scroller.scrollHeight;
     const below = Math.min(BELOW_KEPT_PX, Math.max(0, content - (top + element.offsetHeight)));
     const height = Math.max(ROW_MIN_PX, Math.floor(visible - top - Math.max(below, ROW_FOOT_PX)));
-    element.style.setProperty("--ov-row-height", `${String(height)}px`);
+    element.style.setProperty("--card-row-height", `${String(height)}px`);
   }, []);
   useLayoutEffect(() => {
     const element = row.current;
@@ -231,13 +235,13 @@ function CardRow({
   };
   return (
     <div
-      className="ov-rail"
+      className={RAIL}
       data-can-left={edges.left ? "true" : undefined}
       data-can-right={edges.right ? "true" : undefined}
     >
       <div
         aria-label="Projects"
-        className="ov-row"
+        className={ROW}
         data-zerops-surface="project-cards"
         ref={rowRef}
         role="list"
@@ -246,7 +250,12 @@ function CardRow({
           <CardRowFill value={rowFill}>{children}</CardRowFill>
         </CardRowRoot>
       </div>
-      <span className="ov-nav ov-nav-left">
+      <span
+        className={cn(
+          NAV,
+          "left-3 group-data-can-left/rail:pointer-events-auto group-data-can-left/rail:opacity-100",
+        )}
+      >
         <Button
           aria-label="Back"
           onClick={() => step(-1)}
@@ -255,10 +264,15 @@ function CardRow({
           tabIndex={-1}
           variant="secondary"
         >
-          <ChevronLeftIcon aria-hidden="true" className="size-4" />
+          <ChevronLeftIcon aria-hidden="true" />
         </Button>
       </span>
-      <span className="ov-nav ov-nav-right">
+      <span
+        className={cn(
+          NAV,
+          "right-3 group-data-can-right/rail:pointer-events-auto group-data-can-right/rail:opacity-100",
+        )}
+      >
         <Button
           aria-label="More projects"
           onClick={() => step(1)}
@@ -267,12 +281,16 @@ function CardRow({
           tabIndex={-1}
           variant="secondary"
         >
-          <ChevronRightIcon aria-hidden="true" className="size-4" />
+          <ChevronRightIcon aria-hidden="true" />
         </Button>
       </span>
     </div>
   );
 }
+
+/** The row's back and forward presses: on the side where there is more; a finger swipes instead. */
+const NAV =
+  "pointer-events-none absolute top-2.5 z-2 flex opacity-0 transition-[opacity,scale] duration-150 ease-out-strong active:scale-94 pointer-coarse:hidden";
 
 const PLACE_DOT: Readonly<
   Record<Exclude<PlaceLineData["dot"], "none">, { tone: BadgeTone; word: string }>
@@ -437,8 +455,10 @@ function releaseClock(line: PlaceLineData, since: number | undefined): PlaceLine
  */
 function QuietPlace({ children, verb }: { readonly children: string; readonly verb?: ReactNode }) {
   return (
-    <div
-      className="flex min-h-5 min-w-0 items-center gap-2 text-body text-muted-foreground"
+    <Text
+      className="flex min-h-5 min-w-0 items-center gap-2"
+      render={<div />}
+      variant="description"
       data-zerops-place-quiet=""
     >
       <PlaceDot dot="none" />
@@ -446,7 +466,7 @@ function QuietPlace({ children, verb }: { readonly children: string; readonly ve
       {verb === undefined || verb === null ? null : (
         <span className="-my-1 flex shrink-0">{verb}</span>
       )}
-    </div>
+    </Text>
   );
 }
 
@@ -505,8 +525,14 @@ function CardMates<T>({
   const more = mates.length - shown.length;
   const setUps = props.setUpMate?.(entry) ?? [];
   return (
-    <section aria-label="Project Mates" className="ov-sec ov-mates" data-zerops-step="mates">
-      <SectionLabel
+    // A card's Mates stand apart by air alone, on the card's own ground: no rule above them; their
+    // label hugs the first row, whose own padding is its hover's, not air.
+    <section
+      aria-label="Project Mates"
+      className="mt-4 grid gap-0.5 [&>[data-slot=section-header]]:-mb-0.5 [&>[data-slot=section-header]]:px-1.5"
+      data-zerops-step="mates"
+    >
+      <SectionHeader
         action={
           onAdd === undefined || addWhy !== null ? undefined : (
             <SectionAction onClick={onAdd}>+ Add a Mate</SectionAction>
@@ -514,9 +540,9 @@ function CardMates<T>({
         }
         count={mates.length > 1 ? mates.length : undefined}
         level={3}
-      >
-        Mates
-      </SectionLabel>
+        size="panel"
+        title="Mates"
+      />
       {shown.map((mate) =>
         mate.kind === "coming" ? (
           <CardComingMate
@@ -559,7 +585,11 @@ function CardMates<T>({
             aria-disabled
             data-zerops-surface="add-mate"
             lead={
-              <span aria-hidden="true" className="ov-add-face">
+              // The disabled Add a Mate row's face: a dashed 32 px ring around its plus.
+              <span
+                aria-hidden="true"
+                className="grid size-8 place-items-center rounded-full border border-dashed border-foreground/18"
+              >
                 <PlusIcon className="size-4" />
               </span>
             }
@@ -599,7 +629,7 @@ function MoreLink({
 }) {
   // Its room stands around the words, as the rows' own over and beside it.
   return (
-    <span className="justify-self-start px-1.5 py-0.5 text-body text-muted-foreground leading-5">
+    <Text className="justify-self-start px-1.5 py-0.5" variant="description">
       {linked ? (
         <InlineButton
           aria-label={label}
@@ -611,7 +641,7 @@ function MoreLink({
       ) : (
         <>+ {more} more</>
       )}
-    </span>
+    </Text>
   );
 }
 
@@ -659,17 +689,26 @@ function CardWaits({
       variant={heading === WAITING_ON_YOU ? "warning" : "default"}
     >
       <AlertTitle>
-        <SectionLabel level={3}>{heading}</SectionLabel>
+        <SectionHeader level={3} size="panel" title={heading} />
       </AlertTitle>
       <AlertDescription>
-        <div className="ov-waits">
+        {/* Each wait a row on the card's own ground inside the callout, reaching out toward its
+            edge: a sentence and its one verb; a narrow card puts the verb under the sentence. */}
+        <div className="-mx-2 grid gap-2 text-foreground @container/waits">
           {waits.slice(0, CARD_WAITS).map((wait) => (
-            <div className="ov-wait" data-zerops-wait={wait.key} key={wait.key}>
-              <span aria-hidden="true" className="ov-wait-face">
+            <div
+              className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-control bg-card p-2 shadow-edge @max-[17rem]/waits:grid-cols-[24px_minmax(0,1fr)] @max-[17rem]/waits:items-start @max-[17rem]/waits:gap-y-1.5"
+              data-zerops-wait={wait.key}
+              key={wait.key}
+            >
+              <span
+                aria-hidden="true"
+                className="grid size-6 place-items-center rounded-control text-primary"
+              >
                 {wait.face}
               </span>
-              <span className="ov-wait-text">{wait.text}</span>
-              <span className="ov-wait-verb">{wait.verb}</span>
+              <span className="line-clamp-2 text-body leading-4.75">{wait.text}</span>
+              <span className="flex @max-[17rem]/waits:col-start-2">{wait.verb}</span>
             </div>
           ))}
           {more > 0 ? (
@@ -691,16 +730,21 @@ function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
   const stops = [...("stop" in production ? [production.stop] : []), ...stages];
   // Every stop is held here, so each keeps the demand that reads what it runs.
   return (
-    <div className="ov-reads">
+    <div className="contents">
       {stops.map((stop) => (
-        <span className="ov-read" data-zerops-row-stop={stop.id} key={stop.id}>
+        <Text
+          className="flex items-center gap-2 px-2 empty:hidden"
+          variant="note"
+          data-zerops-row-stop={stop.id}
+          key={stop.id}
+        >
           {stop.readFailed === true ? (
             <span>
               {stop.name} · {stopLine(stop).word}
             </span>
           ) : null}
           <StopReadAgain projectId={stop.id} />
-        </span>
+        </Text>
       ))}
     </div>
   );
@@ -726,9 +770,7 @@ function ProjectCard<T>({
   const nowMs = useNowMs();
   const { group, flow } = entry;
   const detail = useDetailWhileSeen(group.groupId, ahead);
-  const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
-    (line) => line !== undefined,
-  );
+  const quiet = entry.line ?? props.heldWords?.(group.groupId);
   const ready = cardReady(flow);
   const releaseDoor = props.renderReleaseVerb?.(entry);
   // The page's door decides whether a release is offered here at all: it stands where the one
@@ -817,118 +859,151 @@ function ProjectCard<T>({
   if (!detail.answered)
     return <ProjectCardStandIn id={cardId(group.groupId)} label={group.name} ref={detail.ref} />;
   return (
+    // A card: the project, its places, its Mates, its changes — one light surface on the page (the
+    // owner, 2026-10-12: "design wise it still needs to be light and beutiful"), what waits on you
+    // a faint tint on it, its sections set apart by air. The card the overview was opened to
+    // rings once.
     <article
       aria-label={group.name}
-      className="ov-card"
-      data-focused={focused ? "true" : undefined}
+      className={cn(ROW_CARD, focused && "motion-safe:animate-card-ring")}
       data-zerops-group={group.groupId}
       id={cardId(group.groupId)}
       ref={detail.ref}
       role="listitem"
     >
-      <header className="ov-card-head">
-        <div className="ov-card-h1">
-          <h2 className="ov-card-name">
-            {/* The name opens the project's page; ··· and every other control keep their own. */}
-            {/* Its page's code is fetched as the pointer nears the name, so the first visit
+      <Card className="min-h-0 w-full" variant="sheet">
+        <div className={CARD_ROOM}>
+          <header className="px-1.5">
+            <div className="flex h-7 min-w-0 items-center gap-2">
+              <h2 className="min-w-0 text-title leading-7 font-semibold tracking-tight">
+                {/* The name opens the project's page; ··· and every other control keep their own. */}
+                {/* Its page's code is fetched as the pointer nears the name, so the first visit
                 cross-fades like every later one. */}
-            <Link
-              className="ov-card-title"
-              params={{ groupId: group.groupId }}
-              preload="intent"
-              to="/group/$groupId/flow"
-            >
-              <GroupName entry={entry} />
-            </Link>
-          </h2>
-          <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
-        </div>
-        {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
-        <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
-      </header>
-      <div className="ov-places" data-zerops-surface="card-places">
-        {notLive || production === undefined ? (
-          <>
-            <QuietPlace
-              verb={
-                putLive === undefined ? undefined : (
-                  <Button
-                    aria-describedby={
-                      putLive === "busy" ? `${group.groupId}-put-live-why` : undefined
-                    }
-                    data-zerops-place-setup="production"
-                    disabled={putLive === "busy"}
-                    onClick={putLive === "busy" ? undefined : putLive}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    {environmentDoorLabel("production", "production")}
-                  </Button>
-                )
-              }
-            >
-              Not live yet
-            </QuietPlace>
-            {putLive === "busy" ? (
-              <p className="ov-place-note" id={`${group.groupId}-put-live-why`} role="status">
-                {PUT_LIVE_AFTER_CREATION}
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <CardPlace groupId={group.groupId} line={production} onVault={props.openPlaceVault} />
-        )}
-        {/* A release or Put it live run is production's, never a Mate's conversation's. */}
-        {props.renderProductionRun?.(entry)}
-        {lines
-          .filter((line) => line.kind === "stage")
-          .map((line) =>
-            settingUp === undefined ? (
-              <CardPlace
-                groupId={group.groupId}
-                key={`stage:${line.projectId ?? line.name}`}
-                line={line}
-                onVault={props.openPlaceVault}
-              />
-            ) : (
-              <div
-                data-zerops-place="stage"
-                data-zerops-setting-up="true"
-                key={`stage:${line.projectId ?? line.name}`}
+                <Link
+                  // A quiet underline on hover, the ring on focus.
+                  className="inline-flex max-w-full rounded-control underline decoration-transparent decoration-1 underline-offset-4 outline-none transition-[text-decoration-color] duration-150 ease-out-strong hover:decoration-current/45 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                  params={{ groupId: group.groupId }}
+                  preload="intent"
+                  to="/group/$groupId/flow"
+                >
+                  <GroupName entry={entry} />
+                </Link>
+              </h2>
+              {/* The project's menu stays in sight: its verbs are the overview's, not a hover's. */}
+              <span className="-me-1 ms-auto flex flex-none text-muted-foreground">
+                {props.renderGroupMenu(entry)}
+              </span>
+            </div>
+            {/* Its quiet line: why it holds no Mate yet, or what it waits for. */}
+            {quiet === undefined ? null : (
+              <Text
+                className="mt-px block max-w-full"
+                render={<p />}
+                truncate
+                variant="description"
               >
-                <PlaceLine density="compact" groupId={group.groupId} line={line} />
+                {quiet}
+              </Text>
+            )}
+            <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
+          </header>
+          {/* Its places, a line each, hugging its name; a finger's lines stand 36 px apart, each name
+          and address a 36 px touch. */}
+          <div
+            className="mt-2 grid gap-0.5 px-1.5 pointer-coarse:gap-4 pointer-coarse:[&_[data-zerops-place-address]]:relative pointer-coarse:[&_[data-zerops-place-address]]:after:absolute pointer-coarse:[&_[data-zerops-place-address]]:after:-inset-x-1 pointer-coarse:[&_[data-zerops-place-address]]:after:-inset-y-2 pointer-coarse:[&_[data-zerops-place-name]]:relative pointer-coarse:[&_[data-zerops-place-name]]:after:absolute pointer-coarse:[&_[data-zerops-place-name]]:after:-inset-x-1 pointer-coarse:[&_[data-zerops-place-name]]:after:-inset-y-2"
+            data-zerops-surface="card-places"
+          >
+            {notLive || production === undefined ? (
+              <>
+                <QuietPlace
+                  verb={
+                    putLive === undefined ? undefined : (
+                      <Button
+                        aria-describedby={
+                          putLive === "busy" ? `${group.groupId}-put-live-why` : undefined
+                        }
+                        data-zerops-place-setup="production"
+                        disabled={putLive === "busy"}
+                        onClick={putLive === "busy" ? undefined : putLive}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        {environmentDoorLabel("production", "production")}
+                      </Button>
+                    )
+                  }
+                >
+                  Not live yet
+                </QuietPlace>
+                {putLive === "busy" ? (
+                  // Why Put it live stands off, under the line that carries it, in from its dot.
+                  <Text
+                    className="m-0 ps-4"
+                    render={<p />}
+                    variant="note"
+                    id={`${group.groupId}-put-live-why`}
+                    role="status"
+                  >
+                    {PUT_LIVE_AFTER_CREATION}
+                  </Text>
+                ) : null}
+              </>
+            ) : (
+              <CardPlace groupId={group.groupId} line={production} onVault={props.openPlaceVault} />
+            )}
+            {/* A release or Put it live run is production's, never a Mate's conversation's. */}
+            {props.renderProductionRun?.(entry)}
+            {lines
+              .filter((line) => line.kind === "stage")
+              .map((line) =>
+                settingUp === undefined ? (
+                  <CardPlace
+                    groupId={group.groupId}
+                    key={`stage:${line.projectId ?? line.name}`}
+                    line={line}
+                    onVault={props.openPlaceVault}
+                  />
+                ) : (
+                  <div
+                    data-zerops-place="stage"
+                    data-zerops-setting-up="true"
+                    key={`stage:${line.projectId ?? line.name}`}
+                  >
+                    <PlaceLine density="compact" groupId={group.groupId} line={line} />
+                  </div>
+                ),
+              )}
+            {devstage !== undefined ? (
+              <PlaceLine density="compact" line={{ ...NEW_STAGE, words: [devstage] }} />
+            ) : stageComing ? (
+              <div data-zerops-place="stage" data-zerops-setting-up="true">
+                <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
               </div>
-            ),
-          )}
-        {devstage !== undefined ? (
-          <PlaceLine density="compact" line={{ ...NEW_STAGE, words: [devstage] }} />
-        ) : stageComing ? (
-          <div data-zerops-place="stage" data-zerops-setting-up="true">
-            <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
+            ) : !notLive && flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
+              <QuietPlace>No stage</QuietPlace>
+            ) : null}
           </div>
-        ) : !notLive && flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
-          <QuietPlace>No stage</QuietPlace>
-        ) : null}
-      </div>
-      <CardBody>
-        <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
-        {releaseTheirs ? (
-          <CardWaits
-            groupId={group.groupId}
-            heading={READY_FOR_PRODUCTION}
-            project={group.name}
-            waits={[releaseWait]}
-          />
-        ) : null}
-        <CardMates
-          addWhy={addMate?.why ?? null}
-          entry={entry}
-          moreLinked={waits.length <= CARD_WAITS}
-          onAdd={addMate?.onAdd}
-          props={props}
-        />
-        <StopReads entry={entry} />
-      </CardBody>
+          <CardBody>
+            <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
+            {releaseTheirs ? (
+              <CardWaits
+                groupId={group.groupId}
+                heading={READY_FOR_PRODUCTION}
+                project={group.name}
+                waits={[releaseWait]}
+              />
+            ) : null}
+            <CardMates
+              addWhy={addMate?.why ?? null}
+              entry={entry}
+              moreLinked={waits.length <= CARD_WAITS}
+              onAdd={addMate?.onAdd}
+              props={props}
+            />
+            <StopReads entry={entry} />
+          </CardBody>
+        </div>
+      </Card>
     </article>
   );
 }
@@ -997,7 +1072,10 @@ function CardBody({ children }: { readonly children: ReactNode }) {
     };
   }, []);
   return (
-    <div className="ov-card-body" ref={body}>
+    <div
+      className="flex min-h-0 flex-col overflow-y-auto overscroll-y-contain [scrollbar-width:thin] data-more:[mask-image:linear-gradient(to_bottom,var(--color-black)_calc(100%-28px),transparent)]"
+      ref={body}
+    >
       {children}
     </div>
   );
@@ -1119,7 +1197,7 @@ export function CardMateLiftActions({
     return (
       <>
         <form
-          className="ov-reply"
+          className="relative z-1 flex basis-full flex-nowrap gap-1.5"
           onSubmit={(event) => {
             event.preventDefault();
             if (text.trim().length === 0) return;

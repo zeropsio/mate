@@ -1,5 +1,6 @@
 import { Loading } from "./ui/loading";
 import { Skeleton } from "./ui/skeleton";
+import { Separator } from "~/components/ui/separator";
 
 export function DiffPanelHeaderSkeleton() {
   return (
@@ -61,9 +62,9 @@ export function DiffPanelLoadingState(props: { label: string }) {
       <Loading label={props.label}>
         <DiffFileHeaderSkeleton titleWidth="medium" />
         <div className="flex h-6 items-center gap-2 px-2 pr-3">
-          <div className="h-px flex-1 bg-border/40" />
+          <Separator className="flex-1" />
           <Skeleton shape="pill" className="h-2.5 w-24" />
-          <div className="h-px flex-1 bg-border/40" />
+          <Separator className="flex-1" />
         </div>
         <div className="space-y-2 px-3 py-2">
           <DiffCodeLineSkeleton width="medium" />

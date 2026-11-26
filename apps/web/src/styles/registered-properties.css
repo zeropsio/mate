@@ -1,0 +1,13 @@
+/* Custom properties the overview eases between values: a transition interpolates a custom property
+   only once @property gives it a type, which no utility can declare. */
+@property --rail-fade-left {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --rail-fade-right {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}

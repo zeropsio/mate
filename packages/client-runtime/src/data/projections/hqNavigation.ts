@@ -179,15 +179,18 @@ const offered = (can: HqOffers | undefined) => (can === undefined ? {} : { can }
 
 /**
  * A project as the person's own Zerops list reads it, joined by id to HQ's row. Until that list
- * holds it (not read yet, no access) its name reads "Unknown" and it is not deleting.
+ * holds it (not read yet, no access) its name is absent and it is not deleting.
  */
 const rosterOf = (read: ProjectionReads, projectId: string) => read.fact("project", projectId);
 
 /** The Mate's name HQ holds, else the project's in the person's own Zerops list. */
 function projectName(hqName: string | undefined, roster: ReturnType<typeof rosterOf>) {
   if (hqName !== undefined) return hqName;
-  return roster.kind === "known" && roster.value.name !== "" ? roster.value.name : "Unknown";
+  return roster.kind === "known" && roster.value.name !== "" ? roster.value.name : undefined;
 }
+
+/** A name drawn by a surface, including where neither owner named the project. */
+export const shownProjectName = (name: string | undefined): string => name ?? "Unknown";
 
 /** Whether HQ offers the reader Set up Mate on this project. */
 const offersSetUp = (placement: PlacementValue) =>

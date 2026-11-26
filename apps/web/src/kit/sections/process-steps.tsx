@@ -2,7 +2,7 @@ import { ProcessSteps } from "~/components/zerops/primitives";
 import type { ProcessStep } from "~/components/zerops/primitives";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 const STEPS: ReadonlyArray<ProcessStep> = [
   { id: "build", label: "Build", state: "done", stateLabel: "Done", durationMs: 42_000 },
@@ -31,22 +31,29 @@ export default defineKitSection({
   kind: "Feedback",
   source: "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label="steps under way">
-        <div className="w-[28rem]">
-          <ProcessSteps steps={STEPS} />
-        </div>
-      </Specimen>
-      <Specimen label="a step that failed">
-        <div className="w-[28rem]">
-          <ProcessSteps steps={FAILED} />
-        </div>
-      </Specimen>
-      <Specimen label='density="compact"'>
-        <div className="w-[28rem]">
-          <ProcessSteps density="compact" steps={STEPS} />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Each step's glyph and words, its time at the end."
+        title="Under way, failed and compact"
+      >
+        <SpecimenGrid size="lg">
+          <Specimen label="steps" note="Steps under way">
+            <div className="w-full max-w-[28rem]">
+              <ProcessSteps steps={STEPS} />
+            </div>
+          </Specimen>
+          <Specimen label="steps" note="A step that failed">
+            <div className="w-full max-w-[28rem]">
+              <ProcessSteps steps={FAILED} />
+            </div>
+          </Specimen>
+          <Specimen label='density="compact" steps' note="Inside a card of results">
+            <div className="w-full max-w-[28rem]">
+              <ProcessSteps density="compact" steps={STEPS} />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

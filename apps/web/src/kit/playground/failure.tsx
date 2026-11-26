@@ -1,6 +1,6 @@
 import { BoxIcon } from "lucide-react";
 
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { Failure } from "~/components/ui/failure";
 
 import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
@@ -20,7 +20,7 @@ export default definePlayground({
     form: {
       kind: "enum",
       options: FORMS,
-      note: "line for an action's refusal where it stands (its cause only); page for a whole page that failed, marked with its subject",
+      note: "line for an action's refusal where it stands; page for a whole page that failed, marked with its subject",
     },
     cause: { kind: "text", note: "what went wrong, in the person's words" },
     children: { kind: "text", note: "one more line: what is kept, what happens next" },
@@ -39,11 +39,13 @@ export default definePlayground({
     const failure = (
       <Failure
         action={
-          action ? (
+          !action ? undefined : size === "line" ? (
+            <InlineButton>Try again</InlineButton>
+          ) : (
             <Button size={size === "page" ? "md" : "sm"} variant="secondary">
               Try again
             </Button>
-          ) : undefined
+          )
         }
         cause={cause}
         details={details === "" ? undefined : details}
@@ -72,19 +74,19 @@ export default definePlayground({
       {
         size: sizeOf(form),
         cause,
-        // A line is its cause alone.
-        action:
-          action && form !== "line"
-            ? jsxCode(
-                form === "inline"
+        action: action
+          ? jsxCode(
+              form === "line"
+                ? "<InlineButton>Try again</InlineButton>"
+                : form === "inline"
                   ? '<Button size="sm" variant="secondary">Try again</Button>'
                   : '<Button variant="secondary">Try again</Button>',
-              )
-            : undefined,
-        details: details === "" || form === "line" ? undefined : details,
+            )
+          : undefined,
+        details: details === "" ? undefined : details,
         mark: form === "page with mark" ? jsxCode(MARK_CODE) : undefined,
       },
-      form === "line" ? "" : children,
+      children,
       { size: "inline" },
     ),
   usage: {
@@ -93,11 +95,12 @@ export default definePlayground({
       "Say the cause as the person sees it, then the one action that fixes it.",
       "Fold the source's own words under Details, for whoever reports it.",
       "Use size page when the whole page could not open, with its subject's mark.",
-      "Use size line for an action's refusal where the action stands: under its form, beside its buttons.",
+      "Use size line for an action's refusal where the action stands: under its form, beside its buttons, in a row; its action is an InlineButton.",
     ],
     dont: [
       "Put a spinner beside it or retry on a timer the person cannot see.",
-      "Lead with a status code or an error name; that goes under Details.",
+      "Lead with a status code, an error name or the source's raw answer; that goes under Details.",
+      "Draw a red sentence by hand: a refusal is a Failure line, a field's error is Text error.",
       "Offer an action that cannot fix it; leave it out instead.",
     ],
   },

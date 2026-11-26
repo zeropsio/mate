@@ -32,6 +32,7 @@ import { BeadMark } from "./BeadMark";
 import { changeReviewable, type RowStanding } from "./ChangeRow.logic";
 import { ChangeLookRows, LedgerRows, PageRows, type ChangeLook } from "./pageRows";
 import { lineChangeKey, type LineBead } from "./projectLine.logic";
+import { List } from "~/components/ui/list";
 
 /** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
 const CUT_TEXT_DELAY_MS = 500;
@@ -301,12 +302,9 @@ export function ChangeRow(props: ChangeRowProps) {
       className={cn(
         "col-span-full grid min-w-0 grid-cols-subgrid items-center [--change-gap:10px] [--row-pad-x:8px] [--row-pad-y:6px]",
         // The row of the change whose bead on the line is pointed at (`data-marked`).
-        "[&[data-marked]>[data-slot=row]]:bg-foreground/5",
+        "[&[data-marked]>[data-slot=row]]:bg-item-hover",
         (look === "ruled" || look === "record") && "[--row-pad-x:10px] [--row-pad-y:10px]",
-        look === "ruled" && "border-t border-border/60 first:border-t-0",
-        look === "record" && "border-t border-border/60",
-        look === "release" &&
-          "border-t border-border/60 [--change-gap:12px] [--row-pad-x:0px] [--row-pad-y:8px]",
+        look === "release" && "[--change-gap:12px] [--row-pad-x:0px] [--row-pad-y:8px]",
       )}
       data-zerops-change={pull === undefined ? undefined : lineChangeKey(pull)}
     >
@@ -357,7 +355,7 @@ export function ChangeRow(props: ChangeRowProps) {
             tone="muted"
           >
             {pullRequestName(github)}
-            <ArrowUpRightIcon aria-hidden="true" className="size-3" />
+            <ArrowUpRightIcon aria-hidden="true" />
           </InlineButton>
         </span>
       )}
@@ -417,29 +415,35 @@ export function ChangeList({
   /** How its rows stand on what holds them (`ChangeLook`). */
   readonly look?: ChangeLook;
 }) {
-  return (
-    <ul
-      aria-label={label}
-      className={cn(
-        // One grid for the list: a row's face and words, then its trailing facts in columns of
-        // their own, each as wide as the widest in the list.
-        "grid list-none grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] p-0",
-        look === "card" && "-mx-2 -mt-1.5",
-        look === "record" && "[[data-group]+&]:mt-1.5",
-        page && "@container/changes",
-        ledger &&
-          "grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto] [--ln-ground:transparent] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,transparent)]",
-        // A place's next release that lists commits of no change fills no face's seat: the seat
-        // goes, and the subjects stand on the card's own edge.
-        "[[data-zerops-next-block]_&:not(:has([data-change-face]>*,[data-change-icon]))_[data-change-face]]:hidden",
-      )}
-      data-zerops-change-group={group}
-    >
+  const props = {
+    "aria-label": label,
+    className: cn(
+      // One grid for the list: a row's face and words, then its trailing facts in columns of
+      // their own, each as wide as the widest in the list.
+      "grid grid-cols-[auto_minmax(0,1fr)_auto_auto_auto]",
+      look === "card" && "-mx-2 -mt-1.5",
+      look === "record" && "[[data-group]+&]:mt-1.5",
+      page && "@container/changes",
+      ledger &&
+        "grid-cols-[auto_minmax(0,1fr)_auto_auto_auto_auto] [--ln-ground:transparent] [--ln-track:color-mix(in_oklab,var(--foreground)_30%,transparent)]",
+      // A place's next release that lists commits of no change fills no face's seat: the seat
+      // goes, and the subjects stand on the card's own edge.
+      "[[data-zerops-next-block]_&:not(:has([data-change-face]>*,[data-change-icon]))_[data-change-face]]:hidden",
+    ),
+    "data-zerops-change-group": group,
+    children: (
       <PageRows value={page}>
         <LedgerRows value={ledger}>
           <ChangeLookRows value={look}>{children}</ChangeLookRows>
         </LedgerRows>
       </PageRows>
-    </ul>
+    ),
+  };
+  // A card's and a panel's rows part by their room; the Changes card's, a record's and an opened
+  // release's by a hairline, which a record's draws over its first row too.
+  return look === "card" || look === "flush" ? (
+    <ul {...props} />
+  ) : (
+    <List edges={look === "record" ? "top" : false} render={<ul />} {...props} />
   );
 }

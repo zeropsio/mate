@@ -5,6 +5,7 @@ import { GaugeIcon } from "lucide-react";
 import { getDriverOption } from "../settings/providerDriverMeta";
 import { LimitWindows, ResetCredits } from "../usage/UsageLimits";
 import type { ConversationNotice } from "./ConversationRows";
+import { Text } from "~/components/ui/text";
 
 /** Driver name, then the instance when there could be more than one of that driver. */
 function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
@@ -68,12 +69,12 @@ function UsageLimitsBody({
         return (
           <div key={account.id} className="flex min-w-0 flex-col gap-1">
             {report.accounts.length > 1 ? (
-              <span className="truncate text-caption text-muted-foreground">
+              <Text truncate variant="note">
                 {[accountLabel(account), account.plan].filter(Boolean).join(" · ")}
-              </span>
+              </Text>
             ) : null}
             {notice ? (
-              <span className="text-caption text-muted-foreground">{notice}</span>
+              <Text variant="note">{notice}</Text>
             ) : (
               <LimitWindows
                 compact
@@ -94,9 +95,9 @@ function UsageLimitsBody({
         );
       })}
       {report.notices.map((notice) => (
-        <span key={notice} className="text-caption text-muted-foreground">
+        <Text variant="note" key={notice}>
           {notice}
-        </span>
+        </Text>
       ))}
     </div>
   );

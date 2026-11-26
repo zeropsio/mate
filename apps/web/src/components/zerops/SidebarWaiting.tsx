@@ -29,6 +29,7 @@ import { useMateWrite } from "~/zerops/useMateWrite";
 import { Failure } from "../ui/failure";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Kbd } from "../ui/kbd";
+import { LogoTile } from "../ui/logo-tile";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SectionHeader } from "../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -45,6 +46,7 @@ import {
   type WaitingMate,
 } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
+import { Text } from "~/components/ui/text";
 
 /** What the list asks of the menu: a Mate's conversation, and the fix request's composer. */
 export interface WaitingVerbs {
@@ -230,10 +232,13 @@ export function WaitingList({
         <SectionHeader
           action={
             // A key's hint means nothing under a finger.
-            <span className="inline-flex items-center gap-1.5 text-body text-muted-foreground pointer-coarse:hidden">
+            <Text
+              className="inline-flex items-center gap-1.5 pointer-coarse:hidden"
+              variant="description"
+            >
               <Kbd>⌥↓</Kbd>
               next
-            </span>
+            </Text>
           }
           level={3}
           title="Waiting on you"
@@ -314,9 +319,7 @@ function WaitingEntry({
     >
       <span className="flex h-8" aria-hidden="true">
         {item.kind === "release" ? (
-          <span className="grid size-8 place-items-center rounded-full bg-foreground/7 text-body font-semibold">
-            {item.release.name.trim().charAt(0).toUpperCase()}
-          </span>
+          <LogoTile>{item.release.name.trim().charAt(0).toLocaleUpperCase()}</LogoTile>
         ) : (
           <MateFace
             shape={item.mate.shape}

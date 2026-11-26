@@ -18,7 +18,7 @@ export function KitDocument({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-8 pt-8 pb-16">
         <PageHeader actions={actions} line={line} title={title} />
         {children}

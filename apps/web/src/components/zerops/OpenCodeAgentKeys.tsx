@@ -13,6 +13,9 @@ import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useEnvironment } from "~/state/environments";
 import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
+import { LogoTile } from "~/components/ui/logo-tile";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 /**
  * OpenCode's row among the Mate's coding agents: Mate signs nobody in to it,
@@ -29,21 +32,18 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
   );
   if (installed !== true) return null;
   return (
-    <div
-      className="flex items-start gap-3 border-t border-border/60 px-4 py-2.5"
-      data-zerops-opencode-keys
-    >
-      <span
-        aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
-      >
-        <OpenCodeIcon className="size-4" />
-      </span>
-      <div className="grid min-w-0 flex-1 gap-1">
-        <span className="text-body leading-5 font-medium text-foreground">OpenCode</span>
-        <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
+    <>
+      <Separator />
+      <div className="flex items-start gap-3 px-4 py-2.5" data-zerops-opencode-keys>
+        <LogoTile>
+          <OpenCodeIcon />
+        </LogoTile>
+        <div className="grid min-w-0 flex-1 gap-1">
+          <Text variant="heading">OpenCode</Text>
+          <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -76,16 +76,15 @@ export function OpenCodeAgentLine({
       data-zerops-opencode-keys=""
     >
       <span className="flex min-w-0 items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className="flex size-5.5 shrink-0 items-center justify-center rounded-control bg-accent"
-        >
-          <OpenCodeIcon className="size-3.5" />
-        </span>
-        <span className="shrink-0 text-body font-medium text-foreground">OpenCode</span>
-        <span className="min-w-0 truncate text-body text-muted-foreground">
+        <LogoTile size="sm">
+          <OpenCodeIcon />
+        </LogoTile>
+        <Text className="shrink-0" variant="heading">
+          OpenCode
+        </Text>
+        <Text className="min-w-0" truncate variant="description">
           {keyed ? "a model key is set" : free ? "runs on free models" : "needs a model key"}
-        </span>
+        </Text>
       </span>
       <Button onClick={onManage} size="sm" variant={keyed || free ? "ghost" : "link"}>
         {keyed || free ? "Manage" : "Add key"}

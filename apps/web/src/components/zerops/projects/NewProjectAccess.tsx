@@ -29,6 +29,7 @@ import {
   type ProjectPeopleView,
   type ProjectPerson,
 } from "./projectPeople.logic";
+import { Text } from "~/components/ui/text";
 
 export function NewProjectAccess({
   label,
@@ -178,9 +179,9 @@ function AddPeopleCard({
             return (
               <Row
                 badges={
-                  <span className="text-caption text-muted-foreground">
+                  <Text variant="meta">
                     {candidate.pending ? `${candidate.role} · invited` : candidate.role}
-                  </span>
+                  </Text>
                 }
                 control={
                   <ToggleGroup
@@ -200,6 +201,7 @@ function AddPeopleCard({
                     <ToggleGroupItem value="full">Full</ToggleGroupItem>
                   </ToggleGroup>
                 }
+                controlStays
                 key={candidate.clientUserId}
                 lead={
                   <PersonAvatar name={candidate.name} picture={candidate.avatarUrl} size={20} />

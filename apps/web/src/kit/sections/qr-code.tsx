@@ -1,7 +1,7 @@
 import { QRCodeSvg } from "~/components/ui/qr-code";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const VALUE = "https://mate.zerops.io/kit";
@@ -14,12 +14,19 @@ export default defineKitSection({
   kind: "Data",
   source: "apps/web/src/components/ui/qr-code.tsx",
   render: () => (
-    <SpecimenGrid>
-      {(["L", "M", "Q", "H"] as const).map((level) => (
-        <Specimen key={level} label={specimenLabel({ level, size: 128 })}>
-          <QRCodeSvg level={level} size={128} title={`QR code, level ${level}`} value={VALUE} />
-        </Specimen>
-      ))}
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="How much of the code can be lost and still read, from L to H."
+        title="Error correction levels"
+      >
+        <SpecimenGrid>
+          {(["L", "M", "Q", "H"] as const).map((level) => (
+            <Specimen key={level} label={specimenLabel({ level, size: 128 })}>
+              <QRCodeSvg level={level} size={128} title={`QR code, level ${level}`} value={VALUE} />
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

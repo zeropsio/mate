@@ -17,12 +17,15 @@ import { useEffect, useState } from "react";
 
 import { WrittenChanges } from "~/components/chat/FileWriteDetail";
 import { writtenAtWords, writtenFileRefusalWords } from "~/components/chat/fileWrites.logic";
+import { PanelBar } from "~/components/ui/panel-bar";
+import { Text } from "~/components/ui/text";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useClientSettings } from "~/hooks/useSettings";
 import { threadFileWritesCommands } from "~/state/threadFileWritesCommands";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { useKnownMate } from "~/zerops/useZeropsMates";
+import { Card } from "~/components/ui/card";
 
 type Read =
   | { readonly state: "reading" }
@@ -73,24 +76,23 @@ export default function WrittenFilePanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
-      <div
-        className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 text-caption"
-        data-surface-subheader
-      >
+      <PanelBar data-surface-subheader>
         <Tooltip>
           <TooltipTrigger
-            render={<span className="min-w-0 flex-1 truncate font-mono text-foreground" />}
+            render={
+              <span className="min-w-0 flex-1 truncate font-mono text-caption text-foreground" />
+            }
           >
             {path}
           </TooltipTrigger>
           <TooltipPopup side="top">{path}</TooltipPopup>
         </Tooltip>
         {read.state === "read" ? (
-          <span className="shrink-0 text-muted-foreground" data-written-at>
+          <Text className="shrink-0" data-written-at variant="note">
             {writtenAtWords(mate, formatShortTimestamp(read.file.writtenAt, timestampFormat))}
-          </span>
+          </Text>
         ) : null}
-      </div>
+      </PanelBar>
       {read.state === "reading" ? (
         // Asked in a moment: nothing drawn that the answer then replaces.
         <div className="min-h-0 flex-1" />
@@ -103,9 +105,9 @@ export default function WrittenFilePanel({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-3">
-          <div className="rounded-card bg-foreground/4">
+          <Card variant="inset">
             <WrittenChanges write={read.file.write} />
-          </div>
+          </Card>
         </div>
       )}
     </div>

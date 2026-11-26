@@ -8,11 +8,23 @@ import { cn } from "~/lib/utils";
 
 /**
  * One card. `flat` is the app's: a hairline and the card ground, no shadow; `inset` is a card
- * inside another, set apart by a deeper tint instead of a second border — depth shows as tint.
+ * inside another (a well set into its surface), set apart by a step of the ink under it instead of
+ * a second border — depth shows as tint, on a page, a card and a tray alike (a condition, a fact
+ * list, a quoted message); `well` is the larger well a working area stands in, at the card's corner
+ * so what it holds keeps its corners parallel to it: the run card's working row and its browser, a
+ * crew lead's plan, rows to pick under their cards, a group of conditions; `sheet` is a card that
+ * stands alone as its own surface, side by side with its kind (the overview's project cards): the
+ * default card at the sheet's radius; `slot` is the place a thing will stand before it is there (a
+ * service the setup declares and Zerops lacks, a section with nothing yet): a dashed hairline and
+ * no ground of its own; `wash` is a card that stands out from its siblings by what it is, in a wash
+ * of its tone with its hairline in it: the one next step on a surface (the default tone, the
+ * primary's: what the person can act on), the Mate's own home (`ok`).
  * `size` is its padding when its content is not rows that carry their own: `sm` for a card in a
- * list or a conversation, `md` for a card that stands alone on a page. `pressable` makes the whole
- * card one press. `tone="failed"` wears its hairline in the failed ink: a thing that broke, on its
- * own card (a tool call that failed).
+ * list or a conversation, `md` for a card that stands alone on a page; `rows` is a card of rows
+ * that light their own ground, 6 px around them so a lit row's corner sits inside the card's.
+ * `pressable` makes the whole card one press. `tone` is the state of what it holds, worn by its
+ * hairline: `ok` running or done, `busy` under way, `attention` waiting on the person, `failed`
+ * a thing that broke (a tool call that failed); a `wash` card wears it as its ground too.
  */
 const cardVariants = cva("", {
   defaultVariants: {
@@ -26,27 +38,53 @@ const cardVariants = cva("", {
       default:
         "relative flex flex-col rounded-card border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-card)-1px)] before:shadow-edge",
       flat: "relative flex flex-col rounded-card border border-[var(--zerops-flat-card-border)] bg-card text-card-foreground",
-      inset: "relative flex flex-col rounded-control bg-muted/60 text-card-foreground",
+      inset: "relative flex flex-col rounded-control bg-foreground/4 text-card-foreground",
+      well: "relative flex flex-col rounded-card bg-foreground/5 text-card-foreground",
+      sheet:
+        "relative flex flex-col rounded-sheet border bg-card bg-clip-ground text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-sheet)-1px)] before:shadow-edge",
+      slot: "relative flex flex-col rounded-card border border-dashed border-border",
+      wash: "relative flex flex-col rounded-card border text-card-foreground",
     },
     size: {
       none: "",
       sm: "gap-2 px-3.5 py-3",
       md: "gap-3 p-4",
+      rows: "p-1.5",
     },
     tone: {
       default: "",
+      ok: "border-status-ok/35",
+      busy: "border-status-busy/35",
+      attention: "border-status-attention/35",
       failed: "border-status-failed/35",
     },
     /**
      * A card whose whole body is one press (a launcher's page, a thing it opens): a `<button>`, or
      * a link through `render`. Lit under the pointer, by keyboard focus, and while `data-highlighted`
-     * (a list's arrow keys stepping through cards that keep focus on the list).
+     * (a list's arrow keys stepping through cards that keep focus on the list): it keeps its own
+     * ground and the item's hover step (`--color-item-hover`) lies over it, an inset shade, so a
+     * card lights like every pressable item, on a page, a card and a tray alike.
      */
     pressable: {
-      true: "cursor-pointer text-start outline-none transition-colors duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:bg-accent/60",
+      true: "cursor-pointer text-start outline-none transition-[background-color,box-shadow] duration-150 ease-out-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background [:hover,:focus-visible,[data-highlighted]]:inset-shadow-[0_0_0_100vmax_var(--color-item-hover)]",
       false: "",
     },
   },
+  compoundVariants: [
+    { variant: "wash", tone: "default", className: "border-primary/20 bg-primary/6" },
+    { variant: "wash", tone: "ok", className: "border-status-ok/20 bg-status-ok-surface" },
+    { variant: "wash", tone: "busy", className: "border-status-busy/20 bg-status-busy-surface" },
+    {
+      variant: "wash",
+      tone: "attention",
+      className: "border-status-attention/20 bg-status-attention-surface",
+    },
+    {
+      variant: "wash",
+      tone: "failed",
+      className: "border-status-failed/20 bg-status-failed-surface",
+    },
+  ],
 });
 
 interface CardProps extends useRender.ComponentProps<"div"> {

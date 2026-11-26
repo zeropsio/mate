@@ -21,7 +21,7 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
-import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -33,7 +33,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { CopyLine } from "../ui/copy-line";
 import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { keybindingValueForCommand } from "../../lib/projectScriptKeybindings";
@@ -66,6 +66,7 @@ import {
   type NewProjectScriptInput,
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
 import {
   Menu,
@@ -79,7 +80,6 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -89,6 +89,7 @@ import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useNavigateToMainApp } from "../sidebar/mainAppLocation";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { projectSettingsState } from "./ProjectSettingsPanel.logic";
+import { Text } from "~/components/ui/text";
 
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -198,7 +199,7 @@ function ProjectSettingsBreadcrumb({ projectKey }: { projectKey: string }) {
             <span className="min-w-0 truncate">{selected.displayName}</span>
             <ChevronDownIcon
               aria-hidden
-              className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
+              className="text-muted-foreground opacity-0 transition-opacity group-hover/project-title:opacity-100 group-focus-visible/project-title:opacity-100"
             />
           </InlineButton>
         ) : projectsRead ? (
@@ -260,11 +261,15 @@ function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
   }
   if (!selected) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-body text-muted-foreground">
+      <Text
+        className="flex flex-1 items-center justify-center p-8"
+        render={<div />}
+        variant="description"
+      >
         {state === "no-projects"
           ? "Add a project from the sidebar to configure it here."
           : "This project is no longer available."}
-      </div>
+      </Text>
     );
   }
   return <ProjectDetail key={selected.projectKey} group={selected} />;
@@ -282,20 +287,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   });
   const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
-  });
-  const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
-    onCopy: ({ path }) => {
-      toastManager.add({ type: "success", title: "Path copied", description: path });
-    },
-    onError: (error) => {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Failed to copy path",
-          description: error instanceof Error ? error.message : "An error occurred.",
-        }),
-      );
-    },
   });
 
   const representative =
@@ -567,35 +558,17 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           }
         >
           <div className="px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center rounded-card bg-muted/30 p-1 text-body text-muted-foreground">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label="Copy checkout path"
-                      className="group min-w-0 flex-1 justify-start"
-                      onClick={() =>
-                        copyPathToClipboard(selectedCheckout.workspaceRoot, {
-                          path: selectedCheckout.workspaceRoot,
-                        })
-                      }
-                      size="sm"
-                      variant="ghost-muted"
-                    >
-                      <code className="min-w-0 flex-1 truncate text-left font-mono">
-                        {selectedCheckout.workspaceRoot}
-                      </code>
-                      <CopyIcon className="size-4 shrink-0 opacity-60 group-hover:opacity-100" />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">Copy path</TooltipPopup>
-              </Tooltip>
-              <div className="shrink-0 border-l border-border/60 px-2 tabular-nums">
+            <div className="flex min-w-0 items-center gap-3">
+              <CopyLine
+                className="flex-1"
+                label="the checkout's path"
+                value={selectedCheckout.workspaceRoot}
+              />
+              <Text className="shrink-0" variant="meta">
                 {selectedCheckoutThreadCount === 1
                   ? "1 thread"
                   : `${selectedCheckoutThreadCount} threads`}
-              </div>
+              </Text>
             </div>
           </div>
           <SettingsRow
@@ -641,10 +614,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
           />
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
-              <h3 className="text-emphasis font-semibold text-foreground">Actions</h3>
-              <p className="text-pretty text-body text-muted-foreground">
+              <Text render={<h3 />} variant="headline">
+                Actions
+              </Text>
+              <Text render={<p />} variant="description">
                 Saved and run only in {selectedCheckoutLabel}.
-              </p>
+              </Text>
             </div>
             <div className="flex w-full flex-wrap gap-1.5 sm:w-auto sm:shrink-0 sm:justify-end">
               {importableScripts.length > 0 ? (
@@ -657,12 +632,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     Import scripts
                     <ChevronDownIcon className="size-3.5" />
                   </MenuTrigger>
-                  <MenuPopup align="end" className="w-72">
+                  <MenuPopup align="end" width="md">
                     <MenuGroup>
                       <MenuGroupLabel>Import from t3.json</MenuGroupLabel>
-                      <p className="px-2 pb-2 text-pretty text-body text-muted-foreground">
+                      <Text className="px-2 pb-2" render={<p />} variant="description">
                         Add actions declared by this checkout without editing them first.
-                      </p>
+                      </Text>
                     </MenuGroup>
                     <MenuSeparator />
                     {importableScripts.map((fileScript) => (
@@ -690,15 +665,15 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   setEditorRequest({ scriptId: null, initial: EMPTY_PROJECT_SCRIPT_INPUT })
                 }
               >
-                <PlusIcon className="size-3.5" />
+                <PlusIcon />
                 Add action
               </Button>
             </div>
           </div>
           {scripts.length === 0 ? (
-            <p className="px-3 py-2 text-body text-muted-foreground sm:px-4">
+            <Text className="px-3 py-2 sm:px-4" render={<p />} variant="description">
               No actions configured for this checkout.
-            </p>
+            </Text>
           ) : (
             scripts.map((script) => {
               const shortcutLabel = shortcutLabelForCommand(
@@ -719,18 +694,12 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                       <code className="min-w-0 flex-1 truncate font-mono font-normal text-muted-foreground">
                         {script.command}
                       </code>
-                      {script.runOnWorktreeCreate ? (
-                        <span className="shrink-0 rounded-mark border border-border/60 px-1.5 py-px text-caption font-normal text-muted-foreground">
-                          setup
-                        </span>
-                      ) : null}
+                      {script.runOnWorktreeCreate ? <Badge>setup</Badge> : null}
                     </span>
                   }
                   control={
                     <>
-                      {shortcutLabel ? (
-                        <span className="text-caption text-muted-foreground">{shortcutLabel}</span>
-                      ) : null}
+                      {shortcutLabel ? <Text variant="meta">{shortcutLabel}</Text> : null}
                       {/* Shown while the row is hovered or holds focus. */}
                       <span className="flex shrink-0 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
                         <Button
@@ -742,7 +711,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                             setEditorRequest(editorRequestForScript(script, keybindings))
                           }
                         >
-                          <SettingsIcon className="size-3.5" />
+                          <SettingsIcon />
                         </Button>
                       </span>
                     </>

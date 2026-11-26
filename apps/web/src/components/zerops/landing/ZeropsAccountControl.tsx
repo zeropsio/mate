@@ -18,6 +18,7 @@ import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
 import { PersonAvatar } from "../primitives";
 import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
+import { Text } from "~/components/ui/text";
 
 interface ZeropsAccountControlProps {
   readonly account: ZeropsAccountDisplay;
@@ -50,7 +51,7 @@ export function ZeropsAccountControl({
         </span>
         <ChevronDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       </MenuTrigger>
-      <MenuPopup align="end" className="w-64">
+      <MenuPopup align="end" width="md">
         <ZeropsAccountMenu account={account} busy={busy} error={error} onSignOut={onSignOut} />
       </MenuPopup>
     </Menu>
@@ -77,11 +78,13 @@ export function ZeropsAccountMenu({
           size={32}
         />
         <div className="min-w-0">
-          <p className="truncate text-body font-medium text-foreground">
+          <Text render={<p />} truncate variant="heading">
             {account.fullName ?? account.name}
-          </p>
+          </Text>
           {account.email === null ? null : (
-            <p className="truncate text-caption text-muted-foreground">{account.email}</p>
+            <Text render={<p />} truncate variant="note">
+              {account.email}
+            </Text>
           )}
         </div>
       </div>

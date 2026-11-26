@@ -15,6 +15,7 @@ import { AskRevealed } from "../../ask/AskSecret";
 import { Button } from "../../ui/button";
 import { proposalAskWhere } from "./proposal.logic";
 import { revealPress } from "./reveal.logic";
+import { Text } from "~/components/ui/text";
 
 interface RevealAskCardProps {
   readonly proposal: Extract<ZeropsProposal, { kind: "env.reveal" }>;
@@ -92,9 +93,9 @@ export function RevealAskCard(props: RevealAskCardProps) {
       >
         {props.value === null ? null : <AskRevealed onHide={props.onHide} value={props.value} />}
         {props.refusal === undefined ? null : (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {props.refusal}
-          </p>
+          </Text>
         )}
       </AskCard>
     </div>

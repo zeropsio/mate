@@ -32,6 +32,8 @@ import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { projectEnvironment } from "~/state/projects";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -146,98 +148,102 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   };
 
   return (
-    <div className="rounded-card border border-border/80 bg-card/70 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Badge tone="neutral">Plan</Badge>
-          {/* Same heading level as the message author headings in the timeline,
+    <Card>
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Badge tone="neutral">Plan</Badge>
+            {/* Same heading level as the message author headings in the timeline,
               so a plan's own headings nest beneath it in the outline. */}
-          <h3 className="truncate text-body font-medium text-foreground">{title}</h3>
+            <Text render={<h3 />} truncate variant="heading">
+              {title}
+            </Text>
+          </div>
+          <Menu>
+            <MenuTrigger
+              render={<Button aria-label="Plan actions" size="icon-sm" variant="secondary" />}
+            >
+              <EllipsisIcon aria-hidden="true" className="size-4" />
+            </MenuTrigger>
+            <MenuPopup align="end">
+              <MenuItem onClick={handleCopyPlan}>
+                {isCopied ? "Copied!" : "Copy to clipboard"}
+              </MenuItem>
+              <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+              <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
+                Save to workspace
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
         </div>
-        <Menu>
-          <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-sm" variant="secondary" />}
-          >
-            <EllipsisIcon aria-hidden="true" className="size-4" />
-          </MenuTrigger>
-          <MenuPopup align="end">
-            <MenuItem onClick={handleCopyPlan}>
-              {isCopied ? "Copied!" : "Copy to clipboard"}
-            </MenuItem>
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
-            <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
-              Save to workspace
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-      </div>
-      <div className="mt-4">
-        <div className={cn("relative", canCollapse && !expanded && "max-h-104 overflow-hidden")}>
-          {canCollapse && !expanded ? (
-            <ChatMarkdown
-              text={collapsedPreview ?? ""}
-              cwd={cwd}
-              threadRef={threadRef}
-              isStreaming={false}
-              headingLevelOffset={MESSAGE_HEADING_LEVEL}
-            />
-          ) : (
-            <ChatMarkdown
-              text={displayedPlanMarkdown}
-              cwd={cwd}
-              threadRef={threadRef}
-              isStreaming={false}
-              headingLevelOffset={MESSAGE_HEADING_LEVEL}
-            />
-          )}
-          {canCollapse && !expanded ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-linear-to-t from-card/95 via-card/80 to-transparent" />
+        <div className="mt-4">
+          <div className={cn("relative", canCollapse && !expanded && "max-h-104 overflow-hidden")}>
+            {canCollapse && !expanded ? (
+              <ChatMarkdown
+                text={collapsedPreview ?? ""}
+                cwd={cwd}
+                threadRef={threadRef}
+                isStreaming={false}
+                headingLevelOffset={MESSAGE_HEADING_LEVEL}
+              />
+            ) : (
+              <ChatMarkdown
+                text={displayedPlanMarkdown}
+                cwd={cwd}
+                threadRef={threadRef}
+                isStreaming={false}
+                headingLevelOffset={MESSAGE_HEADING_LEVEL}
+              />
+            )}
+            {canCollapse && !expanded ? (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-linear-to-t from-card/95 via-card/80 to-transparent" />
+            ) : null}
+          </div>
+          {canCollapse ? (
+            <div className="mt-4 flex justify-center">
+              <Button size="sm" variant="secondary" onClick={() => setExpanded((value) => !value)}>
+                {expanded ? "Collapse plan" : "Expand plan"}
+              </Button>
+            </div>
           ) : null}
         </div>
-        {canCollapse ? (
-          <div className="mt-4 flex justify-center">
-            <Button size="sm" variant="secondary" onClick={() => setExpanded((value) => !value)}>
-              {expanded ? "Collapse plan" : "Expand plan"}
-            </Button>
-          </div>
-        ) : null}
-      </div>
 
-      <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
-        <DialogPopup className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
-            <DialogDescription>
-              Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogPanel>
-            <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-caption font-medium text-foreground">Workspace path</span>
-              <Input
-                id={savePathInputId}
-                value={savePath}
-                onChange={(event) => setSavePath(event.target.value)}
-                placeholder={downloadFilename}
-                spellCheck={false}
+        <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+          <DialogPopup className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Save plan to workspace</DialogTitle>
+              <DialogDescription>
+                Enter a path relative to <code>{workspaceRoot ?? "the workspace"}</code>.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <label htmlFor={savePathInputId} className="grid gap-1.5">
+                <span className="text-caption font-medium text-foreground">Workspace path</span>
+                <Input
+                  id={savePathInputId}
+                  value={savePath}
+                  onChange={(event) => setSavePath(event.target.value)}
+                  placeholder={downloadFilename}
+                  spellCheck={false}
+                  disabled={isSavingToWorkspace}
+                />
+              </label>
+            </DialogPanel>
+            <DialogFooter>
+              <Button variant="secondary" size="sm" onClick={() => setIsSaveDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleSaveToWorkspace()}
                 disabled={isSavingToWorkspace}
-              />
-            </label>
-          </DialogPanel>
-          <DialogFooter>
-            <Button variant="secondary" size="sm" onClick={() => setIsSaveDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleSaveToWorkspace()}
-              disabled={isSavingToWorkspace}
-            >
-              {isSavingToWorkspace ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogPopup>
-      </Dialog>
-    </div>
+              >
+                {isSavingToWorkspace ? "Saving..." : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        </Dialog>
+      </div>
+    </Card>
   );
 });

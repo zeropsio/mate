@@ -404,31 +404,8 @@ export function changeFileLetter(status: string): "A" | "M" | "D" | "R" | "C" {
   }
 }
 
-/** `2400` → `2.4k`: a count a row has room for. */
-function short(value: number): string {
-  if (value < 1000) return String(value);
-  const thousands = value / 1000;
-  return `${thousands >= 10 ? String(Math.round(thousands)) : thousands.toFixed(1).replace(/\.0$/u, "")}k`;
-}
-
-/** `3 files`, `+42`, `−3` — or nothing while the size is unknown. */
 /** A folded row's count where HQ has not recorded what it counts: never a 0 that reads as none. */
 export const NOT_RECORDED_ASIDE = "Not known yet";
-
-export function sizeWords(size: {
-  readonly files: number | undefined;
-  readonly additions: number | undefined;
-  readonly deletions: number | undefined;
-}): { readonly files: string; readonly additions: string; readonly deletions: string } | undefined {
-  if (size.files === undefined || size.additions === undefined || size.deletions === undefined) {
-    return undefined;
-  }
-  return {
-    files: `${String(size.files)} ${size.files === 1 ? "file" : "files"}`,
-    additions: `+${short(size.additions)}`,
-    deletions: `−${short(size.deletions)}`,
-  };
-}
 
 /** Where a change a release carries stands on the stage (`stageMarks`). */
 export type ReleaseStageMark = "on-stage" | "deploying-on-stage" | "failed-on-stage" | "none";

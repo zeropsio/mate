@@ -61,6 +61,8 @@ import {
 } from "./AddressesSheetBits";
 import { DnsRecords } from "./DnsRecords";
 import { RealName } from "~/components/ui/real-name";
+import { StepNumber } from "~/components/ui/step-number";
+import { Text } from "~/components/ui/text";
 
 export type WebMode =
   | { readonly kind: "list" }
@@ -476,13 +478,15 @@ function DomainJourney({
           title={`Zerops couldn't get ${failed.domainName} its https certificate`}
         >
           {failed.sslError === undefined ? null : (
-            <p className="text-muted-foreground text-caption">{failed.sslError}</p>
+            <Text render={<p />} variant="note">
+              {failed.sslError}
+            </Text>
           )}
           {cloudflare ? (
-            <p className="text-muted-foreground text-caption">
+            <Text render={<p />} variant="note">
               On Cloudflare, set each record's Proxy status to DNS only, or SSL/TLS to Full
               (strict).
-            </p>
+            </Text>
           ) : null}
           {waiting.length > 0 ? null : (
             <Trouble text={ctx.trouble.get(`check:${first.routingId}`)} />
@@ -490,7 +494,9 @@ function DomainJourney({
         </Stage>
       ) : waiting.length === 0 ? (
         <Stage state="busy" title="Zerops is getting its free https certificate">
-          <p className="text-muted-foreground text-caption">This usually takes a few minutes.</p>
+          <Text render={<p />} variant="note">
+            This usually takes a few minutes.
+          </Text>
         </Stage>
       ) : (
         <Stage state="next" title="Zerops adds free https" />
@@ -571,7 +577,7 @@ function RecordsStage({
           : `Add these ${count} records to ${root}'s DNS`
       }
     >
-      <p className="text-muted-foreground text-caption" data-addresses-provider={provider.kind}>
+      <Text render={<p />} variant="note" data-addresses-provider={provider.kind}>
         {provider.kind === "known" ? (
           <>
             Its DNS is at {provider.name}. Sign in there and open {root}'s DNS records.
@@ -592,7 +598,7 @@ function RecordsStage({
         ) : (
           <>You do this where you bought {root}, in its DNS settings.</>
         )}
-      </p>
+      </Text>
       {elsewhere.map((domain) => (
         <p className="text-status-attention-text text-caption" key={domain.domainName}>
           {domain.domainName} points at {domain.resolvedIps.join(", ")} now, which isn't{" "}
@@ -600,9 +606,9 @@ function RecordsStage({
         </p>
       ))}
       {records.length === 0 ? (
-        <p className="text-muted-foreground text-caption">
+        <Text render={<p />} variant="note">
           {ctx.placeName}'s IP addresses aren't read yet.
-        </p>
+        </Text>
       ) : (
         <DnsRecords
           bothRequired={bothRequired}
@@ -615,7 +621,7 @@ function RecordsStage({
         />
       )}
       {/* Our own add has no routing to look up yet: the line stands as it will, its press held. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-rule pt-3">
         <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-caption">
           <p className="text-foreground" data-addresses-checked="">
             {busy
@@ -761,9 +767,7 @@ function AddDomainForm({
                 {index === 0 ? null : (
                   <ChevronRightIcon aria-hidden="true" className="size-3 opacity-60" />
                 )}
-                <span className="flex size-4 items-center justify-center rounded-full bg-foreground/8 font-medium text-2xs text-foreground tabular-nums">
-                  {index + 1}
-                </span>
+                <StepNumber n={index + 1} size="sm" />
                 {words}
               </li>
             ))}
@@ -821,9 +825,9 @@ function AddDomainForm({
         ) : null}
       </div>
       {problem !== null ? (
-        <p className="text-destructive-foreground text-caption" role="alert">
+        <Text render={<p />} variant="error" role="alert">
           {problem}
-        </p>
+        </Text>
       ) : offered === null || existing.includes(offered) ? null : (
         <label className="inline-flex cursor-pointer items-center gap-2 text-body">
           <Checkbox checked={twin} onCheckedChange={(on) => setTwin(on === true)} />
@@ -842,9 +846,9 @@ function AddDomainForm({
           </Button>
         )}
         {first ? null : (
-          <span className="ms-1 text-muted-foreground text-caption">
+          <Text className="ms-1" variant="note">
             Next you get the records to add where you bought it.
-          </span>
+          </Text>
         )}
       </div>
     </Card>

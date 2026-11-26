@@ -48,6 +48,11 @@ zerops:
         # load and answers with the page it kept only offline. `retire` ships the worker that
         # removes it; never just delete this line (docs/operations/release-and-deploy.md).
         VITE_APP_SHELL_WORKER: app-shell
+        # The design harness beside the app (`vite.config.ts`): every
+        # `apps/web/design*.html` page over made-up data, the kit's flows at
+        # `/kit`. It reads no account and calls no server; the app's own entry
+        # does not grow.
+        VITE_DESIGN_HARNESS: beside
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -115,6 +120,7 @@ zerops:
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
         VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         VITE_APP_SHELL_WORKER: app-shell
+        VITE_DESIGN_HARNESS: beside
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"
         CI: "1"
@@ -153,6 +159,7 @@ zerops:
         VITE_ZEROPS_API_URL: https://api.app-${RUNTIME_DEV_ENV_HOST}
         VITE_ZEROPS_APP_URL: https://${RUNTIME_DEV_ENV_HOST}
         VITE_ZEROPS_HQ_ORIGIN: https://hq.${RUNTIME_DEV_ENV_HOST}
+        VITE_DESIGN_HARNESS: beside
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"
         CI: "1"
@@ -171,17 +178,10 @@ zerops:
               Cache-Control: "'public, max-age=31536000, immutable' always"
               X-Content-Type-Options: "'nosniff' always"
 
-  # A Mate's preview of the web client: `prod`, with the design harness beside
-  # the app (`VITE_DESIGN_HARNESS`, `vite.config.ts`): every `apps/web/design*.html`
-  # page at its own address and a list of them at `/design/`, for looking at
-  # states there without an account. A Mate's preview builds it in place of
-  # `prod`; production never does, so production's bundle carries no harness.
-  # Nothing of a preview is for search engines to list.
+  # A Mate's preview of the web client: `prod`, design harness and all, built
+  # in place of `prod`. Nothing of a preview is for search engines to list.
   - setup: preview
     extends: prod
-    build:
-      envVariables:
-        VITE_DESIGN_HARNESS: beside
     run:
       routing:
         headers:

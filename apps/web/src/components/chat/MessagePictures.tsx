@@ -16,7 +16,7 @@ import { Fragment, type ReactNode, use } from "react";
 import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
 import { LocalPreviewRelease } from "../useAttachmentPreviewHandoff";
-import { formatPictureBytes, PictureNoteNumber } from "./ComposerPictureView";
+import { formatPictureBytes } from "./ComposerPictureView";
 import { MessageFile } from "./MessageFiles";
 import {
   GALLERY_PICTURE_MAX_HEIGHT,
@@ -27,6 +27,8 @@ import {
   type PictureSize,
 } from "./messagePictures.logic";
 import { Button } from "~/components/ui/button";
+import { PictureFrame } from "~/components/ui/picture-frame";
+import { StepNumber } from "~/components/ui/step-number";
 
 /**
  * Each stored picture's size, read from its header by the server, so a picture
@@ -115,11 +117,9 @@ function MessagePicture(props: {
       style={{ width: reservedWidth, maxWidth: "100%" }}
     >
       {props.state?._tag === "Failure" ? (
-        <ImageUnavailable
-          className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40"
-          reason={props.state.reason}
-          style={box}
-        />
+        <PictureFrame className="max-h-75 max-w-full in-data-gallery:max-h-40" style={box}>
+          <ImageUnavailable className="size-full" reason={props.state.reason} />
+        </PictureFrame>
       ) : segment.image.previewUrl ? (
         <Button
           className="block max-w-full cursor-zoom-in"
@@ -129,25 +129,26 @@ function MessagePicture(props: {
           {...intent}
           onClick={() => props.onOpen(segment.image)}
         >
-          <AssetImage
-            loading="lazy"
-            decoding="async"
-            className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40"
-            src={segment.image.previewUrl}
-            alt={`Picture ${segment.n}`}
-            width={size?.width ?? 300}
-            height={size?.height ?? 169}
-            style={box}
-            underlay={localPreviewUrl}
-            onReady={localPreviewUrl ? () => releaseLocalPreview(localPreviewUrl) : undefined}
-          />
+          <PictureFrame className="max-h-75 max-w-full in-data-gallery:max-h-40" style={box}>
+            <AssetImage
+              loading="lazy"
+              decoding="async"
+              className="block size-full object-cover object-top"
+              src={segment.image.previewUrl}
+              alt={`Picture ${segment.n}`}
+              width={size?.width ?? 300}
+              height={size?.height ?? 169}
+              underlay={localPreviewUrl}
+              onReady={localPreviewUrl ? () => releaseLocalPreview(localPreviewUrl) : undefined}
+            />
+          </PictureFrame>
         </Button>
       ) : (
         // Its room, held until its address arrives: nothing moves when it does.
-        <span
-          className="block max-h-75 max-w-full rounded-card ring-1 ring-foreground/14 in-data-gallery:max-h-40 bg-muted"
-          role="img"
+        <PictureFrame
           aria-label={`Picture ${segment.n}`}
+          className="max-h-75 max-w-full in-data-gallery:max-h-40"
+          role="img"
           style={box}
         />
       )}
@@ -158,7 +159,7 @@ function MessagePicture(props: {
         >
           {segment.notes.map((note) => (
             <li key={note.number} className="flex items-start gap-2 text-body">
-              <PictureNoteNumber className="mt-px">{note.number}</PictureNoteNumber>
+              <StepNumber className="mt-px" n={note.number} size="sm" tone="annotation" />
               <span>{note.text}</span>
             </li>
           ))}

@@ -31,6 +31,7 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Text } from "~/components/ui/text";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -396,9 +397,9 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
             <div key={descriptor.id}>
               {index > 0 ? <MenuDivider /> : null}
               <MenuGroup>
-                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-caption">
+                <Text className="px-2 pt-1.5 pb-1" render={<div />} variant="label">
                   {descriptor.label}
-                </div>
+                </Text>
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-caption">{value}</div>
               </MenuGroup>
             </div>
@@ -415,9 +416,9 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
           <div key={descriptor.id}>
             {index > 0 ? <MenuDivider /> : null}
             <MenuGroup>
-              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-caption">
+              <Text className="px-2 pt-1.5 pb-1" render={<div />} variant="label">
                 {descriptor.label}
-              </div>
+              </Text>
               {isLocked(descriptor) ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-caption">
                   Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
@@ -469,9 +470,9 @@ const TraitsMenuContent = memo(function TraitsMenuContentImpl(
           <div key={descriptor.id}>
             {index > 0 || selectDescriptors.length > 0 ? <MenuDivider /> : null}
             <MenuGroup>
-              <div className="px-2 py-1.5 font-medium text-muted-foreground text-caption">
+              <Text className="px-2 py-1.5" render={<div />} variant="label">
                 {descriptor.label}
-              </div>
+              </Text>
               <MenuRadioGroup
                 value={toggledValue}
                 onValueChange={(value) => {

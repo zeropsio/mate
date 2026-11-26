@@ -24,6 +24,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { sourceControlEnvironment } from "../../state/sourceControl";
 import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
+import { Dot, type DotTone } from "../ui/dot";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsibleContent } from "../ui/collapsible";
 import { EmptyState } from "../ui/empty";
@@ -62,6 +63,7 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { Text } from "~/components/ui/text";
 
 const EMPTY_DISCOVERY_RESULT: SourceControlDiscoveryResult = {
   versionControlSystems: [],
@@ -161,11 +163,11 @@ function RedactedAccount(props: { readonly account: string | null }) {
   );
 }
 
-function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem): string {
-  if (isVcsNotReady(item)) return "bg-muted-foreground/35";
-  if (item.status !== "available") return "bg-warning";
-  if (isProviderDiscoveryItem(item) && item.auth.status !== "authenticated") return "bg-warning";
-  return "bg-success";
+function itemStatusDot(item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem): DotTone {
+  if (isVcsNotReady(item)) return "neutral";
+  if (item.status !== "available") return "warning";
+  if (isProviderDiscoveryItem(item) && item.auth.status !== "authenticated") return "warning";
+  return "success";
 }
 
 function SourceControlItemMark({
@@ -173,25 +175,19 @@ function SourceControlItemMark({
 }: {
   readonly item: VcsDiscoveryItem | SourceControlProviderDiscoveryItem;
 }) {
-  const dotClassName = itemStatusDot(item);
+  const tone = itemStatusDot(item);
   const Icon = isProviderDiscoveryItem(item)
     ? SOURCE_CONTROL_PROVIDER_ICONS[item.kind]
     : VCS_ICONS[item.kind];
 
   if (!Icon) {
-    return <span className={cn("size-2 shrink-0 rounded-full", dotClassName)} aria-hidden />;
+    return <Dot tone={tone} />;
   }
 
   return (
     <span className="relative inline-flex size-5 shrink-0 items-center justify-center">
       <Icon className="size-4.5 text-foreground/80" aria-hidden />
-      <span
-        className={cn(
-          "pointer-events-none absolute -left-0.5 -top-0.5 size-2 rounded-full ring-2 ring-background",
-          dotClassName,
-        )}
-        aria-hidden
-      />
+      <Dot corner="top-start" tone={tone} />
     </span>
   );
 }
@@ -236,7 +232,10 @@ function itemSummary({
       return (
         <span>
           {item.label} is not authenticated on this server. Sign in or configure credentials using
-          the <code className="rounded-mark bg-muted px-1 py-px text-2xs">{item.executable}</code>{" "}
+          the{" "}
+          <Text chip render={<code />} variant="code">
+            {item.executable}
+          </Text>{" "}
           tool on the server host to enable change request features.
         </span>
       );
@@ -272,7 +271,7 @@ function DiscoveryItemRow({
   return (
     <div
       className={cn(
-        "rounded-control transition-colors hover:bg-muted/20",
+        "rounded-control transition-colors hover:bg-item-hover",
         isVcsNotReady(item) && "opacity-80",
       )}
     >
@@ -281,9 +280,13 @@ function DiscoveryItemRow({
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <SourceControlItemMark item={item} />
-              <span className="truncate text-body font-medium text-foreground">{item.label}</span>
+              <Text truncate variant="heading">
+                {item.label}
+              </Text>
               {version ? (
-                <code className="text-caption text-muted-foreground">{version}</code>
+                <Text render={<code />} variant="meta">
+                  {version}
+                </Text>
               ) : null}
               {isVcsNotReady(item) ? (
                 <Badge tone="warning" size="sm">
@@ -405,7 +408,7 @@ function GitFetchIntervalSettings() {
               <NumberFieldIncrement aria-label="Increase fetch interval" />
             </NumberFieldGroup>
           </NumberField>
-          <span className="text-caption text-muted-foreground">seconds</span>
+          <Text variant="note">seconds</Text>
         </div>
       </div>
     </div>

@@ -413,11 +413,21 @@ export {
   type ViewerMerges,
 } from "./changeStanding.ts";
 export {
+  codeStanding,
+  codeStandingOffers,
+  codeStandingLine,
+  codeStandingSentence,
+  type CodeStanding,
+  type CodeStandingOffers,
+} from "./codeStanding.ts";
+export {
   gitOverview,
-  gitOverviewPresentation,
-  type GitOverviewIdentity,
-  type GitOverviewView,
-  gitRepositoryLine,
+  gitOverviewGroups,
+  codeSize,
+  gitChangesStatus,
+  gitOverviewView,
+  gitStandingNotice,
+  type GitRepositoryFacts,
   type GitOverviewApp,
   type GitOverviewChange,
   type GitOverviewRepository,

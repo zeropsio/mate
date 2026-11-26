@@ -1,4 +1,9 @@
-import { formatPercent, formatTokens, formatUsageCost } from "@t3tools/shared/usageFormat";
+import {
+  formatPercent,
+  formatTokens,
+  formatUsageCost,
+  formatUsd,
+} from "@t3tools/shared/usageFormat";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import type * as React from "react";
@@ -9,8 +14,10 @@ import {
   type UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { Badge } from "../ui/badge";
+import { SeriesSwatch, seriesColor } from "../ui/chart";
+import { ShareBar } from "../ui/share-bar";
 import { PersonAvatar } from "../zerops/primitives/PersonAvatar";
-import { AutomatedMatesMark, UsageMateTaskRows } from "./UsageAutomated";
+import { UsageMateTaskRows } from "./UsageAutomated";
 import type {
   UsageDimension,
   UsageDimensionMetric,
@@ -20,26 +27,19 @@ import type {
   UsageScope,
 } from "./usageDimensions";
 import { Button, InlineButton } from "../ui/button";
+import { Text } from "~/components/ui/text";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "~/components/ui/table";
 
-/**
- * Person series, in legend order: the Mate identity tints, so a person reads
- * in the same family as the faces the left menu draws.
- */
-const PERSON_SERIES = [
-  "var(--zerops-mate-tint-sky)",
-  "var(--zerops-mate-tint-violet)",
-  "var(--zerops-mate-tint-amber)",
-  "var(--zerops-mate-tint-olive)",
-  "var(--zerops-mate-tint-rose)",
-  "var(--zerops-mate-tint-coral)",
-  "var(--zerops-mate-tint-sand)",
-  "var(--zerops-mate-tint-slate)",
-] as const;
-
+/** A person's series colour: their place in the legend, or the muted ink for an unknown owner. */
 function personColor(person: UsagePersonRow, index: number): string {
-  return person.owner === null
-    ? "var(--muted-foreground)"
-    : (PERSON_SERIES[index % PERSON_SERIES.length] ?? "var(--muted-foreground)");
+  return person.owner === null ? "var(--color-muted-foreground)" : seriesColor(index);
 }
 
 function amount(
@@ -96,7 +96,7 @@ function OwnerAvatar({
 }) {
   if (owner === null) return null;
   return isAutomatedMatesOwner(owner) ? (
-    <AutomatedMatesMark />
+    <PersonAvatar nobody size={16} />
   ) : (
     <PersonAvatar
       name={owner.name}
@@ -148,18 +148,17 @@ export function UsagePeopleSplit({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div aria-hidden className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
-        {people.map((person, index) => (
-          <span
-            key={person.owner?.id ?? person.ownerState}
-            className="h-full"
-            style={{
-              width: `${(metric === "cost" ? person.costShare : person.tokenShare) * 100}%`,
-              backgroundColor: personColor(person, index),
-            }}
-          />
-        ))}
-      </div>
+      <ShareBar
+        format={metric === "cost" ? formatUsd : formatTokens}
+        label={metric === "cost" ? "Priced cost by owner" : "Tokens by owner"}
+        parts={people.map((person, index) => ({
+          label:
+            person.owner?.name ??
+            (person.ownerState === "unassigned" ? "Unassigned" : "Unknown owner"),
+          value: metric === "cost" ? person.costUsd : person.totalTokens,
+          color: personColor(person, index),
+        }))}
+      />
       <ul className="flex flex-col gap-2">
         {people.map((person, index) => (
           <li
@@ -167,17 +166,13 @@ export function UsagePeopleSplit({
             className="flex items-center justify-between gap-3 text-body"
           >
             <span className="flex min-w-0 items-center gap-2 text-foreground">
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: personColor(person, index) }}
-              />
+              <SeriesSwatch color={personColor(person, index)} />
               <OwnerAvatar owner={person.owner} />
               <OwnerName owner={person.owner} state={person.ownerState} />
             </span>
             <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
               <span className="font-medium text-foreground">{amount(metric, person)}</span>
-              <span className="text-caption text-muted-foreground">{share(metric, person)}</span>
+              <Text variant="meta">{share(metric, person)}</Text>
             </span>
           </li>
         ))}
@@ -247,9 +242,9 @@ function MateCells({
   readonly scope: UsageScope;
 }) {
   return (
-    <tr className="border-b border-border/50 transition-colors hover:bg-muted/50">
-      <td className={cn("py-2 text-foreground", indent && "ps-8")}>
-        <span className="flex min-w-0 items-center gap-1">
+    <TableRow>
+      <TableCell>
+        <span className={cn("flex min-w-0 items-center gap-1", indent && "ps-8")}>
           {onToggle !== null ? (
             <Disclosure
               open={open}
@@ -272,10 +267,12 @@ function MateCells({
             </span>
           </DrillButton>
         </span>
-      </td>
-      <td className="py-2 text-right text-foreground tabular-nums">{amount(metric, mate)}</td>
-      <td className="py-2 text-right text-muted-foreground tabular-nums">{share(metric, mate)}</td>
-    </tr>
+      </TableCell>
+      <TableCell align="end">{amount(metric, mate)}</TableCell>
+      <TableCell align="end" tone="muted">
+        {share(metric, mate)}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -302,7 +299,6 @@ export function UsageDimensionTable({
     if (!next.delete(key)) next.add(key);
     setExpanded(next);
   };
-  const rowClass = "border-b border-border/50 transition-colors hover:bg-muted/50";
 
   /** A Mate's row, and its tasks under it while open. */
   const mateRows = (
@@ -346,22 +342,20 @@ export function UsageDimensionTable({
     period !== null && mates.some((mate) => taskSource(mate) !== null);
 
   return (
-    <table className="w-full table-fixed text-body">
+    <Table className="table-fixed" size="md">
       <colgroup>
         <col className="w-3/5" />
         <col className="w-1/5" />
         <col className="w-1/5" />
       </colgroup>
-      <thead>
-        <tr className="border-b border-border text-left text-caption text-muted-foreground">
-          <th className="py-2 font-normal">{DIMENSION_HEADING[dimension]}</th>
-          <th className="py-2 text-right font-normal">
-            {metric === "cost" ? "Priced cost" : "Tokens"}
-          </th>
-          <th className="py-2 text-right font-normal">Share</th>
-        </tr>
-      </thead>
-      <tbody>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{DIMENSION_HEADING[dimension]}</TableHead>
+          <TableHead align="end">{metric === "cost" ? "Priced cost" : "Tokens"}</TableHead>
+          <TableHead align="end">Share</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {dimension === "person"
           ? dimensions.people.flatMap((person) => {
               const key = person.owner?.id ?? person.ownerState;
@@ -371,8 +365,8 @@ export function UsageDimensionTable({
                 (person.ownerState === "unassigned" ? "Unassigned" : "Unknown owner");
               const room = opensAny(person.mates);
               return [
-                <tr key={key} className={rowClass}>
-                  <td className="py-2 text-foreground">
+                <TableRow key={key}>
+                  <TableCell>
                     <span className="flex min-w-0 items-center gap-1">
                       <Disclosure
                         open={open}
@@ -391,14 +385,12 @@ export function UsageDimensionTable({
                         <OwnerName owner={person.owner} state={person.ownerState} />
                       </DrillButton>
                     </span>
-                  </td>
-                  <td className="py-2 text-right text-foreground tabular-nums">
-                    {amount(metric, person)}
-                  </td>
-                  <td className="py-2 text-right text-muted-foreground tabular-nums">
+                  </TableCell>
+                  <TableCell align="end">{amount(metric, person)}</TableCell>
+                  <TableCell align="end" tone="muted">
                     {share(metric, person)}
-                  </td>
-                </tr>,
+                  </TableCell>
+                </TableRow>,
                 ...(open
                   ? person.mates.flatMap((mate) =>
                       mateRows(mate, `${key}:${mate.environmentId}`, true, room, false),
@@ -413,8 +405,8 @@ export function UsageDimensionTable({
                 const name = project.projectName ?? "Unknown project";
                 const room = opensAny(project.mates);
                 return [
-                  <tr key={key} className={rowClass}>
-                    <td className="py-2 text-foreground">
+                  <TableRow key={key}>
+                    <TableCell>
                       <span className="flex min-w-0 items-center gap-1">
                         <Disclosure
                           open={open}
@@ -452,14 +444,12 @@ export function UsageDimensionTable({
                           ))}
                         </span>
                       </span>
-                    </td>
-                    <td className="py-2 text-right text-foreground tabular-nums">
-                      {amount(metric, project)}
-                    </td>
-                    <td className="py-2 text-right text-muted-foreground tabular-nums">
+                    </TableCell>
+                    <TableCell align="end">{amount(metric, project)}</TableCell>
+                    <TableCell align="end" tone="muted">
                       {share(metric, project)}
-                    </td>
-                  </tr>,
+                    </TableCell>
+                  </TableRow>,
                   ...(open
                     ? project.mates.flatMap((mate) =>
                         mateRows(
@@ -482,7 +472,7 @@ export function UsageDimensionTable({
                   dimensions.visible.person,
                 ),
               )}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }

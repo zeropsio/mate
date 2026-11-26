@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useTheme } from "~/hooks/useTheme";
 import { watchCrossings } from "~/lib/restingIntersections";
-import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useProjectContentSearch } from "~/state/queries";
 
@@ -15,9 +14,10 @@ import { Spinner } from "../ui/spinner";
 import { Badge } from "../ui/badge";
 import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
-import { Toggle } from "../ui/toggle";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { HighlightedSearchLine } from "./HighlightedSearchLine";
+import { Text } from "~/components/ui/text";
 
 interface ProjectContentSearchDialogProps {
   readonly onOpenChange: (open: boolean) => void;
@@ -58,25 +58,14 @@ function groupMatches(matches: ReadonlyArray<ProjectContentMatch>): MatchGroup[]
 }
 
 function SearchOptionButton(props: {
-  readonly active: boolean;
   readonly label: string;
-  readonly onClick: () => void;
+  readonly value: string;
   readonly children: ReactNode;
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            aria-label={props.label}
-            pressed={props.active}
-            size="segmented"
-            variant="segmented"
-            onClick={props.onClick}
-          />
-        }
-      >
-        <span className="font-mono">{props.children}</span>
+      <TooltipTrigger render={<Toggle aria-label={props.label} value={props.value} />}>
+        <Text variant="code">{props.children}</Text>
       </TooltipTrigger>
       <TooltipPopup side="top">{props.label}</TooltipPopup>
     </Tooltip>
@@ -168,29 +157,32 @@ function OpenContentSearchDialog(props: {
       escapeLabel="Back"
       footerActionLabel="Open file"
       inputAccessory={
-        <div className="absolute inset-e-2.5 top-1/2 flex shrink-0 -translate-y-1/2 items-center gap-0.5 rounded-control border bg-muted/30 p-0.5">
-          <SearchOptionButton
-            active={caseSensitive}
-            label="Match case"
-            onClick={() => setCaseSensitive((current) => !current)}
-          >
+        // How the words match, on the segmented track: each a toggle of its own.
+        <ToggleGroup
+          aria-label="Match"
+          className="absolute inset-e-2.5 top-1/2 shrink-0 -translate-y-1/2"
+          multiple
+          onValueChange={(value) => {
+            setCaseSensitive(value.includes("case"));
+            setWholeWord(value.includes("word"));
+            setUseRegex(value.includes("regex"));
+          }}
+          value={[
+            ...(caseSensitive ? ["case"] : []),
+            ...(wholeWord ? ["word"] : []),
+            ...(useRegex ? ["regex"] : []),
+          ]}
+        >
+          <SearchOptionButton label="Match case" value="case">
             Aa
           </SearchOptionButton>
-          <SearchOptionButton
-            active={wholeWord}
-            label="Match whole word"
-            onClick={() => setWholeWord((current) => !current)}
-          >
+          <SearchOptionButton label="Match whole word" value="word">
             <span className="underline decoration-2 underline-offset-2">ab</span>
           </SearchOptionButton>
-          <SearchOptionButton
-            active={useRegex}
-            label="Use regular expression"
-            onClick={() => setUseRegex((current) => !current)}
-          >
+          <SearchOptionButton label="Use regular expression" value="regex">
             .*
           </SearchOptionButton>
-        </div>
+        </ToggleGroup>
       }
       inputProps={{
         className: "pe-30",
@@ -231,9 +223,9 @@ function OpenContentSearchDialog(props: {
               <Spinner size="sm" /> Searching…
             </span>
           ) : search.error ? (
-            <span className="text-destructive">{search.error}</span>
+            <Text variant="error">{search.error}</Text>
           ) : search.invalidRegex ? (
-            <span className="text-destructive">Invalid regular expression</span>
+            <Text variant="error">Invalid regular expression</Text>
           ) : (
             `${matches.length.toLocaleString()}${search.truncated ? "+" : ""} results in ${fileCount.toLocaleString()} files`
           )}
@@ -241,11 +233,15 @@ function OpenContentSearchDialog(props: {
       ) : null}
 
       {matches.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-muted-foreground">
+        <Text
+          className="flex flex-1 items-center justify-center px-6 text-center"
+          render={<div />}
+          variant="description"
+        >
           {search.hasQuery && !search.isPending && !search.error
             ? "No results found."
             : "Type to search across your project."}
-        </div>
+        </Text>
       ) : (
         <ScrollArea className="min-h-0 flex-1" scrollFade>
           <div className="py-2">
@@ -269,36 +265,30 @@ function OpenContentSearchDialog(props: {
                     <Badge className="ml-auto">{group.matches.length}</Badge>
                   </div>
                   {group.matches.map((match) => (
-                    <div
+                    <Row
                       key={`${match.path}:${match.lineNumber}:${match.resultIndex}`}
-                      className={cn(
-                        "rounded-control",
-                        match.resultIndex === selectedIndex && "bg-accent text-accent-foreground",
-                      )}
-                    >
-                      <Row
-                        size="xs"
-                        pressable="band"
-                        data-content-search-result={match.resultIndex}
-                        onMouseEnter={() => setSelectedIndex(match.resultIndex)}
-                        onClick={() => openMatch(match)}
-                        render={<button type="button" disabled={!canOpenMatches} />}
-                        title={
-                          <span className="flex min-w-0 gap-3 font-mono">
-                            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
-                              {match.lineNumber}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
-                              <HighlightedSearchLine
-                                match={match}
-                                path={group.path}
-                                theme={resolvedTheme}
-                              />
-                            </span>
+                      size="xs"
+                      pressable
+                      data-content-search-result={match.resultIndex}
+                      data-highlighted={match.resultIndex === selectedIndex ? "" : undefined}
+                      onMouseEnter={() => setSelectedIndex(match.resultIndex)}
+                      onClick={() => openMatch(match)}
+                      render={<button type="button" disabled={!canOpenMatches} />}
+                      title={
+                        <Text className="flex min-w-0 gap-3" variant="code">
+                          <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground/70">
+                            {match.lineNumber}
                           </span>
-                        }
-                      />
-                    </div>
+                          <span className="min-w-0 flex-1 truncate whitespace-pre font-normal">
+                            <HighlightedSearchLine
+                              match={match}
+                              path={group.path}
+                              theme={resolvedTheme}
+                            />
+                          </span>
+                        </Text>
+                      }
+                    />
                   ))}
                 </section>
               );

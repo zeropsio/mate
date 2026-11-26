@@ -3,12 +3,12 @@ import { useState } from "react";
 import { DraftInput } from "~/components/ui/draft-input";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 function Sample() {
   const [committed, setCommitted] = useState("storefront");
   return (
-    <div className="flex w-64 flex-col gap-2">
+    <div className="flex w-full max-w-64 flex-col gap-2">
       <DraftInput aria-label="Name" onCommit={setCommitted} value={committed} />
       <span className="text-muted-foreground text-caption">Committed: {committed}</span>
     </div>
@@ -23,10 +23,17 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/draft-input.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label='value="storefront" onCommit={…}'>
-        <Sample />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="Type, then leave the field or press Enter: the line under it changes then."
+        title="Committing"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label='value="storefront" onCommit={…}'>
+            <Sample />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

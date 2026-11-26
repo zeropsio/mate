@@ -124,11 +124,16 @@ function AutocompletePopup({
   );
 }
 
+/**
+ * One suggestion. The one under the cursor, the pointer's or the arrow keys', lights on the item's
+ * hover ground (`bg-item-hover`), as a menu's item does: a suggestion is never picked in the list,
+ * the field holds what was chosen.
+ */
 function AutocompleteItem({ className, children, ...props }: AutocompletePrimitive.Item.Props) {
   return (
     <AutocompletePrimitive.Item
       className={cn(
-        "flex min-h-10 cursor-default select-none items-center gap-2 rounded-control px-2 py-1 text-body outline-none hover:bg-accent data-disabled:pointer-events-none data-selected:bg-accent/50 data-selected:text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-accent [&[data-highlighted][data-selected]]:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='text-'])]:text-muted-foreground",
+        "flex min-h-10 cursor-default select-none items-center gap-2 rounded-control px-2 py-1 text-body outline-none [:hover,[data-highlighted]]:bg-item-hover data-disabled:pointer-events-none data-disabled:opacity-64 sm:min-h-7 [&_svg:not([class*='text-'])]:text-muted-foreground",
         className,
       )}
       data-slot="autocomplete-item"

@@ -41,7 +41,7 @@ export const RUN_TRAY_GHOST = "border border-b-0 border-transparent px-3.75 pt-3
  * has no hairline and stands 4 px down.
  */
 export const RUN_NOW_LINE =
-  "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-2 mt-4 border-t border-foreground/8 pt-5 pe-3.5 pb-1 [&:nth-child(1_of_:not([hidden]))]:mt-0 [&:nth-child(1_of_:not([hidden]))]:border-t-0 [&:nth-child(1_of_:not([hidden]))]:pt-1 [[data-folding]+&]:mt-0 [[data-folding]+&]:border-t-0 [[data-folding]+&]:pt-1";
+  "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-2 mt-4 border-t border-rule pt-5 pe-3.5 pb-1 [&:nth-child(1_of_:not([hidden]))]:mt-0 [&:nth-child(1_of_:not([hidden]))]:border-t-0 [&:nth-child(1_of_:not([hidden]))]:pt-1 [[data-folding]+&]:mt-0 [[data-folding]+&]:border-t-0 [[data-folding]+&]:pt-1";
 
 /** The line's words, in its flexible column, so the clock never moves for them. */
 export const RUN_NOW_WORDS = "relative min-w-0 text-body leading-5";
@@ -59,4 +59,4 @@ export const NOW_DOTS = "ms-1.5 inline-flex scale-70 align-middle";
  * a hairline 12 px down, its rows 6 px under it; nothing at all when they have no row.
  */
 export const RUN_BAND =
-  "relative pt-4.75 empty:hidden before:absolute before:inset-x-0 before:top-3 before:h-px before:bg-foreground/8";
+  "relative pt-4.75 empty:hidden before:absolute before:inset-x-0 before:top-3 before:h-px before:bg-rule";

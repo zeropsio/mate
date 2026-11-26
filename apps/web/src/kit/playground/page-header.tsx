@@ -6,6 +6,7 @@ import { PageHeader } from "~/components/ui/page-header";
 import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
 
 import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
+import { KitTrail } from "../sections/page-header";
 import { variantsOf } from "../specimenLabel";
 
 const SIZES = variantsOf<NonNullable<ComponentProps<typeof PageHeader>["size"]>>({
@@ -33,21 +34,25 @@ export default definePlayground({
       options: SIZES,
       note: "panel: a side panel's page, its line kept to one",
     },
+    trail: { kind: "boolean", note: "where the page sits, above its title" },
     title: { kind: "text", note: "what the page is, in the words that opened it" },
     count: { kind: "text", note: "how many things it lists, after the title" },
+    summary: { kind: "text", note: "the fact it is about, beside the title" },
     line: { kind: "text", note: "what the page is for, or the fact it is about" },
     lead: { kind: "enum", options: LEADS, note: "a mark before the title" },
     actions: { kind: "enum", options: ACTIONS, note: "the page's own, at the title line's end" },
   },
   initial: {
     size: "page",
+    trail: false,
     title: "Team",
     count: "3",
+    summary: "",
     line: "People who work on Acme Docs and its Mates",
     lead: "none",
     actions: "one",
   },
-  render: ({ size, title, count, line, lead, actions }) => (
+  render: ({ size, trail, title, count, summary, line, lead, actions }) => (
     <div className={size === "panel" ? "w-[33.75rem] border border-border pb-3" : "w-[44rem]"}>
       <PageHeader
         actions={
@@ -74,19 +79,23 @@ export default definePlayground({
         }
         line={line === "" ? undefined : line}
         size={size}
+        summary={summary === "" ? undefined : summary}
         title={title}
+        trail={trail ? <KitTrail /> : undefined}
       />
     </div>
   ),
-  jsx: ({ size, title, count, line, lead, actions }) => {
+  jsx: ({ size, trail, title, count, summary, line, lead, actions }) => {
     const leadProp = LEAD_JSX[lead];
     return jsxElement(
       "PageHeader",
       {
         size,
+        trail: trail ? jsxCode("<PageTrail trail={trail} />") : undefined,
         lead: leadProp === undefined ? undefined : jsxCode(leadProp),
         title,
         count: count === "" ? undefined : count,
+        summary: summary === "" ? undefined : summary,
         line: line === "" ? undefined : line,
         actions:
           actions === "one"
@@ -101,7 +110,7 @@ export default definePlayground({
   },
   usage: {
     do: [
-      "Head every page with it, once: title, count, one line, the page's actions.",
+      "Head every page with it, once: its trail, title, count, one line, the page's actions.",
       "Lead with the face or avatar the page is about: a Mate's page, a person's.",
       "Use size panel for a page in the side panel.",
     ],

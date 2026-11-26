@@ -1,6 +1,7 @@
 import { Maximize2Icon, Minimize2Icon, PanelBottomIcon, PanelRightIcon } from "lucide-react";
 import { memo } from "react";
 
+import { Badge } from "../ui/badge";
 import { Toggle } from "../ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
@@ -46,7 +47,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               pressed={terminalOpen}
               onPressedChange={onToggleTerminal}
               aria-label="Toggle terminal drawer"
-              variant="ghost"
+              variant="toolbar"
               size="sm"
               disabled={!terminalAvailable}
             >
@@ -71,18 +72,15 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
                 ? `Toggle right panel, ${liveAgentCount} ${liveAgentCount === 1 ? "agent" : "agents"} working`
                 : "Toggle right panel"
             }
-            variant="ghost"
+            variant="toolbar"
             size="sm"
             disabled={!rightPanelAvailable}
           >
             <PanelRightIcon className="size-4" />
             {liveAgentCount > 0 ? (
-              <span
-                aria-hidden
-                className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-fill-ink"
-              >
+              <Badge aria-hidden corner count tone="info">
                 {liveAgentCount}
-              </span>
+              </Badge>
             ) : null}
           </Toggle>
         </TooltipTrigger>
@@ -117,7 +115,7 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
             pressed={maximized}
             onPressedChange={onToggle}
             aria-label={label}
-            variant="ghost"
+            variant="toolbar"
             size="sm"
           >
             {maximized ? (

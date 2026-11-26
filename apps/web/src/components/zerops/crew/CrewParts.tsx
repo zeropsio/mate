@@ -6,9 +6,8 @@
 import { ChevronRightIcon, EllipsisIcon } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
-
 import { Button, InlineButton } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Row } from "../../ui/row";
 import { SectionHeader } from "../../ui/section";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
@@ -147,21 +146,24 @@ export function CrewChoice({
   readonly render?: ReactElement;
 }) {
   return (
-    <div className={cn("rounded-card ring-1 ring-foreground/10", disabled && "opacity-55")}>
-      {render === undefined ? (
-        <Row lead={lead} line={line} lineWraps meta={end} title={title} />
-      ) : (
-        <Row
-          aria-disabled={disabled || undefined}
-          lead={lead}
-          line={line}
-          lineWraps
-          meta={end ?? <ChevronRightIcon aria-hidden="true" className="size-4" />}
-          pressable
-          render={render}
-          title={title}
-        />
-      )}
+    // Dimmed while the choice cannot be made: the whole card steps back.
+    <div className={disabled ? "opacity-55" : undefined}>
+      <Card>
+        {render === undefined ? (
+          <Row lead={lead} line={line} lineWraps meta={end} title={title} />
+        ) : (
+          <Row
+            aria-disabled={disabled || undefined}
+            lead={lead}
+            line={line}
+            lineWraps
+            meta={end ?? <ChevronRightIcon aria-hidden="true" className="size-4" />}
+            pressable
+            render={render}
+            title={title}
+          />
+        )}
+      </Card>
     </div>
   );
 }

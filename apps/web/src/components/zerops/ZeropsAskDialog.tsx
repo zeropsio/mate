@@ -30,6 +30,8 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { MateFace } from "./primitives";
+import { Card } from "~/components/ui/card";
+import { Text } from "~/components/ui/text";
 
 export function ZeropsAskConfirm({
   ask,
@@ -68,13 +70,13 @@ export function ZeropsAskConfirm({
               <MateFace shape={shape} size={24} state="idle" tint={tint} />
             )}
             {/* Quoted, not paraphrased: this is the text being authorised. */}
-            <p className="min-w-0 flex-1 rounded-control bg-muted px-3 py-2 text-body wrap-anywhere text-foreground">
-              {ask}
-            </p>
+            <Card className="min-w-0 flex-1" variant="inset">
+              <p className="min-w-0 px-3 py-2 text-body wrap-anywhere text-foreground">{ask}</p>
+            </Card>
           </div>
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             It is sent straight away and {who} starts working; you can stop it in the conversation.
-          </p>
+          </Text>
         </div>
       </DialogPanel>
       <DialogFooter>

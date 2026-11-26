@@ -61,6 +61,9 @@ import {
 import { IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 interface GithubAppControls {
   readonly read: TaskSourceSettingValue<"hqGithub">;
@@ -210,9 +213,9 @@ export function GithubAppView({
   // One line, whatever lands: a refusal, the return from GitHub, or where it stands.
   const line =
     problem !== null ? (
-      <span className="text-destructive-foreground" role="alert">
+      <Text role="alert" variant="error">
         {problem}
-      </span>
+      </Text>
     ) : back !== null ? (
       <span role="status">{back}</span>
     ) : section.kind === "reading" || (section.kind === "apps" && apps.length === 0 && manage) ? (
@@ -338,7 +341,9 @@ export function GithubAppView({
             </div>
           )}
           {apps.length > 0 && !manage ? (
-            <p className="text-caption text-muted-foreground">{GITHUB_WHO_CAN}</p>
+            <Text render={<p />} variant="note">
+              {GITHUB_WHO_CAN}
+            </Text>
           ) : null}
         </>
       ) : null}
@@ -418,7 +423,7 @@ function BotGroup({
   return (
     <li className="grid gap-1.5" data-zerops-surface="settings-github-app">
       <div className="flex min-h-7 items-center gap-2">
-        <p className="min-w-0 flex-1 text-caption text-muted-foreground">
+        <Text className="min-w-0 flex-1" render={<p />} variant="note">
           <span className="font-medium text-foreground">{app.name}</span> · {app.botLogin}
           {app.personal ? (
             <>
@@ -429,11 +434,11 @@ function BotGroup({
             </>
           ) : null}
           {setUp === null ? null : ` · ${setUp}`}
-        </p>
+        </Text>
         {underWay === null ? null : (
-          <span className="shrink-0 text-caption text-muted-foreground" role="status">
+          <Text className="shrink-0" variant="meta" role="status">
             {underWay}
-          </span>
+          </Text>
         )}
         {manage ? (
           // The dots end where the rows' links do: the press's own inset is taken back.
@@ -445,7 +450,7 @@ function BotGroup({
               >
                 <MoreHorizontalIcon aria-hidden="true" />
               </MenuTrigger>
-              <MenuPopup align="end" className="min-w-56">
+              <MenuPopup align="end" width="fit">
                 <MenuItem disabled={busy || unsealed} onClick={onInstall}>
                   Add an account with this bot
                 </MenuItem>
@@ -471,14 +476,13 @@ function BotGroup({
         </p>
       ) : null}
       {rows === 0 ? (
-        <p className="border-y border-border py-2 text-caption text-muted-foreground">
-          No GitHub account added yet.
-        </p>
+        <List edges>
+          <Text className="py-2" render={<p />} variant="note">
+            No GitHub account added yet.
+          </Text>
+        </List>
       ) : (
-        <ul
-          className="divide-y divide-border border-y border-border"
-          data-zerops-surface="settings-github-installations"
-        >
+        <List data-zerops-surface="settings-github-installations" edges render={<ul />}>
           {app.installations.map((installation) => {
             const by = installation.addedBy === null ? undefined : nameOf(installation.addedBy);
             return (
@@ -487,9 +491,9 @@ function BotGroup({
                 key={installation.id}
               >
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <Text className="max-sm:min-w-0 max-sm:flex-1" variant="heading">
                   {installation.account ?? `Installation ${String(installation.id)}`}
-                </span>
+                </Text>
                 <span className="min-w-0 flex-1 text-muted-foreground max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
                   {installation.line}
                   {by === undefined ? null : ` · added by ${by}`}
@@ -518,9 +522,9 @@ function BotGroup({
             >
               <span className="flex items-center gap-2.5 max-sm:flex-wrap">
                 <AccountFace account={installation.account} type={installation.accountType} />
-                <span className="font-medium text-body text-foreground max-sm:min-w-0 max-sm:flex-1">
+                <Text className="max-sm:min-w-0 max-sm:flex-1" variant="heading">
                   {installation.account}
-                </span>
+                </Text>
                 <span className="min-w-0 flex-1 text-status-attention-text max-sm:order-last max-sm:w-full max-sm:flex-none max-sm:ps-7.5">
                   {manage ? "Waits for your OK" : "Waits for an Owner's or Admin's OK"}
                 </span>
@@ -556,10 +560,10 @@ function BotGroup({
               </span>
             </li>
           ))}
-        </ul>
+        </List>
       )}
       {app.privateTo === null ? null : (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           This bot can only be added to {app.privateTo.owner}. To add other GitHub accounts,{" "}
           {app.privateTo.settings ? (
             <>
@@ -571,53 +575,51 @@ function BotGroup({
               <OutLink href={app.privateTo.url}>the bot on GitHub</OutLink>.
             </>
           )}
-        </p>
+        </Text>
       )}
       {removing ? (
-        <div
-          className="grid gap-2 rounded-control bg-muted/40 p-3"
-          data-zerops-surface="settings-github-remove"
-          role="group"
-        >
-          <p className="text-body font-medium text-foreground">
-            Remove {app.name} from {organization ?? "this organization"}?
-          </p>
-          {app.uses.length === 0 ? (
-            <p className="text-caption text-muted-foreground">
-              No repository in Mate is connected through it.
-            </p>
-          ) : (
-            <>
-              <p className="text-caption text-muted-foreground">
-                These stop until they're connected through another bot or a token:
-              </p>
-              <ul className="grid gap-1 text-caption">
-                {app.uses.map((use) => (
-                  <li
-                    className="text-foreground"
-                    key={`${use.application ?? ""}/${use.repo ?? use.fullName}`}
-                  >
-                    {use.application === null || use.repo === null
-                      ? "A project you can't open"
-                      : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
-                    → <span className="font-mono">{use.fullName}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <p className="text-caption text-muted-foreground">
-            The bot stays on GitHub: delete it in its settings there.
-          </p>
-          <div className="flex gap-2">
-            <Button disabled={busy} onClick={onRemove} size="sm" variant="destructive">
-              Remove bot
-            </Button>
-            <Button onClick={onCancelRemove} size="sm" variant="ghost">
-              Cancel
-            </Button>
+        <Card variant="inset">
+          <div className="grid gap-2 p-3" data-zerops-surface="settings-github-remove" role="group">
+            <Text render={<p />} variant="heading">
+              Remove {app.name} from {organization ?? "this organization"}?
+            </Text>
+            {app.uses.length === 0 ? (
+              <Text render={<p />} variant="note">
+                No repository in Mate is connected through it.
+              </Text>
+            ) : (
+              <>
+                <Text render={<p />} variant="note">
+                  These stop until they're connected through another bot or a token:
+                </Text>
+                <ul className="grid gap-1 text-caption">
+                  {app.uses.map((use) => (
+                    <li
+                      className="text-foreground"
+                      key={`${use.application ?? ""}/${use.repo ?? use.fullName}`}
+                    >
+                      {use.application === null || use.repo === null
+                        ? "A project you can't open"
+                        : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
+                      → <Text variant="code">{use.fullName}</Text>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <Text render={<p />} variant="note">
+              The bot stays on GitHub: delete it in its settings there.
+            </Text>
+            <div className="flex gap-2">
+              <Button disabled={busy} onClick={onRemove} size="sm" variant="destructive">
+                Remove bot
+              </Button>
+              <Button onClick={onCancelRemove} size="sm" variant="ghost">
+                Cancel
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       ) : null}
     </li>
   );

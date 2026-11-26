@@ -1,6 +1,7 @@
 import type { UsageReport } from "@t3tools/contracts";
 import { InlineButton } from "../ui/button";
 import { usageCoverageView } from "./usageCoverage.logic";
+import { Text } from "~/components/ui/text";
 export function UsageCoverage({
   report,
   labels,
@@ -14,7 +15,7 @@ export function UsageCoverage({
 }) {
   const view = usageCoverageView(report, labels, now);
   return (
-    <section aria-label="Recording coverage" className="text-caption text-muted-foreground">
+    <Text render={<section />} variant="note" aria-label="Recording coverage">
       {view.summary ? <p>{view.summary}</p> : null}
       {view.details.length > 0 ? <p>Totals include only recorded activity.</p> : null}
       {view.details.length > 0 ? (
@@ -45,6 +46,6 @@ export function UsageCoverage({
           ) : null}
         </details>
       ) : null}
-    </section>
+    </Text>
   );
 }

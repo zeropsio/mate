@@ -6,6 +6,7 @@ import { GitBrowserLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 import type { HistoryChange } from "./ZeropsHistoryView";
 import { ChangeAge } from "./system/ChangeRow";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 export interface RecordedStageHistoryProps {
   readonly repo: GitRepoAt;
@@ -42,10 +43,10 @@ export function RecordedStageHistory({
         </ul>
       )}
       {publication?.mainHead == null ? null : (
-        <p className="py-2 text-caption text-muted-foreground">
+        <Text className="py-2" render={<p />} variant="note">
           Latest recorded main: {publication.mainHead.slice(0, 7)} ·{" "}
           <ChangeAge at={publication.updatedAt} />
-        </p>
+        </Text>
       )}
       <GitBrowserLink to={{ ...repo, view: "commits" }}>History</GitBrowserLink>
     </div>

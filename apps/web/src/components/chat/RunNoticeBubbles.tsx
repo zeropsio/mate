@@ -9,6 +9,7 @@ import { type WorkLogEntry } from "../../session-logic";
 import { type ConversationEvent } from "./MessagesTimeline.logic";
 import { waitedWords } from "./runCard.logic";
 import { TimelineRowCtx } from "./timelineContext";
+import { Separator } from "~/components/ui/separator";
 
 // ---------------------------------------------------------------------------
 // What stopped it, and what merely happened
@@ -113,7 +114,7 @@ export function EventCaption({ event }: { readonly event: ConversationEvent }) {
   const { words, detail } = recordEventWords(event, ctx.speaker.name, ctx.timestampFormat);
   return (
     <div className={cn("flex min-w-0 items-center gap-3", META)} data-chat-kind="event">
-      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
+      <Separator aria-hidden="true" className="min-w-4 flex-1" />
       {event.type === "landed" ? (
         <span className="flex min-w-0 text-muted-foreground">
           <span className="shrink-0 whitespace-pre">
@@ -127,7 +128,7 @@ export function EventCaption({ event }: { readonly event: ConversationEvent }) {
           {detail !== null ? ` · ${detail}` : null}
         </span>
       )}
-      <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
+      <Separator aria-hidden="true" className="min-w-4 flex-1" />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Alert } from "~/components/ui/alert";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { AssetImage } from "~/assets/AssetImage";
 import type {
@@ -34,6 +35,7 @@ import { toastManager } from "~/lib/toasts";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
+import { PanelBar } from "../ui/panel-bar";
 import { Failure } from "../ui/failure";
 import { Spinner } from "~/components/ui/spinner";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -106,8 +108,8 @@ function WorkspaceImagePreview(props: {
 
   if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-caption leading-relaxed text-destructive">
-        Unable to load workspace image.
+      <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center">
+        <Failure cause="This image couldn't be loaded." role="alert" size="line" />
       </div>
     );
   }
@@ -689,10 +691,7 @@ function WorkspaceFilePreviewPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {relativePath ? (
-        <div
-          className="flex h-10 min-h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background px-3 in-data-[preview-panel-mode=inline]:mb-3 in-data-[preview-panel-mode=inline]:h-7 in-data-[preview-panel-mode=inline]:min-h-7 in-data-[preview-panel-mode=inline]:border-b-transparent"
-          data-surface-subheader
-        >
+        <PanelBar data-surface-subheader>
           <ScrollArea
             radius="none"
             ref={breadcrumbRef}
@@ -822,12 +821,12 @@ function WorkspaceFilePreviewPanel({
               </TooltipPopup>
             </Tooltip>
           ) : null}
-        </div>
+        </PanelBar>
       ) : null}
       {previewPath && file.data?.truncated ? (
-        <div className="shrink-0 border-b border-warning/20 bg-warning-surface px-3 py-1.5 text-2xs text-warning-foreground">
-          Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
-        </div>
+        <Alert className="shrink-0" surface="band" variant="warning">
+          Only the first 1 MB of this {file.data.byteLength.toLocaleString()} byte file is shown.
+        </Alert>
       ) : null}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div

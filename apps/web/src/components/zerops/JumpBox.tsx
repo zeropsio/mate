@@ -70,6 +70,7 @@ import { findJumpPages } from "./jumpPages";
 import { MateFace } from "./primitives";
 import { EnvDot } from "./SidebarProductionChip";
 import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+import { Text } from "~/components/ui/text";
 
 export interface JumpBoxModel {
   readonly value: string;
@@ -405,12 +406,14 @@ function JumpFindView({
       value={value}
     >
       {groups.length === 0 ? (
-        <div
-          className="px-4 py-10 text-center text-body text-muted-foreground"
+        <Text
+          className="px-4 py-10 text-center"
+          render={<div />}
+          variant="description"
           data-zerops-surface="jump-empty"
         >
           {searching ? "Searching conversations…" : emptyLine(value)}
-        </div>
+        </Text>
       ) : (
         <CommandList>
           {groups.map((group) => (
@@ -521,18 +524,20 @@ function JumpWriteView({
           />
         </div>
       </div>
-      <div
-        className="flex flex-col gap-1 px-4 pt-1 pb-3.5 text-line leading-5 text-muted-foreground"
+      <Text
+        className="flex flex-col gap-1 px-4 pt-1 pb-3.5"
+        render={<div />}
+        variant="remark"
         data-zerops-surface="jump-write-hint"
         id="jump-write-hint"
       >
         <p role="status">{write?.sending === true ? `Sending to ${target.name}…` : write?.hint}</p>
         {write?.error === undefined ? null : (
-          <p className="text-status-failed-text" role="alert">
+          <Text render={<p />} role="alert" variant="error">
             {write.error}
-          </p>
+          </Text>
         )}
-      </div>
+      </Text>
       <CommandFooter className="max-sm:flex-col max-sm:items-start">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {write?.enter === undefined ? null : (
@@ -652,7 +657,9 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-body leading-5 text-foreground">{title}</span>
         {sub === "" ? null : (
-          <span className="truncate text-caption leading-4 text-muted-foreground">{sub}</span>
+          <Text truncate variant="note">
+            {sub}
+          </Text>
         )}
       </span>
     </span>

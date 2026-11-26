@@ -15,6 +15,7 @@
  * press, a card's starts with it, as every ask's does, and ends in what the card adds
  * (`footerEnd`: its *Not now*).
  */
+import { Failure } from "~/components/ui/failure";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { OperationStopped, type RepoGovernanceRead } from "@t3tools/client-runtime/data";
@@ -26,12 +27,15 @@ import { useRouter } from "@tanstack/react-router";
 import { CheckIcon, PlusIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { DialogFooter, DialogPanel } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
-import { Row } from "~/components/ui/row";
+import { RadioGroup, RadioRow } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
+import { StepNumber } from "~/components/ui/step-number";
 import { Toggle } from "~/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { cn, randomUUID } from "~/lib/utils";
@@ -51,6 +55,7 @@ import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { OutLink } from "../../settings/automationParts";
 import { appOwner } from "../../settings/automationSettings.logic";
 import { KeyField } from "../../settings/ConnectFlow";
+import { PersonAvatar } from "../primitives";
 import { hostWords, mirrorAuthorityLine, mirrorGateLine, remoteSyncedAt } from "../gitMirror.logic";
 import {
   connectProgress,
@@ -89,6 +94,8 @@ import {
   pressShown,
   useRepoPress,
 } from "./repoPress";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
@@ -716,11 +723,7 @@ function refusalWords(cause: unknown): string {
 }
 
 function Refusal({ words }: { readonly words: string | null }) {
-  return words === null ? null : (
-    <p className="text-body text-destructive-foreground" role="alert">
-      {words}
-    </p>
-  );
+  return words === null ? null : <Failure cause={words} role="alert" size="line" />;
 }
 
 /** GitHub app or token: the two ways in, as a segmented control. */
@@ -761,12 +764,11 @@ function addedWords(
 
 function AccountFace({ account }: { readonly account: string }) {
   return (
-    <img
-      alt=""
-      className="size-5 shrink-0 rounded-full bg-muted"
-      height={20}
-      src={`https://github.com/${encodeURIComponent(account)}.png?size=40`}
-      width={20}
+    <PersonAvatar
+      className="shrink-0"
+      name={account}
+      picture={`https://github.com/${encodeURIComponent(account)}.png?size=40`}
+      size={20}
     />
   );
 }
@@ -854,10 +856,10 @@ function pickStep(
   const notes = (
     <>
       {unanswered === 0 ? null : (
-        <p className="text-caption text-muted-foreground">
+        <Text render={<p />} variant="note">
           GitHub didn't answer about {several}, so {unanswered === 1 ? "its" : "their"} repositories
           aren't listed. {tryAgain}
-        </p>
+        </Text>
       )}
       <WaitingAccounts accounts={waiting} />
     </>
@@ -944,10 +946,10 @@ function pickStep(
       <>
         {returnedNote}
         {freshHere === 0 || account === null ? null : (
-          <p className="rounded-control bg-status-ok-surface px-3 py-2 text-body text-status-ok-text">
+          <Alert surface="tint" variant="success">
             {account.account} is added ·{" "}
             {freshHere === 1 ? "1 new repository" : `${String(freshHere)} new repositories`}
-          </p>
+          </Alert>
         )}
         <div aria-label="GitHub account" className="flex flex-wrap gap-1.5" role="group">
           {accounts.map((each) => (
@@ -960,9 +962,7 @@ function pickStep(
               <AccountFace account={each.account} />
               {each.account}
               {addedWords(each, nameOf) === null ? null : (
-                <span className="text-caption text-muted-foreground">
-                  {addedWords(each, nameOf)}
-                </span>
+                <Text variant="note">{addedWords(each, nameOf)}</Text>
               )}
             </Toggle>
           ))}
@@ -984,9 +984,9 @@ function pickStep(
               />
             ) : null}
             {rows.length === 0 && input.offer === null ? (
-              <p className="text-body text-muted-foreground">
+              <Text render={<p />} variant="description">
                 Mate may not use any repository on {account.account} yet.
-              </p>
+              </Text>
             ) : (
               <RepositoryList
                 account={account}
@@ -1005,7 +1005,7 @@ function pickStep(
                 rows={shown}
               />
             )}
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               Not listed?{" "}
               <span onClickCapture={actions.leaving}>
                 <OutLink href={account.installation.manageUrl}>
@@ -1026,7 +1026,7 @@ function pickStep(
                 </>
               ) : null}
               {checkAgain}
-            </p>
+            </Text>
           </>
         )}
         {notes}
@@ -1056,45 +1056,21 @@ function pickStep(
 /** What GitHub said on the way back from its page, where the account is not usable yet. */
 function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting" | null }) {
   return returned === null ? null : (
-    <p className="rounded-control bg-status-busy-surface px-3 py-2 text-body text-status-busy-text">
+    <Alert surface="tint" variant="info">
       {returned === "requested"
         ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
         : "What you added on GitHub waits for an Owner or Admin's OK in Settings › Automation."}
-    </p>
+    </Alert>
   );
 }
 
 function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string> }) {
   return accounts.length === 0 ? null : (
-    <p className="text-caption text-muted-foreground">
+    <Text render={<p />} variant="note">
       {accounts.join(", ")} {accounts.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
       Settings › Automation.
-    </p>
+    </Text>
   );
-}
-
-/**
- * Arrow keys move the choice through a radio list, past the rows that can't be picked; Tab leaves
- * the list from the chosen row.
- */
-function radioKeys(event: React.KeyboardEvent<HTMLElement>) {
-  const step =
-    event.key === "ArrowDown" || event.key === "ArrowRight"
-      ? 1
-      : event.key === "ArrowUp" || event.key === "ArrowLeft"
-        ? -1
-        : 0;
-  if (step === 0) return;
-  event.preventDefault();
-  const radios = [
-    ...(event.currentTarget
-      .closest('[role="radiogroup"]')
-      ?.querySelectorAll<HTMLElement>('[role="radio"]:not([aria-disabled="true"])') ?? []),
-  ];
-  const at = radios.indexOf(event.currentTarget);
-  const next = radios[(at + step + radios.length) % radios.length];
-  next?.focus();
-  next?.click();
 }
 
 /** The repository HQ would create, as its row holds it: the name typed, and what the row does with it. */
@@ -1122,91 +1098,62 @@ function RepositoryList({
   readonly onPick: (account: PickerAccount, fullName: string) => void;
 }) {
   return (
-    <div
-      aria-label="Repository"
-      className="grid max-h-64 overflow-y-auto rounded-card border"
-      role="radiogroup"
-    >
-      {created === null ? null : (
-        <NewRepositoryRow
-          account={account.account}
-          checked={picked === NEW_REPOSITORY}
-          created={created}
-          focusable={picked === NEW_REPOSITORY || picked === null}
-          onPick={() => onPick(account, NEW_REPOSITORY)}
-        />
-      )}
-      {rows.map((row) => {
-        const name = row.repository.fullName;
-        const checked = picked === name;
-        const disabled = row.taken !== null;
-        const first = created === null && rows.find((each) => each.taken === null) === row;
-        const words = [
-          row.repository.private ? "Private" : "Public",
-          row.current ? "connected now" : null,
-          row.suggested && !row.current ? "name matches" : null,
-        ]
-          .filter((part) => part !== null)
-          .join(" · ");
-        return (
-          <div
-            className={cn(
-              "border-t first:border-t-0",
-              row.fresh &&
-                "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none",
-            )}
-            key={name}
-          >
-            <Row
-              aria-checked={checked}
-              aria-disabled={disabled}
-              badges={
-                row.fresh ? (
-                  <Badge tone="info">New</Badge>
-                ) : row.suggested ? (
-                  <Badge tone="info">Suggested</Badge>
-                ) : null
-              }
-              lead={
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "flex size-4 items-center justify-center rounded-full border",
-                    checked ? "border-primary" : "border-input",
-                  )}
-                >
-                  {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-                </span>
-              }
-              line={row.taken ?? words}
-              pressable
-              render={
-                <button
-                  onClick={() => {
-                    if (!disabled) onPick(account, name);
-                  }}
-                  onKeyDown={radioKeys}
-                  role="radio"
-                  tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
-                  type="button"
-                />
-              }
-              size="sm"
-              title={
-                <span
-                  className={cn(
-                    "font-mono font-normal",
-                    disabled ? "text-muted-foreground/70" : "text-foreground",
-                  )}
-                >
-                  {name}
-                </span>
-              }
+    <Card className="overflow-hidden">
+      <RadioGroup
+        aria-label="Repository"
+        className="max-h-64 overflow-y-auto"
+        layout="list"
+        onValueChange={(value) => {
+          if (typeof value === "string") onPick(account, value);
+        }}
+        value={picked ?? ""}
+      >
+        <List className="flex flex-col">
+          {created === null ? null : (
+            <NewRepositoryRow
+              account={account.account}
+              checked={picked === NEW_REPOSITORY}
+              created={created}
             />
-          </div>
-        );
-      })}
-    </div>
+          )}
+          {rows.map((row) => {
+            const name = row.repository.fullName;
+            const disabled = row.taken !== null;
+            const words = [
+              row.repository.private ? "Private" : "Public",
+              row.current ? "connected now" : null,
+              row.suggested && !row.current ? "name matches" : null,
+            ]
+              .filter((part) => part !== null)
+              .join(" · ");
+            return (
+              <div
+                className={
+                  row.fresh
+                    ? "animate-zerops-appear bg-status-busy-surface motion-reduce:animate-none"
+                    : undefined
+                }
+                key={name}
+              >
+                <RadioRow
+                  badges={
+                    row.fresh ? (
+                      <Badge tone="info">New</Badge>
+                    ) : row.suggested ? (
+                      <Badge tone="info">Suggested</Badge>
+                    ) : null
+                  }
+                  disabled={disabled}
+                  line={row.taken ?? words}
+                  title={<span className="font-mono font-normal">{name}</span>}
+                  value={name}
+                />
+              </div>
+            );
+          })}
+        </List>
+      </RadioGroup>
+    </Card>
   );
 }
 
@@ -1218,16 +1165,11 @@ function RepositoryList({
 function NewRepositoryRow({
   account,
   checked,
-  focusable,
   created,
-  onPick,
 }: {
   readonly account: string;
   readonly checked: boolean;
-  /** Tab reaches the list on this row. */
-  readonly focusable: boolean;
   readonly created: CreatedRow;
-  readonly onPick: () => void;
 }) {
   const field = useRef<HTMLInputElement>(null);
   // Picked with a pointer, the name is ready to type; picked with the arrow keys, focus stays on the row.
@@ -1239,38 +1181,15 @@ function NewRepositoryRow({
     field.current?.select();
   }, [checked]);
   return (
-    <div
-      aria-checked={checked}
+    <RadioRow
       aria-label={`New repository ${account}/${created.name}`}
-      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out-strong hover:bg-accent/60 focus-visible:bg-accent"
+      line="Mate creates it on GitHub, empty"
+      meta={<Badge tone="info">New · private</Badge>}
       onClick={(event) => {
         if (!checked && event.detail > 0) typeNext.current = true;
-        onPick();
       }}
-      onKeyDown={(event) => {
-        // Keys typed in the name stay in the name.
-        if (event.target !== event.currentTarget) return;
-        if (event.key === " " || event.key === "Enter") {
-          event.preventDefault();
-          onPick();
-          return;
-        }
-        radioKeys(event);
-      }}
-      role="radio"
-      tabIndex={focusable ? 0 : -1}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "flex size-4 items-center justify-center rounded-full border",
-          checked ? "border-primary" : "border-input",
-        )}
-      >
-        {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
-      </span>
-      <span className="grid min-w-0 gap-px">
-        <span className="flex h-5 min-w-0 items-center font-mono text-body text-foreground">
+      title={
+        <span className="flex min-w-0 items-center font-mono font-normal text-foreground">
           <span className="shrink-0 text-muted-foreground">{account}/</span>
           {checked ? (
             <Input
@@ -1282,6 +1201,8 @@ function NewRepositoryRow({
               maxLength={100}
               onChange={(event) => created.onName(event.currentTarget.value)}
               onKeyDown={(event) => {
+                // Keys typed in the name stay in the name.
+                event.stopPropagation();
                 if (event.key !== "Enter") return;
                 event.preventDefault();
                 if (!created.invalid) created.onSubmit();
@@ -1296,10 +1217,9 @@ function NewRepositoryRow({
             <span className="truncate">{created.name}</span>
           )}
         </span>
-        <span className="text-caption text-muted-foreground">Mate creates it on GitHub, empty</span>
-      </span>
-      <Badge tone="info">New · private</Badge>
-    </div>
+      }
+      value={NEW_REPOSITORY}
+    />
   );
 }
 
@@ -1441,7 +1361,7 @@ function explainStep(
               value={input.makeOwner}
             />
           ) : null}
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             {trip.kind === "install" ? `GitHub's page calls Mate “${trip.app.name}”. ` : null}
             No repository yet? {newRepository} first.
             {trip.kind === "make" && input.makeOwner === null ? (
@@ -1464,7 +1384,7 @@ function explainStep(
                 </InlineButton>
               </>
             ) : null}
-          </p>
+          </Text>
         </div>
         <Refusal words={input.authority ?? input.refusal} />
       </>
@@ -1492,13 +1412,8 @@ function viewerAccount(apps: GitMirrorApps, viewerId: string | null): string | n
 
 function ExplainStep({ n, children }: { readonly n: number; readonly children: React.ReactNode }) {
   return (
-    <li className="grid grid-cols-[1.375rem_minmax(0,1fr)] gap-2.5">
-      <span
-        aria-hidden="true"
-        className="flex size-5.5 items-center justify-center rounded-full bg-muted text-caption font-medium text-muted-foreground"
-      >
-        {n}
-      </span>
+    <li className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2.5">
+      <StepNumber n={n} />
       <span>{children}</span>
     </li>
   );
@@ -1539,12 +1454,12 @@ function progressStep(
             </Badge>
           </p>
           <p className="text-title font-medium">{repo} is connected, and the two mains differ</p>
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
             commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
             project's Mate to bring them back in step: it opens one change that holds both. Merge it
             in Mate and pushing starts.
-          </p>
+          </Text>
         </div>
       ),
       foot: (
@@ -1592,12 +1507,14 @@ function progressStep(
             </Badge>
           </p>
           <p className="text-title font-medium">{repo} is on GitHub</p>
-          <p className="text-body text-muted-foreground">
+          <Text render={<p />} variant="description">
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.
-          </p>
+          </Text>
           {gate === undefined || governance === "governed" ? null : (
-            <p className="text-caption text-muted-foreground">{gate}</p>
+            <Text render={<p />} variant="note">
+              {gate}
+            </Text>
           )}
         </div>
       ),
@@ -1624,9 +1541,11 @@ function progressStep(
   return {
     body: (
       <>
-        <p className="rounded-card bg-muted px-3.5 py-2.5 text-body">
-          {repo} → <span className="font-mono">{shownAs}</span>
-        </p>
+        <Card variant="inset">
+          <p className="px-3.5 py-2.5 text-body">
+            {repo} → <Text variant="code">{shownAs}</Text>
+          </p>
+        </Card>
         <ol aria-live="polite" className="grid gap-2.5">
           {steps.map(([name, words], index) => (
             <li
@@ -1642,7 +1561,7 @@ function progressStep(
                 ) : index === at ? (
                   <Spinner size="sm" />
                 ) : (
-                  <span className="size-3 rounded-full border border-border" />
+                  <Badge aria-label="To come" dot hollow />
                 )}
               </span>
               {words}
@@ -1653,9 +1572,9 @@ function progressStep(
       </>
     ),
     foot: (
-      <p className="me-auto text-caption text-muted-foreground">
+      <Text className="me-auto" render={<p />} variant="note">
         You can close this. The project page shows the same steps.
-      </p>
+      </Text>
     ),
     // A card stays where it is: nothing to close, nothing to say under its steps.
     card: null,

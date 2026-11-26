@@ -8,7 +8,7 @@ import {
   type SpeedCost,
 } from "@t3tools/shared/usageMerge";
 
-import type { ShareSegment } from "./UsageShareBar";
+import type { ShareBarPart } from "~/components/ui/share-bar";
 
 export function sortModelsByTokens(models: readonly ModelTotals[]) {
   return models.toSorted(
@@ -55,7 +55,7 @@ const TYPE_COLORS = {
   other: ink(44),
 };
 
-export function costTypeSegments(cost: CategoryCost): readonly ShareSegment[] {
+export function costTypeSegments(cost: CategoryCost): readonly ShareBarPart[] {
   return [
     { label: "Uncached input", value: cost.input, color: TYPE_COLORS.input },
     { label: "Cached input", value: cost.cacheRead, color: TYPE_COLORS.cacheRead },
@@ -69,7 +69,7 @@ export function costTypeSegments(cost: CategoryCost): readonly ShareSegment[] {
 
 export function tokenTypeSegments(
   tokens: Omit<UsageTokenTotals, "reasoningTokens">,
-): readonly ShareSegment[] {
+): readonly ShareBarPart[] {
   return [
     { label: "Uncached input", value: tokens.uncachedInputTokens, color: TYPE_COLORS.input },
     { label: "Cached input", value: tokens.cachedInputTokens, color: TYPE_COLORS.cacheRead },
@@ -79,7 +79,7 @@ export function tokenTypeSegments(
 }
 
 /** Speeds are ordered by price, so they brighten from standard to ultrafast. */
-export function speedCostSegments(cost: SpeedCost): readonly ShareSegment[] {
+export function speedCostSegments(cost: SpeedCost): readonly ShareBarPart[] {
   return [
     { label: "Standard", value: cost.standard, color: ink(34) },
     { label: "Fast", value: cost.fast, color: ink(66) },

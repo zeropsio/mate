@@ -12,11 +12,11 @@ import { MOTION } from "@t3tools/shared/brand";
 import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Spinner } from "~/components/ui/spinner";
 import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
@@ -30,6 +30,9 @@ import {
   type ReleaseValueStep,
   type Words,
 } from "./releaseSheet.logic";
+import { Text } from "~/components/ui/text";
+import { CodeBlock } from "~/components/ui/code-block";
+import { List } from "~/components/ui/list";
 
 /** Words drawn, the names in them in code type. */
 export function WordsOf({ words }: { readonly words: Words }) {
@@ -39,9 +42,9 @@ export function WordsOf({ words }: { readonly words: Words }) {
         typeof word === "string" ? (
           <Fragment key={key}>{word}</Fragment>
         ) : (
-          <span className="font-mono" key={key}>
+          <Text variant="code" key={key}>
             {word.code}
-          </span>
+          </Text>
         ),
       )}
     </>
@@ -50,13 +53,13 @@ export function WordsOf({ words }: { readonly words: Words }) {
 
 /** Each part keyed by where it starts in the sentence: the same name said twice is two parts. */
 /**
- * What happens in production: one card, the steps in HQ's order — a mark, a title and one line
+ * What happens in production: one card set into the sheet (the kit's inset), the steps in HQ's order — a mark, a title and one line
  * each, joined down their marks; the hairline between two steps starts at their words. Before
  * the press they are the plan; after it they tick in place.
  */
-const PLAN = "grid rounded-card border border-border bg-foreground/2 py-1.5";
+const PLAN = "py-1.5";
 const STEP =
-  "relative grid min-h-16 grid-cols-[24px_minmax(0,1fr)_auto] content-start items-start gap-x-3.75 pt-3.25 ps-4.25 pe-4 pb-3.75 not-first:before:absolute not-first:before:top-0 not-first:before:right-4 not-first:before:left-14 not-first:before:h-px not-first:before:bg-border not-last:after:absolute not-last:after:top-11.5 not-last:after:-bottom-4.5 not-last:after:left-7 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
+  "relative grid min-h-16 grid-cols-[24px_minmax(0,1fr)_auto] content-start items-start gap-x-3.75 pt-3.25 ps-4.25 pe-4 pb-3.75 not-last:after:absolute not-last:after:top-11.5 not-last:after:-bottom-4.5 not-last:after:left-7 not-last:after:w-0.5 not-last:after:rounded-full not-last:after:bg-foreground/12";
 /** A step's mark, beside both its lines. */
 const MARK = "col-start-1 row-span-2 row-start-1 mt-2";
 const TITLE = "col-start-2 row-start-1 truncate text-body font-medium";
@@ -205,51 +208,58 @@ export function ReleasePlan({
     }
   }, [keys]);
   return (
-    <ol
-      aria-busy={unread === "reading" ? true : undefined}
-      className={PLAN}
-      data-zerops-surface="release-plan"
-      ref={list}
-    >
-      {items.map((item, index) => {
-        if (item.kind === "room") return <ValueStepRoom key="value-room" />;
-        if (item.kind === "value")
-          return (
-            <ValueStep
-              index={index}
-              key={item.value.id}
-              onSave={values?.onSave}
-              step={item.value}
-              titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
-            />
-          );
-        const { step } = item;
-        return (
-          <PlanStep
-            createWords={creations > 1 ? "Create them now" : "Create it now"}
-            index={index}
-            key={step.key}
-            // What a deploy does to its service is the plan's to say; the rest is known without it.
-            unread={step.kind === "deploy" ? unread : undefined}
-            live={step.kind === "live" && step.mark === "done" ? live : undefined}
-            log={
-              step.kind === "deploy" && step.service !== undefined
-                ? logOf?.(step.service)
-                : undefined
-            }
-            onCreate={onCreate}
-            onRenew={onRenew}
-            renewing={renewing}
-            renewWord={renewWord}
-            // A deploy under way says where its build stands; a creation's title and clock say all.
-            running={
-              step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
-            }
-            step={step}
-          />
-        );
-      })}
-    </ol>
+    <Card variant="inset">
+      <div className={PLAN}>
+        <List
+          aria-busy={unread === "reading" ? true : undefined}
+          className="grid"
+          data-zerops-surface="release-plan"
+          render={<ol ref={list} />}
+          rule="inset"
+        >
+          {items.map((item, index) => {
+            if (item.kind === "room") return <ValueStepRoom key="value-room" />;
+            if (item.kind === "value")
+              return (
+                <ValueStep
+                  index={index}
+                  key={item.value.id}
+                  onSave={values?.onSave}
+                  step={item.value}
+                  titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
+                />
+              );
+            const { step } = item;
+            return (
+              <PlanStep
+                createWords={creations > 1 ? "Create them now" : "Create it now"}
+                index={index}
+                key={step.key}
+                // What a deploy does to its service is the plan's to say; the rest is known without it.
+                unread={step.kind === "deploy" ? unread : undefined}
+                live={step.kind === "live" && step.mark === "done" ? live : undefined}
+                log={
+                  step.kind === "deploy" && step.service !== undefined
+                    ? logOf?.(step.service)
+                    : undefined
+                }
+                onCreate={onCreate}
+                onRenew={onRenew}
+                renewing={renewing}
+                renewWord={renewWord}
+                // A deploy under way says where its build stands; a creation's title and clock say all.
+                running={
+                  step.kind === "deploy" && step.mark === "busy"
+                    ? running?.get(step.key)
+                    : undefined
+                }
+                step={step}
+              />
+            );
+          })}
+        </List>
+      </div>
+    </Card>
   );
 }
 
@@ -404,7 +414,6 @@ function PlanStep({
   readonly live: ReleasePlanProps["live"];
 }) {
   const [open, setOpen] = useState<"import" | "log" | undefined>(undefined);
-  const { copyToClipboard, isCopied } = useCopyToClipboard();
   const yaml =
     step.creates === undefined ? undefined : servicePlanImportYaml({ operations: [step.creates] });
   const acts: Array<ReactElement> = [];
@@ -473,7 +482,11 @@ function PlanStep({
       )}
       {/* Live, its ways in stand on a line of their own under the way back. */}
       {live === undefined || (live.open === undefined && live.onAddDomain === undefined) ? null : (
-        <p className="col-span-2 col-start-2 row-start-3 mt-1 flex flex-wrap gap-x-1.5 text-caption text-muted-foreground wrap-anywhere">
+        <Text
+          className="col-span-2 col-start-2 row-start-3 mt-1 flex flex-wrap gap-x-1.5 wrap-anywhere"
+          render={<p />}
+          variant="note"
+        >
           {live.open === undefined ? null : (
             <InlineButton render={<a href={live.open.url} rel="noreferrer" target="_blank" />}>
               Open {live.open.host}
@@ -485,20 +498,15 @@ function PlanStep({
           {live.onAddDomain === undefined ? null : (
             <InlineButton onClick={live.onAddDomain}>Put it on your domain</InlineButton>
           )}
-        </p>
+        </Text>
       )}
       {open === "import" && yaml !== undefined && step.creates !== undefined ? (
         <div className={MORE} data-zerops-surface="release-import">
           {step.creates.cost.trim() === "" ? null : <p>{step.creates.cost}</p>}
           {/* Its import, as YAML, scrolling inside its own box. */}
-          <pre className="max-h-60 overflow-auto rounded-control bg-muted px-3 py-2.5 font-mono text-caption whitespace-pre">
+          <CodeBlock copy="the import" height="md" title="Import" wrap={false}>
             {yaml}
-          </pre>
-          <p>
-            <InlineButton onClick={() => copyToClipboard(yaml)}>
-              {isCopied ? "Copied" : "Copy"}
-            </InlineButton>
-          </p>
+          </CodeBlock>
         </div>
       ) : null}
       {open === "log" && log !== undefined && step.service !== undefined ? (
@@ -563,35 +571,45 @@ function PlanStepLine({
  */
 export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
   return (
-    <ol aria-busy="true" className={PLAN} data-zerops-surface="release-plan">
-      {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
-        // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
-        <li className={STEP} key={at}>
-          <MarkRoom />
-          <span aria-hidden="true" className={TITLE}>
-            <Skeleton
-              className={
-                index === 0
-                  ? "my-1.25 h-2.5 w-36"
-                  : index === 1
-                    ? "my-1.25 h-2.5 w-44"
-                    : "my-1.25 h-2.5 w-52"
-              }
-              shape="pill"
-              surface="card"
-            />
-          </span>
-          <span aria-hidden="true" className={LINE}>
-            <Skeleton
-              className={
-                index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"
-              }
-              shape="pill"
-              surface="card"
-            />
-          </span>
-        </li>
-      ))}
-    </ol>
+    <Card variant="inset">
+      <div className={PLAN}>
+        <List
+          aria-busy="true"
+          className="grid"
+          data-zerops-surface="release-plan"
+          render={<ol />}
+          rule="inset"
+        >
+          {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
+            // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
+            <li className={STEP} key={at}>
+              <MarkRoom />
+              <span aria-hidden="true" className={TITLE}>
+                <Skeleton
+                  className={
+                    index === 0
+                      ? "my-1.25 h-2.5 w-36"
+                      : index === 1
+                        ? "my-1.25 h-2.5 w-44"
+                        : "my-1.25 h-2.5 w-52"
+                  }
+                  shape="pill"
+                  surface="card"
+                />
+              </span>
+              <span aria-hidden="true" className={LINE}>
+                <Skeleton
+                  className={
+                    index === 0 ? "my-1 h-2 w-60" : index === 1 ? "my-1 h-2 w-56" : "my-1 h-2 w-48"
+                  }
+                  shape="pill"
+                  surface="card"
+                />
+              </span>
+            </li>
+          ))}
+        </List>
+      </div>
+    </Card>
   );
 }

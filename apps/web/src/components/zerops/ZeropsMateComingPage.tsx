@@ -8,8 +8,6 @@ import {
   recoveryNotice,
   type MateDeletion,
 } from "@t3tools/client-runtime/data";
-import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
-import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import {
   ConversationOpeningStage,
   ConversationOpeningWaits,
@@ -175,7 +173,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { MateDetailFailure } from "./MateDetailFailure";
 import { useMateDetailRead } from "~/zerops/accountEnvironments";
-import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
+import { ARRIVAL_ACTS_CLASS, MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
 import { HAND_OVER_VERB, mateKeyRefused } from "~/zerops/mateHandOver.logic";
@@ -197,6 +195,7 @@ import { chatViewReady } from "../ChatViewBoundary";
 import { mateDeletionLine } from "./SidebarMateRow.logic";
 import { MateDeletionWaitingWords } from "./SidebarMateDeletingLine";
 import { Loading } from "~/components/ui/loading";
+import { Failure, FailureDetails, FailureWords } from "~/components/ui/failure";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -229,6 +228,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       projectId={projectId}
       birthId={birth?.id}
       birthReady={readyProjectIds.includes(projectId)}
+      birthStartedAt={birth?.startedAt}
       hqRun={
         birth !== undefined && next?.kind === "wait" && next.for === "hq"
           ? { startedAt: birth.startedAt }
@@ -263,7 +263,9 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const zeropsAnswer = birth.failure === undefined ? null : operationFailureDetails(birth.failure);
   const birthBelow = (withoutDelete: boolean) => (
     <div className="flex flex-wrap justify-center gap-2">
-      {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
+      {zeropsAnswer === null ? null : (
+        <FailureDetails align="center">{zeropsAnswer}</FailureDetails>
+      )}
       {birth.adopted === true && presentation.actions.includes("delete") ? (
         <p className="w-full">
           Delete stops setting up the Mate. What the setup already added to the project stays there.
@@ -373,7 +375,9 @@ function MateDeletionStage({
                     <MateDeletionWaitingWords userId={waitsOn} />
                   </p>
                 )}
-                {details === null ? null : <ZeropsAnswerDetails text={details} />}
+                {details === null ? null : (
+                  <FailureDetails align="center">{details}</FailureDetails>
+                )}
                 {actions.trouble === null ? null : <p>{actions.trouble}</p>}
                 {deletion.kind === "failed" ? failedContent : null}
                 {action === undefined ? null : (
@@ -399,12 +403,15 @@ function ExistingMateComingPage({
   projectId,
   birthId,
   birthReady,
+  birthStartedAt,
   hqRun,
 }: {
   readonly projectId: string;
   /** Its open birth at HQ, whose offers are its page's way out while HQ refuses its link. */
   readonly birthId: string | undefined;
   readonly birthReady: boolean;
+  /** When HQ accepted its open birth: the setup's one clock, from HQ's run through the hello. */
+  readonly birthStartedAt: number | undefined;
   /**
    * HQ runs its setup's next step (the project's settings, its key, the import): no container is
    * listed yet, yet it is being brought up.
@@ -412,6 +419,10 @@ function ExistingMateComingPage({
   readonly hqRun: { readonly startedAt: number | undefined } | undefined;
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  // The birth's start, kept while this page stands: HQ ends the birth at the Mate's hello, and the
+  // conversation still opens after it on the same clock.
+  const [setupClock, setSetupClock] = useState(birthStartedAt);
+  if (birthStartedAt !== undefined && birthStartedAt !== setupClock) setSetupClock(birthStartedAt);
   const navigate = useNavigate();
   const router = useRouter();
   const openMate = useOpenMate();
@@ -901,10 +912,12 @@ function ExistingMateComingPage({
   const setupSince = made?.startedAt;
   // The steps this tab runs, as the creation's view drew them.
   const pressSteps = made === undefined ? undefined : creationSubsteps(made);
-  // The row's clock is the setup's where a birth stands — this tab's creation, else HQ's
-  // open birth — and none otherwise: the row then counts the step under way (`arrivalRow`), never
-  // the birth's start the progress carries (a restarting Mate's page read 559 h, 2026-11-20).
-  const birthSince = setupSince ?? hqRun?.startedAt;
+  // The row's clock is the setup's where a birth stands — this tab's creation, else HQ's birth,
+  // the whole way from HQ's run to the conversation (each step's own start restarted it at every
+  // step, 2026-11-25) — and none otherwise: the row then counts the step under way
+  // (`arrivalRow`), never the birth's start the progress carries (a restarting Mate's page read
+  // 559 h, 2026-11-20).
+  const birthSince = setupSince ?? setupClock;
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
@@ -1359,7 +1372,10 @@ export function MateComingFrame({
           className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground"
           data-zerops-surface="mate-coming-page"
         >
-          <WorkspacePageHeader className="relative bg-background" data-chat-header>
+          <WorkspacePageHeader
+            className="relative bg-toolbar text-toolbar-foreground"
+            data-chat-header
+          >
             {header}
           </WorkspacePageHeader>
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1416,7 +1432,7 @@ export function MateComingHeader({
       >
         {standsIn === null ? null : (
           <Button aria-label="More header actions" inert size="icon-sm" variant="sidebar">
-            <EllipsisIcon className="size-4" />
+            <EllipsisIcon />
           </Button>
         )}
         {mate.chief === true ? (
@@ -1692,17 +1708,18 @@ export function ComingBelow({
     >
       {steps}
       {setupFailureDetails === undefined && copy.details === undefined ? null : (
-        <MateStateDetails>
-          <pre className={DETAILS_TEXT_CLASS}>{copy.details}</pre>
+        <FailureDetails align="center">
+          {copy.details === undefined ? null : <FailureWords words={copy.details} />}
           {setupFailureDetails?.status === "loading" ? (
             <Loading count={3} label="The setup log" shape="lines" />
           ) : null}
           {setupFailureDetails?.status === "error" ? (
-            <p className={DETAILS_TEXT_CLASS}>
-              The setup log couldn't be read. Open the process in Zerops.
-            </p>
+            <Failure
+              cause="The setup log couldn't be read. Open the process in Zerops."
+              size="line"
+            />
           ) : null}
-        </MateStateDetails>
+        </FailureDetails>
       )}
       {/* Under the steps: what they leave to read whole (a stop's reason, a registration not
           finished) over the one way on. */}

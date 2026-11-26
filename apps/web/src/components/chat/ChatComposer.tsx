@@ -1,3 +1,4 @@
+import { COMPOSER_ATTACHED_OUTLINE } from "./composerAttached";
 import type { useQuestionAttachments } from "./useQuestionAttachments";
 import type {
   ApprovalRequestId,
@@ -165,7 +166,11 @@ import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConv
 import { getProviderModelCapabilities } from "../../providerModels";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { shouldUseCompactComposerPrimaryActions } from "../composerFooterLayout";
-import type { ComposerEditorSnapshot, ComposerPromptEditorHandle } from "../ComposerPromptEditor";
+import {
+  ComposerVaultKeysContext,
+  type ComposerEditorSnapshot,
+  type ComposerPromptEditorHandle,
+} from "../ComposerPromptEditor";
 import {
   type ComposerEditorWords,
   ComposerEditorOnWords,
@@ -200,6 +205,7 @@ import { getComposerPromptInjectionState, getComposerProviderState } from "./com
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
 import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
+import { ComposerVaultAddButton, useComposerVaultKeys } from "../zerops/vault/ComposerVaultAdd";
 import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
@@ -251,6 +257,7 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
+import { Text } from "~/components/ui/text";
 
 /** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -1903,6 +1910,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [composerCaret, composerFiles, composerImages, composerTerminalContexts, promptRef]);
 
+  // A key the key button put in the vault: its `$NAME` at the caret, which the editor draws as the
+  // key (`ComposerVaultKeysContext`) and the Mate reads with the vault's note on it.
+  const vaultKeys = useComposerVaultKeys(environmentId);
+  const insertVaultKey = useCallback(
+    (key: string) => {
+      const { value, expandedCursor } = readComposerSnapshot();
+      const before = value[expandedCursor - 1];
+      const lead = before === undefined || /\s/.test(before) ? "" : " ";
+      return applyPromptReplacement(expandedCursor, expandedCursor, `${lead}$${key} `);
+    },
+    [applyPromptReplacement, readComposerSnapshot],
+  );
+
   /**
    * Attaches a context at the caret: the same inline-placeholder insertion the
    * Data panel and the terminal selection both go through, so the chip lands
@@ -3170,7 +3190,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       >
         {showComposerTopDrawer ? (
           <div
-            className="chat-composer-top-drawer"
+            className={cn("chat-composer-top-drawer", COMPOSER_ATTACHED_OUTLINE)}
             data-chat-composer-top-drawer="true"
             data-variant="info"
           >
@@ -3234,9 +3254,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               ref={composerSurfaceRef}
               data-chat-composer-surface="true"
               data-chat-composer-mobile-collapsed={isComposerCollapsedMobile ? "true" : "false"}
+              // The shell draws the composer's ground and edge; a file held over it lights it.
+              data-dropping={isDragOverComposer ? "" : undefined}
               className={cn(
-                "rounded-sheet transition-[background-color] duration-200",
-                isDragOverComposer ? "bg-accent/45 ring-1 ring-primary/70" : null,
+                "rounded-sheet transition-[background-color] duration-200 data-dropping:bg-accent/45 data-dropping:ring-1 data-dropping:ring-primary/70",
                 projectSelectionRequired ? "opacity-75" : null,
                 composerProviderState.composerSurfaceClassName,
               )}
@@ -3312,44 +3333,46 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   )}
 
                 <div className="relative">
-                  <ComposerEditorOnWords
-                    ariaLabel="Message"
-                    suggestionListId={composerSuggestionListId}
-                    activeSuggestionId={
-                      composerSuggestionsVisible &&
-                      composerMenuItems.length > 0 &&
-                      activeComposerMenuItem
-                        ? composerSuggestionOptionId(
-                            composerSuggestionListId,
-                            activeComposerMenuItem.id,
-                          )
-                        : undefined
-                    }
-                    editorRef={composerEditorRef}
-                    words={editorWords}
-                    terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
-                    skills={selectedProviderSkills}
-                    crewmates={editorMentionChips}
-                    pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
-                    onOpenPicture={composerPictures.open}
-                    onRemovePicture={composerPictures.remove}
-                    onRetryPicture={composerPictures.retry}
-                    onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
-                    files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
-                    onRemoveFile={composerFileList.remove}
-                    onRetryFile={composerFileList.retry}
-                    {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
-                    onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                    onChange={onPromptChange}
-                    onCommandKeyDown={onComposerCommandKey}
-                    onPaste={onComposerPaste}
-                    placeholder={promptFieldWords}
-                    disabled={composerInputClosed("editor", {
-                      connecting: isConnecting,
-                      projectMissing: projectSelectionRequired,
-                      waits: composerWaits,
-                    })}
-                  />
+                  <ComposerVaultKeysContext value={vaultKeys}>
+                    <ComposerEditorOnWords
+                      ariaLabel="Message"
+                      suggestionListId={composerSuggestionListId}
+                      activeSuggestionId={
+                        composerSuggestionsVisible &&
+                        composerMenuItems.length > 0 &&
+                        activeComposerMenuItem
+                          ? composerSuggestionOptionId(
+                              composerSuggestionListId,
+                              activeComposerMenuItem.id,
+                            )
+                          : undefined
+                      }
+                      editorRef={composerEditorRef}
+                      words={editorWords}
+                      terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
+                      skills={selectedProviderSkills}
+                      crewmates={editorMentionChips}
+                      pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
+                      onOpenPicture={composerPictures.open}
+                      onRemovePicture={composerPictures.remove}
+                      onRetryPicture={composerPictures.retry}
+                      onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
+                      files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
+                      onRemoveFile={composerFileList.remove}
+                      onRetryFile={composerFileList.retry}
+                      {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                      onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                      onChange={onPromptChange}
+                      onCommandKeyDown={onComposerCommandKey}
+                      onPaste={onComposerPaste}
+                      placeholder={promptFieldWords}
+                      disabled={composerInputClosed("editor", {
+                        connecting: isConnecting,
+                        projectMissing: projectSelectionRequired,
+                        waits: composerWaits,
+                      })}
+                    />
+                  </ComposerVaultKeysContext>
                   {isMobileViewport || isComposerApprovalState ? null : (
                     <ComposerFullScreenToggle
                       fullComposer={fullComposer}
@@ -3384,12 +3407,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               providerInputSubmissionError !== null ||
               composerSubmissionError !== null ||
               isComposerCollapsedMobile ? null : (
-                <p
-                  className="px-3 pb-2 text-caption text-muted-foreground sm:px-4"
+                <Text
+                  className="px-3 pb-2 sm:px-4"
+                  render={<p />}
+                  variant="note"
                   data-chat-composer-blocked=""
                 >
                   {providerSendBlockReason}
-                </p>
+                </Text>
               )}
 
               {/* Bottom toolbar */}
@@ -3433,22 +3458,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         data-chat-provider-unavailable="true"
                         className="shrink-0"
                       >
-                        <CircleAlertIcon className="size-4" />
+                        <CircleAlertIcon />
                         {providerSetupInstanceId
                           ? "Open provider settings"
                           : "No provider available"}
                       </Button>
                     ) : automatedMate ? (
                       // An automated Mate runs on the organization's key: nothing to pick.
-                      <span
-                        className="min-w-0 truncate text-line text-muted-foreground"
+                      <Text
+                        className="min-w-0"
+                        truncate
+                        variant="remark"
                         data-chat-composer-runs-on="true"
                       >
                         {automatedRunsOnLine(
                           activeThreadModelSelection?.model ??
                             selectedModelForPickerWithCustomFallback,
                         )}
-                      </span>
+                      </Text>
                     ) : (
                       <ProviderModelPicker
                         composer={{
@@ -3528,6 +3555,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
+                    <ComposerVaultAddButton
+                      environmentId={environmentId}
+                      onAdded={insertVaultKey}
+                    />
                     <ComposerAttachFilesButton
                       disabled={composerInputClosed("paperclip", {
                         connecting: isConnecting,

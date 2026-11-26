@@ -13,12 +13,13 @@ import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { Button } from "../../ui/button";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
 import { PlaceLine } from "../system/PlaceLine";
 import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 /** One project without a Mate: its name, then production's line, its menu on its end. */
 function OtherProject<T>({
@@ -33,14 +34,14 @@ function OtherProject<T>({
   const line = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs }).find(
     (place) => place.kind === "production",
   );
-  const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
+  const held = entry.line ?? props.heldWords?.(entry.group.groupId);
   return (
     <li
-      className="ov-other-row"
+      className="group/other -ms-2 flex h-10 min-w-0 items-center gap-2.5 rounded-control px-2 text-body transition-colors duration-150 ease-out-strong hover:bg-item-hover"
       data-zerops-group={entry.group.groupId}
       id={`project-${entry.group.groupId}`}
     >
-      <span className="ov-other-name">
+      <span className="flex w-37.5 flex-none font-medium *:font-medium">
         <GroupName entry={entry} />
       </span>
       {held === undefined ? (
@@ -48,9 +49,11 @@ function OtherProject<T>({
           <PlaceLine density="compact" groupId={entry.group.groupId} line={line} />
         )
       ) : (
-        <span className="ov-place-words">{held}</span>
+        <span className="min-w-0 truncate text-muted-foreground tabular-nums">{held}</span>
       )}
-      <span className="ov-other-menu">{props.renderGroupMenu(entry)}</span>
+      <span className="ms-auto flex opacity-0 transition-opacity duration-150 ease-out-strong group-hover/other:opacity-100 focus-within:opacity-100 has-data-popup-open:opacity-100 motion-reduce:transition-none">
+        {props.renderGroupMenu(entry)}
+      </span>
     </li>
   );
 }
@@ -65,9 +68,16 @@ export function OtherProjects<T>({
 }) {
   if (groups.length === 0) return null;
   return (
-    <section aria-label="Other projects" className="ov-other" data-zerops-surface="other-projects">
-      <h2 className="ov-other-title">Other projects</h2>
-      <ul>
+    // Under the cards: the projects without a Mate, a line each.
+    <section
+      aria-label="Other projects"
+      className="mt-10 grid justify-items-start"
+      data-zerops-surface="other-projects"
+    >
+      <Text className="mb-1" render={<h2 />} variant="label">
+        Other projects
+      </Text>
+      <ul className="grid w-[min(100%,560px)]">
         {groups.map((entry) => (
           <OtherProject entry={entry} key={entry.group.groupId} props={props} />
         ))}
@@ -106,7 +116,7 @@ export function OtherContainers<T>({
         render={<section />}
       >
         <div className="flex min-h-12 min-w-0 items-center gap-x-3 px-3">
-          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+          <CollapsibleTrigger className="-ms-1 flex shrink-0 items-center gap-1.5 rounded-control ps-1 pe-1.5 text-body font-semibold text-foreground outline-none hover:bg-item-hover focus-visible:ring-2 focus-visible:ring-ring">
             <ChevronRightIcon
               aria-hidden="true"
               className={cn(
@@ -122,9 +132,9 @@ export function OtherContainers<T>({
             </span>
           </CollapsibleTrigger>
           {/* A narrow container has room for a cut "Not in a…" only: the summary waits for width. */}
-          <span className="hidden min-w-0 flex-1 truncate text-caption text-muted-foreground @2xl/flow:block">
+          <Text className="hidden min-w-0 flex-1 @2xl/flow:block" truncate variant="note">
             {summary.line}
-          </span>
+          </Text>
           {summary.retry > 0 ? (
             <Button
               className="ms-auto"
@@ -151,13 +161,13 @@ export function OtherContainers<T>({
               </div>
             ) : null}
             {others.length > 0 ? (
-              <ul className="flex flex-col divide-y divide-border/50">
+              <List className="flex flex-col" render={<ul />}>
                 {others.map(({ item }) => (
                   <Fragment key={props.getKey(item)}>
                     {props.renderEnvironment(item, undefined)}
                   </Fragment>
                 ))}
-              </ul>
+              </List>
             ) : null}
           </div>
         ) : null}

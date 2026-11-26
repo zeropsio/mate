@@ -7,11 +7,15 @@
 import { ArrowUpRightIcon } from "lucide-react";
 import { useId, type FormEvent, type ReactNode } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { StepNumber } from "~/components/ui/step-number";
+import { Separator } from "~/components/ui/separator";
 
 export function ConnectCard({
   onSubmit,
@@ -47,12 +51,15 @@ export function ConnectCard({
       >
         <ol className="grid gap-5">{children}</ol>
         {problem ? (
-          <p className="text-caption text-destructive-foreground" role="alert">
+          <Text render={<p />} variant="error" role="alert">
             {problem}
-          </p>
+          </Text>
         ) : null}
-        <div className="flex items-center gap-2 border-t border-border/70 pt-4">
-          <p className="min-w-0 flex-1 text-caption text-muted-foreground">{note}</p>
+        <Separator />
+        <div className="flex items-center gap-2">
+          <Text className="min-w-0 flex-1" render={<p />} variant="note">
+            {note}
+          </Text>
           <Button onClick={onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
@@ -67,7 +74,11 @@ export function ConnectCard({
 
 /** The surface a row's press unfolds: edged in both themes, a step in from the row. */
 export function FlowSurface({ children }: { readonly children: ReactNode }) {
-  return <div className="rounded-card border border-border bg-muted/40 p-4">{children}</div>;
+  return (
+    <Card variant="inset">
+      <div className="p-4">{children}</div>
+    </Card>
+  );
 }
 
 /** One step: its number, a short title, one line of help, and what it takes. */
@@ -84,19 +95,18 @@ export function ConnectStep({
 }) {
   return (
     <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-3">
-      <span
-        aria-hidden
-        className="mt-px flex size-5 items-center justify-center rounded-full border border-border bg-background text-2xs font-medium text-muted-foreground tabular-nums"
-      >
-        {n}
-      </span>
+      <StepNumber className="mt-px" n={n} size="sm" />
       <div className="grid min-w-0 gap-3">
         <div className="grid gap-0.5">
-          <p className="text-body font-medium text-foreground">
+          <Text render={<p />} variant="heading">
             <span className="sr-only">{`Step ${String(n)}: `}</span>
             {title}
-          </p>
-          {help ? <p className="text-caption text-muted-foreground">{help}</p> : null}
+          </Text>
+          {help ? (
+            <Text render={<p />} variant="note">
+              {help}
+            </Text>
+          ) : null}
         </div>
         {children}
       </div>
@@ -149,13 +159,13 @@ export function KeyField({
         value={value}
       />
       {problem === null ? (
-        <p className="text-caption text-muted-foreground" id={`${id}-hint`}>
+        <Text render={<p />} variant="note" id={`${id}-hint`}>
           {hint}
-        </p>
+        </Text>
       ) : (
-        <p className="text-caption text-destructive-foreground" id={`${id}-hint`} role="alert">
+        <Text render={<p />} variant="error" id={`${id}-hint`} role="alert">
           {problem}
-        </p>
+        </Text>
       )}
     </div>
   );
@@ -172,31 +182,17 @@ export function AddressField({
   /** The address; `null` while it is read: the room is held and Copy waits. */
   readonly value: string | null;
 }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
   return (
     <div className="grid gap-1.5">
-      <p className="text-body font-medium text-foreground">{label}</p>
-      <div className="flex min-w-0 items-center gap-2">
-        <code className="flex h-7.5 min-w-0 flex-1 items-center truncate rounded-control border border-input bg-background px-2.5 font-mono text-caption text-foreground sm:h-6.5">
-          {value}
-        </code>
-        <Button
-          disabled={value === null}
-          onClick={() => {
-            if (value !== null) copyToClipboard(value, undefined);
-          }}
-          size="sm"
-          variant="secondary"
-        >
-          <span className="grid">
-            <span aria-hidden className="invisible col-start-1 row-start-1">
-              Copied
-            </span>
-            <span className="col-start-1 row-start-1">{isCopied ? "Copied" : "Copy"}</span>
-          </span>
-        </Button>
-      </div>
-      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
+      <Text render={<p />} variant="heading">
+        {label}
+      </Text>
+      <CopyLine label={`the ${label}`} value={value} />
+      {hint ? (
+        <Text render={<p />} variant="note">
+          {hint}
+        </Text>
+      ) : null}
     </div>
   );
 }
@@ -213,11 +209,15 @@ export function PendingAddress({
 }) {
   return (
     <div className="grid gap-1.5">
-      <p className="text-body font-medium text-foreground">{label}</p>
-      <p className="flex h-7.5 items-center rounded-control border border-dashed border-input px-2.5 text-caption text-muted-foreground sm:h-6.5">
-        {words}
-      </p>
-      {hint ? <p className="text-caption text-muted-foreground">{hint}</p> : null}
+      <Text render={<p />} variant="heading">
+        {label}
+      </Text>
+      <CopyLine label={`the ${label}`} placeholder={words} value={null} />
+      {hint ? (
+        <Text render={<p />} variant="note">
+          {hint}
+        </Text>
+      ) : null}
     </div>
   );
 }

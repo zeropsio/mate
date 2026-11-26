@@ -1,7 +1,8 @@
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Popover, PopoverPopup } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   TIMELINE_MINIMAP_MIN_ITEMS,
@@ -11,6 +12,7 @@ import {
   resolveTimelineMinimapTopPercent,
 } from "./MessagesTimeline.logic";
 import { resolveTimelineMinimapPreview, type TimelineMinimapItem } from "./timelineMinimapItems";
+import { Text } from "~/components/ui/text";
 
 function timelineMinimapEventTargetsPreview(target: EventTarget): boolean {
   return target instanceof Element && target.closest("[data-minimap-preview]") !== null;
@@ -39,6 +41,7 @@ export function TimelineMinimap({
   onSelect: (item: TimelineMinimapItem) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const railRef = useRef<HTMLButtonElement>(null);
 
   const resolvedActiveIndex =
     activeIndex !== null && activeIndex < items.length ? activeIndex : null;
@@ -49,18 +52,27 @@ export function TimelineMinimap({
       ),
     [items, resolvedActiveIndex],
   );
-  const activeTopPercent =
-    resolvedActiveIndex === null
-      ? 0
-      : resolveTimelineMinimapTopPercent(resolvedActiveIndex, items.length);
-  const activeTooltipTranslate =
-    resolvedActiveIndex === null
-      ? "-50%"
-      : resolvedActiveIndex === 0
-        ? "0%"
-        : resolvedActiveIndex === items.length - 1
-          ? "-100%"
-          : "-50%";
+  // The preview keeps the last message it showed while it eases out.
+  const [shownItem, setShownItem] = useState<TimelineMinimapItem | null>(null);
+  if (activeItem !== null && activeItem.id !== shownItem?.id) setShownItem(activeItem);
+  const previewItem = activeItem ?? shownItem;
+  // The preview stands beside its mark on the rail, at the rail's own edge so it holds still
+  // while the mark under the pointer widens.
+  const previewAnchor = useMemo(() => {
+    const id = previewItem?.id;
+    if (id === undefined) return null;
+    return {
+      getBoundingClientRect: () => {
+        const strip = stripMap.get(id)?.getBoundingClientRect();
+        const rail = railRef.current?.getBoundingClientRect();
+        return DOMRect.fromRect({
+          x: rail?.left ?? strip?.left ?? 0,
+          y: strip?.top ?? 0,
+          height: strip?.height ?? 0,
+        });
+      },
+    };
+  }, [previewItem?.id, stripMap]);
   const resolvedCurrentIndex =
     currentIndex !== null && currentIndex >= 0 && currentIndex < items.length ? currentIndex : null;
   const previousItem =
@@ -136,7 +148,16 @@ export function TimelineMinimap({
           <Button
             aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
             className="absolute inset-y-0 left-0 w-full"
-            onBlur={() => setActiveIndex(null)}
+            onBlur={(event) => {
+              // Pressing into the preview to select its words keeps it.
+              if (
+                event.relatedTarget instanceof Element &&
+                timelineMinimapEventTargetsPreview(event.relatedTarget)
+              ) {
+                return;
+              }
+              setActiveIndex(null);
+            }}
             onClick={(event) => {
               if (timelineMinimapEventTargetsPreview(event.target)) {
                 return;
@@ -170,6 +191,7 @@ export function TimelineMinimap({
               }
             }}
             onMouseLeave={() => setActiveIndex(null)}
+            ref={railRef}
             onMouseMove={updateActiveIndexFromPointer}
             onMouseDown={(event) => {
               if (timelineMinimapEventTargetsPreview(event.target)) {
@@ -217,35 +239,41 @@ export function TimelineMinimap({
                 />
               );
             })}
-            {activeItem ? (
-              <span
-                className="pointer-events-auto absolute left-8 w-80 cursor-text select-text"
-                data-minimap-preview
+            {/* The message under the pointer, beside the rail: a popover the person can move
+                into and select from, which the rail's own leave closes. */}
+            <Popover
+              open={activeItem !== null}
+              onOpenChange={(open, details) => {
+                if (
+                  !open &&
+                  (details.reason === "escape-key" || details.reason === "outside-press")
+                ) {
+                  setActiveIndex(null);
+                }
+              }}
+            >
+              <PopoverPopup
+                anchor={previewAnchor}
+                data-minimap-preview=""
+                finalFocus={false}
+                initialFocus={false}
                 onMouseMove={(event) => event.stopPropagation()}
-                style={{
-                  top: `${activeTopPercent}%`,
-                  transform: `translateY(${activeTooltipTranslate})`,
-                }}
+                side="right"
+                sideOffset={32}
+                width="md"
               >
-                <span className="dropdown-glass block rounded-card p-3 text-left text-popover-foreground shadow-popup">
-                  <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-body font-medium leading-5">
-                    {activeItem.userText ?? "User message"}
-                  </span>
-                  {(activeItem.assistantText ?? activeItem.note) ? (
-                    <span
-                      className="mt-1 max-h-[3.75rem] overflow-hidden text-muted-foreground text-body leading-5"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitBoxOrient: "vertical",
-                        WebkitLineClamp: 3,
-                      }}
-                    >
-                      {activeItem.assistantText ?? activeItem.note}
-                    </span>
+                <span className="flex cursor-text flex-col gap-1 select-text">
+                  <Text render={<span />} truncate variant="heading">
+                    {previewItem?.userText ?? "User message"}
+                  </Text>
+                  {(previewItem?.assistantText ?? previewItem?.note) ? (
+                    <Text className="line-clamp-3" render={<span />} variant="description">
+                      {previewItem?.assistantText ?? previewItem?.note}
+                    </Text>
                   ) : null}
                 </span>
-              </span>
-            ) : null}
+              </PopoverPopup>
+            </Popover>
           </Button>
           <TimelineMinimapNavigationButton
             direction="next"

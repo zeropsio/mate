@@ -70,6 +70,8 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import { Kbd } from "./ui/kbd";
 import { Row } from "./ui/row";
+import { Text } from "~/components/ui/text";
+import { DiffStat } from "~/components/ui/diff-stat";
 
 function threadTimeLabel(thread: SidebarThreadSummary): string {
   const timestamp = thread.latestUserMessageAt ?? thread.updatedAt;
@@ -146,7 +148,7 @@ function SidebarThreadTooltip({
         <div className="min-w-0 truncate text-caption leading-tight font-medium text-foreground">
           {thread.title}
         </div>
-        <div className="grid gap-1.5 pl-0.5 text-caption text-muted-foreground">
+        <Text className="grid gap-1.5 pl-0.5" render={<div />} variant="note">
           {projectTitle ? (
             <div className="flex min-w-0 items-center gap-2">
               <ProjectFavicon
@@ -211,12 +213,12 @@ function SidebarThreadTooltip({
             </div>
           ) : null}
           {thread.session?.lastError ? (
-            <div className="flex min-w-0 items-center gap-2 text-destructive-foreground">
+            <div className="flex min-w-0 items-center gap-2 text-status-failed-text">
               <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
               <div className="min-w-0 truncate">Error occurred</div>
             </div>
           ) : null}
-        </div>
+        </Text>
       </div>
     </TooltipPopup>
   );
@@ -666,10 +668,11 @@ export const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {terminalStatusIcon}
               {prBadge}
               {diff ? (
-                <span className="shrink-0 font-mono">
-                  <span className="text-diff-addition-foreground">+{diff.insertions}</span>{" "}
-                  <span className="text-diff-deletion-foreground">−{diff.deletions}</span>
-                </span>
+                <DiffStat
+                  additions={diff.insertions}
+                  className="shrink-0"
+                  deletions={diff.deletions}
+                />
               ) : null}
               <span
                 aria-hidden

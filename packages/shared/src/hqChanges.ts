@@ -520,6 +520,8 @@ export const RepoListEntry = Schema.Struct({
   ),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
+  /** Storage usage in bytes, absent while HQ has no figure for this repository. */
+  usedBytes: Schema.optionalKey(Schema.Number),
   /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */
   url: Schema.optionalKey(Schema.String),
   /**

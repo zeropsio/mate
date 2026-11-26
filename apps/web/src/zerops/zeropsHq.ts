@@ -4,7 +4,8 @@
  * Mate. On any other origin the package keeps a session of Mate's own, signed in by a device login.
  *
  * The prompts are HQ's pages: its sign-in, in the landing's card, and its sudo prompt over the page for
- * a reveal that needs one. In device-login mode they are a popup, so they start from a click.
+ * a reveal or an invitation that needs one. In device-login mode they are a popup, so they start from a
+ * click.
  */
 import { BridgeUnavailable } from "@zerops/session/session.bridge-client";
 import {
@@ -81,6 +82,23 @@ const DEVICE_LOGIN_FAILURES: Record<DeviceLoginError["reason"], string> = {
   cancelled: "The sign-in was cancelled.",
 };
 
+/**
+ * How long a session must stay in sudo for a write HQ runs on it after the press: HQ sends it within
+ * seconds of the start.
+ */
+const SUDO_AHEAD_MS = 5 * 60_000;
+
+/**
+ * Whether the session is known to stay in sudo past `nowMs` + `SUDO_AHEAD_MS`. `sudoUntil` only
+ * understates it (the API extends sudo without telling), so false may still be in sudo: asking then
+ * costs a confirmation, never a refusal.
+ */
+function knownInSudo(sudoUntil: string | null | undefined, nowMs: number): boolean {
+  if (sudoUntil === null || sudoUntil === undefined) return false;
+  const until = Date.parse(sudoUntil);
+  return Number.isFinite(until) && until - nowMs > SUDO_AHEAD_MS;
+}
+
 /** Why a sudo prompt ended without sudo, as the reveal that asked for it says. */
 function sudoFailure(cause: unknown): string {
   if (cause instanceof BridgeUnavailable) return "Can't reach Zerops HQ. Try again.";
@@ -102,6 +120,11 @@ export interface ZeropsHqPrompts {
    * `cancelled` when the person closed it. It rejects with the words to show when it can't be.
    */
   readonly sudo: () => Promise<"confirmed" | "cancelled">;
+  /**
+   * HQ's sudo prompt ahead of a write Zerops takes only in sudo, such as an invitation: `confirmed`
+   * at once while the session is known to stay in it, else as `sudo`. Call it from the press.
+   */
+  readonly sudoAhead: () => Promise<"confirmed" | "cancelled">;
   readonly close: () => void;
   readonly retry: () => void;
   /** Device-login mode: brings the popup forward, or opens it again. Call it from a click. */
@@ -208,6 +231,31 @@ export function makeZeropsHqPrompts(
       );
   };
 
+  const sudo = () => {
+    const { asked, signal } = begin("sudo", null);
+    return client
+      .sudo({
+        ...frameOptions("sudo", asked, signal),
+        // Escape in HQ's page, which Mate never sees, closes the prompt over the page.
+        onFrameCancel: () => {
+          if (asked === run) close();
+        },
+      })
+      .then(
+        () => {
+          end(asked);
+          return "confirmed" as const;
+        },
+        (cause: unknown) => {
+          const cancelled = asked !== run || signal.aborted;
+          end(asked);
+          if (cancelled || (cause instanceof DeviceLoginError && cause.reason === "cancelled"))
+            return "cancelled" as const;
+          throw new Error(sudoFailure(cause));
+        },
+      );
+  };
+
   return {
     state: () => state,
     subscribe: (listener) => {
@@ -217,30 +265,11 @@ export function makeZeropsHqPrompts(
       };
     },
     signIn,
-    sudo: () => {
-      const { asked, signal } = begin("sudo", null);
-      return client
-        .sudo({
-          ...frameOptions("sudo", asked, signal),
-          // Escape in HQ's page, which Mate never sees, closes the prompt over the page.
-          onFrameCancel: () => {
-            if (asked === run) close();
-          },
-        })
-        .then(
-          () => {
-            end(asked);
-            return "confirmed" as const;
-          },
-          (cause: unknown) => {
-            const cancelled = asked !== run || signal.aborted;
-            end(asked);
-            if (cancelled || (cause instanceof DeviceLoginError && cause.reason === "cancelled"))
-              return "cancelled" as const;
-            throw new Error(sudoFailure(cause));
-          },
-        );
-    },
+    sudo,
+    sudoAhead: () =>
+      knownInSudo(client.current()?.sudoUntil, Date.now())
+        ? Promise.resolve("confirmed" as const)
+        : sudo(),
     close,
     retry: () => {
       if (state.kind !== "sign-in") return;

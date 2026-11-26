@@ -107,8 +107,9 @@ import { InlineButton } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
-import { PersonAvatar } from "../primitives";
+import { PersonAvatarStack } from "../primitives";
 import { SectionAction } from "../system";
+import { Text } from "~/components/ui/text";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
@@ -664,7 +665,6 @@ export function ProjectPeopleRowView({
 }) {
   const summary = peopleSummary(view);
   const people = view.kind === "table" ? view.rows : [];
-  const more = people.length - FACES_SHOWN;
   return (
     <SetupRow
       action={
@@ -680,32 +680,12 @@ export function ProjectPeopleRowView({
     >
       <div className="flex min-h-7 min-w-0 items-center gap-3.5">
         {view.kind === "unreadable" ? (
-          <span className="text-line text-muted-foreground">{view.line}</span>
+          <Text variant="remark">{view.line}</Text>
         ) : summary === null ? (
           <Skeleton className="h-5 w-48" />
         ) : (
           <>
-            {people.length === 0 ? null : (
-              // Who has access, as faces: each over the last, ringed in the card's ground.
-              <span
-                aria-hidden="true"
-                className="flex flex-none ps-1.5 *:-ms-1.5 *:ring-2 *:ring-card"
-              >
-                {people.slice(0, FACES_SHOWN).map((person) => (
-                  <PersonAvatar
-                    key={person.key}
-                    name={person.name}
-                    picture={person.avatarUrl}
-                    size={24}
-                  />
-                ))}
-                {more > 0 ? (
-                  <span className="relative inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-foreground/12 px-1 text-3xs font-semibold text-foreground tabular-nums">
-                    +{more}
-                  </span>
-                ) : null}
-              </span>
-            )}
+            {people.length === 0 ? null : <PersonAvatarStack people={people} shown={FACES_SHOWN} />}
             <span className="text-body text-foreground">{summary}</span>
           </>
         )}

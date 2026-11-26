@@ -248,6 +248,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-topbar-height: 52px;
 }
 
+/* A Windows desktop window keeps its right edge free for its resize handle. */
+.electron-windows {
+  --desktop-window-right-resize-inset: 6px;
+}
+
 .wco {
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
   --workspace-controls-top: env(titlebar-area-y, 0px);
@@ -409,6 +414,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-sites-flash: sites-flash 1200ms ease-out;
   /* A face card just added grows in once, top first (`motion-overview.css`). */
   --animate-card-arrive: card-arrive var(--duration-base) var(--ease-out-strong);
+  /* A project card the overview was opened to rings once (`motion-overview.css`). */
+  --animate-card-ring: card-ring 900ms var(--ease-out-strong);
   /* A review's description read for and not there: it folds shut and the section after it glides
      up into its place (`motion-review.css`). */
   --animate-review-what-folds: review-what-folds var(--duration-base) var(--ease-out-strong)
@@ -435,6 +442,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      palette check): Zerops compute, and model tokens on the organization's key. */
   --color-spend-compute: var(--primary);
   --color-spend-tokens: var(--zerops-mate-tint-coral);
+  /* A chart's categorical series (`SERIES_COLORS` in `components/ui/chart.tsx`), and each coding
+     agent's colour in usage charts. */
+  --color-series-1: var(--zerops-series-1);
+  --color-series-2: var(--zerops-series-2);
+  --color-series-3: var(--zerops-series-3);
+  --color-series-4: var(--zerops-series-4);
+  --color-series-5: var(--zerops-series-5);
+  --color-series-6: var(--zerops-series-6);
+  --color-series-7: var(--zerops-series-7);
+  --color-series-8: var(--zerops-series-8);
+  --color-agent-codex: var(--zerops-agent-codex);
+  --color-agent-claude: var(--zerops-agent-claude);
+  --color-agent-grok: var(--zerops-agent-grok);
+  --color-agent-cursor: var(--zerops-agent-cursor);
+  --color-agent-opencode: var(--zerops-agent-opencode);
+  --color-agent-antigravity: var(--zerops-agent-antigravity);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -498,7 +521,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-status-failed-text: var(--zerops-status-failed-text);
   --color-status-off: var(--zerops-status-off);
   --color-status-off-surface: var(--zerops-status-off-surface);
-  --color-mint-panel: var(--zerops-mint-panel);
   --color-stage: var(--zerops-stage);
   --color-stage-foreground: var(--zerops-stage-foreground);
   --color-annotation: var(--zerops-annotation);
@@ -516,10 +538,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-field-invalid: var(--zerops-field-invalid);
   --color-well: var(--zerops-well);
   --color-well-edge: var(--zerops-well-edge);
+  --color-rule: var(--zerops-rule);
   --color-field-hover: var(--zerops-field-hover);
   --color-field-pressed: var(--zerops-field-pressed);
   --color-segment: var(--zerops-segment);
   --color-segment-hover: var(--zerops-segment-hover);
+  --color-item-hover: var(--zerops-item-hover);
+  --color-item-picked: var(--zerops-item-picked);
   --color-shimmer: var(--zerops-shimmer);
   /* The glossary's update role (teal), the spine work is drawn on, and the ink a Mate's face
      draws its eyes and mouth in. */
@@ -538,6 +563,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
   --color-sidebar-border: var(--contrast-sidebar-border);
+  --color-sidebar-edge: var(--zerops-sidebar-edge);
+  /* The top bar's ground and ink: the conversation's header and its panel toggles. */
+  --color-toolbar: var(--toolbar-background);
+  --color-toolbar-foreground: var(--contrast-toolbar-foreground);
   /* The ground of a project's open group on the closed menu's rail, and a press on it: a step of
      the menu's ink into its ground. */
   --color-rail-group: color-mix(in oklab, var(--contrast-sidebar-foreground) 4.5%, var(--sidebar));

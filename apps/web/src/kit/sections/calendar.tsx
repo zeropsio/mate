@@ -4,7 +4,7 @@ import type { DateRange } from "@daypicker/react";
 import { Calendar } from "~/components/ui/calendar";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 
 // A fixed month, so the page reads the same on every day.
 const MONTH = new Date(2026, 9, 1);
@@ -30,16 +30,23 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/calendar.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label='mode="single"'>
-        <Single />
-      </Specimen>
-      <Specimen label='mode="range"'>
-        <Range />
-      </Specimen>
-      <Specimen label='captionLayout="dropdown"'>
-        <Calendar captionLayout="dropdown" defaultMonth={MONTH} />
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock
+        note="October 2026, so the page reads the same on every day."
+        title="Modes and captions"
+      >
+        <SpecimenGrid size="md">
+          <Specimen label='mode="single"' note="One day picked">
+            <Single />
+          </Specimen>
+          <Specimen label='mode="range"' note="A range of days">
+            <Range />
+          </Specimen>
+          <Specimen label='captionLayout="dropdown"' note="A month and year to pick from">
+            <Calendar captionLayout="dropdown" defaultMonth={MONTH} />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

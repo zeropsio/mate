@@ -95,6 +95,7 @@ import {
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /** One of the project's Mates, as its section and the fix list it. */
 export interface SitesMate extends ChipMate {
@@ -971,7 +972,7 @@ function ManageRow({
       aria-label={`Manage the addresses of ${name}`}
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-manage"
-      lead={<SlidersHorizontalIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
+      lead={<SlidersHorizontalIcon aria-hidden="true" />}
       onClick={() => {
         manage(projectId);
       }}
@@ -997,7 +998,7 @@ function AddYourDomain({
     <Row
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-add-domain"
-      lead={<PlusIcon aria-hidden="true" className="size-3.5 text-primary" />}
+      lead={<PlusIcon aria-hidden="true" className="text-primary" />}
       onClick={() => {
         manage(projectId, "add-domain");
       }}
@@ -1139,7 +1140,7 @@ function SitesLinkRow({
       {...trigger}
       data-sites-nav=""
       data-zerops-surface="sidebar-project-sites-link"
-      lead={<ArrowUpRightIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />}
+      lead={<ArrowUpRightIcon aria-hidden="true" />}
       meta={<span aria-hidden="true" className="block w-6" />}
       onKeyDown={(event) => {
         copyOnKey(event, onCopyKey);
@@ -1305,9 +1306,9 @@ function SitesLinks({
   }
   if (links.length === 0) {
     return sayNone ? (
-      <p className="pt-0.5 pr-2.5 pb-2 pl-7.5 text-caption text-muted-foreground">
+      <Text className="pt-0.5 pr-2.5 pb-2 pl-7.5" render={<p />} variant="note">
         No public address yet
-      </p>
+      </Text>
     ) : null;
   }
   return links.map((link) => {

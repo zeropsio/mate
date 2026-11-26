@@ -8,6 +8,8 @@ import { definePlayground, jsxCode, jsxElement } from "../kitPlayground";
 
 /** Its heading's level: 2 on a page, 3 inside a sheet or a panel. */
 const LEVELS = ["2", "3"] as const;
+/** Where it stands: on a page, or inside a surface. */
+const SIZES = ["page", "panel"] as const;
 const PEOPLE = [
   { name: "Petra Malá", role: "Owner" },
   { name: "Jan Svoboda", role: "Developer" },
@@ -25,6 +27,7 @@ export default definePlayground({
     actionWraps: { kind: "boolean", note: "on a phone, the action on a line of its own" },
     line: { kind: "text", note: "what the section is for, under its title; empty: none" },
     level: { kind: "enum", options: LEVELS, note: "3 inside a sheet or a panel" },
+    size: { kind: "enum", options: SIZES, note: "panel: a quiet label inside a surface" },
   },
   initial: {
     title: "People",
@@ -33,8 +36,9 @@ export default definePlayground({
     actionWraps: false,
     line: "",
     level: "2",
+    size: "page",
   },
-  render: ({ title, count, action, actionWraps, line, level }) => (
+  render: ({ title, count, action, actionWraps, line, level, size }) => (
     <div className="w-[28rem]">
       <Section
         action={
@@ -48,6 +52,7 @@ export default definePlayground({
         count={count === "" ? undefined : count}
         level={level === "3" ? 3 : 2}
         line={line === "" ? undefined : line}
+        size={size}
         title={title}
       >
         <Card variant="flat">
@@ -63,7 +68,7 @@ export default definePlayground({
       </Section>
     </div>
   ),
-  jsx: ({ title, count, action, actionWraps, line, level }) =>
+  jsx: ({ title, count, action, actionWraps, line, level, size }) =>
     jsxElement(
       "Section",
       {
@@ -76,6 +81,7 @@ export default definePlayground({
         actionWraps: actionWraps ? true : undefined,
         line: line === "" ? undefined : line,
         level: level === "3" ? 3 : undefined,
+        size: size === "panel" ? size : undefined,
       },
       '<Card variant="flat">\n  <Row … />\n</Card>',
     ),
@@ -85,6 +91,7 @@ export default definePlayground({
       "Give it one action at most, a ghost Button at the line's end.",
       "Say what the section is for in its line when its title alone does not.",
       "Use level 3 inside a sheet or a panel whose page already has its h2.",
+      "Use size panel for a group inside a card, a side panel or the menu: a quiet label.",
     ],
     dont: [
       "Head a whole page with it: that is the PageHeader.",

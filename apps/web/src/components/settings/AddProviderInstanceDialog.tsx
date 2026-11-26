@@ -36,6 +36,7 @@ import {
   type WizardNavigation,
 } from "./AddProviderInstanceDialog.logic";
 import { AddProviderInstanceWizardSteps } from "./AddProviderInstanceWizardSteps";
+import { Text } from "~/components/ui/text";
 
 /**
  * Normalize a user-provided label into a slug suffix for the instance id.
@@ -239,9 +240,9 @@ export function AddProviderInstanceDialog({
         <DialogPanel>
           <AnimatedHeight>
             <div className={cn("grid gap-2", wizardStep !== 0 && "hidden")}>
-              <div id="add-instance-driver-label" className="text-body font-medium text-foreground">
+              <Text render={<div />} variant="heading" id="add-instance-driver-label">
                 Driver
-              </div>
+              </Text>
               <RadioGroup
                 value={driver}
                 onValueChange={(value) => setDriver(ProviderDriverKind.make(value))}
@@ -313,7 +314,9 @@ export function AddProviderInstanceDialog({
                 aria-invalid={showInstanceIdError}
               />
               {showInstanceIdError ? (
-                <span className="text-2xs text-destructive">{instanceIdError}</span>
+                <Text role="alert" variant="error">
+                  {instanceIdError}
+                </Text>
               ) : (
                 <span className="text-2xs text-muted-foreground">
                   Routing key used by threads and sessions. Letters, digits, '-', or '_'.
@@ -342,9 +345,9 @@ export function AddProviderInstanceDialog({
               </div>
             ) : wizardStep === 2 ? (
               <div className="grid gap-2">
-                <p className="text-body text-muted-foreground">
+                <Text render={<p />} variant="description">
                   This driver has no required configuration. You can add the instance now.
-                </p>
+                </Text>
               </div>
             ) : null}
           </AnimatedHeight>

@@ -23,6 +23,7 @@ import { useState, type ReactNode } from "react";
 
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { Button, InlineButton } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { MenuGroup, MenuGroupLabel, MenuItem, MenuSeparator } from "../../ui/menu";
 import { MiddleTruncate } from "../../ui/middle-truncate";
 import { Row } from "../../ui/row";
@@ -33,6 +34,7 @@ import { useOpenPipeline } from "~/zerops/pipelineSearch";
 import { ServiceList, ServiceRow, serviceRunsLine } from "../system";
 import type { PlaceServiceRow } from "./place.logic";
 import { RealName } from "~/components/ui/real-name";
+import { Text } from "~/components/ui/text";
 
 /**
  * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
@@ -105,30 +107,29 @@ export function PlaceServicesWaiting() {
       data-zerops-surface="place-services-waiting"
     >
       {[0, 1].map((card) => (
-        <li
-          className="flex min-w-0 flex-col gap-3.5 rounded-card border border-border/70 bg-card px-4 pt-3.5 pb-4"
-          key={card}
-        >
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="flex h-5 items-center gap-2">
-              <Skeleton className="h-3 w-16" surface="card" />
-              <Skeleton className="h-3 w-20" surface="card" />
-            </span>
-            <span className="flex h-4 items-center">
-              <Skeleton className="h-3 w-44 max-w-full" surface="card" />
-            </span>
+        <Card className="min-w-0" key={card} render={<li />}>
+          <div className="flex min-w-0 flex-col gap-3.5 px-4 pt-3.5 pb-4">
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="flex h-5 items-center gap-2">
+                <Skeleton className="h-3 w-16" surface="card" />
+                <Skeleton className="h-3 w-20" surface="card" />
+              </span>
+              <span className="flex h-4 items-center">
+                <Skeleton className="h-3 w-44 max-w-full" surface="card" />
+              </span>
+            </div>
+            <div className="grid min-w-0 grid-cols-3 items-end gap-x-4">
+              {[0, 1, 2].map((meter) => (
+                <div className="flex min-w-0 flex-col gap-1.5" key={meter}>
+                  <span className="flex h-4 items-center">
+                    <Skeleton className="h-3 w-12" surface="card" />
+                  </span>
+                  <Skeleton className="h-1 w-full" shape="pill" surface="card" />
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid min-w-0 grid-cols-3 items-end gap-x-4">
-            {[0, 1, 2].map((meter) => (
-              <div className="flex min-w-0 flex-col gap-1.5" key={meter}>
-                <span className="flex h-4 items-center">
-                  <Skeleton className="h-3 w-12" surface="card" />
-                </span>
-                <Skeleton className="h-1 w-full" shape="pill" surface="card" />
-              </div>
-            ))}
-          </div>
-        </li>
+        </Card>
       ))}
     </ul>
   );
@@ -159,28 +160,29 @@ export function PlaceMissingService({
   readonly byRelease?: boolean;
 }) {
   return (
-    <li
-      className="flex min-w-0 items-center justify-between gap-3 rounded-card border border-dashed border-border py-3 ps-4 pe-3"
+    <Card
+      className="min-w-0"
       data-zerops-missing-service={hostname}
       data-zerops-surface="stop-not-in-zerops"
+      render={<li />}
+      variant="slot"
     >
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
-        {answer === undefined ? (
-          <span className="truncate text-caption text-muted-foreground">
-            {absentWords(byRelease)}
-          </span>
-        ) : (
-          <span
-            className="truncate text-caption text-muted-foreground"
-            data-zerops-job-state={answer.state}
-          >
-            {answer.line}
-          </span>
-        )}
-      </span>
-      {verb}
-    </li>
+      <div className="flex min-w-0 items-center justify-between gap-3 py-3 ps-4 pe-3">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-body font-semibold text-foreground/85">{hostname}</span>
+          {answer === undefined ? (
+            <Text truncate variant="note">
+              {absentWords(byRelease)}
+            </Text>
+          ) : (
+            <Text truncate variant="note" data-zerops-job-state={answer.state}>
+              {answer.line}
+            </Text>
+          )}
+        </span>
+        {verb}
+      </div>
+    </Card>
   );
 }
 
@@ -266,12 +268,13 @@ function PlaceServiceLine({
       usageRead={usageRead}
     >
       {code === undefined ? null : answer !== undefined ? (
-        <span className="text-caption text-muted-foreground" data-zerops-job-state={answer.state}>
+        <Text variant="note" data-zerops-job-state={answer.state}>
           {answer.line}
-        </span>
+        </Text>
       ) : code.job === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-col items-start gap-1 text-caption text-muted-foreground"
+        <Text
+          className="flex min-w-0 flex-col items-start gap-1"
+          variant="note"
           data-zerops-surface="stop-service-job"
           data-zerops-job-state={code.job.state}
         >
@@ -291,17 +294,18 @@ function PlaceServiceLine({
           {code.job.reason === undefined || code.job.reason === said ? null : (
             <span>{code.job.reason}</span>
           )}
-        </span>
+        </Text>
       )}
       {row.absent === undefined ? null : (
-        <span
-          className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-caption text-muted-foreground"
+        <Text
+          className="flex min-w-0 flex-wrap items-center justify-between gap-2"
+          variant="note"
           data-zerops-missing-service={row.hostname}
           data-zerops-surface="stop-not-in-zerops"
         >
           <span className="truncate">{absentWords(byRelease)}</span>
           {row.absent.add ? absentVerb(row.hostname) : null}
-        </span>
+        </Text>
       )}
       {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
       {code?.drift === undefined ? null : (
@@ -328,7 +332,7 @@ function PlaceServiceLine({
               tone="plain"
             >
               Open in Zerops
-              <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+              <ExternalLinkIcon aria-hidden="true" className="text-muted-foreground" />
             </InlineButton>
           )}
         </span>
@@ -406,17 +410,14 @@ export function PlaceAddressCard({
     ordered.length === 0 &&
     shownOffers.length === 0;
   return (
-    <div
-      className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card p-1.5"
-      data-zerops-surface="place-addresses"
-    >
+    <Card className="min-w-0" data-zerops-surface="place-addresses" size="rows">
       <div className="empty:hidden px-3 py-1">
         <StopPublicAccessStatus access={publicAccess} />
       </div>
       {nothing ? (
-        <p className="px-3 py-2.5 text-body text-muted-foreground">
+        <Text className="px-3 py-2.5" render={<p />} variant="description">
           {NOT_PUBLIC_YET} · nothing here answers from the internet.
-        </p>
+        </Text>
       ) : null}
       {ordered.map((route) => {
         const subdomain = isPlatformSubdomain(route.host);
@@ -451,9 +452,9 @@ export function PlaceAddressCard({
             data-zerops-surface="stop-route-offer"
             key={offer.serviceId}
           >
-            <span className="text-body text-muted-foreground">
+            <Text variant="description">
               {`${offer.service} answers on ${String(offer.port)}, not from outside.`}
-            </span>
+            </Text>
             <StopPublicAccessStatus access={publicAccess} serviceId={offer.serviceId} />
             <Button
               disabled={opening || enablingServiceId !== null}
@@ -466,6 +467,6 @@ export function PlaceAddressCard({
           </div>
         );
       })}
-    </div>
+    </Card>
   );
 }

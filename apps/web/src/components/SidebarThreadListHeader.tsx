@@ -94,7 +94,7 @@ export function SidebarThreadSearchField({
             threadSearchInputRef.current?.focus();
           }}
         >
-          <XIcon className="size-3" />
+          <XIcon />
         </Button>
       ) : null}
     </div>
@@ -206,7 +206,7 @@ export function SidebarProjectScopeRow({
           </span>
           <ChevronDownIcon className="-mr-px size-4 shrink-0" />
         </MenuTrigger>
-        <MenuPopup align="start" className="w-(--anchor-width)">
+        <MenuPopup align="start" width="anchor">
           <MenuRadioGroup
             value={projectScopeKey ?? "all"}
             onValueChange={(value) =>
@@ -244,7 +244,7 @@ export function SidebarProjectScopeRow({
                         openAddProjectSourcePicker(project.environmentId);
                       }}
                     >
-                      <GitBranchIcon className="size-3.5" />
+                      <GitBranchIcon />
                     </Button>
                     <Button
                       size="icon-sm"
@@ -256,7 +256,7 @@ export function SidebarProjectScopeRow({
                         void handleProjectSettings(event, project);
                       }}
                     >
-                      <SettingsIcon className="size-3.5" />
+                      <SettingsIcon />
                     </Button>
                   </span>
                 </MenuRadioItem>

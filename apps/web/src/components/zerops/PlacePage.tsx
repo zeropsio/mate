@@ -1,3 +1,4 @@
+import { Failure } from "~/components/ui/failure";
 import { keyRenewPress } from "~/zerops/renewDeployKey.logic";
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useEnvironmentDeployHeld, useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
@@ -100,7 +101,8 @@ import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
-import { cn } from "~/lib/utils";
+import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
 import { Button } from "../ui/button";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
@@ -178,7 +180,6 @@ import {
   readyOfFlow,
   rowStanding,
   RunningNow,
-  SectionLabel,
   useApplicationPlaces,
   usePageTrail,
   type Crumb,
@@ -200,6 +201,8 @@ import {
   useStageFirstDeploys,
   useWithheldStops,
 } from "./ZeropsGroupDetail";
+import { Text } from "~/components/ui/text";
+import { SectionHeader } from "~/components/ui/section";
 
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
 function deployedShas(environments: ReadonlyArray<EnvironmentRow>): ReadonlyMap<string, string> {
@@ -1323,7 +1326,9 @@ export function ZeropsStopPane({
           {subjectRows}
         </ChangeList>
         {untold.length === 0 ? null : (
-          <p className="pt-1 pb-2 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+          <Text className="pt-1 pb-2" render={<p />} variant="description">
+            {cannotTellWhatRuns(untold)}.
+          </Text>
         )}
       </>
     );
@@ -1439,36 +1444,37 @@ export function ZeropsStopPane({
             )}
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
-            <p className="mt-1.5 px-3 text-body text-status-failed-text">{runAgain.refused}</p>
+            <Failure cause={runAgain.refused} className="mx-3 mt-1.5" role="alert" size="line" />
           )}
           {down || verb?.kind !== "run-again" || runAgain?.held === undefined ? null : (
-            <p className="mt-1.5 px-3 text-body text-muted-foreground">{runAgain.held}</p>
+            <Text className="mt-1.5 px-3" render={<p />} variant="description">
+              {runAgain.held}
+            </Text>
           )}
           {down || renewing?.kind !== "failed" ? null : (
-            <p className="mt-1.5 px-3 text-body text-status-failed-text">{renewing.words}</p>
+            <Failure cause={renewing.words} className="mx-3 mt-1.5" role="alert" size="line" />
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.
-            <p
-              className="mt-1.5 px-3 text-body text-muted-foreground"
+            <Text
+              className="mt-1.5 px-3"
+              render={<p />}
+              variant="description"
               data-zerops-surface="place-why"
             >
               {verdict.why}
-            </p>
+            </Text>
           )}
         </div>
       )}
 
-      {/* What happens on the left, what is set up on the right: the aside drops under the main
-          column where the page is too narrow for both. */}
+      {/* What happens first, then what is set up, on the page's rhythm. */}
       <div className="@container/place min-w-0" data-zerops-surface="place-sections">
-        <div className="grid min-w-0 grid-cols-1 items-start gap-x-10 gap-y-9 @4xl/place:grid-cols-[minmax(0,1fr)_24.5rem]">
-          <div className="flex min-w-0 flex-col gap-9">
+        <div className="flex min-w-0 flex-col gap-12">
+          <div className="flex min-w-0 flex-col gap-12">
             {!nextShown ? null : production ? (
               <PlaceSection
-                label={
-                  <SectionLabel>{releasingNow ? "Releasing now" : "Next release"}</SectionLabel>
-                }
+                label={<SectionHeader title={releasingNow ? "Releasing now" : "Next release"} />}
               >
                 <PlaceNextRelease
                   creates={releasingNow ? undefined : createsFirstLine(notInZerops)}
@@ -1479,16 +1485,18 @@ export function ZeropsStopPane({
                   {nextRows}
                 </PlaceNextRelease>
                 {laterLine === undefined ? null : (
-                  <p
-                    className="px-1 text-body text-muted-foreground"
+                  <Text
+                    className="px-1"
+                    render={<p />}
+                    variant="description"
                     data-zerops-surface="place-later-changes"
                   >
                     {laterLine}
-                  </p>
+                  </Text>
                 )}
               </PlaceSection>
             ) : (
-              <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
+              <PlaceSection label={<SectionHeader title={<>Next on {head.title}</>} />}>
                 <PlaceNextCard
                   state="stage"
                   title={stageNextTitle(nextChanges, head.title, standingOf)}
@@ -1502,36 +1510,44 @@ export function ZeropsStopPane({
               // Its releases are not answered yet: a place that runs something has some, so the
               // slot holds their rows' shape; one that runs nothing says so once they are.
               runs === undefined ? null : (
-                <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                  <div className={cn(PLACE_CARD_CLASS, "p-1.5")}>
+                <PlaceSection label={<SectionHeader title="Releases" />}>
+                  <Card className="min-w-0" size="rows">
                     <ReleaseRowsWaiting />
-                  </div>
+                  </Card>
                 </PlaceSection>
               )
             ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
-              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+              <PlaceSection label={<SectionHeader title="Releases" />}>
+                <Card
                   data-zerops-surface="place-releases-unrecorded"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  {`No releases are recorded for this production; it runs ${runs}.`}
-                </p>
+                  <EmptyState size="line">
+                    {`No releases are recorded for this production; it runs ${runs}.`}
+                  </EmptyState>
+                </Card>
               </PlaceSection>
             ) : nextShown ? null : (
-              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+              <PlaceSection label={<SectionHeader title="Releases" />}>
+                <Card
                   data-zerops-surface="place-releases-empty"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  No releases yet. A release puts what is merged on main live here, and each one is
-                  listed with the way back to it.
-                </p>
+                  <EmptyState size="line">
+                    No releases yet. A release puts what is merged on main live here, and each one
+                    is listed with the way back to it.
+                  </EmptyState>
+                </Card>
               </PlaceSection>
             )}
 
             {!production || releases.length === 0 ? null : (
-              <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
-                <div className={cn(PLACE_CARD_CLASS, "@container/releases p-1.5")}>
+              <PlaceSection label={<SectionHeader count={releases.length} title="Releases" />}>
+                <Card className="@container/releases min-w-0" size="rows">
                   <ReleaseList>
                     <ZeropsReleaseRows
                       {...(carried === undefined
@@ -1567,14 +1583,14 @@ export function ZeropsStopPane({
                       </ReleaseListFoot>
                     )}
                   </ReleaseList>
-                </div>
+                </Card>
               </PlaceSection>
             )}
 
             {production ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     count={
                       recordedHistory === undefined
                         ? repo !== undefined && history.kind === "read"
@@ -1582,12 +1598,11 @@ export function ZeropsStopPane({
                           : DEPLOYS_ASIDE
                         : undefined
                     }
-                  >
-                    Deploys
-                  </SectionLabel>
+                    title="Deploys"
+                  />
                 }
               >
-                <div className={cn(PLACE_CARD_CLASS, "px-4 py-3")}>
+                <Card className="min-w-0" size="md">
                   {recordedHistory !== undefined ? (
                     <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
                   ) : servicesWaiting ? (
@@ -1596,14 +1611,14 @@ export function ZeropsStopPane({
                       <Skeleton className="h-3 w-1/2" surface="card" />
                     </div>
                   ) : repo === undefined ? (
-                    <p className="text-body text-muted-foreground">
+                    <Text render={<p />} variant="description">
                       No repository is declared for this environment&rsquo;s services, so its
                       history cannot be read.
-                    </p>
+                    </Text>
                   ) : history.kind === "read" && history.commits.length === 0 ? (
-                    <p className="text-body text-muted-foreground">
+                    <Text render={<p />} variant="description">
                       No deploys yet. Each merge to main lands here.
-                    </p>
+                    </Text>
                   ) : (
                     <ZeropsHistoryView
                       here={stop.name}
@@ -1614,12 +1629,12 @@ export function ZeropsStopPane({
                       tags={tags}
                     />
                   )}
-                </div>
+                </Card>
               </PlaceSection>
             )}
           </div>
 
-          <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
+          <aside className="flex min-w-0 flex-col gap-12" aria-label={`${head.title} setup`}>
             {/* Live state leads, only while something runs; then what is set up once, the most
                 used first: where it answers, what it is given, who reaches it, what it runs on. */}
             <div className="min-w-0">
@@ -1627,7 +1642,7 @@ export function ZeropsStopPane({
               {projectId === undefined ? null : (
                 <PlaceSection
                   label={
-                    <SectionLabel
+                    <SectionHeader
                       action={
                         onManageAddresses === undefined ? undefined : (
                           <Button onClick={onManageAddresses} size="sm" variant="link">
@@ -1635,9 +1650,8 @@ export function ZeropsStopPane({
                           </Button>
                         )
                       }
-                    >
-                      Addresses
-                    </SectionLabel>
+                      title="Addresses"
+                    />
                   }
                 >
                   <PlaceAddressCard
@@ -1648,7 +1662,7 @@ export function ZeropsStopPane({
                     routes={routes}
                   />
                   {routeTrouble === null || routeTrouble === undefined ? null : (
-                    <p className="text-body text-status-failed-text">{routeTrouble}</p>
+                    <Failure cause={routeTrouble} role="alert" size="line" />
                   )}
                 </PlaceSection>
               )}
@@ -1657,7 +1671,7 @@ export function ZeropsStopPane({
             {vault?.view === undefined || projectId === undefined ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     action={
                       <Button
                         onClick={() => {
@@ -1669,9 +1683,8 @@ export function ZeropsStopPane({
                         Open
                       </Button>
                     }
-                  >
-                    Vault
-                  </SectionLabel>
+                    title="Vault"
+                  />
                 }
               >
                 <PlaceVaultCard onOpen={openVault} overview={vaultOverview(vault.view)} />
@@ -1681,7 +1694,7 @@ export function ZeropsStopPane({
             {access === undefined || projectId === undefined ? null : (
               <PlaceSection
                 label={
-                  <SectionLabel
+                  <SectionHeader
                     action={
                       <Button
                         render={
@@ -1699,9 +1712,8 @@ export function ZeropsStopPane({
                           : `Manage on ${possessive(groupName, "page")}`}
                       </Button>
                     }
-                  >
-                    Who has access
-                  </SectionLabel>
+                    title="Who has access"
+                  />
                 }
               >
                 <PlaceAccessCard
@@ -1713,11 +1725,10 @@ export function ZeropsStopPane({
 
             <PlaceSection
               label={
-                <SectionLabel
+                <SectionHeader
                   count={servicesWaiting ? undefined : table.length + missingSlots.length}
-                >
-                  Services
-                </SectionLabel>
+                  title="Services"
+                />
               }
             >
               {servicesWaiting ? (
@@ -1746,24 +1757,28 @@ export function ZeropsStopPane({
               )}
               {servicesWaiting || table.length > 0 || missingSlots.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
-                <p
-                  className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                <Card
                   data-zerops-surface="place-services-empty"
+                  render={<p />}
+                  size="md"
+                  variant="slot"
                 >
-                  Nothing runs here yet. Its services appear as its first deploy lands.
-                </p>
+                  <EmptyState size="line">
+                    Nothing runs here yet. Its services appear as its first deploy lands.
+                  </EmptyState>
+                </Card>
               )}
               {projectId === undefined || tierStops.length === 0 ? null : (
                 <StopTierStops
                   projectId={projectId}
-                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-2"
                   rows={tierStops}
                 />
               )}
               {stopsUnverified.length === 0 ? null : (
                 // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
                 <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                  <p className="text-body text-muted-foreground">
+                  <Text render={<p />} variant="description">
                     Stop not confirmed:{" "}
                     {[
                       ...new Set(
@@ -1772,7 +1787,7 @@ export function ZeropsStopPane({
                         ),
                       ),
                     ].join(", ") || "a service"}
-                  </p>
+                  </Text>
                   <HqProblems problems={stopsUnverified} />
                 </div>
               )}
@@ -1790,7 +1805,7 @@ export function ZeropsStopPane({
       </div>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (
-        <p className="mt-2 text-body text-status-failed-text">{trouble}</p>
+        <Failure cause={trouble} className="mt-2" role="alert" size="line" />
       )}
       {vault === undefined || projectId === undefined ? null : (
         <StopVaultDrawer
@@ -1806,9 +1821,6 @@ export function ZeropsStopPane({
     </DetailShell>
   );
 }
-
-/** A card of the place's page: a hairline and the card ground. */
-const PLACE_CARD_CLASS = "min-w-0 rounded-card border border-border/70 bg-card";
 
 /**
  * One section of the place's page: its label hugging its card, every section well apart from the

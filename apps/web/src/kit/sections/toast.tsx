@@ -4,7 +4,7 @@ import { Button } from "~/components/ui/button";
 import { anchoredToastManager, toastManager } from "~/lib/toasts";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const TYPES = ["success", "error", "info", "warning", "loading"] as const;
@@ -47,9 +47,9 @@ function AnchoredOpener() {
 
 function ToastSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
-      <SpecimenBlock title="Openers: each adds a real toast, top right">
-        <SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="Each press adds a real toast, top right." title="Types">
+        <SpecimenGrid size="md">
           {TYPES.map((type) => (
             <Specimen key={type} label={`toastManager.add({ ${specimenLabel({ type })} })`}>
               <Button onClick={() => toastManager.add({ type, ...COPY[type] })} variant="secondary">
@@ -57,7 +57,11 @@ function ToastSpecimens() {
               </Button>
             </Specimen>
           ))}
-          <Specimen label="with actionProps">
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock note="Each press adds a real toast." title="Actions, details and anchors">
+        <SpecimenGrid size="md">
+          <Specimen label="toastManager.add({ actionProps })" note="A way to undo it">
             <Button
               onClick={() =>
                 toastManager.add({
@@ -71,7 +75,10 @@ function ToastSpecimens() {
               with action
             </Button>
           </Specimen>
-          <Specimen label="with expandableContent">
+          <Specimen
+            label="toastManager.add({ data: { expandableContent } })"
+            note="Details that open"
+          >
             <Button
               onClick={() =>
                 toastManager.add({
@@ -86,12 +93,15 @@ function ToastSpecimens() {
               with details
             </Button>
           </Specimen>
-          <Specimen label="anchoredToastManager.add({ data: { tooltipStyle: true } })">
+          <Specimen
+            label="anchoredToastManager.add({ data: { tooltipStyle: true } })"
+            note="A word beside its press"
+          >
             <AnchoredOpener />
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

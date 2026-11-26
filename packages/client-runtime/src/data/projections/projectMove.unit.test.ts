@@ -26,9 +26,10 @@ it("PJ132: A move that ended because Zerops shows a name someone gave the projec
   const refused = { ...failure("projectNameDuplicate", "zerops"), zerops: { words: null } };
   expect(projectMoveOf(move({ failure: refused }))).toEqual({
     kind: "failed",
+    id: "op-move",
     failure: refused,
   });
-  expect(projectMoveOf(move({}))).toEqual({ kind: "going" });
+  expect(projectMoveOf(move({}))).toEqual({ kind: "going", id: "op-move" });
   expect(
     projectMoveOf(move({ failure: failure("token_expired", "hq"), continueBy: "eva" })),
   ).toMatchObject({

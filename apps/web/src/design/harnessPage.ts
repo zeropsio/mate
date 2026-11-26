@@ -1,5 +1,5 @@
 import { holdAppearance } from "~/hooks/useTheme";
-import { flowThemeOf, KIT_FLOWS } from "~/kit/kitFlows";
+import { flowFramedOf, flowThemeOf, KIT_FLOWS } from "~/kit/kitFlows";
 
 /**
  * The design harness's one page (`design/index.html`, `vite.config.ts`): every `design*.html`
@@ -16,6 +16,12 @@ const modules = import.meta.glob("/src/design/*Harness.tsx");
  * component reads it from here.
  */
 export const harnessAppearance = flowThemeOf(location.search);
+
+/**
+ * The kit frames this page (`flowFramedOf`): a harness that lists its own states leaves the list
+ * out, since the kit's picker above the frame stands for it. Opened alone, the page keeps it.
+ */
+export const harnessFramed = flowFramedOf(location.search);
 
 const here = KIT_FLOWS.find(({ href }) => href === location.pathname);
 const load = here === undefined ? undefined : modules[here.module];

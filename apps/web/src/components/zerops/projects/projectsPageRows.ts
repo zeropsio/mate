@@ -108,7 +108,6 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
         attention === undefined ? undefined : mateStatusWords(attention.status, attention.name);
       return {
         group,
-        contents: app?.contents,
         flow:
           attention === undefined || words === undefined
             ? flow

@@ -1,0 +1,18 @@
+[
+  {
+    "path": "apps/web/src/components/chat/MessageFiles.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"hover:bg-foreground/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
+    "owner": "unify pass",
+    "reason": "a file chip standing on its own ground (MESSAGE_FILE_CLASS_NAME, beside it in the cn call), lit a step deeper under the pointer: a surface of its own, not a row's ground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/system/FaceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"has-[>[data-face-card-press]:hover]:bg-foreground/9 has-[>[data-face-card-press]:hover]:inset-ring has-[>[data-face-card-press]:hover]:inset-ring-border\"",
+    "owner": "unify pass",
+    "reason": "a face card standing on its own muted ground (the class string before it), lit a step deeper and ringed under the pointer: a surface of its own, not a row's ground",
+    "expires": "never"
+  }
+]

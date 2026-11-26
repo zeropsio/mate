@@ -21,6 +21,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { SettingResetButton, SettingsRow, SettingsSection } from "./settingsLayout";
+import { Text } from "~/components/ui/text";
 
 const MODE_OPTIONS: Record<SourceControlWritingStyleMode, { label: string; description: string }> =
   {
@@ -183,9 +184,7 @@ export function SourceControlWritingSettingsSection() {
         control={
           <div className="flex flex-wrap items-center justify-end gap-2">
             {usesDedicatedModel && !canEnableDedicatedModel ? (
-              <span className="text-body text-muted-foreground">
-                No text generation providers available.
-              </span>
+              <Text variant="description">No text generation providers available.</Text>
             ) : null}
             {usesDedicatedModel && canEnableDedicatedModel ? (
               <ProviderModelPicker

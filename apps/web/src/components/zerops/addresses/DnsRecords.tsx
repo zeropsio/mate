@@ -12,7 +12,10 @@ import { useState } from "react";
 
 import { Button } from "../../ui/button";
 import { dnsZone, namesWords, recordHost, recordKey } from "./addresses.logic";
-import { CopyButton } from "./AddressesSheetBits";
+import { CopyButton } from "~/components/ui/copy-button";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
+import { List } from "~/components/ui/list";
 
 const NONE_FOUND: ReadonlySet<string> = new Set();
 const NO_CNAMES: ReadonlyArray<DnsRecord & { readonly ipv4: boolean }> = [];
@@ -96,7 +99,7 @@ export function DnsRecords({
           </Button>
         </div>
         {ways ? (
-          <div className="grid gap-2.5 pt-1.5 text-muted-foreground text-caption">
+          <Text className="grid gap-2.5 pt-1.5" render={<div />} variant="note">
             {oneRecord.length === 0 ? null : (
               <div className="grid gap-1.5" data-dns-way="cname">
                 <p>
@@ -121,7 +124,7 @@ export function DnsRecords({
                 )}
               </p>
             )}
-          </div>
+          </Text>
         ) : null}
       </div>
     </div>
@@ -147,14 +150,14 @@ function RecordName({
   return (
     // What is typed is never cut: it wraps where it is long. The rest of the domain after it is
     // there to be recognised, and gives way first.
-    <span className="flex min-w-0 items-baseline font-mono">
+    <Text className="flex min-w-0 items-baseline" variant="code">
       <span className="min-w-0 break-all">{host}</span>
       {rest === "" ? null : (
         <span className="min-w-0 flex-1 truncate whitespace-pre text-muted-foreground/70">
           {rest}
         </span>
       )}
-    </span>
+    </Text>
   );
 }
 
@@ -173,64 +176,62 @@ function RecordTable({
 }) {
   const beside = records.map((record) => record.name);
   return (
-    <div
-      className="rounded-card bg-muted/60 px-3 text-foreground text-body"
-      data-dns-table=""
-      role="table"
-    >
-      {/* A phone hides the header's line, not its names: each cell still has its column's. */}
-      <div
-        className={`${COLUMNS} h-8 border-b border-border/70 text-muted-foreground text-caption max-sm:sr-only`}
-        role="row"
-      >
-        <span role="columnheader">Type</span>
-        <span role="columnheader">Name</span>
-        <span role="columnheader">Value</span>
-        <span className="sr-only" role="columnheader">
-          Copy
-        </span>
-      </div>
-      <div className="divide-y divide-border/70" role="rowgroup">
-        {records.map((record) => {
-          const there = found.has(recordKey(record));
-          return (
-            <div
-              className={`${COLUMNS} min-h-10 py-1 max-sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] max-sm:gap-y-0.5 max-sm:py-2`}
-              data-record={record.type}
-              data-record-found={there ? "" : undefined}
-              key={recordKey(record)}
-              role="row"
-            >
-              <span className="font-medium" role="cell">
-                {record.type}
-              </span>
-              <span className="min-w-0 pe-3" role="cell">
-                <RecordName beside={beside} name={record.name} rooted={rooted} />
-              </span>
-              <span
-                className="min-w-0 break-all font-mono max-sm:col-span-2 max-sm:row-start-2 max-sm:text-caption"
-                role="cell"
+    <Card variant="inset">
+      <div className="px-3 text-foreground text-body" data-dns-table="" role="table">
+        {/* A phone hides the header's line, not its names: each cell still has its column's. */}
+        <div
+          className={`${COLUMNS} h-8 border-b border-rule text-muted-foreground text-caption max-sm:sr-only`}
+          role="row"
+        >
+          <span role="columnheader">Type</span>
+          <span role="columnheader">Name</span>
+          <span role="columnheader">Value</span>
+          <span className="sr-only" role="columnheader">
+            Copy
+          </span>
+        </div>
+        <List role="rowgroup">
+          {records.map((record) => {
+            const there = found.has(recordKey(record));
+            return (
+              <div
+                className={`${COLUMNS} min-h-10 py-1 max-sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] max-sm:gap-y-0.5 max-sm:py-2`}
+                data-record={record.type}
+                data-record-found={there ? "" : undefined}
+                key={recordKey(record)}
+                role="row"
               >
-                {record.value}
-              </span>
-              <span
-                className="-me-1.5 flex items-center justify-end max-sm:col-start-3 max-sm:row-span-2 max-sm:row-start-1"
-                role="cell"
-              >
-                {there ? (
-                  <span className="me-1.5 inline-flex items-center gap-1 font-medium text-status-ok-text text-caption">
-                    <CheckIcon aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
-                    Found
-                  </span>
-                ) : (
-                  <CopyButton value={record.value} />
-                )}
-              </span>
-            </div>
-          );
-        })}
+                <span className="font-medium" role="cell">
+                  {record.type}
+                </span>
+                <span className="min-w-0 pe-3" role="cell">
+                  <RecordName beside={beside} name={record.name} rooted={rooted} />
+                </span>
+                <span
+                  className="min-w-0 break-all font-mono max-sm:col-span-2 max-sm:row-start-2 max-sm:text-caption"
+                  role="cell"
+                >
+                  {record.value}
+                </span>
+                <span
+                  className="-me-1.5 flex items-center justify-end max-sm:col-start-3 max-sm:row-span-2 max-sm:row-start-1"
+                  role="cell"
+                >
+                  {there ? (
+                    <span className="me-1.5 inline-flex items-center gap-1 font-medium text-status-ok-text text-caption">
+                      <CheckIcon aria-hidden="true" className="size-3.5" strokeWidth={2.5} />
+                      Found
+                    </span>
+                  ) : (
+                    <CopyButton label={record.value} value={record.value} />
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </List>
       </div>
-    </div>
+    </Card>
   );
 }
 

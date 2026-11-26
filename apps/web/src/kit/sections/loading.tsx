@@ -1,4 +1,5 @@
 import { defineKitSection } from "../kitSection";
+import { SpecimenBlock, Specimens } from "../Specimen";
 import { ChosenLoading } from "../states/Chosen";
 
 export default defineKitSection({
@@ -9,5 +10,14 @@ export default defineKitSection({
   group: "Chosen",
   kind: "Feedback",
   source: "apps/web/src/components/ui/loading.tsx",
-  render: () => <ChosenLoading />,
+  render: () => (
+    <Specimens>
+      <SpecimenBlock
+        note="A stand-in shaped like what comes, replaced in one frame."
+        title="Shapes"
+      >
+        <ChosenLoading />
+      </SpecimenBlock>
+    </Specimens>
+  ),
 });

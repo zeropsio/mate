@@ -14,7 +14,7 @@ import type {
 import { ArrowUpRightIcon } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 
 import { Button, InlineButton } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -22,6 +22,7 @@ import { WaitLine } from "../zerops/WaitLine";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { sectionState, taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
+import { Text } from "~/components/ui/text";
 
 /**
  * The room a part's final shape takes (`template`, drawn unseen), held under what it says while it
@@ -103,43 +104,22 @@ export function PublicChoice({
         <Label {...(id === undefined ? {} : { htmlFor: id })}>
           Take issues from a public repository
         </Label>
-        <p
-          className="text-caption text-muted-foreground"
-          {...(id === undefined ? {} : { id: `${id}-why` })}
-        >
+        <Text render={<p />} variant="note" {...(id === undefined ? {} : { id: `${id}-why` })}>
           Anyone can write a public repository's issues, and their words reach the agent.
-        </p>
+        </Text>
       </div>
     </div>
   );
 }
 
-export function CopyLine({
-  label,
-  copy,
-  value,
-}: {
-  readonly label: string;
-  /** The press's words: what it copies. */
-  readonly copy: string;
-  readonly value: string;
-}) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: label });
+/** A value to copy under its name, the name in a column of its own beside it: a webhook's URL, its secret. */
+export function NamedCopyLine({ name, value }: { readonly name: string; readonly value: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="w-24 shrink-0 text-caption text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-caption text-foreground">
-        {value}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(value, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : copy}
-      </Button>
+    <div className="flex min-w-0 items-center gap-3">
+      <Text className="w-24 shrink-0" variant="label">
+        {name}
+      </Text>
+      <CopyLine className="flex-1" label={`the ${name.toLowerCase()}`} value={value} />
     </div>
   );
 }
@@ -155,7 +135,7 @@ export function OutLink({
   return (
     <InlineButton render={<a href={href} rel="noreferrer" target="_blank" />}>
       {children}
-      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5 inline size-3" />
+      <ArrowUpRightIcon aria-hidden="true" className="ms-0.5" />
     </InlineButton>
   );
 }
@@ -188,20 +168,22 @@ export function NotKnown({
         {quiet ? (
           <span />
         ) : (
-          <p className="text-caption text-muted-foreground" role="alert">
+          <Text render={<p />} variant="note" role="alert">
             {couldntRead(what, setting.words)}
-          </p>
+          </Text>
         )}
         <Button onClick={onAgain} size="sm" variant="secondary">
           Try again
         </Button>
       </div>
     ) : quiet ? null : state === "withheld" ? (
-      <p className="text-caption text-muted-foreground">{WITHHELD}</p>
+      <Text render={<p />} variant="note">
+        {WITHHELD}
+      </Text>
     ) : (
-      <p className="text-caption text-muted-foreground">
+      <Text render={<p />} variant="note">
         <WaitLine inline text="Reading…" />
-      </p>
+      </Text>
     );
   return template === undefined ? (
     <IntakeRoom>{said}</IntakeRoom>
@@ -218,9 +200,9 @@ export function Problem({
 }) {
   const problem = taskSourceProblem(read.action);
   return problem === null ? null : (
-    <p className="text-caption text-destructive-foreground" role="alert">
+    <Text render={<p />} variant="error" role="alert">
       {problem}
-    </p>
+    </Text>
   );
 }
 

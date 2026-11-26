@@ -7,7 +7,7 @@ import { RunLine } from "~/components/chat/RunChat";
 import { TimelineRowActivityCtx, TimelineRowCtx } from "~/components/chat/timelineContext";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { ROW_SHARED, ROW_WORKING } from "../states/fixtures";
 
 function WorkingLine({ secondsAgo }: { readonly secondsAgo: number }) {
@@ -15,7 +15,7 @@ function WorkingLine({ secondsAgo }: { readonly secondsAgo: number }) {
   return (
     <TimelineRowCtx value={ROW_SHARED}>
       <TimelineRowActivityCtx value={ROW_WORKING}>
-        <div className={cn(RUN_TRAY_SLICE.top, "w-[560px]")}>
+        <div className={cn(RUN_TRAY_SLICE.top, "w-full max-w-[560px]")}>
           <RunLine
             status={{
               live: true,
@@ -42,27 +42,38 @@ export default defineKitSection({
   kind: "Feedback",
   source: "apps/web/src/components/chat/ConversationRows.tsx",
   render: () => (
-    <SpecimenGrid>
-      <Specimen label="<RunLine status={live, 8 s} />">
-        <WorkingLine secondsAgo={8} />
-      </Specimen>
-      <Specimen label="<RunLine status={live, 23 min} />">
-        <WorkingLine secondsAgo={23 * 60} />
-      </Specimen>
-      <Specimen label="<ErrorLine label detail onDismiss />">
-        <div className="w-[560px]">
-          <ErrorLine
-            detail="The provider closed the stream after 3 minutes."
-            label="The turn stopped."
-            onDismiss={() => {}}
-          />
-        </div>
-      </Specimen>
-      <Specimen label="<ErrorLine label calm />">
-        <div className="w-[560px]">
-          <ErrorLine calm label="You've reached the usage limit until 18:00." />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock note="The Mate at work, with its clock." title="At work">
+        <SpecimenGrid size="xl">
+          <Specimen label="<RunLine status={live} />" note="Working for 8 seconds">
+            <WorkingLine secondsAgo={8} />
+          </Specimen>
+          <Specimen label="<RunLine status={live} />" note="Working for 23 minutes">
+            <WorkingLine secondsAgo={23 * 60} />
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock
+        note="A turn that stopped, alerted; an expected refusal, told calmly."
+        title="Stopped"
+      >
+        <SpecimenGrid size="xl">
+          <Specimen label="<ErrorLine label detail onDismiss />" note="A turn that stopped">
+            <div className="w-full max-w-[560px]">
+              <ErrorLine
+                detail="The provider closed the stream after 3 minutes."
+                label="The turn stopped."
+                onDismiss={() => {}}
+              />
+            </div>
+          </Specimen>
+          <Specimen label="<ErrorLine label calm />" note="An expected refusal">
+            <div className="w-full max-w-[560px]">
+              <ErrorLine calm label="You've reached the usage limit until 18:00." />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

@@ -2374,7 +2374,7 @@ function Harness() {
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <WorkspacePageHeader
-          className="relative bg-background font-medium text-body"
+          className="relative bg-toolbar font-medium text-body text-toolbar-foreground"
           data-chat-header
         >
           Nova

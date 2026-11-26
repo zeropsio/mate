@@ -214,9 +214,9 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }), → try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages.slice(1) }),
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | ...(intent.mate === undefined ? {} : { mate: intent.mate }), → ...{},
 it.effect(
-  "OP34: Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself",
+  "OP34: Deleting an application with its code sends HQ one start under one id naming its last Mate, exactly its reviewed stages and its confirmed productions, and the web deletes no Mate, stage or production project itself",
   () =>
     Effect.gen(function* () {
       const sent: unknown[] = [];
@@ -227,16 +227,30 @@ it.effect(
         deleteApp: async (...args) => {
           sent.push(["delete-app", ...args]);
         },
+        startMateDeletion: async (...args) => {
+          sent.push(["start-mate-deletion", ...args]);
+        },
       });
       yield* operations.submit({
         kind: "start-app-deletion",
         orgId: ORG,
         appId: "app-1",
         id: "op-1",
+        mate: "p-mate",
         stages: ["p-stage-a", "p-stage-b"],
+        productions: ["p-prod"],
       });
       expect(sent).toEqual([
-        ["start-app-deletion", "app-1", { id: "op-1", stages: ["p-stage-a", "p-stage-b"] }],
+        [
+          "start-app-deletion",
+          "app-1",
+          {
+            id: "op-1",
+            mate: "p-mate",
+            stages: ["p-stage-a", "p-stage-b"],
+            productions: ["p-prod"],
+          },
+        ],
       ]);
     }),
 );
@@ -441,3 +455,38 @@ it.effect(
       expect(progress(ended, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
 );
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | const operation = placement.kind === "known" ? placement.value.operation : undefined; → const operation = placement.kind === "known" && placement.value.operation?.failure === undefined ? placement.value.operation : undefined;
+it("OP64: After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.", () => {
+  for (const intent of [
+    { kind: "start-mate-deletion", orgId: ORG, projectId: "p", id: "ours" },
+    { kind: "start-app-deletion", orgId: ORG, appId: "a", id: "ours", stages: [] },
+  ] as const) {
+    const kind = HQ_WRITE_KINDS.find((entry) => entry.kind === intent.kind);
+    const operationKind = intent.kind === "start-mate-deletion" ? "mate_deletion" : "app_deletion";
+    const failure = { step: "delete", code: "refused", at: "2026-11-23T10:00:00Z", origin: "hq" };
+    const cases = [
+      [{ kind: "known", value: { operation: { id: "ours", kind: operationKind } } }, true],
+      [{ kind: "known", value: { operation: { id: "ours", kind: operationKind, failure } } }, true],
+      [
+        {
+          kind: "known",
+          value: { operation: { id: "ours", kind: operationKind, failure, continueBy: "maker" } },
+        },
+        true,
+      ],
+      [{ kind: "known", value: { operation: { id: "other", kind: operationKind } } }, false],
+      [{ kind: "known", value: {} }, false],
+      [{ kind: "unknown" }, false],
+      [{ kind: "withheld", reason: "removed" }, true],
+      [{ kind: "withheld", reason: "denied" }, false],
+    ] as const;
+    for (const [fact, expected] of cases) {
+      const read = { fact: () => fact };
+      expect(
+        kind?.reflected(read as never, intent as never, {} as never),
+        JSON.stringify([intent.kind, fact]),
+      ).toBe(expected);
+    }
+  }
+});

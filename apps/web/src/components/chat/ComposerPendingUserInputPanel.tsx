@@ -9,11 +9,13 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { Row } from "../ui/row";
 
 import { NOT_NOW } from "../ask/ask.logic";
 import { AskDock } from "../ask/AskCard";
 import { ComposerAskMark } from "./ComposerAsk";
+import { Text } from "~/components/ui/text";
 
 /**
  * What a keystroke means for the option list, or undefined when the card should
@@ -307,9 +309,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
       <AskDock
         actions={
           answer === null ? (
-            <span className="text-line text-muted-foreground" data-pending-user-input-waiting>
+            <Text variant="remark" data-pending-user-input-waiting>
               {waitingLabel}
-            </span>
+            </Text>
           ) : prompt.dismissible ? (
             // Not now closes an async question without sending a reply.
             <Button
@@ -408,37 +410,29 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                     : undefined;
                 if (answer === null) {
                   return (
-                    <div
+                    <Row
                       key={`${activeQuestion.id}:${optionValue}`}
-                      className={cn("rounded-control", isSelected && "bg-muted/55")}
-                    >
-                      <Row
-                        size="sm"
-                        title={option.label}
-                        line={description}
-                        lineWraps
-                        meta={
-                          isSelected ? <CheckIcon className="size-3.5 text-primary" /> : undefined
-                        }
-                      />
-                    </div>
+                      size="sm"
+                      title={option.label}
+                      line={description}
+                      lineWraps
+                      meta={
+                        isSelected ? <CheckIcon className="size-3.5 text-primary" /> : undefined
+                      }
+                    />
                   );
                 }
                 const shortcutKey = index < 9 ? index + 1 : null;
                 return (
                   <div
                     key={`${activeQuestion.id}:${optionValue}`}
-                    className={cn(
-                      "rounded-control transition-colors duration-150",
-                      isSelected ? "bg-muted/55" : "hover:bg-muted/30",
-                      isHighlighted && "ring-1 ring-primary/40",
-                      isResponding && "opacity-50",
-                    )}
+                    className={cn(isResponding && "opacity-50")}
                   >
                     <Row
                       size="sm"
-                      pressable="band"
+                      pressable
                       aria-disabled={isResponding || undefined}
+                      data-highlighted={isHighlighted ? "" : undefined}
                       render={
                         <button
                           type="button"
@@ -456,9 +450,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                         isSelected ? (
                           <CheckIcon className="size-3.5 text-primary" />
                         ) : shortcutKey !== null ? (
-                          <kbd className="flex size-5 items-center justify-center font-medium">
-                            {shortcutKey}
-                          </kbd>
+                          <Kbd>{shortcutKey}</Kbd>
                         ) : undefined
                       }
                     />
@@ -476,7 +468,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               <div
                 className={cn(
                   "mt-1 flex items-center gap-2 rounded-control px-2.5 py-2 text-left",
-                  customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
+                  customAnswerActive ? "text-foreground" : "text-secondary-label",
                 )}
                 data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
               >

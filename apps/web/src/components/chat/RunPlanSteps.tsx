@@ -1,4 +1,5 @@
 import { cn } from "~/lib/utils";
+import { Dot } from "../ui/dot";
 
 /** A to-do list, a step a line: done ones muted, the one in hand in the busy tone. */
 export function PlanSteps({
@@ -22,15 +23,15 @@ export function PlanSteps({
             data-plan-step={step.status}
           >
             <span aria-hidden="true" className="flex w-4 shrink-0 justify-center pt-2">
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
+              <Dot
+                size="sm"
+                tone={
                   step.status === "completed"
-                    ? "bg-status-ok"
+                    ? "success"
                     : step.status === "inProgress"
-                      ? "bg-status-busy"
-                      : "bg-muted-foreground/35",
-                )}
+                      ? "info"
+                      : "neutral"
+                }
               />
             </span>
             <span

@@ -1,29 +1,29 @@
 import { Input } from "~/components/ui/input";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenBlock, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const SIZES = ["sm", "compact", "default", "lg", "xl", "hero"] as const;
 
 function InputSpecimens() {
   return (
-    <div className="flex flex-col gap-8">
+    <Specimens>
       <SpecimenBlock title="Sizes">
-        <SpecimenGrid>
+        <SpecimenGrid size="md">
           {SIZES.map((size) => (
             <Specimen key={size} label={specimenLabel({ size })}>
-              <div className="w-56">
+              <div className="w-full max-w-56">
                 <Input aria-label={`Name, ${size}`} placeholder="Project name" size={size} />
               </div>
             </Specimen>
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-      <SpecimenBlock title="Inline">
-        <SpecimenGrid>
-          <Specimen label='size="inline"'>
-            <div className="flex h-5 w-72 min-w-0 items-center font-mono text-body text-foreground">
+      <SpecimenBlock note="A field that is part of the text around it." title="Inline">
+        <SpecimenGrid size="lg">
+          <Specimen label='size="inline"' note="A repository's name after its owner">
+            <div className="flex h-5 w-full max-w-72 min-w-0 items-center font-mono text-body text-foreground">
               <span className="shrink-0 text-muted-foreground">octo-dev/</span>
               <Input
                 aria-label="New repository's name"
@@ -33,8 +33,8 @@ function InputSpecimens() {
               />
             </div>
           </Specimen>
-          <Specimen label='size="inline" aria-invalid'>
-            <div className="flex h-5 w-72 min-w-0 items-center font-mono text-body text-foreground">
+          <Specimen label='size="inline" aria-invalid' note="A name that cannot be used">
+            <div className="flex h-5 w-full max-w-72 min-w-0 items-center font-mono text-body text-foreground">
               <span className="shrink-0 text-muted-foreground">octo-dev/</span>
               <Input
                 aria-invalid
@@ -45,15 +45,15 @@ function InputSpecimens() {
               />
             </div>
           </Specimen>
-          <Specimen label='size="inline" unstyled'>
-            <div className="w-72 text-center font-semibold text-display text-foreground">
+          <Specimen label='size="inline" unstyled' note="A Mate's name, in the heading's type">
+            <div className="w-full max-w-72 text-center font-semibold text-display text-foreground">
               <Input aria-label="Mate's name" defaultValue="Quinn" size="inline" unstyled />
             </div>
           </Specimen>
         </SpecimenGrid>
       </SpecimenBlock>
       <SpecimenBlock title="States and types">
-        <SpecimenGrid>
+        <SpecimenGrid size="md">
           {[
             { label: "defaultValue", props: { defaultValue: "storefront" } },
             { label: 'font="mono"', props: { defaultValue: "zcli push", font: "mono" as const } },
@@ -64,19 +64,19 @@ function InputSpecimens() {
             { label: 'type="password"', props: { defaultValue: "secret", type: "password" } },
             { label: 'type="file"', props: { type: "file" } },
             {
-              label: "long value",
+              label: "defaultValue (long)",
               props: { defaultValue: "storefront-preview-eu-central-2-with-a-very-long-name" },
             },
           ].map(({ label, props }) => (
             <Specimen key={label} label={label}>
-              <div className="w-56">
+              <div className="w-full max-w-56">
                 <Input aria-label={label} {...props} />
               </div>
             </Specimen>
           ))}
         </SpecimenGrid>
       </SpecimenBlock>
-    </div>
+    </Specimens>
   );
 }
 

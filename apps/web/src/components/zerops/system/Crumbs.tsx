@@ -12,6 +12,7 @@ import {
 } from "../../WorkspaceBreadcrumb";
 import { InlineButton } from "../../ui/button";
 import { pageTrail } from "./Crumbs.logic";
+import { InPhoneBar } from "./PhoneBar";
 
 /** One step of a trail: its words, and the press that opens its page; none on the page itself. */
 export interface Crumb {
@@ -75,5 +76,18 @@ export function Crumbs({ trail }: { readonly trail: ReadonlyArray<Crumb> }) {
         </Fragment>
       ))}
     </WorkspaceBreadcrumb>
+  );
+}
+
+/**
+ * A page's trail where it heads the page (`PageHeader`'s `trail`): none where it is empty; on a
+ * phone, the frame's bar, beside the menu's button.
+ */
+export function PageTrail({ trail }: { readonly trail: ReadonlyArray<Crumb> | undefined }) {
+  if (trail === undefined || trail.length === 0) return null;
+  return (
+    <InPhoneBar>
+      <Crumbs trail={trail} />
+    </InPhoneBar>
   );
 }

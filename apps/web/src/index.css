@@ -10,15 +10,15 @@
 @import "./styles/foundation.css";
 @import "./styles/base.css";
 @import "./styles/tokens.css";
-@import "./styles/chrome.css";
+@import "./styles/document.css";
 @import "./styles/chat-markdown.css";
 @import "./styles/run-shimmer.css";
 @import "./styles/mate-face.css";
-@import "./styles/overview.css";
 @import "./styles/run-card.css";
 @import "./styles/motion-arrival.css";
 @import "./styles/motion-panels.css";
 @import "./styles/motion-conversation.css";
 @import "./styles/motion-menu.css";
 @import "./styles/motion-overview.css";
+@import "./styles/registered-properties.css";
 @import "./styles/motion-review.css";

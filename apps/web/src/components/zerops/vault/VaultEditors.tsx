@@ -9,6 +9,7 @@ import { ChevronDownIcon, CircleAlertIcon, DicesIcon, LockIcon } from "lucide-re
 import { useState } from "react";
 
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
@@ -30,6 +31,8 @@ import {
   type VaultText,
   type VaultTextSection,
 } from "./vaultText.logic";
+import { Text } from "~/components/ui/text";
+import { Separator } from "~/components/ui/separator";
 
 interface VaultAddCardProps {
   /**
@@ -44,8 +47,18 @@ interface VaultAddCardProps {
   readonly busy: boolean;
   readonly onAdd: (scope: VaultScope, write: Extract<VaultWrite, { kind: "add" }>) => void;
   readonly onCancel: () => void;
-  /** A multi-line `.env` pasted into the key: the panel opens that part's text with it. */
-  readonly onPasteEnv: (scope: VaultScope, pasted: string) => void;
+  /**
+   * A multi-line `.env` pasted into the key: the panel opens that part's text with it. Without it
+   * (where no text editor stands) a paste is only typed.
+   */
+  readonly onPasteEnv?: (scope: VaultScope, pasted: string) => void;
+  /** Drawn in a popup, which is its frame: no card of its own. */
+  readonly framed?: boolean;
+  /**
+   * Given from the message box, where the saved key goes into the message: the card says so, and a
+   * value starts hidden.
+   */
+  readonly forMessage?: boolean;
 }
 
 export function VaultAddCard(props: VaultAddCardProps) {
@@ -56,7 +69,8 @@ export function VaultAddCard(props: VaultAddCardProps) {
   /** The person's own say on the switch; until then the name decides. */
   const [chosen, setChosen] = useState<boolean | null>(null);
   const word = sensitiveWordIn(key);
-  const sensitive = chosen ?? word !== null;
+  const sensitive = chosen ?? (props.forMessage === true || word !== null);
+  const mate = props.mateName ?? "the Mate";
   const problem = keyProblem(key, scope);
   const error = problem ?? props.refusal;
   const canSave = key !== "" && problem === null && !props.busy;
@@ -70,14 +84,10 @@ export function VaultAddCard(props: VaultAddCardProps) {
     if (event.key === "Escape") props.onCancel();
   };
 
-  return (
-    // A card raised over the list it adds to.
-    <div
-      className="rounded-card bg-card p-px shadow-(--zerops-shadow-drawer) ring-1 ring-border"
-      data-vault-add
-    >
+  const body = (
+    <>
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-caption text-foreground">
-        New value in
+        {props.forMessage === true ? `Give ${mate} a key or secret, kept in` : "New value in"}
         <Menu>
           <MenuTrigger
             render={
@@ -87,7 +97,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             {vaultName(scope, props.mateName)}
             <ChevronDownIcon />
           </MenuTrigger>
-          <MenuPopup align="start" className="min-w-44">
+          <MenuPopup align="start" width="fit">
             {props.scopes.map((candidate) => (
               <MenuItem key={candidate.id} onClick={() => setScopeId(candidate.id)}>
                 {`${vaultName(candidate, props.mateName)} · ${vaultReach(candidate, props.mateName)}`}
@@ -108,7 +118,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
             onKeyDown={onKeys}
             onPaste={(event) => {
               const pasted = event.clipboardData.getData("text");
-              if (envPasteLines(pasted) === null) return;
+              if (props.onPasteEnv === undefined || envPasteLines(pasted) === null) return;
               event.preventDefault();
               props.onPasteEnv(scope, pasted);
             }}
@@ -145,18 +155,29 @@ export function VaultAddCard(props: VaultAddCardProps) {
             <TooltipPopup>Generate a value · 32 random bytes</TooltipPopup>
           </Tooltip>
         </div>
+        {props.forMessage === true && error === null ? (
+          <Text render={<p />} variant="note" data-vault-add-message>
+            {`${mate} gets ${key === "" ? "its name" : key} in your message, never the value.`}
+          </Text>
+        ) : null}
         {error === null ? null : (
-          <p
-            className="flex items-center gap-1.5 text-caption leading-4 text-destructive-foreground"
+          <Text
+            className="flex items-center gap-1.5"
+            render={<p />}
+            variant="error"
             data-vault-add-error
             role="alert"
           >
             <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
             {error}
-          </p>
+          </Text>
         )}
-        <div className="flex items-center gap-2">
-          <label className="flex h-7 cursor-pointer items-center gap-2 text-caption text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          <Text
+            className="flex h-7 cursor-pointer items-center gap-2"
+            render={<label />}
+            variant="note"
+          >
             <Switch
               aria-label="Hidden"
               checked={sensitive}
@@ -164,31 +185,42 @@ export function VaultAddCard(props: VaultAddCardProps) {
             />
             <LockIcon aria-hidden="true" className="size-3" />
             <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
-          </label>
-          <span className="truncate text-caption text-muted-foreground" data-vault-add-auto>
-            {sensitive ? "nobody reads it back once saved" : ""}
-          </span>
+          </Text>
+          {/* Given for a message, the line above says where the value goes and who reads it. */}
+          {props.forMessage === true ? null : (
+            <Text className="min-w-0" data-vault-add-auto truncate variant="note">
+              {sensitive ? "nobody reads it back once saved" : ""}
+            </Text>
+          )}
           <span className="grow" />
           <Button onClick={props.onCancel} size="sm" variant="ghost">
             Cancel
           </Button>
           <Button disabled={!canSave} onClick={save} size="sm">
             {props.busy ? <Spinner size="xs" /> : null}
-            Save
+            {props.forMessage === true ? "Add to message" : "Save"}
           </Button>
         </div>
-        <p className="text-caption leading-4 text-muted-foreground">
-          Paste a whole .env into the name to add many at once.
-        </p>
+        {props.onPasteEnv === undefined ? null : (
+          <Text render={<p />} variant="note">
+            Paste a whole .env into the name to add many at once.
+          </Text>
+        )}
       </div>
-    </div>
+    </>
+  );
+  // A card raised over the list it adds to, unless its place draws one.
+  return props.framed === false ? (
+    <div data-vault-add>{body}</div>
+  ) : (
+    <Card data-vault-add>{body}</Card>
   );
 }
 
 const MARK_CLASS = {
   "+": "text-status-ok-text",
   "~": "text-warning-foreground",
-  "!": "text-destructive-foreground",
+  "!": "text-status-failed-text",
 } as const;
 
 /** Each line with where it starts in its section: a key that stays while lines above it hold. */
@@ -222,31 +254,24 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           {which === "sensitive" ? <LockIcon aria-hidden="true" className="size-3" /> : null}
           {label}
         </div>
-        <div className="grid grid-cols-[26px_minmax(0,1fr)] overflow-hidden rounded-control bg-muted focus-within:ring-1 focus-within:ring-ring">
-          <div
-            aria-hidden="true"
-            // One mark per line, at the line's height.
-            className="py-2 text-center *:block *:h-5 font-mono font-medium text-caption leading-5"
-          >
-            {lineStarts(lines).map(({ start, line }) => {
-              const mark = diff.marks[which][line] ?? null;
-              return (
-                <span className={mark === null ? undefined : MARK_CLASS[mark]} key={start}>
-                  {mark}
-                </span>
-              );
-            })}
-          </div>
-          <Textarea
-            aria-label={`${label} values as text`}
-            onChange={(event) =>
-              props.onChange({ ...props.text, [which]: event.currentTarget.value })
-            }
-            size="code"
-            spellCheck={false}
-            value={props.text[which]}
-          />
-        </div>
+        <Textarea
+          aria-label={`${label} values as text`}
+          // One mark per line, at the line's height.
+          gutter={lineStarts(lines).map(({ start, line }) => {
+            const mark = diff.marks[which][line] ?? null;
+            return (
+              <span className={mark === null ? undefined : MARK_CLASS[mark]} key={start}>
+                {mark}
+              </span>
+            );
+          })}
+          onChange={(event) =>
+            props.onChange({ ...props.text, [which]: event.currentTarget.value })
+          }
+          size="code"
+          spellCheck={false}
+          value={props.text[which]}
+        />
       </div>
     );
   };
@@ -254,7 +279,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
     <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
         <span className="font-medium text-line">{vaultName(props.scope, props.mateName)}</span>
-        <span className="text-caption text-muted-foreground">as text</span>
+        <Text variant="note">as text</Text>
         <span className="grow" />
         <Button onClick={props.onCancel} size="sm" variant="ghost">
           Cancel
@@ -272,20 +297,22 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
       {diff.problems.length === 0 ? null : (
         <ul className="grid gap-1" data-vault-text-problems>
           {diff.problems.map((problem) => (
-            <li
-              className="flex items-center gap-1.5 text-caption text-destructive-foreground"
+            <Text
+              className="flex items-center gap-1.5"
+              render={<li />}
+              variant="error"
               key={`${problem.section}:${problem.line}`}
             >
               <CircleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
               {problem.message}
-            </li>
+            </Text>
           ))}
         </ul>
       )}
-      <p className="text-caption leading-4 text-muted-foreground">
+      <Text render={<p />} variant="note">
         {VAULT_MASK} keeps the stored value. Type over it to replace it; delete the line to remove
         it.
-      </p>
+      </Text>
     </section>
   );
 }
@@ -318,17 +345,14 @@ export function VaultReview(props: VaultReviewProps) {
     <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
-        <span className="text-caption text-muted-foreground">
-          {vaultName(props.scope, props.mateName)}
-        </span>
+        <Text variant="note">{vaultName(props.scope, props.mateName)}</Text>
       </div>
       {lines.map(({ write, line }) => (
         <div
-          className={
-            line.guarded && !forced.has(write.key)
-              ? "-mx-2 grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 rounded-control bg-warning-surface px-2 pt-2.25 pb-2.5"
-              : "grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5"
-          }
+          // A line held back until it is forced stands on the warning's ground, out to the
+          // section's edge; the others are parted by a rule.
+          className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-1.5 border-t border-border/60 pt-2.25 pb-2.5 data-held:-mx-2 data-held:rounded-control data-held:border-transparent data-held:bg-warning-surface data-held:px-2"
+          data-held={line.guarded && !forced.has(write.key) ? "" : undefined}
           data-vault-review-line={write.key}
           key={`${write.kind}:${write.key}`}
         >
@@ -369,7 +393,8 @@ export function VaultReview(props: VaultReviewProps) {
           </div>
         </div>
       ))}
-      <div className="flex items-center gap-2 border-t border-border/60 pt-3 pb-1">
+      <Separator />
+      <div className="flex items-center gap-2 pt-3 pb-1">
         <Button
           disabled={applied.length === 0 || props.applying}
           onClick={() => props.onApply(applied.map(({ write }) => write))}
@@ -383,11 +408,11 @@ export function VaultReview(props: VaultReviewProps) {
         <Button onClick={props.onBack} size="sm" variant="ghost">
           Back to text
         </Button>
-        <span className="ml-auto truncate text-caption text-muted-foreground">
+        <Text className="ml-auto" truncate variant="note">
           {props.mateName === null
             ? "Each one shows what it needs once applied"
             : `${props.mateName} hears about them with your next message`}
-        </span>
+        </Text>
       </div>
     </section>
   );

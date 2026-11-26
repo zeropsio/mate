@@ -33,11 +33,7 @@ function ReleaseNotesLink({
       }}
     >
       Read more
-      <ArrowRightIcon
-        aria-hidden
-        className="ml-1 inline size-3 -rotate-45 align-[-0.125em]"
-        strokeWidth={2.25}
-      />
+      <ArrowRightIcon aria-hidden className="ml-1 -rotate-45" strokeWidth={2.25} />
     </InlineButton>
   );
 }

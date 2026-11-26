@@ -134,7 +134,8 @@ To answer a question, go to the home:
 - Terminal renderers → `docs/architecture/terminal-renderers.md`.
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
-- UI principles, copy glossary, tokens, guards, exception policy → `docs/internals/zerops/design-system.md`.
+- UI principles, copy glossary, tokens, guards, exception policy, and how to build and look at UI
+  with the kit (`/kit`, flows) → `docs/internals/zerops/design-system.md`; UI work starts at its §7.
 - Platform editing rules → `docs/internals/zerops/platform-data-architecture.md`.
 - Instrumentation rules → `docs/operations/observability.md`.
 - Runbooks → `docs/operations/`.
@@ -151,9 +152,9 @@ To answer a question, go to the home:
 ## Where code lives
 
 - `apps/server` — for Effect, read `.repos/effect-smol/LLMS.md` (see `.repos/` below when missing).
-- `apps/web/src/styles/` — the web client's own stylesheets, one file per surface after `foundation.css`
-  (variants, theme, utilities) and `tokens.css` (palette and motion, generated); `index.css` imports
-  them in cascade order.
+- `apps/web/src/styles/` — the web client's foundation stylesheets (theme, tokens, base, markdown)
+  and keyframes (`motion-*.css`); a surface draws with the kit and utilities in its own code
+  (design-system R13).
 - `packages/contracts` — schemas only, no heavy runtime logic.
 - `packages/shared` — subpath exports, no barrel.
 - `.repos/` — read-only reference repos (Effect, Alchemy), gitignored and absent in a fresh checkout:

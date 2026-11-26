@@ -21,7 +21,7 @@ import type {
 import { DEFAULT_INTAKE_LABEL } from "@t3tools/shared/hqIntake";
 import { useId, useState } from "react";
 
-import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { CopyLine } from "~/components/ui/copy-line";
 import type { TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Button, InlineButton } from "../../ui/button";
@@ -31,7 +31,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Textarea } from "../../ui/textarea";
 import { WaitLine } from "../WaitLine";
 import {
-  CopyLine,
+  NamedCopyLine,
   IntakeRoom,
   NotKnown,
   pressWords,
@@ -49,6 +49,7 @@ import {
 import { tasksWaitingWords } from "../SidebarMateRow.logic";
 import { slackChannelForm } from "./projectAutomation.logic";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
 type Controls<F extends AppSetting> = TaskSourceControls<F>;
 
@@ -92,21 +93,23 @@ export function AppIntakeView({
     read.action.kind === "failed" || read.action.kind === "unresolved" ? read.action.words : null;
   return (
     <li className="grid gap-2" data-zerops-intake-app={appId}>
-      <p className="text-body font-medium text-foreground">{name}</p>
+      <Text render={<p />} variant="heading">
+        {name}
+      </Text>
       {read.intake === undefined ? (
         <IntakeRoom choice>
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             <WaitLine inline text="Reading…" />
-          </p>
+          </Text>
         </IntakeRoom>
       ) : read.intake !== null ? (
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               {[intakeLine(read.intake), tasksWaitingWords(read.intake.waiting)]
                 .filter((part) => part !== undefined)
                 .join(" · ")}
-            </p>
+            </Text>
             <Button disabled={working} onClick={onStop} size="sm" variant="ghost">
               Stop taking tasks
             </Button>
@@ -115,9 +118,9 @@ export function AppIntakeView({
       ) : !reposRead && reposFailure !== undefined ? (
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-caption text-muted-foreground" role="alert">
+            <Text render={<p />} variant="note" role="alert">
               {couldntRead("its repositories", reposFailure)}
-            </p>
+            </Text>
             {onReadAgain === undefined ? null : (
               <Button onClick={onReadAgain} size="sm" variant="secondary">
                 Try again
@@ -131,9 +134,9 @@ export function AppIntakeView({
         </IntakeRoom>
       ) : chosen === null ? (
         <IntakeRoom choice>
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             Mirror its code to GitHub to take tasks from its issues.
-          </p>
+          </Text>
         </IntakeRoom>
       ) : (
         <form
@@ -188,9 +191,9 @@ export function AppIntakeView({
       )}
       {read.answer === null ? null : <IntakeAnswer answer={read.answer} githubApp={githubApp} />}
       {problem === null ? null : (
-        <p className="text-caption text-destructive-foreground" role="alert">
+        <Text render={<p />} variant="error" role="alert">
           {problem}
-        </p>
+        </Text>
       )}
     </li>
   );
@@ -209,9 +212,11 @@ function IntakeAnswer({
       <p className="text-caption text-foreground">{intakeAnswerLine(answer, githubApp)}</p>
       {answer.hook.kind === "paste" ? (
         <>
-          <CopyLine copy="Copy URL" label="Payload URL" value={answer.webhookUrl} />
-          <CopyLine copy="Copy secret" label="Secret" value={answer.hook.secret} />
-          <p className="text-caption text-muted-foreground">{answer.hook.why}</p>
+          <NamedCopyLine name="Payload URL" value={answer.webhookUrl} />
+          <NamedCopyLine name="Secret" value={answer.hook.secret} />
+          <Text render={<p />} variant="note">
+            {answer.hook.why}
+          </Text>
         </>
       ) : null}
     </div>
@@ -257,7 +262,9 @@ export function AppChannelView({
       {held !== null ? (
         <IntakeRoom>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-caption text-muted-foreground">{channelLine(held)}</p>
+            <Text render={<p />} variant="note">
+              {channelLine(held)}
+            </Text>
             <Button
               disabled={busy}
               onClick={() => {
@@ -298,13 +305,13 @@ export function AppChannelView({
             </Button>
           </form>
           {typing ? (
-            <p className="text-caption text-muted-foreground">
+            <Text render={<p />} variant="note">
               Or{" "}
               <InlineButton onClick={() => setTyping(false)}>
                 choose from the bot's channels
               </InlineButton>
               .
-            </p>
+            </Text>
           ) : null}
         </div>
       ) : (
@@ -350,10 +357,10 @@ export function AppChannelView({
               {pressWords(read.action, ["channel"], "Take tasks")}
             </Button>
           </form>
-          <p className="text-caption text-muted-foreground">
+          <Text render={<p />} variant="note">
             Not listed? Invite the bot to it, or{" "}
             <InlineButton onClick={() => setTyping(true)}>type its ID</InlineButton>.
-          </p>
+          </Text>
         </div>
       )}
       <Problem read={read} />
@@ -428,10 +435,8 @@ function WebhookMade({ view }: { readonly view: HqWebhookView }) {
       <p className="text-caption text-foreground">
         {`${view.name} is made. Its secret is shown once: keep it where the caller signs with it.`}
       </p>
-      <CopyLine copy="Copy URL" label="URL" value={view.url} />
-      {view.secret === undefined ? null : (
-        <CopyLine copy="Copy secret" label="Secret" value={view.secret} />
-      )}
+      <NamedCopyLine name="URL" value={view.url} />
+      {view.secret === undefined ? null : <NamedCopyLine name="Secret" value={view.secret} />}
     </div>
   );
 }
@@ -445,22 +450,10 @@ function WebhookLine({
   readonly busy: boolean;
   readonly onDelete: () => void;
 }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: hook.name });
   return (
-    <li className="flex min-w-0 items-center gap-2">
+    <li className="flex min-w-0 items-center gap-3">
       <span className="w-24 shrink-0 truncate text-caption text-foreground">{hook.name}</span>
-      <code className="min-w-0 flex-1 truncate font-mono text-caption text-muted-foreground">
-        {hook.url}
-      </code>
-      <Button
-        onClick={() => {
-          copyToClipboard(hook.url, undefined);
-        }}
-        size="sm"
-        variant="ghost"
-      >
-        {isCopied ? "Copied" : "Copy URL"}
-      </Button>
+      <CopyLine className="flex-1" label={`${hook.name}'s URL`} value={hook.url} />
       <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
         Delete
       </Button>
@@ -707,9 +700,9 @@ function ScheduleLine({
     <li className="flex min-w-0 items-center gap-2">
       <div className="grid min-w-0 flex-1">
         <p className="truncate text-caption text-foreground">{schedule.name}</p>
-        <p className="truncate text-caption text-muted-foreground">
+        <Text render={<p />} truncate variant="note">
           {`${scheduleLine(schedule.rule)} · ${scheduleNextLine(schedule.nextAt, moment)}`}
-        </p>
+        </Text>
       </div>
       <Button disabled={busy} onClick={onDelete} size="sm" variant="ghost">
         Delete

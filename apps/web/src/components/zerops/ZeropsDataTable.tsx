@@ -51,6 +51,8 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/ta
 import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
 import { Spinner } from "~/components/ui/spinner";
+import { Card } from "~/components/ui/card";
+import { Separator } from "~/components/ui/separator";
 
 /** How far below the last row the next page starts loading. */
 
@@ -235,22 +237,21 @@ export function ZeropsDataTable({
       {belowToolbar}
 
       {columnsOpen && onToggleColumn !== undefined ? (
-        <div
-          className="flex shrink-0 flex-wrap gap-2 rounded-card border border-border p-2"
-          data-zerops-data-table-column-picker
-        >
-          {model.columns.map((column) => (
-            <label className="flex items-center gap-1 text-caption" key={column.name}>
-              <Checkbox
-                checked={column.pk || !hiddenColumns.has(column.name)}
-                data-zerops-data-table-column-toggle={column.name}
-                disabled={column.pk}
-                onCheckedChange={() => onToggleColumn(column.name)}
-              />
-              {column.name}
-            </label>
-          ))}
-        </div>
+        <Card className="shrink-0" data-zerops-data-table-column-picker>
+          <div className="flex flex-wrap gap-2 p-2">
+            {model.columns.map((column) => (
+              <label className="flex items-center gap-1 text-caption" key={column.name}>
+                <Checkbox
+                  checked={column.pk || !hiddenColumns.has(column.name)}
+                  data-zerops-data-table-column-toggle={column.name}
+                  disabled={column.pk}
+                  onCheckedChange={() => onToggleColumn(column.name)}
+                />
+                {column.name}
+              </label>
+            ))}
+          </div>
+        </Card>
       ) : null}
 
       <div
@@ -342,47 +343,55 @@ export function ZeropsDataTable({
       </div>
 
       {notice !== undefined ? null : (
-        <div
-          className="flex shrink-0 items-center gap-3 border-border border-t py-1.5 text-caption"
-          data-zerops-data-table-status
-        >
-          <span className="text-muted-foreground" data-zerops-data-table-loaded>
-            {`${model.rows.length.toLocaleString()} rows loaded${hasMore ? " · more available" : ""}`}
-          </span>
+        <>
+          <Separator />
+          <div
+            className="flex shrink-0 items-center gap-3 py-1.5 text-caption"
+            data-zerops-data-table-status
+          >
+            <span className="text-muted-foreground" data-zerops-data-table-loaded>
+              {`${model.rows.length.toLocaleString()} rows loaded${hasMore ? " · more available" : ""}`}
+            </span>
 
-          {loadMorePending ? (
-            <Spinner aria-label="More rows" data-zerops-data-table-loading size="xs" tone="muted" />
-          ) : null}
+            {loadMorePending ? (
+              <Spinner
+                aria-label="More rows"
+                data-zerops-data-table-loading
+                size="xs"
+                tone="muted"
+              />
+            ) : null}
 
-          {hasMore ? (
-            <Button
-              data-zerops-data-table-load-more
-              disabled={loadMorePending}
-              onClick={onLoadMore}
-              size="sm"
-              variant="ghost"
-            >
-              Load more
-            </Button>
-          ) : null}
-
-          {count === undefined ? (
-            onRequestCount !== undefined ? (
+            {hasMore ? (
               <Button
-                data-zerops-data-table-request-count
-                onClick={onRequestCount}
+                data-zerops-data-table-load-more
+                disabled={loadMorePending}
+                onClick={onLoadMore}
                 size="sm"
                 variant="ghost"
               >
-                Count rows
+                Load more
               </Button>
-            ) : null
-          ) : (
-            <MicroLabel className="text-muted-foreground" data-zerops-data-table-count>
-              {`${count.toLocaleString()} rows (exact at last read)`}
-            </MicroLabel>
-          )}
-        </div>
+            ) : null}
+
+            {count === undefined ? (
+              onRequestCount !== undefined ? (
+                <Button
+                  data-zerops-data-table-request-count
+                  onClick={onRequestCount}
+                  size="sm"
+                  variant="ghost"
+                >
+                  Count rows
+                </Button>
+              ) : null
+            ) : (
+              <MicroLabel className="text-muted-foreground" data-zerops-data-table-count>
+                {`${count.toLocaleString()} rows (exact at last read)`}
+              </MicroLabel>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

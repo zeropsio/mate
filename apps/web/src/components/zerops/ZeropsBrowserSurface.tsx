@@ -13,6 +13,7 @@ import type { MateAddress } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { browserSiteGroups } from "./browserSites.logic";
 import { MateAddressExternalLink, openMateAddress } from "./MateAddresses";
 import { MicroLabel } from "./primitives";
+import { Text } from "~/components/ui/text";
 
 /**
  * The Mate's sites by environment (`browserSiteGroups`), each row its service's name with the
@@ -44,7 +45,7 @@ export function BrowserSites({
           <ul className="col-span-full grid grid-cols-subgrid">
             {group.rows.map(({ address, name }) => (
               <li
-                className="col-span-full grid grid-cols-subgrid items-center rounded-control hover:bg-accent"
+                className="col-span-full grid grid-cols-subgrid items-center rounded-control hover:bg-item-hover"
                 data-mate-address={address.service}
                 key={address.url}
               >
@@ -55,9 +56,9 @@ export function BrowserSites({
                   variant="ghost"
                 >
                   <span className="text-start text-body text-foreground">{name}</span>
-                  <span className="truncate text-start text-caption text-muted-foreground">
+                  <Text className="text-start" truncate variant="note">
                     {address.host}
-                  </span>
+                  </Text>
                 </Button>
                 <MateAddressExternalLink address={address} className="me-1" />
               </li>

@@ -19,16 +19,13 @@ import {
   invokeZeropsAgentPickerPrimaryAction,
   resolveZeropsAgentPickerPanelView,
 } from "./ZeropsAgentPickerPanel.logic";
+import { LogoTile } from "~/components/ui/logo-tile";
 
 function ZeropsAgentPickerLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
   return (
-    <span
-      aria-hidden="true"
-      className="flex size-9 shrink-0 items-center justify-center rounded-control border border-border/60 bg-accent shadow-xs"
-      data-zerops-agent-logo={agentId}
-    >
-      <ZeropsAgentLogo agentId={agentId} className="size-4.5" />
-    </span>
+    <LogoTile data-zerops-agent-logo={agentId} size="lg">
+      <ZeropsAgentLogo agentId={agentId} />
+    </LogoTile>
   );
 }
 

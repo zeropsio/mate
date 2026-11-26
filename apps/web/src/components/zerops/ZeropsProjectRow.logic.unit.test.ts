@@ -226,9 +226,9 @@ it("MN28: A failed application rename permits a different name only when its pro
     origin: "hq",
   };
   expect(appRenameView({ kind: "none" }, undefined, nameOf).mayRename).toBe(true);
-  expect(appRenameView({ kind: "failed", failure: renamesLeft }, undefined, nameOf).mayRename).toBe(
-    false,
-  );
+  expect(
+    appRenameView({ kind: "failed", id: "op", failure: renamesLeft }, undefined, nameOf).mayRename,
+  ).toBe(false);
   const operation = {
     id: "failed-1",
     kind: "app_rename",
@@ -242,7 +242,7 @@ it("MN28: A failed application rename permits a different name only when its pro
       { projectId: "p4", result: "renamed_since" },
     ],
   };
-  const failed = { kind: "failed", failure: renamesLeft } as const;
+  const failed = { kind: "failed", id: "op", failure: renamesLeft } as const;
   const view = appRenameView(failed, operation, nameOf);
   expect(view.mayRename).toBe(true);
   expect(
@@ -332,6 +332,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     }).kind;
   const failed = {
     kind: "failed",
+    id: "op",
     failure: {
       step: "start",
       code: "restart_failed",
@@ -340,7 +341,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     },
   } as const;
   const cases = [
-    ["going, the Mate asks", "needs", { kind: "going" }, "restarting"],
+    ["going, the Mate asks", "needs", { kind: "going", id: "op" }, "restarting"],
     [
       "waiting on its maker",
       "needs",

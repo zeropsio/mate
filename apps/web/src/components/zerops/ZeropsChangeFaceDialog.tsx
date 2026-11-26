@@ -10,6 +10,7 @@
  * a dialog does — fading as the Mate's rows behind it take the face — and its host lets it go
  * once that has finished (`onOpenChangeComplete`).
  */
+import { Failure } from "~/components/ui/failure";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import { useId, useState } from "react";
 
@@ -78,13 +79,13 @@ export function ZeropsChangeFaceForm({
         />
       </DialogPanel>
       <DialogFooter>
-        <p
-          className="me-auto min-h-4 self-center text-line leading-4 text-status-failed-text"
+        <Failure
+          cause={error}
+          className="me-auto min-h-5 self-center"
           id={`${id}-reason`}
           role="alert"
-        >
-          {error}
-        </p>
+          size="line"
+        />
         <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>

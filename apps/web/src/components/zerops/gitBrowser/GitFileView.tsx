@@ -33,6 +33,7 @@ import { useGitRaw } from "~/zerops/useGitRaw";
 import { troubleWords } from "./GitAtCommit";
 import type { GitBrowseSearch, GitView } from "./GitBrowseView";
 import { RepoMarkdown, type RepoPathTarget } from "./RepoMarkdown";
+import { Text } from "~/components/ui/text";
 
 interface GitFileViewProps {
   readonly appId: string;
@@ -205,11 +206,11 @@ export function GitFileView({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="me-auto text-caption text-muted-foreground">
+        <Text className="me-auto" variant="meta">
           {shape.kind === "text"
             ? `${lines(lineCount(shape.content))} · ${fileSize(blob.size)}`
             : fileSize(blob.size)}
-        </span>
+        </Text>
         {markdown ? (
           <Toggle
             className="shrink-0"
@@ -288,18 +289,20 @@ export function GitFileView({
           <img className="max-w-full self-start" src={raw.url} alt={blob.path} />
         ) : null
       ) : shape.kind === "beyond" ? (
-        <p className="text-body text-muted-foreground">
+        <Text render={<p />} variant="description">
           {fileSize(blob.size)} is more than the browser reads. Clone the repository to read it.
-        </p>
+        </Text>
       ) : shape.kind === "binary" ? (
-        <p className="text-body text-muted-foreground">Binary file, {fileSize(blob.size)}.</p>
+        <Text render={<p />} variant="description">
+          Binary file, {fileSize(blob.size)}.
+        </Text>
       ) : (
         <>
           {shape.cut ? (
-            <p className="text-body text-muted-foreground">
+            <Text render={<p />} variant="description">
               Showing the first 256 KiB of {fileSize(blob.size)}.{" "}
               {fits ? "Download it to read the rest." : "Clone the repository to read the rest."}
-            </p>
+            </Text>
           ) : null}
           {markdown && !source ? (
             <RepoMarkdown

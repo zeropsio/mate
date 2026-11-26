@@ -58,6 +58,8 @@ export type ServiceStatusToneId = keyof typeof SERVICE_STATUS_TONES;
 
 export const IDENTITY = {
   mark: { main: "#3cbdb2", secondary: "#00b1a3" },
+  /** The company's ring, in zerops.io's one teal. */
+  ring: "#00a49a",
   mint: { light: "#00b1a3", dark: "#00e5c0" },
   pillTint: { light: "rgba(0,204,187,.13)", dark: "rgba(0,229,192,.13)" },
 } as const;
@@ -536,6 +538,7 @@ export const MATE_SHAPES = Object.fromEntries(
   }),
 ) as Record<MateShapeId, MateShape>;
 
+/** The platform's Z, two-tone: Platform (app.zerops.io), its projects, its services. */
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",
   paths: [
@@ -554,6 +557,20 @@ export const ZEROPS_MARK = {
     {
       d: "M23 50.67l17.2-6.57a4 4 0 0 0 2.54-3.69V23.7l-7.9 4.56v9.43L21.6 42.75v8.18a4 4 0 0 0 1.4-.26z",
       fill: IDENTITY.mark.secondary,
+    },
+  ],
+} as const;
+
+/**
+ * The company's ring, as zerops.io draws it: Mate's silhouette with its window cut out, the window
+ * drawn the other way round so it stays open under any fill rule.
+ */
+export const ZEROPS_RING = {
+  viewBox: "0.46 0.44 42.28 50.49",
+  paths: [
+    {
+      d: `${MATE_MARK.silhouette} M8.36,13.7 V37.74 L21.6,42.75 L34.84,37.69 V13.71 L21.6,8.62 Z`,
+      fill: IDENTITY.ring,
     },
   ],
 } as const;

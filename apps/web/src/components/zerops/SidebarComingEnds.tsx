@@ -92,7 +92,7 @@ export function SidebarBirthMenu({
           >
             <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
           </MenuTrigger>
-          <MenuPopup align="start" className="w-56" side="right">
+          <MenuPopup align="start" side="right" width="sm">
             {entries.map((entry) => (
               <MenuItem
                 disabled={entry.disabled === true}

@@ -48,6 +48,8 @@ import { Label } from "./ui/label";
 import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
+import { Text } from "~/components/ui/text";
+import { Card } from "~/components/ui/card";
 
 const SCRIPT_ICONS: Array<{ id: ProjectScriptIcon; label: string }> = [
   { id: "play", label: "Play" },
@@ -299,9 +301,9 @@ export function ProjectScriptEditorDialog({
                   readOnly
                   onKeyDown={captureKeybinding}
                 />
-                <p className="text-caption text-muted-foreground">
+                <Text render={<p />} variant="note">
                   Press a shortcut. Use <code>Backspace</code> to clear.
-                </p>
+                </Text>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="script-command">Command</Label>
@@ -312,14 +314,20 @@ export function ProjectScriptEditorDialog({
                   onChange={(event) => setCommand(event.target.value)}
                 />
               </div>
-              <label className="flex items-center justify-between gap-3 rounded-control border border-well-edge bg-well px-3 py-2 text-body">
-                <span>Run automatically on worktree creation</span>
-                <Switch
-                  checked={runOnWorktreeCreate}
-                  onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
-                />
-              </label>
-              {validationError && <p className="text-body text-destructive">{validationError}</p>}
+              <Card render={<label />} variant="inset">
+                <span className="flex items-center justify-between gap-3 px-3 py-2 text-body">
+                  <span>Run automatically on worktree creation</span>
+                  <Switch
+                    checked={runOnWorktreeCreate}
+                    onCheckedChange={(checked) => setRunOnWorktreeCreate(Boolean(checked))}
+                  />
+                </span>
+              </Card>
+              {validationError && (
+                <Text render={<p />} role="alert" variant="error">
+                  {validationError}
+                </Text>
+              )}
             </form>
           </DialogPanel>
           <DialogFooter variant="bare">

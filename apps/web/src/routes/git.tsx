@@ -14,7 +14,7 @@ const GitSearch = Schema.Struct({
   kind: Schema.optionalKey(Schema.Literals(["tree", "file"])),
   /** The repository's page; absent, home, or code when `path` or `kind` is there. */
   view: Schema.optionalKey(
-    Schema.Literals(["home", "code", "commits", "commit", "blame", "compare", "search"]),
+    Schema.Literals(["home", "code", "changes", "commits", "commit", "blame", "compare", "search"]),
   ),
   /** A line `L10` or a range `L10-L20` of a file. */
   lines: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^L\d+(-L\d+)?$/u))),

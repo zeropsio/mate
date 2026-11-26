@@ -1,0 +1,82 @@
+[
+  {
+    "path": "apps/web/src/components/chat/DraftHeroHeadline.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 aria-label={headingLabel} // Its project still read: the line stands empty in its place, never \"no project\". aria-hidden={kind === \"reading\" ? true : undefined} className=\"mx-auto w-full max-w-5xl text-center font-normal text-title text-foreground tracking-tight sm:text-display\" >",
+    "owner": "unify pages",
+    "reason": "a new conversation's hero headline over its composer",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/UsagePage.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1>",
+    "owner": "unify pages",
+    "reason": "Usage's title in its top bar beside the period and metric pickers, as Settings' bar carries its trail",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 aria-describedby={spokenSentence.length === 0 ? undefined : sentenceId} aria-live=\"polite\" className={cn( MATE_EMPTY_HEADLINE_CLASS, \"text-balance outline-none\", // A press's words on a narrow screen wrap to two lines where a stop's take one: the // headline holds two lines' room from the press, set on its last lines, next to its // sentence, so a stop and Try again move nothing. pressed === \"\" && \"max-sm:flex max-sm:min-h-16 max-sm:flex-col max-sm:justify-end\", )} ref={headline} tabIndex={-1} >",
+    "owner": "unify pages",
+    "reason": "a Mate's arrival headline in its empty conversation, spoken as it changes",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "owner": "unify pages",
+    "reason": "the new project form's question, the hero of its own screen",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "owner": "unify pages",
+    "reason": "the new project form's question, the hero of its own screen",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className={HEADING_CLASS}>",
+    "owner": "unify pages",
+    "reason": "the new project form's question, the hero of its own screen",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className={cn(MATE_EMPTY_HEADLINE_CLASS, \"mt-6\")}>",
+    "owner": "unify pages",
+    "reason": "a crewmate's name as the hero of its empty conversation",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className=\"text-title font-semibold tracking-tight text-foreground\">",
+    "owner": "unify pages",
+    "reason": "the sign-in card's title, centred on the landing with no page around it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/FirstRun.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className={cn( \"font-medium tracking-tight text-balance text-foreground\", waits ? \"mt-4 text-title\" : \"mt-1.5 text-display\", )} >",
+    "owner": "unify pages",
+    "reason": "the first run's headline, a screen of its own with no page around it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "JSXOpeningElement",
+    "fingerprint": "<h1 className=\"text-title font-medium text-foreground\">",
+    "owner": "unify pages",
+    "reason": "a lost link's centred statement over its one way home, with no page around it",
+    "expires": "never"
+  }
+]

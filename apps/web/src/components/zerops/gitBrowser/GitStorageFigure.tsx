@@ -2,53 +2,56 @@ import type { GitBrowseView } from "@t3tools/client-runtime/data";
 import { currentStorage } from "@t3tools/client-runtime/zerops/gitBrowse/home";
 import type { HqRepoStorage } from "@t3tools/contracts";
 import type { GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
-import { useId, useState, type FormEvent } from "react";
-import { Button, InlineButton } from "~/components/ui/button";
+import { useId, useState, type FormEvent, type RefObject } from "react";
+import { Button } from "~/components/ui/button";
+import { Card } from "~/components/ui/card";
+import {
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogTitle,
+} from "~/components/ui/dialog";
+import { Failure } from "~/components/ui/failure";
+import { Field, FieldDescription, FieldLabel } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
-import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
-import { useRepoStorage } from "~/zerops/useRepoStorage";
 import { GitRepositoryStorage } from "./GitRepositoryStorage";
 import { Loading } from "~/components/ui/loading";
+import { Text } from "~/components/ui/text";
 
-/**
- * A repository's storage figure, from HQ's storage read once it answers (and a set's answer after),
- * with the limit's control for whoever HQ's structure verb lets set it; everyone else reads it.
- */
+/** The figure uses the same held storage read as the repository's limit form. */
 export function GitStorageFigure({
-  appId,
-  repo,
   storage,
+  view,
 }: {
-  readonly appId: string;
-  readonly repo: string;
-  /** What the repository's home said, until its storage read answers. */
   readonly storage: GitHomeAbout["storage"];
+  readonly view: GitBrowseView<HqRepoStorage>;
 }) {
-  const { view, offer, set } = useRepoStorage(appId, repo);
   const read = view.state === "known" ? view.answer : null;
-  return (
-    <GitRepositoryStorage
-      storage={currentStorage(storage, read)}
-      control={
-        offer.kind === "allowed" && set !== undefined ? (
-          <StorageLimit key={`${appId}:${repo}`} view={view} set={set} />
-        ) : null
-      }
-    />
-  );
+  return <GitRepositoryStorage storage={currentStorage(storage, read)} />;
 }
 
-function StorageLimit({
+export function StorageLimit({
+  repo,
+  storage,
   view,
   set,
+  pending,
+  setPending,
+  focusRef,
+  onDone,
 }: {
+  readonly repo: string;
+  readonly storage: GitHomeAbout["storage"];
+  readonly onDone: () => void;
   readonly view: GitBrowseView<HqRepoStorage>;
   readonly set: (capGiB: number) => Promise<void>;
+  readonly pending: boolean;
+  readonly setPending: (pending: boolean) => void;
+  readonly focusRef: RefObject<HTMLElement | null>;
 }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const capGiB = view.state === "known" ? view.answer.capGiB : null;
   const value = draft ?? (capGiB === null ? "" : String(capGiB));
@@ -64,7 +67,7 @@ function StorageLimit({
       () => {
         setPending(false);
         setDraft(null);
-        setOpen(false);
+        onDone();
       },
       (cause: unknown) => {
         setPending(false);
@@ -73,60 +76,75 @@ function StorageLimit({
     );
   };
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next && !pending) {
-          setDraft(null);
-          setError(null);
-        }
-      }}
-    >
-      <PopoverTrigger render={<InlineButton />}>Change limit</PopoverTrigger>
-      <PopoverPopup align="start" width="md">
+    <>
+      <DialogHeader>
+        <DialogTitle>Storage limit for {repo}</DialogTitle>
+        <DialogDescription>
+          A push that would take {repo} past its limit is refused.
+        </DialogDescription>
+      </DialogHeader>
+      <DialogPanel>
+        <Card size="md" variant="inset">
+          <GitStorageFigure storage={storage} view={view} />
+        </Card>
         {capGiB === null && view.state === "unread" ? (
           <Loading label="The storage limit" shape="line" />
         ) : capGiB === null ? (
-          <p className="text-body text-muted-foreground" role="alert">
+          <Text render={<p />} variant="description" role="alert">
             {view.state === "refused" || view.state === "failed"
               ? view.words
               : "You can't read this repository's storage limit."}
-          </p>
+          </Text>
         ) : (
-          <form className="flex flex-col gap-2" noValidate onSubmit={submit}>
-            <label className="text-body font-medium text-foreground" htmlFor={id}>
-              Storage limit
-            </label>
-            <p className="text-caption text-muted-foreground">
-              In whole GiB, from 1 to 100. It is {capGiB} GiB now.
-            </p>
-            <div className="flex items-center gap-2">
+          <form id={`${id}-form`} noValidate onSubmit={submit}>
+            <Field>
+              <FieldLabel htmlFor={id}>Limit in GiB</FieldLabel>
               <Input
+                ref={(element) => {
+                  focusRef.current = element;
+                }}
                 id={id}
                 type="number"
                 inputMode="numeric"
                 min={1}
                 max={100}
                 step={1}
-                size="sm"
                 value={value}
                 disabled={pending}
                 onChange={(event) => setDraft(event.currentTarget.value)}
               />
-              <span className="text-caption text-muted-foreground">GiB</span>
-              <Button type="submit" size="sm" disabled={whole === null || pending}>
-                {pending ? "Saving…" : "Save"}
-              </Button>
-            </div>
-            {error === null ? null : (
-              <p className="text-caption text-destructive-foreground" role="alert">
-                {error}
-              </p>
-            )}
+              <FieldDescription>
+                In whole GiB, from 1 to 100. It is {capGiB} GiB now.
+              </FieldDescription>
+            </Field>
           </form>
         )}
-      </PopoverPopup>
-    </Popover>
+        {error === null ? null : <Failure cause={error} size="line" role="alert" />}
+      </DialogPanel>
+      <DialogFooter>
+        <Button
+          ref={
+            capGiB === null
+              ? (element) => {
+                  focusRef.current = element;
+                }
+              : undefined
+          }
+          type="button"
+          variant="ghost"
+          disabled={pending}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          form={`${id}-form`}
+          disabled={capGiB === null || whole === null || pending}
+        >
+          {pending ? "Saving…" : "Save limit"}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

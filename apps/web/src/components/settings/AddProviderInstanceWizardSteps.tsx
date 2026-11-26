@@ -1,7 +1,6 @@
-import { CheckIcon } from "lucide-react";
-
 import { cn } from "../../lib/utils";
-import { Toggle } from "../ui/toggle";
+import { StepNumber } from "../ui/step-number";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   ADD_PROVIDER_WIZARD_STEPS,
   resolveWizardNavigation,
@@ -22,14 +21,19 @@ export function AddProviderInstanceWizardSteps({
   onNavigation,
 }: AddProviderInstanceWizardStepsProps) {
   return (
-    <ol className="grid grid-cols-3 gap-0.5 rounded-control bg-input/40 p-0.5" role="list">
+    // The steps on the segmented track: the current one pressed, each a way to its step.
+    <ToggleGroup
+      className="grid w-full grid-cols-3"
+      render={<ol />}
+      role="list"
+      value={[String(currentStep)]}
+    >
       {ADD_PROVIDER_WIZARD_STEPS.map((step, index) => (
         <li key={step} className="min-w-0">
           <Toggle
-            variant="segmented"
             size="default"
             className="w-full min-w-0 justify-start max-sm:justify-center"
-            pressed={index === currentStep}
+            value={String(index)}
             aria-current={index === currentStep ? "step" : undefined}
             aria-label={`${step}, step ${index + 1}${index < currentStep && summaries[index] ? `, ${summaries[index]}` : ""}`}
             onClick={() =>
@@ -40,19 +44,10 @@ export function AddProviderInstanceWizardSteps({
               )
             }
           >
-            <span
-              className={cn(
-                "grid size-5 shrink-0 place-items-center rounded-full text-body font-medium ring-1",
-                index < currentStep
-                  ? "bg-primary text-primary-foreground ring-primary"
-                  : index === currentStep
-                    ? "bg-primary/10 text-primary ring-primary/30"
-                    : "bg-card text-muted-foreground ring-border",
-              )}
-              aria-hidden
-            >
-              {index < currentStep ? <CheckIcon className="size-4 shrink-0" /> : index + 1}
-            </span>
+            <StepNumber
+              n={index + 1}
+              state={index < currentStep ? "done" : index === currentStep ? "current" : "todo"}
+            />
             <span
               className={cn(
                 "min-w-0 truncate text-body font-medium max-sm:hidden",
@@ -64,6 +59,6 @@ export function AddProviderInstanceWizardSteps({
           </Toggle>
         </li>
       ))}
-    </ol>
+    </ToggleGroup>
   );
 }

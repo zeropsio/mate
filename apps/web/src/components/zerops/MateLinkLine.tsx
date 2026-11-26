@@ -16,11 +16,10 @@ import { useHeldZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useMateStates } from "./mateActions/useMateStates";
 import { Button } from "../ui/button";
-import { Failure } from "../ui/failure";
-import { cn } from "~/lib/utils";
+import { Failure, FailureDetails } from "../ui/failure";
 
-import { ARRIVAL_ACTS_CLASS, DETAILS_TEXT_CLASS, MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
+import { Text } from "~/components/ui/text";
 
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
 
@@ -53,6 +52,9 @@ export function MateLinkProcesses({
   return <MateLinkProcessesView services={ordered} />;
 }
 
+/** A stop's one way on, and a stage's press: centred under the sentence. */
+export const ARRIVAL_ACTS_CLASS = "flex flex-wrap items-center justify-center gap-2";
+
 /** Optional diagnostics: one service per line, collapsed until the person asks to see them. */
 export function MateLinkProcessesView({
   services,
@@ -61,13 +63,13 @@ export function MateLinkProcessesView({
 }) {
   if (services.length === 0) return null;
   return (
-    <MateStateDetails label={`Project services (${services.length})`}>
+    <FailureDetails align="center" label={`Project services (${services.length})`}>
       <div className="grid gap-2" data-zerops-surface="mate-link-processes">
         {services.map((service) => (
           <ArrivalServices key={service.name} services={[service]} />
         ))}
       </div>
-    </MateStateDetails>
+    </FailureDetails>
   );
 }
 
@@ -218,9 +220,9 @@ export function MateOpeningLine({
       data-zerops-surface="mate-opening"
     >
       {phrase.text === null ? null : (
-        <p className="text-body text-muted-foreground" role="status">
+        <Text render={<p />} variant="description" role="status">
           {phrase.text}
-        </p>
+        </Text>
       )}
       {askAgain !== null ||
       openInZerops ||
@@ -259,11 +261,7 @@ export function MateOpeningLine({
           ) : null}
         </div>
       ) : null}
-      {details ? (
-        <MateStateDetails>
-          <p className={cn(DETAILS_TEXT_CLASS, "mt-3")}>{details}</p>
-        </MateStateDetails>
-      ) : null}
+      {details ? <FailureDetails align="center">{details}</FailureDetails> : null}
     </div>
   );
 }

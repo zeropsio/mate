@@ -35,6 +35,7 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { Badge } from "~/components/ui/badge";
 import { InlineButton } from "~/components/ui/button";
 import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
+import { Text } from "~/components/ui/text";
 
 /** What to call the things a history row names. */
 export interface HistoryNames {
@@ -108,7 +109,9 @@ export function ZeropsHistoryView({
         ))}
       </ul>
       {earlier === undefined ? null : (
-        <p className="py-2 pl-7.5 text-caption text-muted-foreground">{earlier}</p>
+        <Text className="py-2 pl-7.5" render={<p />} variant="note">
+          {earlier}
+        </Text>
       )}
     </>
   );
@@ -182,7 +185,7 @@ function HistoryRow({
                   somewhere; a chevron at a row's start opens it in place. */}
               <ChevronRightIcon
                 aria-hidden="true"
-                className="size-3.5 shrink-0 self-center text-muted-foreground/60"
+                className="self-center text-muted-foreground/60"
               />
             </InlineButton>
           )}
@@ -212,14 +215,16 @@ function HistoryRow({
           </span>
         </span>
         {runsHere ? (
-          <span className="flex min-w-0 items-center gap-2 text-caption leading-4 text-muted-foreground">
+          <Text className="flex min-w-0 items-center gap-2" variant="note">
             <Badge className="shrink-0" dot tone="success">
               {RUNNING_HERE}
             </Badge>
             {line === undefined ? null : <span className="truncate">{line}</span>}
-          </span>
+          </Text>
         ) : line === undefined ? null : (
-          <span className="truncate text-caption leading-4 text-muted-foreground">{line}</span>
+          <Text truncate variant="note">
+            {line}
+          </Text>
         )}
       </span>
     </li>
@@ -227,5 +232,9 @@ function HistoryRow({
 }
 
 function HistoryNote({ children }: { readonly children: React.ReactNode }) {
-  return <p className="py-6 text-center text-body text-muted-foreground">{children}</p>;
+  return (
+    <Text className="py-6 text-center" render={<p />} variant="description">
+      {children}
+    </Text>
+  );
 }

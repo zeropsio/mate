@@ -1,25 +1,31 @@
-import { ZEROPS_MARK } from "@t3tools/shared/brand";
+import { ZEROPS_MARK, ZEROPS_RING } from "@t3tools/shared/brand";
 
 /**
- * The Zerops loop, two-tone by default. `tone="current"` draws it in the
- * text colour — for a place that already has a colour, like a filled button.
+ * Zerops' mark: the platform's two-tone Z by default, or `variant="company"`, the company's ring
+ * where Zerops the company is meant ("Mate by Zerops", signing in with a Zerops account).
+ * `tone="current"` draws it in the text colour — for a place that already has a colour, like a
+ * filled button.
  */
 export function ZeropsMark({
   className,
   tone = "brand",
+  variant = "platform",
 }: {
   className?: string;
   tone?: "brand" | "current";
+  variant?: "platform" | "company";
 }) {
+  const mark = variant === "company" ? ZEROPS_RING : ZEROPS_MARK;
   return (
     <svg
       aria-hidden="true"
       className={className}
       data-zerops-mark-tone={tone}
-      viewBox={ZEROPS_MARK.viewBox}
+      data-zerops-mark-variant={variant}
+      viewBox={mark.viewBox}
       xmlns="http://www.w3.org/2000/svg"
     >
-      {ZEROPS_MARK.paths.map((path) => (
+      {mark.paths.map((path) => (
         <path d={path.d} fill={tone === "brand" ? path.fill : "currentColor"} key={path.d} />
       ))}
     </svg>

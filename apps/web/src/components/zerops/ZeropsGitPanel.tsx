@@ -46,6 +46,9 @@ import { WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
 import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { ChangeList, ChangeRow, ProjectLine, type ProjectLineView } from "./system";
+import { Card } from "~/components/ui/card";
+import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
 
 /** One code repository the Mate works in, as the tab draws it. */
 export interface ZeropsGitRepository {
@@ -134,9 +137,9 @@ export function ZeropsGitPanel({
         </div>
       )}
       {repositories.length === 0 ? (
-        <p className="rounded-card border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
-          {model.emptyLine ?? NO_REPOSITORY_LINE}
-        </p>
+        <Card render={<p />} size="md" variant="slot">
+          <EmptyState size="line">{model.emptyLine ?? NO_REPOSITORY_LINE}</EmptyState>
+        </Card>
       ) : (
         repositories.map((repository) => {
           const { block } = repository;
@@ -184,15 +187,17 @@ export function ZeropsGitPanel({
                   </div>
                 )}
               </div>
-              <div className="flex min-w-0 flex-col rounded-card border border-border/70 bg-card">
+              <Card className="min-w-0">
                 {repository.work.length === 0 ? (
                   // No change to show while the remote does not answer: the slot says what it holds.
-                  <p
-                    className="m-0 flex min-h-14 items-center px-4 text-body text-muted-foreground"
+                  <Text
+                    className="m-0 flex min-h-14 items-center px-4"
+                    render={<p />}
+                    variant="description"
                     data-zerops-surface="git-work-awaits"
                   >
                     {WORK_AWAITS_REPOSITORY}
-                  </p>
+                  </Text>
                 ) : (
                   <div className="px-3.5 py-1.5">
                     <ChangeList label={possessive(mateName ?? "This Mate", "work")}>
@@ -213,7 +218,7 @@ export function ZeropsGitPanel({
                     </ChangeList>
                   </div>
                 )}
-              </div>
+              </Card>
             </section>
           );
         })
@@ -318,13 +323,9 @@ function TroubleLine({
 }) {
   return (
     <span className={STATE}>
-      <span
-        className="min-w-0 text-caption text-status-failed-text"
-        data-zerops-surface="git-trouble"
-        role="status"
-      >
+      <Text className="min-w-0" data-zerops-surface="git-trouble" role="status" variant="error">
         {trouble}
-      </span>
+      </Text>
       {onCheckAgain === undefined ? null : (
         <span className={VERB}>
           {checking ? (

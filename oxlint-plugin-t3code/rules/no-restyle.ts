@@ -22,6 +22,12 @@ export const NO_RESTYLE_OPTIONS = {
       pattern: "^CollapsibleTrigger$",
       allow: ["layout", "color", "typography", "spacing", "shape", "effects", "motion"],
     },
+    {
+      // Text owns its words' step, ink and weight; the room around and between them (padding, a
+      // gap between an icon and its words) is the place's, like a margin.
+      pattern: "^Text$",
+      allow: ["layout", "spacing"],
+    },
   ],
 };
 

@@ -6,14 +6,14 @@
  * changes with the state, so the card stays where the person saw it. Production is the only red:
  * its chip and its main press. Props only: each kind's container reads its source.
  */
-import { Children, Fragment, type ReactNode, useState } from "react";
-
-import { cn } from "~/lib/utils";
+import { Children, type ReactNode, useState } from "react";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { Fact, Facts } from "../ui/facts";
 import { Spinner } from "../ui/spinner";
+import { StepNumber, type StepNumberState } from "../ui/step-number";
 import { useReportAskOnScreen } from "./askReveal";
 import {
   type AskState,
@@ -23,6 +23,8 @@ import {
   askWhereWords,
   isProduction,
 } from "./ask.logic";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 export type AskDensity = "full" | "compact";
 
@@ -113,9 +115,9 @@ function AskCardFace(
           <p className="text-emphasis font-medium text-foreground">{title}</p>
         </div>
         {why === null || why === undefined ? null : (
-          <p className="text-body text-muted-foreground" data-ask-why>
+          <Text render={<p />} variant="description" data-ask-why>
             <span className="font-medium">{why.who}:</span> <q>{why.words}</q>
-          </p>
+          </Text>
         )}
         {body === undefined ? null : <div className="grid min-w-0 gap-2">{body}</div>}
         {props.footer}
@@ -150,7 +152,7 @@ export function AskDock(props: {
   return (
     <section
       aria-label={props.label}
-      className="@container border-foreground/8 border-b"
+      className="@container border-rule border-b"
       // It stands over the conversation's end and never moves it (`ChatView`).
       data-chat-composer-asks="true"
       data-composer-top={props.kind}
@@ -234,9 +236,9 @@ export function AskFooter(props: AskFooterProps) {
       <div className="grid min-w-0 flex-1 gap-0.5">
         <Line state={state} />
         {state.kind === "done" && state.told !== null ? (
-          <p className="text-caption text-muted-foreground" data-ask-told>
+          <Text render={<p />} variant="note" data-ask-told>
             {state.told}
-          </p>
+          </Text>
         ) : null}
       </div>
       {props.action}
@@ -293,7 +295,7 @@ function Presses(props: AskFooterProps & { readonly size: "sm" | "md" }) {
       )}
       {/* Compact, the card's line under its title says it (`AskCard`'s `note`). */}
       {working === null && props.note !== undefined && props.density === "full" ? (
-        <span className="text-caption text-muted-foreground">{props.note}</span>
+        <Text variant="note">{props.note}</Text>
       ) : null}
     </div>
   );
@@ -331,7 +333,7 @@ function Line({ state }: { readonly state: AskState }) {
         </span>
       );
     case "othersToAnswer":
-      return <span className="text-caption text-muted-foreground">{state.words}</span>;
+      return <Text variant="note">{state.words}</Text>;
     default:
       return null;
   }
@@ -349,23 +351,13 @@ export function AskFacts({
 }) {
   return (
     <Card size="sm" variant="inset">
-      <dl className="grid min-w-0 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-caption">
+      <Facts mono>
         {rows.map((row) => (
-          <Fragment key={row.label}>
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd className="min-w-0 break-words">
-              {row.was === undefined ? (
-                row.value
-              ) : (
-                <>
-                  <del className="text-muted-foreground">{row.was}</del> →{" "}
-                  <ins className="font-medium no-underline">{row.value}</ins>
-                </>
-              )}
-            </dd>
-          </Fragment>
+          <Fact key={row.label} label={row.label} was={row.was}>
+            {row.value}
+          </Fact>
         ))}
-      </dl>
+      </Facts>
     </Card>
   );
 }
@@ -381,44 +373,39 @@ export interface AskStep {
   readonly end?: string | undefined;
 }
 
+/** An ask's step as its number draws it: the one the person is on now is `current`. */
+const ASK_STEP_STATE = { done: "done", now: "current", next: "todo" } as const satisfies Record<
+  AskStep["state"],
+  StepNumberState
+>;
+
 /** A composite ask's numbered steps, in the order that is real: add, then sign in. */
 export function AskSteps({ steps }: { readonly steps: ReadonlyArray<AskStep> }) {
   return (
     <Card variant="inset">
-      <ol className="divide-y divide-foreground/6">
+      <List render={<ol />}>
         {steps.map((step, index) => (
           <li
-            className="grid min-w-0 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
+            className="grid min-w-0 grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-body"
             data-ask-step={step.state}
             // A picture ask draws these inside an answer's words (`chat-markdown-island`): the mark
             // is what the stylesheet's "item after an item" rules key on there (index.css).
             data-md-li=""
             key={step.id}
           >
-            <span
-              className={cn(
-                "grid size-5 place-items-center rounded-full font-medium text-caption",
-                step.state === "done" && "bg-status-ok-surface text-status-ok-text",
-                step.state === "now" && "bg-primary text-primary-foreground",
-                step.state === "next" && "bg-muted text-muted-foreground",
-              )}
-            >
-              {index + 1}
-            </span>
+            <StepNumber n={index + 1} state={ASK_STEP_STATE[step.state]} />
             <span className="min-w-0">
               {step.label}
               {step.detail === undefined ? null : (
-                <span className="ms-1.5 text-caption text-muted-foreground">{step.detail}</span>
+                <Text className="ms-1.5" variant="note">
+                  {step.detail}
+                </Text>
               )}
             </span>
-            {step.end === undefined ? (
-              <span />
-            ) : (
-              <span className="text-caption text-muted-foreground">{step.end}</span>
-            )}
+            {step.end === undefined ? <span /> : <Text variant="note">{step.end}</Text>}
           </li>
         ))}
-      </ol>
+      </List>
     </Card>
   );
 }

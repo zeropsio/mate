@@ -6,10 +6,20 @@ import {
   DRAFT_HERO_TRANSITION_EASING,
 } from "./chat/draftHeroTransition";
 
-export function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
+/** How far a composer nobody saw rises as it arrives in its new place, instead of travelling. */
+const ARRIVE_RISE_PX = 6;
+const ARRIVE_EASING = "cubic-bezier(0.23, 1, 0.32, 1)";
+
+/**
+ * Moves the composer between the empty conversation's centre and its dock. A composer that was
+ * held unseen (a Mate's sign-in) has no place to travel from: it fades in where it lands, rising a
+ * few pixels, rather than sliding up from where it was hidden.
+ */
+export function useDraftHeroLayoutTransition(isDraftHeroState: boolean, composerSeen: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
   const composerAnchorRef = useRef<HTMLDivElement | null>(null);
   const previousStateRef = useRef(isDraftHeroState);
+  const previousSeenRef = useRef(composerSeen);
   const previousComposerRectRef = useRef<DOMRect | null>(null);
   const animationRef = useRef<Animation | null>(null);
   const attachTransitionGroupRef = (element: HTMLDivElement | null) => {
@@ -46,16 +56,24 @@ export function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
       const translateX = previousComposerRect.left - nextComposerRect.left;
       const translateY = previousComposerRect.top - nextComposerRect.top;
       if (Math.abs(translateX) >= 0.5 || Math.abs(translateY) >= 0.5) {
-        const animation = transitionGroup.animate(
-          [
-            { transform: `translate3d(${translateX}px, ${translateY}px, 0)` },
-            { transform: "translate3d(0, 0, 0)" },
-          ],
-          {
-            duration: DRAFT_HERO_TRANSITION_DURATION_MS,
-            easing: DRAFT_HERO_TRANSITION_EASING,
-          },
-        );
+        const animation = previousSeenRef.current
+          ? transitionGroup.animate(
+              [
+                { transform: `translate3d(${translateX}px, ${translateY}px, 0)` },
+                { transform: "translate3d(0, 0, 0)" },
+              ],
+              {
+                duration: DRAFT_HERO_TRANSITION_DURATION_MS,
+                easing: DRAFT_HERO_TRANSITION_EASING,
+              },
+            )
+          : transitionGroup.animate(
+              [
+                { opacity: 0, transform: `translate3d(0, ${ARRIVE_RISE_PX}px, 0)` },
+                { opacity: 1, transform: "translate3d(0, 0, 0)" },
+              ],
+              { duration: 220, easing: ARRIVE_EASING },
+            );
         animation.id = DRAFT_HERO_TRANSITION_ANIMATION_ID;
         animationRef.current = animation;
         void animation.finished
@@ -70,8 +88,9 @@ export function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
     }
 
     previousStateRef.current = isDraftHeroState;
+    previousSeenRef.current = composerSeen;
     previousComposerRectRef.current = nextComposerRect;
-  }, [isDraftHeroState]);
+  }, [composerSeen, isDraftHeroState]);
 
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }

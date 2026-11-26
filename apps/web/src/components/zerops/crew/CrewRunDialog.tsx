@@ -41,6 +41,7 @@ import {
 import { Input } from "~/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Radio, RadioGroup } from "~/components/ui/radio-group";
+import { Separator } from "~/components/ui/separator";
 import { Toggle } from "~/components/ui/toggle";
 import { useServerConfigs } from "~/state/entities";
 import { useCrewCommand } from "~/zerops/crew/useCrewCommand";
@@ -195,7 +196,7 @@ export function LimitField(props: {
 }
 
 function Hairline() {
-  return <div className="my-4 h-px bg-border" />;
+  return <Separator className="my-4" />;
 }
 
 function Choice({ children }: { readonly children: ReactNode }) {

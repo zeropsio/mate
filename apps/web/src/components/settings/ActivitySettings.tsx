@@ -24,6 +24,8 @@ import { activityLine, type ActivityNames } from "./activitySettings.logic";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { EmptyState } from "~/components/ui/empty";
+import { Text } from "~/components/ui/text";
+import { List } from "~/components/ui/list";
 
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -80,18 +82,18 @@ function ActivityPage({
     return <Skeleton className="mx-3 h-24" />;
   if (read.state === "withheld")
     return (
-      <p className="px-3 text-body text-muted-foreground">
+      <Text className="px-3" render={<p />} variant="description">
         Only the organization's owners and admins see its activity.
-      </p>
+      </Text>
     );
   if (read.state === "failed")
     return (
-      <div className="flex items-center gap-3 px-3 text-body text-muted-foreground">
+      <Text className="flex items-center gap-3 px-3" render={<div />} variant="description">
         <span>{read.words}</span>
         <Button size="sm" variant="secondary" onClick={again}>
           Try again
         </Button>
-      </div>
+      </Text>
     );
   const lines = read.page.entries.map((entry) => activityLine(entry, names));
   if (before === null && lines.length === 0)
@@ -99,11 +101,11 @@ function ActivityPage({
   return (
     <>
       {read.stale ? (
-        <p className="px-3 text-caption text-muted-foreground">
+        <Text className="px-3" render={<p />} variant="note">
           HQ could not be read again; this is what it said before.
-        </p>
+        </Text>
       ) : null}
-      <ul className="divide-y divide-border/60" data-activity-page={before ?? "newest"}>
+      <List data-activity-page={before ?? "newest"} render={<ul />}>
         {lines.map((line) => (
           <li
             key={line.key}
@@ -116,19 +118,22 @@ function ActivityPage({
               {line.outcome !== null ? (
                 <span className="text-caption text-warning-foreground">{line.outcome}</span>
               ) : null}
-              <time
-                className="ml-auto shrink-0 text-caption text-muted-foreground"
-                dateTime={line.at}
+              <Text
+                className="ml-auto shrink-0"
+                render={<time dateTime={line.at} />}
+                variant="meta"
               >
                 {when(line.at)}
-              </time>
+              </Text>
             </div>
             {line.subject !== null ? (
-              <span className="truncate text-caption text-muted-foreground">{line.subject}</span>
+              <Text truncate variant="note">
+                {line.subject}
+              </Text>
             ) : null}
           </li>
         ))}
-      </ul>
+      </List>
       {last && read.page.next !== null ? (
         <div className="px-3">
           <Button size="sm" variant="secondary" onClick={() => onOlder(read.page.next as string)}>

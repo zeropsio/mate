@@ -44,6 +44,10 @@ export const ZCP_LEASE_ACQUIRE_SINCE = "9.271.0";
  */
 const LEASE_RELEASE_TIMEOUT = Duration.minutes(3);
 const LEASE_MAX_OUTPUT_BYTES = 256 * 1024;
+/** W-5 includes the version check in this bound. */
+const WHERE_TIMEOUT = Duration.seconds(5);
+const WHERE_MAX_OUTPUT_BYTES = 8 * 1024;
+const ZCP_WHERE_SINCE = "9.275.0";
 /** zcp reserved or released nothing. */
 const LEASE_REFUSED_EXIT = 3;
 /**
@@ -147,6 +151,15 @@ const decodeLeaseAcquireAnswer = Schema.decodeUnknownOption(
   Schema.fromJsonString(LeaseAcquireAnswer),
 );
 
+const decodeWhereAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Union([
+      Schema.Struct({ error: Schema.String }),
+      Schema.Struct({ where: Schema.String, readAt: Schema.String, tookMs: Schema.Number }),
+    ]),
+  ),
+);
+
 /** Withdrawal belongs to the conversation, before it invokes zcp. */
 type CliReleaseResult = Exclude<LeaseReleaseResult, { readonly outcome: "withdrawn" }>;
 
@@ -227,6 +240,8 @@ export class ZeropsCli extends Context.Service<
      * call to this method, never a {@link ZeropsCliFailed}.
      */
     readonly mateUpdate: () => Effect.Effect<MateUpdateResult, ZeropsCliError>;
+    /** The work's current state, read by zcp for the agent at a run's start (W-5). */
+    readonly where: (input: { readonly lease?: string }) => Effect.Effect<string | null>;
     /** DP-39: acquire or reuse the pool's default repository on this branch without a session. */
     readonly leaseAcquire: (input: {
       readonly pool: string;
@@ -263,6 +278,18 @@ const spawnErrorToCliError = (command: string, cause: unknown): ZeropsCliError =
   isFileNotFound(cause) || isFileNotFound((cause as { cause?: unknown })?.cause)
     ? new ZeropsCliNotFound({ command })
     : new ZeropsCliFailed({ command, reason: String(cause) });
+
+type WhereFailure = "error" | "timeout" | "missing" | "unreadable";
+
+const processFailure = (command: string, cause: ProcessRunner.ProcessRunError): WhereFailure =>
+  cause._tag === "ProcessTimeoutError"
+    ? "timeout"
+    : cause._tag === "ProcessSpawnError" &&
+        spawnErrorToCliError(command, cause.cause)._tag === "ZeropsCliNotFound"
+      ? "missing"
+      : cause._tag === "ProcessOutputLimitError"
+        ? "unreadable"
+        : "error";
 
 /** The first line of stderr, which is where a failed `zcp` subcommand puts its diagnostic. */
 const firstDiagnosticLine = (stderr: string, fallback: string): string => {
@@ -352,9 +379,8 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
-    // `zcp version`: the installed zcp's `X.Y.Z` (a dev build's prefix), or none when it printed
-    // nothing this server reads, or did not run.
-    const version: Effect.Effect<string | undefined> = processRunner
+    // `zcp version`: its `X.Y.Z` (a dev build's prefix), or none if it cannot be read.
+    const readVersion: Effect.Effect<string | undefined, WhereFailure> = processRunner
       .run({
         command,
         args: [...baseArgs, "version"],
@@ -365,14 +391,14 @@ export const make = (options: ZeropsCliOptions) =>
         outputMode: "truncate",
       })
       .pipe(
+        Effect.mapError((cause) => processFailure(command, cause)),
         Effect.map((result) =>
           result.code === 0 ? versionOf(result.stdout)?.join(".") : undefined,
         ),
-        Effect.orElseSucceed(() => undefined),
       );
 
     // zcp updates in place: remember a supported verb, and recheck an older binary next time.
-    const supports = (since: string) => {
+    const supports = (since: string, version = readVersion) => {
       let supported = false;
       return Effect.suspend(() =>
         supported
@@ -383,8 +409,68 @@ export const make = (options: ZeropsCliOptions) =>
             }),
       );
     };
-    const ableToRelease = supports(ZCP_LEASE_RELEASE_SINCE);
-    const ableToAcquire = supports(ZCP_LEASE_ACQUIRE_SINCE);
+    const ableToRelease = supports(ZCP_LEASE_RELEASE_SINCE).pipe(Effect.orElseSucceed(() => false));
+    const ableToAcquire = supports(ZCP_LEASE_ACQUIRE_SINCE).pipe(Effect.orElseSucceed(() => false));
+    const ableToReadWhere = supports(
+      ZCP_WHERE_SINCE,
+      readVersion.pipe(
+        Effect.flatMap((read) =>
+          read === undefined ? Effect.fail("unreadable" as const) : Effect.succeed(read),
+        ),
+      ),
+    );
+
+    const where: ZeropsCli["Service"]["where"] = (input) =>
+      Effect.gen(function* () {
+        const read = Effect.gen(function* () {
+          const supported = yield* ableToReadWhere.pipe(Effect.result);
+          if (supported._tag === "Failure")
+            return { outcome: "none", reason: supported.failure } as const;
+          if (!supported.success) return { outcome: "none", reason: "older zcp" } as const;
+          const result = yield* processRunner
+            .run({
+              command,
+              args: [
+                ...baseArgs,
+                "where",
+                ...(input.lease === undefined ? [] : ["--lease", input.lease]),
+                "--json",
+              ],
+              cwd,
+              stdin: "",
+              timeout: WHERE_TIMEOUT,
+              maxOutputBytes: WHERE_MAX_OUTPUT_BYTES,
+              outputMode: "error",
+            })
+            .pipe(Effect.result);
+          if (result._tag === "Failure")
+            return { outcome: "none", reason: processFailure(command, result.failure) } as const;
+          const { code, stdout } = result.success;
+          const answer = Option.getOrUndefined(lastAnswer(stdout, decodeWhereAnswer));
+          if (answer && "error" in answer) return { outcome: "none", reason: "error" } as const;
+          if (code !== 0) return { outcome: "none", reason: `exit ${code}` } as const;
+          if (!answer || !("where" in answer))
+            return { outcome: "none", reason: "unreadable" } as const;
+          return answer.where.length === 0
+            ? ({ outcome: "empty", tookMs: answer.tookMs } as const)
+            : ({ outcome: "text", text: answer.where, tookMs: answer.tookMs } as const);
+        });
+        const [elapsed, result] = yield* read.pipe(
+          Effect.timeoutOption(WHERE_TIMEOUT),
+          Effect.timed,
+        );
+        const answer = Option.getOrElse(
+          result,
+          () => ({ outcome: "none", reason: "timeout" }) as const,
+        );
+        yield* Effect.logInfo("zcp where", {
+          outcome: answer.outcome,
+          ...(answer.outcome === "none" ? { reason: answer.reason } : { tookMs: answer.tookMs }),
+          elapsedMs: Duration.toMillis(elapsed),
+          bytes: answer.outcome === "text" ? Buffer.byteLength(answer.text, "utf8") : 0,
+        });
+        return answer.outcome === "text" ? answer.text : null;
+      });
 
     const leaseAcquire: ZeropsCli["Service"]["leaseAcquire"] = ({ pool, branch }) =>
       Effect.gen(function* (): Effect.fn.Return<LeaseAcquireResult> {
@@ -523,6 +609,7 @@ export const make = (options: ZeropsCliOptions) =>
     return {
       mateStatus,
       mateUpdate,
+      where,
       leaseAcquire,
       leaseReleaseCopy,
       leaseRelease,

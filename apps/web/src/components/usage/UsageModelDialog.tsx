@@ -31,6 +31,7 @@ import {
   tokenTypeSegments,
 } from "./usageBreakdown";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
+import { Text } from "~/components/ui/text";
 
 interface UsageChartWindow {
   readonly days: readonly string[];
@@ -109,7 +110,7 @@ export function UsageModelDialog({
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
               {stats.map((stat) => (
                 <div key={stat.label} className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-caption text-muted-foreground">{stat.label}</span>
+                  <Text variant="label">{stat.label}</Text>
                   <span className="text-title font-semibold text-foreground">{stat.value}</span>
                 </div>
               ))}
@@ -167,9 +168,9 @@ export function UsageModelDialog({
         </DialogPanel>
         {model.unpricedTokens > 0 ? (
           <DialogFooter variant="bare" className="items-center sm:justify-start">
-            <span className="text-caption text-muted-foreground">
+            <Text variant="note">
               {formatTokens(model.unpricedTokens)} tokens have no known price.
-            </span>
+            </Text>
           </DialogFooter>
         ) : null}
       </DialogPopup>
@@ -180,8 +181,8 @@ export function UsageModelDialog({
 /** What fast mode cost above standard rates, beside the speed bar. */
 function SpeedPremium({ premiumUsd }: { readonly premiumUsd: number }) {
   return (
-    <span className="text-caption text-muted-foreground">
+    <Text variant="note">
       Premium <span className="text-foreground tabular-nums">{formatUsd(premiumUsd)}</span>
-    </span>
+    </Text>
   );
 }

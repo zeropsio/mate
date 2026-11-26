@@ -35,6 +35,7 @@ import { changeTitle } from "./projects/projectHistory.logic";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
+import { Text } from "~/components/ui/text";
 
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
 interface ZeropsReleasesCarried {
@@ -249,12 +250,9 @@ function ReleaseRow({
   ) : releasing === release.tag && tone === "ok" ? (
     <Badge tone="info">{RELEASING_WORD}</Badge>
   ) : tone === "ok" ? null : releaseFailureIsOver(release, every) ? (
-    <span
-      className="shrink-0 text-caption whitespace-nowrap text-muted-foreground"
-      data-zerops-surface="release-over"
-    >
+    <Text className="shrink-0 whitespace-nowrap" variant="meta" data-zerops-surface="release-over">
       {DIDNT_GO_LIVE_QUIET}
-    </span>
+    </Text>
   ) : (
     <Badge tone={STATUS_BADGE_TONE[tone]}>
       {notDeployed?.has(release.tag) === true ? RELEASE_DIDNT_GO_LIVE : release.word}
@@ -279,12 +277,10 @@ function ReleaseRow({
   };
   return (
     <li
-      className={cn(
-        "group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border",
-        // What is live is found without reading a pill: the one row with a surface at rest.
-        live ? "border-status-ok/25 bg-status-ok-surface/50" : "border-transparent",
-        open && !live && "bg-accent/40",
-      )}
+      // What is live is found without reading a pill: the one row with a surface at rest; an
+      // opened row stays lit.
+      className="group/release col-span-full grid min-w-0 grid-cols-subgrid rounded-control border border-transparent data-release-open:not-data-zerops-release-live:bg-item-hover data-zerops-release-live:border-status-ok/25 data-zerops-release-live:bg-status-ok-surface/50"
+      data-release-open={open ? "" : undefined}
       data-zerops-environment-row="true"
       data-zerops-release={release.tag}
       data-zerops-release-live={live || undefined}
@@ -293,7 +289,7 @@ function ReleaseRow({
         className={cn(
           RELEASE_ROW_CLASS,
           // Only a row with something to press answers the pointer.
-          !live && (expandable || release.rollBack) && "group-hover/release:bg-accent/40",
+          !live && (expandable || release.rollBack) && "group-hover/release:bg-item-hover",
         )}
       >
         {expandable ? (
@@ -381,7 +377,7 @@ function ReleaseRow({
             )}
             data-zerops-surface="release-roll-back"
           >
-            <span className="flex h-full items-center rounded-e-control bg-accent/40 ps-3 pe-3.5">
+            <span className="flex h-full items-center rounded-e-control bg-item-hover ps-3 pe-3.5">
               <Button
                 disabled={rollingBack}
                 onClick={(event) => {

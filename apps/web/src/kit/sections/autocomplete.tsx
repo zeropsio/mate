@@ -10,7 +10,7 @@ import {
 } from "~/components/ui/autocomplete";
 
 import { defineKitSection } from "../kitSection";
-import { Specimen, SpecimenGrid } from "../Specimen";
+import { Specimen, SpecimenBlock, SpecimenGrid, Specimens } from "../Specimen";
 import { specimenLabel } from "../specimenLabel";
 
 const SERVICES = ["storefront", "backoffice", "db", "cache", "search"];
@@ -58,24 +58,32 @@ export default defineKitSection({
   kind: "Fields",
   source: "apps/web/src/components/ui/autocomplete.tsx",
   render: () => (
-    <SpecimenGrid>
-      {(["sm", "default", "lg"] as const).map((size) => (
-        <Specimen key={size} label={specimenLabel({ size })}>
-          <div className="w-56">
-            <Sample size={size} />
-          </div>
-        </Specimen>
-      ))}
-      <Specimen label="showTrigger showClear">
-        <div className="w-56">
-          <Sample showClear showTrigger />
-        </div>
-      </Specimen>
-      <Specimen label="startAddon={<SearchIcon />}">
-        <div className="w-56">
-          <Sample icon />
-        </div>
-      </Specimen>
-    </SpecimenGrid>
+    <Specimens>
+      <SpecimenBlock title="Sizes">
+        <SpecimenGrid size="md">
+          {(["sm", "default", "lg"] as const).map((size) => (
+            <Specimen key={size} label={specimenLabel({ size })}>
+              <div className="w-full max-w-56">
+                <Sample size={size} />
+              </div>
+            </Specimen>
+          ))}
+        </SpecimenGrid>
+      </SpecimenBlock>
+      <SpecimenBlock title="Addons">
+        <SpecimenGrid size="md">
+          <Specimen label="showTrigger showClear" note="A press to open it, a press to clear it">
+            <div className="w-full max-w-56">
+              <Sample showClear showTrigger />
+            </div>
+          </Specimen>
+          <Specimen label="startAddon={<SearchIcon />}" note="An icon before the text">
+            <div className="w-full max-w-56">
+              <Sample icon />
+            </div>
+          </Specimen>
+        </SpecimenGrid>
+      </SpecimenBlock>
+    </Specimens>
   ),
 });

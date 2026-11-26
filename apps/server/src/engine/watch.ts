@@ -4,14 +4,21 @@
  *
  * - a run that ends failed, crashed or cut by a restart, with its reason;
  * - an effect that fails for good: its kind, conversation and reason.
+ * - an ended run's timing, as a span in the server trace.
  *
  * A line holds ids, states, counts and the engine's own reasons, cut to their first line. Never a
  * person's words: a message's text, an answer or a call's input stays in the record.
  *
  * @module engine/watch
  */
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
+import type * as SqlClient from "effect/sql/SqlClient";
 import type { ConversationId, KnownEngineEvent, RunEnd } from "@t3tools/contracts";
+
+import { readRunTrace, RUN_SPAN, runTiming, timingAttributes } from "./read/runTiming.ts";
 
 const REASON_CHARS = 300;
 
@@ -68,11 +75,52 @@ const lineOf = (conversation: ConversationId, event: KnownEngineEvent): Effect.E
   }
 };
 
+const traceRun = Effect.fnUntraced(function* (
+  sql: SqlClient.SqlClient,
+  conversation: ConversationId,
+  event: Extract<KnownEngineEvent, { readonly _tag: "RunEnded" }>,
+) {
+  const rows = yield* readRunTrace(sql, conversation, event.runId);
+  const timing = runTiming(rows);
+  if (timing === undefined) return;
+  const tracer = yield* Effect.tracer;
+  yield* Effect.sync(() => {
+    const span = tracer.span({
+      name: RUN_SPAN,
+      parent: Option.none(),
+      annotations: Context.empty(),
+      links: [],
+      startTime: BigInt(timing.start) * 1_000_000n,
+      kind: "internal",
+      root: true,
+      sampled: true,
+    });
+    const attributes = {
+      "conversation.id": conversation,
+      "run.id": event.runId,
+      ...timingAttributes(timing),
+      "run.end": event.end.kind,
+      ...(event.context === undefined ? {} : { "run.context_tokens": event.context.usedTokens }),
+    };
+    for (const [key, value] of Object.entries(attributes)) span.attribute(key, value);
+    span.end(BigInt(timing.end) * 1_000_000n, Exit.void);
+  });
+});
+
 /** The watch lines a commit's events call for; a line that cannot be written is let go. */
 export const watchCommit = (
+  sql: SqlClient.SqlClient,
   conversation: ConversationId,
   events: ReadonlyArray<KnownEngineEvent>,
 ): Effect.Effect<void> =>
-  Effect.forEach(events, (event) => lineOf(conversation, event), {
-    discard: true,
-  }).pipe(Effect.catchCause(() => Effect.void));
+  Effect.forEach(
+    events,
+    (event) =>
+      Effect.gen(function* () {
+        yield* lineOf(conversation, event);
+        if (event._tag === "RunEnded") yield* traceRun(sql, conversation, event);
+      }),
+    {
+      discard: true,
+    },
+  ).pipe(Effect.catchCause(() => Effect.void));

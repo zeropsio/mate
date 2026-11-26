@@ -3,6 +3,8 @@ import { projectServicesAtom, shownHqListNavigationAtom } from "@t3tools/client-
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
+import { useCodeStandings } from "../../zerops/useCodeStandings";
+import { codeStandingLine } from "@t3tools/client-runtime/zerops";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints } from "./projects/projectsView.logic";
@@ -41,6 +43,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { PageHeader } from "../ui/page-header";
 import { Spinner } from "../ui/spinner";
 import {
   menuMateVisibilities,
@@ -249,6 +252,7 @@ import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
+import { Text } from "~/components/ui/text";
 
 /**
  * A stage or a production this screen asked HQ for: from the press until HQ answers its start,
@@ -531,7 +535,11 @@ export function creationCovers(
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
-  return <p className="text-body text-muted-foreground">{message}</p>;
+  return (
+    <Text render={<p />} variant="description">
+      {message}
+    </Text>
+  );
 }
 
 /**
@@ -551,28 +559,24 @@ export function ZeropsProjectsHeader({
   const inBar = useInPhoneBar();
   return (
     <InPhoneBar>
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3",
-          // Its row stands on the menu's logo row, centre to centre, not a bar's height below it;
-          // on a phone it is the bar's line, beside the menu's button.
-          inBar ? "min-w-0 flex-1" : "-mt-1.5",
-        )}
-        data-zerops-project-scope="true"
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-title font-medium text-foreground">Overview</h1>
-          {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {newProject ? (
+      <PageHeader
+        actions={
+          newProject ? (
             <Button onClick={askNewProject} size="sm" variant="secondary">
               <PlusIcon />
               New project
             </Button>
-          ) : null}
-        </div>
-      </div>
+          ) : undefined
+        }
+        // Its line stands on the menu's logo row, centre to centre, not a bar's height below it;
+        // on a phone it is the bar's line, beside the menu's button.
+        className={inBar ? "min-w-0 flex-1" : "-mt-2"}
+        data-zerops-project-scope="true"
+        summary={
+          notice === null ? undefined : <ProjectsFreshness notice={notice} onRetry={onRetry} />
+        }
+        title="Overview"
+      />
     </InPhoneBar>
   );
 }
@@ -915,7 +919,7 @@ export function ZeropsProjectsContent({
   const projectOrder = useProjectOrderOptions();
   // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
   // under the birth's key, before the listing holds its project — the same row the menu draws.
-  // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
+  // An application is drawn only while it has a visible member or a hidden environment.
   const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths } = useSharedBirthState();
@@ -956,6 +960,7 @@ export function ZeropsProjectsContent({
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
+  const codeStandings = useCodeStandings();
   // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
@@ -991,7 +996,7 @@ export function ZeropsProjectsContent({
       plainEvidenceOf({
         hqKnown,
         structure: knownStructure,
-        local: [...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId]))],
+        local: made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
       }),
     [hqKnown, knownStructure, made],
   );
@@ -2335,6 +2340,13 @@ export function ZeropsProjectsContent({
             openEmpty: () => {
               setRowDialog({ kind: "delete-group", group });
             },
+            openDeletion: () => {
+              void navigate({
+                to: "/projects/$projectKey/delete",
+                params: { projectKey: group.groupId },
+                search: {},
+              });
+            },
           })),
     ];
     // On the project's own page every other verb has its one place there: the stage it lacks,
@@ -2389,16 +2401,16 @@ export function ZeropsProjectsContent({
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
       {troubleView.empty === null ? null : (
-        <p className="py-16 text-center text-body text-muted-foreground" role="status">
+        <Text className="py-16 text-center" render={<p />} variant="description" role="status">
           {troubleView.empty}
-        </p>
+        </Text>
       )}
       {/* A project the grant withholds says why in place of its rows: its name,
           tags and Mates are its content, so none of them is drawn (DESIGN §3.4). */}
       {withheldProjectNotices(inventory).map((notice) => (
-        <p className="text-caption text-muted-foreground" key={notice} role="status">
+        <Text render={<p />} variant="note" key={notice} role="status">
           {notice}
-        </p>
+        </Text>
       ))}
       {project === undefined && activeOrganization !== null ? (
         <ArrivalWelcome
@@ -2431,6 +2443,10 @@ export function ZeropsProjectsContent({
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={drawnGroups}
+        heldWords={(groupId) => {
+          const line = codeStandingLine(codeStandings(groupId).standing);
+          return line?.notice === true ? line.words : undefined;
+        }}
         page={
           project === undefined
             ? undefined
@@ -2819,13 +2835,14 @@ export function ZeropsProjectsContent({
           />
         ),
       )}
-      {trouble === null ? null : <p className="text-body text-status-failed-text">{trouble}</p>}
+      {trouble === null ? null : <Failure cause={trouble} role="alert" size="line" />}
     </div>
   );
   return (
     <>
       {/* Its head stands with the page's one wait (`overviewPaints`), never under it. */}
-      {painted ? (
+      {/* A project's own page heads itself (`ProjectPageBody`). */}
+      {painted && project === undefined ? (
         <ZeropsProjectsHeader
           newProject={roleOffered.newProject}
           notice={projectsFreshnessNotice(listing, nowMs)}
