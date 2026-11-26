@@ -505,15 +505,12 @@ export function deletionStart(input: {
       ...(offer.kind === "mate" ? {} : { keptGit: "keep" as const }),
     };
   }
-  const confirmation =
-    choice.kind === "project"
-      ? choice
-      : { slid: new Set<string>(), productionTyped: {} as Readonly<Record<string, string>> };
+  if (choice.kind !== "project") return undefined;
   const productions = offer.plan.productions.flatMap((production) =>
     productionConfirmed(
-      confirmation.productionTyped[production.projectId] ?? "",
+      choice.productionTyped[production.projectId] ?? "",
       production.name,
-      confirmation.slid.has(production.projectId),
+      choice.slid.has(production.projectId),
     )
       ? [production.projectId]
       : [],

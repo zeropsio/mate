@@ -457,7 +457,7 @@ it.effect(
 );
 
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | const operation = placement.kind === "known" ? placement.value.operation : undefined; → const operation = placement.kind === "known" && placement.value.operation?.failure === undefined ? placement.value.operation : undefined;
-it("OP+1: After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.", () => {
+it("OP64: After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.", () => {
   for (const intent of [
     { kind: "start-mate-deletion", orgId: ORG, projectId: "p", id: "ours" },
     { kind: "start-app-deletion", orgId: ORG, appId: "a", id: "ours", stages: [] },

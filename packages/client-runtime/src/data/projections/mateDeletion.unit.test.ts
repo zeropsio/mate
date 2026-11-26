@@ -3,7 +3,7 @@ import type { HqOperation } from "../../zerops/hq/client.ts";
 import { mateDeletionOf } from "./mateDeletion.ts";
 
 // witness: packages/client-runtime/src/data/projections/mateDeletion.ts | const kind = evidence.operation?.kind === APP_DELETION ? APP_DELETION : MATE_DELETION; → const kind = MATE_DELETION;
-it("PJ+1: A Mate whose project shows its application's deletion running is being deleted, and waiting it waits with that deletion's id; breaks: a Mate held by its project's deletion opens and takes work the deletion then removes.", () => {
+it("PJ156: A Mate whose project shows its application's deletion running is being deleted, and waiting it waits with that deletion's id; breaks: a Mate held by its project's deletion opens and takes work the deletion then removes.", () => {
   const operation: HqOperation = {
     id: "op",
     kind: "app_deletion",

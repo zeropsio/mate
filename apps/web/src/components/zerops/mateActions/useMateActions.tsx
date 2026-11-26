@@ -94,6 +94,7 @@ import {
   deletionProjectOf,
   deletionStart,
   sameDeletionStart,
+  type DeletionProject,
 } from "../deletion.logic";
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import {
@@ -781,6 +782,25 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     [groupTree.groups, linkTarget, openMate, router, visibilities],
   );
 
+  const openProjectDeletion = useCallback(
+    (candidate: ZeropsCandidatePresentation, project: DeletionProject) => {
+      useDeleteApplicationDialog.getState().open({
+        appId: project.appId,
+        name: project.name,
+        mate: {
+          projectId: candidate.project.id,
+          name: projectNameInApp(candidate.project),
+          services: deleteMateServiceCount(candidate),
+          owner: colleagueOf(candidate),
+          leave: () => {
+            leaveDeleted(candidate);
+          },
+        },
+      });
+    },
+    [colleagueOf, leaveDeleted],
+  );
+
   /**
    * Deletes the Mate with one start at HQ (`start-mate-deletion`), on the person's access token,
    * with a fresh operation id: HQ deletes its project, its key with it, and releases its records. The dialog stays open until HQ answers
@@ -801,13 +821,20 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const orgId = activeOrganization.id;
       const previous = deletionRequests.current.get(projectId);
       const shownId = candidate.project.hq?.operation?.id;
+      const { offer, project } = deletionOfferFor(candidate);
       let start = deletionStart({
         orgId,
         id: previous !== undefined && previous.id !== shownId ? previous.id : randomUUID(),
-        offer: deletionOfferFor(candidate).offer,
+        offer,
         choice: { kind: "mate" },
       });
-      if (start === undefined) return;
+      if (start === undefined) {
+        if (project !== undefined) {
+          replyToDialog(null);
+          openProjectDeletion(candidate, project);
+        }
+        return;
+      }
       if (previous !== undefined && !sameDeletionStart(previous, start))
         start = { ...start, id: randomUUID() };
       deletionRequests.current.set(projectId, start);
@@ -837,7 +864,14 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           },
         );
     },
-    [activeOrganization, operations, leaveDeleted, captureDialogReply, deletionOfferFor],
+    [
+      activeOrganization,
+      operations,
+      leaveDeleted,
+      captureDialogReply,
+      deletionOfferFor,
+      openProjectDeletion,
+    ],
   );
 
   /**
@@ -853,21 +887,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         setDialog({ kind: "delete", candidate });
         return;
       }
-      useDeleteApplicationDialog.getState().open({
-        appId: project.appId,
-        name: project.name,
-        mate: {
-          projectId: candidate.project.id,
-          name: projectNameInApp(candidate.project),
-          services: deleteMateServiceCount(candidate),
-          owner: colleagueOf(candidate),
-          leave: () => {
-            leaveDeleted(candidate);
-          },
-        },
-      });
+      openProjectDeletion(candidate, project);
     },
-    [colleagueOf, deletionOfferFor, leaveDeleted, setDialog],
+    [deletionOfferFor, openProjectDeletion, setDialog],
   );
 
   /**

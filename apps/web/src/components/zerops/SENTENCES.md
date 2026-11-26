@@ -1,4 +1,4 @@
-next: MN87
+next: MN88
 
 - MN81 — A repository's page is loading until HQ has answered, says the repository is gone when its project or the repository is no longer listed or HQ denies its reads, says the person has no access when HQ's offer refuses, and opens otherwise; breaks: a deleted repository reads as access not verified, or a repository HQ has not answered for reads as gone
 - MN1 — A project that cannot move is offered no move
@@ -83,4 +83,4 @@ next: MN87
 - MN84 — The whole project's Delete sends one project deletion naming its last Mate, every Stage and only the Productions slid, and no Mate deletion; the last Mate's Delete alone sends one Mate deletion that keeps its project's code; breaks: a Production not slid is deleted, or the Mate and the project are deleted by two starts
 - MN85 — A project's Delete opens only once every Stage is slid and its name is typed, and a Production not slid never holds it; breaks: Delete opens with a Stage not slid
 - MN86 — A project's deletion lists a part as deleting only while it runs: waiting, the part it stopped at reads stopped there; ended failed, every part not gone reads still here, the one it stopped at included; breaks: a stopped deletion still reads as deleting its Stage
-- MN+1 — What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.
+- MN87 — What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.

@@ -1,4 +1,4 @@
-next: OP64
+next: OP65
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -36,4 +36,4 @@ next: OP64
 - OP61 — A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable
 - OP62 — A lost End answer counts as ended only when HQ shows that operation ended or no longer shows it, never while it runs on; breaks: an End that lost to the maker's Continue is reported done while the operation keeps acting
 - OP63 — A lost answer to ending a production's removal is adopted only once HQ shows that removal ended or no longer shows it; breaks: an End HQ never took reads as done while the application stays held
-- OP+1 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.
+- OP64 — After a lost answer a Mate's deletion and an application's deletion are adopted only when HQ's navigation shows the operation under the id their press fixed, whatever its state, or their target gone; breaks: a colleague's running deletion is taken for the person's refused one, or the person's own start that failed at once stays uncertain.

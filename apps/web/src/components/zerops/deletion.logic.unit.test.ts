@@ -271,11 +271,7 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
     [only, confirmed, { ...mateStart, keptGit: "keep" }],
     [choice, mateChoice, { ...mateStart, keptGit: "keep" }],
     [choice, confirmed, { ...appStart, mate: MATE.projectId }],
-    [
-      project,
-      mateChoice,
-      { kind: "start-app-deletion", orgId: "org", id: "op", appId: "app", stages: ["Z_STAGE"] },
-    ],
+    [project, mateChoice, undefined],
     [project, confirmed, appStart],
     [standing, mateChoice, undefined],
     [standing, confirmed, undefined],
@@ -345,7 +341,7 @@ it("MN86: A project's deletion lists a part as deleting only while it runs: wait
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | madeByMate: environment.deleteProjectOnRemoval === true, → madeByMate: false,
-it("MN+1: What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.", () => {
+it("MN87: What HQ's structure says of a project becomes the deletion's facts one to one: a Stage or Production the person may delete as deletable, a Production a Mate made as made by a Mate, the right to delete the project, hidden tiers, and a project nobody names without a name; breaks: an attached Production is offered for deletion and HQ refuses it, or a Production is unlocked by typing a placeholder.", () => {
   const can = { delete_project: { allow: true } };
   const structure = {
     can: { delete_app: { allow: true } },
