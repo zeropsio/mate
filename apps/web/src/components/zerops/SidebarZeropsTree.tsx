@@ -4642,8 +4642,15 @@ const ROW_TAGS =
  * A row's verbs at its end, in the time's place under the pointer and on focus; beside a places'
  * tag they come in before it. Under a finger they stand at rest on the line under the name.
  */
+/**
+ * A row's verbs. Under a fine pointer they stand centred on the row, its whole height, side by side
+ * and 8 px further in from its end, over its time and words on the row's own ground
+ * (`--menu-ground`: at rest, hovered, or the band's), so the words under them are covered; they
+ * fade in from it over 32 px on their start side, and the name and its line run out under a soft
+ * edge instead of being cut.
+ */
 const ROW_VERBS =
-  "absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 in-data-tags:end-[calc(10px+var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px)] pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100 pointer-coarse:in-data-tags:end-2";
+  "absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 in-data-tags:end-[calc(10px+var(--menu-time-w,0px)+var(--menu-tags-w,0px)+4px)] pointer-fine:inset-y-0 pointer-fine:z-2 pointer-fine:h-auto pointer-fine:bg-(--menu-ground,var(--color-sidebar)) pointer-fine:pe-2 pointer-fine:before:pointer-events-none pointer-fine:before:absolute pointer-fine:before:inset-y-0 pointer-fine:before:end-full pointer-fine:before:w-8 pointer-fine:before:bg-linear-to-l pointer-fine:before:from-(--menu-ground,var(--color-sidebar)) pointer-fine:before:to-transparent pointer-fine:rtl:before:bg-linear-to-r pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100 pointer-coarse:in-data-tags:end-2";
 
 /** A quiet line in the list: the word above Mates in no project, and what the list leaves out. */
 const QUIET_LINE = "px-2 pt-3.5 pb-1 text-caption font-medium text-sidebar-muted-foreground";

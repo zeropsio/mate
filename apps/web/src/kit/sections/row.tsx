@@ -230,14 +230,14 @@ function RowSpecimens() {
             </ul>
           </Specimen>
           <Specimen
-            label='columns ground="tint" pressable="band"'
+            label='columns ground="menu" pressable="band"'
             note="A band on the menu's ground"
           >
             <div className="grid w-full max-w-80 grid-cols-[minmax(0,1fr)_auto] bg-sidebar p-2">
               <Row
                 className="h-15 items-center"
                 columns
-                ground="tint"
+                ground="menu"
                 pressable="band"
                 render={<button type="button" />}
               >

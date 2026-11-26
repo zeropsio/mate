@@ -41,7 +41,7 @@ export function SidebarJumpButton({
           />
         }
       >
-        <SearchIcon aria-hidden="true" className="size-4" />
+        <SearchIcon aria-hidden="true" className="size-5" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">
         Search

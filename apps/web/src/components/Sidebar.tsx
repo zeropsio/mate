@@ -115,6 +115,7 @@ import {
   SidebarChromeFooter,
   SidebarChromeHeader,
   SidebarCreateButton,
+  SidebarOverviewLink,
   sidebarAccountDestinationIcon,
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate";
@@ -157,6 +158,7 @@ import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "./zerops/mateActions/useSidebarMateMenus";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
+import { SidebarWaitingCount } from "./zerops/SidebarWaiting";
 import { useViewerWaits, useWaitingNext } from "./zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import {
@@ -173,7 +175,6 @@ import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
 import { usePaintedOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
-import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
 import { SidebarStage } from "./zerops/SidebarStage";
@@ -1703,9 +1704,9 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The menu's top: the person's Chief, as the open menu's row or the rail's tile — once it exists
-  // or is being set up. Before that the account menu offers it (`useChiefSetupEntry`), and its place
-  // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
+  // The person's Chief, as the open menu's first row or the rail's tile — once it exists or is
+  // being set up. Before that the account menu offers it (`useChiefSetupEntry`). What waits on the
+  // person counts in the open menu's headline, and on the rail's tile.
   const zeropsChiefShown =
     zeropsSignedIn &&
     chiefTopShown({
@@ -1734,14 +1735,11 @@ export default function Sidebar() {
         setup={chiefSetupLine}
         tile={tile}
         timestampFormat={timestampFormat}
-        waiting={
-          zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
-        }
       />
     ) : undefined;
   // The account has nothing yet: the menu draws only what it can do there.
   const zeropsFirstRun = useAccountFirstRun();
-  // Search and the +, on the open menu's top row and under the rail's Chief.
+  // Search and the +, on the open menu's top row and the rail's.
   const zeropsJump = (
     <SidebarJumpButton
       onJump={() => {
@@ -1772,16 +1770,14 @@ export default function Sidebar() {
           destinationIcon={sidebarAccountDestinationIcon}
         />
       }
-      actions={
-        rosterOnly ? (
-          zeropsFirstRun ? (
-            zeropsCreate
-          ) : (
-            <>
-              {zeropsJump}
-              {zeropsCreate}
-            </>
-          )
+      create={rosterOnly ? zeropsCreate : undefined}
+      find={
+        // At the account's first run there is nothing to search or narrow.
+        rosterOnly && !zeropsFirstRun ? (
+          <>
+            {zeropsJump}
+            <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
+          </>
         ) : undefined
       }
       activeProjectId={zeropsOverviewOpen ? null : litZeropsProjectId}
@@ -1799,24 +1795,30 @@ export default function Sidebar() {
       showMark={!(isElectron && isMacPlatform(navigator.platform))}
       tiles={zeropsRailTiles.tiles}
       verbs={zeropsWaitingVerbs}
-      waiting={zeropsWaiting.items}
+      // Counted on the rail's Overview; the open menu counts it in its headline.
+      waiting={zeropsListHeld ? [] : zeropsWaiting.items}
     />
   );
   return (
     <SidebarStage rail={zeropsRail} railHolds={zeropsRailTiles.tiles.length}>
       <SidebarChromeHeader
         brand={
-          zeropsChiefTop(false) ??
-          (zeropsSignedIn ? (
-            // The Chief's place while there is none: the mark, and what waits on the person.
-            <SidebarChiefPlace
-              waiting={
-                zeropsListHeld
-                  ? undefined
-                  : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
-              }
-            />
-          ) : undefined)
+          zeropsSignedIn ? (
+            <>
+              <SidebarOverviewLink current={zeropsOverviewOpen} />
+              {/* What waits on the person, counted beside Overview: its own door to the list. */}
+              {!rosterOnly ||
+              zeropsFirstRun ||
+              zeropsListHeld ||
+              zeropsWaiting.items.length === 0 ? null : (
+                <SidebarWaitingCount
+                  seat="head"
+                  items={zeropsWaiting.items}
+                  verbs={zeropsWaitingVerbs}
+                />
+              )}
+            </>
+          ) : undefined
         }
         isElectron={isElectron}
         status={
@@ -1896,6 +1898,8 @@ export default function Sidebar() {
       >
         <SidebarGroup variant="list">
           {/* At the first run the tree holds nothing of Mate's: only Platform's projects, hidden. */}
+          {/* The person's Chief, the list's first row, standing apart from every project's. */}
+          {isSearchingThreads ? null : zeropsChiefTop(false)}
           {zeropsSignedIn && !isSearchingThreads && !zeropsFirstRun ? (
             <SidebarZeropsTree
               hold={zeropsListHeld}

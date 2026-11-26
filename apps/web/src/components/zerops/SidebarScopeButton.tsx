@@ -38,7 +38,7 @@ export function SidebarScopeButton({
           />
         }
       >
-        <Icon aria-hidden="true" className="size-4" />
+        <Icon aria-hidden="true" className="size-5" />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{words}</TooltipPopup>
     </Tooltip>

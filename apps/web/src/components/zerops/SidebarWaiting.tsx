@@ -7,6 +7,7 @@
  *
  * The rail's count opens the same list, beside the rail (`SidebarWaitingPopover`).
  */
+import { cn } from "~/lib/utils";
 import { fadeFillIn } from "~/lib/loadFills";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
@@ -161,7 +162,7 @@ export function SidebarWaitingPopover({
 }
 
 /**
- * A bare count of what waits on the person — the menu's top, the Chief's row, the rail — that opens
+ * A bare count of what waits on the person — the menu's headline, the rail — that opens
  * the list; hovered, it says what it counts ("Waiting on you", the first things by name), so the
  * number never stands without its noun.
  */
@@ -172,19 +173,19 @@ export function SidebarWaitingCount({
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
   readonly verbs: WaitingVerbs;
-  /** Where it stands: beside the Chief's row (a 28 px count), or on a rail tile's corner (20 px). */
-  readonly seat: "row" | "rail";
+  /** Where it stands: beside the headline's Overview, or on the rail's Overview's corner. */
+  readonly seat: "head" | "rail";
 }) {
   const words = waitingCountWords(items);
   return (
-    // Its seat: on a rail tile's corner, the menu's ground around it cutting it out of the tile; or
-    // over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle.
+    // An 18 px circle in the theme's own red, the one every other count in the app wears, so it
+    // reads from across the screen. Its seat: beside Overview in the open menu; on the rail's
+    // Overview's corner, the menu's ground around it cutting it out of the square.
     <span
-      className={
-        seat === "rail"
-          ? "absolute -top-1.25 -right-2.5 grid rounded-full bg-sidebar p-0.5"
-          : "relative z-1 col-start-1 me-1 mt-[calc(var(--sidebar-content-inset)+1px)] grid place-items-center justify-self-end"
-      }
+      className={cn(
+        "grid flex-none *:grid *:h-4.5 *:min-w-4.5 *:place-items-center *:rounded-full *:bg-destructive! *:px-1.25 *:text-2xs *:leading-3.5 *:font-bold *:text-fill-ink! *:tabular-nums *:transition-[background-color,scale] *:duration-150 *:ease-out-strong pointer-fine:*:hover:bg-destructive/90! *:data-popup-open:bg-destructive/90! motion-safe:*:active:scale-96",
+        seat === "rail" ? "absolute -top-1.5 -right-1.5 rounded-full bg-sidebar p-0.5" : "ms-2",
+      )}
     >
       <SidebarWaitingPopover
         items={items}
@@ -198,8 +199,8 @@ export function SidebarWaitingCount({
             // fades in where it stands (`fadeFillIn`).
             ref={fadeFillIn}
             shape="round"
-            size={seat === "rail" ? "2xs" : "sm"}
-            variant="warning"
+            // Its seat draws its red.
+            variant="bare"
           />
         }
         verbs={verbs}

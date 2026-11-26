@@ -1,12 +1,11 @@
 /**
- * The Chief, the menu's top row (`SidebarChromeHeader`'s brand): the bar's whole width, the
- * squares floating over its end. Its mark wears the Chief's state as a Mate's face does; "Chief";
- * and a second line only while it has something to say (`chiefRowLine`), the name centred in the
- * row otherwise. What waits on the person counts just left of the squares, its own door to the
- * list. While its setup runs the same row opens the Chief page; before that there is no row.
+ * The Chief, the open menu's first row, over every project's: its mark on the faces' column,
+ * wearing the Chief's state as a Mate's face does; "Chief"; and a second line only while it has
+ * something to say (`chiefRowLine`), the name centred in the row otherwise. While its setup runs
+ * the same row opens the Chief page; before that there is no row. What waits on the person counts
+ * in the menu's headline, and on the rail's Overview.
  */
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { Link } from "@tanstack/react-router";
 import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -16,16 +15,13 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
 import { Row } from "../../ui/row";
-import { Button } from "../../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
-import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
-import type { WaitingItem } from "~/zerops/waiting.logic";
 import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
+import { RAIL_NAME_CLASS, RailControl } from "../SidebarRail";
 import { RailTip } from "../SidebarRailTip";
 
 export interface SidebarChiefRowProps {
@@ -38,10 +34,6 @@ export interface SidebarChiefRowProps {
   /** Its conversation, or the Chief page, is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
-  /** What waits on the person, and what its list asks of the menu. */
-  readonly waiting?:
-    | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
-    | undefined;
 }
 
 /** The title, its noun whole: the words before "Chief" give way first in a narrow menu. */
@@ -49,7 +41,7 @@ function ChiefName({ title }: { readonly title: string }) {
   const { head, noun } = chiefNameParts(title);
   return (
     <span
-      className="flex min-w-0 gap-x-1 text-emphasis leading-5.25 font-semibold whitespace-nowrap text-sidebar-foreground"
+      className="flex min-w-0 gap-x-1 text-emphasis leading-5.25 font-medium whitespace-nowrap text-sidebar-foreground"
       data-waiting-line=""
     >
       {head === "" ? null : (
@@ -70,28 +62,25 @@ export function SidebarChiefRow({
   line,
   current,
   onOpen,
-  waiting,
 }: SidebarChiefRowProps) {
-  const items = waiting?.items ?? [];
   // The person's own Chief, by their name and with their picture on its mark (the owner,
   // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
   // its setup has one to say.
   const account = useSignedInAccount();
   const shown = line ?? null;
   return (
-    <div className="contents *:row-start-1" data-zerops-surface="sidebar-chief">
-      {/* A Mate row's measure in the bar: its mark on the faces' column, its name on the row's
-          middle, its band from the list's inset to the divider's; as tall as a Mate's card under
-          it (the owner, 2026-10-13: "it doesn't look good that this upper card is actually
-          smaller"), its room above the same as on its left. On the mark's teal at rest, set apart
-          from every project's row (the owner, 2026-10-12: "this should look different"). */}
+    // The list's first row, right under the headline; the projects a row's 6 px under it (`!`
+    // over the list's own top padding).
+    <div
+      className="[&+[data-zerops-surface=sidebar-environments]]:pt-1.5!"
+      data-zerops-surface="sidebar-chief"
+    >
       <Row
         aria-current={current ? "page" : undefined}
-        className="group/chief me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] mt-[calc(var(--sidebar-content-inset)+1px)] h-(--sidebar-chief-row-height) items-center"
+        className="group/chief h-(--sidebar-chief-row-height) w-full items-center"
         columns
         data-current={current ? "" : undefined}
         data-lined={shown === null ? undefined : ""}
-        data-waits={items.length === 0 ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
           // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
@@ -104,7 +93,7 @@ export function SidebarChiefRow({
           }, 600);
           onOpen();
         }}
-        ground="tint"
+        ground="menu"
         pressable="band"
         render={<button type="button" />}
       >
@@ -116,7 +105,7 @@ export function SidebarChiefRow({
           className="pointer-events-none absolute inset-0 -z-1 scale-96 rounded-card bg-sidebar-row-active opacity-0 ease-out-strong will-change-[opacity,transform] group-data-current/chief:scale-100 group-data-current/chief:opacity-100 group-data-pressed/chief:scale-100 group-data-pressed/chief:opacity-100 motion-safe:not-data-travel:transition-[opacity,scale] motion-safe:not-data-travel:duration-260"
           data-chief-lit=""
         />
-        <span className="col-start-1 flex min-w-0 items-center gap-3 ps-2.5 pe-3 group-data-waits/chief:pe-11">
+        <span className="col-start-1 flex min-w-0 flex-auto items-center gap-3 ps-2.5 pe-3">
           <span className="relative grid h-10 w-9 flex-none place-items-center" aria-hidden="true">
             <MateMark
               awake
@@ -159,16 +148,13 @@ export function SidebarChiefRow({
           </span>
         </span>
       </Row>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount seat="row" items={items} verbs={waiting.verbs} />
-      )}
     </div>
   );
 }
 
 /**
- * The Chief on the closed menu's rail, in Overview's old place: its mark as a tile, wearing its
- * state, what waits on the person counted on its corner; its name and line in its card.
+ * The Chief on the closed menu's rail, the first of its tiles: its mark wearing its state over
+ * "Chief Mate"; its whole name and line in its card.
  */
 export function SidebarChiefTile({
   face,
@@ -176,83 +162,32 @@ export function SidebarChiefTile({
   line,
   current,
   onOpen,
-  waiting,
 }: SidebarChiefRowProps) {
-  const items = waiting?.items ?? [];
   // Named as its row names it: one name on the rail and in the open menu.
   const name = chiefRowName(useSignedInAccount());
   return (
-    <div className="relative grid" data-zerops-surface="sidebar-chief">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-current={current ? "page" : undefined}
-              aria-label={name}
-              data-current={current ? "" : undefined}
-              className="group/rail"
-              data-zerops-surface="sidebar-chief-row"
-              onClick={onOpen}
-              variant="bare"
-            />
-          }
-        >
-          <span className="grid size-12 place-items-center rounded-card text-sidebar-foreground transition-colors duration-150 ease-out-strong group-hover/rail:bg-sidebar-row-hover group-data-current/rail:bg-sidebar-row-active motion-reduce:transition-none">
-            <span className="relative flex">
-              <MateMark
-                awake
-                playful
-                className="h-8.25 w-7"
-                {...(face === undefined ? {} : { state: face })}
-              />
-              {unseen ? (
-                <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" />
-              ) : null}
-            </span>
-          </span>
-        </TooltipTrigger>
-        <TooltipPopup side="right">
-          <RailTip line={line} name={name} />
-        </TooltipPopup>
-      </Tooltip>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount seat="rail" items={items} verbs={waiting.verbs} />
-      )}
-    </div>
-  );
-}
-
-/**
- * The Chief's place at the menu's top while the person has none: the Chief's row's box, bare, the
- * product's mark where the Chief's stands, leading to the overview, and what waits on the person
- * counted where the Chief's row counts it. The bar keeps the height the boot frame draws, so the
- * rows under it never move when a Chief comes, or on a reload.
- */
-export function SidebarChiefPlace({
-  waiting,
-}: {
-  readonly waiting: SidebarChiefRowProps["waiting"];
-}) {
-  const items = waiting?.items ?? [];
-  return (
-    <div className="contents *:row-start-1" data-zerops-surface="sidebar-chief-place">
-      {/* The Chief's row's box, bare, the mark where the Chief's stands, so the bar keeps the
-          height the boot frame draws; the kit's focus, its outline off the box's edge. */}
-      <Link
-        aria-label="Overview"
-        className="col-span-full mt-[calc(var(--sidebar-content-inset)+1px)] me-(--sidebar-content-inset) ms-[calc(var(--sidebar-content-inset)+1px)] grid h-(--sidebar-chief-row-height) grid-cols-subgrid items-center rounded-card outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        to="/zerops"
-      >
-        <span className="col-start-1 flex min-w-0 items-center gap-3 ps-2.5 pe-3">
-          <span aria-hidden="true" className="relative grid h-10 w-9 flex-none place-items-center">
-            <MateMark awake playful className="h-9 w-7.5" />
-          </span>
-        </span>
-      </Link>
-      {waiting === undefined || items.length === 0 ? null : (
-        <SidebarWaitingCount seat="row" items={items} verbs={waiting.verbs} />
-      )}
-    </div>
+    <RailControl
+      aria-current={current ? "page" : undefined}
+      aria-label={name}
+      data-current={current ? "" : undefined}
+      data-zerops-surface="sidebar-chief-row"
+      look="tile"
+      onClick={onOpen}
+      tip={<RailTip line={line} name={name} />}
+    >
+      <span className="relative grid size-9 place-items-center" data-zerops-surface="sidebar-chief">
+        <MateMark
+          awake
+          playful
+          className="h-8.25 w-7"
+          {...(face === undefined ? {} : { state: face })}
+        />
+        {unseen ? <MateDot place="corner" surface="sidebar-chief-unread" tone="unread" /> : null}
+      </span>
+      <span aria-hidden="true" className={RAIL_NAME_CLASS} data-zerops-surface="sidebar-rail-name">
+        Chief Mate
+      </span>
+    </RailControl>
   );
 }
 

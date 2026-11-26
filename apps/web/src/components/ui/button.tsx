@@ -80,7 +80,7 @@ const controlVariants = cva(
          * A press for the page on view (`aria-current="page"`) stands on the menu's selected ground.
          */
         sidebar:
-          "[--control-icon-color:currentColor] border-transparent text-muted-foreground aria-[current=page]:bg-sidebar-row-selected aria-[current=page]:text-sidebar-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-foreground/8 [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
+          "[--control-icon-color:currentColor] border-transparent text-muted-foreground aria-[current=page]:bg-sidebar-row-selected aria-[current=page]:text-sidebar-foreground [:hover,[data-pressed],[data-popup-open]]:bg-sidebar-foreground/12 [:hover,[data-pressed],[data-popup-open]]:text-sidebar-foreground",
         /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
         "destructive-ghost":
           "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",

@@ -1379,12 +1379,8 @@ function HarnessPage() {
         className="shrink-0 border-e border-border bg-sidebar max-md:hidden"
         style={{ width: MENU_WIDTH }}
       >
-        {/* The menu's top, its count of what waits on the viewer: the overview's tab counts the same. */}
-        <SidebarChiefRow
-          current={false}
-          onOpen={() => {}}
-          waiting={{ items: ALL_WAITS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }}
-        />
+        {/* The menu's top. */}
+        <SidebarChiefRow current={false} onOpen={() => {}} />
       </aside>
       {/* The page's content region, as the app's frame marks it (`SidebarInset`). */}
       <main className="min-w-0 flex-1 overflow-y-auto bg-background" data-slot="sidebar-inset">

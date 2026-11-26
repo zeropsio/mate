@@ -1,5 +1,5 @@
 /**
- * The closed menu on a desktop: an 88 px rail of tiles, one per project in the open menu's order
+ * The closed menu on a desktop: a 76 px rail of tiles, one per project in the open menu's order
  * (the owner's pick of the Menu Rail Board, 2026-10-12: "we should do tiles and just not do
  * reveal"). A project of one Mate is that Mate's face over the project's name; a group of Mates is
  * its cluster over its name, and opens and folds in place with the menu's own fold. Each tile wears
