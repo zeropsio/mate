@@ -14,7 +14,7 @@
 
 import { byNewest, changeState, type FlowPullRequest } from "./projectFlow.ts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { CodeStanding } from "./codeStanding.ts";
+import { codeStandingLine, type CodeStanding } from "./codeStanding.ts";
 
 export type GitRepositoryFacts = Pick<
   RepoListEntry,
@@ -252,4 +252,21 @@ export function gitChangesStatus(changes: ReadonlyArray<GitOverviewChange>) {
   const tones = ["failed", "attention", "busy", "ok", "off"] as const;
   const tone = tones.find((tone) => open.some(({ status }) => status?.tone === tone)) ?? "off";
   return { open: open.length, words, tone };
+}
+
+/** The standing's existing words and the signal worn beside them. */
+export function gitStandingNotice(standing: CodeStanding) {
+  const line = codeStandingLine(standing);
+  if (line?.notice !== true) return undefined;
+  const tone =
+    standing.kind === "asked"
+      ? "attention"
+      : standing.kind === "deleting"
+        ? standing.phase === "going"
+          ? "busy"
+          : "failed"
+        : standing.kind === "in-use"
+          ? "busy"
+          : "off";
+  return { words: line.words, tone } as const;
 }

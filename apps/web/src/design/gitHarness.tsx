@@ -10,7 +10,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { KEPT_GIT_UNCONFIRMED, type KeptGitQuestionView } from "@t3tools/client-runtime/data";
 import { Page } from "~/components/ui/page";
-import { PageHeader } from "~/components/ui/page-header";
 import {
   ZeropsGitOverview,
   ProjectCodeHeading,
@@ -299,13 +298,7 @@ function Harness() {
         {overview}
       </>
     );
-  else
-    content = (
-      <>
-        <PageHeader title="Git" line="Your organisation's code, by project." />
-        {overview}
-      </>
-    );
+  else content = overview;
   return (
     <main className="min-h-screen bg-background text-foreground" style={{ marginLeft: 435 }}>
       <Page width="full">{content}</Page>

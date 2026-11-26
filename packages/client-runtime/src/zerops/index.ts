@@ -426,6 +426,7 @@ export {
   codeSize,
   gitChangesStatus,
   gitOverviewView,
+  gitStandingNotice,
   type GitRepositoryFacts,
   type GitOverviewApp,
   type GitOverviewChange,

@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { KeptGitQuestionView } from "@t3tools/client-runtime/data";
 import { useAccountOrgId } from "~/zerops/accountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { submitHqAppWrite } from "~/zerops/hqAppWrite";
 import { Button } from "../ui/button";
+import { Failure } from "../ui/failure";
+import { Text } from "../ui/text";
 
 /** Submit under the request identity and retry decision owned by the projection. */
 export function useKeptCodeAnswer() {
@@ -23,9 +25,14 @@ export function useKeptCodeAnswer() {
 export function KeptCodeQuestion({
   view,
   answer,
+  children,
 }: {
   readonly view: KeptGitQuestionView;
   readonly answer?: ((answer: "keep" | "delete") => Promise<void>) | undefined;
+  readonly children: (slots: {
+    readonly presses: ReactNode;
+    readonly lines: ReactNode;
+  }) => ReactNode;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sending, setSending] = useState(false);
@@ -47,17 +54,32 @@ export function KeptCodeQuestion({
       if (current()) setSending(false);
     }
   };
-  return (
-    <div className="flex flex-col gap-2 text-body" data-zerops-surface="kept-code-question">
-      <p>{view.question.projectName ?? view.question.appName} was removed. Keep its code?</p>
-      <p className="text-muted-foreground">
-        Kept code stays billed as storage until you delete it.
-      </p>
+  const presses = confirmDelete ? null : (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" disabled={busy || answer === undefined} onClick={() => void send("keep")}>
+        Keep code
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        disabled={busy || answer === undefined}
+        onClick={() => setConfirmDelete(true)}
+      >
+        Delete code…
+      </Button>
+    </div>
+  );
+  const lines = (
+    <div className="flex flex-col gap-2" data-zerops-surface="kept-code-question">
+      <Text variant="heading">
+        {view.question.projectName ?? view.question.appName} was removed. Keep its code?
+      </Text>
+      <Text variant="description">Kept code stays billed as storage until you delete it.</Text>
       {confirmDelete ? (
         <>
-          <p>
+          <Text variant="description">
             Delete {view.question.appName} and its code? This permanently deletes its repositories.
-          </p>
+          </Text>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -77,30 +99,9 @@ export function KeptCodeQuestion({
             </Button>
           </div>
         </>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            disabled={busy || answer === undefined}
-            onClick={() => void send("keep")}
-          >
-            Keep code
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy || answer === undefined}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete code…
-          </Button>
-        </div>
-      )}
-      {message ? (
-        <p role="status" className="text-muted-foreground">
-          {message}
-        </p>
       ) : null}
+      {message ? <Failure size="line" cause={message} /> : null}
     </div>
   );
+  return children({ presses, lines });
 }

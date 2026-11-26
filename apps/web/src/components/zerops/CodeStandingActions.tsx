@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert } from "~/components/ui/alert";
+import { Card } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Text } from "~/components/ui/text";
 import type { CodeStandingView } from "~/zerops/useCodeStandings";
@@ -12,6 +12,7 @@ export function CodeStandingActions({
   onDelete,
   onReview,
   answer,
+  emphasis = false,
 }: {
   readonly name: string;
   readonly view: CodeStandingView;
@@ -19,6 +20,7 @@ export function CodeStandingActions({
   readonly onDelete?: (() => void) | undefined;
   readonly onReview?: (() => void) | undefined;
   readonly answer?: ReactNode;
+  readonly emphasis?: boolean;
 }) {
   const { standing, offers, addMateWhy } = view;
   const deleteLabel = `Delete ${name}${standing.kind === "kept" && standing.holds === "code" ? " and its code" : ""}…`;
@@ -26,14 +28,14 @@ export function CodeStandingActions({
     <div className="flex flex-wrap items-center gap-2">
       {offers.answer ? answer : null}
       {offers.addMate === "off" && addMateWhy !== undefined ? (
-        <Text variant="note">{addMateWhy}</Text>
+        <Text variant="meta">{addMateWhy}</Text>
       ) : null}
       {offers.delete === "owner" ? (
-        <Text variant="note">An Owner or Admin can delete it.</Text>
+        <Text variant="meta">An Owner or Admin can delete it.</Text>
       ) : null}
       {offers.addMate === "none" ? null : (
         <Button
-          variant="secondary"
+          variant={emphasis ? "primary" : "secondary"}
           size="sm"
           disabled={offers.addMate === "off"}
           onClick={onAddMate}
@@ -42,7 +44,12 @@ export function CodeStandingActions({
         </Button>
       )}
       {offers.delete === "offered" || offers.delete === "waits" ? (
-        <Button variant="ghost" size="sm" disabled={offers.delete === "waits"} onClick={onDelete}>
+        <Button
+          variant="destructive-ghost"
+          size="sm"
+          disabled={offers.delete === "waits"}
+          onClick={onDelete}
+        >
           {deleteLabel}
         </Button>
       ) : null}
@@ -64,11 +71,13 @@ export function CodeStandingBanner({
 } & Parameters<typeof CodeStandingActions>[0]) {
   if (sentence === undefined) return null;
   return (
-    <Alert surface="tint">
-      <Text render={<p />} variant="description">
-        {sentence}
-      </Text>
-      <CodeStandingActions {...actions} />
-    </Alert>
+    <Card size="sm" variant="wash">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Text render={<p />} variant="description">
+          {sentence}
+        </Text>
+        <CodeStandingActions {...actions} />
+      </div>
+    </Card>
   );
 }
