@@ -208,6 +208,10 @@ export function ZeropsDeletionPage({
     );
   }
 
+  const failed =
+    state.kind === "form" && state.failedDeletion !== undefined
+      ? deletionStandingWords(project, state.failedDeletion)
+      : undefined;
   const review = deletionReview({ project, mate, holdings, choice });
   const renderRow = (row: DeletionRow) => (
     <div key={`${row.kind}:${row.id}`} data-zerops-surface="delete-page-part">
@@ -280,6 +284,14 @@ export function ZeropsDeletionPage({
   return (
     <div className="contents" data-zerops-surface="delete-page-form">
       <PageHeader line={page.line} title={page.title} />
+      {failed === undefined ? null : (
+        <Failure
+          cause={failed.line}
+          details={failed.details ?? undefined}
+          role="alert"
+          size="line"
+        />
+      )}
       <Section title="In Zerops">
         {zerops.length === 0 ? (
           <Text render={<p />} variant="description">
@@ -417,7 +429,11 @@ export function ZeropsDeletionPageContainer({
               ? ("slate" as const)
               : (assignCandidateMateTints(candidates).get(mateId) ?? "slate")),
         };
-  const startId = useRef<NonNullable<ReturnType<typeof deletionStart>> | null>(null);
+  const failedFormId = state.kind === "form" ? state.failedDeletion?.id : undefined;
+  const startId = useRef<{
+    readonly formId: string | undefined;
+    readonly start: NonNullable<ReturnType<typeof deletionStart>>;
+  } | null>(null);
   const active = useRef(true);
   const [pressing, setPressing] = useState(false);
   const pressingRef = useRef(false);
@@ -452,7 +468,8 @@ export function ZeropsDeletionPageContainer({
   };
   const confirm = (review: ReturnType<typeof deletionReview>) => {
     if (orgId === undefined || state.kind !== "form" || pressingRef.current) return;
-    const previous = startId.current;
+    const formId = failedFormId ?? past;
+    const previous = startId.current?.formId === formId ? (startId.current?.start ?? null) : null;
     let start = deletionStart({
       orgId,
       id: previous?.id ?? randomUUID(),
@@ -462,7 +479,7 @@ export function ZeropsDeletionPageContainer({
     if (start === undefined) return;
     if (previous !== null && !sameDeletionStart(previous, start))
       start = { ...start, id: randomUUID() };
-    startId.current = start;
+    startId.current = { formId, start };
     const accepted = start;
     settle(
       submit(accepted).then(() => {
@@ -498,14 +515,14 @@ export function ZeropsDeletionPageContainer({
   return (
     <ZeropsHostedFrame bar={false} width="column">
       <ZeropsDeletionPage
-        key={past ?? "first"}
+        key={failedFormId === undefined ? `past:${past ?? "first"}` : `failed:${failedFormId}`}
         state={state}
         mate={mate}
         holdings={holdings}
         pending={pressing}
         error={error}
         waiting={waiting}
-        initial={againChoice}
+        initial={failedFormId === undefined ? againChoice : undefined}
         onCancel={back}
         onConfirm={confirm}
         onAgain={() => {
