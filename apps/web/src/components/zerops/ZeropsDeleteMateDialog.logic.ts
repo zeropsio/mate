@@ -101,37 +101,26 @@ export function deleteMateConfirmed(typed: string, name: string): boolean {
 }
 
 /**
- * The field that asks a name typed before something is deleted: what it asks in words, the
- * label it is pressed by (`Type {name} to confirm`), and
- * under it whether what is typed matches, or how it does not. The rule is
- * `deleteMateConfirmed`'s: spelled the same, spaces around it aside.
+ * The name field's accessible label and its one state, including anything else holding Delete.
+ * A name matches by `deleteMateConfirmed`: spelled the same, spaces around it aside.
  */
 export function confirmNameWords(input: {
   readonly name: string;
-  /** Whose name it is: "the Mate's", "the project's", "the Production's". */
-  readonly whose: string;
   readonly typed: string;
+  readonly hold?: string | null;
 }): {
-  readonly ask: string;
   readonly label: string;
-  readonly copyLabel: string;
-  readonly matches: boolean;
-  readonly match: string;
-  readonly hint: string | null;
+  readonly state: "empty" | "differs" | "held" | "matches";
+  readonly line: string;
 } {
   const matches = deleteMateConfirmed(input.typed, input.name);
-  return {
-    ask: `To confirm, type ${input.whose} name exactly as shown`,
-    label: `Type ${input.name} to confirm`,
-    copyLabel: `the name ${input.name}`,
-    matches,
-    match: "Matches",
-    hint: matches
-      ? null
-      : input.typed.trim() === ""
-        ? "Capitals, spaces and dashes count."
-        : "Not the same yet: capitals, spaces and dashes count.",
-  };
+  const label = `Type ${input.name} to confirm`;
+  if (!matches)
+    return input.typed.trim() === ""
+      ? { label, state: "empty", line: "Capitals, spaces and dashes count." }
+      : { label, state: "differs", line: "Not the same yet: capitals, spaces and dashes count." };
+  if (input.hold != null) return { label, state: "held", line: input.hold };
+  return { label, state: "matches", line: "Matches" };
 }
 
 /** Where the viewer stands once the platform took the Mate. */

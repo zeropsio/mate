@@ -112,6 +112,11 @@ const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
 const PAGE_STATES = [
   "page",
   "production",
+  "slide-confirmed",
+  "name-empty",
+  "name-differs",
+  "name-held",
+  "name-matches",
   "all-goes",
   "stage-stays",
   "code-kept",
@@ -234,6 +239,11 @@ const HAS_STAGE = !CODE_ONLY && STATE !== "plain" && STATE !== "nothing";
 const HAS_PRODUCTION = [
   "page",
   "production",
+  "slide-confirmed",
+  "name-empty",
+  "name-differs",
+  "name-held",
+  "name-matches",
   "all-goes",
   "nothing",
   "start-refused",
@@ -313,14 +323,36 @@ const PAGE_INITIAL =
     ? deletionChoiceAgain(ACME_PROJECT, HOLDINGS)
     : {
         fates: {
-          ...(["production", "all-goes"].includes(STATE)
+          ...([
+            "production",
+            "all-goes",
+            "slide-confirmed",
+            "name-empty",
+            "name-differs",
+            "name-held",
+            "name-matches",
+          ].includes(STATE)
             ? { "acme-docs-live": "goes" as const }
             : {}),
           ...(STATE === "stage-stays" ? { "acme-docs-stage": "stays" as const } : {}),
         },
         repoFates: STATE === "code-kept" ? { docs: "stays" as const } : {},
-        names: STATE === "all-goes" ? { "acme-docs-live": "acme-docs-live" } : {},
-        projectName: ["all-goes", "stage-stays", "code-kept"].includes(STATE) ? ACME : "",
+        slid: [
+          "all-goes",
+          "slide-confirmed",
+          "name-empty",
+          "name-differs",
+          "name-matches",
+        ].includes(STATE)
+          ? { "acme-docs-live": true }
+          : {},
+        projectName: ["all-goes", "stage-stays", "code-kept", "name-held", "name-matches"].includes(
+          STATE,
+        )
+          ? ACME
+          : STATE === "name-differs"
+            ? "Acme"
+            : "",
       };
 
 /** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */

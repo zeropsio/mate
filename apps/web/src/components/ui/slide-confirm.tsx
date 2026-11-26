@@ -16,17 +16,16 @@ import {
 
 /**
  * A one-way confirmation that something in Zerops is deleted: a track one control high in the
- * destructive ink with its words inside ("Slide to delete Stage shop-stage"), dragged by its square
+ * destructive ink with its words inside ("Slide to delete Production shop-live"), dragged by its square
  * thumb from left to right. Let go of short of the end, it returns to the start; at the end it
  * locks, the track fills, the words read `confirmedLabel` and an Undo press beside it takes it
- * back. One per environment a deletion takes, above the dialog's name field; the dialog's Delete
- * stays shut until each is `confirmed`. Not a value picked along a range: that is a `Slider`.
+ * back. The deletion's Delete stays shut until each required slide is `confirmed`. Not a value
+ * picked along a range: that is a `Slider`.
  *
  * The thumb is a focusable slider named by `label`, "Not confirmed" or "Confirmed": an arrow
  * moves it a quarter, End confirms at once, Home or an arrow back takes it back, and Enter and
  * Space do nothing on it, so the form's Enter never confirms. A press on the track moves nothing.
- * `locked` holds it where it stands (a Production's slide until its name is typed); whoever locks
- * a confirmed slide sets `confirmed` back to false with it.
+ * `locked` holds it where it stands while an action is pending, including when confirmed.
  */
 export function SlideConfirm({
   label,

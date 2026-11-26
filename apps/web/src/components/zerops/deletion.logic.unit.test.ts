@@ -91,10 +91,10 @@ const holdings: ApplicationHoldings = {
 };
 const choice = (
   fates: DeletionChoice["fates"] = {},
-  names: DeletionChoice["names"] = {},
+  slid: DeletionChoice["slid"] = {},
   projectName = "bakery",
   repoFates: DeletionChoice["repoFates"] = {},
-): DeletionChoice => ({ fates, repoFates, names, projectName });
+): DeletionChoice => ({ fates, repoFates, slid, projectName });
 const codeChoice = (repoFates: DeletionChoice["repoFates"]) => choice({}, {}, "bakery", repoFates);
 const review = (
   project: DeletionProject,
@@ -212,7 +212,7 @@ it("MN84: The page's Delete sends one start: the project's deletion naming its M
     {
       selected: choice(
         { p: "goes", made: "goes", attached: "goes" },
-        { p: "plain", made: "made" },
+        { p: true, made: true },
         "bakery",
         { web: "stays" },
       ),
@@ -291,7 +291,7 @@ it("MN95: The project's deletion start carries the Zerops name the client holds 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | : holdings === undefined → : false
-it("MN85: A project's Delete opens only once HQ has said its holdings, something is set to go, each part that asks its name has it typed and the project's name is typed; breaks: Delete opens with holdings unread, with nothing to delete, or with a Production's name not typed.", () => {
+it("MN85: A project's Delete opens only once HQ has said its holdings, something is set to go and the project's name is typed; breaks: Delete opens with holdings unread, with nothing to delete, or without the project's name.", () => {
   const project = bakery({ environments: [stage("Z_STAGE"), production("live")] });
   const cases = [
     {
@@ -320,18 +320,10 @@ it("MN85: A project's Delete opens only once HQ has said its holdings, something
       mate: undefined,
     },
     {
-      label: "production unconfirmed",
-      project,
-      held: holdings,
-      selected: choice({ live: "goes" }),
-      missing: "Type live to confirm it goes.",
-      ready: false,
-    },
-    {
       label: "project unconfirmed",
       project,
       held: holdings,
-      selected: choice({ live: "goes" }, { live: "live" }, ""),
+      selected: choice({}, {}, ""),
       missing: null,
       ready: false,
     },
@@ -339,7 +331,7 @@ it("MN85: A project's Delete opens only once HQ has said its holdings, something
       label: "ready",
       project,
       held: holdings,
-      selected: choice({ live: "goes" }, { live: "live" }),
+      selected: choice(),
       missing: null,
       ready: true,
     },
@@ -1076,18 +1068,15 @@ it("MN100: A project's deletion page lists every part it holds, going or staying
   );
   expect(selected.rows.find((row) => row.id === "p")).toMatchObject({
     fate: "goes",
-    askName: "plain",
     line: "Goes from Zerops, with everything in it",
   });
   expect(selected.rows.find((row) => row.id === "prod")).toMatchObject({
     fate: "goes",
-    askName: "prod",
     line: "Goes from Zerops, with its services and data",
   });
   expect(selected.rows.find((row) => row.id === "prod")?.warning).toContain(
     "takes it offline at once",
   );
-  expect(selected.missing).toBe("Type plain to confirm it goes.");
   const kept = review(
     bakery({ placements: [], environments: [] }),
     undefined,
@@ -1223,7 +1212,6 @@ it("MN102: Delete again starts from what the stopped deletion named: each part i
   const selected = deletionChoiceAgain(project, holdings);
   expect(selected.fates).toMatchObject({ one: "goes", two: "stays" });
   expect(selected.repoFates).toMatchObject({ docs: "stays", web: "goes" });
-  expect(selected.names).toEqual({});
   expect(selected.projectName).toBe("");
   const noCode = deletionChoiceAgain(
     { ...project, steps: [{ part: "stage", projectId: "one", state: "pending" }] },
@@ -1362,21 +1350,21 @@ it("MN103: The setup files of a project whose only code they are, with nothing o
         ],
       },
       held: setupOnly,
-      selected: choice({ plain: "goes" }, { plain: "plain" }, "bakery", { group: "stays" }),
+      selected: choice({ plain: "goes" }, { plain: true }, "bakery", { group: "stays" }),
       expected: ["goes", false],
     },
     {
       label: "a going Production takes setup with the project",
       project: { ...project, environments: [production("prod")] },
       held: setupOnly,
-      selected: choice({ prod: "goes" }, { prod: "prod" }, "bakery", { group: "stays" }),
+      selected: choice({ prod: "goes" }, { prod: true }, "bakery", { group: "stays" }),
       expected: ["goes", false],
     },
     {
       label: "a staying Stage keeps setup when Production goes",
       project: { ...withStage, environments: [stage("s"), production("prod")] },
       held: setupOnly,
-      selected: choice({ s: "stays", prod: "goes" }, { prod: "prod" }, "bakery", {
+      selected: choice({ s: "stays", prod: "goes" }, { prod: true }, "bakery", {
         group: "goes",
       }),
       expected: ["stays", false],
@@ -1465,4 +1453,147 @@ it("MN103: The setup files of a project whose only code they are, with nothing o
     appId: "app-bakery",
     stages: [],
   });
+});
+
+// witness: apps/web/src/components/zerops/deletion.logic.ts | if (fate === "stays") delete slid[row.id]; → if (fate === "stays" && row.slide === undefined) delete slid[row.id];
+it("MN105: A part whose own data goes from Zerops for good asks a slide before Delete opens, every other part asks nothing, and a slide holds only for the fate it was slid for; breaks: Delete opens over a part nobody confirmed, or a part set back to stay and to go again is already confirmed.", () => {
+  const project = bakery({
+    placements: [
+      { projectId: MATE.projectId, kind: "mate", name: "Rye", deletable: true },
+      { projectId: "p", kind: "plain", name: "plain", deletable: true },
+    ],
+    environments: [stage("s"), production("live"), production("attached", { madeByMate: false })],
+  });
+  const stays = { p: "stays", s: "stays", live: "stays", attached: "stays" } as const;
+  const onlyMate = bakery({ placements: [project.placements[0]!], environments: [] });
+  const cases = [
+    {
+      label: "Production goes",
+      fate: "goes",
+      project,
+      selected: choice({ ...stays, live: "goes" }),
+      id: "live",
+      slide: "Slide to delete Production live",
+      missing: "Slide Production live to confirm it goes.",
+    },
+    {
+      label: "plain goes",
+      fate: "goes",
+      project,
+      selected: choice({ ...stays, p: "goes" }),
+      id: "p",
+      slide: "Slide to delete Zerops project plain",
+      missing: "Slide Zerops project plain to confirm it goes.",
+    },
+    {
+      label: "Production stays",
+      fate: "stays",
+      project,
+      selected: choice(stays),
+      id: "live",
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "plain stays",
+      fate: "stays",
+      project,
+      selected: choice(stays),
+      id: "p",
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "attached Production goes",
+      fate: "goes",
+      project,
+      selected: choice({ ...stays, attached: "goes" }),
+      id: "attached",
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "Stage goes",
+      fate: "goes",
+      project,
+      selected: choice({ ...stays, s: "goes" }),
+      id: "s",
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "Mate goes",
+      fate: "goes",
+      project,
+      selected: choice(stays),
+      id: MATE.projectId,
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "code goes",
+      fate: "goes",
+      project: onlyMate,
+      selected: choice(),
+      id: "docs",
+      slide: undefined,
+      missing: null,
+    },
+    {
+      label: "setup goes",
+      fate: "goes",
+      project: onlyMate,
+      selected: choice(),
+      id: "group",
+      slide: undefined,
+      missing: null,
+    },
+  ] as const;
+  for (const row of cases) {
+    const result = review(row.project, MATE, row.selected);
+    const part = result.rows.find((item) => item.id === row.id)!;
+    expect(part.fate, row.label).toBe(row.fate);
+    expect(part.slide?.label, row.label).toBe(row.slide);
+    expect(result.missing, row.label).toBe(row.missing);
+    expect(result.ready, row.label).toBe(row.missing === null);
+    if (row.missing !== null) {
+      expect(result.start, row.label).toBeUndefined();
+      expect(part.slide?.confirmed, row.label).toBe(false);
+      const confirmed = review(row.project, MATE, { ...row.selected, slid: { [row.id]: true } });
+      expect(confirmed.rows.find((item) => item.id === row.id)?.slide?.confirmedLabel).toBe(
+        `${part.title} goes`,
+      );
+      expect(confirmed.ready, row.label).toBe(true);
+      expect(confirmed.start, row.label).toBeDefined();
+    }
+  }
+  const both = choice({ ...stays, p: "goes", live: "goes" });
+  expect(review(project, MATE, both).missing).toBe(
+    "Slide Zerops project plain to confirm it goes.",
+  );
+  expect(review(project, MATE, { ...both, slid: { p: true } }).missing).toBe(
+    "Slide Production live to confirm it goes.",
+  );
+  expect(review(project, MATE, { ...both, slid: { p: true, live: true } }).ready).toBe(true);
+  const going = review(project, MATE, choice({ ...stays, live: "goes" }, { live: true }));
+  const live = going.rows.find((row) => row.id === "live")!;
+  const kept = chooseDeletionFate(
+    choice({ ...stays, live: "goes" }, { live: true }),
+    live,
+    "stays",
+  );
+  const keptRow = review(project, MATE, kept).rows.find((row) => row.id === "live")!;
+  const goesAgain = chooseDeletionFate(kept, keptRow, "goes");
+  expect(review(project, MATE, goesAgain).missing).toBe(
+    "Slide Production live to confirm it goes.",
+  );
+  const again = deletionChoiceAgain(
+    { ...project, steps: [{ part: "production", projectId: "live", state: "pending" }] },
+    holdings,
+  );
+  expect(again.fates.live).toBe("goes");
+  expect(again.slid).toEqual({});
+  expect(review(project, MATE, again).rows.find((row) => row.id === "live")?.slide?.confirmed).toBe(
+    false,
+  );
 });

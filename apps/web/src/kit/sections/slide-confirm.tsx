@@ -18,8 +18,8 @@ function Slide({
     <SlideConfirm
       className="w-full max-w-80"
       confirmed={confirmed}
-      confirmedLabel="Stage api will be deleted"
-      label="Slide to delete Stage api"
+      confirmedLabel="Production api goes"
+      label="Slide to delete Production api"
       locked={locked}
       onConfirmedChange={setConfirmed}
     />
@@ -43,7 +43,7 @@ export default defineKitSection({
           <Specimen label="confirmed" note="Slid to the end, with its way back">
             <Slide initial />
           </Specimen>
-          <Specimen label="locked" note="A Production's slide before its name is typed">
+          <Specimen label="locked" note="A deletion start is pending">
             <Slide initial={false} locked />
           </Specimen>
         </SpecimenGrid>

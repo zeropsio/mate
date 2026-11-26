@@ -249,7 +249,7 @@ export function applicationHoldings(detail: {
 export interface DeletionChoice {
   readonly fates: Readonly<Record<string, "goes" | "stays">>;
   readonly repoFates: Readonly<Record<string, "goes" | "stays">>;
-  readonly names: Readonly<Record<string, string>>;
+  readonly slid: Readonly<Record<string, boolean>>;
   readonly projectName: string;
   /** A stopped operation's code selection, including repositories read after the form opens. */
   readonly codeAgain?: { readonly hasStep: boolean; readonly keeps: ReadonlyArray<string> };
@@ -264,7 +264,12 @@ export interface DeletionRow {
   readonly switchable: boolean;
   readonly line: string;
   readonly summary: string;
-  readonly askName?: string;
+  readonly slide?: {
+    readonly label: string;
+    readonly confirmedLabel: string;
+    readonly missing: string;
+    readonly confirmed: boolean;
+  };
   readonly warning?: string;
 }
 
@@ -294,7 +299,7 @@ export function everythingStays(project: DeletionProject): DeletionChoice {
   return {
     fates: Object.fromEntries(ids.map((id) => [id, "stays"])),
     repoFates: {},
-    names: {},
+    slid: {},
     projectName: "",
   };
 }
@@ -305,9 +310,11 @@ export function chooseDeletionFate(
   row: DeletionRow,
   fate: "goes" | "stays",
 ): DeletionChoice {
-  return row.kind === "code" || row.kind === "setup"
-    ? { ...choice, repoFates: { ...choice.repoFates, [row.id]: fate } }
-    : { ...choice, fates: { ...choice.fates, [row.id]: fate } };
+  if (row.kind === "code" || row.kind === "setup")
+    return { ...choice, repoFates: { ...choice.repoFates, [row.id]: fate } };
+  const slid = { ...choice.slid };
+  if (fate === "stays") delete slid[row.id];
+  return { ...choice, fates: { ...choice.fates, [row.id]: fate }, slid };
 }
 
 /** A failed deletion's recorded steps are the only source of its next choice. */
@@ -333,7 +340,7 @@ export function deletionChoiceAgain(
   return {
     fates,
     repoFates,
-    names: {},
+    slid: {},
     projectName: "",
     codeAgain: { hasStep: code !== undefined, keeps: code?.keeps ?? [] },
   };
@@ -382,12 +389,10 @@ export function deletionReview(input: {
       kind === "production" && !madeByMate ? true : deletable && name !== undefined;
     const defaultFate = kind === "stage" && switchable ? "goes" : "stays";
     const fate = switchable ? (choice.fates[id] ?? defaultFate) : "stays";
-    const askName =
+    const needsSlide =
       fate === "goes" &&
       name !== undefined &&
-      (kind === "plain" || (kind === "production" && madeByMate))
-        ? name
-        : undefined;
+      (kind === "plain" || (kind === "production" && madeByMate));
     const letsGo = kind === "production" && !madeByMate && fate === "goes";
     const line = !switchable
       ? name === undefined
@@ -417,9 +422,18 @@ export function deletionReview(input: {
       switchable,
       line,
       summary,
-      ...(askName === undefined ? {} : { askName }),
-      ...(askName !== undefined && kind === "production"
-        ? { warning: productionDeletionWords(askName).warning }
+      ...(needsSlide
+        ? {
+            slide: {
+              label: `Slide to delete ${title}`,
+              confirmedLabel: `${title} goes`,
+              missing: `Slide ${title} to confirm it goes.`,
+              confirmed: choice.slid[id] === true,
+            },
+          }
+        : {}),
+      ...(needsSlide && kind === "production" && name !== undefined
+        ? { warning: productionDeletionWords(name).warning }
         : {}),
     });
   };
@@ -571,10 +585,7 @@ export function deletionReview(input: {
         : "Open changes in the repositories that go",
     );
   const holders = otherHolders(project, mate?.projectId);
-  const asked = gone.find(
-    (row) =>
-      row.askName !== undefined && !deleteMateConfirmed(choice.names[row.id] ?? "", row.askName),
-  );
+  const asked = gone.find((row) => row.slide !== undefined && !row.slide.confirmed);
   const missing =
     holders.placements.length > 0 || holders.births.length > 0
       ? "A Mate still works on this project. Delete it first."
@@ -582,8 +593,8 @@ export function deletionReview(input: {
         ? "Reading what HQ holds."
         : gone.length === 0
           ? "Nothing is set to go."
-          : asked?.askName !== undefined
-            ? `Type ${asked.askName} to confirm it goes.`
+          : asked?.slide !== undefined
+            ? asked.slide.missing
             : null;
   const names = Object.fromEntries(
     [
@@ -856,6 +867,5 @@ export function deletionPageWords(name: string) {
     goes: "Goes",
     stays: "Stays",
     holdingsReading: "Reading what HQ holds",
-    whose: "the project's",
   };
 }

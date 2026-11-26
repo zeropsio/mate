@@ -33,11 +33,11 @@ export default definePlayground({
   controls: {
     label: { kind: "text", note: "what sliding deletes; also the slider's name" },
     confirmedLabel: { kind: "text", note: "what the filled track says" },
-    locked: { kind: "boolean", note: "held until something else is done first" },
+    locked: { kind: "boolean", note: "held while a deletion start is pending" },
   },
   initial: {
-    label: "Slide to delete Stage shop-stage",
-    confirmedLabel: "Stage shop-stage will be deleted",
+    label: "Slide to delete Production shop-live",
+    confirmedLabel: "Production shop-live goes",
     locked: false,
   },
   render: ({ label, confirmedLabel, locked }) => (
@@ -58,9 +58,9 @@ export default definePlayground({
     ),
   usage: {
     do: [
-      "Give each environment a deletion takes its own slide, above the name field.",
-      "Keep the dialog's Delete shut until every slide is confirmed.",
-      "Lock a Production's slide until its name is typed, and clear it when the name stops matching.",
+      "Give each part whose own data is deleted its own slide beneath its row.",
+      "Keep Delete shut until every required slide is confirmed.",
+      "Lock the slide while the deletion start is pending and clear it if the part is set to stay.",
     ],
     dont: [
       "Use it for a value along a range: that is a Slider.",
