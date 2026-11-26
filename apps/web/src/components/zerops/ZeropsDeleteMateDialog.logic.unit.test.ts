@@ -20,8 +20,40 @@ it("MN94: The field that asks a name typed is pressed by 'Type <name> to confirm
     { typed: "  sample-name  ", matches: true },
   ] as const;
   for (const { typed, matches } of cases) {
-    const words = confirmNameWords({ name: "sample-name", whose: "the project's", typed });
-    expect(words.matches).toBe(matches);
+    const words = confirmNameWords({ name: "sample-name", typed });
+    expect(words.state === "matches").toBe(matches);
     expect(words.label).toBe("Type sample-name to confirm");
+  }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | if (input.hold != null) → if (input.hold != null && input.typed === "")
+it("MN106: The name block says exactly one state: nothing typed, not the same yet, matching but held by what else is missing, or matching; breaks: the block reads Matches while Delete is closed, or the hold is said twice.", () => {
+  const cases = [
+    {
+      typed: "",
+      hold: "Slide Production live to confirm it goes.",
+      state: "empty",
+      line: "Capitals, spaces and dashes count.",
+    },
+    {
+      typed: "sample",
+      hold: null,
+      state: "differs",
+      line: "Not the same yet: capitals, spaces and dashes count.",
+    },
+    {
+      typed: "sample-name",
+      hold: "Slide Production live to confirm it goes.",
+      state: "held",
+      line: "Slide Production live to confirm it goes.",
+    },
+    { typed: "sample-name", hold: null, state: "matches", line: "Matches" },
+  ] as const;
+  for (const { typed, hold, state, line } of cases) {
+    expect(confirmNameWords({ name: "sample-name", typed, hold })).toEqual({
+      label: "Type sample-name to confirm",
+      state,
+      line,
+    });
   }
 });

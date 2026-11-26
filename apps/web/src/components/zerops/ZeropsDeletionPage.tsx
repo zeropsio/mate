@@ -36,6 +36,7 @@ import { LogoTile } from "~/components/ui/logo-tile";
 import { PageHeader } from "~/components/ui/page-header";
 import { Row } from "~/components/ui/row";
 import { Section } from "~/components/ui/section";
+import { SlideConfirm } from "~/components/ui/slide-confirm";
 import { StepNumber, type StepNumberState } from "~/components/ui/step-number";
 import { Text } from "~/components/ui/text";
 import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
@@ -112,7 +113,7 @@ export function ZeropsDeletionPage({
   readonly initial?: DeletionChoice | undefined;
 }) {
   const [choice, setChoice] = useState<DeletionChoice>(
-    () => initial ?? { fates: {}, repoFates: {}, names: {}, projectName: "" },
+    () => initial ?? { fates: {}, repoFates: {}, slid: {}, projectName: "" },
   );
   const page = deletionPageWords("project" in state ? state.project.name : "");
   if (state.kind === "reading") return <Loading label={page.reading} shape="words" />;
@@ -254,20 +255,20 @@ export function ZeropsDeletionPage({
         line={row.line}
         title={row.title}
       />
-      {row.askName === undefined ? null : (
+      {row.slide === undefined ? null : (
         <div className="flex flex-col gap-3 ps-14 pe-4 pb-4">
           {row.warning === undefined ? null : (
             <Text render={<p />} variant="description">
               {row.warning}
             </Text>
           )}
-          <ZeropsConfirmName
-            name={row.askName}
-            whose={row.kind === "plain" ? "the Zerops project's" : "the Production's"}
-            typed={choice.names[row.id] ?? ""}
-            pending={pending}
-            onTyped={(value) =>
-              setChoice((held) => ({ ...held, names: { ...held.names, [row.id]: value } }))
+          <SlideConfirm
+            label={row.slide.label}
+            confirmedLabel={row.slide.confirmedLabel}
+            confirmed={row.slide.confirmed}
+            locked={pending}
+            onConfirmedChange={(confirmed) =>
+              setChoice((held) => ({ ...held, slid: { ...held.slid, [row.id]: confirmed } }))
             }
           />
         </div>
@@ -324,33 +325,34 @@ export function ZeropsDeletionPage({
               </Fact>
             </Facts>
           </Card>
-          <ZeropsConfirmName
-            hold={review.missing}
-            name={project.name}
-            onTyped={(projectName) => setChoice((held) => ({ ...held, projectName }))}
-            pending={pending}
-            typed={choice.projectName}
-            whose={page.whose}
-          />
-          {error === null ? null : <Failure cause={error} role="alert" size="line" />}
-          <div className="flex items-center justify-end gap-3">
-            {review.missing === null ? null : <Text variant="note">{review.missing}</Text>}
-            <Button onClick={onCancel} type="button" variant="ghost">
-              {page.cancel}
-            </Button>
-            <Button
-              aria-busy={pending || undefined}
-              data-zerops-surface="delete-page-confirm"
-              disabled={!review.ready || pending}
-              onClick={() => {
-                if (review.ready && !pending) onConfirm(review);
-              }}
-              type="button"
-              variant="destructive"
-            >
-              {pending ? MATE_DELETING_WORD : review.submit}
-            </Button>
-          </div>
+          <Card size="md" variant="flat">
+            <ZeropsConfirmName
+              hold={review.missing}
+              name={project.name}
+              onTyped={(projectName) => setChoice((held) => ({ ...held, projectName }))}
+              pending={pending}
+              subject="project"
+              typed={choice.projectName}
+            />
+            {error === null ? null : <Failure cause={error} role="alert" size="line" />}
+            <div className="flex items-center justify-end gap-3">
+              <Button onClick={onCancel} type="button" variant="ghost">
+                {page.cancel}
+              </Button>
+              <Button
+                aria-busy={pending || undefined}
+                data-zerops-surface="delete-page-confirm"
+                disabled={!review.ready || pending}
+                onClick={() => {
+                  if (review.ready && !pending) onConfirm(review);
+                }}
+                type="button"
+                variant="destructive"
+              >
+                {pending ? MATE_DELETING_WORD : review.submit}
+              </Button>
+            </div>
+          </Card>
         </div>
       </Section>
     </div>

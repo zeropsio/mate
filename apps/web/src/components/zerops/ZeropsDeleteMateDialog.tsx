@@ -83,8 +83,8 @@ export function ZeropsDeleteMateForm({
             name={name}
             onTyped={setTyped}
             pending={pending}
+            subject="Mate"
             typed={typed}
-            whose="the Mate's"
           />
           {error === null ? null : <Failure cause={error} role="alert" size="line" />}
         </div>

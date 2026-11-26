@@ -2,7 +2,7 @@ import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { KeptGitQuestions } from "./KeptGitQuestions";
 import { menuMateKeys, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
-import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
+import { useOrgOffers } from "../../zerops/useHqOffers";
 import { useCodeStandings } from "../../zerops/useCodeStandings";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useNavigate } from "@tanstack/react-router";
@@ -273,6 +273,7 @@ import {
   groupMateOrder,
   groupRowPress,
   heldOrder,
+  projectMateOffers,
   projectRowKey,
   projectRowKind,
   viewerMates,
@@ -958,7 +959,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   };
   // Whether *Add stage* and *Put it live* stand in a project's menu (`applicationEnvironments`).
   const environmentFacts = useApplicationEnvironmentFacts();
-  const addMateOffer = useAddMateOffer();
   const orgOffer = useOrgOffers();
   const codeStandings = useCodeStandings();
   const navigate = useNavigate();
@@ -2353,6 +2353,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             },
       ),
     );
+    const door = addMateDoor(group.groupId);
+    const mateOffers = projectMateOffers({
+      door,
+      automatedMates: onAddAutomatedMates !== undefined,
+    });
     return projectHeadingMenu({
       collapsed: fold?.open === false,
       onToggle: fold?.toggle,
@@ -2374,19 +2379,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : undefined,
       // Offered, or — refused to a person who works with a Mate here — drawn disabled with whom
       // to ask; a person who only reads sees none (`addMateDoor`).
-      onAddMate:
-        addMateDoor(group.groupId).kind === "offered" || addMateDoor(group.groupId).kind === "off"
-          ? () => {
-              onAddMate?.(group.groupId);
-            }
-          : undefined,
+      onAddMate: mateOffers.newMate
+        ? () => {
+            onAddMate?.(group.groupId);
+          }
+        : undefined,
       onAddAutomatedMates:
-        onAddAutomatedMates !== undefined && addMateOffer(group.groupId).kind === "allowed"
+        mateOffers.automatedMates && onAddAutomatedMates !== undefined
           ? () => {
               onAddAutomatedMates(group.groupId);
             }
           : undefined,
-      addMateWhy: ((door) =>
+      addMateWhy:
         door.kind === "off"
           ? door.why
           : addMateGate({
@@ -2394,7 +2398,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               environments:
                 orderedGroups.find((entry) => entry.group.groupId === group.groupId)
                   ?.environments ?? [],
-            }))(addMateDoor(group.groupId)),
+            }),
       onOpen:
         onOpenGroup === undefined
           ? onBrowseProjects

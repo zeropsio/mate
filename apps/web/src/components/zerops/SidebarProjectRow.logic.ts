@@ -11,6 +11,19 @@
  * Pure: no React, no store, no clock.
  */
 
+import type { AddMateDoor } from "../../zerops/addMateDoor";
+
+/** The project's own menu keeps the viewer's Add door and offers automation where HQ makes it. */
+export function projectMateOffers(input: {
+  readonly door: AddMateDoor;
+  readonly automatedMates: boolean;
+}): { readonly newMate: boolean; readonly automatedMates: boolean } {
+  return {
+    newMate: input.door.kind === "offered" || input.door.kind === "off",
+    automatedMates: input.door.kind === "offered" && input.automatedMates,
+  };
+}
+
 /** What a project is in the menu: one Mate's row, a group of Mates, or a project with none. */
 type ProjectRowKind = "solo" | "group" | "bare";
 

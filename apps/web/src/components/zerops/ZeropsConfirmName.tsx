@@ -1,21 +1,19 @@
 /**
- * The one field that asks a name typed before something is deleted. The exact text to type stands
- * on a line of its own above the field (`CopyLine`): its edge shows where the name starts and ends,
- * spaces and dots included, and its Copy takes it whole. Under the field, one line says whether
- * what is typed matches, or what still holds Delete (`hold`).
+ * The one field that asks a name typed before something is deleted. The exact, copyable name is
+ * set in the sentence; under the field one line says its state or what else holds Delete.
  */
+import { CheckIcon } from "lucide-react";
 import { useId } from "react";
 
 import { Badge } from "~/components/ui/badge";
-import { CopyLine } from "~/components/ui/copy-line";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
+import { CopyButton } from "~/components/ui/copy-button";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
 import { Text } from "~/components/ui/text";
 import { confirmNameWords } from "./ZeropsDeleteMateDialog.logic";
 
 export function ZeropsConfirmName({
   name,
-  whose,
+  subject,
   typed,
   onTyped,
   pending,
@@ -23,50 +21,55 @@ export function ZeropsConfirmName({
   autoFocus = false,
 }: {
   readonly name: string;
-  /** "the Mate's", "the project's", "the Production's". */
-  readonly whose: string;
+  readonly subject: "project" | "Mate";
   readonly typed: string;
   readonly onTyped: (typed: string) => void;
   readonly pending: boolean;
-  /** What else holds Delete once the name matches ("Slide each Stage to confirm."); `null`: nothing. */
+  /** What else holds Delete once the name matches (for example, an unslid Production); null: nothing. */
   readonly hold?: string | null;
   readonly autoFocus?: boolean;
 }) {
   const id = useId();
-  const words = confirmNameWords({ name, whose, typed });
+  const words = confirmNameWords({ name, typed, hold: hold ?? null });
   return (
     <div className="flex flex-col gap-1.5" data-zerops-surface="confirm-name">
-      <Label htmlFor={`${id}-name`}>{words.ask}</Label>
-      <div className="flex">
-        <CopyLine label={words.copyLabel} value={name} />
-      </div>
-      <Input
-        aria-describedby={`${id}-hint`}
-        aria-label={words.label}
-        autoComplete="off"
-        autoFocus={autoFocus}
-        id={`${id}-name`}
-        onChange={(event) => {
-          onTyped(event.target.value);
-        }}
-        readOnly={pending}
-        spellCheck={false}
-        value={typed}
-      />
+      <Text render={<p />} variant="description">
+        Type{" "}
+        <Text chip className="whitespace-pre-wrap" variant="code">
+          {name}
+        </Text>{" "}
+        <CopyButton label={`the name ${name}`} value={name} /> to delete this {subject}.
+      </Text>
+      <InputGroup>
+        <InputGroupInput
+          aria-describedby={`${id}-hint`}
+          aria-label={words.label}
+          autoComplete="off"
+          autoFocus={autoFocus}
+          id={`${id}-name`}
+          onChange={(event) => {
+            onTyped(event.target.value);
+          }}
+          readOnly={pending}
+          spellCheck={false}
+          value={typed}
+        />
+        {words.state === "held" || words.state === "matches" ? (
+          <InputGroupAddon align="inline-end">
+            <CheckIcon aria-hidden="true" className="text-status-ok-text" />
+          </InputGroupAddon>
+        ) : null}
+      </InputGroup>
       <div aria-live="polite" className="flex min-h-5 items-center" id={`${id}-hint`}>
-        {words.matches ? (
-          hold === undefined || hold === null ? (
-            <Text variant="note">
-              <Badge dot tone="success">
-                {words.match}
-              </Badge>
-            </Text>
+        <Text variant="note">
+          {words.state === "matches" ? (
+            <Badge dot tone="success">
+              {words.line}
+            </Badge>
           ) : (
-            <Text variant="note">{hold}</Text>
-          )
-        ) : (
-          <Text variant="note">{words.hint}</Text>
-        )}
+            words.line
+          )}
+        </Text>
       </div>
     </div>
   );

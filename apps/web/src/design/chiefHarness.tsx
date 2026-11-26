@@ -146,7 +146,7 @@ function Harness() {
             <>
               <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
-              <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />
+              <SidebarCreateButton onNewProject={() => {}} />
             </>
           }
         />
