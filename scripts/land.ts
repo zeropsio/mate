@@ -14,9 +14,8 @@
  * exits non-zero and has pushed nothing unless its reason says the push may have landed. The line
  * before the last one is `land: waited <s> s, held the lock <s> s`. Everything else goes to
  * stderr. Only `conflict` and `gate` are fixed by changing the branch's code: a lander reads the
- * class to decide whether the builder gets the refusal back. A landing whose lists' delta differs
- * from `--sentences` is refused `sentences`; the lander passes the ids its card names (`node
- * scripts/land.ts --sentences PJ12,PJ+1`), the sentences it adds by their lane-local ids.
+ * class to decide whether the builder gets the refusal back. The branch's sentence diff is the
+ * source of its ids; no report line participates in the landing's verdict.
  *
  * Main is as safe as a gate under the lock: every stage either runs under the lock on the tree that
  * is pushed, or ran in this same process on a tree that differs from it in no file the stage reads.
@@ -41,16 +40,6 @@
  * so the one made before the lock on a base `main` still is, is the one the lock would make; once
  * `main` moved, it is made again on the new base. When the landing does not land, its branch is
  * reset to its own rebased commit, so a branch never carries numbers a landing made.
- *
- * `--onto whole/<name>` lands on a whole's branch instead of `main`: several changes that reach
- * `main` together (one push, one CI run, one release). The branch is made from `origin/main` by the
- * whole's first landing and is append-only until its close: a later landing rebases its own
- * commits onto the branch head, never onto a `main` that moved, and fast-forwards the branch with a
- * lease on the head it saw. A moved `main` is met once, at the close, where the branch is rebased
- * and gated as one ordinary landing. It numbers nothing and gates by the branch rule: `main`'s
- * landings alone give final ids, so the whole keeps its lane-local ids (unique within its lists by
- * the branch rule) until the branch itself lands on `main` as one ordinary landing, which numbers
- * them all, naming every id the whole adds. Its last line is `LANDED <tip> on whole/<name>`.
  *
  * The process runs the `land.ts` and `scripts/` modules it loaded before any rebase. When a rebase
  * (before the lock or under it) changes one of them, this attempt ends as a refusal does (the
@@ -89,14 +78,12 @@ const verifyNiceness = "5";
  * (HEAD adds nothing to origin/main), `pin` (the mate-hq pin is unreadable or not on HQ main),
  * `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed), `contention`
  * (main kept moving while it held the lock), `interrupted` (SIGINT/SIGTERM), `lock` (the landing
- * lock names no holder, so no landing made it), `sentences` (the lists' delta differs from the ids
- * named by `--sentences`, which the branch's code does not fix), `error` (anything unexpected, an
+ * lock names no holder, so no landing made it), `error` (anything unexpected, an
  * unknown argument included).
  */
 type RefusalClass =
   | "conflict"
   | "gate"
-  | "sentences"
   | "branch"
   | "empty"
   | "pin"
@@ -143,9 +130,7 @@ class Rebased extends Error {
 
 type Holder = { readonly pid: number; readonly started: string };
 
-/** The branch a landing pushes: `main`, or a whole's `whole/<name>` (`--onto`). */
-let target = "main";
-const toWhole = () => target !== "main";
+const target = "main";
 
 let current: NodeChildProcess.ChildProcess | undefined;
 /** The rebased `scripts/land.ts` running in this process's place (`runRebased`). */
@@ -426,19 +411,10 @@ function leaveQueue(): void {
     NodeFS.rmSync(queueFile(queue, n), { force: true });
 }
 
-/**
- * The early conflict probe: whether `own` merges with the local ref it will land on (the whole's
- * branch when it exists on origin, else `origin/main`, as `wholeBase` picks), read without a fetch;
- * refuses `conflict` when it does not. Probes again only when the ref moved; returns the sha it
- * probed.
- */
+/** The early conflict probe reads origin/main without a fetch and repeats only when it moves. */
 async function probe(root: string, own: string, probed: string | undefined) {
-  let name = toWhole() ? target : "main";
-  let base = await git(["rev-parse", "-q", "--verify", `refs/remotes/origin/${name}`], root);
-  if (base.status !== 0 && toWhole()) {
-    name = "main";
-    base = await git(["rev-parse", "-q", "--verify", "refs/remotes/origin/main"], root);
-  }
+  const name = "main";
+  const base = await git(["rev-parse", "-q", "--verify", "refs/remotes/origin/main"], root);
   if (base.status !== 0 || base.stdout === probed) return probed;
   const merge = await git(
     ["merge-tree", "--write-tree", "--name-only", "--no-messages", base.stdout, own],
@@ -546,11 +522,10 @@ function resetOwnSync(): void {
   process.stderr.write(`land: the branch is back on ${sha}, its own rebased commit\n`);
 }
 
-/** Rebases HEAD onto `base`; with `upstream`, only the commits after it (`git rebase --onto`). */
-async function rebaseOnto(root: string, base: string, upstream?: string): Promise<void> {
+/** Rebases HEAD onto `base`. */
+async function rebaseOnto(root: string, base: string): Promise<void> {
   rebasing = true;
-  const args = upstream === undefined ? [base] : ["--onto", base, upstream];
-  const rebase = await run("git", ["rebase", "-q", ...args], { cwd: root });
+  const rebase = await run("git", ["rebase", "-q", base], { cwd: root });
   if (rebase.status === 0) {
     rebasing = false;
     return;
@@ -566,40 +541,9 @@ async function rebaseOnto(root: string, base: string, upstream?: string): Promis
     : new Refusal("git", `rebase onto origin/${target} failed`);
 }
 
-/** What a landing saw of origin: `main`'s head and, onto a whole, its branch's head (none yet: undefined). */
-type Seen = { readonly main: string; readonly branch: string | undefined };
-
-const sameSeen = (left: Seen, right: Seen) =>
-  left.main === right.main && left.branch === right.branch;
-
-/** The whole's branch head on origin, fetched into its remote-tracking ref; undefined when it has none. */
-async function fetchBranch(root: string): Promise<string | undefined> {
-  const listed = await gitOk(
-    ["ls-remote", "--heads", "origin", `refs/heads/${target}`],
-    `git ls-remote of ${target} failed`,
-    root,
-  );
-  if (listed === "") return undefined;
-  await gitOk(
-    ["fetch", "-q", "origin", `+refs/heads/${target}:refs/remotes/origin/${target}`],
-    `git fetch origin ${target} failed`,
-    root,
-  );
-  return gitOk(
-    ["rev-parse", `refs/remotes/origin/${target}`],
-    `origin/${target} unavailable`,
-    root,
-  );
-}
-
-/**
- * The commit a landing onto a whole goes on: the branch's head once it exists on origin, `main`
- * while it does not. The branch is append-only until its close, so a landing never takes `main`'s
- * newer commits into it.
- */
-function wholeBase(seen: Seen): string {
-  return seen.branch ?? seen.main;
-}
+/** What a landing saw of origin. */
+type Seen = { readonly main: string };
+const sameSeen = (left: Seen, right: Seen) => left.main === right.main;
 
 /** Checks that a mate-hq checkout is set and fetches its main. */
 async function fetchHq(): Promise<string> {
@@ -670,9 +614,8 @@ function remoteHas(root: string, sha: string): boolean | undefined {
   return ancestor.status === 0 ? true : ancestor.status === 1 ? false : undefined;
 }
 
-/** The last line of a landing that landed `tip`: onto a whole it names the branch. */
-const landedLine = (tip: string) =>
-  toWhole() ? `LANDED ${tip} on ${target}\n` : `LANDED ${tip}\n`;
+/** The last line of a landing that landed `tip`. */
+const landedLine = (tip: string) => `LANDED ${tip}\n`;
 
 /**
  * The outcome of a landing stopped with `kind`: once the push has started, `LANDED` when origin's
@@ -725,45 +668,15 @@ async function numberLanding(root: string, sha: string): Promise<string> {
   return gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
 }
 
-const usage = "usage: node scripts/land.ts [--sentences <id>[,<id>…]] [--onto whole/<name>]";
+const usage = "usage: node scripts/land.ts";
 
-/** The sentence ids the landing names (no `--sentences` names none) and its target branch. */
-function readArgs(args: ReadonlyArray<string>): {
-  readonly named: ReadonlySet<string>;
-  readonly onto: string;
-} {
-  let named: ReadonlySet<string> | undefined;
-  let onto: string | undefined;
-  for (let at = 0; at < args.length; at += 2) {
-    const [flag, value] = [args[at], args[at + 1]];
-    if (flag === "--sentences" && named === undefined && value !== undefined) {
-      const ids = value.split(",");
-      if (!ids.every((id) => /^[A-Z]{2,4}\+?(?:0|[1-9]\d*)$/u.test(id)))
-        throw new Refusal("error", usage);
-      named = new Set(ids);
-    } else if (
-      flag === "--onto" &&
-      onto === undefined &&
-      value !== undefined &&
-      /^whole\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value)
-    ) {
-      onto = value;
-    } else throw new Refusal("error", usage);
-  }
-  return { named: named ?? new Set(), onto: onto ?? "main" };
+/** A landing reads its sentence ids from the tree and takes no arguments. */
+export function landingArguments(args: ReadonlyArray<string>): void {
+  if (args.length !== 0) throw new Refusal("error", usage);
 }
 
-/**
- * Judges the branch's unnumbered tree against `base`: refuses `gate` when its lists break the
- * branch rule (a final id, a moved `next:` line), so the numbered tip's gate (`--landing`, the
- * landing rule) only ever sees numbers this landing wrote; refuses `sentences` unless the delta is
- * exactly the named ids.
- */
-async function requireSentences(
-  root: string,
-  named: ReadonlySet<string>,
-  base: string,
-): Promise<void> {
+/** Judges the branch's sentence lists before numbering them. */
+async function requireSentences(root: string, base: string): Promise<void> {
   const change = (await import("./check-sentences.ts")).sentenceDelta(root, base);
   if (change.problems.length > 0) {
     for (const problem of change.problems) process.stderr.write(`${problem}\n`);
@@ -772,14 +685,6 @@ async function requireSentences(
       `the branch's sentence lists break the branch rule: ${change.problems.join("; ")}`,
     );
   }
-  const delta = new Set(change.ids);
-  if (delta.size === named.size && [...delta].every((id) => named.has(id))) return;
-  for (const line of change.lines) process.stderr.write(`${line}\n`);
-  const sorted = (ids: ReadonlySet<string>) => [...ids].toSorted().join(", ");
-  throw new Refusal(
-    "sentences",
-    `sentences differ: named [${sorted(named)}], delta [${sorted(delta)}]`,
-  );
 }
 
 /**
@@ -829,38 +734,29 @@ type Verified = {
 
 /**
  * Verifies the checked-out commit on what it saw of origin: rebase, sentence delta, mate-hq pin,
- * numbering (onto `main` only), dependencies, gate. Before the lock (`passed` undefined) the gate
- * runs whole under `nice`; holding it, it runs with `--passed`, the tip this landing's gate passed
- * before, and onto a whole HEAD's own commits after `upstream` are rebased (the append-only
- * branch may have gained other landings since).
+ * numbering, dependencies, gate. Before the lock (`passed` undefined) the gate runs whole under
+ * `nice`; holding it, it runs with `--passed`, the tip this landing's gate passed before.
  */
-async function verify(
-  root: string,
-  seen: Seen,
-  named: ReadonlySet<string>,
-  passed: string | undefined,
-  upstream?: string,
-): Promise<Verified> {
-  const base = toWhole() ? wholeBase(seen) : seen.main;
-  await rebaseOnto(root, base, upstream);
+async function verify(root: string, seen: Seen, passed: string | undefined): Promise<Verified> {
+  const base = seen.main;
+  await rebaseOnto(root, base);
   const own = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
   if (own === base) throw new Refusal("empty", `HEAD adds nothing to origin/${target}`);
   ownCommit = { root, sha: own };
   await requireOwnCode(root, own);
   await requireInstalledDependencies(root);
-  await requireSentences(root, named, base);
+  await requireSentences(root, base);
   requirePin(root, await fetchHq(), base);
-  // Onto a whole nothing is numbered: the whole's own landing on `main` numbers its ids.
-  const tip = toWhole() ? own : await numberLanding(root, own);
+  const tip = await numberLanding(root, own);
   // A worker can write this worktree's receipt and the shared stage cache, so a landing's gate
-  // reuses neither: `--full`. A tip onto `main` carries the numbers this landing wrote after
-  // `requireSentences` judged the branch by the branch rule: `--landing`; a whole's keeps the rule.
+  // reuses neither: `--full`. The tip carries the numbers this landing wrote after
+  // `requireSentences` judged the branch by the branch rule: `--landing`.
   const gate = [
     NodePath.join(root, "scripts/gate-changed.ts"),
     "--base",
     base,
     "--full",
-    ...(toWhole() ? [] : ["--landing"]),
+    "--landing",
   ];
   const result =
     passed === undefined
@@ -888,8 +784,7 @@ async function verify(
 
 /** Lands this worktree's HEAD: verified before the lock, pushed holding it. */
 async function land(args: ReadonlyArray<string>): Promise<string> {
-  const { named, onto } = readArgs(args);
-  target = onto;
+  landingArguments(args);
   const root = await gitOk(["rev-parse", "--show-toplevel"], "not inside a git worktree");
   const clean = async () =>
     (await gitOk(["status", "--porcelain", "--untracked-files=no"], "git status failed", root)) ===
@@ -913,7 +808,7 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
       "origin/main unavailable",
       root,
     );
-    return { main, branch: toWhole() ? await fetchBranch(root) : undefined };
+    return { main };
   };
   const first = await fetchSeen();
   if (
@@ -921,7 +816,7 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
     ""
   )
     throw new Refusal("branch", "HEAD has merge commits; rebase it onto origin/main instead");
-  let verified = await verify(root, first, named, undefined);
+  let verified = await verify(root, first, undefined);
 
   // Waiting for another landing is no hung landing: the wait is unbounded.
   const lock = NodePath.join(common, "land.lock");
@@ -952,30 +847,15 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
         `land: origin/${target} moved since the gate passed ${verified.tip}; gating what it changed\n`,
       );
       await reset(root, verified.own);
-      verified = await verify(
-        root,
-        seen,
-        named,
-        verified.tip,
-        toWhole() ? verified.base : undefined,
-      );
+      verified = await verify(root, seen, verified.tip);
     } else if (refusedPush) {
       throw new Refusal("git", `git push to origin ${target} failed`);
     }
     const tip = verified.tip;
     pushing = { root, sha: tip };
-    // Onto a whole the push fast-forwards the branch: the lease on the head this landing saw
-    // (none: the branch must not exist yet) keeps any other push from being lost.
-    const lease = toWhole()
-      ? [`--force-with-lease=refs/heads/${target}:${verified.seen.branch ?? ""}`]
-      : [];
-    const push = await run(
-      "git",
-      ["push", "-q", ...lease, "origin", `${tip}:refs/heads/${target}`],
-      {
-        cwd: root,
-      },
-    );
+    const push = await run("git", ["push", "-q", "origin", `${tip}:refs/heads/${target}`], {
+      cwd: root,
+    });
     if (push.status === 0 || remoteHas(root, tip) === true) {
       ownCommit = undefined;
       return tip;
@@ -1035,7 +915,9 @@ function runRebased(rebased: Rebased): void {
   });
 }
 
-if (import.meta.main) {
+if (import.meta.main && process.argv.length === 3 && process.argv[2] === "--help") {
+  console.log(usage);
+} else if (import.meta.main) {
   process.on("exit", leaveQueue);
   process.on("exit", releaseLock);
   for (const [signal, code] of [

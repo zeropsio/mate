@@ -1086,24 +1086,6 @@ function stageHashes(
   );
 }
 
-/**
- * The repository checks every diff runs, each named as its step in CI's `Check Guards` job and
- * running the same command, so a push never meets one of them first in CI. CI keeps its steps: it
- * is the clean-machine witness the release reads.
- */
-const ciGuardStages: ReadonlyArray<GateStage> = [
-  { name: "imported lock", command: "node", args: ["scripts/imported-lock.ts", "--check"] },
-  { name: "showcase scenes", command: "node", args: ["scripts/showcase-scenes.ts", "--check"] },
-  { name: "css motion", command: "node", args: ["scripts/check-css-motion.ts"] },
-  { name: "css theme tokens", command: "node", args: ["scripts/check-css-tokens.ts"] },
-  {
-    name: "generated theme tokens",
-    command: "node",
-    args: ["scripts/generate-theme-tokens.ts", "--check"],
-  },
-  { name: "doc paths", command: "node", args: ["scripts/check-doc-paths.ts"] },
-];
-
 const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
 // A stage is reused only when its fingerprint covers every input its verdict reads; a stage whose
 // inputs the gate cannot name without repeating the stage always runs, and is never taken from or
@@ -1114,7 +1096,12 @@ const alwaysRunStages = new Set([
   "unit witness replay",
   "sentences",
   "check touched files",
-  ...ciGuardStages.map((stage) => stage.name),
+  "imported lock",
+  "showcase scenes",
+  "css motion",
+  "css theme tokens",
+  "generated theme tokens",
+  "doc paths",
 ]);
 // The stages that cost seconds and fail most often: one ending red stops every stage still
 // running, so a landing holds its lock for seconds, not for the slowest stage, to report a red
@@ -1568,7 +1555,211 @@ export function stageInputSets(
       ),
     ),
   );
+  sets.set(
+    "workflow schema",
+    new Set(universe.filter((path) => /^\.github\/workflows\/.*\.ya?ml$/u.test(path))),
+  );
+  const releaseScripts = [
+    "scripts/release-smoke.ts",
+    "scripts/update-release-package-versions.ts",
+    "scripts/resolve-nightly-release.ts",
+    "scripts/merge-update-manifests.ts",
+  ];
+  const installInputs = universe.filter(
+    (path) =>
+      packageManifest(path) ||
+      path.startsWith("patches/") ||
+      [".npmrc", ".pnpmfile.cjs"].includes(path),
+  );
+  sets.set(
+    "release smoke",
+    new Set([...installInputs, ...graph.files.inputFiles(releaseScripts, universe)]),
+  );
+  sets.set("lockfile policy", new Set(installInputs));
+  sets.set(
+    "package shells",
+    new Set(
+      universe.filter(
+        (path) => path.startsWith("packages/ssh/") || path.startsWith("packages/tailscale/"),
+      ),
+    ),
+  );
+  sets.set("PR assets", new Set(universe.filter((path) => path.startsWith(".github/pr-assets/"))));
+  sets.set(
+    "resource monitor formatting",
+    new Set(universe.filter((path) => path.startsWith("native/resource-monitor/"))),
+  );
   return sets;
+}
+
+/** A stage is defined once here; CI runs this same definition with the full input scope. */
+type StageContext = {
+  readonly root: string;
+  readonly comparison: string | undefined;
+  readonly existing: ReadonlyArray<string>;
+  readonly packages: ReadonlyArray<GatePackage>;
+  readonly landing: boolean;
+  readonly ci: boolean;
+  readonly unitReplays: ReadonlyArray<string>;
+  readonly touched: ReadonlySet<string>;
+  readonly build: boolean;
+  readonly tests: boolean;
+};
+const nodeCheck = (name: string, script: string, args: string[] = []): GateStage => ({
+  name,
+  command: "node",
+  args: [script, ...args],
+});
+const scopedStage =
+  (name: string, make: (context: StageContext) => GateStage[]) =>
+  (context: StageContext): GateStage[] =>
+    context.ci || context.touched.has(name) ? make(context) : [];
+const buildStage =
+  (name: string, make: (context: StageContext) => GateStage[]) =>
+  (context: StageContext): GateStage[] =>
+    context.ci || (context.build && context.touched.has(name)) ? make(context) : [];
+const gateStageTable = {
+  "guard-ledgers": (c: StageContext): GateStage[] => [
+    nodeCheck(
+      "guard ledgers",
+      "scripts/check-guard-exceptions.ts",
+      c.ci ? [] : ["--base", c.comparison!],
+    ),
+  ],
+  "runtime-cycles": scopedStage(runtimeCycleStage, (c): GateStage[] => [
+    nodeCheck(
+      runtimeCycleStage,
+      "scripts/check-runtime-cycles.ts",
+      c.ci ? [] : ["--base", c.comparison!],
+    ),
+  ]),
+  sentences: (c: StageContext): GateStage[] => [
+    nodeCheck("sentences", "scripts/check-sentences.ts", [
+      ...(c.comparison ? ["--base", c.comparison] : []),
+      ...(c.landing ? ["--landing"] : []),
+    ]),
+  ],
+  "imported-lock": (): GateStage[] => [
+    nodeCheck("imported lock", "scripts/imported-lock.ts", ["--check"]),
+  ],
+  showcase: (): GateStage[] => [
+    nodeCheck("showcase scenes", "scripts/showcase-scenes.ts", ["--check"]),
+  ],
+  "css-motion": (): GateStage[] => [nodeCheck("css motion", "scripts/check-css-motion.ts")],
+  "css-tokens": (): GateStage[] => [nodeCheck("css theme tokens", "scripts/check-css-tokens.ts")],
+  "generated-tokens": (): GateStage[] => [
+    nodeCheck("generated theme tokens", "scripts/generate-theme-tokens.ts", ["--check"]),
+  ],
+  "doc-paths": (): GateStage[] => [nodeCheck("doc paths", "scripts/check-doc-paths.ts")],
+  t1: (): GateStage[] => [nodeCheck("t1", "scripts/t1.ts", ["--budget"])],
+  "unit-witness-replay": (c: StageContext): GateStage[] =>
+    c.ci
+      ? [nodeCheck("unit witness replay", "scripts/t1.ts", ["replay", process.env.T1_BASE ?? ""])]
+      : c.unitReplays.length
+        ? [nodeCheck("unit witness replay", "scripts/witness-replay.ts", [...c.unitReplays])]
+        : [],
+  files: (c: StageContext): GateStage[] =>
+    c.existing.length
+      ? [
+          {
+            name: "check touched files",
+            command: "vp",
+            args: ["check", "--no-error-on-unmatched-pattern", ...c.existing],
+          },
+        ]
+      : [],
+  typecheck: (c: StageContext): GateStage[] =>
+    c.packages
+      .filter((pkg) => pkg.typecheck)
+      .map((pkg) => ({
+        name: `typecheck ${pkg.name}`,
+        command: "vp",
+        args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
+        cwd: pkg.directory,
+      })),
+  "web-build": buildStage("build web client", (c): GateStage[] => [
+    deployedBuild(c.root, buildStages[0]!.stage),
+  ]),
+  "server-build": buildStage("pack server", (): GateStage[] => [buildStages[1]!.stage]),
+  "workflow-schema": scopedStage("workflow schema", (c): GateStage[] => [
+    {
+      name: "workflow schema",
+      command: "go",
+      args: [
+        "run",
+        "github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
+        "-shellcheck=",
+        "-pyflakes=",
+        ...NodeFS.readdirSync(NodePath.join(c.root, ".github/workflows"))
+          .filter((file) => /\.ya?ml$/u.test(file))
+          .map((file) => `.github/workflows/${file}`),
+      ],
+    },
+  ]),
+  "release-smoke": scopedStage("release smoke", (): GateStage[] => [
+    nodeCheck("release smoke", "scripts/release-smoke.ts"),
+  ]),
+  "lockfile-policy": scopedStage("lockfile policy", (): GateStage[] => [
+    {
+      name: "lockfile policy",
+      command: "vp",
+      args: ["install", "--frozen-lockfile", "--lockfile-only", "--ignore-scripts"],
+      env: {
+        PNPM_CONFIG_TRUST_LOCKFILE: "false",
+        PNPM_CONFIG_CACHE_DIR: NodePath.join(NodeOS.tmpdir(), `mate-lock-policy-${process.pid}`),
+      },
+    },
+  ]),
+  "package-shells": scopedStage("package shells", (): GateStage[] => [
+    nodeCheck("package shells", "-e", [
+      `const fs = require("node:fs"), cp = require("node:child_process"); if (cp.execFileSync("git", ["ls-files", "packages/ssh", "packages/tailscale"], {encoding:"utf8"}).trim() || fs.existsSync("packages/ssh") || fs.existsSync("packages/tailscale")) { console.error("packages/ssh and packages/tailscale were deleted at the freeze"); process.exit(1); }`,
+    ]),
+  ]),
+  "pr-assets": scopedStage("PR assets", (): GateStage[] => [
+    nodeCheck("PR assets", "-e", [
+      `const cp = require("node:child_process"); const files = cp.execFileSync("git", ["ls-files", ".github/pr-assets"], {encoding:"utf8"}).trim(); if (files) { console.error("PR evidence must be uploaded to GitHub, not committed:\\n" + files); process.exit(1); }`,
+    ]),
+  ]),
+  "rust-format": scopedStage("resource monitor formatting", (): GateStage[] => [
+    {
+      name: "resource monitor formatting",
+      command: "cargo",
+      args: ["fmt", "--manifest-path", "native/resource-monitor/Cargo.toml", "--", "--check"],
+    },
+  ]),
+  "rust-test": (c: StageContext): GateStage[] =>
+    c.ci || (c.tests && c.touched.has("resource monitor formatting"))
+      ? [
+          {
+            name: "resource monitor tests",
+            command: "cargo",
+            args: ["test", "--locked", "--manifest-path", "native/resource-monitor/Cargo.toml"],
+          },
+        ]
+      : [],
+} satisfies Record<string, (context: StageContext) => GateStage[]>;
+type StageId = keyof typeof gateStageTable;
+const requiredJobs = ["check", "check_types", "check_build", "check_guards", "t1"] as const;
+
+/** Every command in a required job must invoke one of the gate's own stages. */
+export function invalidCiSteps(workflow: string): string[] {
+  const parsed = parseYaml(workflow) as {
+    jobs?: Record<string, { steps?: Array<{ name?: string; run?: unknown }> }>;
+  };
+  return requiredJobs.flatMap((job) => {
+    const steps = parsed.jobs?.[job]?.steps;
+    if (!steps) return [`${job}: missing job or steps`];
+    return steps.flatMap((step) => {
+      if (step.run === undefined) return [];
+      const stage =
+        typeof step.run === "string"
+          ? /^node scripts\/gate-changed\.ts --stage ([a-z0-9-]+)$/u.exec(step.run.trim())?.[1]
+          : undefined;
+      return stage && Object.hasOwn(gateStageTable, stage)
+        ? []
+        : [`${job}: ${step.name ?? "unnamed run"}`];
+    });
+  });
 }
 
 export function selectGateSteps(
@@ -1603,52 +1794,20 @@ export function selectGateSteps(
   },
 ) {
   const { workspace, units, related } = graph;
-  const packages = typecheckPackages(paths, workspace);
-  const steps: GateStage[] = [];
-  steps.push({
-    name: "guard ledgers",
-    command: "node",
-    args: ["scripts/check-guard-exceptions.ts", "--base", comparison],
-  });
-  if (touched.has(runtimeCycleStage))
-    steps.push({
-      name: runtimeCycleStage,
-      command: "node",
-      args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
-    });
-  steps.push({
-    name: "sentences",
-    command: "node",
-    args: ["scripts/check-sentences.ts", "--base", comparison, ...(landing ? ["--landing"] : [])],
-  });
-  steps.push(...ciGuardStages);
-  steps.push({ name: "t1", command: "node", args: ["scripts/t1.ts"] });
-  if (unitReplays.length)
-    steps.push({
-      name: "unit witness replay",
-      command: "node",
-      args: ["scripts/witness-replay.ts", ...unitReplays],
-    });
-  if (existing.length)
-    steps.push({
-      name: "check touched files",
-      command: "vp",
-      args: ["check", "--no-error-on-unmatched-pattern", ...existing],
-    });
-  for (const pkg of packages.filter((pkg) => pkg.typecheck))
-    steps.push({
-      name: `typecheck ${pkg.name}`,
-      command: "vp",
-      args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
-      cwd: pkg.directory,
-    });
+  const context: StageContext = {
+    root: graph.root,
+    comparison,
+    existing,
+    packages: typecheckPackages(paths, workspace),
+    landing,
+    ci: false,
+    unitReplays,
+    touched,
+    build,
+    tests,
+  };
+  const steps = Object.values(gateStageTable).flatMap((make) => make(context));
   const buildsSelected = buildStages.filter(({ stage }) => touched.has(stage.name));
-  if (build)
-    steps.push(
-      ...buildsSelected.map(({ stage, deployed }) =>
-        deployed ? deployedBuild(graph.root, stage) : stage,
-      ),
-    );
   const buildsSkipped = build ? [] : buildsSelected.map(({ stage }) => stage.name);
   if (!tests) return { steps, ownedUnits: [], buildsSkipped };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
@@ -1808,6 +1967,55 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         "stage runs only when a file it reads differs between <commit> and HEAD, and every stage runs when a\n" +
         "selection input differs. It needs --full; only scripts/land.ts passes it, holding its lock.",
     );
+    return 0;
+  }
+  const invalid = invalidCiSteps(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  if (invalid.length) {
+    console.error(
+      `gate refused: required CI run steps must invoke a gate stage: ${invalid.join(", ")}`,
+    );
+    return 1;
+  }
+  if (args[0] === "--stage") {
+    const id = args[1];
+    if (args.length !== 2 || !id || !Object.hasOwn(gateStageTable, id))
+      throw new Error("unknown gate stage");
+    const tracked = NodeChildProcess.execFileSync("git", ["ls-files", "-z"], {
+      cwd: root,
+      encoding: "utf8",
+    })
+      .split("\0")
+      .filter((path) => path && !/^(?:apps\/desktop|apps\/mobile)\//u.test(path));
+    const context: StageContext = {
+      root,
+      comparison: id === "sentences" ? process.env.PR_BASE || undefined : undefined,
+      existing: tracked,
+      packages: workspacePackages(root),
+      landing: false,
+      ci: true,
+      unitReplays: [],
+      touched: new Set(),
+      build: true,
+      tests: true,
+    };
+    for (const stage of gateStageTable[id as StageId](context)) {
+      const cache = stage.name === "lockfile policy" ? stage.env?.PNPM_CONFIG_CACHE_DIR : undefined;
+      if (cache) NodeFS.rmSync(cache, { recursive: true, force: true });
+      let result: NodeChildProcess.SpawnSyncReturns<Buffer>;
+      try {
+        result = NodeChildProcess.spawnSync(stage.command, stage.args, {
+          cwd: NodePath.join(root, stage.cwd ?? "."),
+          env: stageEnvironment(root, stage),
+          stdio: "inherit",
+        });
+      } finally {
+        if (cache) NodeFS.rmSync(cache, { recursive: true, force: true });
+      }
+      if (result.error) console.error(result.error.message);
+      if (result.status !== 0) return result.status ?? 1;
+    }
     return 0;
   }
   const stale = staleDependencies(root);
@@ -2026,6 +2234,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         ...stageEnvironment(root, step),
         MATE_GATE_TIMINGS: timingPath,
       };
+      const cache = step.name === "lockfile policy" ? step.env?.PNPM_CONFIG_CACHE_DIR : undefined;
+      if (cache) NodeFS.rmSync(cache, { recursive: true, force: true });
       const run = runLoggedAsync(
         step.command,
         step.args,
@@ -2035,6 +2245,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       running.add(run);
       const status = await run.done;
       running.delete(run);
+      if (cache) NodeFS.rmSync(cache, { recursive: true, force: true });
       if (status === "stopped") {
         console.log(`not run ${step.name} · stopped: ${stopReason}`);
         return undefined;
