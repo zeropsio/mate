@@ -5,11 +5,18 @@ import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { makeHqWire } from "./hqWire.ts";
 
-const hqAnswering = (status: number, body: unknown) =>
+const hqAnswering = (
+  status: number,
+  body: unknown,
+  observe: (url: string, init: RequestInit | undefined) => void = () => {},
+) =>
   makeHqApi({
     address: "https://hq.invalid",
     orgId: "org",
-    fetch: () => Promise.resolve(Response.json(body, { status })),
+    fetch: (url, init) => {
+      observe(url, init);
+      return Promise.resolve(Response.json(body, { status }));
+    },
     accessToken: () => Promise.reject(new Error("no door")),
     openSocket: () => {
       throw new Error("no socket");
@@ -21,6 +28,40 @@ const hqAnswering = (status: number, body: unknown) =>
       forget: () => {},
     },
   });
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | decoded(HqSupportExchange, "a support exchange") → json<{ readonly exchange: string }>
+it("AD+2: The exchange is asked for with the session's bearer and no body, and its answer's code is taken as it is; breaks: the request carries something HQ does not read, or a malformed answer is posted to HQ", async () => {
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const observe = (url: string, init: RequestInit | undefined) => requests.push({ url, init });
+  const api = hqAnswering(
+    201,
+    { exchange: "one-use-code", expiresAt: "2030-01-01T00:00:00Z" },
+    observe,
+  );
+
+  expect((await api.supportExchange()).exchange).toBe("one-use-code");
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.url).toBe("https://hq.invalid/api/operator-support/exchanges");
+  expect(requests[0]?.init?.method).toBe("POST");
+  expect(new Headers(requests[0]?.init?.headers).get("Authorization")).toBe("Bearer session");
+  expect(requests[0]?.init?.body).toBeUndefined();
+
+  let malformed: unknown;
+  try {
+    await hqAnswering(201, { expiresAt: "2030-01-01T00:00:00Z" }).supportExchange();
+  } catch (error) {
+    malformed = error;
+  }
+  expect(malformed).toMatchObject({ code: "unreadable" });
+
+  const refused: Array<{ url: string; init: RequestInit | undefined }> = [];
+  await expect(
+    hqAnswering(401, { code: "session_required" }, (url, init) =>
+      refused.push({ url, init }),
+    ).supportExchange(),
+  ).rejects.toMatchObject({ code: "session_required", status: 401 });
+  expect(refused).toHaveLength(1);
+});
 
 // witness: packages/client-runtime/src/data/adapters/hqWire.ts | cause.kind !== "refused" → cause.kind === "refused"
 it.effect(

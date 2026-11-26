@@ -742,6 +742,8 @@ export interface HqApi {
   ) => Promise<HqSocket>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
+  /** One use of the person's session to open the support console. */
+  readonly supportExchange: () => Promise<{ readonly exchange: string }>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
@@ -1398,6 +1400,8 @@ const unreadable = (what: string) => () =>
   new HqError({ kind: "refused", code: "unreadable", message: hqDisagreesOn(what) });
 
 const readChangeMetadata = decoded(ChangeMetadataResponse, "a change's record");
+const HqSupportExchange = Schema.Struct({ exchange: Schema.String });
+const readSupportExchange = decoded(HqSupportExchange, "a support exchange");
 const readChangeCommits = decoded(ChangeCommitsResponse, "a change's commits");
 const readChangeVerdict = decoded(ChangeDetailResponse, "a change's review");
 const readIntakeView = decoded(HqIntakeView, "GitHub issues as tasks");
@@ -1775,6 +1779,7 @@ export function makeHqApi(input: {
     init: RequestInit = {},
     write = false,
     browse = false,
+    retrySession = true,
   ): Promise<Response> => {
     let renewed = false;
     for (;;) {
@@ -1803,7 +1808,7 @@ export function makeHqApi(input: {
       } catch (cause) {
         if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
         drop(held, token);
-        if (renewed || unproven.has(held)) throw cause;
+        if (!retrySession || renewed || unproven.has(held)) throw cause;
         renewed = true;
       }
     }
@@ -2233,6 +2238,11 @@ export function makeHqApi(input: {
         true,
       );
     },
+    // A session refusal is the page's answer; never ask for a second exchange.
+    supportExchange: async () =>
+      readSupportExchange(
+        await authorized("/api/operator-support/exchanges", { method: "POST" }, true, false, false),
+      ),
     deleteApp: (appId) =>
       confirmedDone(
         async () =>
