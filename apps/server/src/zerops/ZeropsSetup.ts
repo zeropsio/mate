@@ -26,16 +26,10 @@
  */
 import {
   agentIdForProviderInstance,
-  type ConversationAgent,
   ConversationId,
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
-  defaultInstanceIdForAgent,
-  driverKindForAgent,
   type MatePersona,
   type ModelSelection,
   OrchestrationDispatchCommandError,
-  type OrchestrationThreadShell,
   ProviderInstanceId,
   type ServerProvider,
   type StandUpVerdict,
@@ -43,11 +37,9 @@ import {
   standUpVerdictHandsOver,
   wakeId as standUpWakeIdOf,
   type ZeropsAgentAuthSnapshot,
-  type ZeropsAgentId,
   ZeropsUserId,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
-import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -73,7 +65,11 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
-import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
+import {
+  conversationSelection,
+  mainConversationAgent,
+  pickReadyAgentWithoutSignIn,
+} from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { readFileJson, watchFiles, type WatchFiles } from "./fileWatch.ts";
@@ -213,53 +209,6 @@ interface StandUpRow {
   readonly source: string;
   readonly userId: ZeropsUserId;
 }
-
-/**
- * The model the stand-up runs on: the conversation's own when it is on the
- * agent the person signed in, else the project's default on that agent, else
- * that agent's default model — what the person's composer would send.
- */
-export const standUpModelSelection = (
-  agentId: ZeropsAgentId,
-  thread: Pick<OrchestrationThreadShell, "modelSelection"> | undefined,
-  projectDefault: ModelSelection | null,
-): ModelSelection => {
-  if (
-    thread !== undefined &&
-    agentIdForProviderInstance(thread.modelSelection.instanceId) === agentId
-  ) {
-    return thread.modelSelection;
-  }
-  if (
-    projectDefault !== null &&
-    agentIdForProviderInstance(projectDefault.instanceId) === agentId
-  ) {
-    return projectDefault;
-  }
-  return {
-    instanceId: defaultInstanceIdForAgent(agentId),
-    model: DEFAULT_MODEL_BY_PROVIDER[driverKindForAgent(agentId)] ?? DEFAULT_MODEL,
-  };
-};
-
-/**
- * The model the stand-up runs on when it runs on a ready agent Mate signs nobody in to: the
- * conversation's own when it is on that instance, else the project's default there, else the
- * model a new conversation would open on it (`resolveBootstrapModelSlug`).
- */
-export const standUpModelSelectionOn = (
-  provider: ServerProvider,
-  thread: Pick<OrchestrationThreadShell, "modelSelection"> | undefined,
-  projectDefault: ModelSelection | null,
-): ModelSelection => {
-  if (thread !== undefined && thread.modelSelection.instanceId === provider.instanceId) {
-    return thread.modelSelection;
-  }
-  if (projectDefault !== null && projectDefault.instanceId === provider.instanceId) {
-    return projectDefault;
-  }
-  return { instanceId: provider.instanceId, model: resolveBootstrapModelSlug(provider) };
-};
 
 /**
  * A record's source. `server:claimed`: a send on its way, resumed after a restart (its ids make
@@ -546,40 +495,8 @@ export const makeZeropsSetup = Effect.gen(function* () {
       return found !== undefined || list.complete ? found : ("unknown" as const);
     });
 
-  /** Whether the conversation has heard from the person, or run anything at all. */
+  /** Whether the conversation has heard from the person. */
   const spokenIn = (view: ConversationView | undefined) => view?.lastPerson != null;
-  const unstarted = (view: ConversationView | undefined) =>
-    view === undefined ||
-    (view.activeRun === null && view.lastEnded === null && view.queued.length === 0);
-
-  /** The model the conversation runs on, where its agent names one. */
-  const selectionOf = (view: ConversationView | undefined) =>
-    view?.agent === null || view?.agent === undefined || view.agent.model === null
-      ? undefined
-      : {
-          modelSelection: {
-            instanceId: ProviderInstanceId.make(view.agent.instanceId),
-            model: view.agent.model,
-            ...(view.agent.options === undefined ? {} : { options: view.agent.options }),
-          },
-        };
-
-  /** The conversation's agent: the instance, its driver, the model and its options. */
-  const agentOf = (
-    selection: ModelSelection,
-    providers: ReadonlyArray<ServerProvider>,
-  ): ConversationAgent => {
-    const options = Array.isArray(selection.options) ? selection.options : undefined;
-    return {
-      instanceId: selection.instanceId,
-      driver:
-        providers.find((provider) => provider.instanceId === selection.instanceId)?.driver ??
-        selection.instanceId,
-      model: selection.model,
-      ...(options === undefined || options.length === 0 ? {} : { options }),
-      profile: { kind: "mate" },
-    };
-  };
 
   /** The project's default model, where a V1 project still holds one; none on a new Mate. */
   const projectDefault = projection.getActiveProjectByWorkspaceRoot(config.cwd).pipe(
@@ -673,17 +590,21 @@ export const makeZeropsSetup = Effect.gen(function* () {
         return true;
       }
       if (requestedBy === undefined) return yield* settle("none");
-      const mainSelection = selectionOf(main);
-      const readyHere = pickReadyAgentWithoutSignIn(
-        providers,
-        defaultModel,
-        mainSelection?.modelSelection.instanceId,
-      );
       const decision = standUpDecision({
         recorded: false,
         requestedBy,
-        agents: standUpAgents(agents, signers, requestedBy),
-        ready: readyHere?.instanceId,
+        agent: mainConversationAgent({
+          conversation: main,
+          agents: standUpAgents(agents, signers, requestedBy),
+          ready: pickReadyAgentWithoutSignIn(
+            providers,
+            defaultModel,
+            conversationSelection(main)?.modelSelection.instanceId,
+          ),
+          projectDefault: yield* projectDefault,
+          automatedModel: automated ? yield* reads.automatedModel : undefined,
+          providers,
+        }),
         spoken: resuming === undefined && spokenIn(main),
         verdict: (yield* status)?.standup?.verdict,
       });
@@ -705,19 +626,6 @@ export const makeZeropsSetup = Effect.gen(function* () {
       const conversationId = ConversationId.make(
         resuming?.threadId ?? main?.conversationId ?? (yield* crypto.uuidV4()),
       );
-      const defaults = yield* projectDefault;
-      let chosen: ModelSelection;
-      if (automated) {
-        chosen = yield* reads.automatedModel;
-      } else if ("agentId" in decision) {
-        chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
-      } else if (readyHere !== undefined) {
-        chosen = standUpModelSelectionOn(readyHere, mainSelection, defaults);
-      } else {
-        return false;
-      }
-      // A new conversation's first run is on Extra High unless its model names an effort (D10).
-      const selection = unstarted(main) ? selectionWithPreferredEffort(providers, chosen) : chosen;
       const ids =
         resuming === undefined
           ? standUpCommandIds(conversationId)
@@ -734,7 +642,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
       }
       const sent = yield* Effect.gen(function* () {
         yield* takePersona;
-        if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) {
+        if (!(yield* engine.assignAgent(conversationId, decision.agent))) {
           return false;
         }
         yield* engine.wake({
@@ -814,8 +722,8 @@ export const makeZeropsSetup = Effect.gen(function* () {
    * zcp's failed verdict handed to an agent: one turn in the Mate's conversation, for `userId`,
    * carrying every row as zcp wrote it, admitted like any run (D6). Once per verdict: its wake key
    * is the verdict's (`verdictWakeKey`), and a run it started already answers as gone. The
-   * conversation keeps its own agent; one with none gets the caller's (`standUpAgents`), else one
-   * Mate signs nobody in to that is ready, or an automated Mate's. Refused (false) before anything
+   * conversation keeps its own agent; one with none is given the caller's, as the stand-up gives
+   * one (`mainConversationAgent`). Refused (false) before anything
    * is armed where no agent may run it for the caller; once armed, answered by the run: it reached
    * the agent (true), or it ended before it did — a failure carrying the run's own reason.
    */
@@ -854,21 +762,15 @@ export const makeZeropsSetup = Effect.gen(function* () {
             : mayRun.includes(agentId));
         if (!runs) return false;
       } else {
-        const readyHere = pickReadyAgentWithoutSignIn(providers, defaultModel);
-        let chosen: ModelSelection;
-        if (automated) {
-          chosen = yield* reads.automatedModel;
-        } else if (mayRun[0] !== undefined) {
-          chosen = standUpModelSelection(mayRun[0], undefined, yield* projectDefault);
-        } else if (readyHere !== undefined) {
-          chosen = standUpModelSelectionOn(readyHere, undefined, yield* projectDefault);
-        } else {
-          return false;
-        }
-        const selection = unstarted(main)
-          ? selectionWithPreferredEffort(providers, chosen)
-          : chosen;
-        if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers))))
+        const agent = mainConversationAgent({
+          conversation: main,
+          agents: mayRun,
+          ready: pickReadyAgentWithoutSignIn(providers, defaultModel),
+          projectDefault: yield* projectDefault,
+          automatedModel: automated ? yield* reads.automatedModel : undefined,
+          providers,
+        });
+        if (agent === undefined || !(yield* engine.assignAgent(conversationId, agent)))
           return false;
       }
       // Subscribed before it is armed, so its run's first move is heard.

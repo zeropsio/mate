@@ -13,6 +13,7 @@
  * @module zeropsSetupSteps
  */
 import {
+  type ConversationAgent,
   StandUpHeadline,
   StandUpRowKind,
   StandUpRowState,
@@ -73,10 +74,11 @@ export const standUpAgents = (
   });
 
 export type StandUpDecision =
-  /** On an agent the asker may run (`standUpAgents`). */
-  | { readonly kind: "start"; readonly userId: ZeropsUserId; readonly agentId: ZeropsAgentId }
-  /** On an agent Mate signs nobody in to, ready: it runs for the asker as for anybody. */
-  | { readonly kind: "start"; readonly userId: ZeropsUserId; readonly instanceId: string }
+  /**
+   * On the agent its asker's conversation is given (`mainConversationAgent`): one they may run
+   * (`standUpAgents`), else one Mate signs nobody in to that is ready and runs for anybody.
+   */
+  | { readonly kind: "start"; readonly userId: ZeropsUserId; readonly agent: ConversationAgent }
   /** Nobody asked yet, or the asker has no agent to run. */
   | { readonly kind: "wait" }
   /** This server has a record of one: started here or by a browser. */
@@ -88,18 +90,14 @@ export type StandUpDecision =
 
 /**
  * Whether to start the stand-up now — never where zcp wrote its verdict, its own stand-up — when
- * asked for by someone with an agent to run
- * — one they signed in or a token the project holds, else one Mate signs nobody
- * in to that is ready — never twice, and never into a conversation already
- * under way. An agent they signed in comes first: it is the agent they chose.
+ * asked for by someone with an agent to run, never twice, and never into a conversation already
+ * under way.
  */
 export const standUpDecision = (input: {
   readonly recorded: boolean;
   readonly requestedBy: ZeropsUserId | undefined;
-  /** The agents the asker may run (`standUpAgents`). */
-  readonly agents: ReadonlyArray<ZeropsAgentId>;
-  /** The instance of a ready agent outside the sign-in (`pickReadyAgentWithoutSignIn`). */
-  readonly ready?: string | undefined;
+  /** The agent the asker's conversation is given (`mainConversationAgent`); none they may run. */
+  readonly agent: ConversationAgent | undefined;
   readonly spoken: boolean;
   /**
    * zcp's verdict on its own stand-up (`ZcpStatus.standup.verdict`): where it wrote one, zcp is
@@ -109,16 +107,10 @@ export const standUpDecision = (input: {
 }): StandUpDecision => {
   if (input.recorded) return { kind: "done" };
   if (input.verdict !== undefined) return { kind: "zcp" };
-  if (input.requestedBy === undefined) return { kind: "wait" };
-  const agentId = AGENT_ORDER.find((agent) => input.agents.includes(agent));
-  const start: StandUpDecision | undefined =
-    agentId !== undefined
-      ? { kind: "start", userId: input.requestedBy, agentId }
-      : input.ready !== undefined
-        ? { kind: "start", userId: input.requestedBy, instanceId: input.ready }
-        : undefined;
-  if (start === undefined) return { kind: "wait" };
-  return input.spoken ? { kind: "spoken" } : start;
+  if (input.requestedBy === undefined || input.agent === undefined) return { kind: "wait" };
+  return input.spoken
+    ? { kind: "spoken" }
+    : { kind: "start", userId: input.requestedBy, agent: input.agent };
 };
 
 /* ------------------------------------------------------------ zcp's status file */
