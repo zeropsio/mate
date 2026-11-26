@@ -300,7 +300,7 @@ it("MN84: The whole project's Delete sends one project deletion naming its last 
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | trimmed.length <= 100 → trimmed.length > 0
-it("MN+1: The whole project's deletion start carries the Zerops name the client holds for its last Mate, every Stage and every Production in Zerops, one that stays included, leaves out a name that is blank or over 100 characters, and two starts that differ only in names are one start; breaks: a stopped deletion cannot say which Stage went or which Production stays, or one over-long name makes HQ refuse the whole deletion.", () => {
+it("MN95: The whole project's deletion start carries the Zerops name the client holds for its last Mate, every Stage and every Production in Zerops, one that stays included, leaves out a name that is blank or over 100 characters, and two starts that differ only in names are one start; breaks: a stopped deletion cannot say which Stage went or which Production stays, or one over-long name makes HQ refuse the whole deletion.", () => {
   const mate = { projectId: "p-mate", name: "address name" };
   const hundred = "x".repeat(100);
   const testProject = (more: Partial<DeletionProject>) =>
@@ -446,7 +446,7 @@ it("MN86: A project's deletion lists a part as deleting only while it runs: wait
 });
 
 // witness: apps/web/src/components/zerops/deletion.logic.ts | const again = deletion.again === true; → const again = true;
-it("MN+2: A project's deletion that ended failed offers Delete again only to a reader HQ offers it, and tells a reader who may not delete the project that only an Owner or an Admin can; breaks: an Admin presses a Delete again that Zerops refuses the same way, or a Member reads a stopped deletion with no word on who can go on.", () => {
+it("MN96: A project's deletion that ended failed offers Delete again only to a reader HQ offers it, and tells a reader who may not delete the project that only an Owner or an Admin can; breaks: an Admin presses a Delete again that Zerops refuses the same way, or a Member reads a stopped deletion with no word on who can go on.", () => {
   const token = { step: "token", code: "token_delete_refused", at: AT, origin: "hq" };
   const cases: ReadonlyArray<{
     readonly name: string;

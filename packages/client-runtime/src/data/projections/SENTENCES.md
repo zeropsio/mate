@@ -1,4 +1,4 @@
-next: PJ157
+next: PJ158
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -141,4 +141,4 @@ next: PJ157
 - PJ150 — A waiting access change offers another reader End and its maker Delete, a running one neither, and a reader not yet known no press; breaks: an Owner cannot free a person held by a maker who left
 - PJ154 — A new Mate's refused link is what HQ put on its own project's open birth, and nothing where its birth carries none or only another project's does; breaks: a refused Mate's page waits as coming forever, or a Mate that is coming reads another Mate's refusal
 - PJ156 — A Mate whose project shows its application's deletion running is being deleted, and waiting it waits with that deletion's id; breaks: a Mate held by its project's deletion opens and takes work the deletion then removes.
-- PJ+1 — An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.
+- PJ157 — An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.

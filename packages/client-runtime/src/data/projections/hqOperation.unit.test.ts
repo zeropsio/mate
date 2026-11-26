@@ -156,7 +156,7 @@ it("PJ136: A waiting application operation offers its End only where HQ offers t
 });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | operation.offers?.includes(AGAIN) === true → false
-it("PJ+1: An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.", () => {
+it("PJ157: An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.", () => {
   for (const kind of ["app_deletion", "production_removal"]) {
     const cases: ReadonlyArray<{
       readonly name: string;

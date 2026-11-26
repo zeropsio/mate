@@ -1480,6 +1480,7 @@ const REMOVAL_PRODUCTION = {
     phase: "delete_requested",
     at: "2026-10-14T10:00:00Z",
     acceptedAt: "2026-10-14T09:59:00Z",
+    offers: ["again"],
     failure: {
       step: "delete_project",
       code: "insufficientPermissions",

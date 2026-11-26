@@ -585,6 +585,7 @@ function ZeropsProductionRemoval({
   if (!allowed) return null;
   const deleteProject = environment.deleteProjectOnRemoval === true;
   const attempt = `${target.projectId}:${String(deleteProject)}`;
+  const showRemoval = removal.kind !== "failed" || removal.again === true;
   return (
     <>
       {removal.kind === "failed" ? (
@@ -598,11 +599,13 @@ function ZeropsProductionRemoval({
           />
         </div>
       ) : null}
-      <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
-        Remove production
-      </Button>
+      {showRemoval ? (
+        <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
+          Remove production
+        </Button>
+      ) : null}
       {said}
-      {!confirming ? null : (
+      {!showRemoval || !confirming ? null : (
         <div role="group" aria-label={`Remove ${environment.name}`} aria-busy={busy}>
           <Text className="mt-1.5" render={<p />} variant="description">
             {project === null
