@@ -154,7 +154,10 @@ export function deletionPageMate(input: {
 export function deletionPageState(input: {
   readonly structureRead: boolean;
   readonly project: DeletionProject | undefined;
+  /** The Mate in the address, absent for a project's own Delete. */
   readonly mate: { readonly projectId: string; readonly name: string } | undefined;
+  /** The Mate named by a failed operation, or by the address otherwise. */
+  readonly formMate?: DeletionFacts["mate"];
   readonly past?: string | undefined;
 }):
   | { readonly kind: "reading" }
@@ -173,6 +176,16 @@ export function deletionPageState(input: {
     } {
   if (!input.structureRead) return { kind: "reading" };
   if (input.project === undefined) return { kind: "gone" };
+  const project = input.project;
+  const formOffer = (
+    offer: Extract<DeletionOffer, { kind: "project" }>,
+    past: string | undefined,
+  ) => {
+    if (input.formMate === undefined) return offer;
+    const named = deletionOffer({ project, mate: input.formMate, past });
+    // The project form stays visible while another Mate holds its review closed.
+    return named.kind === "project" ? named : offer;
+  };
   const offer = deletionOffer({ project: input.project, mate: input.mate, past: input.past });
   if (offer.kind === "standing") {
     if (offer.deletion.kind === "failed" && !offer.deletion.again && input.project.deleteApp) {
@@ -185,7 +198,7 @@ export function deletionPageState(input: {
         return {
           kind: "form",
           project: input.project,
-          offer: fresh,
+          offer: formOffer(fresh, offer.deletion.id),
           failedDeletion: offer.deletion,
         };
     }
@@ -199,7 +212,7 @@ export function deletionPageState(input: {
       project: input.project,
       line: DELETE_PROJECT_WHO,
     };
-  return { kind: "form", project: input.project, offer };
+  return { kind: "form", project: input.project, offer: formOffer(offer, input.past) };
 }
 
 /** HQ's structure of the project, as `deletionOffer` reads it; `undefined` where it holds none. */

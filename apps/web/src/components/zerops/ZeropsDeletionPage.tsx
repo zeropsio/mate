@@ -397,18 +397,26 @@ export function ZeropsDeletionPageContainer({
   const project = deletionProjectOf(structure, appId, deletion);
   const mateId = deletionPageMate({ project, address });
   const candidate = candidates.find((row) => row.project.id === mateId);
-  const placement = project?.placements.find((item) => item.projectId === mateId);
-  const mateName =
-    candidate === undefined
+  const mateNameFor = (id: string) => {
+    const target = candidates.find((row) => row.project.id === id);
+    const placement = project?.placements.find((item) => item.projectId === id);
+    return target === undefined
       ? nameUnderApp(placement?.name ?? "", project?.name) || "Its Mate"
-      : projectNameInApp(candidate.project);
+      : projectNameInApp(target.project);
+  };
+  const mateName = mateId === undefined ? "Its Mate" : mateNameFor(mateId);
   const mateFacts = mateId === undefined ? undefined : { projectId: mateId, name: mateName };
+  const requestedMate =
+    address === undefined
+      ? undefined
+      : { projectId: address, name: address === mateId ? mateName : mateNameFor(address) };
   const [past, setPast] = useState<string>();
   const [againChoice, setAgainChoice] = useState<DeletionChoice>();
   const state = deletionPageState({
     structureRead: structure !== null,
     project,
-    mate: mateFacts,
+    mate: requestedMate,
+    formMate: mateFacts,
     past,
   });
   const holdings = applicationHoldings(useHqAppDetail(appId));
