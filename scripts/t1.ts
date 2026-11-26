@@ -55,12 +55,17 @@ function runUnits(root: string): { readonly cases: number; readonly green: boole
       .toSorted(([a], [b]) => a.localeCompare(b))
       .entries()) {
       const report = NodePath.join(reports, `${index}.json`);
+      const packageRoot = NodePath.join(root, pkg);
+      const config = NodeFS.existsSync(NodePath.join(packageRoot, "vite.config.ts"))
+        ? []
+        : ["--config", NodePath.relative(packageRoot, NodePath.join(root, "vite.config.ts"))];
       const run = NodeChildProcess.spawnSync(
         "vp",
         [
           "test",
           "run",
           ...files,
+          ...config,
           "--reporter=default",
           "--reporter=json",
           `--outputFile.json=${report}`,

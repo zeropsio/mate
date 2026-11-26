@@ -249,43 +249,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Restore pnpm metadata
-        uses: actions/cache/restore@v4
         with:
-          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
-          path: ${{ runner.temp }}/pnpm-metadata/v11
-          key: pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-metadata-${{ runner.os }}-pnpm11-
+          fetch-depth: 0
 
-      - name: Setup Vite+
+      - name: Setup Vite+ and install dependencies
         uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
-          PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
-          PNPM_CONFIG_TRUST_LOCKFILE: "false"
-        run: *full_dependencies
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Check lockfile policy
+        run: node scripts/gate-changed.ts --stage lockfile-policy
 
       - name: Check
-        run: git ls-files -z -- . ':!:apps/desktop/**' ':!:apps/mobile/**' | xargs -0 vp check --no-error-on-unmatched-pattern
+        run: node scripts/gate-changed.ts --stage files
 
-      # actionlint builds from the Go module proxy: GitHub release downloads fail intermittently.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -293,7 +275,7 @@ jobs:
           cache: false
 
       - name: Check workflow schema
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/*.yml
+        run: node scripts/gate-changed.ts --stage workflow-schema
 
   check_guards:
     name: Check Guards
@@ -307,64 +289,42 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Vite+
+      - name: Setup Vite+ and install dependencies
         uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
-        run: *full_dependencies
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
 
       - name: Reject untracked package shells
-        run: |
-          test -z "$(git ls-files packages/ssh packages/tailscale)" &&
-            test ! -d packages/ssh -a ! -d packages/tailscale || {
-            printf '%s\n' 'packages/ssh and packages/tailscale were deleted at the freeze; a directory here means a workspace manifest or script still expects them.'
-            exit 1
-          }
+        run: node scripts/gate-changed.ts --stage package-shells
 
       - name: Reject repository-owned PR assets
-        run: |
-          files="$(git ls-files .github/pr-assets)"
-          if test -n "$files"; then
-            printf 'PR evidence must be uploaded to GitHub, not committed:\n%s\n' "$files" >&2
-            exit 1
-          fi
+        run: node scripts/gate-changed.ts --stage pr-assets
 
       - name: Check imported.lock
-        run: node scripts/imported-lock.ts --check
+        run: node scripts/gate-changed.ts --stage imported-lock
 
       - name: Check showcase scenes
-        run: node scripts/showcase-scenes.ts --check
+        run: node scripts/gate-changed.ts --stage showcase
 
       - name: Reconcile guard exceptions
-        run: node scripts/check-guard-exceptions.ts
+        run: node scripts/gate-changed.ts --stage guard-ledgers
 
       - name: Check CSS motion
-        run: node scripts/check-css-motion.ts
+        run: node scripts/gate-changed.ts --stage css-motion
 
       - name: Check CSS theme tokens
-        run: node scripts/check-css-tokens.ts
+        run: node scripts/gate-changed.ts --stage css-tokens
 
       - name: Check generated theme tokens
-        run: node scripts/generate-theme-tokens.ts --check
+        run: node scripts/gate-changed.ts --stage generated-tokens
 
       - name: Check doc paths
-        run: node scripts/check-doc-paths.ts
+        run: node scripts/gate-changed.ts --stage doc-paths
 
   check_types:
     name: Check Types
@@ -378,36 +338,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Vite+
+      - name: Setup Vite+ and install dependencies
         uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
-        run: *full_dependencies
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
 
       - name: Typecheck
-        run: vpr typecheck
+        run: node scripts/gate-changed.ts --stage typecheck
 
       - name: Check runtime cycle ratchet
-        run: node scripts/check-runtime-cycles.ts
+        run: node scripts/gate-changed.ts --stage runtime-cycles
 
       - name: Exercise release-only workflow steps
-        run: node scripts/release-smoke.ts
+        run: node scripts/gate-changed.ts --stage release-smoke
 
   check_build:
     name: Check Build
@@ -418,31 +366,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
+          fetch-depth: 0
 
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
+      - name: Setup Vite+ and install dependencies
+        uses: voidzero-dev/setup-vp@v1
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
-        run: *full_dependencies
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
 
       - name: Build server bundle
-        run: vp run --filter t3 build
+        run: node scripts/gate-changed.ts --stage server-build
 
       - name: Setup Rust
         if: needs.changes.outputs.resource_monitor != 'false'
@@ -452,14 +390,12 @@ jobs:
 
       - name: Check resource monitor formatting
         if: needs.changes.outputs.resource_monitor != 'false'
-        run: cargo fmt --manifest-path native/resource-monitor/Cargo.toml -- --check
+        run: node scripts/gate-changed.ts --stage rust-format
 
       - name: Test resource monitor
         if: github.event_name == 'workflow_dispatch' && needs.changes.outputs.resource_monitor != 'false'
-        run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
+        run: node scripts/gate-changed.ts --stage rust-test
 
-  # Independent suites run concurrently; the existing Test context reports
-  # their combined verdict without serializing package execution.
   test:
     name: Test
     needs: [selection, verification, test_packages, test_scripts, test_client_runtime]
@@ -830,59 +766,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Setup Vite+
+      - name: Setup Vite+ and install dependencies
         uses: voidzero-dev/setup-vp@v1
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
         with:
           node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
-        env: *verified_lockfile
-        run: *hosted_dependencies
-
-      # The checkout stays shallow: one base for the pull-request check and witness replay.
-      - name: Fetch replay base
-        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
-        env:
-          T1_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          if [[ "$T1_BASE" =~ ^0+$ ]]; then
-            echo "::error::No replay base: the push has no previous commit."
-            exit 1
-          fi
-          git fetch --no-tags --depth=1 origin "$T1_BASE"
+          cache: true
+          run-install: true
 
       - name: Sentences
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          if [[ -n "$PR_BASE" ]]; then
-            node scripts/check-sentences.ts --base "$PR_BASE"
-          else
-            node scripts/check-sentences.ts
-          fi
+        run: node scripts/gate-changed.ts --stage sentences
 
       - name: T1
-        run: node scripts/t1.ts --budget
+        run: node scripts/gate-changed.ts --stage t1
 
       - name: Witness replay
         if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         env:
           T1_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: node scripts/t1.ts replay "$T1_BASE"
+        run: node scripts/gate-changed.ts --stage unit-witness-replay
 
-  # Keep the required Release Smoke context; its commands run in Check Types' installed workspace.
   release_smoke:
     name: Release Smoke
     needs:
