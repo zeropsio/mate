@@ -1015,3 +1015,38 @@ it.effect(
       }),
     ),
 );
+
+// witness: apps/server/src/zerops/ZeropsHqLink.ts | "connections", →
+it.effect(
+  "HL19: A change in who is connected goes up as its own section, and a link whose overview carries none sends none; breaks: HQ keeps showing people in a Mate they left",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let current: MateOverview = {
+          ...overview("Add a login page"),
+          connections: { open: [{ role: "OWNER", count: 1 }], refused: [] },
+        };
+        const first = yield* rig({ overview: () => current });
+        const socket = yield* linked(first.sockets, 0);
+        assert.deepStrictEqual(socket.sent, [
+          hello("zk-1"),
+          { type: "overview", full: true, overview: current },
+        ]);
+        current = { ...current, connections: { open: [], refused: [] } };
+        yield* PubSub.publish(first.changes, undefined);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(socket.sent.slice(2), [
+          { type: "overview", full: false, sections: { connections: { open: [], refused: [] } } },
+        ]);
+
+        const older = yield* rig();
+        const olderSocket = yield* linked(older.sockets, 0);
+        yield* PubSub.publish(older.changes, undefined);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.deepStrictEqual(olderSocket.sent, [
+          hello("zk-1"),
+          { type: "overview", full: true, overview: overview("Add a login page") },
+        ]);
+      }),
+    ),
+);

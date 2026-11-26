@@ -22,6 +22,7 @@ import type {
   ZeropsUserId,
 } from "@t3tools/contracts";
 import {
+  MATE_CONNECTIONS_ROWS_MAX,
   MATE_CREW_BOUNDS,
   linkFrameBytes,
   type LoginDigest,
@@ -36,6 +37,7 @@ import {
   type MateOverview,
   type MateThreadKind,
   type OverviewConversations,
+  type OverviewConnections,
   type OverviewCrew,
   type OverviewIdentity,
   type OverviewLogins,
@@ -44,6 +46,7 @@ import {
   type OverviewThreads,
   type ThreadDigest,
 } from "@t3tools/shared/mateLink";
+import * as DateTime from "effect/DateTime";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
@@ -51,6 +54,7 @@ import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 import { extraLoginAgent } from "../zeropsLoginIds.ts";
 import type { ZcpStatus } from "../zeropsSetupSteps.ts";
+import type { ConnectionCounts } from "../ZeropsConnections.ts";
 
 export interface MateOverviewInput {
   readonly identity: OverviewIdentity;
@@ -66,8 +70,29 @@ export interface MateOverviewInput {
   readonly crew: CrewSnapshot | undefined;
   /** An engine Mate's own rows of its person's conversations; none on a V1 Mate. */
   readonly conversations?: ReadonlyArray<ConversationRow>;
+  readonly connections?: ConnectionCounts;
   /** zcp's status, or null when the named file could not be read. */
   readonly zcpStatus?: ZcpStatus | null;
+}
+
+/** The registry's open roles and refusals as bounded, stable rows, without identities. */
+function connectionsOf(counts: ConnectionCounts): OverviewConnections {
+  const roles = new Map<string, number>();
+  for (const role of counts.roles) roles.set(role, (roles.get(role) ?? 0) + 1);
+  return {
+    open: Array.from(roles, ([role, count]) => ({ role, count }))
+      .sort((a, b) => (a.role < b.role ? -1 : a.role > b.role ? 1 : 0))
+      .slice(0, MATE_CONNECTIONS_ROWS_MAX),
+    refused: counts.refused
+      .filter((row) => row.count > 0)
+      .map(({ code, count, lastAtMs }) => ({
+        code,
+        count,
+        lastAt: DateTime.formatIso(DateTime.makeUnsafe(lastAtMs)),
+      }))
+      .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0))
+      .slice(0, MATE_CONNECTIONS_ROWS_MAX),
+  };
 }
 
 /** `text` cut to `max` characters, the last of them an ellipsis where it was longer. */
@@ -497,6 +522,7 @@ export function mateOverviewOf(
       ...(input.conversations === undefined
         ? {}
         : { conversations: conversationsOf(input.conversations) }),
+      ...(input.connections === undefined ? {} : { connections: connectionsOf(input.connections) }),
       ...(input.zcpStatus === undefined ? {} : { standUp: standUpOf(input.zcpStatus) }),
     },
     maxBytes,

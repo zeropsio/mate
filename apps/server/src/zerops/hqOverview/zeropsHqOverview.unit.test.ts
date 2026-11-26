@@ -86,6 +86,50 @@ const overviewOf = (
   crew: CrewSnapshot = CREW_OFF_SNAPSHOT,
 ) => decodeOverview(mateOverviewOf({ identity: IDENTITY, threads, auth: NO_LOGINS, crew }));
 
+// witness: apps/server/src/zerops/hqOverview/zeropsHqOverview.ts | ({ role, count }) → ({ role, count: 1 })
+it("HO39: HQ is told how many connections are open in the Mate by the role each holds and how many entries the Mate itself refused by code with the last one's time, eight rows of each at most, and never who; breaks: HQ's operator cannot see that people are in a Mate or that it turns them away, or a person's id leaves the Mate in a report", () => {
+  const cases = [
+    {
+      counts: {
+        roles: ["OWNER", "BASIC_USER", "OWNER"],
+        refused: [{ code: "ticket_refused", count: 2, lastAtMs: 1_000 }],
+      },
+      expected: {
+        open: [
+          { role: "BASIC_USER", count: 1 },
+          { role: "OWNER", count: 2 },
+        ],
+        refused: [{ code: "ticket_refused", count: 2, lastAt: "1970-01-01T00:00:01.000Z" }],
+      },
+    },
+    { counts: { roles: [], refused: [] }, expected: { open: [], refused: [] } },
+    { counts: undefined, expected: undefined },
+  ] as const;
+  for (const { counts, expected } of cases) {
+    const result = mateOverviewOf({
+      identity: IDENTITY,
+      threads: [],
+      auth: NO_LOGINS,
+      crew: CREW_OFF_SNAPSHOT,
+      ...(counts === undefined ? {} : { connections: counts }),
+    });
+    expect(decodeOverview(result)).toEqual(result);
+    if (expected === undefined) expect(result).not.toHaveProperty("connections");
+    else expect(JSON.parse(JSON.stringify(result.connections))).toEqual(expected);
+  }
+  const future = {
+    open: [{ role: "LATER_ROLE", count: 1 }],
+    refused: [{ code: "later_refusal", count: 1, lastAt: "1970-01-01T00:00:01.000Z" }],
+  };
+  const older = mateOverviewOf({
+    identity: IDENTITY,
+    threads: [],
+    auth: NO_LOGINS,
+    crew: undefined,
+  });
+  expect(decodeOverview({ ...older, connections: future }).connections).toEqual(future);
+});
+
 /** A crewmate on the wire, its current stint's chat `thread`. */
 const crewmate = (
   handle: string,

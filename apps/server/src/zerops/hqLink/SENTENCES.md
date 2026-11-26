@@ -1,6 +1,7 @@
-next: HL19
+next: HL20
 
 - HL18 — The dial names the Mate's version and service to HQ in its upgrade headers, and leaves out one that is empty or holds a character outside a plain version's; breaks: HQ cannot tell which build a refused Mate runs, or a stray character in a version fails every dial and the Mate never links
+- HL19 — A change in who is connected goes up as its own section, and a link whose overview carries none sends none; breaks: HQ keeps showing people in a Mate they left
 - HL17 — A stand-up that changed goes up as its own section, also when it is no longer failed, and a link whose overview carries none sends none; breaks: HQ keeps showing a stand-up failure that was run again and stood
 - HL1 — A link opens at HQ's link address with the project's key in its first frame and nothing in the URL, answers only pings until HQ's first state, then sends the whole overview, and the next link presents the key the container holds then
 - HL2 — A link's hello names the fingerprint of the Git credential the Mate holds, read from the keeper at every dial, and none while it holds none

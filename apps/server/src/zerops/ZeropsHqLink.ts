@@ -498,6 +498,7 @@ const SECTIONS = [
   "crew",
   "conversations",
   "standUp",
+  "connections",
 ] as const;
 
 /**
@@ -1151,6 +1152,8 @@ interface OverviewSources {
   readonly domainEvents: Stream.Stream<unknown>;
   /** An engine Mate's own rows, sent beside the threads' shell fields; none on a V1 Mate. */
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
+  /** The registry's current open roles and refusals, and when they change. */
+  readonly connections?: Pick<ZeropsConnections["Service"], "counts" | "changes">;
   /** zcp's own status file, read again whenever it changes. */
   readonly zcpStatus?: {
     readonly read: Effect.Effect<ZcpStatus | null>;
@@ -1216,6 +1219,9 @@ const mateOverviewFeed = (
         ...(sources.conversations === undefined
           ? {}
           : { conversations: yield* sources.conversations }),
+        ...(sources.connections === undefined
+          ? {}
+          : { connections: yield* sources.connections.counts }),
         ...(sources.zcpStatus === undefined ? {} : { zcpStatus: yield* sources.zcpStatus.read }),
       });
     }).pipe(Effect.option);
@@ -1226,6 +1232,7 @@ const mateOverviewFeed = (
           sources.domainEvents,
           ...(sources.providers === undefined ? [] : [sources.providers.changes]),
           ...(sources.zcpStatus === undefined ? [] : [sources.zcpStatus.changes]),
+          ...(sources.connections === undefined ? [] : [sources.connections.changes]),
           Stream.fromPubSub(crewMoved),
           sources.agentAuth.changes,
           sources.agentLogin.changes,
@@ -1300,6 +1307,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
+        connections,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
         ...(statusFile === undefined || statusFile.length === 0
