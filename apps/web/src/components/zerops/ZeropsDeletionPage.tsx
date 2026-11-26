@@ -237,15 +237,19 @@ export function ZeropsDeletionPage({
           {standing.failed ? (
             <Failure
               action={
-                <Button onClick={onAgain} size="sm" type="button" variant="destructive">
-                  {page.again}
-                </Button>
+                standing.again ? (
+                  <Button onClick={onAgain} size="sm" type="button" variant="destructive">
+                    {page.again}
+                  </Button>
+                ) : undefined
               }
               cause={standing.line}
               details={standing.details ?? undefined}
               role="alert"
               size="line"
-            />
+            >
+              {standing.who}
+            </Failure>
           ) : waiting !== undefined ? (
             <Alert surface="tint" variant="warning">
               <AlertTitle>

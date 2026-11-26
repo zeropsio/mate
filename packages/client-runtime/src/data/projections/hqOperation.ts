@@ -20,6 +20,9 @@ const CONTINUE = "continue";
  */
 const END = "end";
 
+/** HQ offers the reader a new start after an operation ended failed. */
+const AGAIN = "again";
+
 export type HqOperationStanding =
   /** None of this kind is shown: nothing runs, or the newest one ended done. */
   | { readonly kind: "none" }
@@ -39,10 +42,15 @@ export type HqOperationStanding =
       readonly endable?: true;
     })
   /**
-   * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
-   * including who stopped it and Zerops' answer where it refused.
+   * It ended with a failure: its target stands, and `again` is present where HQ offers a new start.
+   * The failure is HQ's as sent, including who stopped it and Zerops' answer where it refused.
    */
-  | { readonly kind: "failed"; readonly id: string; readonly failure: HqOperationFailure }
+  | {
+      readonly kind: "failed";
+      readonly id: string;
+      readonly failure: HqOperationFailure;
+      readonly again?: true;
+    }
   /**
    * It ended at a decision its target's person has not made (`needs`: a Put it live's
    * `release_review`): nothing runs, and the decision is offered.
@@ -72,5 +80,7 @@ export function hqOperationOf(
       ...waitingWords(operation.failure.code),
       ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
+  if (operation.offers?.includes(AGAIN) === true)
+    return { kind: "failed", id: operation.id, failure: operation.failure, again: true };
   return { kind: "failed", id: operation.id, failure: operation.failure };
 }

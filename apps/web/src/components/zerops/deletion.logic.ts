@@ -333,6 +333,8 @@ export function keptWhere(project: DeletionProject): {
       };
 }
 
+const DELETE_PROJECT_WHO = "Only an Owner or an Admin can delete a project.";
+
 /** The page renders this answer, including an existing operation for every reader. */
 export function deletionPageState(input: {
   readonly structureRead: boolean;
@@ -363,7 +365,7 @@ export function deletionPageState(input: {
     return {
       kind: "refused",
       project: input.project,
-      line: "Only an Owner or an Admin can delete a project.",
+      line: DELETE_PROJECT_WHO,
     };
   return { kind: "form", project: input.project, offer };
 }
@@ -725,6 +727,8 @@ export function deletionStandingWords(
   readonly failed: boolean;
   readonly details: string | null;
   readonly parts: ReadonlyArray<DeletionPart>;
+  readonly again: boolean;
+  readonly who: string | null;
 } {
   const parts = deletionParts(project);
   const at =
@@ -739,6 +743,8 @@ export function deletionStandingWords(
       failed: false,
       details: null,
       parts,
+      again: false,
+      who: null,
     };
   if (deletion.kind === "waiting")
     return {
@@ -746,7 +752,10 @@ export function deletionStandingWords(
       failed: false,
       details: null,
       parts,
+      again: false,
+      who: null,
     };
+  const again = deletion.again === true;
   const gone = parts.filter((part) => part.state === "gone" && part.part !== "kept");
   const letGo = parts.filter((part) => part.state === "gone" && part.part === "kept");
   const standing = parts.filter((part) => part.state !== "gone");
@@ -766,6 +775,8 @@ export function deletionStandingWords(
     failed: true,
     details: operationFailureDetails(deletion.failure),
     parts,
+    again,
+    who: again || project.deleteApp ? null : DELETE_PROJECT_WHO,
   };
 }
 

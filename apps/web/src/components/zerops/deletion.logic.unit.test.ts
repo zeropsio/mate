@@ -445,6 +445,69 @@ it("MN86: A project's deletion lists a part as deleting only while it runs: wait
   ]);
 });
 
+// witness: apps/web/src/components/zerops/deletion.logic.ts | const again = deletion.again === true; → const again = true;
+it("MN+2: A project's deletion that ended failed offers Delete again only to a reader HQ offers it, and tells a reader who may not delete the project that only an Owner or an Admin can; breaks: an Admin presses a Delete again that Zerops refuses the same way, or a Member reads a stopped deletion with no word on who can go on.", () => {
+  const token = { step: "token", code: "token_delete_refused", at: AT, origin: "hq" };
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly deleteApp: boolean;
+    readonly operation: Partial<HqOperation>;
+    readonly again: boolean;
+    readonly who: boolean;
+  }> = [
+    {
+      name: "Owner after token refusal",
+      deleteApp: true,
+      operation: { failure: token, offers: ["again"] },
+      again: true,
+      who: false,
+    },
+    {
+      name: "Admin after token refusal",
+      deleteApp: true,
+      operation: { failure: token, offers: [] },
+      again: false,
+      who: false,
+    },
+    {
+      name: "Admin after stage refusal",
+      deleteApp: true,
+      operation: { failure: zeropsRefusal, offers: ["again"] },
+      again: true,
+      who: false,
+    },
+    {
+      name: "Member after token refusal",
+      deleteApp: false,
+      operation: { failure: token, offers: [] },
+      again: false,
+      who: true,
+    },
+    {
+      name: "Member after stage refusal",
+      deleteApp: false,
+      operation: { failure: zeropsRefusal, offers: [] },
+      again: false,
+      who: true,
+    },
+    { name: "running", deleteApp: false, operation: {}, again: false, who: false },
+    {
+      name: "waiting",
+      deleteApp: false,
+      operation: { failure: token, continueBy: "maker", offers: ["continue"] },
+      again: false,
+      who: false,
+    },
+  ];
+  for (const row of cases) {
+    const standing = deletion(row.operation);
+    if (standing.kind === "none" || standing.kind === "needs") throw new Error(row.name);
+    const words = deletionStandingWords(bakery({ deleteApp: row.deleteApp }), standing);
+    expect(words.again, row.name).toBe(row.again);
+    expect(words.who !== null, row.name).toBe(row.who);
+  }
+});
+
 // witness: apps/web/src/components/zerops/deletion.logic.ts | return part.part === "kept" ? "Let go" : "Gone"; → return "Gone";
 it("MN88: A Production that stays is a part the project's deletion lets go of: it reads letting go while its part runs and let go once done, the project's line says letting go of it, a failed deletion lists it as let go apart from what is gone and as still here while it stands; breaks: a Production the person kept reads Deleting or Gone, or a deletion Zerops stopped at its deploy token names every part but that one.", () => {
   const steps = [

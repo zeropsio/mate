@@ -141,6 +141,8 @@ const PAGE_STATES = [
   "waiting",
   "waiting-other",
   "stopped",
+  "stopped-token",
+  "stopped-member",
   "page-refused",
   "page-gone",
   "start-refused",
@@ -193,9 +195,25 @@ const ACME_DELETIONS: Readonly<Record<string, HqOperation>> = {
       origin: "zerops",
       zerops: { words: "Forbidden." },
     },
+    offers: ["again"],
     steps: [
       { part: "mate", projectId: "acme-docs-quinn", state: "gone" },
       { part: "stage", projectId: "acme-docs-stage", state: "deleting" },
+      { part: "code", state: "pending" },
+    ],
+  },
+  "stopped-token": {
+    id: "deletion",
+    kind: "app_deletion",
+    phase: "accepted",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: { step: "token", code: "token_delete_refused", at: minutesAgo(2), origin: "hq" },
+    offers: [],
+    steps: [
+      { part: "kept_production", projectId: "p-production", name: "production", state: "deleting" },
+      { part: "mate", projectId: "p-mate", name: "workspace", state: "pending" },
+      { part: "stage", projectId: "p-stage", name: "stage", state: "pending" },
       { part: "code", state: "pending" },
     ],
   },
@@ -205,7 +223,9 @@ const ACME_OPERATION =
     ? { ...ACME_DELETIONS.waiting!, offers: [STATE === "waiting" ? "continue" : "end"] }
     : STATE === "delete-again"
       ? ACME_DELETIONS.stopped
-      : ACME_DELETIONS[STATE];
+      : STATE === "stopped-member"
+        ? { ...ACME_DELETIONS.stopped!, offers: [] }
+        : ACME_DELETIONS[STATE];
 /** Acme Docs as HQ's structure holds it: Quinn, its Stage, its Git production. */
 const ACME_PROJECT: DeletionProject = {
   appId: "acme",
@@ -219,7 +239,7 @@ const ACME_PROJECT: DeletionProject = {
       : [{ projectId: "acme-docs-stage", kind: "stage", name: "acme-docs-stage" }]),
   ],
   births: [],
-  deleteApp: STATE !== "last-member" && STATE !== "page-refused",
+  deleteApp: STATE !== "last-member" && STATE !== "page-refused" && STATE !== "stopped-member",
   environments: CODE_ONLY
     ? []
     : [

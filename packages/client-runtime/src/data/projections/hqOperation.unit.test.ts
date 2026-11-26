@@ -154,3 +154,69 @@ it("PJ136: A waiting application operation offers its End only where HQ offers t
     expect(said.kind === "waiting" && said.endable === true, JSON.stringify(offers)).toBe(endable);
   }
 });
+
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | operation.offers?.includes(AGAIN) === true → false
+it("PJ+1: An operation that ended failed is offered again only where HQ offers the reader its start again, and a running, waiting or decided one never is; breaks: a person is shown a Delete again or a Remove that HQ and Zerops refuse the same way, or the Owner who alone can finish is shown none.", () => {
+  for (const kind of ["app_deletion", "production_removal"]) {
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly operation: HqOperation;
+      readonly standing: HqOperationStanding["kind"];
+      readonly again: boolean;
+    }> = [
+      {
+        name: "offered",
+        operation: listed(kind, "accepted", { failure: failure("refused"), offers: ["again"] }),
+        standing: "failed",
+        again: true,
+      },
+      {
+        name: "empty",
+        operation: listed(kind, "accepted", { failure: failure("refused"), offers: [] }),
+        standing: "failed",
+        again: false,
+      },
+      {
+        name: "absent",
+        operation: listed(kind, "accepted", { failure: failure("refused") }),
+        standing: "failed",
+        again: false,
+      },
+      {
+        name: "unknown",
+        operation: listed(kind, "accepted", { failure: failure("refused"), offers: ["future"] }),
+        standing: "failed",
+        again: false,
+      },
+      {
+        name: "waiting",
+        operation: listed(kind, "accepted", {
+          failure: failure("token_expired"),
+          continueBy: "maker",
+          offers: ["continue", "again"],
+        }),
+        standing: "waiting",
+        again: false,
+      },
+      {
+        name: "running",
+        operation: listed(kind, "accepted", { offers: ["again"] }),
+        standing: "going",
+        again: false,
+      },
+      {
+        name: "decided",
+        operation: listed(kind, "accepted", { needs: "release_review", offers: ["again"] }),
+        standing: "needs",
+        again: false,
+      },
+    ];
+    for (const row of cases) {
+      const standing = hqOperationOf(row.operation, kind);
+      expect(standing.kind, `${kind}: ${row.name}`).toBe(row.standing);
+      expect("again" in standing, `${kind}: ${row.name}`).toBe(row.again);
+      if (standing.kind === "failed" && row.again) expect(standing.again).toBe(true);
+      if (standing.kind === "waiting") expect(standing.yours).toBe(true);
+    }
+  }
+});
