@@ -56,7 +56,7 @@ const routes: Record<string, ReadonlyArray<{ service: string; url: string }>> = 
 };
 
 // witness: packages/client-runtime/src/zerops/mateAddresses.ts | (left, right) => ROLE_ORDER.indexOf(left.role) - ROLE_ORDER.indexOf(right.role), → (left, right) => ROLE_ORDER.indexOf(right.role) - ROLE_ORDER.indexOf(left.role),
-it("ZV31: A Mate's addresses list its dev first, then its preview, the stage and the production, and addresses with no role last", () => {
+it("ZV31: A Mate's addresses list its workspace Preview before stages and production, and addresses with no role last", () => {
   expect(
     brief({
       services: [svc("appdev", ["https://appdev-1-3000.example.app"])],
@@ -66,7 +66,7 @@ it("ZV31: A Mate's addresses list its dev first, then its preview, the stage and
       ],
     }),
   ).toEqual([
-    { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
+    { service: "appdev", role: "preview", url: "https://appdev-1-3000.example.app" },
     { service: "web stage", role: "stage", url: "https://web-2-80.example.app" },
     { service: "app production", role: "production", url: "https://shop.example.com" },
   ]);
@@ -79,14 +79,14 @@ it("ZV31: A Mate's addresses list its dev first, then its preview, the stage and
       ],
     }),
   ).toEqual([
-    { service: "webdev", role: "dev", url: "https://webdev-1-3000.example.app" },
-    { service: "webstage", role: "preview", url: "https://webstage-1-3000.example.app" },
+    { service: "webdev", role: "preview", url: "https://webdev-1-3000.example.app" },
+    { service: "webstage", role: "stage", url: "https://webstage-1-3000.example.app" },
     { service: "docs", role: undefined, url: "https://docs-1-80.example.app" },
   ]);
 });
 
-// witness: packages/client-runtime/src/zerops/mateAddresses.ts | add(part.preview.service, projectRole ?? "preview", part.preview.url); → add(part.preview.service, "preview", part.preview.url);
-it("ZV32: A Mate's paired half is its preview, except in a project that is itself the stage or the production, where it takes that role", () => {
+// witness: packages/client-runtime/src/zerops/mateAddresses.ts | add(part.preview.service, projectRole ?? "stage", part.preview.url); → add(part.preview.service, "preview", part.preview.url);
+it("ZV32: A Mate's paired half is a stage, except in a project that is itself production", () => {
   expect(
     brief({
       services: [
@@ -96,7 +96,7 @@ it("ZV32: A Mate's paired half is its preview, except in a project that is itsel
       ownRole: "stage",
     }),
   ).toEqual([
-    { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
+    { service: "appdev", role: "preview", url: "https://appdev-1-3000.example.app" },
     { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
   ]);
   expect(
@@ -108,8 +108,8 @@ it("ZV32: A Mate's paired half is its preview, except in a project that is itsel
       ],
     }),
   ).toEqual([
-    { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
-    { service: "appstage", role: "preview", url: "https://appstage-1-3000.example.app" },
+    { service: "appdev", role: "preview", url: "https://appdev-1-3000.example.app" },
+    { service: "appstage", role: "stage", url: "https://appstage-1-3000.example.app" },
   ]);
 });
 
@@ -143,7 +143,7 @@ it("ZV34: Two stage or production projects of one application keep their sites a
       environments: [env("stage", [route("app", "https://app-2-80.example.app")])],
     }),
   ).toEqual([
-    { service: "matedev", role: "dev", url: "https://matedev-1-3000.example.app" },
+    { service: "matedev", role: "preview", url: "https://matedev-1-3000.example.app" },
     { service: "app stage", role: "stage", url: "https://app-2-80.example.app" },
   ]);
 });
@@ -169,7 +169,7 @@ it("ZV36: A dev entry running several dev servers lists each running one as its 
         },
       ],
     }),
-  ).toEqual([{ role: "dev", name: "appdev", url: "https://appdev-1df2-3000.prg1.zerops.app" }]);
+  ).toEqual([{ role: "preview", name: "appdev", url: "https://appdev-1df2-3000.prg1.zerops.app" }]);
   expect(
     named({
       services: [
@@ -184,8 +184,8 @@ it("ZV36: A dev entry running several dev servers lists each running one as its 
       ],
     }),
   ).toEqual([
-    { role: "dev", name: "appdev · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
-    { role: "dev", name: "appdev · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+    { role: "preview", name: "appdev · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+    { role: "preview", name: "appdev · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
   ]);
 });
 

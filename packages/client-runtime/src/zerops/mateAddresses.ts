@@ -1,9 +1,7 @@
 /**
  * A Mate's public addresses, each with what it is to the person: the dev they
- * work on, the Mate's preview of it (the stage half of its dev/stage pair), the
- * project's stage they check, the production people use — and any other public
- * service by its name alone. The preview is never called stage: the onboarding
- * run's owner held two addresses named stage and kept the preview's as the app.
+ * work on, the workspace's Preview, the Mate's stage half, the project's stage they check,
+ * the production people use — and any other public service by its name alone.
  *
  * The owner, 2026-10-03: "the browser automatically opens all tabs, imo it
  * shouldnt and you should be able to open each separately". Picking Browser
@@ -158,18 +156,18 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
       devs.add(entry.service);
       const name = entry.label === "dev" ? entry.service : `${entry.service} · ${entry.label}`;
       const several = runningServers(serversOf(entry.service));
-      if (several.length === 0) add(entry.service, "dev", entry.url, name);
+      if (several.length === 0) add(entry.service, "preview", entry.url, name);
       for (const server of several)
         add(
           `${entry.service} ${devServerName(server)}`,
-          "dev",
+          "preview",
           server.url,
           `${name} · ${devServerName(server)}`,
         );
     }
-    // A pair's half is the Mate's preview, unless its project is itself the stage or production.
+    // A pair's stage half is a stage, unless its project is production.
     if (part.preview?.url !== undefined)
-      add(part.preview.service, projectRole ?? "preview", part.preview.url);
+      add(part.preview.service, projectRole ?? "stage", part.preview.url);
   }
   // A service's first route is its address: a second port is the same page.
   const listed = new Set<string>();

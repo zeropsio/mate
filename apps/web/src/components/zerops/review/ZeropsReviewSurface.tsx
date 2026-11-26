@@ -77,8 +77,6 @@ import {
   type ReleaseChangeRow,
   type ReviewFrame,
   type ReviewKind,
-  tryItEverything,
-  tryItWords,
 } from "./ZeropsReview.logic";
 import { Loading } from "~/components/ui/loading";
 import { Text } from "~/components/ui/text";
@@ -920,43 +918,63 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the Mate's previews, each by its Mate and its part (`tryItWords`), opened in a tab. */
+/** "Try it": the change's Preview and, when it passed, its Review build. */
 export function ReviewTry({
-  mateName,
   previews,
-  everything = false,
+  previewState,
+  builds = [],
 }: {
-  readonly mateName: string;
   readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
-  /** Its Mate holds more than one open change: the preview shows all of its work. */
-  readonly everything?: boolean | undefined;
+  readonly previewState?: "reading" | "not-running" | "available" | undefined;
+  readonly builds?:
+    | ReadonlyArray<{
+        readonly service: string;
+        readonly url: string;
+        readonly head: string;
+        readonly at: string;
+      }>
+    | undefined;
 }) {
   return (
     <ReviewSection title="Try it">
       <div className="flex flex-wrap gap-2">
-        {previews.map((preview) => {
-          const words = tryItWords(mateName, preview.service);
-          return (
-            <Button
-              className="max-w-full"
-              key={preview.service}
-              render={<a href={preview.url} rel="noreferrer" target="_blank" />}
-              size="sm"
-              variant="secondary"
-            >
-              <GlobeIcon aria-hidden="true" />
-              <span className="flex-none font-medium">{words.preview}</span>
-              <span className="min-w-0 truncate text-muted-foreground">· {words.part}</span>
-              <ArrowUpRightIcon aria-hidden="true" />
-            </Button>
-          );
-        })}
+        {previews.map((preview) => (
+          <Button
+            className="max-w-full"
+            key={preview.service}
+            render={<a href={preview.url} rel="noreferrer" target="_blank" />}
+            size="sm"
+            variant="secondary"
+          >
+            <GlobeIcon aria-hidden="true" />
+            <span className="flex-none font-medium">Preview</span>
+            <span className="min-w-0 truncate text-muted-foreground">· {preview.service}</span>
+            <ArrowUpRightIcon aria-hidden="true" />
+          </Button>
+        ))}
+        {builds.map((build) => (
+          <Button
+            className="max-w-full"
+            key={build.service}
+            render={<a href={build.url} rel="noreferrer" target="_blank" />}
+            size="sm"
+            variant="secondary"
+          >
+            <GlobeIcon aria-hidden="true" />
+            <span className="flex-none font-medium">Review build</span>
+            <span className="min-w-0 truncate text-muted-foreground">
+              · {build.service} · {build.head.slice(0, 7)} ·{" "}
+              <time dateTime={build.at}>{new Date(build.at).toLocaleString()}</time>
+            </span>
+            <ArrowUpRightIcon aria-hidden="true" />
+          </Button>
+        ))}
       </div>
-      {everything ? (
+      {previews.length > 0 ? null : (
         <Text className="mt-1.5" render={<p />} variant="description">
-          {tryItEverything(mateName)}
+          {previewState === "reading" ? "Preview not read yet." : "Preview is not running."}
         </Text>
-      ) : null}
+      )}
     </ReviewSection>
   );
 }

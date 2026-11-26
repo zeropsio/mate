@@ -82,7 +82,7 @@ import type { MatePart } from "./mateParts.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
 
-/** A Mate's preview: one pair's stage half, by the pair's name (`app` for `appstage`). */
+/** A public address of a Mate's stage, by its service's hostname. */
 export interface GroupFlowPreview {
   readonly service: string;
   readonly url: string;
@@ -92,7 +92,7 @@ export interface GroupFlowPreview {
 export interface GroupFlowMate {
   readonly projectId: string;
   readonly name: string;
-  /** Its previews, one per part with a public preview, by its service's hostname. */
+  /** Its stage addresses, one per part with a public address, by its service's hostname. */
   readonly previews: ReadonlyArray<GroupFlowPreview>;
   /** Its parts (`mateParts`), each with its preview where it has one; absent where unread. */
   readonly parts?: ReadonlyArray<MatePart>;

@@ -37,7 +37,7 @@ export const LEGACY_VOCABULARY_PATTERNS = [
   {
     name: "appdev",
     pattern: /\bapp(?:dev|stage)\b/iu,
-    say: "{Mate}'s workspace, or {Mate}'s preview for its own address",
+    say: "{Mate}'s Preview for its workspace, or Review build for its stage",
   },
   { name: "recipe", pattern: /\brecipes?\b/iu, say: "setup, or setup files" },
   { name: "import files", pattern: /\bimport files?\b/iu, say: "setup files" },

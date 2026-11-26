@@ -2,12 +2,24 @@
  * What a review's sheet names beside its own reads, off the candidate list the left menu reads
  * too: the project's name, a Mate's previews and the stage that follows `main`.
  */
-import { buildCanonicalGroupTree, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { devServersOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMemo } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { scopedThreadKey, parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { AsyncResult, Atom } from "effect/reactivity";
+import * as Option from "effect/Option";
+import type { HqReviewBuild } from "@t3tools/shared/hqChanges";
+import { useProjectSitesOf } from "../projectPartsShown";
+import { useHqMainChats } from "~/zerops/useMenuMateReadings";
+import { useMatesLeases } from "~/zerops/useMatesLeases";
+import { useZeropsLifecycle } from "~/zerops/useZeropsFeeds";
+import { useHqAppReleases } from "~/zerops/useHqAppDetail";
+import { vcsStatus } from "~/state/workspace";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { stageDeploysMerges, tryItPreviews } from "./ZeropsReview.logic";
+import { stageDeploysMerges, tryItTargets, type ReviewTryTargets } from "./ZeropsReview.logic";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -22,37 +34,85 @@ export function useGroupName(groupId: string): string | undefined {
   );
 }
 
-/** A Mate's preview as "Try it" offers it: its part, and where it answers. */
-export type ReviewPreview = GroupFlowPreview;
+const NO_BRANCH = Atom.make<string | null | undefined>(undefined);
 
-const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
-
-/**
- * The Mate's previews: "Try it", one per part and named by it (`tryItPreviews`). There is none per
- * change; the Mate's own stand for it, each — a frontend and a backend are two, and nothing says
- * which a change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend,
- * how do you know?"). Its repository's only, where a change names one that is a part's dev.
- */
+/** The branch's Preview and the Review build at its current head. */
 export function useMatePreviews(
+  appId: string,
   mateProjectId: string,
-  /** The Mate tier on `main` (`ZeropsProjectFlow.mateTier`). */
   mateTier: string | undefined,
-  /** The change's repository; `undefined` for every pair's. */
-  repository: string | undefined,
-): ReadonlyArray<ReviewPreview> {
+  repository: string,
+  repositoryUrl: string | undefined,
+  branch: string | undefined,
+  head: string | undefined,
+  reviewBuild: HqReviewBuild | undefined,
+): ReviewTryTargets {
   const { listing } = useZeropsDetailCandidates();
-  return useMemo(() => {
-    const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = tryItPreviews({
-      routes: row?.routes ?? [],
-      hostnames: row?.services?.hostnames ?? [],
-      pools: row?.services?.pools,
-      controlPlane: row?.service?.name,
-      tier: mateTier,
-      repository,
+  const appIds = useMemo(() => [appId], [appId]);
+  const repo = useHqAppReleases(appIds)
+    .repos.get(appId)
+    ?.find((entry) => entry.name === repository);
+  const repositoryRemote = repo?.remote?.url ?? repo?.follows;
+  const sites = useProjectSitesOf(mateProjectId);
+  const mainChat = useHqMainChats()(mateProjectId);
+  const threadKey =
+    sites?.mates.find((mate) => mate.candidate.project.id === mateProjectId)?.threadKey ??
+    (mainChat === undefined ? undefined : scopedThreadKey(mainChat));
+  const leases = useMatesLeases([{ projectId: mateProjectId, threadKey }])[mateProjectId]?.leases;
+  const thread = threadKey === undefined ? null : parseScopedThreadKey(threadKey);
+  const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
+  const pooled = (row?.services?.pools?.length ?? 0) > 0;
+  const lifecycle = useZeropsLifecycle(
+    pooled ? null : (thread?.environmentId ?? null),
+    pooled ? null : (thread?.threadId ?? null),
+  );
+  const classicServers = devServersOf(repository, lifecycle);
+  const classicAtom = useMemo(() => {
+    if (thread === null || pooled) return NO_BRANCH;
+    return Atom.make((get): string | null | undefined => {
+      const status = get(
+        vcsStatus({
+          environmentId: thread.environmentId,
+          input: { cwd: `/var/www/${repository}` },
+        }),
+      );
+      const value = Option.getOrUndefined(AsyncResult.value(status));
+      return value === undefined ? undefined : value.isRepo ? value.refName : null;
     });
-    return previews.length === 0 ? NO_PREVIEWS : previews;
-  }, [listing, mateProjectId, mateTier, repository]);
+  }, [thread?.environmentId, pooled, repository]);
+  const classicBranch = useAtomValue(classicAtom);
+  return useMemo(
+    () =>
+      tryItTargets({
+        routes: row?.routes ?? [],
+        hostnames: row?.services?.hostnames ?? [],
+        pools: row?.services?.pools,
+        controlPlane: row?.service?.name,
+        tier: mateTier,
+        repository,
+        repositoryUrl,
+        repositoryRemote,
+        branch,
+        head,
+        reviewBuild,
+        leases: row?.services === undefined ? undefined : leases,
+        classicBranch,
+        classicServers,
+      }),
+    [
+      row,
+      mateTier,
+      repository,
+      repositoryUrl,
+      repositoryRemote,
+      branch,
+      head,
+      reviewBuild,
+      leases,
+      classicBranch,
+      classicServers,
+    ],
+  );
 }
 
 /**

@@ -142,39 +142,6 @@ export const JUDGED_PER_MAIN_MOVE = 20;
 export const ChangeBranchName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255));
 
 /**
- * A change as HQ records it. `branch` is the branch it is on; `head` is the commit that branch was
- * last pushed to, none until the first push lands. Once merged, `mergedSha` is the
- * squash on `main` and `landedHead` the head it squashed.
- */
-/**
- * One part's preview as zcp last left it in the Mate's work session (spec-mate §2.8a.6): its
- * stage service, its last deploy and whether a verify passed after it. `deployedCommit` is the dev
- * HEAD, written only for an `ok` deploy from a clean workspace.
- */
-export const ChangeReceiptPart = Schema.Struct({
-  /** The part: its `zeropsSetup`. */
-  setup: Schema.String,
-  previewHostname: Schema.String,
-  deploy: Schema.Literals(["ok", "failed", "none"]),
-  /** That deploy's time; absent for a preview never deployed (`none`). */
-  deployedAt: Schema.optionalKey(Instant),
-  workspaceClean: Schema.Boolean,
-  deployedCommit: Schema.optionalKey(Sha),
-  verified: Schema.Boolean,
-});
-export type ChangeReceiptPart = typeof ChangeReceiptPart.Type;
-
-/**
- * What zcp says of each part's preview after a push of the change's branch, only for an
- * application of more than one part; its `parts` follow the pair's stages.
- */
-export const ChangeReceipt = Schema.Struct({
-  at: Instant,
-  parts: Schema.Array(ChangeReceiptPart),
-});
-export type ChangeReceipt = typeof ChangeReceipt.Type;
-
-/**
  * HQ's latest own push on a change's branch: right after change `landed` was squashed onto `main`
  * as `squash`, HQ brought `main` into this change stacked on it, moving its branch from `from` to
  * its merge commit `head` (authored `Core <core@hq.invalid>`) at `at`.
@@ -246,6 +213,11 @@ export const HqReviewBuild = Schema.Struct({
 });
 export type HqReviewBuild = typeof HqReviewBuild.Type;
 
+/**
+ * A change as HQ records it. `branch` is the branch it is on; `head` is the commit that branch was
+ * last pushed to, none until the first push lands. Once merged, `mergedSha` is the
+ * squash on `main` and `landedHead` the head it squashed.
+ */
 export const HqChange = Schema.Struct({
   recipeValidation: Schema.optionalKey(HqRecipeValidation),
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -359,8 +331,8 @@ export const HqChange = Schema.Struct({
   reviewBuild: Schema.optionalKey(HqReviewBuild),
   /** The Mate has given up repairing checks; a person is needed. */
   checksGivenUp: Schema.optionalKey(Schema.Literal(true)),
-  /** The last receipt zcp wrote on it, whole; `null` for a single-part application's change. */
-  receipt: Schema.NullOr(ChangeReceipt),
+  /** HQ still sends null until the retired receipt key is removed from the wire. */
+  receipt: Schema.optionalKey(Schema.Null),
 });
 export type HqChange = typeof HqChange.Type;
 
@@ -647,19 +619,14 @@ const OpenChangeResponse = Schema.Union([
 type OpenChangeResponse = typeof OpenChangeResponse.Type;
 
 /**
- * `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title, description, its parts'
- * {@link ChangeReceipt}, or any of them.
+ * `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title or description.
  */
 const EditChangeRequest = Schema.Struct({
   title: Schema.optionalKey(ChangeTitle),
   body: Schema.optionalKey(ChangeBody),
-  receipt: Schema.optionalKey(ChangeReceipt),
 }).check(
-  Schema.makeFilter(
-    (edit: { readonly title?: string; readonly body?: string; readonly receipt?: unknown }) =>
-      edit.title === undefined && edit.body === undefined && edit.receipt === undefined
-        ? "Expected a title, a body or a receipt"
-        : undefined,
+  Schema.makeFilter((edit: { readonly title?: string; readonly body?: string }) =>
+    edit.title === undefined && edit.body === undefined ? "Expected a title or a body" : undefined,
   ),
 );
 type EditChangeRequest = typeof EditChangeRequest.Type;

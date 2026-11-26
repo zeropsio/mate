@@ -2221,8 +2221,8 @@ export function ZeropsProjectsContent({
     options?: { readonly page?: boolean },
   ) => {
     const { group, flow } = entry;
-    // Each Mate's previews, one per service and named by it: links out, so the menu's, not the
-    // row's. Its Mate is named where the project has more than one with a preview.
+    // Each Mate's stages, one per service and named by it: links out, so the menu's, not the
+    // row's. Its Mate is named where the project has more than one with a stage.
     const previews = flow.mates.flatMap((mate) =>
       mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
@@ -2237,8 +2237,8 @@ export function ZeropsProjectsContent({
       ...previews.map((preview) => ({
         id: `preview:${preview.mate}:${preview.service}`,
         label: oneMate
-          ? `Open ${preview.service} preview`
-          : `Open ${preview.mate}’s ${preview.service} preview`,
+          ? `Open ${preview.service} stage`
+          : `Open ${preview.mate}’s ${preview.service} stage`,
         onSelect: () => {
           window.open(preview.url, "_blank", "noopener,noreferrer");
         },

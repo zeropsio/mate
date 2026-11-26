@@ -26,7 +26,6 @@
 import { changeActWords, type ChangeAct } from "./changeAct.ts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
-  type ChangeReceipt,
   changeUrl,
   type HqChange,
   type HqCorePush,
@@ -152,11 +151,8 @@ export interface FlowPullRequest {
   readonly draftReason?: string | undefined;
   /** HQ's latest own push on its branch (`HqChange.corePush`); absent where HQ never moved it. */
   readonly corePush?: HqCorePush | undefined;
-  /**
-   * What zcp last said of each part's preview (`HqChange.receipt`); absent for a change of a
-   * single-part application, which never carries one.
-   */
-  readonly receipt?: ChangeReceipt | undefined;
+  /** HQ's Review build for this change. */
+  readonly reviewBuild?: HqChange["reviewBuild"];
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
   readonly mergeRoute?: HqChange["mergeRoute"];
@@ -284,7 +280,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ready: change.ready,
     ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
-    ...(change.receipt === null ? {} : { receipt: change.receipt }),
+    ...(change.reviewBuild === undefined ? {} : { reviewBuild: change.reviewBuild }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
     ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),

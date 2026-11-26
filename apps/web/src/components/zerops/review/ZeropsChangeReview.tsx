@@ -117,7 +117,6 @@ import { useReviewDeploys } from "../ZeropsDeployAnswer";
 import {
   changeCode,
   changeFixOptions,
-  changeReceipt,
   changeReadVerdict,
   mergeFoot,
   mergeStageInputs,
@@ -139,7 +138,8 @@ import {
   type GitRepoAt,
 } from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
-import { mainStagesOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
+import { mainStagesOf, useGroupName, useMatePreviews } from "./reviewReads";
+import type { ReviewTryTargets } from "./ZeropsReview.logic";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
@@ -617,11 +617,15 @@ function ChangeReviewData({
       : { appId: target.groupId, projectId: heldStage.projectId, name: heldStage.environment },
   );
   const project = useGroupName(target.groupId);
-  // A recipe change is no pair's code: it offers every preview.
-  const previews = useMatePreviews(
+  const tryIt = useMatePreviews(
+    target.groupId,
     pull.mateProjectId,
     flow?.mateTier,
-    pull.kind === "recipe" ? undefined : pull.repository,
+    pull.repository,
+    pull.repositoryUrl,
+    pull.branch,
+    pull.headSha,
+    pull.reviewBuild,
   );
   // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
   // holds; a change done here moves the queue on, after a beat that says so.
@@ -681,7 +685,9 @@ function ChangeReviewData({
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
-      previews={previews}
+      previews={tryIt.previews}
+      previewState={tryIt.previewState}
+      reviewBuilds={tryIt.builds}
       project={project}
       appId={target.groupId}
       stages={stages}
@@ -931,8 +937,10 @@ export interface ChangeReviewViewProps {
    * (`ZeropsProjectFlow.outside`); read only while it has no production here.
    */
   readonly productionOutside?: boolean | undefined;
-  /** The Mate's previews, each pair's stage half by its service: "Try it". */
-  readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
+  /** The change’s workspace and Review build addresses. */
+  readonly previews?: ReviewTryTargets["previews"] | undefined;
+  readonly previewState?: ReviewTryTargets["previewState"] | undefined;
+  readonly reviewBuilds?: ReviewTryTargets["builds"] | undefined;
   readonly now: number;
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
@@ -1252,7 +1260,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // HQ's merge check still to come is the foot's wait, beside the Merge it holds: the line under
   // the title keeps to the facts.
   const checking = model.verdict.state === "checking";
-  const receipt = changeReceipt({ receipt: pull.receipt, head: pull.headSha });
   const repo: GitRepoAt | undefined =
     props.appId === undefined ? undefined : { appId: props.appId, repo: pull.repository };
   const code = repo === undefined ? undefined : changeCode(pull);
@@ -1334,7 +1341,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                     mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
                     renewal: props.keyRenewal?.run,
                     live: props.live,
-                    warning: receipt?.warning,
                     recipe: pull.kind === "recipe",
                     productionOutside,
                     mayRelease: props.mayRelease,
@@ -1375,7 +1381,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   mayRenew: mergeNoteShown && props.keyRenewal?.onRenew !== undefined,
                   renewal: props.keyRenewal?.run,
                   live: props.live,
-                  warning: receipt?.warning,
                   recipe: pull.kind === "recipe",
                   productionOutside,
                   mayRelease: props.mayRelease,
@@ -1605,23 +1610,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         pictures={props.pictures}
         reading={pull.description === undefined && readout.kind === "reading"}
       />
-      {props.previews === undefined || props.previews.length === 0 ? null : (
+      {props.previews === undefined ? null : (
         <ReviewTry
-          everything={!over && (props.mateOpenChanges ?? 0) > 1}
-          mateName={mate.name}
           previews={props.previews}
+          previewState={props.previewState}
+          builds={props.reviewBuilds}
         />
-      )}
-      {receipt === undefined ? null : (
-        <ReviewSection count={String(receipt.parts.length)} title="Parts">
-          <ul className="mt-1.5 grid gap-1 text-body leading-4.5">
-            {receipt.parts.map((part) => (
-              <li key={part.setup}>
-                {part.setup} · {part.preview} · {part.words}
-              </li>
-            ))}
-          </ul>
-        </ReviewSection>
       )}
       <ReviewSection
         count={

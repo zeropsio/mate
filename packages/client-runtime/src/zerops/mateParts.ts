@@ -2,7 +2,7 @@
  * A Mate's parts, the one reader every surface that shows them reads: the menu's Sites, the
  * conversation header's Sites, the Mate rows on the overview and a project's page, and the Browser
  * page. Each part is a piece of the application — its dev entries (where the Mate works on it) and
- * its preview (the stage half of its pair, which runs what the Mate built) — each by its service's
+ * its stage (the stage half of its pair, which runs a Review build) — each by its service's
  * real hostname: a surface never names a service anything else (Aleš, 2026-10-29).
  *
  * - **Parts** come from `servicePairs` — the tier, zcp's envelope, the stem — with one override: a
@@ -22,7 +22,7 @@
  * - **Several addresses**: a dev service answering on several ports, or a workspace running several
  *   dev servers, is one entry: on the port its preview opens where it has that port (a workspace,
  *   the server `poolWorkspaceLink` opens), else its lowest; its other addresses are its tooltip's.
- * - **Preview**: the stage half's first route, labelled "preview"; one with no public address says
+ * - **Stage**: the stage half's first route, labelled "stage"; one with no public address says
  *   so, muted, so a part that serves no page (a runner) still stands.
  *
  * Pure: no network, no clock, no platform globals.
@@ -366,7 +366,7 @@ export function mateParts(input: MatePartsInput): MateParts {
         devService: dev,
         pooled: pools.has(dev) || holders.has(dev),
         dev: devEntries,
-        preview: entryOf(`preview:${preview}`, "preview", preview, NO_ADDRESS),
+        preview: entryOf(`preview:${preview}`, "stage", preview, NO_ADDRESS),
       });
   }
   for (const { hostname } of services) {

@@ -8,10 +8,10 @@
  *
  * Pure: no DOM, no clock.
  */
-import type { MessageAbout } from "@t3tools/contracts";
+import type { MessageAbout, ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
 import {
   deployedVersion,
-  type GroupFlowPreview,
+  leaseOfRepository,
   type Moved,
   type ProductionRun,
   type ReviewPrimary,
@@ -24,9 +24,13 @@ import {
 import { keyRenewedBy, stopKeyGap } from "@t3tools/client-runtime/zerops/flow";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { KeyRenewal } from "~/zerops/renewDeployKey.logic";
-import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
-import { parseAttachmentUrl, type ChangeReceipt } from "@t3tools/shared/hqChanges";
+import {
+  isBrowsableUrl,
+  mateParts,
+  poolWorkspaceLink,
+} from "@t3tools/client-runtime/zerops/mateParts";
+import { parseAttachmentUrl, repoOfUrl, type HqReviewBuild } from "@t3tools/shared/hqChanges";
+import { normalizeGitRemoteUrl } from "@t3tools/shared/git";
 import { NO_ACCESS } from "~/zerops/hqRead.logic";
 import { environmentTitle } from "../place/place.logic";
 
@@ -577,9 +581,6 @@ export function whySaid(verdict: ReviewVerdict, more: boolean): boolean {
 const listed = (names: ReadonlyArray<string>): string =>
   names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
-/** An environment's name as a sentence names it: "Stage", a shared place, capitalised. */
-const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-
 /** The main-following stages with the deploy-key gap HQ's facts reveal. */
 export interface MergeStage {
   readonly name: string;
@@ -635,7 +636,7 @@ export function mergeStages(input: {
  * What merging does, said under the buttons: a merge is added to `main`, each stage that deploys
  * merges from it runs it (`stageDeploysMerges`) — no other is promised one — and production
  * keeps its release until the person releases, or — where HQ's rule refused them the release —
- * until it is released — after the receipt's warning, while the change waits on its press. Where no
+ * until it is released while the change waits on its press. Where no
  * stage deploys it, and for a setup change, which deploys nothing, the review's own words say what
  * merging does: they also say where merging is not offered, or its files were never shown.
  */
@@ -715,40 +716,38 @@ export function stageDeploysMerges(row: {
   );
 }
 
-/**
- * What a "Try it" pill says: whose preview it opens, then which part, by its service's real
- * hostname — "Wren's preview · shopstage".
- */
-export function tryItWords(
-  mateName: string,
-  part: string,
-): { readonly preview: string; readonly part: string } {
-  return { preview: `${placeName(crewPossessive(mateName))} preview`, part };
+/** The change's own workspace and the passing Review build's public stages. */
+export interface ReviewTryTargets {
+  readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
+  readonly previewState: "reading" | "not-running" | "available";
+  readonly builds: ReadonlyArray<{
+    readonly service: string;
+    readonly url: string;
+    readonly head: string;
+    readonly at: string;
+  }>;
 }
 
-/**
- * What "Try it" says under its pills where its Mate holds more than one open change: its preview
- * runs all of its work, never this change alone.
- */
-export const tryItEverything = (mateName: string): string =>
-  `Shows everything ${mateName} is working on`;
-
-/**
- * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each
- * part with a public preview by its real hostname. A change of one repository offers that pair's
- * parts; where no part's dev is that repository — a pool-era Mate, whose parts' devs are pools — it
- * offers every part, as a recipe change does.
- */
-export function tryItPreviews(input: {
+/** Select the branch's workspace and only a stage proven by a passing result at its head. */
+export function tryItTargets(input: {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly hostnames: ReadonlyArray<string>;
   readonly pools: ReadonlyArray<string> | undefined;
   readonly controlPlane: string | undefined;
-  /** The Mate tier on `main`. */
   readonly tier: string | undefined;
-  /** The change's repository; `undefined` for every part's. */
-  readonly repository: string | undefined;
-}): ReadonlyArray<GroupFlowPreview> {
+  readonly repository: string;
+  readonly repositoryUrl: string | undefined;
+  /** The external repository HQ says this repository follows or mirrors. */
+  readonly repositoryRemote: string | undefined;
+  readonly branch: string | undefined;
+  readonly head: string | undefined;
+  readonly reviewBuild: HqReviewBuild | undefined;
+  readonly leases: ReadonlyArray<ZeropsLease> | undefined;
+  /** The classic dev checkout's branch, null when read and not a branch. */
+  readonly classicBranch: string | null | undefined;
+  /** The dev servers zcp last read on the classic service. */
+  readonly classicServers: ReadonlyArray<ZeropsDevServer> | undefined;
+}): ReviewTryTargets {
   const { parts } = mateParts({
     services: input.hostnames.map((hostname) => ({ hostname })),
     routes: input.routes,
@@ -756,65 +755,59 @@ export function tryItPreviews(input: {
     controlPlane: input.controlPlane,
     tier: input.tier,
   });
-  const own = parts.filter((part) => part.devService === input.repository);
-  return (own.length === 0 ? parts : own).flatMap((part) =>
-    part.preview?.url === undefined
-      ? []
-      : [{ service: part.preview.service, url: part.preview.url }],
-  );
-}
-
-/** One part's preview in a change's review, as its receipt left it. */
-interface ReceiptRow {
-  readonly setup: string;
-  readonly preview: string;
-  /** "from a1b2c3d · verified", "from an uncommitted tree", "deploy failed", "not deployed". */
-  readonly words: string;
-}
-
-const shortSha = (sha: string) => sha.slice(0, 7);
-
-/**
- * A change's receipt (`HqChange.receipt`) as its review shows it: a row per part, and the warning
- * Merge carries for each part not tried at the change — its preview failed, deployed from an
- * uncommitted tree or an older commit, or not verified. A part never deployed may be one the change
- * does not touch, so it warns of nothing. Nothing for a single-part application. The warning never
- * blocks a merge.
- */
-export function changeReceipt(input: {
-  readonly receipt: ChangeReceipt | undefined;
-  /** The change's head, which a preview's commit is compared with. */
-  readonly head: string | undefined;
-}):
-  | { readonly parts: ReadonlyArray<ReceiptRow>; readonly warning: string | undefined }
-  | undefined {
-  const { receipt, head } = input;
-  if (receipt === undefined || receipt.parts.length < 2) return undefined;
-  const gaps: Array<string> = [];
-  const parts = receipt.parts.map((part): ReceiptRow => {
-    const row = (words: string, gap?: string) => {
-      if (gap !== undefined) gaps.push(`${part.setup} (${gap})`);
-      return { setup: part.setup, preview: part.previewHostname, words };
-    };
-    if (part.deploy === "none") return row("not deployed");
-    if (part.deploy === "failed") return row("deploy failed", "failed");
-    const verified = part.verified ? " · verified" : " · not verified";
-    const unverified = part.verified ? undefined : "not verified";
-    const commit = part.workspaceClean ? part.deployedCommit : undefined;
-    if (commit === undefined) {
-      return row(`from an uncommitted tree${verified}`, "uncommitted");
+  const classic = parts.find((part) => part.devService === input.repository && !part.pooled);
+  const changeRepo = input.repositoryUrl === undefined ? null : repoOfUrl(input.repositoryUrl);
+  let repositoryUnread = false;
+  const previews = (input.leases ?? []).flatMap((lease) => {
+    if (input.branch === undefined || lease.branch !== input.branch) return [];
+    const link = poolWorkspaceLink(lease);
+    if (link.url === undefined) return [];
+    const remoteMatches =
+      lease.repo !== undefined &&
+      input.repositoryRemote !== undefined &&
+      normalizeGitRemoteUrl(lease.repo) === normalizeGitRemoteUrl(input.repositoryRemote);
+    const leaseRepo = lease.repo === undefined ? null : repoOfUrl(lease.repo);
+    if (remoteMatches) return [{ service: lease.alias, url: link.url }];
+    if (
+      changeRepo === null ||
+      leaseRepo === null ||
+      changeRepo.hq.toLowerCase() !== leaseRepo.hq.toLowerCase()
+    ) {
+      repositoryUnread = true;
+      return [];
     }
-    if (head !== undefined && commit !== head) {
-      return row(
-        `from ${shortSha(commit)}, the change is at ${shortSha(head)}${verified}`,
-        "older commit",
-      );
-    }
-    return row(`from ${shortSha(commit)}${verified}`, unverified);
+    return leaseOfRepository(lease.repo, input.repositoryUrl)
+      ? [{ service: lease.alias, url: link.url }]
+      : [];
   });
+  if (input.branch !== undefined && input.classicBranch === input.branch && classic !== undefined) {
+    const link = poolWorkspaceLink({ state: "held", devServers: input.classicServers });
+    if (link.url !== undefined) previews.push({ service: classic.devService, url: link.url });
+  }
+  const reading =
+    input.branch === undefined ||
+    ((input.pools === undefined || input.pools.length > 0) && input.leases === undefined) ||
+    repositoryUnread ||
+    (classic !== undefined &&
+      (input.classicBranch === undefined ||
+        (input.classicBranch === input.branch && input.classicServers === undefined)));
+  const build = input.reviewBuild;
+  const builds =
+    build?.state === "passing" && input.head !== undefined && build.head === input.head
+      ? (build.parts ?? []).flatMap((part) => {
+          if (part.outcome !== "ok") return [];
+          const route = input.routes.find(
+            (entry) => isBrowsableUrl(entry.url) && new URL(entry.url).hostname === part.stage,
+          );
+          return route === undefined
+            ? []
+            : [{ service: route.service, url: route.url, head: build.head, at: build.at }];
+        })
+      : [];
   return {
-    parts,
-    warning: gaps.length === 0 ? undefined : `Not tried at this change: ${gaps.join(", ")}.`,
+    previews,
+    previewState: previews.length > 0 ? "available" : reading ? "reading" : "not-running",
+    builds,
   };
 }
 

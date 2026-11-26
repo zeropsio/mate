@@ -11,8 +11,9 @@
   not HQ. A build that signs in through it shares its session and never holds the refresh token.
 - An **application** groups related repositories and environments in HQ.
 - An **environment** is a place an application's code runs. A Mate is for development, **stage**
-  follows merged work, and **production** runs a release. A Mate's **preview** is its development
-  code running in the stage half of a dev/stage pair.
+  follows merged work, and **production** runs a release. A Mate's **Preview** is its workspace's
+  running development code. The Mate's stage half runs a change's **Review build** at its described
+  head.
 - A **dev pool** is the Zerops Swarm service a part's development runs in, beside the part's stage.
   A **dev service** is the older shape, one always-on container all branches share; existing ones
   keep working.

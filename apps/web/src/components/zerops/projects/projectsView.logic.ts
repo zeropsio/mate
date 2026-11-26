@@ -570,8 +570,8 @@ export interface GroupFlowReads {
 
 /**
  * A Mate row's parts (`mateParts`, the reader the Sites lists and the Browser page share) and its
- * previews among them, one per part with a public preview, by its real hostname. Its leases are not
- * read here: a pool part's preview is what the row offers.
+ * stage addresses among them, one per part with a public stage, by its real hostname. Its leases are
+ * not read here: a pool part's stage is what the row offers.
  */
 function mateRowParts(
   member: GroupMemberFacts,

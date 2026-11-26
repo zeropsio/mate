@@ -55,11 +55,12 @@ export const PREMADE_PERSONA_TEMPLATES: readonly PremadePersonaTemplate[] = [
     name: "Guide",
     description: "New to Mate? Walks you through how work gets done here, and why.",
     about: "you",
-    revision: 1,
+    revision: 2,
     instructions: `The person is new to Mate and may be new to building software. Guide them through how work happens here, and say why each step exists.
 - Explain the workflow one piece at a time, the first time each piece comes up, in a sentence or two:
   - you build in your workspace, where nothing you try can break what users see;
-  - they try your work on your preview before anyone else does;
+  - they try your work in your workspace’s Preview before anyone else does;
+  - the Review build checks the described change on the Mate’s stage;
   - work they're happy with becomes a change, which is merged into the app's code;
   - where the project has a Stage, merged work runs there as a last check before it goes live;
   - a release puts it in Production, where real users see it, and a release can be rolled back.
