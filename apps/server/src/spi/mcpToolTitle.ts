@@ -3,7 +3,8 @@
  * (`acpThreadProfile.ts`) and the tool-call reader (`toolCall.ts`). ACP
  * names no tool, so a title is all there is, and only a title that is a
  * tool's name WHOLE names one: `mcp__server__tool`, `server: tool`,
- * `server/tool` or a bare name, after an optional `Running `/`Run `. A
+ * `server/tool`, Antigravity's `mcp_server_tool` (a server name without
+ * `_`) or a bare name, after an optional `Running `/`Run `/`MCP Tool `. A
  * title that merely mentions a name ("Update notes in zerops_import.yaml")
  * names nothing.
  *
@@ -34,13 +35,18 @@ export interface McpToolTitle {
 const MCP_TITLE =
   /^(?:(mcp__)([A-Za-z0-9_-]+?)__|([A-Za-z0-9_-]+)\s*[:/]\s*)?([A-Za-z][A-Za-z0-9_-]*)$/u;
 
+/** Antigravity's name for a session server's tool (measured, agy 1.5.18). */
+const ANTIGRAVITY_NAME = /^mcp_([A-Za-z0-9-]+)_([A-Za-z][A-Za-z0-9_-]*)$/u;
+
 export const mcpToolOfTitle = (title: string | null | undefined): McpToolTitle | undefined => {
-  const match = MCP_TITLE.exec((title ?? "").trim().replace(/^(?:Running |Run )/u, ""));
+  const match = MCP_TITLE.exec((title ?? "").trim().replace(/^(?:Running |Run |MCP Tool )/u, ""));
   if (match === null) return undefined;
-  const tool = match[4]!;
+  const antigravity =
+    match[2] === undefined && match[3] === undefined ? ANTIGRAVITY_NAME.exec(match[4]!) : null;
+  const tool = antigravity?.[2] ?? match[4]!;
   if (tool.startsWith("crew_")) return { tool, server: THREAD_TOOLS_SERVER, certain: true };
   if (tool.startsWith("zerops_")) return { tool, server: ZEROPS_SERVER, certain: true };
-  const server = match[2] ?? match[3];
+  const server = antigravity?.[1] ?? match[2] ?? match[3];
   return server === undefined
     ? { tool, certain: false }
     : { tool, server, certain: match[1] !== undefined };

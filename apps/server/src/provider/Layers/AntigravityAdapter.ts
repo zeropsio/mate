@@ -1643,9 +1643,14 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
 
   return {
     provider: PROVIDER,
-    // No `threadProfile` until seen live: whether Antigravity asks before an MCP tool zcp's
-    // config gives it is unknown, and a crewmate must never run a Zerops call ungated.
-    capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
+    capabilities: {
+      sessionModelSwitch: "in-session",
+      supportsConversationRollback: false,
+      // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model. In
+      // its default mode agy asks before every Zerops call, offering no "always" (measured, agy
+      // 1.5.18).
+      threadProfile: { tools: true, reportsSpend: false },
+    },
     compaction: { type: "slash-command", command: "/compact" },
     startSession,
     sendTurn,

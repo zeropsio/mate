@@ -10,6 +10,7 @@ import {
   type ProviderOptionSelection,
   EventId,
   type ProviderApprovalDecision,
+  type ProviderApprovalOption,
   type ProviderInteractionMode,
   type ProviderRuntimeEvent,
   type ProviderSession,
@@ -54,7 +55,7 @@ import {
   type ProviderAdapterError,
 } from "../Errors.ts";
 import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
-import { acpPermissionOutcome, mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
+import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
   makeAcpAssistantItemEvent,
@@ -320,20 +321,24 @@ function applyRequestedSessionConfiguration<E>(input: {
   });
 }
 
-function selectAutoApprovedPermissionOption(
+/**
+ * What a person may answer Cursor: no "always", which Cursor saves in its global settings for
+ * every later session, a crewmate's included, past the crew's gate (measured, cursor-agent
+ * 2026.10.22).
+ */
+const CURSOR_APPROVAL_OPTIONS: ReadonlyArray<ProviderApprovalOption> = [
+  { decision: "cancel", label: "Cancel" },
+  { decision: "decline", label: "Not now" },
+  { decision: "accept", label: "Approve" },
+];
+
+/** Cursor's one-time allow, or its one-time rejection for a decline. */
+function cursorPermissionOptionId(
   request: EffectAcpSchema.RequestPermissionRequest,
+  decision: "accept" | "decline",
 ): string | undefined {
-  const allowAlwaysOption = request.options.find((option) => option.kind === "allow_always");
-  if (typeof allowAlwaysOption?.optionId === "string" && allowAlwaysOption.optionId.trim()) {
-    return allowAlwaysOption.optionId.trim();
-  }
-
-  const allowOnceOption = request.options.find((option) => option.kind === "allow_once");
-  if (typeof allowOnceOption?.optionId === "string" && allowOnceOption.optionId.trim()) {
-    return allowOnceOption.optionId.trim();
-  }
-
-  return undefined;
+  const kind = decision === "accept" ? "allow_once" : "reject_once";
+  return request.options.find((option) => option.kind === kind && option.optionId.trim())?.optionId;
 }
 
 export function makeCursorAdapter(
@@ -700,7 +705,7 @@ export function makeCursorAdapter(
                   );
                   if (profileSetup) return yield* profileSetup.decidePermission(params);
                   if (runtimeMode === "full-access") {
-                    const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
+                    const autoApprovedOptionId = cursorPermissionOptionId(params, "accept");
                     if (autoApprovedOptionId !== undefined) {
                       return {
                         outcome: {
@@ -726,6 +731,7 @@ export function makeCursorAdapter(
                       turnId: ctx?.activeTurnId,
                       requestId: runtimeRequestId,
                       permissionRequest,
+                      approvalOptions: CURSOR_APPROVAL_OPTIONS,
                       detail:
                         permissionRequest.detail ??
                         encodeJsonStringForDiagnostics(params)?.slice(0, 2000) ??
@@ -749,14 +755,18 @@ export function makeCursorAdapter(
                       decision: resolved,
                     }),
                   );
+                  const optionId =
+                    resolved === "cancel"
+                      ? undefined
+                      : cursorPermissionOptionId(
+                          params,
+                          resolved === "decline" ? "decline" : "accept",
+                        );
                   return {
                     outcome:
-                      resolved === "cancel"
+                      optionId === undefined
                         ? ({ outcome: "cancelled" } as const)
-                        : {
-                            outcome: "selected" as const,
-                            optionId: acpPermissionOutcome(resolved),
-                          },
+                        : { outcome: "selected" as const, optionId },
                   };
                 }),
               ),
@@ -1352,10 +1362,16 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      // No `threadProfile`: zcp pre-approves the zerops tools in the project's .cursor/cli.json
-      // (`Mcp(zerops:*)`), so a crewmate's Zerops calls would never reach the crew's gate. A crew
-      // is refused on Cursor until that is closed and seen live (spi/acpThreadProfile.ts is ready).
-      capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        supportsConversationRollback: false,
+        // spi/acpThreadProfile.ts: context, crew tools over MCP, the gate on every ask, model.
+        // Cursor reads `.cursor/cli.json` only from the git root it works in down, so zcp's,
+        // which lets Zerops tools run unasked, never reaches a crewmate's copy, a git root of its
+        // own: there it asks (measured, cursor-agent 2026.10.22). An "always" it saved globally
+        // would skip the gate, so Mate never answers with one (`CURSOR_APPROVAL_OPTIONS`).
+        threadProfile: { tools: true, reportsSpend: false },
+      },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,
       sendTurn,
