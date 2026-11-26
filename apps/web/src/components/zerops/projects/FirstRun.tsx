@@ -17,20 +17,18 @@ import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import { Building2Icon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
+import { EmptyState } from "~/components/ui/empty";
 import { Text } from "~/components/ui/text";
-import { cn } from "~/lib/utils";
 
 import { ZeropsMark } from "../../ZeropsMark";
 import { sidebarAccountDestinationIcon } from "../../sidebar/SidebarChrome";
 import { useClaimWholeWindow } from "../../wholeWindow";
 import { MateFacePreview, MateFaceRing } from "../MateFacePicker";
-import { MateNameText } from "../MateNameText";
 import { SidebarZeropsAccountRow } from "../SidebarZeropsAccount";
 import { useNewProjectAnswer } from "../ZeropsNewProjectHost";
 import {
   CreateProjectButton,
-  NEW_PROJECT_HEADING_CLASS,
-  NEW_PROJECT_LINE,
+  NewMateHeading,
   NewMateTools,
   NewProjectFormFrame,
   NewProjectLine,
@@ -149,15 +147,13 @@ export function FirstRunView({
       {words.kind === "start" && form !== undefined && nameField !== undefined ? (
         <FirstRunStage form={form} nameField={nameField} note={words.note} />
       ) : words.kind === "wait" ? (
-        <div className="m-auto flex w-full max-w-140 flex-col items-center px-6 pt-4 pb-16 text-center">
-          <MateFacePreview className="size-16" face={NOBODY} />
-          <FirstRunTitle className="mt-4 text-title font-medium tracking-tight text-balance text-foreground">
-            {words.heading}
-          </FirstRunTitle>
-          <p className="mt-2.5 max-w-lg text-emphasis leading-5.75 text-pretty text-muted-foreground">
-            {words.body}
-          </p>
-        </div>
+        <EmptyState
+          mark={<MateFacePreview className="size-16" face={NOBODY} />}
+          size="page"
+          title={words.heading}
+        >
+          {words.body}
+        </EmptyState>
       ) : null}
     </section>
   );
@@ -180,7 +176,7 @@ function FirstRunStage({
 }) {
   const [styling, setStyling] = useState(false);
   const shuffle = useNewMateShuffle(form);
-  const { closed, creating, forecast } = form.input;
+  const { closed, forecast } = form.input;
   // By the name as it is typed; with none yet, the Mate it will be.
   const called = form.botName.replace(/\s+/g, " ").trim();
   return (
@@ -189,24 +185,14 @@ function FirstRunStage({
       form={form}
     >
       <MateFaceRing
-        className="my-4"
+        className="mt-4 mb-6.5"
         face={form.face}
         onPickShape={form.pickShape}
         onPickTint={form.pickTint}
         open={styling}
         size="page"
       />
-      <FirstRunTitle className={cn(NEW_PROJECT_HEADING_CLASS, "mt-2.5")}>
-        Meet{" "}
-        <MateNameText
-          describedBy={NEW_PROJECT_LINE}
-          invalid={form.refused !== undefined}
-          onValueChange={form.nameMate}
-          readOnly={creating}
-          value={form.botName}
-        />
-        , your first Mate
-      </FirstRunTitle>
+      <NewMateHeading after=", your first Mate" before="Meet " form={form} />
       <NewMateTools
         className="mt-4"
         form={form}
@@ -243,15 +229,4 @@ function FirstRunStage({
       </div>
     </NewProjectFormFrame>
   );
-}
-
-/** The screen's one headline: its own, with no page around it. */
-function FirstRunTitle({
-  className,
-  children,
-}: {
-  readonly className: string;
-  readonly children: ReactNode;
-}) {
-  return <h1 className={className}>{children}</h1>;
 }

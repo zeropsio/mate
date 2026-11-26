@@ -98,7 +98,7 @@ const NAME_YOUR_PROJECT = "Name your project.";
 const PROJECT_FIELD = "zerops-new-project";
 const REGION_LABEL = "zerops-new-project-region";
 const MATE_FIELD = "zerops-new-project-mate";
-export const NEW_PROJECT_LINE = "zerops-new-project-line";
+const LINE = "zerops-new-project-line";
 
 /**
  * A New project form's state, wherever it is drawn — the dialog (`ZeropsNewProjectForm`) or an
@@ -312,7 +312,7 @@ export function ProjectNameField({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={PROJECT_FIELD}>Project name</Label>
       <Input
-        aria-describedby={form.unnamed ? NEW_PROJECT_LINE : undefined}
+        aria-describedby={form.unnamed ? LINE : undefined}
         aria-invalid={form.unnamed || undefined}
         autoComplete="off"
         id={PROJECT_FIELD}
@@ -355,7 +355,7 @@ export function FirstMateField({
         onPickTint={form.pickTint}
       >
         <MateNameInput
-          describedBy={NEW_PROJECT_LINE}
+          describedBy={LINE}
           id={MATE_FIELD}
           invalid={form.refused !== undefined}
           onAnother={form.another}
@@ -449,7 +449,7 @@ export function NewProjectLine({
   return (
     <PressLine
       className={className}
-      id={NEW_PROJECT_LINE}
+      id={LINE}
       refusal={form.failed}
       waiting={form.failed === undefined ? form.line : undefined}
     />
@@ -506,7 +506,7 @@ export function NewProjectNameInput({
 }) {
   return (
     <Input
-      aria-describedby={form.unnamed ? NEW_PROJECT_LINE : undefined}
+      aria-describedby={form.unnamed ? LINE : undefined}
       aria-invalid={form.unnamed || undefined}
       aria-label="Project name"
       autoComplete="off"
@@ -541,7 +541,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   if (closed !== undefined)
     return (
       <NewProjectPageFrame>
-        <h1 className={NEW_PROJECT_HEADING_CLASS}>What do you want to build?</h1>
+        <h1 className={HEADING_CLASS}>What do you want to build?</h1>
         <Text className="m-0 text-center" render={<p />} variant="description">
           {closed}
         </Text>
@@ -562,14 +562,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             open={styling}
             size="page"
           />
-          <h1 className={NEW_PROJECT_HEADING_CLASS}>
-            <MateNameText
-              describedBy={NEW_PROJECT_LINE}
-              onValueChange={form.nameMate}
-              readOnly={creating}
-              value={form.botName}
-            />
-          </h1>
+          <NewMateHeading form={form} />
           {/* Its two pill presses, 16 px under the name and 32 px over the press. */}
           <NewMateTools
             className="mt-1.5 mb-5.5"
@@ -609,7 +602,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     );
   return (
     <NewProjectPageFrame>
-      <h1 className={NEW_PROJECT_HEADING_CLASS}>What do you want to build?</h1>
+      <h1 className={HEADING_CLASS}>What do you want to build?</h1>
       <form
         className="flex w-full flex-col items-center pt-6"
         data-zerops-surface="new-project-form"
@@ -629,7 +622,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           {/* A missing name, under the press; saying nothing, it gives the column's gap back. */}
           <PressLine
             className="text-center empty:-mt-4"
-            id={NEW_PROJECT_LINE}
+            id={LINE}
             refusal={form.unnamed ? NAME_YOUR_PROJECT : undefined}
           />
         </div>
@@ -640,8 +633,35 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   );
 }
 
+/**
+ * The new Mate's name as the screen's headline, editable where it stands: on New project alone,
+ * on the first run between the words around it ("Meet …, your first Mate").
+ */
+export function NewMateHeading({
+  form,
+  before,
+  after,
+}: {
+  readonly form: NewProjectForm;
+  readonly before?: ReactNode;
+  readonly after?: ReactNode;
+}) {
+  return (
+    <h1 className={HEADING_CLASS}>
+      {before}
+      <MateNameText
+        describedBy={LINE}
+        onValueChange={form.nameMate}
+        readOnly={form.input.creating}
+        value={form.botName}
+      />
+      {after}
+    </h1>
+  );
+}
+
 /** The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
-export const NEW_PROJECT_HEADING_CLASS =
+const HEADING_CLASS =
   "m-0 text-center text-title font-normal tracking-tight text-balance text-foreground sm:text-display";
 
 /** *Shuffle*'s roll of the form's new Mate: its colour, shape and name. */
